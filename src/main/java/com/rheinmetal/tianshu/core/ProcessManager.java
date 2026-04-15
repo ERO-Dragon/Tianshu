@@ -267,7 +267,7 @@ if (serviceType == ServiceType.TTS) {
             return;
         }
 
-        // 2. 智能扫描：在这个文件夹里找 .exe 文件
+        // 2. 智能扫描：在这个文件夹里找 llama-server.exe 文件
         java.io.File[] exeFiles = engineDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".exe"));
         
         if (exeFiles == null || exeFiles.length == 0) {
@@ -275,12 +275,23 @@ if (serviceType == ServiceType.TTS) {
             return;
         }
         
-        if (exeFiles.length > 1) {
-            Tianshu.LOGGER.warn("在 {} 中发现多个 .exe 文件，默认使用第一个: {}", engineDir.getAbsolutePath(), exeFiles[0].getName());
+        // 优先寻找 llama-server.exe
+        java.io.File targetExe = null;
+        for (java.io.File exeFile : exeFiles) {
+            if (exeFile.getName().equals("llama-server.exe")) {
+                targetExe = exeFile;
+                break;
+            }
+        }
+        
+        // 如果没有找到 llama-server.exe，使用第一个找到的 exe 文件
+        if (targetExe == null) {
+            Tianshu.LOGGER.warn("在 {} 中找不到 llama-server.exe，默认使用第一个: {}", engineDir.getAbsolutePath(), exeFiles[0].getName());
+            targetExe = exeFiles[0];
+        } else {
+            Tianshu.LOGGER.info("找到 llama-server.exe: {}", targetExe.getName());
         }
 
-        // 拿到我们要启动的真实 exe 文件
-        java.io.File targetExe = exeFiles[0];
         Tianshu.LOGGER.info("自动捕获到 LLM 引擎程序: {}", targetExe.getName());
 
         try {

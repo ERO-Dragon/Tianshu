@@ -277,6 +277,20 @@ public class EnvSetupManager {
             }
         }
         Tianshu.LOGGER.info("ZIP 解压完成: {} -> {}", zipPath, targetDir);
+        
+        // 删除除llama-server.exe之外的所有EXE文件
+        File[] exeFiles = targetDir.toFile().listFiles((dir, name) -> name.toLowerCase().endsWith(".exe"));
+        if (exeFiles != null) {
+            for (File exeFile : exeFiles) {
+                if (!exeFile.getName().equals("llama-server.exe")) {
+                    if (exeFile.delete()) {
+                        // Tianshu.LOGGER.info("已删除多余的EXE文件: {}", exeFile.getName());
+                    } else {
+                        // Tianshu.LOGGER.warn("删除多余EXE文件失败: {}", exeFile.getName());
+                    }
+                }
+            }
+        }
     }
 
     @FunctionalInterface
