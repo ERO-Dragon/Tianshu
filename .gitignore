@@ -1,6 +1,6 @@
-.eclipse/*
-.github/*
-.gradle/*
-.idea/*
-.trae/*
-.vscode/*
+.eclipse/
+.github/
+.gradle/
+.idea/
+.trae/
+.vscode/
