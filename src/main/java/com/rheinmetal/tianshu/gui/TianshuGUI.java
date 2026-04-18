@@ -115,12 +115,12 @@ public class TianshuGUI extends Screen {
         int buttonHeight = 25;
 
         this.addRenderableWidget(Button.builder(
-            Component.literal("一键配置运行环境"),
+            Component.literal("检测运行环境"),
             b -> {
                 b.active = false;
                 envSetupInProgress = true;
                 envSetupProgress = 0;
-                envSetupStage = "准备中...";
+                envSetupStage = "正在检测...";
                 this.clearWidgets();
 
                 EnvSetupManager.startSetup(new EnvSetupManager.SetupCallback() {
@@ -137,7 +137,7 @@ public class TianshuGUI extends Screen {
                             envSetupInProgress = false;
                             EnvSetupManager.markSetupCompleted();
 
-                            com.rheinmetal.tianshu.Tianshu.LOGGER.info("环境配置完成，重新加载 Native 库...");
+                            com.rheinmetal.tianshu.Tianshu.LOGGER.info("环境检测通过，重新加载 Native 库...");
                             try {
                                 com.rheinmetal.tianshu.Tianshu.reloadNative();
                             } catch (Exception e) {

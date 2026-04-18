@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class Config {
-    public static final String DEFAULT_ROOT_DIR_NAME = "tianshu_models";
+    public static final String DEFAULT_ROOT_DIR_NAME = "config/TianshuAIAssistant";
     public static final ModConfigSpec SPEC;
 
     // --- 基础配置 ---
@@ -63,10 +63,6 @@ public class Config {
     public static Path getRootPath() {
         return Paths.get(net.minecraft.client.Minecraft.getInstance().gameDirectory.getAbsolutePath(), DEFAULT_ROOT_DIR_NAME);
     }
-    public static Path getAsrEnginePath() { return getRootPath().resolve("engines/asr_server"); }
-    public static Path getLlmEnginePath() { return getRootPath().resolve("engines/llm_server"); }
-    public static Path getTtsEnginePath() { return getRootPath().resolve("engines/tts_server"); }
-
     public static Path getAsrBasePath() { return getRootPath().resolve("models/asr"); }
     public static Path getLlmBasePath() { return getRootPath().resolve("models/llm"); }
     public static Path getTtsBasePath() { return getRootPath().resolve("models/tts"); }
