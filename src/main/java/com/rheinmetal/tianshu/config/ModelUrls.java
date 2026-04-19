@@ -33,10 +33,13 @@ public class ModelUrls {
     );
 
     public static final List<String> TTS_STANDARD_URLS = List.of(
-        "https://hf-mirror.com/mradermacher/QWEN-TTS-GGUF/resolve/main/QWEN-TTS.Q4_K_M.gguf?download=true"
+        "https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/model.onnx?download=true",
+        "https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/lexicon.txt?download=true",
+        "https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/tokens.txt?download=true",
+        "https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/date.fst?download=true",
+        "https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/number.fst?download=true",
+        "https://hf-mirror.com/csukuangfj/vits-melo-tts-zh_en/resolve/main/phone.fst?download=true"
     );
 
-    public static final List<String> TTS_DELUXE_URLS = List.of(
-        "https://hf-mirror.com/mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF/resolve/main/Qwen3-1.7B-Multilingual-TTS.Q4_K_M.gguf?download=true"
-    );
+    public static final List<String> TTS_DELUXE_URLS = List.of();
 }

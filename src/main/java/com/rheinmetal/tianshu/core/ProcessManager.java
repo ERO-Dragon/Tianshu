@@ -8,6 +8,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -156,31 +158,33 @@ public class ProcessManager {
                 return;
             }
 
-            String nativeLibPath = NativeLibManager.getNativesDir().toAbsolutePath().toString();
+            Path nativesDir = NativeLibManager.getNativesDir().toAbsolutePath();
+            String nativeLibPath = nativesDir.toString();
             String modelPath = Config.getLlmGgufFilePath().toString();
-
-            Tianshu.LOGGER.info("Server JAR: {}", serverJarPath);
-            Tianshu.LOGGER.info("Native lib path: {}", nativeLibPath);
-            Tianshu.LOGGER.info("Model path: {}", modelPath);
 
             if (!Files.exists(Path.of(modelPath))) {
                 Tianshu.LOGGER.error("模型文件不存在: {}", modelPath);
                 return;
             }
 
-            String javaPath = ProcessHandle.current().info().command().orElse("java");
+            Tianshu.LOGGER.info("Server JAR: {}", serverJarPath);
+            Tianshu.LOGGER.info("Native lib path: {}", nativeLibPath);
+            Tianshu.LOGGER.info("Model path: {}", modelPath);
+
+            // 获取当前 MC 使用的 Java 路径，直接用原生的，不再搞复制/硬链接
+            String currentJava = ProcessHandle.current().info().command().orElse("java");
 
             List<String> command = new ArrayList<>();
-            command.add(javaPath);
-            command.add("-Xmx4G");
-            command.add("-Djava.library.path=" + nativeLibPath);
+            command.add(currentJava); // 纯粹的原始路径
+            command.add("-Xmx1G");//分配给llm的内存大小
+            command.add("-Djava.library.path=" + nativeLibPath); // 唯一需要指定的，让 Java 能找到 natives 里的 ggml-vulkan.dll
             command.add("-cp");
             command.add(serverJarPath.toAbsolutePath().toString());
             command.add("com.javallamaserver.core.ServerApp");
             command.add("-m");
             command.add(modelPath);
             command.add("-c");
-            command.add("2048");
+            command.add("4096"); 
             command.add("-ngl");
             command.add("999");
             command.add("--host");
@@ -192,26 +196,8 @@ public class ProcessManager {
 
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.redirectErrorStream(true);
+            processBuilder.directory(nativesDir.toFile());
             
-            // 【关键修改1】：将工作目录设为 natives 目录！
-            // 防止 Windows 去乱七八糟的 .minecraft 根目录下找垃圾 DLL
-            processBuilder.directory(NativeLibManager.getNativesDir().toFile());
-
-            Map<String, String> env = processBuilder.environment();
-            
-            // 【关键修改2】：不要清空 PATH！只把 natives 插到最前面！
-            // 保留原本的 PATH，这样 NVIDIA 显卡驱动相关的路径才不会丢失，Vulkan 才能正常工作
-            String originalPath = env.get("PATH");
-            if (originalPath == null || originalPath.isEmpty()) {
-                originalPath = "C:\\Windows\\System32;C:\\Windows";
-            }
-            // String finalPath = nativeLibPath + ";" + originalPath;
-            String finalPath = originalPath + ";" + nativeLibPath;    
-            
-            env.put("PATH", finalPath);
-            
-            Tianshu.LOGGER.info("子进程 PATH 已注入 (前置natives): {}", finalPath);
-
             Process process = processBuilder.start();
             processes.put(ServiceType.LLM, process);
 

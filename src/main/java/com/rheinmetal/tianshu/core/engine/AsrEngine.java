@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.core.engine;
 
 import com.rheinmetal.tianshu.Tianshu;
+import com.rheinmetal.tianshu.config.ModelSettings;
 import com.k2fsa.sherpa.onnx.OnlineRecognizer;
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig;
 import com.k2fsa.sherpa.onnx.OnlineStream;
@@ -9,6 +10,8 @@ import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class AsrEngine {
@@ -16,6 +19,8 @@ public class AsrEngine {
     private final ReentrantLock streamLock = new ReentrantLock();
     private OnlineRecognizer recognizer;
     private OnlineStream stream;
+    private boolean isTransducer = false;
+    private String modelDirPath;
 
     private File findModelFile(File dir, String keyword, String extension) {
         if (dir == null || !dir.exists() || !dir.isDirectory()) return null;
@@ -33,10 +38,10 @@ public class AsrEngine {
     
     public void initialize(String modelDir) {
         Tianshu.LOGGER.info("初始化 ASR 引擎，模型目录: {}", modelDir);
+        this.modelDirPath = modelDir;
         File dir = new File(modelDir);
 
         try {
-            // 查找模型文件
             File encoder = findModelFile(dir, "encoder", ".onnx");
             File decoder = findModelFile(dir, "decoder", ".onnx");
             File joiner = findModelFile(dir, "joiner", ".onnx");
@@ -56,7 +61,10 @@ public class AsrEngine {
             Tianshu.LOGGER.info("  Tokens: {}", tokensFile.getAbsolutePath());
 
             OnlineModelConfig modelConfig;
+            OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder();
+
             if (joiner != null) {
+                isTransducer = true;
                 Tianshu.LOGGER.info("检测到 Transducer 流式模型");
                 OnlineTransducerModelConfig transducer = OnlineTransducerModelConfig.builder()
                         .setEncoder(encoder.getAbsolutePath())
@@ -70,7 +78,21 @@ public class AsrEngine {
                         .setNumThreads(2)
                         .setDebug(true)
                         .build();
+
+                Path hotwordsFile = dir.toPath().resolve("hotwords.txt");
+                if (Files.exists(hotwordsFile)) {
+                    Tianshu.LOGGER.info("检测到热词文件: {}", hotwordsFile);
+                    configBuilder.setDecodingMethod("modified_beam_search")
+                            .setHotwordsFile(hotwordsFile.toAbsolutePath().toString());
+                    ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(dir.toPath());
+                    configBuilder.setHotwordsScore((float) settings.hotwordsScore);
+                    Tianshu.LOGGER.info("热词已启用，解码方式: modified_beam_search，分数: {}", settings.hotwordsScore);
+                } else {
+                    configBuilder.setDecodingMethod("greedy_search");
+                    Tianshu.LOGGER.info("未检测到热词文件，使用 greedy_search");
+                }
             } else {
+                isTransducer = false;
                 Tianshu.LOGGER.info("检测到 Paraformer 流式模型");
                 OnlineParaformerModelConfig paraformer = OnlineParaformerModelConfig.builder()
                         .setEncoder(encoder.getAbsolutePath())
@@ -83,18 +105,14 @@ public class AsrEngine {
                         .setNumThreads(2)
                         .setDebug(true)
                         .build();
+
+                configBuilder.setDecodingMethod("greedy_search");
             }
 
-            OnlineRecognizerConfig config = OnlineRecognizerConfig.builder()
-                    .setOnlineModelConfig(modelConfig)
-                    .setDecodingMethod("greedy_search")
-                    .build();
-
-            Tianshu.LOGGER.info("创建 OnlineRecognizer...");
-            recognizer = new OnlineRecognizer(config);
-            Tianshu.LOGGER.info("✅ ASR 引擎初始化成功");
+            configBuilder.setOnlineModelConfig(modelConfig);
+            recognizer = new OnlineRecognizer(configBuilder.build());
+            Tianshu.LOGGER.info("ASR 引擎初始化成功 (Transducer={}, 热词={})", isTransducer, isTransducer && Files.exists(dir.toPath().resolve("hotwords.txt")));
         } catch (Throwable t) {
-            // 捕获所有异常，包括 Error
             Tianshu.LOGGER.error("ASR 引擎创建失败，请检查模型文件是否损坏", t);
         }
     }
@@ -199,7 +217,6 @@ public class AsrEngine {
         return result;
     }
     public void shutdown() {
-        // 【关键】官方示例里的标准释放方式
         if (stream != null) {
             stream.release();
             stream = null;
@@ -209,5 +226,32 @@ public class AsrEngine {
             recognizer = null;
         }
         Tianshu.LOGGER.info("ASR 引擎已安全关闭");
+    }
+
+    public boolean isTransducer() {
+        return isTransducer;
+    }
+
+    public boolean isHotwordsActive() {
+        if (!isTransducer || modelDirPath == null) return false;
+        return Files.exists(Path.of(modelDirPath).resolve("hotwords.txt"));
+    }
+
+    public static boolean detectTransducer(java.nio.file.Path modelDir) {
+        if (!Files.isDirectory(modelDir)) return false;
+        File dir = modelDir.toFile();
+        return findFileStatic(dir, "joiner", ".onnx") != null;
+    }
+
+    private static File findFileStatic(File dir, String keyword, String extension) {
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (File file : files) {
+            String name = file.getName().toLowerCase();
+            if (file.isFile() && name.contains(keyword.toLowerCase()) && name.endsWith(extension)) {
+                return file;
+            }
+        }
+        return null;
     }
 }

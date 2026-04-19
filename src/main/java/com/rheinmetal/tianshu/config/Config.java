@@ -89,8 +89,8 @@ public class Config {
     public static String getPresetTtsName(VramTier tier) {
         return switch (tier) {
             case LIGHT -> "PiperTTS";
-            case STANDARD -> "QwenTTS0.6B";
-            case DELUXE -> "QwenTTS1.7B";
+            case STANDARD -> "MeloTTS";
+            case DELUXE -> "MossTTSNano";
             default -> "PiperTTS";
         };
     }

@@ -118,8 +118,6 @@ public final class NativeLibManager {
     }
 
     public static synchronized void extractServerJar() {
-        if (serverJarPath != null && Files.exists(serverJarPath)) return;
-
         try {
             Path targetDir = getLlmServerDir();
             Files.createDirectories(targetDir);

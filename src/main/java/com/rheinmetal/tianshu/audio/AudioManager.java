@@ -6,15 +6,20 @@ import net.minecraft.network.chat.Component;
 
 import javax.sound.sampled.*;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class AudioManager {
     private TargetDataLine targetDataLine;
     private SourceDataLine sourceDataLine;
+    private SourceDataLine ttsDataLine;
+    private final AtomicInteger ttsPlaybackTurnId = new AtomicInteger(0);
 
     // 【版本 B 核心】分离硬件状态和业务状态
     private final AtomicBoolean isHardwareRunning = new AtomicBoolean(false); // 底层声卡是否常驻
@@ -73,7 +78,7 @@ public class AudioManager {
             try {
                 AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
                 DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
-                Mixer.Info bestMixer = findRealPhysicalMic(info);
+                Mixer.Info bestMixer = currentMicMixer != null ? currentMicMixer : findRealPhysicalMic(info);
 
                 if (bestMixer != null) {
                     targetDataLine = (TargetDataLine) AudioSystem.getMixer(bestMixer).getLine(info);
@@ -181,11 +186,15 @@ public class AudioManager {
 
     // ================= 播放与状态查询 =================
     public synchronized void playAudio(byte[] audioData) {
+        playAudio(audioData, 16000);
+    }
+
+    public synchronized void playAudio(byte[] audioData, int sampleRate) {
         if (audioData == null || audioData.length == 0)
             return;
         executorService.submit(() -> {
             try {
-                AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
+                AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
                 DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
                 if (!AudioSystem.isLineSupported(info))
                     return;
@@ -210,6 +219,44 @@ public class AudioManager {
         });
     }
 
+    public void startTtsPlayback(int sampleRate) {
+        stopTtsPlayback();
+        int turnId = ttsPlaybackTurnId.incrementAndGet();
+        executorService.submit(() -> {
+            try {
+                AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
+                DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+                if (!AudioSystem.isLineSupported(info))
+                    return;
+                ttsDataLine = (SourceDataLine) AudioSystem.getLine(info);
+                ttsDataLine.open(format);
+                ttsDataLine.start();
+                Tianshu.LOGGER.info("TTS 播放通道已打开，采样率: {}Hz", sampleRate);
+            } catch (LineUnavailableException e) {
+                Tianshu.LOGGER.error("无法打开 TTS 播放通道", e);
+            }
+        });
+    }
+
+    public void feedTtsAudio(byte[] audioData) {
+        if (ttsDataLine == null || !ttsDataLine.isOpen()) return;
+        if (audioData == null || audioData.length == 0) return;
+        ttsDataLine.write(audioData, 0, audioData.length);
+    }
+
+    public void stopTtsPlayback() {
+        if (ttsDataLine != null) {
+            try {
+                ttsDataLine.drain();
+                ttsDataLine.stop();
+                ttsDataLine.close();
+            } catch (Exception e) {
+                Tianshu.LOGGER.error("关闭 TTS 播放通道异常", e);
+            }
+            ttsDataLine = null;
+        }
+    }
+
     public void stopPlayback() {
         isPlaying.set(false);
     }
@@ -226,16 +273,101 @@ public class AudioManager {
         return isStreaming.get();
     }
 
+    private volatile Mixer.Info currentMicMixer = null;
+    private volatile int currentMicIndex = -1;
+
+    public List<String> getAvailableMicNames() {
+        List<String> names = new ArrayList<>();
+        AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
+        DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
+        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
+            String name = mixerInfo.getName().toLowerCase();
+            if (name.contains("主声音捕获") || name.contains("软件") || name.contains("software")
+                    || name.contains("回环") || name.contains("loopback") || name.contains("立体声混音")
+                    || name.contains("stereo mix") || name.contains("虚拟音频") || name.contains("virtual audio cable")
+                    || name.contains("wave out")) {
+                continue;
+            }
+            try {
+                Mixer mixer = AudioSystem.getMixer(mixerInfo);
+                if (mixer.isLineSupported(info)) {
+                    names.add(mixerInfo.getName());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return names;
+    }
+
+    public List<Mixer.Info> getAvailableMicMixers() {
+        List<Mixer.Info> mixers = new ArrayList<>();
+        AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
+        DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
+        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
+            String name = mixerInfo.getName().toLowerCase();
+            if (name.contains("主声音捕获") || name.contains("软件") || name.contains("software")
+                    || name.contains("回环") || name.contains("loopback") || name.contains("立体声混音")
+                    || name.contains("stereo mix") || name.contains("虚拟音频") || name.contains("virtual audio cable")
+                    || name.contains("wave out")) {
+                continue;
+            }
+            try {
+                Mixer mixer = AudioSystem.getMixer(mixerInfo);
+                if (mixer.isLineSupported(info)) {
+                    mixers.add(mixerInfo);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return mixers;
+    }
+
+    public int getCurrentMicIndex() {
+        return currentMicIndex;
+    }
+
+    public String getCurrentMicName() {
+        if (currentMicMixer != null) return currentMicMixer.getName();
+        List<String> names = getAvailableMicNames();
+        return names.isEmpty() ? "未检测到麦克风" : names.get(0);
+    }
+
+    public void switchToNextMic() {
+        List<Mixer.Info> mixers = getAvailableMicMixers();
+        if (mixers.isEmpty()) return;
+        int nextIdx = (currentMicIndex + 1) % mixers.size();
+        currentMicIndex = nextIdx;
+        currentMicMixer = mixers.get(nextIdx);
+        Tianshu.LOGGER.info("切换麦克风至: {}", currentMicMixer.getName());
+
+        boolean wasRunning = isHardwareRunning.get();
+        if (wasRunning) {
+            isHardwareRunning.set(false);
+            if (targetDataLine != null) {
+                targetDataLine.stop();
+                targetDataLine.close();
+                targetDataLine = null;
+            }
+            try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+            ensureHardwareRunning();
+        }
+    }
+
     // ================= 资源销毁 (只有退出世界才调用) =================
     public void shutdown() {
         isRecording.set(false);
         isStreaming.set(false);
-        isHardwareRunning.set(false); // 唯一能让底层死循环退出的开关
+        isHardwareRunning.set(false);
+        stopTtsPlayback();
 
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-        } // 留点时间让它安全 close
         executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(500, TimeUnit.MILLISECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

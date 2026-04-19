@@ -165,6 +165,10 @@ public class TianshuClient {
         return processManager;
     }
 
+    public static AudioManager getAudioManager() {
+        return audioManager;
+    }
+
     @SubscribeEvent
     public static void onClientTick(PlayerTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();

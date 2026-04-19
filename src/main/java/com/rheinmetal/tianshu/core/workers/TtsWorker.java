@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.core.workers;
 
 import com.rheinmetal.tianshu.Tianshu;
 import com.rheinmetal.tianshu.audio.AudioManager;
+import com.rheinmetal.tianshu.config.Config;
 import com.rheinmetal.tianshu.core.TianshuEventBus;
 import com.rheinmetal.tianshu.core.engine.TtsEngine;
 import com.rheinmetal.tianshu.core.events.InterruptEvent;
@@ -12,6 +13,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TtsWorker implements Runnable {
+    private static final int MAX_BUFFER_LENGTH = 200;
+
     private final AudioManager audioManager;
     private final TtsEngine ttsEngine;
     private final TianshuEventBus eventBus;
@@ -19,12 +22,26 @@ public class TtsWorker implements Runnable {
     private boolean running = true;
     private final AtomicInteger currentTurnId = new AtomicInteger(0);
     private final StringBuilder textBuffer = new StringBuilder();
+    private volatile boolean synthesizing = false;
 
     public TtsWorker(AudioManager audioManager) {
         this.audioManager = audioManager;
-        this.ttsEngine = new TtsEngine("http://127.0.0.1:8080");
+        this.ttsEngine = new TtsEngine();
         this.eventBus = TianshuEventBus.getInstance();
         this.ttsQueue = eventBus.getTtsQueue();
+    }
+
+    private void ensureEngineInitialized() {
+        if (!ttsEngine.isInitialized()) {
+            String modelDir = Config.getTtsModelPath().toString();
+            Tianshu.LOGGER.info("TTS Worker 首次触发，初始化引擎，模型目录: {}", modelDir);
+            ttsEngine.initialize(modelDir);
+            if (ttsEngine.isInitialized()) {
+                Tianshu.LOGGER.info("TTS 引擎初始化成功，采样率: {}Hz", ttsEngine.getSampleRate());
+            } else {
+                Tianshu.LOGGER.error("TTS 引擎初始化失败");
+            }
+        }
     }
 
     @Override
@@ -33,51 +50,45 @@ public class TtsWorker implements Runnable {
 
         try {
             while (running) {
-                // 阻塞监听队列
                 com.rheinmetal.tianshu.core.events.TianshuEvent event = ttsQueue.take();
 
                 if (event instanceof InterruptEvent) {
-                    // 处理打断事件
                     handleInterruptEvent();
                     continue;
                 }
 
                 if (event instanceof LlmChunkEvent llmEvent) {
-                    // 处理LLM文本块事件
                     int turnId = llmEvent.getTurnId();
-                    // 检查turnId是否过期
                     if (turnId < currentTurnId.get()) {
                         Tianshu.LOGGER.info("TTS Worker 丢弃过期事件，turnId: {}", turnId);
                         continue;
                     }
 
-                    // 更新当前turnId
                     currentTurnId.set(turnId);
-
-                    // 缓存文本块
                     textBuffer.append(llmEvent.getText());
 
-                    // 检查是否达到短句边界
-                    if (isSentenceBoundary(textBuffer.toString())) {
-                        // 合成并播放音频
+                    if (isSentenceBoundary(textBuffer.toString()) || textBuffer.length() > MAX_BUFFER_LENGTH) {
                         String text = textBuffer.toString();
                         textBuffer.setLength(0);
                         synthesizeAndPlay(text, turnId);
                     }
                 } else if (event instanceof LlmEndEvent llmEvent) {
-                    // 处理LLM结束事件
                     int turnId = llmEvent.getTurnId();
-                    // 检查turnId是否过期
                     if (turnId < currentTurnId.get()) {
-                        Tianshu.LOGGER.info("TTS Worker 丢弃过期事件，turnId: {}", turnId);
+                        Tianshu.LOGGER.info("TTS Worker 丢弃过期结束事件，turnId: {}", turnId);
                         continue;
                     }
 
-                    // 处理剩余文本
                     if (textBuffer.length() > 0) {
                         String text = textBuffer.toString();
                         textBuffer.setLength(0);
                         synthesizeAndPlay(text, turnId);
+                    }
+
+                    if (synthesizing) {
+                        audioManager.stopTtsPlayback(); // 内部的 drain() 会自动等播完
+                        synthesizing = false;
+                        Tianshu.LOGGER.info("TTS 流式播放通道已播完并关闭");
                     }
 
                     Tianshu.LOGGER.info("TTS Worker 处理完成，turnId: {}", turnId);
@@ -89,56 +100,63 @@ public class TtsWorker implements Runnable {
         } catch (Exception e) {
             Tianshu.LOGGER.error("TTS Worker 发生错误", e);
         } finally {
+            audioManager.stopTtsPlayback();
             Tianshu.LOGGER.info("TTS Worker 停止");
         }
     }
 
-    // 合成并播放音频
     private void synthesizeAndPlay(String text, int turnId) {
+        ensureEngineInitialized();
+        if (!ttsEngine.isInitialized()) {
+            Tianshu.LOGGER.warn("TTS 引擎未就绪，跳过合成: {}", text);
+            return;
+        }
+
+        if (!synthesizing) {
+            audioManager.startTtsPlayback(ttsEngine.getSampleRate());
+            synthesizing = true;
+        }
+
         try {
             ttsEngine.synthesizeSpeech(text, audio -> {
-                // 检查turnId是否过期
                 if (turnId < currentTurnId.get()) {
-                    Tianshu.LOGGER.info("TTS Worker 丢弃过期音频，turnId: {}", turnId);
+                    Tianshu.LOGGER.debug("TTS Worker 丢弃过期音频块，turnId: {}", turnId);
                     return;
                 }
-                // 播放音频
-                audioManager.playAudio(audio);
+                audioManager.feedTtsAudio(audio);
             });
         } catch (Exception e) {
-            Tianshu.LOGGER.error("TTS合成失败", e);
+            Tianshu.LOGGER.error("TTS合成失败: {}", text, e);
         }
     }
 
-    // 检查是否达到短句边界
     private boolean isSentenceBoundary(String text) {
-        return text.endsWith("。") || text.endsWith(".") || 
-               text.endsWith("！") || text.endsWith("!") || 
-               text.endsWith("？") || text.endsWith("?") || 
+        return text.endsWith("。") || text.endsWith(".") ||
+               text.endsWith("！") || text.endsWith("!") ||
+               text.endsWith("？") || text.endsWith("?") ||
+               text.endsWith("；") || text.endsWith(";") ||
                text.endsWith(",") || text.endsWith(",");
     }
 
-    // 停止Worker
     public void stop() {
         running = false;
-        // 清理队列，让take()方法返回
         ttsQueue.clear();
-        // 添加一个事件到队列，触发take()方法返回
         try {
             ttsQueue.put(new InterruptEvent());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        // 关闭 TtsEngine
+        audioManager.stopTtsPlayback();
         if (ttsEngine != null) {
             ttsEngine.shutdown();
         }
     }
 
-    // 处理打断事件
     private void handleInterruptEvent() {
         Tianshu.LOGGER.info("TTS Worker 收到打断事件，清空待合成文本");
         currentTurnId.incrementAndGet();
         textBuffer.setLength(0);
+        audioManager.stopTtsPlayback();
+        synthesizing = false;
     }
 }
