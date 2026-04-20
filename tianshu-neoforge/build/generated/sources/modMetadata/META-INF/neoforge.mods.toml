@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="tianshu"
+version="0.1"
+displayName="Tianshu AI Assistant"
+description='''
+Tianshu AI.
+'''
+displayTest="IGNORE_SERVER_VERSION"
+
+[[dependencies.tianshu]]
+    modId="neoforge"
+    type="required"
+    versionRange="[21.1.224,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.tianshu]]
+    modId="minecraft"
+    type="required"
+    versionRange="[1.21.1]"
+    ordering="NONE"
+    side="BOTH"
