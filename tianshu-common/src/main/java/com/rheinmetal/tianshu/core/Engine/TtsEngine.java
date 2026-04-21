@@ -3,11 +3,14 @@ package com.rheinmetal.tianshu.core.Engine;
 import com.k2fsa.sherpa.onnx.*;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.model.tts.moss.MossTtsService;
 import com.rheinmetal.tianshu.utils.PathUtils;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Consumer;
@@ -16,6 +19,8 @@ public class TtsEngine {
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private OfflineTts tts;
+    private MossTtsService mossTtsService;
+    private boolean isMossEngine = false;
     private boolean initialized = false;
     private int sampleRate;
     private float speed = 1.0f;
@@ -80,6 +85,14 @@ public class TtsEngine {
         env.info("初始化 TTS 引擎（" + label + "），模型目录: " + modelDir);
         this.modelDirPath = modelDir;
 
+        String engineType = info.getEngineType();
+        env.info("TTS 引擎类型: " + engineType + "，模型: " + info.name);
+
+        if ("moss".equals(engineType)) {
+            initializeMossEngine(modelDir);
+            return;
+        }
+
         File dir = new File(modelDir);
         if (!dir.exists() || !dir.isDirectory()) {
             env.error("TTS 模型目录不存在: " + modelDir, null);
@@ -92,9 +105,6 @@ public class TtsEngine {
             return;
         }
 
-        String engineType = info.getEngineType();
-        env.info("TTS 引擎类型: " + engineType + "，模型: " + info.name);
-
         try {
             OfflineTtsConfig ttsConfig = buildMetadataConfig(safeDir, info, engineType, vocoderPath);
             if (ttsConfig == null) {
@@ -105,6 +115,29 @@ public class TtsEngine {
             applyConfig(ttsConfig, modelDir);
         } catch (Throwable t) {
             env.error("TTS 引擎初始化失败", t);
+        }
+    }
+
+    private void initializeMossEngine(String modelDir) {
+        try {
+            Path modelRootDir = Path.of(modelDir);
+            if (!Files.exists(modelRootDir)) {
+                Files.createDirectories(modelRootDir);
+            }
+
+            HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
+            mossTtsService = new MossTtsService(env, downloader, modelRootDir);
+            mossTtsService.init();
+
+            sampleRate = mossTtsService.getSampleRate();
+            isMossEngine = true;
+            initialized = true;
+
+            env.info("MOSS-TTS 引擎初始化成功，采样率: " + sampleRate + "Hz");
+        } catch (Throwable t) {
+            env.error("MOSS-TTS 引擎初始化失败", t);
+            mossTtsService = null;
+            isMossEngine = false;
         }
     }
 
@@ -377,7 +410,17 @@ public class TtsEngine {
     }
 
     public void synthesizeSpeech(String text, Consumer<byte[]> onAudioChunk) {
-        if (!initialized || tts == null) {
+        if (!initialized) {
+            env.error("TTS 引擎未初始化", null);
+            return;
+        }
+
+        if (isMossEngine) {
+            synthesizeMoss(text, onAudioChunk);
+            return;
+        }
+
+        if (tts == null) {
             env.error("TTS 引擎未初始化", null);
             return;
         }
@@ -399,7 +442,17 @@ public class TtsEngine {
     }
 
     public void synthesizeFull(String text, Consumer<byte[]> onAudio) {
-        if (!initialized || tts == null) {
+        if (!initialized) {
+            env.error("TTS 引擎未初始化", null);
+            return;
+        }
+
+        if (isMossEngine) {
+            synthesizeMoss(text, onAudio);
+            return;
+        }
+
+        if (tts == null) {
             env.error("TTS 引擎未初始化", null);
             return;
         }
@@ -417,6 +470,26 @@ public class TtsEngine {
         }
     }
 
+    private void synthesizeMoss(String text, Consumer<byte[]> onAudioChunk) {
+        if (mossTtsService == null) {
+            env.error("MOSS-TTS 引擎未初始化", null);
+            return;
+        }
+
+        env.info("MOSS-TTS 开始合成: " + text);
+
+        try {
+            float[][] channels = mossTtsService.synthesizeToWaveform(text, null);
+            byte[] pcm = floatSamplesToPcm16(channels);
+            if (pcm.length > 0) {
+                onAudioChunk.accept(pcm);
+            }
+            env.info("MOSS-TTS 合成完成: " + text);
+        } catch (Exception e) {
+            env.error("MOSS-TTS 合成失败: " + text, e);
+        }
+    }
+
     private byte[] floatSamplesToPcm16(float[] samples) {
         if (samples == null || samples.length == 0) return new byte[0];
         byte[] pcm = new byte[samples.length * 2];
@@ -429,6 +502,12 @@ public class TtsEngine {
         return pcm;
     }
 
+    private byte[] floatSamplesToPcm16(float[][] channels) {
+        if (channels == null || channels.length == 0 || channels[0].length == 0) return new byte[0];
+        float[] mono = channels[0];
+        return floatSamplesToPcm16(mono);
+    }
+
     public int getSampleRate() {
         return sampleRate;
     }
@@ -438,6 +517,14 @@ public class TtsEngine {
     }
 
     public void shutdown() {
+        if (mossTtsService != null) {
+            try {
+                mossTtsService.close();
+            } catch (Exception ignored) {
+            }
+            mossTtsService = null;
+            isMossEngine = false;
+        }
         if (tts != null) {
             tts.release();
             tts = null;

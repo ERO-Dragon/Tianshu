@@ -8,14 +8,12 @@ import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -68,27 +66,42 @@ public class TtsModelSelectScreen extends Screen {
     }
 
     private static final String OTHER_LANG_LABEL = "其他";
+    private static final String TIER_STANDARD_LABEL = "普通";
+    private static final String TIER_PREMIUM_LABEL = "高端";
+
+    private static final int PAGE_LANG = 0;
+    private static final int PAGE_TIER = 1;
+    private static final int PAGE_MODELS = 2;
 
     private final Screen parent;
     private final NeoForgeConfig config;
     private final TianshuCoreManager coreManager;
     private final AudioManager audioManager;
     private final NeoForgeNativeLibBridge nativeLibBridge;
+    private EditBox proxyEditBox;
 
     private List<TtsModelInfo> allModels;
-    private List<String> groupOrder;
-    private Map<String, List<TtsModelInfo>> groupedModels;
+    private Map<String, List<TtsModelInfo>> groupedByLang;
+    private List<String> langGroupOrder;
+
+    private int currentPage = PAGE_LANG;
+    private String selectedLangGroup;
+    private String selectedTier = TIER_STANDARD_LABEL;
 
     private int scrollOffset = 0;
-    private String selectedGroup;
+    private double smoothScrollY = 0;
+    private static final int SCROLL_PIXELS_PER_TICK = 20;
     private String downloadingModel = null;
     private volatile int downloadProgress = 0;
 
     private static final int CARD_HEIGHT = 44;
     private static final int CARD_GAP = 4;
-    private static final int GROUP_TAB_HEIGHT = 22;
-    private static final int GROUP_TAB_GAP = 4;
-    private static final int GROUP_TAB_WIDTH = 56;
+    private static final int LANG_CARD_WIDTH = 140;
+    private static final int LANG_CARD_HEIGHT = 36;
+    private static final int LANG_CARD_GAP = 8;
+    private static final int TIER_CARD_WIDTH = 200;
+    private static final int TIER_CARD_HEIGHT = 80;
+    private static final int TIER_CARD_GAP = 16;
 
     public TtsModelSelectScreen(Screen parent, NeoForgeConfig config, TianshuCoreManager coreManager,
                                 AudioManager audioManager, NeoForgeNativeLibBridge nativeLibBridge) {
@@ -104,16 +117,13 @@ public class TtsModelSelectScreen extends Screen {
     public void init() {
         super.init();
         loadAndGroupModels();
-        if (selectedGroup == null && !groupOrder.isEmpty()) {
-            selectedGroup = groupOrder.get(0);
-        }
-        rebuildCards();
+        rebuildPage();
     }
 
     private void loadAndGroupModels() {
         allModels = ModelManager.loadTtsModelCatalog();
-        groupedModels = new LinkedHashMap<>();
-        groupOrder = new ArrayList<>();
+        groupedByLang = new LinkedHashMap<>();
+        langGroupOrder = new ArrayList<>();
 
         for (TtsModelInfo info : allModels) {
             List<String> langs = info.lang;
@@ -122,133 +132,303 @@ public class TtsModelSelectScreen extends Screen {
             }
             for (String lang : langs) {
                 String groupKey = LANG_NAMES.getOrDefault(lang, OTHER_LANG_LABEL);
-                if (!groupedModels.containsKey(groupKey)) {
-                    groupedModels.put(groupKey, new ArrayList<>());
-                    groupOrder.add(groupKey);
+                if (!groupedByLang.containsKey(groupKey)) {
+                    groupedByLang.put(groupKey, new ArrayList<>());
+                    langGroupOrder.add(groupKey);
                 }
-                if (!groupedModels.get(groupKey).contains(info)) {
-                    groupedModels.get(groupKey).add(info);
+                if (!groupedByLang.get(groupKey).contains(info)) {
+                    groupedByLang.get(groupKey).add(info);
                 }
             }
         }
 
-        if (!groupOrder.contains(OTHER_LANG_LABEL) && groupedModels.containsKey(OTHER_LANG_LABEL)) {
-            groupOrder.add(OTHER_LANG_LABEL);
+        if (!langGroupOrder.contains(OTHER_LANG_LABEL) && groupedByLang.containsKey(OTHER_LANG_LABEL)) {
+            langGroupOrder.add(OTHER_LANG_LABEL);
         }
 
         String zhGroup = "中文";
-        if (groupOrder.contains(zhGroup)) {
-            groupOrder.remove(zhGroup);
-            groupOrder.add(0, zhGroup);
+        if (langGroupOrder.contains(zhGroup)) {
+            langGroupOrder.remove(zhGroup);
+            langGroupOrder.add(0, zhGroup);
         }
         String enGroup = "英语";
-        if (groupOrder.contains(enGroup)) {
-            groupOrder.remove(enGroup);
-            groupOrder.add(groupOrder.isEmpty() ? 0 : 1, enGroup);
+        if (langGroupOrder.contains(enGroup)) {
+            langGroupOrder.remove(enGroup);
+            langGroupOrder.add(langGroupOrder.isEmpty() ? 0 : 1, enGroup);
         }
     }
 
-    private List<TtsModelInfo> getCurrentGroupModels() {
-        if (selectedGroup == null) return Collections.emptyList();
-        return groupedModels.getOrDefault(selectedGroup, Collections.emptyList());
+    private List<TtsModelInfo> getCurrentModels() {
+        if (selectedLangGroup == null) return Collections.emptyList();
+        List<TtsModelInfo> langModels = groupedByLang.getOrDefault(selectedLangGroup, Collections.emptyList());
+        if (TIER_PREMIUM_LABEL.equals(selectedTier)) {
+            return langModels.stream()
+                    .filter(m -> TtsModelInfo.TIER_PREMIUM.equals(m.getTier()))
+                    .collect(Collectors.toList());
+        } else {
+            return langModels.stream()
+                    .filter(m -> !TtsModelInfo.TIER_PREMIUM.equals(m.getTier()))
+                    .collect(Collectors.toList());
+        }
     }
 
-    private void rebuildCards() {
+    private boolean hasTierInLang(String langGroup, String tierLabel) {
+        List<TtsModelInfo> langModels = groupedByLang.getOrDefault(langGroup, Collections.emptyList());
+        if (TIER_PREMIUM_LABEL.equals(tierLabel)) {
+            return langModels.stream().anyMatch(m -> TtsModelInfo.TIER_PREMIUM.equals(m.getTier()));
+        } else {
+            return langModels.stream().anyMatch(m -> !TtsModelInfo.TIER_PREMIUM.equals(m.getTier()));
+        }
+    }
+
+    private void navigateTo(int page) {
+        currentPage = page;
+        scrollOffset = 0;
+        rebuildPage();
+    }
+
+    private void rebuildPage() {
         clearWidgets();
 
-        int tabAreaX = 16;
-        int tabStartY = 40;
-        int tabAreaWidth = GROUP_TAB_WIDTH + 8;
+        switch (currentPage) {
+            case PAGE_LANG -> buildLangPage();
+            case PAGE_TIER -> buildTierPage();
+            case PAGE_MODELS -> buildModelsPage();
+        }
 
-        int tabsPerCol = Math.max(1, (this.height - 120) / (GROUP_TAB_HEIGHT + GROUP_TAB_GAP));
-        int tabIdx = 0;
-        for (String group : groupOrder) {
-            int col = tabIdx % tabsPerCol;
-            int tabX = tabAreaX;
-            int tabY = tabStartY + col * (GROUP_TAB_HEIGHT + GROUP_TAB_GAP);
-            boolean isSelected = group.equals(selectedGroup);
+        if (currentPage > PAGE_LANG) {
+            this.addRenderableWidget(TianshuGUI.BrightButton.create(Component.literal("< 返回"), b -> {
+                navigateTo(currentPage - 1);
+            }).pos(16, this.height - 30).size(80, 20).build());
+        }
 
-            int bgCol = isSelected ? 0xFF3A7BD5 : 0xFF2A3A4A;
-            int borderCol = isSelected ? 0xFF5AACFF : 0xFF3A4A5A;
-            int textCol = isSelected ? 0xFFFFFFFF : 0xFF8899AA;
+        this.addRenderableWidget(TianshuGUI.BrightButton.create(Component.literal("关闭"), b -> {
+            Minecraft.getInstance().setScreen(parent);
+        }).pos(this.width - 96, this.height - 30).size(80, 20).build());
+    }
 
-            this.addRenderableWidget(new TianshuGUI.BrightButton(tabX, tabY, GROUP_TAB_WIDTH, GROUP_TAB_HEIGHT,
-                    Component.literal(group), b -> {
-                selectedGroup = group;
-                scrollOffset = 0;
-                rebuildCards();
+    private void buildLangPage() {
+        int listWidth = this.width / 3;
+        int startX = (this.width - listWidth) / 2;
+        int startY = 50;
+        int itemHeight = 28;
+        int itemGap = 4;
+
+        for (int i = 0; i < langGroupOrder.size(); i++) {
+            String group = langGroupOrder.get(i);
+            int cardY = startY + i * (itemHeight + itemGap);
+
+            int modelCount = groupedByLang.getOrDefault(group, Collections.emptyList()).size();
+
+            this.addRenderableWidget(new TianshuGUI.BrightButton(startX, cardY, listWidth, itemHeight,
+                    Component.literal(group + " (" + modelCount + ")"), b -> {
+                selectedLangGroup = group;
+                navigateTo(PAGE_TIER);
             }) {
                 @Override
                 public void renderWidget(GuiGraphics g, int mx, int my, float pt) {
                     int x = getX(), y = getY(), w = getWidth(), h = getHeight();
+                    boolean hovered = this.isHovered();
+                    int bgCol = hovered ? 0xFF3A6BD5 : 0xFF2A4A6A;
+                    int borderCol = hovered ? 0xFF5AACFF : 0xFF4A7AAA;
+
                     g.fill(x, y, x + w, y + h, bgCol);
                     g.fill(x, y, x + w, y + 1, borderCol);
                     g.fill(x, y + h - 1, x + w, y + h, borderCol);
                     g.fill(x, y, x + 1, y + h, borderCol);
                     g.fill(x + w - 1, y, x + w, y + h, borderCol);
+
                     String text = getMessage().getString();
                     int tw = Minecraft.getInstance().font.width(text);
-                    g.drawString(Minecraft.getInstance().font, getMessage(), x + (w - tw) / 2, y + (h - 8) / 2, textCol);
+                    g.drawString(Minecraft.getInstance().font, getMessage(), x + (w - tw) / 2, y + (h - 8) / 2, 0xFFFFFFFF);
                 }
             });
-            tabIdx++;
+        }
+    }
+
+    private void buildTierPage() {
+        int listWidth = this.width / 3;
+        int centerX = (this.width - listWidth) / 2;
+        int cardY = 60;
+        int itemHeight = 40;
+        int itemGap = 8;
+
+        boolean hasStandard = hasTierInLang(selectedLangGroup, TIER_STANDARD_LABEL);
+        boolean hasPremium = hasTierInLang(selectedLangGroup, TIER_PREMIUM_LABEL);
+
+        if (hasStandard) {
+            this.addRenderableWidget(new TianshuGUI.BrightButton(centerX, cardY, listWidth, itemHeight,
+                    Component.literal(TIER_STANDARD_LABEL), b -> {
+                selectedTier = TIER_STANDARD_LABEL;
+                navigateTo(PAGE_MODELS);
+            }) {
+                @Override
+                public void renderWidget(GuiGraphics g, int mx, int my, float pt) {
+                    int x = getX(), y = getY(), w = getWidth(), h = getHeight();
+                    boolean hovered = this.isHovered();
+                    int bgCol = hovered ? 0xFF3A6BD5 : 0xFF2A4A6A;
+                    int borderCol = hovered ? 0xFF5AACFF : 0xFF4A7AAA;
+
+                    g.fill(x, y, x + w, y + h, bgCol);
+                    g.fill(x, y, x + w, y + 1, borderCol);
+                    g.fill(x, y + h - 1, x + w, y + h, borderCol);
+                    g.fill(x, y, x + 1, y + h, borderCol);
+                    g.fill(x + w - 1, y, x + w, y + h, borderCol);
+
+                    String title = TIER_STANDARD_LABEL;
+                    int tw = Minecraft.getInstance().font.width(title);
+                    g.drawString(Minecraft.getInstance().font, title, x + (w - tw) / 2, y + 6, 0xFFFFFFFF);
+
+                    String desc = "SherpaOnnx 引擎，轻量快速";
+                    int dw = Minecraft.getInstance().font.width(desc);
+                    g.drawString(Minecraft.getInstance().font, desc, x + (w - dw) / 2, y + 22, 0xFFAABBCC);
+                }
+            });
+            cardY += itemHeight + itemGap;
         }
 
-        int cardAreaX = tabAreaX + tabAreaWidth + 12;
-        int cardAreaWidth = this.width - cardAreaX - 16;
-        int cardStartY = 40;
-        int cardAreaHeight = this.height - 100;
+        if (hasPremium) {
+            this.addRenderableWidget(new TianshuGUI.BrightButton(centerX, cardY, listWidth, itemHeight,
+                    Component.literal(TIER_PREMIUM_LABEL), b -> {
+                selectedTier = TIER_PREMIUM_LABEL;
+                navigateTo(PAGE_MODELS);
+            }) {
+                @Override
+                public void renderWidget(GuiGraphics g, int mx, int my, float pt) {
+                    int x = getX(), y = getY(), w = getWidth(), h = getHeight();
+                    boolean hovered = this.isHovered();
+                    int bgCol = hovered ? 0xFF6A3AB5 : 0xFF4A2A7A;
+                    int borderCol = hovered ? 0xFFA78BFA : 0xFF7A5ACA;
+
+                    g.fill(x, y, x + w, y + h, bgCol);
+                    g.fill(x, y, x + w, y + 1, borderCol);
+                    g.fill(x, y + h - 1, x + w, y + h, borderCol);
+                    g.fill(x, y, x + 1, y + h, borderCol);
+                    g.fill(x + w - 1, y, x + w, y + h, borderCol);
+
+                    String title = TIER_PREMIUM_LABEL;
+                    int tw = Minecraft.getInstance().font.width(title);
+                    g.drawString(Minecraft.getInstance().font, title, x + (w - tw) / 2, y + 6, 0xFFFFFFFF);
+
+                    String desc = "自回归合成，音质更自然";
+                    int dw = Minecraft.getInstance().font.width(desc);
+                    g.drawString(Minecraft.getInstance().font, desc, x + (w - dw) / 2, y + 22, 0xFFCCBBDD);
+                }
+            });
+        }
+
+        if (!hasStandard && !hasPremium) {
+            String hint = "该语言暂无可用模型";
+            int hw = this.font.width(hint);
+            this.addRenderableWidget(TianshuGUI.BrightButton.create(Component.literal(hint), b -> {})
+                    .pos(centerX, cardY).size(listWidth, 30).build());
+        }
+    }
+
+    private void buildModelsPage() {
+        int listWidth = this.width / 3;
+        int cardAreaX = (this.width - listWidth) / 2;
+        int cardStartY = 44;
+
+        List<TtsModelInfo> models = getCurrentModels();
+        boolean hasGithubModel = models.stream().anyMatch(m -> m.downloadUrl != null && !m.downloadUrl.isBlank());
+
+        if (hasGithubModel) {
+            int proxyFieldWidth = Math.min(200, listWidth - 80);
+            proxyEditBox = new EditBox(Minecraft.getInstance().font, cardAreaX + 60, cardStartY, proxyFieldWidth, 16, Component.literal("proxy"));
+            proxyEditBox.setMaxLength(256);
+            proxyEditBox.setValue("https://gh-proxy.org/");
+            proxyEditBox.setHint(Component.literal("GitHub 代理地址"));
+            this.addRenderableWidget(proxyEditBox);
+            cardStartY += 22;
+        } else {
+            proxyEditBox = null;
+        }
+
+        int cardAreaHeight = this.height - 90 - (cardStartY - 44);
         int visibleCount = Math.max(1, cardAreaHeight / (CARD_HEIGHT + CARD_GAP));
 
-        List<TtsModelInfo> models = getCurrentGroupModels();
         int maxScroll = Math.max(0, models.size() - visibleCount);
         if (scrollOffset > maxScroll) scrollOffset = maxScroll;
         if (scrollOffset < 0) scrollOffset = 0;
 
+        double partialOffset = smoothScrollY % (CARD_HEIGHT + CARD_GAP);
+
         for (int i = 0; i < visibleCount && (i + scrollOffset) < models.size(); i++) {
             int idx = i + scrollOffset;
             TtsModelInfo info = models.get(idx);
-            int cardY = cardStartY + i * (CARD_HEIGHT + CARD_GAP);
+            int cardY = cardStartY + i * (CARD_HEIGHT + CARD_GAP) + (int) partialOffset;
 
             boolean isDownloaded = isModelDownloaded(info);
             boolean hasContent = hasModelContent(info);
             boolean isDownloading = info.name != null && info.name.equals(downloadingModel);
 
-            int btnW = 56;
-            int btnH = 16;
-            int btnGap = 6;
-            int btnRowX = cardAreaX + cardAreaWidth - btnW - 8;
-            int btnRowY = cardY + CARD_HEIGHT - btnH - 4;
+            int btnW = 40;
+            int btnH = 14;
+            int btnGap = 3;
+            int btnRowX = cardAreaX + listWidth - btnW - 6;
+            int btnRowY = cardY + CARD_HEIGHT - btnH - 3;
 
-            TianshuGUI.BrightButton downloadBtn = TianshuGUI.BrightButton.create(
-                    Component.literal(isDownloading ? downloadProgress + "%" : (isDownloaded ? "已下载" : "下载")),
-                    b -> {
-                        if (!isDownloaded && !isDownloading) {
-                            startDownload(info);
+            if (isDownloading) {
+                TianshuGUI.BrightButton cancelBtn = TianshuGUI.BrightButton.create(
+                        Component.literal("取消"), b -> {
+                            coreManager.cancelDownload();
                         }
-                    }
-            ).pos(btnRowX, btnRowY).size(btnW, btnH).build();
-            downloadBtn.active = !isDownloaded && !isDownloading;
-            this.addRenderableWidget(downloadBtn);
+                ).pos(btnRowX, btnRowY).size(btnW, btnH).build();
+                this.addRenderableWidget(cancelBtn);
 
-            int deleteBtnX = btnRowX - btnW - btnGap;
-            TianshuGUI.BrightButton deleteBtn = TianshuGUI.BrightButton.create(
-                    Component.literal("删除"), b -> deleteTtsModel(info)
-            ).pos(deleteBtnX, btnRowY).size(btnW, btnH).build();
-            deleteBtn.active = hasContent && !isDownloading;
-            this.addRenderableWidget(deleteBtn);
+                int pauseBtnX = btnRowX - btnW - btnGap;
+                String pauseLabel = coreManager.isDownloadPaused() ? "继续" : "暂停";
+                TianshuGUI.BrightButton pauseBtn = TianshuGUI.BrightButton.create(
+                        Component.literal(pauseLabel), b -> {
+                            if (coreManager.isDownloadPaused()) {
+                                coreManager.resumeDownload();
+                            } else {
+                                coreManager.pauseDownload();
+                            }
+                            rebuildPage();
+                        }
+                ).pos(pauseBtnX, btnRowY).size(btnW, btnH).build();
+                this.addRenderableWidget(pauseBtn);
+            } else {
+                TianshuGUI.BrightButton downloadBtn = TianshuGUI.BrightButton.create(
+                        Component.literal(isDownloaded ? "已下载" : "下载"),
+                        b -> {
+                            if (!isDownloaded) {
+                                startDownload(info);
+                            }
+                        }
+                ).pos(btnRowX, btnRowY).size(btnW, btnH).build();
+                downloadBtn.active = !isDownloaded;
+                this.addRenderableWidget(downloadBtn);
 
-            int selectBtnX = deleteBtnX - btnW - btnGap;
-            TianshuGUI.BrightButton selectBtn = TianshuGUI.BrightButton.create(
-                    Component.literal("选择"), b -> selectTtsModel(info)
-            ).pos(selectBtnX, btnRowY).size(btnW, btnH).build();
-            selectBtn.active = isDownloaded;
-            this.addRenderableWidget(selectBtn);
+                int deleteBtnX = btnRowX - btnW - btnGap;
+                TianshuGUI.BrightButton deleteBtn = TianshuGUI.BrightButton.create(
+                        Component.literal("删除"), b -> deleteTtsModel(info)
+                ).pos(deleteBtnX, btnRowY).size(btnW, btnH).build();
+                deleteBtn.active = hasContent;
+                this.addRenderableWidget(deleteBtn);
+
+                int selectBtnX = deleteBtnX - btnW - btnGap;
+                TianshuGUI.BrightButton selectBtn = TianshuGUI.BrightButton.create(
+                        Component.literal("选择"), b -> selectTtsModel(info)
+                ).pos(selectBtnX, btnRowY).size(btnW, btnH).build();
+                selectBtn.active = isDownloaded;
+                this.addRenderableWidget(selectBtn);
+
+                if ("zipvoice".equals(info.getEngineType()) && isDownloaded) {
+                    int voiceBtnX = selectBtnX - btnW - btnGap;
+                    TianshuGUI.BrightButton voiceBtn = TianshuGUI.BrightButton.create(
+                            Component.literal("音色"), b -> {
+                                String customPath = coreManager.getZipVoiceCustomVoicePath(info);
+                                Minecraft.getInstance().player.displayClientMessage(
+                                        Component.literal("\u00a7b[天枢] \u00a7f自定义音色: 将录音文件重命名为 custom_prompt.wav 放入:\n" + customPath), false);
+                            }
+                    ).pos(voiceBtnX, btnRowY).size(btnW, btnH).build();
+                    this.addRenderableWidget(voiceBtn);
+                }
+            }
         }
-
-        this.addRenderableWidget(TianshuGUI.BrightButton.create(Component.literal("返回"), b -> {
-            Minecraft.getInstance().setScreen(parent);
-        }).pos(this.width / 2 - 50, this.height - 30).size(100, 20).build());
     }
 
     private boolean isModelDownloaded(TtsModelInfo info) {
@@ -256,26 +436,20 @@ public class TtsModelSelectScreen extends Screen {
     }
 
     private boolean hasModelContent(TtsModelInfo info) {
-        if (info.name == null) return false;
-        Path modelDir = config.getTtsBasePath().resolve(info.name);
-        if (!Files.exists(modelDir) || !Files.isDirectory(modelDir)) return false;
-        try {
-            return Files.list(modelDir).findAny().isPresent();
-        } catch (IOException e) {
-            return false;
-        }
+        return coreManager.hasTtsModelContent(info);
     }
 
     private void startDownload(TtsModelInfo info) {
         downloadingModel = info.name;
         downloadProgress = 0;
-        rebuildCards();
+        rebuildPage();
 
-        coreManager.downloadTtsModel(info, new TianshuCoreManager.DownloadProgressCallback() {
+        String proxyUrl = (proxyEditBox != null) ? proxyEditBox.getValue() : null;
+        coreManager.downloadTtsModel(info, proxyUrl, new TianshuCoreManager.DownloadProgressCallback() {
             @Override
             public void onProgress(String label, int percent) {
                 downloadProgress = percent;
-                Minecraft.getInstance().execute(() -> rebuildCards());
+                Minecraft.getInstance().execute(() -> rebuildPage());
             }
 
             @Override
@@ -283,7 +457,7 @@ public class TtsModelSelectScreen extends Screen {
                 Minecraft.getInstance().execute(() -> {
                     downloadingModel = null;
                     downloadProgress = 0;
-                    rebuildCards();
+                    rebuildPage();
                 });
             }
 
@@ -292,20 +466,16 @@ public class TtsModelSelectScreen extends Screen {
                 Minecraft.getInstance().execute(() -> {
                     downloadingModel = null;
                     downloadProgress = 0;
-                    rebuildCards();
+                    rebuildPage();
                 });
             }
         });
     }
 
     private void deleteTtsModel(TtsModelInfo info) {
-        if (info.name == null) return;
-        Path modelDir = config.getTtsBasePath().resolve(info.name);
-        try {
-            deleteRecursively(modelDir);
-        } catch (IOException ignored) {}
+        coreManager.deleteTtsModel(info);
         scrollOffset = 0;
-        rebuildCards();
+        rebuildPage();
     }
 
     private void selectTtsModel(TtsModelInfo info) {
@@ -314,32 +484,21 @@ public class TtsModelSelectScreen extends Screen {
         Minecraft.getInstance().setScreen(new TianshuGUI(coreManager, config, audioManager, nativeLibBridge));
     }
 
-    private void deleteRecursively(Path path) throws IOException {
-        if (Files.isDirectory(path)) {
-            try (var entries = Files.list(path)) {
-                for (Path child : entries.collect(Collectors.toList())) {
-                    deleteRecursively(child);
-                }
-            }
-        }
-        Files.delete(path);
-    }
-
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalScroll, double verticalScroll) {
-        int tabAreaWidth = GROUP_TAB_WIDTH + 8;
-        int cardAreaX = 16 + tabAreaWidth + 12;
-        if (mouseX >= cardAreaX) {
-            List<TtsModelInfo> models = getCurrentGroupModels();
-            int cardAreaHeight = this.height - 100;
+        if (currentPage == PAGE_MODELS) {
+            List<TtsModelInfo> models = getCurrentModels();
+            int cardAreaHeight = this.height - 90;
             int visibleCount = Math.max(1, cardAreaHeight / (CARD_HEIGHT + CARD_GAP));
             int maxScroll = Math.max(0, models.size() - visibleCount);
-            if (verticalScroll > 0 && scrollOffset > 0) {
-                scrollOffset--;
-                rebuildCards();
-            } else if (verticalScroll < 0 && scrollOffset < maxScroll) {
-                scrollOffset++;
-                rebuildCards();
+            int maxScrollPixels = maxScroll * (CARD_HEIGHT + CARD_GAP);
+
+            int oldOffset = scrollOffset;
+            smoothScrollY = Math.max(0, Math.min(maxScrollPixels, smoothScrollY + verticalScroll * SCROLL_PIXELS_PER_TICK));
+            scrollOffset = (int) (smoothScrollY / (CARD_HEIGHT + CARD_GAP));
+
+            if (scrollOffset != oldOffset) {
+                rebuildPage();
             }
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalScroll, verticalScroll);
@@ -350,54 +509,111 @@ public class TtsModelSelectScreen extends Screen {
         renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-        String title = "TTS 模型选择（共 " + allModels.size() + " 个模型）";
-        guiGraphics.drawString(this.font, title, (this.width - this.font.width(title)) / 2, 16, 0xFFFFFF);
+        switch (currentPage) {
+            case PAGE_LANG -> renderLangPage(guiGraphics);
+            case PAGE_TIER -> renderTierPage(guiGraphics);
+            case PAGE_MODELS -> renderModelsPage(guiGraphics);
+        }
+    }
 
-        int tabAreaWidth = GROUP_TAB_WIDTH + 8;
-        int cardAreaX = 16 + tabAreaWidth + 12;
-        int cardAreaWidth = this.width - cardAreaX - 16;
-        int cardStartY = 40;
-        int cardAreaHeight = this.height - 100;
+    private void renderLangPage(GuiGraphics g) {
+        String title = "选择语言";
+        int tw = this.font.width(title);
+        g.drawString(this.font, title, (this.width - tw) / 2, 24, 0xFFFFFFFF);
+    }
+
+    private void renderTierPage(GuiGraphics g) {
+        String title = "选择档位 — " + selectedLangGroup;
+        int tw = this.font.width(title);
+        g.drawString(this.font, title, (this.width - tw) / 2, 24, 0xFFFFFFFF);
+
+        String hint = "普通和高端与预设档位无关，仅区分模型推理方式";
+        int hw = this.font.width(hint);
+        g.drawString(this.font, hint, (this.width - hw) / 2, 36, 0xFF888888);
+    }
+
+    private void renderModelsPage(GuiGraphics g) {
+        String tierLabel = TIER_PREMIUM_LABEL.equals(selectedTier) ? TIER_PREMIUM_LABEL : TIER_STANDARD_LABEL;
+        String title = selectedLangGroup + " — " + tierLabel + " 模型";
+        int tw = this.font.width(title);
+        g.drawString(this.font, title, (this.width - tw) / 2, 12, 0xFFFFFFFF);
+
+        String tierDesc = TIER_PREMIUM_LABEL.equals(selectedTier)
+                ? "自回归合成，音质更自然"
+                : "SherpaOnnx 引擎，轻量快速";
+        int dw = this.font.width(tierDesc);
+        g.drawString(this.font, tierDesc, (this.width - dw) / 2, 28, 0xFFAAAAAA);
+
+        int listWidth = this.width / 3;
+        int cardAreaX = (this.width - listWidth) / 2;
+        int cardStartY = 44;
+
+        List<TtsModelInfo> models = getCurrentModels();
+        boolean hasGithubModel = models.stream().anyMatch(m -> m.downloadUrl != null && !m.downloadUrl.isBlank());
+
+        if (hasGithubModel) {
+            g.drawString(this.font, "代理:", cardAreaX + 4, cardStartY + 4, 0xFFCCCCCC);
+            String proxyHint = "可输入 GitHub 代理加速下载";
+            int proxyFieldWidth = Math.min(200, listWidth - 80);
+            g.drawString(this.font, proxyHint, cardAreaX + 60 + proxyFieldWidth + 6, cardStartY + 4, 0xFF888888);
+            cardStartY += 22;
+        }
+
+        int cardAreaHeight = this.height - 90 - (cardStartY - 44);
         int visibleCount = Math.max(1, cardAreaHeight / (CARD_HEIGHT + CARD_GAP));
 
-        List<TtsModelInfo> models = getCurrentGroupModels();
-
         if (models.isEmpty()) {
-            String hint = "该语言分组暂无模型";
-            guiGraphics.drawString(this.font, hint, cardAreaX + (cardAreaWidth - this.font.width(hint)) / 2, cardStartY + 40, 0xFFAAAA);
+            String hint = "该分类暂无模型";
+            int hw = this.font.width(hint);
+            g.drawString(this.font, hint, (this.width - hw) / 2, cardStartY + 40, 0xFFAAAAAA);
             return;
         }
+
+        double partialOffset = smoothScrollY % (CARD_HEIGHT + CARD_GAP);
+
+        g.enableScissor(cardAreaX, cardStartY, cardAreaX + listWidth, cardStartY + cardAreaHeight);
+        g.pose().pushPose();
+        g.pose().translate(0, -partialOffset, 0);
 
         for (int i = 0; i < visibleCount && (i + scrollOffset) < models.size(); i++) {
             int idx = i + scrollOffset;
             TtsModelInfo info = models.get(idx);
             int cardY = cardStartY + i * (CARD_HEIGHT + CARD_GAP);
 
-            guiGraphics.fill(cardAreaX, cardY, cardAreaX + cardAreaWidth, cardY + CARD_HEIGHT, 0xCC31475E);
-            guiGraphics.fill(cardAreaX, cardY, cardAreaX + cardAreaWidth, cardY + 1, 0xFFA1C7ED);
-            guiGraphics.fill(cardAreaX, cardY + CARD_HEIGHT - 1, cardAreaX + cardAreaWidth, cardY + CARD_HEIGHT, 0xFFA1C7ED);
-            guiGraphics.fill(cardAreaX, cardY, cardAreaX + 1, cardY + CARD_HEIGHT, 0xFFA1C7ED);
+            boolean isPremium = TtsModelInfo.TIER_PREMIUM.equals(info.getTier());
+            int cardBg = isPremium ? 0xCC4A3070 : 0xCC31475E;
+            int cardBorder = isPremium ? 0xFFB088FF : 0xFFA1C7ED;
+
+            g.fill(cardAreaX, cardY, cardAreaX + listWidth, cardY + CARD_HEIGHT, cardBg);
+            g.fill(cardAreaX, cardY, cardAreaX + listWidth, cardY + 1, cardBorder);
+            g.fill(cardAreaX, cardY + CARD_HEIGHT - 1, cardAreaX + listWidth, cardY + CARD_HEIGHT, cardBorder);
+            g.fill(cardAreaX, cardY, cardAreaX + 1, cardY + CARD_HEIGHT, cardBorder);
 
             String displayName = info.name != null ? info.name : info.id;
-            guiGraphics.drawString(this.font, displayName, cardAreaX + 8, cardY + 4, 0xFFFFFF);
+            g.drawString(this.font, displayName, cardAreaX + 6, cardY + 4, 0xFFFFFF);
 
-            String langStr = buildLangString(info);
-            String sizeStr = formatSize(info.size);
             String engineType = info.getEngineType();
-            String infoLine = langStr + "  |  " + engineType + "  |  ~" + sizeStr;
-            guiGraphics.drawString(this.font, infoLine, cardAreaX + 8, cardY + 18, 0xD8E6F0);
+            String sizeStr = formatSize(info.size);
+            String infoLine = engineType + " | ~" + sizeStr;
+            g.drawString(this.font, infoLine, cardAreaX + 6, cardY + 18, 0xD8E6F0);
 
             if (downloadingModel != null && downloadingModel.equals(info.name)) {
                 String dlText = "下载中 " + downloadProgress + "%";
-                guiGraphics.drawString(this.font, dlText, cardAreaX + 8, cardY + 32, 0xFFCC44);
+                g.drawString(this.font, dlText, cardAreaX + 6, cardY + 32, 0xFFCC44);
+            } else if ("zipvoice".equals(engineType) && isModelDownloaded(info)) {
+                g.drawString(this.font, "已下载 | 支持自定义音色", cardAreaX + 6, cardY + 32, 0xFFAADDFF);
             } else if (isModelDownloaded(info)) {
-                guiGraphics.drawString(this.font, "已下载", cardAreaX + 8, cardY + 32, 0x66FF66);
+                g.drawString(this.font, "已下载", cardAreaX + 6, cardY + 32, 0x66FF66);
             }
         }
 
+        g.pose().popPose();
+        g.disableScissor();
+
         if (models.size() > visibleCount) {
             String scrollHint = (scrollOffset + 1) + "-" + Math.min(scrollOffset + visibleCount, models.size()) + "/" + models.size();
-            guiGraphics.drawString(this.font, scrollHint, cardAreaX + (cardAreaWidth - this.font.width(scrollHint)) / 2, this.height - 48, 0xAAAAAA);
+            int sw = this.font.width(scrollHint);
+            g.drawString(this.font, scrollHint, (this.width - sw) / 2, this.height - 48, 0xAAAAAA);
         }
     }
 

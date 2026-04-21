@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.constant.VramTier;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -216,6 +218,19 @@ public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig
             String customName = getCustomLlmName();
             if (customName != null && customName.trim().toLowerCase().endsWith(".gguf")) {
                 return getLlmBasePath().resolve(customName.trim());
+            }
+            if (Files.isDirectory(modelDir)) {
+                try (var stream = Files.list(modelDir)) {
+                    Path ggufFile = stream
+                        .filter(p -> p.toString().toLowerCase().endsWith(".gguf"))
+                        .findFirst()
+                        .orElse(null);
+                    if (ggufFile != null) {
+                        return ggufFile;
+                    }
+                } catch (IOException e) {
+                    // 忽略异常，往下走报错逻辑
+                }
             }
             return modelDir.resolve("model.gguf");
         }

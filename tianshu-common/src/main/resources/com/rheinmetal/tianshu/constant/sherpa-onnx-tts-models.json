@@ -1,4 +1,4 @@
-﻿[
+[
     {
         "author":  "csukuangfj",
         "name":  "kokoro-en-v0_19",
@@ -4027,5 +4027,21 @@
                      ],
         "voicesFile":  null,
         "pinned":  false
+    },
+    {
+        "author": "OpenMOSS-Team",
+        "name": "MOSS-TTS-Nano-100M-ONNX",
+        "id": "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
+        "size": 104857600,
+        "needVocoder": false,
+        "lang": ["zh", "en"],
+        "engine": "moss",
+        "tier": "premium",
+        "modelFiles": [],
+        "dataDir": null,
+        "lexiconFiles": null,
+        "ruleFsts": null,
+        "voicesFile": null,
+        "pinned": true
     }
 ]

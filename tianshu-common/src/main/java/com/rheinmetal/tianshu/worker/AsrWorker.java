@@ -226,4 +226,8 @@ public class AsrWorker implements Runnable {
             Thread.currentThread().interrupt();
         }
     }
+
+    public boolean isStreaming() {
+        return isStreaming;
+    }
 }

@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.constant;
 
 public final class ModelPresets {
-
     public static final String DEFAULT_ROOT_DIR_NAME = "config/TianshuAIAssistant";
 
     public static final String[] PERSONA_PRESETS = {"默认", "开朗健谈", "稳健务实", "温柔体贴", "严肃专业"};
@@ -34,8 +33,8 @@ public final class ModelPresets {
     public static String getPresetTtsName(VramTier tier) {
         return switch (tier) {
             case LIGHT -> "vits-zh-hf-keqing";
-            case STANDARD -> "vits-melo-tts-zh_en";
-            case DELUXE -> "vits-melo-tts-zh_en";
+            case STANDARD -> "MOSS-TTS-Nano-100M-ONNX";
+            case DELUXE -> "MOSS-TTS-Nano-100M-ONNX";
             default -> "vits-zh-hf-keqing";
         };
     }
@@ -43,8 +42,8 @@ public final class ModelPresets {
     public static String getPresetTtsModelId(VramTier tier) {
         return switch (tier) {
             case LIGHT -> "csukuangfj/vits-zh-hf-keqing";
-            case STANDARD -> "csukuangfj/vits-melo-tts-zh_en";
-            case DELUXE -> "csukuangfj/vits-melo-tts-zh_en";
+            case STANDARD -> "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX";
+            case DELUXE -> "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX";
             default -> "csukuangfj/vits-zh-hf-keqing";
         };
     }

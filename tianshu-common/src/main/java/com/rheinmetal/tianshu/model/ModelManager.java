@@ -55,6 +55,10 @@ public class ModelManager {
         }
     }
 
+    public static synchronized void invalidateTtsCache() {
+        cachedCatalog = null;
+    }
+
     public boolean isTtsModelDownloaded(TtsModelInfo info) {
         if (info == null || info.name == null) return false;
         Path modelDir = config.getTtsBasePath().resolve(info.name);

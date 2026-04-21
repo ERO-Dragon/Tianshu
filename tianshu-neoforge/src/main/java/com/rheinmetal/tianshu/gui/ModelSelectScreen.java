@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.gui;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
 import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
 import net.minecraft.client.Minecraft;
@@ -130,6 +131,7 @@ public class ModelSelectScreen extends Screen {
     }
 
     private void selectModel(String folderName) {
+        config.setVramTier(VramTier.CUSTOM); // <--- 加上这一行
         switch (modelType) {
             case "ASR" -> config.setCustomAsrName(folderName);
             case "LLM" -> config.setCustomLlmName(folderName);

@@ -231,7 +231,7 @@ public class HuggingFaceDownloader {
     }
 
     private void ensureWithinTarget(Path path, Path targetDir) throws IOException {
-        if (!path.normalize().startsWith(targetDir.normalize())) {
+        if (!path.toAbsolutePath().normalize().startsWith(targetDir.toAbsolutePath().normalize())) {
             throw new IOException("路径穿越检测: " + path);
         }
     }

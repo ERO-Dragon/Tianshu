@@ -143,13 +143,12 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
             LOGGER.error("Native 目录不存在: {}", dir);
             return;
         }
-
         loadDll(dir, "onnxruntime.dll");
 
         System.setProperty("sherpa_onnx.native.path", dir.toAbsolutePath().toString());
 
         nativesLoaded = true;
-        LOGGER.info("核心 Native 库 (onnxruntime) 加载完成");
+        LOGGER.info("核心 Native 库加载完成");
     }
 
     private void loadDll(Path dir, String dllName) {
@@ -226,7 +225,8 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
         // 2. 核心保底逻辑：如果上面没读到（说明在 jar 包里运行），用已知列表逐个去 jar 包里试！
         if (dllNames.isEmpty()) {
             String[] knownDlls = {
-                "onnxruntime.dll", "sherpa-onnx-jni.dll", "llama.dll", "ggml.dll", 
+                "onnxruntime.dll", 
+                "sherpa-onnx-jni.dll", "llama.dll", "ggml.dll", 
                 "ggml-base.dll", "ggml-vulkan.dll", "ggml-cpu-alderlake.dll", 
                 "ggml-cpu-cannonlake.dll", "ggml-cpu-cascadelake.dll", "ggml-cpu-haswell.dll", 
                 "ggml-cpu-icelake.dll", "ggml-cpu-sandybridge.dll", "ggml-cpu-skylakex.dll", 

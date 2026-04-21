@@ -228,46 +228,14 @@ public class ProcessManager {
         env.warn("检测到 LLM 端口 " + port + " 被占用，尝试查找并清理残留进程...");
 
         long myPid = ProcessHandle.current().pid();
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("netstat", "-ano");
-            pb.redirectErrorStream(true);
-            Process netstat = pb.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(netstat.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String lower = line.toLowerCase();
-                if (!lower.contains("listening") || !lower.contains(":" + port + " ")) continue;
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length < 5) continue;
-                String pidStr = parts[parts.length - 1];
-                long pid;
-                try {
-                    pid = Long.parseLong(pidStr);
-                } catch (NumberFormatException e) {
-                    continue;
-                }
-                if (pid <= 0 || pid == myPid) continue;
-
-                env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
-
-                if (!isJavaProcess(pid)) {
-                    env.warn("PID " + pid + " 非 Java 进程，跳过终止（端口可能被其他程序占用）");
-                    continue;
-                }
-
-                try {
-                    ProcessHandle.of(pid).ifPresent(ph -> {
-                        env.info("正在终止残留 JVM 进程 PID: " + pid);
-                        ph.destroyForcibly();
-                    });
-                    Thread.sleep(1000);
-                } catch (Exception e) {
-                    env.error("终止进程 PID " + pid + " 失败", e);
-                }
+            if (isWindows) {
+                killOrphanedOnWindows(port, myPid);
+            } else {
+                killOrphanedOnUnix(port, myPid);
             }
-            netstat.waitFor(5, TimeUnit.SECONDS);
-            netstat.destroy();
         } catch (Exception e) {
             env.error("检测残留 LLM 进程失败", e);
         }
@@ -277,6 +245,88 @@ public class ProcessManager {
         } else {
             env.info("残留进程已清理，端口 " + port + " 已释放");
         }
+
+        for (int i = 0; i < 10; i++) {
+            if (!isServiceReady(port)) break;
+            try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+        }
+    }
+
+    private void killOrphanedOnWindows(int port, long myPid) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("netstat", "-ano");
+        pb.redirectErrorStream(true);
+        Process netstat = pb.start();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(netstat.getInputStream()));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String lower = line.toLowerCase();
+            if (!lower.contains("listening") || !lower.contains(":" + port + " ")) continue;
+            String[] parts = line.trim().split("\\s+");
+            if (parts.length < 5) continue;
+            String pidStr = parts[parts.length - 1];
+            long pid;
+            try {
+                pid = Long.parseLong(pidStr);
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (pid <= 0 || pid == myPid) continue;
+
+            env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
+
+            if (!isJavaProcess(pid)) {
+                env.warn("PID " + pid + " 非 Java 进程，跳过终止（端口可能被其他程序占用）");
+                continue;
+            }
+
+            try {
+                ProcessHandle.of(pid).ifPresent(ph -> {
+                    env.info("正在终止残留 JVM 进程 PID: " + pid);
+                    ph.destroyForcibly();
+                });
+                Thread.sleep(1000);
+            } catch (Exception e) {
+                env.error("终止进程 PID " + pid + " 失败", e);
+            }
+        }
+        netstat.waitFor(5, TimeUnit.SECONDS);
+        netstat.destroy();
+    }
+
+    private void killOrphanedOnUnix(int port, long myPid) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("lsof", "-i", ":" + port, "-t");
+        pb.redirectErrorStream(true);
+        Process lsof = pb.start();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(lsof.getInputStream()));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            long pid;
+            try {
+                pid = Long.parseLong(line.trim());
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (pid <= 0 || pid == myPid) continue;
+
+            env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
+
+            if (!isJavaProcess(pid)) {
+                env.warn("PID " + pid + " 非 Java 进程，跳过终止（端口可能被其他程序占用）");
+                continue;
+            }
+
+            try {
+                ProcessHandle.of(pid).ifPresent(ph -> {
+                    env.info("正在终止残留 JVM 进程 PID: " + pid);
+                    ph.destroyForcibly();
+                });
+                Thread.sleep(1000);
+            } catch (Exception e) {
+                env.error("终止进程 PID " + pid + " 失败", e);
+            }
+        }
+        lsof.waitFor(5, TimeUnit.SECONDS);
+        lsof.destroy();
     }
 
     private boolean isJavaProcess(long pid) {
