@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
+import com.rheinmetal.tianshu.constant.VramTier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -164,10 +165,14 @@ public class TtsModelSelectScreen extends Screen {
         if (TIER_PREMIUM_LABEL.equals(selectedTier)) {
             return langModels.stream()
                     .filter(m -> TtsModelInfo.TIER_PREMIUM.equals(m.getTier()))
+                    .sorted(Comparator.comparingInt(TtsModelInfo::getRating).reversed()
+                            .thenComparing(TtsModelInfo::getDisplayName))
                     .collect(Collectors.toList());
         } else {
             return langModels.stream()
                     .filter(m -> !TtsModelInfo.TIER_PREMIUM.equals(m.getTier()))
+                    .sorted(Comparator.comparingInt(TtsModelInfo::getRating).reversed()
+                            .thenComparing(TtsModelInfo::getDisplayName))
                     .collect(Collectors.toList());
         }
     }
@@ -357,7 +362,7 @@ public class TtsModelSelectScreen extends Screen {
         for (int i = 0; i < visibleCount && (i + scrollOffset) < models.size(); i++) {
             int idx = i + scrollOffset;
             TtsModelInfo info = models.get(idx);
-            int cardY = cardStartY + i * (CARD_HEIGHT + CARD_GAP) + (int) partialOffset;
+            int cardY = cardStartY + i * (CARD_HEIGHT + CARD_GAP) - (int) partialOffset;
 
             boolean isDownloaded = isModelDownloaded(info);
             boolean hasContent = hasModelContent(info);
@@ -415,18 +420,6 @@ public class TtsModelSelectScreen extends Screen {
                 ).pos(selectBtnX, btnRowY).size(btnW, btnH).build();
                 selectBtn.active = isDownloaded;
                 this.addRenderableWidget(selectBtn);
-
-                if ("zipvoice".equals(info.getEngineType()) && isDownloaded) {
-                    int voiceBtnX = selectBtnX - btnW - btnGap;
-                    TianshuGUI.BrightButton voiceBtn = TianshuGUI.BrightButton.create(
-                            Component.literal("音色"), b -> {
-                                String customPath = coreManager.getZipVoiceCustomVoicePath(info);
-                                Minecraft.getInstance().player.displayClientMessage(
-                                        Component.literal("\u00a7b[天枢] \u00a7f自定义音色: 将录音文件重命名为 custom_prompt.wav 放入:\n" + customPath), false);
-                            }
-                    ).pos(voiceBtnX, btnRowY).size(btnW, btnH).build();
-                    this.addRenderableWidget(voiceBtn);
-                }
             }
         }
     }
@@ -479,6 +472,7 @@ public class TtsModelSelectScreen extends Screen {
     }
 
     private void selectTtsModel(TtsModelInfo info) {
+        config.setVramTier(VramTier.CUSTOM);
         config.setCustomTtsName(info.name);
         config.save();
         Minecraft.getInstance().setScreen(new TianshuGUI(coreManager, config, audioManager, nativeLibBridge));
@@ -493,13 +487,9 @@ public class TtsModelSelectScreen extends Screen {
             int maxScroll = Math.max(0, models.size() - visibleCount);
             int maxScrollPixels = maxScroll * (CARD_HEIGHT + CARD_GAP);
 
-            int oldOffset = scrollOffset;
-            smoothScrollY = Math.max(0, Math.min(maxScrollPixels, smoothScrollY + verticalScroll * SCROLL_PIXELS_PER_TICK));
+            smoothScrollY = Math.max(0, Math.min(maxScrollPixels, smoothScrollY - verticalScroll * SCROLL_PIXELS_PER_TICK));
             scrollOffset = (int) (smoothScrollY / (CARD_HEIGHT + CARD_GAP));
-
-            if (scrollOffset != oldOffset) {
-                rebuildPage();
-            }
+            rebuildPage();
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalScroll, verticalScroll);
     }
@@ -589,13 +579,22 @@ public class TtsModelSelectScreen extends Screen {
             g.fill(cardAreaX, cardY + CARD_HEIGHT - 1, cardAreaX + listWidth, cardY + CARD_HEIGHT, cardBorder);
             g.fill(cardAreaX, cardY, cardAreaX + 1, cardY + CARD_HEIGHT, cardBorder);
 
-            String displayName = info.name != null ? info.name : info.id;
+            String displayName = info.getDisplayName();
             g.drawString(this.font, displayName, cardAreaX + 6, cardY + 4, 0xFFFFFF);
 
             String engineType = info.getEngineType();
             String sizeStr = formatSize(info.size);
-            String infoLine = engineType + " | ~" + sizeStr;
-            g.drawString(this.font, infoLine, cardAreaX + 6, cardY + 18, 0xD8E6F0);
+            String stars = buildStars(info.getRating());
+            int perfColor = getPerformanceColor(info.getPerformance());
+            String perfLabel = info.getPerformanceLabel();
+
+            g.drawString(this.font, stars, cardAreaX + 6, cardY + 18, 0xFFFFD700);
+            int starWidth = this.font.width(stars);
+            g.drawString(this.font, " | " + engineType + " | ", cardAreaX + 6 + starWidth, cardY + 18, 0xD8E6F0);
+            int midWidth = this.font.width(" | " + engineType + " | ");
+            g.drawString(this.font, perfLabel, cardAreaX + 6 + starWidth + midWidth, cardY + 18, perfColor);
+            int perfWidth = this.font.width(perfLabel);
+            g.drawString(this.font, " | ~" + sizeStr, cardAreaX + 6 + starWidth + midWidth + perfWidth, cardY + 18, 0xD8E6F0);
 
             if (downloadingModel != null && downloadingModel.equals(info.name)) {
                 String dlText = "下载中 " + downloadProgress + "%";
@@ -615,6 +614,22 @@ public class TtsModelSelectScreen extends Screen {
             int sw = this.font.width(scrollHint);
             g.drawString(this.font, scrollHint, (this.width - sw) / 2, this.height - 48, 0xAAAAAA);
         }
+    }
+
+    private int getPerformanceColor(String perf) {
+        if (TtsModelInfo.PERF_LOW.equals(perf)) return 0x66FF99;
+        if (TtsModelInfo.PERF_MEDIUM.equals(perf)) return 0xFFD166;
+        if (TtsModelInfo.PERF_HIGH.equals(perf)) return 0xFF7A7A;
+        return 0xD8E6F0;
+    }
+
+    private String buildStars(int rating) {
+        if (rating <= 0) return "☆☆☆☆☆";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= 5; i++) {
+            sb.append(i <= rating ? '★' : '☆');
+        }
+        return sb.toString();
     }
 
     private String buildLangString(TtsModelInfo info) {

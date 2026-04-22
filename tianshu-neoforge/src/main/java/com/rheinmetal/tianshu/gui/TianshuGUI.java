@@ -311,13 +311,66 @@ public class TianshuGUI extends Screen {
                 .build());
 
         Path ttsModelDir = resolveModelDir("TTS");
+        TtsModelInfo currentTtsInfo = ttsModelDir != null ? coreManager.resolveCurrentTtsModelInfo() : null;
+
+        int ttsWidgetX = innerX + 66;
         if (ttsModelDir != null) {
             ModelSettings.TtsSettings ttsSettings = ModelSettings.loadTtsSettings(ttsModelDir);
             ttsSpeed = (float) ttsSettings.speed;
             int sliderY = ttsY + bottomRowY;
             int sliderWidth = Math.min(120, innerWidth - 70);
-            ttsSpeedSlider = new TtsSpeedSlider(innerX + 66, sliderY, sliderWidth, 16, ttsSpeed, ttsModelDir);
+            ttsSpeedSlider = new TtsSpeedSlider(ttsWidgetX, sliderY, sliderWidth, 16, ttsSpeed, ttsModelDir);
             this.addRenderableWidget(ttsSpeedSlider);
+            ttsWidgetX += sliderWidth + 4;
+        }
+
+        if (currentTtsInfo != null && currentTtsInfo.supportsVoiceClone()) {
+            int remainingWidth = innerX + innerWidth - ttsWidgetX - 10;
+            if (remainingWidth >= 36) {
+                int libraryButtonWidth = Math.min(44, remainingWidth);
+                this.addRenderableWidget(BrightButton.create(
+                        Component.literal("音色库"), b -> coreManager.openVoiceLibraryFolder())
+                        .pos(ttsWidgetX, ttsY + bottomRowY)
+                        .size(libraryButtonWidth, 16)
+                        .build());
+                ttsWidgetX += libraryButtonWidth + 4;
+            }
+
+            String currentVoice = ttsModelDir != null ? ModelSettings.loadTtsSettings(ttsModelDir).selectedVoiceSample : "";
+            String voiceLabel = currentVoice == null || currentVoice.isEmpty() ? "默认" : currentVoice;
+            if (voiceLabel.length() > 8) voiceLabel = voiceLabel.substring(0, 7) + "..";
+            int voiceButtonWidth = innerX + innerWidth - ttsWidgetX - 10;
+            if (voiceButtonWidth >= 44) {
+                this.addRenderableWidget(BrightButton.create(
+                        Component.literal(voiceLabel), b -> {
+                            if (ttsModelDir == null) return;
+                            ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(ttsModelDir);
+                            List<String> samples = coreManager.listVoiceSamples();
+                            List<String> options = new ArrayList<>(samples);
+                            options.add(0, "");
+                            if (options.isEmpty()) return;
+                            int idx = options.indexOf(settings.selectedVoiceSample);
+                            if (idx < 0) idx = 0;
+                            idx = (idx + 1) % options.size();
+                            settings.selectedVoiceSample = options.get(idx);
+                            ModelSettings.saveTtsSettings(ttsModelDir, settings);
+                            this.init();
+                        }).pos(ttsWidgetX, ttsY + bottomRowY)
+                        .size(voiceButtonWidth, 16)
+                        .build());
+            }
+        } else if (currentTtsInfo != null && currentTtsInfo.supportsSpeakerSelection()) {
+            if (ttsModelDir != null) {
+                ModelSettings.TtsSettings ttsSettings = ModelSettings.loadTtsSettings(ttsModelDir);
+                this.addRenderableWidget(BrightButton.create(
+                        Component.literal("说话人: " + ttsSettings.speakerId), b -> {
+                            ttsSettings.speakerId = (ttsSettings.speakerId + 1) % Math.max(1, 10);
+                            ModelSettings.saveTtsSettings(ttsModelDir, ttsSettings);
+                            b.setMessage(Component.literal("说话人: " + ttsSettings.speakerId));
+                        }).pos(ttsWidgetX, ttsY + bottomRowY)
+                        .size(64, 16)
+                        .build());
+            }
         }
 
         Path llmModelDir = resolveModelDir("LLM");
@@ -357,7 +410,13 @@ public class TianshuGUI extends Screen {
         return switch (type) {
             case "ASR" -> config.getAsrBasePath().resolve(modelName);
             case "LLM" -> config.getLlmBasePath().resolve(modelName);
-            case "TTS" -> config.getTtsBasePath().resolve(modelName);
+            case "TTS" -> {
+                TtsModelInfo info = coreManager.resolveCurrentTtsModelInfo();
+                if (info != null && "zipvoice".equals(info.getEngineType())) {
+                    yield config.getTtsBasePath().resolve("ZipVoice");
+                }
+                yield config.getTtsBasePath().resolve(modelName);
+            }
             default -> null;
         };
     }
@@ -685,6 +744,12 @@ public class TianshuGUI extends Screen {
         if (ttsDir != null) {
             ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(ttsDir);
             lines.add("语速: " + String.format("%.1f", settings.speed));
+            TtsModelInfo info = coreManager.resolveCurrentTtsModelInfo();
+            if (info != null && info.supportsVoiceClone()) {
+                lines.add("音色: " + (settings.selectedVoiceSample == null || settings.selectedVoiceSample.isEmpty() ? "默认" : settings.selectedVoiceSample));
+            } else if (info != null && info.supportsSpeakerSelection()) {
+                lines.add("说话人: " + settings.speakerId);
+            }
         }
         return lines;
     }

@@ -42,6 +42,7 @@ public interface ITianshuConfig {
     Path getLlmModelPath();
     Path getTtsModelPath();
     Path getLlmGgufFilePath();
+    Path getVoiceLibraryPath();
 
     void save();
 }

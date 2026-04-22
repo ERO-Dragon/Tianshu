@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.nio.file.*;
 import java.util.*;
@@ -62,6 +63,7 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
             Files.createDirectories(getRootDir().resolve("models").resolve("asr"));
             Files.createDirectories(getRootDir().resolve("models").resolve("llm"));
             Files.createDirectories(getRootDir().resolve("models").resolve("tts"));
+            Files.createDirectories(getRootDir().resolve("voices"));
         } catch (IOException e) {
             LOGGER.error("创建目录结构失败", e);
         }
@@ -143,8 +145,9 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
             LOGGER.error("Native 目录不存在: {}", dir);
             return;
         }
-        loadDll(dir, "onnxruntime.dll");
+        // loadDll(dir, "onnxruntime.dll");
 
+        // injectLibraryPath(dir.toAbsolutePath().toString());
         System.setProperty("sherpa_onnx.native.path", dir.toAbsolutePath().toString());
 
         nativesLoaded = true;
@@ -169,7 +172,20 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
             }
         }
     }
-
+    private void injectLibraryPath(String newPath) {
+        try {
+            String currentPath = System.getProperty("java.library.path", "");
+            if (!currentPath.contains(newPath)) {
+                System.setProperty("java.library.path", newPath + File.pathSeparator + currentPath);
+                // 让 JVM 刷新一下缓存
+                Field sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
+                sysPathsField.setAccessible(true);
+                sysPathsField.set(null, null);
+            }
+        } catch (Exception e) {
+            LOGGER.error("注入 library.path 失败", e);
+        }
+    }
     private boolean shouldSkipExtract(String resourcePath, Path targetFile) {
         if (!Files.exists(targetFile)) return false;
         try {
@@ -225,7 +241,8 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
         // 2. 核心保底逻辑：如果上面没读到（说明在 jar 包里运行），用已知列表逐个去 jar 包里试！
         if (dllNames.isEmpty()) {
             String[] knownDlls = {
-                "onnxruntime.dll", 
+                // "onnxruntime.dll", 
+
                 "sherpa-onnx-jni.dll", "llama.dll", "ggml.dll", 
                 "ggml-base.dll", "ggml-vulkan.dll", "ggml-cpu-alderlake.dll", 
                 "ggml-cpu-cannonlake.dll", "ggml-cpu-cascadelake.dll", "ggml-cpu-haswell.dll", 

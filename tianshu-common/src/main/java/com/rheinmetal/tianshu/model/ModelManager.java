@@ -61,7 +61,8 @@ public class ModelManager {
 
     public boolean isTtsModelDownloaded(TtsModelInfo info) {
         if (info == null || info.name == null) return false;
-        Path modelDir = config.getTtsBasePath().resolve(info.name);
+        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
+        Path modelDir = config.getTtsBasePath().resolve(modelDirName);
         if (!Files.exists(modelDir) || !Files.isDirectory(modelDir)) return false;
         try {
             return Files.list(modelDir).anyMatch(p -> {

@@ -12,6 +12,9 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.sentencepiece.SentencePieceProcessor;
 
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
 import java.io.IOException;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
@@ -51,8 +54,8 @@ public class MossTtsService implements AutoCloseable {
         this.env = env;
         this.downloader = downloader;
         this.modelRootDir = modelRootDir;
-        this.ttsDir = modelRootDir.resolve("MOSS-TTS-Nano-100M-ONNX");
-        this.codecDir = modelRootDir.resolve("MOSS-Audio-Tokenizer-Nano-ONNX");
+        this.ttsDir = modelRootDir;
+        this.codecDir = modelRootDir;
     }
 
     public void init() throws Exception {
@@ -136,6 +139,106 @@ public class MossTtsService implements AutoCloseable {
         return tokenIds.stream().mapToInt(Integer::intValue).toArray();
     }
 
+    public List<List<Integer>> encodePromptAudioCodes(Path wavPath) throws Exception {
+        if (wavPath == null || !Files.exists(wavPath)) {
+            throw new IOException("参考音频文件不存在: " + wavPath);
+        }
+
+        float[][] pcmChannels = readWavAsFloatChannels(wavPath);
+        float[][] mono = new float[1][];
+        mono[0] = pcmChannels.length > 0 ? pcmChannels[0] : new float[0];
+
+        int targetSampleRate = getSampleRate();
+        mono = resampleIfNeeded(mono, (int) readWavSampleRate(wavPath), targetSampleRate);
+
+        float[][][] waveform = new float[1][][];
+        waveform[0] = mono;
+        int waveformLength = mono[0].length;
+
+        try (OnnxTensor waveformTensor = OnnxTensor.createTensor(ortEnvironment, waveform);
+             OnnxTensor lengthsTensor = OnnxTensor.createTensor(ortEnvironment,
+                     IntBuffer.wrap(new int[]{waveformLength}), new long[]{1})) {
+
+            Map<String, OnnxTensor> inputs = new HashMap<>();
+            inputs.put("waveform", waveformTensor);
+            inputs.put("input_lengths", lengthsTensor);
+
+            OrtSession.Result result = sessions.get("codec_encode").run(inputs);
+            int[][][] audioCodes = (int[][][]) result.get("audio_codes").get().getValue();
+            int[] audioCodeLengths = (int[]) result.get("audio_code_lengths").get().getValue();
+            int codeLength = audioCodeLengths[0];
+            int numQuantizers = codecMeta.getAsJsonObject("codec_config").get("num_quantizers").getAsInt();
+
+            List<List<Integer>> promptAudioCodes = new ArrayList<>();
+            for (int frameIndex = 0; frameIndex < codeLength; frameIndex++) {
+                List<Integer> frame = new ArrayList<>();
+                for (int q = 0; q < numQuantizers; q++) {
+                    frame.add(audioCodes[0][frameIndex][q]);
+                }
+                promptAudioCodes.add(frame);
+            }
+            return promptAudioCodes;
+        }
+    }
+
+    private float[][] readWavAsFloatChannels(Path wavPath) throws Exception {
+        try (AudioInputStream ais = AudioSystem.getAudioInputStream(wavPath.toFile())) {
+            AudioFormat format = ais.getFormat();
+            byte[] bytes = ais.readAllBytes();
+            int channels = format.getChannels();
+            int sampleSize = format.getSampleSizeInBits() / 8;
+            boolean bigEndian = format.isBigEndian();
+            int totalSamples = bytes.length / (channels * sampleSize);
+
+            float[][] channelData = new float[channels][totalSamples];
+            for (int i = 0; i < totalSamples; i++) {
+                for (int ch = 0; ch < channels; ch++) {
+                    int offset = (i * channels + ch) * sampleSize;
+                    float sample;
+                    if (sampleSize == 2) {
+                        short s;
+                        if (bigEndian) {
+                            s = (short) ((bytes[offset] << 8) | (bytes[offset + 1] & 0xFF));
+                        } else {
+                            s = (short) ((bytes[offset + 1] << 8) | (bytes[offset] & 0xFF));
+                        }
+                        sample = s / 32768.0f;
+                    } else if (sampleSize == 1) {
+                        sample = ((bytes[offset] & 0xFF) - 128) / 128.0f;
+                    } else {
+                        sample = 0.0f;
+                    }
+                    channelData[ch][i] = Math.max(-1.0f, Math.min(1.0f, sample));
+                }
+            }
+            return channelData;
+        }
+    }
+
+    private float readWavSampleRate(Path wavPath) throws Exception {
+        try (AudioInputStream ais = AudioSystem.getAudioInputStream(wavPath.toFile())) {
+            return ais.getFormat().getSampleRate();
+        }
+    }
+
+    private float[][] resampleIfNeeded(float[][] mono, int sourceRate, int targetRate) {
+        if (sourceRate == targetRate) return mono;
+        double ratio = (double) targetRate / sourceRate;
+        int newLength = (int) (mono[0].length * ratio);
+        float[][] result = new float[1][newLength];
+        for (int i = 0; i < newLength; i++) {
+            double srcPos = i / ratio;
+            int srcIdx = (int) srcPos;
+            if (srcIdx + 1 < mono[0].length) {
+                float frac = (float) (srcPos - srcIdx);
+                result[0][i] = mono[0][srcIdx] * (1 - frac) + mono[0][srcIdx + 1] * frac;
+            } else if (srcIdx < mono[0].length) {
+                result[0][i] = mono[0][srcIdx];
+            }
+        }
+        return result;
+    }
+
     public RequestRows buildVoiceCloneRequestRows(List<List<Integer>> promptAudioCodes, int[] textTokenIds) {
         JsonObject ttsConfig = manifest.getAsJsonObject("tts_config");
         JsonObject promptTemplates = manifest.getAsJsonObject("prompt_templates");
@@ -161,7 +264,7 @@ public class MossTtsService implements AutoCloseable {
 
         List<int[]> rows = new ArrayList<>();
         rows.addAll(buildTextRows(prefixTextTokenIds));
-        rows.addAll(buildAudioPrefixRows(promptAudioCodes, null));
+        rows.addAll(buildAudioPrefixRows(promptAudioCodes != null ? promptAudioCodes : List.of(), null));
         rows.addAll(buildTextRows(suffixTextTokenIds));
 
         int[][] attentionMask = new int[1][rows.size()];

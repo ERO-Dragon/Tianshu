@@ -24,6 +24,7 @@ public class ModelSettings {
     public static class TtsSettings {
         public double speed = 1.0;
         public int speakerId = 0;
+        public String selectedVoiceSample = "";
     }
 
     public static class LlmSettings {

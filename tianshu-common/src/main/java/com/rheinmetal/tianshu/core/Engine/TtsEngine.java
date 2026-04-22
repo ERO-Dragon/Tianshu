@@ -21,10 +21,12 @@ public class TtsEngine {
     private OfflineTts tts;
     private MossTtsService mossTtsService;
     private boolean isMossEngine = false;
+    private boolean isZipVoiceEngine = false;
     private boolean initialized = false;
     private int sampleRate;
     private float speed = 1.0f;
     private int speakerId = 0;
+    private Path voiceSamplePath;
     private String modelDirPath;
 
     public TtsEngine(IGameEnvironment env, ITianshuConfig config) {
@@ -38,6 +40,10 @@ public class TtsEngine {
 
     public void setSpeakerId(int speakerId) {
         this.speakerId = Math.max(0, speakerId);
+    }
+
+    public void setVoiceSamplePath(Path voiceSamplePath) {
+        this.voiceSamplePath = voiceSamplePath;
     }
 
     public void initialize(String modelDir) {
@@ -144,6 +150,8 @@ public class TtsEngine {
     private void applyConfig(OfflineTtsConfig ttsConfig, String modelDir) throws Exception {
         tts = new OfflineTts(ttsConfig);
         sampleRate = tts.getSampleRate();
+        isMossEngine = false;
+        isZipVoiceEngine = ttsConfig.getModel().getZipvoice() != null;
 
         ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(Path.of(modelDir));
         this.speed = (float) settings.speed;
@@ -157,6 +165,7 @@ public class TtsEngine {
         return switch (engineType) {
             case "kokoro" -> buildKokoroConfig(modelDir, info);
             case "matcha" -> buildMatchaConfig(modelDir, info, vocoderPath);
+            case "zipvoice" -> buildZipVoiceConfig(modelDir, info);
             default -> buildVitsMetadataConfig(modelDir, info);
         };
     }
@@ -231,6 +240,53 @@ public class TtsEngine {
         return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
     }
 
+    private OfflineTtsConfig buildZipVoiceConfig(File modelDir, TtsModelInfo info) {
+        String tokensPath = findRequiredFile(modelDir, "tokens", ".txt");
+        String encoderPath = resolveZipVoiceFile(modelDir, info.modelFiles, "text_encoder");
+        String decoderPath = resolveZipVoiceFile(modelDir, info.modelFiles, "fm_decoder");
+        String vocoderPath = resolveZipVoiceVocoder(modelDir);
+
+        if (tokensPath == null || encoderPath == null || decoderPath == null || vocoderPath == null) {
+            env.error("ZipVoice 模型文件不完整", null);
+            return null;
+        }
+
+        OfflineTtsZipVoiceModelConfig.Builder zipVoiceBuilder = OfflineTtsZipVoiceModelConfig.builder()
+                .setTokens(tokensPath)
+                .setEncoder(encoderPath)
+                .setDecoder(decoderPath)
+                .setVocoder(vocoderPath)
+                .setFeatScale(0.1f)
+                .setTShift(0.5f)
+                .setTargetRms(0.1f)
+                .setGuidanceScale(1.0f);
+
+        File dataDir = info.dataDir != null && !info.dataDir.isBlank()
+                ? new File(modelDir, info.dataDir)
+                : new File(modelDir, "espeak-ng-data");
+        if (dataDir.exists() && dataDir.isDirectory()) {
+            zipVoiceBuilder.setDataDir(dataDir.getAbsolutePath());
+        }
+
+        File pinyinRaw = new File(modelDir, "pinyin.raw");
+        if (pinyinRaw.exists() && pinyinRaw.isFile()) {
+            zipVoiceBuilder.setLexicon(pinyinRaw.getAbsolutePath());
+        } else if (info.lexiconFiles != null && !info.lexiconFiles.isEmpty()) {
+            zipVoiceBuilder.setLexicon(joinPaths(modelDir, info.lexiconFiles));
+        }
+
+        env.info("ZipVoice 配置: encoder=" + encoderPath + ", decoder=" + decoderPath +
+                ", tokens=" + tokensPath + ", vocoder=" + vocoderPath);
+
+        OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
+                .setZipvoice(zipVoiceBuilder.build())
+                .setNumThreads(2)
+                .setDebug(false)
+                .build();
+
+        return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
+    }
+
     private OfflineTtsConfig buildVitsMetadataConfig(File modelDir, TtsModelInfo info) {
         String modelPath = resolveModelFile(modelDir, info.modelFiles);
         String tokensPath = findRequiredFile(modelDir, "tokens", ".txt");
@@ -297,6 +353,25 @@ public class TtsEngine {
         }
 
         return null;
+    }
+
+    private String resolveZipVoiceFile(File modelDir, List<String> modelFiles, String prefix) {
+        if (modelFiles == null) return null;
+        for (String candidate : modelFiles) {
+            if (candidate.toLowerCase().startsWith(prefix.toLowerCase())) {
+                File f = new File(modelDir, candidate);
+                if (f.exists()) return f.getAbsolutePath();
+            }
+        }
+        File fallback = findFile(modelDir, prefix, ".onnx");
+        return fallback != null ? fallback.getAbsolutePath() : null;
+    }
+
+    private String resolveZipVoiceVocoder(File modelDir) {
+        File vocoder = new File(modelDir, "vocos_24khz.onnx");
+        if (vocoder.exists()) return vocoder.getAbsolutePath();
+        File fallback = findFile(modelDir, "vocoder", ".onnx");
+        return fallback != null ? fallback.getAbsolutePath() : null;
     }
 
     private String joinPaths(File baseDir, List<String> relativePaths) {
@@ -410,6 +485,9 @@ public class TtsEngine {
     }
 
     public void synthesizeSpeech(String text, Consumer<byte[]> onAudioChunk) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
         if (!initialized) {
             env.error("TTS 引擎未初始化", null);
             return;
@@ -422,6 +500,11 @@ public class TtsEngine {
 
         if (tts == null) {
             env.error("TTS 引擎未初始化", null);
+            return;
+        }
+
+        if (isZipVoiceEngine) {
+            synthesizeZipVoice(text, onAudioChunk);
             return;
         }
 
@@ -442,6 +525,9 @@ public class TtsEngine {
     }
 
     public void synthesizeFull(String text, Consumer<byte[]> onAudio) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
         if (!initialized) {
             env.error("TTS 引擎未初始化", null);
             return;
@@ -454,6 +540,11 @@ public class TtsEngine {
 
         if (tts == null) {
             env.error("TTS 引擎未初始化", null);
+            return;
+        }
+
+        if (isZipVoiceEngine) {
+            synthesizeZipVoice(text, onAudio);
             return;
         }
 
@@ -479,7 +570,12 @@ public class TtsEngine {
         env.info("MOSS-TTS 开始合成: " + text);
 
         try {
-            float[][] channels = mossTtsService.synthesizeToWaveform(text, null);
+            List<List<Integer>> promptAudioCodes = null;
+            if (voiceSamplePath != null && Files.exists(voiceSamplePath)) {
+                env.info("MOSS-TTS 使用参考音频: " + voiceSamplePath);
+                promptAudioCodes = mossTtsService.encodePromptAudioCodes(voiceSamplePath);
+            }
+            float[][] channels = mossTtsService.synthesizeToWaveform(text, promptAudioCodes);
             byte[] pcm = floatSamplesToPcm16(channels);
             if (pcm.length > 0) {
                 onAudioChunk.accept(pcm);
@@ -487,6 +583,40 @@ public class TtsEngine {
             env.info("MOSS-TTS 合成完成: " + text);
         } catch (Exception e) {
             env.error("MOSS-TTS 合成失败: " + text, e);
+        }
+    }
+
+    private void synthesizeZipVoice(String text, Consumer<byte[]> onAudioChunk) {
+        if (tts == null) {
+            env.error("ZipVoice 引擎未初始化", null);
+            return;
+        }
+
+        env.info("ZipVoice 开始合成: " + text + " (speed=" + speed + ")");
+
+        try {
+            GenerationConfig generationConfig = new GenerationConfig();
+            generationConfig.setSpeed(speed);
+
+            if (voiceSamplePath != null && Files.exists(voiceSamplePath)) {
+                WaveReader reader = new WaveReader(voiceSamplePath.toString());
+                generationConfig.setReferenceAudio(reader.getSamples());
+                generationConfig.setReferenceSampleRate(reader.getSampleRate());
+                generationConfig.setReferenceText("");
+                generationConfig.setNumSteps(5);
+                env.info("ZipVoice 使用参考音频: " + voiceSamplePath + ", sampleRate=" + reader.getSampleRate());
+            }
+
+            tts.generateWithConfigAndCallback(text, generationConfig, samples -> {
+                byte[] pcm = floatSamplesToPcm16(samples);
+                if (pcm.length > 0) {
+                    onAudioChunk.accept(pcm);
+                }
+                return 1;
+            });
+            env.info("ZipVoice 合成完成: " + text);
+        } catch (Exception e) {
+            env.error("ZipVoice 合成失败: " + text, e);
         }
     }
 
@@ -529,6 +659,7 @@ public class TtsEngine {
             tts.release();
             tts = null;
         }
+        isZipVoiceEngine = false;
         initialized = false;
         env.info("TTS 引擎已关闭");
     }

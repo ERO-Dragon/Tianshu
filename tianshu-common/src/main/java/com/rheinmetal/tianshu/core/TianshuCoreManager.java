@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.rheinmetal.tianshu.model.ModelDownloader;
 import com.rheinmetal.tianshu.model.ModelManager;
+import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.utils.PathUtils;
 import com.rheinmetal.tianshu.worker.AsrWorker;
@@ -31,6 +32,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -300,12 +303,13 @@ public class TianshuCoreManager {
         new Thread(() -> {
             TtsEngine previewEngine = new TtsEngine(env, config);
             try {
-                Path modelPath = config.getTtsModelPath();
+                TtsModelInfo resolvedInfo = info != null ? info : resolveCurrentTtsModelInfo();
+                Path modelPath = resolveTtsPhysicalModelPath(resolvedInfo);
+                if (modelPath == null) modelPath = config.getTtsModelPath();
                 if (modelPath == null || !Files.exists(modelPath)) {
                     callback.onError("模型目录不存在，请先下载模型");
                     return;
                 }
-                TtsModelInfo resolvedInfo = info != null ? info : resolveCurrentTtsModelInfo();
                 if (resolvedInfo != null) {
                     String vocoderPath = resolveVocoderPath(modelPath);
                     if (resolvedInfo.needVocoder && vocoderPath != null) {
@@ -322,6 +326,10 @@ public class TianshuCoreManager {
                 }
                 callback.onReady();
                 previewEngine.setSpeed(speed);
+                if (resolvedInfo != null && resolvedInfo.supportsVoiceClone()) {
+                    Path voiceSample = resolveEffectiveVoiceSample(resolvedInfo, modelPath);
+                    previewEngine.setVoiceSamplePath(voiceSample);
+                }
                 audioBridge.startTtsPlayback(previewEngine.getSampleRate());
                 Thread.sleep(120);
                 previewEngine.synthesizeSpeech(text, audioBridge::feedTtsAudio);
@@ -550,7 +558,8 @@ public class TianshuCoreManager {
         new Thread(() -> {
             try {
                 Path ttsBasePath = config.getTtsBasePath();
-                Path modelDir = ttsBasePath.resolve(info.name);
+                String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
+                Path modelDir = ttsBasePath.resolve(modelDirName);
                 HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
 
                 if ("moss".equals(info.getEngineType())) {
@@ -593,7 +602,7 @@ public class TianshuCoreManager {
 
     public boolean hasTtsModelContent(TtsModelInfo info) {
         if (info == null || info.name == null) return false;
-        Path modelDir = config.getTtsBasePath().resolve(info.name);
+        Path modelDir = resolveTtsPhysicalModelPath(info);
         if (!Files.exists(modelDir) || !Files.isDirectory(modelDir)) return false;
         try {
             return Files.list(modelDir).findAny().isPresent();
@@ -605,7 +614,7 @@ public class TianshuCoreManager {
 
     public void deleteTtsModel(TtsModelInfo info) {
         if (info == null || info.name == null) return;
-        Path modelDir = config.getTtsBasePath().resolve(info.name);
+        Path modelDir = resolveTtsPhysicalModelPath(info);
         try {
             deleteRecursively(modelDir);
             ModelManager.invalidateTtsCache();
@@ -749,8 +758,9 @@ public class TianshuCoreManager {
                 }
                 if (entryName.isEmpty()) continue;
 
-                Path targetFile = targetDir.toAbsolutePath().normalize().resolve(entryName).normalize();
-                if (!targetFile.startsWith(targetDir.normalize())) continue;
+                Path safeBaseDir = targetDir.toAbsolutePath().normalize();
+                Path targetFile = safeBaseDir.resolve(entryName).normalize();
+                if (!targetFile.startsWith(safeBaseDir)) continue;
 
                 if (entry.isDirectory()) {
                     Files.createDirectories(targetFile);
@@ -806,9 +816,79 @@ public class TianshuCoreManager {
         return null;
     }
 
+    public Path resolveTtsPhysicalModelPath(TtsModelInfo info) {
+        if (info == null || info.name == null) return config.getTtsModelPath();
+        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
+        return config.getTtsBasePath().resolve(modelDirName);
+    }
+
     public String getZipVoiceCustomVoicePath(TtsModelInfo info) {
         if (info == null || info.name == null) return null;
         Path modelDir = config.getTtsBasePath().resolve(info.name);
         return modelDir.resolve("custom_prompt.wav").toString();
+    }
+
+    public Path getVoiceLibraryPath() {
+        return config.getVoiceLibraryPath();
+    }
+
+    public List<String> listVoiceSamples() {
+        Path voiceDir = config.getVoiceLibraryPath();
+        List<String> samples = new ArrayList<>();
+        if (!Files.exists(voiceDir)) return samples;
+        try (var stream = Files.list(voiceDir)) {
+            stream.filter(p -> {
+                String name = p.getFileName().toString().toLowerCase();
+                return name.endsWith(".wav") || name.endsWith(".mp3") || name.endsWith(".flac");
+            }).forEach(p -> samples.add(p.getFileName().toString()));
+        } catch (Exception ignored) {}
+        Collections.sort(samples);
+        return samples;
+    }
+
+    public Path resolveVoiceSamplePath(String fileName) {
+        if (fileName == null || fileName.isBlank()) return null;
+        return config.getVoiceLibraryPath().resolve(fileName);
+    }
+
+    public Path resolveDefaultVoiceSample(TtsModelInfo info) {
+        if (info == null) return null;
+        String defaultSample = info.defaultVoiceSample;
+        if (defaultSample != null && !defaultSample.isBlank()) {
+            Path modelDir = resolveTtsPhysicalModelPath(info);
+            Path inModel = modelDir.resolve(defaultSample);
+            if (Files.exists(inModel)) return inModel;
+        }
+        Path voiceDir = config.getVoiceLibraryPath();
+        if (Files.exists(voiceDir)) {
+            try (var stream = Files.list(voiceDir)) {
+                Path first = stream.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".wav"))
+                        .sorted().findFirst().orElse(null);
+                if (first != null) return first;
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    public void openVoiceLibraryFolder() {
+        try {
+            Path voiceDir = config.getVoiceLibraryPath();
+            Files.createDirectories(voiceDir);
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().open(voiceDir.toFile());
+            }
+        } catch (Exception e) {
+            env.error("无法打开音色库目录", e);
+        }
+    }
+
+    public Path resolveEffectiveVoiceSample(TtsModelInfo info, Path modelDir) {
+        ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(modelDir);
+        String selected = settings.selectedVoiceSample;
+        if (selected != null && !selected.isBlank()) {
+            Path selectedPath = resolveVoiceSamplePath(selected);
+            if (selectedPath != null && Files.exists(selectedPath)) return selectedPath;
+        }
+        return resolveDefaultVoiceSample(info);
     }
 }

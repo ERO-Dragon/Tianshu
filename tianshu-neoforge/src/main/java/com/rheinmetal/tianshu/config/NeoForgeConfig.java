@@ -164,6 +164,11 @@ public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig
     }
 
     @Override
+    public Path getVoiceLibraryPath() {
+        return getRootPath().resolve("voices");
+    }
+
+    @Override
     public Path getAsrModelPath() {
         VramTier tier = getVramTier();
         String name = ModelPresets.resolveTargetModelName(
@@ -220,16 +225,20 @@ public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig
                 return getLlmBasePath().resolve(customName.trim());
             }
             if (Files.isDirectory(modelDir)) {
+                Path preferred = modelDir.resolve("model.gguf");
+                if (Files.isRegularFile(preferred)) {
+                    return preferred;
+                }
                 try (var stream = Files.list(modelDir)) {
                     Path ggufFile = stream
-                        .filter(p -> p.toString().toLowerCase().endsWith(".gguf"))
+                        .filter(p -> Files.isRegularFile(p) && p.getFileName().toString().toLowerCase().endsWith(".gguf"))
+                        .sorted((a, b) -> a.getFileName().toString().compareToIgnoreCase(b.getFileName().toString()))
                         .findFirst()
                         .orElse(null);
                     if (ggufFile != null) {
                         return ggufFile;
                     }
                 } catch (IOException e) {
-                    // 忽略异常，往下走报错逻辑
                 }
             }
             return modelDir.resolve("model.gguf");

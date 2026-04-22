@@ -52,7 +52,7 @@ public class LlmWorker implements Runnable {
                     llmEngine.cancelGeneration();
                     currentTurnId.set(turnId);
                     env.info("LLM Worker 开始处理，turnId: " + turnId);
-                    var prompt = asrEvent.getText() + "/no_think";
+                    var prompt = asrEvent.getText() + "/n"+ "/no_think";
                     llmEngine.streamChat(prompt, textChunk -> {
                         coreManager.getEventBus().publishEvent(new LlmChunkEvent(textChunk, turnId));
                     }, () -> {

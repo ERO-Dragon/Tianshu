@@ -201,6 +201,8 @@ public class ProcessManager {
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.redirectErrorStream(true);
             processBuilder.directory(nativesDir.toFile());
+            long currentPid = ProcessHandle.current().pid();
+            processBuilder.environment().put("PARENT_PID", String.valueOf(currentPid));
 
             Process process = processBuilder.start();
             processes.put(ServiceType.LLM, process);

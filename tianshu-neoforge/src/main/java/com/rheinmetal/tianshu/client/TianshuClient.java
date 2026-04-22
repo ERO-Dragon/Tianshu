@@ -38,6 +38,7 @@ public class TianshuClient {
     private static boolean wasAlwaysKeyTriggered = false;
     private static boolean isVoiceKeyPressed = false;
     private static TriggerMode lastTriggerMode = null;
+    private static boolean isOnnxRuntimeLoaded = false;
     private static final StringBuilder currentLlmReply = new StringBuilder();
 
     private static NeoForgeEnvironment env;
@@ -48,7 +49,6 @@ public class TianshuClient {
 
     public static void init() {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
-
         env = new NeoForgeEnvironment();
         config = new NeoForgeConfig();
         nativeLibBridge = new NeoForgeNativeLibBridge();
@@ -65,6 +65,15 @@ public class TianshuClient {
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
+            if (!isOnnxRuntimeLoaded) {
+                try {
+                    LOGGER.info("正在加载Onnx自己的 onnxruntime.dll为OnnxRuntime和SherpaOnnx提供支持");
+                    // 让它把 onnxruntime.dll 解压到 Temp 目录，并加载到进程内存中！
+                    ai.onnxruntime.OrtEnvironment.getEnvironment();
+                } catch (Throwable t) {
+                }
+                isOnnxRuntimeLoaded = true;
+            }
             coreManager.tryInitEngine();
             coreManager.initWorkers();
         });
