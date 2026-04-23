@@ -217,41 +217,43 @@ public class AudioManager implements IAudioBridge {
     @Override
     public void startTtsPlayback(int sampleRate) {
         stopTtsPlayback();
-        int turnId = ttsPlaybackTurnId.incrementAndGet();
-        executorService.submit(() -> {
-            try {
-                AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
-                DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
-                if (!AudioSystem.isLineSupported(info))
-                    return;
-                ttsDataLine = (SourceDataLine) AudioSystem.getLine(info);
-                ttsDataLine.open(format);
-                ttsDataLine.start();
-                LOGGER.info("TTS 播放通道已打开，采样率: {}Hz", sampleRate);
-            } catch (LineUnavailableException e) {
-                LOGGER.error("无法打开 TTS 播放通道", e);
-            }
-        });
+        ttsPlaybackTurnId.incrementAndGet();
+        try {
+            AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
+            DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+            if (!AudioSystem.isLineSupported(info))
+                return;
+            ttsDataLine = (SourceDataLine) AudioSystem.getLine(info);
+            ttsDataLine.open(format);
+            ttsDataLine.start();
+            LOGGER.info("TTS 播放通道已打开，采样率: {}Hz", sampleRate);
+        } catch (LineUnavailableException e) {
+            LOGGER.error("无法打开 TTS 播放通道", e);
+        }
     }
 
     @Override
     public void feedTtsAudio(byte[] audioData) {
-        if (ttsDataLine == null || !ttsDataLine.isOpen()) return;
+        SourceDataLine line = ttsDataLine;
+        if (line == null || !line.isOpen()) return;
         if (audioData == null || audioData.length == 0) return;
-        ttsDataLine.write(audioData, 0, audioData.length);
+        try {
+            line.write(audioData, 0, audioData.length);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
     public void stopTtsPlayback() {
-        if (ttsDataLine != null) {
+        SourceDataLine line = ttsDataLine;
+        ttsDataLine = null;
+        if (line != null) {
             try {
-                ttsDataLine.drain();
-                ttsDataLine.stop();
-                ttsDataLine.close();
+                line.stop();
+                line.close();
             } catch (Exception e) {
                 LOGGER.error("关闭 TTS 播放通道异常", e);
             }
-            ttsDataLine = null;
         }
     }
 

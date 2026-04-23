@@ -272,11 +272,12 @@ public class TianshuGUI extends Screen {
         int innerWidth = rightPanelWidth - 24;
         int blockGap = 12;
         int panelHeight = this.height - 84;
-        int blockHeight = (panelHeight - 34 - blockGap * 2) / 3;
+        int blockHeight = (panelHeight - 58 - blockGap * 2) / 3;
+        int blockStartY = innerY + 24;
 
-        int asrY = innerY;
-        int llmY = innerY + blockHeight + blockGap;
-        int ttsY = innerY + (blockHeight + blockGap) * 2;
+        int asrY = blockStartY;
+        int llmY = blockStartY + blockHeight + blockGap;
+        int ttsY = blockStartY + (blockHeight + blockGap) * 2;
 
         boolean isCustom = currentVramTier == VramTier.CUSTOM;
 
@@ -411,9 +412,9 @@ public class TianshuGUI extends Screen {
             case "ASR" -> config.getAsrBasePath().resolve(modelName);
             case "LLM" -> config.getLlmBasePath().resolve(modelName);
             case "TTS" -> {
-                TtsModelInfo info = coreManager.resolveCurrentTtsModelInfo();
-                if (info != null && "zipvoice".equals(info.getEngineType())) {
-                    yield config.getTtsBasePath().resolve("ZipVoice");
+                Path currentTtsDir = coreManager.resolveCurrentTtsModelDir();
+                if (currentTtsDir != null) {
+                    yield currentTtsDir;
                 }
                 yield config.getTtsBasePath().resolve(modelName);
             }
@@ -655,15 +656,36 @@ public class TianshuGUI extends Screen {
         int innerY = topY + 20;
         int innerWidth = rightPanelWidth - 24;
         int blockGap = 12;
-        int blockHeight = (panelHeight - 34 - blockGap * 2) / 3;
 
-        drawModelBlock(guiGraphics, innerX, innerY, innerWidth, blockHeight, "ASR", getDisplayModelName("ASR"), getAsrInfoLines());
-        drawModelBlock(guiGraphics, innerX, innerY + blockHeight + blockGap, innerWidth, blockHeight, "LLM", getDisplayModelName("LLM"), getLlmInfoLines());
-        drawModelBlock(guiGraphics, innerX, innerY + (blockHeight + blockGap) * 2, innerWidth, blockHeight, "TTS", getDisplayModelName("TTS"), getTtsInfoLines());
+        drawEnginePhaseIndicator(guiGraphics, innerX, innerY, innerWidth);
+
+        int blockHeight = (panelHeight - 58 - blockGap * 2) / 3;
+        int blockStartY = innerY + 24;
+
+        drawModelBlock(guiGraphics, innerX, blockStartY, innerWidth, blockHeight, "ASR", getDisplayModelName("ASR"), getAsrInfoLines());
+        drawModelBlock(guiGraphics, innerX, blockStartY + blockHeight + blockGap, innerWidth, blockHeight, "LLM", getDisplayModelName("LLM"), getLlmInfoLines());
+        drawModelBlock(guiGraphics, innerX, blockStartY + (blockHeight + blockGap) * 2, innerWidth, blockHeight, "TTS", getDisplayModelName("TTS"), getTtsInfoLines());
 
         if (showProgressBars && currentVramTier != VramTier.CUSTOM) {
-            drawProgressOverlay(guiGraphics, innerX, innerY, innerWidth, blockHeight, blockGap);
+            drawProgressOverlay(guiGraphics, innerX, blockStartY, innerWidth, blockHeight, blockGap);
         }
+    }
+
+    private void drawEnginePhaseIndicator(GuiGraphics guiGraphics, int x, int y, int width) {
+        TianshuCoreManager.EnginePhase phase = coreManager.getEnginePhase();
+        String label;
+        int color;
+        switch (phase) {
+            case IDLE -> { label = "系统待机"; color = 0xFF888888; }
+            case INITIALIZING -> { label = "系统启动中..."; color = 0xFFFFCC44; }
+            case PARTIALLY_READY -> { label = "部分就绪"; color = 0xFF66BBFF; }
+            case FULLY_READY -> { label = "系统就绪"; color = 0xFF66FF66; }
+            case RESTARTING -> { label = "系统重启中..."; color = 0xFFFF8844; }
+            case DESTROYED -> { label = "系统已关闭"; color = 0xFFFF4444; }
+            default -> { label = "未知"; color = 0xFF888888; }
+        }
+        String statusText = "\u25CF " + label;
+        guiGraphics.drawString(this.font, statusText, x, y, color);
     }
 
     private void drawModelBlock(GuiGraphics guiGraphics, int x, int y, int width, int height, String type, String modelName, List<String> lines) {

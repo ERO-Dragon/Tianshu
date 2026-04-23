@@ -8,8 +8,10 @@ import com.rheinmetal.tianshu.core.Engine.TtsEngine;
 import com.rheinmetal.tianshu.event.*;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 
+import java.nio.file.Path;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TtsWorker implements Runnable {
     private static final int MAX_BUFFER_LENGTH = 200;
@@ -22,6 +24,7 @@ public class TtsWorker implements Runnable {
     private final BlockingQueue<TianshuEvent> ttsQueue;
     private boolean running = true;
     private final AtomicInteger currentTurnId = new AtomicInteger(0);
+    private final AtomicLong currentSessionId = new AtomicLong(0L);
     private final StringBuilder textBuffer = new StringBuilder();
     private volatile boolean synthesizing = false;
 
@@ -41,12 +44,13 @@ public class TtsWorker implements Runnable {
 
     private void ensureEngineInitialized() {
         if (!ttsEngine.isInitialized()) {
-            String modelDir = config.getTtsModelPath().toString();
+            Path modelPath = resolveActiveModelPath();
+            String modelDir = modelPath.toString();
             env.info("TTS Worker 首次触发，初始化引擎，模型目录: " + modelDir);
 
-            TtsModelInfo info = coreManager.resolveCurrentTtsModelInfo();
+            TtsModelInfo info = resolveCurrentTtsModelInfo(modelPath);
             if (info != null) {
-                String vocoderPath = coreManager.resolveVocoderPath(config.getTtsModelPath());
+                String vocoderPath = resolveVocoderPath(modelPath);
                 if (info.needVocoder && vocoderPath != null) {
                     ttsEngine.initialize(modelDir, info, vocoderPath);
                 } else {
@@ -72,37 +76,40 @@ public class TtsWorker implements Runnable {
             while (running) {
                 TianshuEvent event = ttsQueue.take();
 
-                if (event instanceof InterruptEvent) {
-                    handleInterruptEvent();
+                if (event instanceof InterruptEvent interruptEvent) {
+                    handleInterruptEvent(interruptEvent);
                     continue;
                 }
 
                 if (event instanceof LlmChunkEvent llmEvent) {
                     int turnId = llmEvent.getTurnId();
-                    if (turnId < currentTurnId.get()) {
-                        env.info("TTS Worker 丢弃过期事件，turnId: " + turnId);
+                    long sessionId = llmEvent.getSessionId();
+                    if (!isCurrent(turnId, sessionId)) {
+                        env.info("TTS Worker 丢弃过期事件，turnId: " + turnId + ", sessionId=" + sessionId);
                         continue;
                     }
 
                     currentTurnId.set(turnId);
+                    currentSessionId.set(sessionId);
                     textBuffer.append(llmEvent.getText());
 
                     if (isSentenceBoundary(textBuffer.toString()) || textBuffer.length() > MAX_BUFFER_LENGTH) {
                         String text = textBuffer.toString();
                         textBuffer.setLength(0);
-                        synthesizeAndPlay(text, turnId);
+                        synthesizeAndPlay(text, turnId, sessionId);
                     }
                 } else if (event instanceof LlmEndEvent llmEvent) {
                     int turnId = llmEvent.getTurnId();
-                    if (turnId < currentTurnId.get()) {
-                        env.info("TTS Worker 丢弃过期结束事件，turnId: " + turnId);
+                    long sessionId = llmEvent.getSessionId();
+                    if (!isCurrent(turnId, sessionId)) {
+                        env.info("TTS Worker 丢弃过期结束事件，turnId: " + turnId + ", sessionId=" + sessionId);
                         continue;
                     }
 
                     if (textBuffer.length() > 0) {
                         String text = textBuffer.toString();
                         textBuffer.setLength(0);
-                        synthesizeAndPlay(text, turnId);
+                        synthesizeAndPlay(text, turnId, sessionId);
                     }
 
                     if (synthesizing) {
@@ -111,7 +118,7 @@ public class TtsWorker implements Runnable {
                         env.info("TTS 流式播放通道已播完并关闭");
                     }
 
-                    env.info("TTS Worker 处理完成，turnId: " + turnId);
+                    env.info("TTS Worker 处理完成，turnId: " + turnId + ", sessionId=" + sessionId + ", cancelled=" + llmEvent.isCancelled() + ", error=" + llmEvent.getErrorMessage());
                 }
             }
         } catch (InterruptedException e) {
@@ -125,7 +132,68 @@ public class TtsWorker implements Runnable {
         }
     }
 
-    private void synthesizeAndPlay(String text, int turnId) {
+    private boolean isCurrent(int turnId, long sessionId) {
+        return turnId >= currentTurnId.get() && sessionId == currentSessionId.get() && coreManager.getEventBus().isCurrentSession(sessionId);
+    }
+
+    private Path resolveActiveModelPath() {
+        Path modelPath = coreManager.resolveCurrentTtsModelDir();
+        return modelPath != null ? modelPath : config.getTtsModelPath();
+    }
+
+    private TtsModelInfo resolveCurrentTtsModelInfo(Path modelPath) {
+        if (modelPath == null || modelPath.getFileName() == null) {
+            return null;
+        }
+        String dirName = modelPath.getFileName().toString();
+        for (TtsModelInfo info : coreManager.getModelManager().loadTtsModelCatalog()) {
+            if (info == null || info.name == null) {
+                continue;
+            }
+            if (modelPath.endsWith(info.name) || info.name.equalsIgnoreCase(dirName)) {
+                return info;
+            }
+            if ("zipvoice".equals(info.getEngineType()) && "ZipVoice".equalsIgnoreCase(dirName)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private String resolveVocoderPath(Path modelPath) {
+        Path vocoderDir = modelPath.resolve("vocoders");
+        if (!java.nio.file.Files.isDirectory(vocoderDir)) {
+            return null;
+        }
+        try (var stream = java.nio.file.Files.list(vocoderDir)) {
+            return stream
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".onnx"))
+                    .map(p -> p.toAbsolutePath().toString())
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception e) {
+            env.error("查找 vocoder 失败", e);
+            return null;
+        }
+    }
+
+    private String cleanForTts(String rawText) {
+        if (rawText == null || rawText.isBlank()) return "";
+        String cleaned = rawText.replace('\r', ' ').replace('\n', ' ');
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        return cleaned;
+    }
+
+    private void synthesizeAndPlay(String rawText, int turnId, long sessionId) {
+        ttsEngine.resetInterrupt();
+        String text = cleanForTts(rawText);
+
+        if (text.isEmpty()) {
+            return;
+        }
+
+        if (!isCurrent(turnId, sessionId)) return;
+
         ensureEngineInitialized();
         if (!ttsEngine.isInitialized()) {
             env.warn("TTS 引擎未就绪，跳过合成: " + text);
@@ -139,7 +207,7 @@ public class TtsWorker implements Runnable {
 
         try {
             ttsEngine.synthesizeSpeech(text, audio -> {
-                if (turnId < currentTurnId.get()) {
+                if (!isCurrent(turnId, sessionId)) {
                     return;
                 }
                 audioManager.feedTtsAudio(audio);
@@ -153,33 +221,43 @@ public class TtsWorker implements Runnable {
         return text.endsWith("。") || text.endsWith(".") ||
                text.endsWith("！") || text.endsWith("!") ||
                text.endsWith("？") || text.endsWith("?") ||
-               text.endsWith("；") || text.endsWith(";") ||
-               text.endsWith(",") || text.endsWith(",");
+               text.endsWith("；") || text.endsWith(";");
     }
 
     public void stop() {
         running = false;
         ttsQueue.clear();
         try {
-            ttsQueue.put(new InterruptEvent());
+            ttsQueue.put(new InterruptEvent(currentSessionId.get()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
         audioManager.stopTtsPlayback();
-        if (ttsEngine != null) {
-            ttsEngine.shutdown();
+        ttsEngine.shutdown();
+    }
+
+    public void shutdownEngine() {
+        ttsEngine.shutdown();
+    }
+
+    public void interruptSynthesis() {
+        ttsEngine.interrupt();
+        textBuffer.setLength(0);
+        if (synthesizing) {
+            audioManager.stopTtsPlayback();
+            synthesizing = false;
         }
     }
 
-    private void handleInterruptEvent() {
-        env.info("TTS Worker 收到打断事件，清空待合成文本");
-        currentTurnId.incrementAndGet();
-        textBuffer.setLength(0);
-        audioManager.stopTtsPlayback();
-        synthesizing = false;
+    public boolean isEngineInitialized() {
+        return ttsEngine.isInitialized();
     }
 
-    public boolean isEngineInitialized() {
-        return ttsEngine != null && ttsEngine.isInitialized();
+    private void handleInterruptEvent(InterruptEvent interruptEvent) {
+        long sessionId = interruptEvent.getSessionId();
+        currentSessionId.set(sessionId);
+        textBuffer.setLength(0);
+        interruptSynthesis();
+        env.info("TTS Worker 收到中断事件，sessionId=" + sessionId);
     }
 }

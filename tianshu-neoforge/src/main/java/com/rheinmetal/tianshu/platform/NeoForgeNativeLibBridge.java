@@ -15,8 +15,8 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String DLL_RESOURCE_PREFIX = "custom_dll/";
-    private static final String SERVER_JAR_RESOURCE_PATH = "JavaLlamaServer/JavaLlamaServer-v1.0.0.jar";
-    private static final String SERVER_JAR_NAME = "JavaLlamaServer-v1.0.0.jar";
+    private static final String SERVER_JAR_RESOURCE_PATH = "JavaLlamaServer/JavaLlamaServer-v1.0.1.jar";
+    private static final String SERVER_JAR_NAME = "JavaLlamaServer-v1.0.1.jar";
 
     private volatile boolean nativesExtracted = false;
     private volatile boolean nativesLoaded = false;

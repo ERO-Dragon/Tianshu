@@ -16,13 +16,21 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public class LlmEngine {
+    public enum FinishReason {
+        COMPLETED,
+        CANCELLED,
+        FAILED
+    }
+
     private final IGameEnvironment env;
-    private HttpClient httpClient;
+    private final HttpClient httpClient;
     private String baseUrl;
-    private InputStream currentStream;
+    private volatile InputStream currentStream;
+    private final AtomicLong activeRequestId = new AtomicLong(0L);
 
     public LlmEngine(IGameEnvironment env, String baseUrl) {
         this.env = env;
@@ -37,15 +45,18 @@ public class LlmEngine {
         env.info("初始化 LLM 引擎，baseUrl: " + baseUrl);
     }
 
-    public void streamChat(String prompt, Consumer<String> onChunk, Runnable onComplete) {
+    public long streamChat(String prompt, Consumer<String> onChunk, Consumer<FinishReason> onFinish, Consumer<String> onError) {
         if (baseUrl == null || baseUrl.isEmpty()) {
             env.error("LLM 引擎未初始化，baseUrl 为空", null);
-            return;
+            onError.accept("LLM 服务地址为空");
+            return activeRequestId.get();
         }
 
-        env.info("LLM 开始处理: " + prompt);
+        long requestId = activeRequestId.incrementAndGet();
+        env.info("LLM 开始处理: " + prompt + ", requestId=" + requestId);
 
         Thread streamThread = new Thread(() -> {
+            FinishReason finishReason = FinishReason.FAILED;
             try {
                 List<JsonObject> messages = new ArrayList<>();
                 JsonObject userMessage = new JsonObject();
@@ -65,56 +76,69 @@ public class LlmEngine {
                         .build();
 
                 HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                if (response.statusCode() != 200) {
+                    onError.accept("LLM 服务返回异常状态码: " + response.statusCode());
+                    return;
+                }
+
                 currentStream = response.body();
 
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(currentStream, StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        if (line.startsWith("data: ")) {
-                            String data = line.substring(6);
-                            if (data.equals("[DONE]")) {
-                                env.info("LLM 处理完成");
-                                onComplete.run();
-                                break;
+                        if (requestId != activeRequestId.get()) {
+                            finishReason = FinishReason.CANCELLED;
+                            break;
+                        }
+                        if (!line.startsWith("data: ")) {
+                            continue;
+                        }
+                        String data = line.substring(6);
+                        if (data.equals("[DONE]")) {
+                            finishReason = FinishReason.COMPLETED;
+                            break;
+                        }
+                        try {
+                            JsonObject chunk = JsonParser.parseString(data).getAsJsonObject();
+                            if (!chunk.has("choices")) {
+                                continue;
                             }
-                            try {
-                                JsonObject chunk = JsonParser.parseString(data).getAsJsonObject();
-                                if (chunk.has("choices")) {
-                                    JsonArray choices = chunk.getAsJsonArray("choices");
-                                    if (choices == null || choices.isEmpty()) {
-                                        return; // 这是 UsageChunk 或异常响应，没有生成内容，直接跳过
-                                    }
-                                    JsonObject choice = choices.get(0).getAsJsonObject();
-                                    if (choice.has("delta")) {
-                                        JsonObject delta = choice.getAsJsonObject("delta");
-                                        if (delta.has("content") && !delta.get("content").isJsonNull()) {
-                                            String content = delta.get("content").getAsString();
-                                            if (!content.isEmpty()) {
-                                                onChunk.accept(content);
-                                            }
-                                        }
-                                    }
+                            JsonArray choices = chunk.getAsJsonArray("choices");
+                            if (choices == null || choices.isEmpty()) {
+                                continue;
+                            }
+                            JsonObject choice = choices.get(0).getAsJsonObject();
+                            if (!choice.has("delta")) {
+                                continue;
+                            }
+                            JsonObject delta = choice.getAsJsonObject("delta");
+                            if (delta.has("content") && !delta.get("content").isJsonNull()) {
+                                String content = delta.get("content").getAsString();
+                                if (!content.isEmpty() && requestId == activeRequestId.get()) {
+                                    onChunk.accept(content);
                                 }
-                            } catch (Exception e) {
-                                env.error("解析 LLM 响应失败: " + line, e);
                             }
+                        } catch (Exception e) {
+                            env.error("解析 LLM 响应失败: " + line, e);
                         }
                     }
                 }
             } catch (IOException e) {
-                if (e.getMessage() != null &&
-                    (e.getMessage().contains("closed") ||
-                     e.getMessage().contains("subscription cancelled") ||
-                     e.getMessage().contains("chunked transfer encoding"))) {
-                    env.info("LLM 流被主动打断（预期行为），忽略异常");
+                if (requestId != activeRequestId.get() || isExpectedCancellation(e)) {
+                    finishReason = FinishReason.CANCELLED;
                 } else {
                     env.error("LLM 请求发生真实网络异常", e);
+                    onError.accept("LLM 网络异常: " + e.getMessage());
+                    finishReason = FinishReason.FAILED;
                 }
             } catch (InterruptedException e) {
-                if (Thread.currentThread().isInterrupted()) {
-                    env.info("LLM 请求被中断");
+                Thread.currentThread().interrupt();
+                if (requestId != activeRequestId.get()) {
+                    finishReason = FinishReason.CANCELLED;
                 } else {
                     env.error("LLM 请求失败", e);
+                    onError.accept("LLM 请求被中断");
+                    finishReason = FinishReason.FAILED;
                 }
             } finally {
                 if (currentStream != null) {
@@ -125,13 +149,24 @@ public class LlmEngine {
                     }
                     currentStream = null;
                 }
+                onFinish.accept(finishReason);
             }
-        });
+        }, "Tianshu-LLM-Stream-" + requestId);
         streamThread.setDaemon(true);
         streamThread.start();
+        return requestId;
+    }
+
+    private boolean isExpectedCancellation(IOException e) {
+        String message = e.getMessage();
+        if (message == null) return false;
+        return message.contains("closed") ||
+               message.contains("subscription cancelled") ||
+               message.contains("chunked transfer encoding");
     }
 
     public void cancelGeneration() {
+        activeRequestId.incrementAndGet();
         if (currentStream != null) {
             env.info("取消 LLM 生成");
             try {

@@ -22,6 +22,7 @@ public class TtsEngine {
     private MossTtsService mossTtsService;
     private boolean isMossEngine = false;
     private boolean isZipVoiceEngine = false;
+    private volatile boolean interrupted = false;
     private boolean initialized = false;
     private int sampleRate;
     private float speed = 1.0f;
@@ -44,6 +45,14 @@ public class TtsEngine {
 
     public void setVoiceSamplePath(Path voiceSamplePath) {
         this.voiceSamplePath = voiceSamplePath;
+    }
+
+    public void interrupt() {
+        interrupted = true;
+    }
+
+    public void resetInterrupt() {
+        interrupted = false;
     }
 
     public void initialize(String modelDir) {
@@ -146,7 +155,6 @@ public class TtsEngine {
             isMossEngine = false;
         }
     }
-
     private void applyConfig(OfflineTtsConfig ttsConfig, String modelDir) throws Exception {
         tts = new OfflineTts(ttsConfig);
         sampleRate = tts.getSampleRate();
@@ -485,13 +493,12 @@ public class TtsEngine {
     }
 
     public void synthesizeSpeech(String text, Consumer<byte[]> onAudioChunk) {
-        if (text == null || text.isBlank()) {
-            return;
-        }
         if (!initialized) {
             env.error("TTS 引擎未初始化", null);
             return;
         }
+
+        interrupted = false;
 
         if (isMossEngine) {
             synthesizeMoss(text, onAudioChunk);
@@ -512,13 +519,18 @@ public class TtsEngine {
 
         try {
             tts.generateWithCallback(text, speakerId, speed, samples -> {
+                if (interrupted) return 0;
                 byte[] pcm = floatSamplesToPcm16(samples);
                 if (pcm.length > 0) {
                     onAudioChunk.accept(pcm);
                 }
                 return 1;
             });
-            env.info("TTS 合成完成: " + text);
+            if (interrupted) {
+                env.info("TTS 合成被中断: " + text);
+            } else {
+                env.info("TTS 合成完成: " + text);
+            }
         } catch (Exception e) {
             env.error("TTS 合成失败: " + text, e);
         }
@@ -532,6 +544,8 @@ public class TtsEngine {
             env.error("TTS 引擎未初始化", null);
             return;
         }
+
+        interrupted = false;
 
         if (isMossEngine) {
             synthesizeMoss(text, onAudio);
@@ -570,12 +584,24 @@ public class TtsEngine {
         env.info("MOSS-TTS 开始合成: " + text);
 
         try {
+            if (interrupted) {
+                env.info("MOSS-TTS 合成被中断（合成前）: " + text);
+                return;
+            }
             List<List<Integer>> promptAudioCodes = null;
             if (voiceSamplePath != null && Files.exists(voiceSamplePath)) {
                 env.info("MOSS-TTS 使用参考音频: " + voiceSamplePath);
                 promptAudioCodes = mossTtsService.encodePromptAudioCodes(voiceSamplePath);
             }
+            if (interrupted) {
+                env.info("MOSS-TTS 合成被中断（编码后）: " + text);
+                return;
+            }
             float[][] channels = mossTtsService.synthesizeToWaveform(text, promptAudioCodes);
+            if (interrupted) {
+                env.info("MOSS-TTS 合成被中断: " + text);
+                return;
+            }
             byte[] pcm = floatSamplesToPcm16(channels);
             if (pcm.length > 0) {
                 onAudioChunk.accept(pcm);
@@ -608,13 +634,18 @@ public class TtsEngine {
             }
 
             tts.generateWithConfigAndCallback(text, generationConfig, samples -> {
+                if (interrupted) return 0;
                 byte[] pcm = floatSamplesToPcm16(samples);
                 if (pcm.length > 0) {
                     onAudioChunk.accept(pcm);
                 }
                 return 1;
             });
-            env.info("ZipVoice 合成完成: " + text);
+            if (interrupted) {
+                env.info("ZipVoice 合成被中断: " + text);
+            } else {
+                env.info("ZipVoice 合成完成: " + text);
+            }
         } catch (Exception e) {
             env.error("ZipVoice 合成失败: " + text, e);
         }

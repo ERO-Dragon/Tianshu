@@ -60,18 +60,7 @@ public class ModelManager {
     }
 
     public boolean isTtsModelDownloaded(TtsModelInfo info) {
-        if (info == null || info.name == null) return false;
-        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
-        Path modelDir = config.getTtsBasePath().resolve(modelDirName);
-        if (!Files.exists(modelDir) || !Files.isDirectory(modelDir)) return false;
-        try {
-            return Files.list(modelDir).anyMatch(p -> {
-                String name = p.getFileName().toString().toLowerCase();
-                return name.endsWith(".onnx") || name.endsWith(".bin");
-            });
-        } catch (IOException e) {
-            return false;
-        }
+        return checkTtsModelExists(resolveTtsModelDir(info), info);
     }
 
     public boolean isModelExists(ModelType modelType) {
@@ -79,34 +68,23 @@ public class ModelManager {
         if (modelPath == null) {
             return false;
         }
-        return Files.exists(modelPath) && Files.isDirectory(modelPath);
+        return switch (modelType) {
+            case ASR -> checkAsrModelExists(modelPath);
+            case LLM -> checkLlmModelExists(modelPath);
+            case TTS -> checkTtsModelExists(modelPath);
+        };
     }
 
     public boolean checkAsrModelExists(Path dir) {
-        if (!Files.exists(dir) || !Files.isDirectory(dir)) return false;
-        try {
-            return Files.list(dir).anyMatch(p -> p.toString().endsWith(".onnx") || p.toString().endsWith(".bin"));
-        } catch (IOException e) {
-            return false;
-        }
+        return isDirectoryWithAnySuffix(dir, ".onnx", ".bin");
     }
 
     public boolean checkLlmModelExists(Path dir) {
-        if (!Files.exists(dir) || !Files.isDirectory(dir)) return false;
-        try {
-            return Files.list(dir).anyMatch(p -> p.toString().endsWith(".gguf"));
-        } catch (IOException e) {
-            return false;
-        }
+        return isDirectoryWithAnySuffix(dir, ".gguf");
     }
 
     public boolean checkTtsModelExists(Path dir) {
-        if (!Files.exists(dir) || !Files.isDirectory(dir)) return false;
-        try {
-            return Files.list(dir).anyMatch(p -> p.toString().endsWith(".onnx") || p.toString().endsWith(".bin") || p.toString().endsWith(".gguf"));
-        } catch (IOException e) {
-            return false;
-        }
+        return checkTtsModelExists(dir, resolveTtsModelInfoByPath(dir));
     }
 
     public boolean checkPresetModelsExist(com.rheinmetal.tianshu.constant.VramTier tier) {
@@ -114,6 +92,97 @@ public class ModelManager {
         Path llmDir = config.getLlmBasePath().resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetLlmName(tier));
         Path ttsDir = config.getTtsBasePath().resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetTtsName(tier));
         return checkAsrModelExists(asrDir) && checkLlmModelExists(llmDir) && checkTtsModelExists(ttsDir);
+    }
+
+    private boolean checkTtsModelExists(Path dir, TtsModelInfo info) {
+        if (!Files.isDirectory(dir)) {
+            return false;
+        }
+        if (info == null) {
+            return isDirectoryWithAnySuffix(dir, ".onnx", ".bin", ".gguf");
+        }
+        String engineType = info.getEngineType();
+        if ("zipvoice".equals(engineType)) {
+            return Files.isRegularFile(dir.resolve("text_encoder.onnx"))
+                    && Files.isRegularFile(dir.resolve("fm_decoder.onnx"));
+        }
+        if ("moss".equals(engineType)) {
+            return containsFileNamed(dir, "browser_poc_manifest.json")
+                    || isDirectoryWithAnySuffix(dir, ".onnx", ".bin", ".gguf");
+        }
+        if (info.modelFiles != null && !info.modelFiles.isEmpty()) {
+            boolean hasAnyModelFile = info.modelFiles.stream().anyMatch(file -> Files.isRegularFile(dir.resolve(file)));
+            if (!hasAnyModelFile) {
+                return false;
+            }
+        } else if (!isDirectoryWithAnySuffix(dir, ".onnx", ".bin", ".gguf")) {
+            return false;
+        }
+        if (info.needVocoder) {
+            Path vocoderDir = dir.resolve("vocoders");
+            if (!isDirectoryWithAnySuffix(vocoderDir, ".onnx")) {
+                return false;
+            }
+        }
+        if (info.voicesFile != null && !info.voicesFile.isBlank()) {
+            if (!Files.isRegularFile(dir.resolve(info.voicesFile))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Path resolveTtsModelDir(TtsModelInfo info) {
+        if (info == null || info.name == null) {
+            return null;
+        }
+        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
+        return config.getTtsBasePath().resolve(modelDirName);
+    }
+
+    private TtsModelInfo resolveTtsModelInfoByPath(Path dir) {
+        if (dir == null || dir.getFileName() == null) {
+            return null;
+        }
+        String dirName = dir.getFileName().toString();
+        for (TtsModelInfo info : loadTtsModelCatalog()) {
+            if (info == null || info.name == null) {
+                continue;
+            }
+            if ("zipvoice".equals(info.getEngineType())) {
+                if ("ZipVoice".equalsIgnoreCase(dirName) || info.name.equalsIgnoreCase(dirName)) {
+                    return info;
+                }
+            } else if (info.name.equalsIgnoreCase(dirName)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private boolean isDirectoryWithAnySuffix(Path dir, String... suffixes) {
+        if (!Files.isDirectory(dir)) {
+            return false;
+        }
+        try (var stream = Files.list(dir)) {
+            return stream.anyMatch(path -> hasAnySuffix(path, suffixes));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean containsFileNamed(Path dir, String fileName) {
+        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve(fileName));
+    }
+
+    private boolean hasAnySuffix(Path path, String... suffixes) {
+        String lower = path.getFileName().toString().toLowerCase();
+        for (String suffix : suffixes) {
+            if (lower.endsWith(suffix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Path getModelPath(ModelType modelType) {

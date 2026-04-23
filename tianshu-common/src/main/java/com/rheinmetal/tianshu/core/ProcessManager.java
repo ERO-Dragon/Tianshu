@@ -4,9 +4,13 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -115,7 +119,7 @@ public class ProcessManager {
         int timeout = 60;
         long startTime = System.currentTimeMillis();
         while (System.currentTimeMillis() - startTime < timeout * 1000L) {
-            if (isServiceReady(port)) {
+            if (isLlmServiceReady(port)) {
                 return true;
             }
             try {
@@ -128,10 +132,31 @@ public class ProcessManager {
         return false;
     }
 
-    private boolean isServiceReady(int port) {
+    private boolean isPortOpen(int port) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("127.0.0.1", port), 1000);
             return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean isLlmServiceReady(int port) {
+        if (!isPortOpen(port)) {
+            return false;
+        }
+        try {
+            URL url = new URL("http://127.0.0.1:" + port + "/health");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(1000);
+            connection.setReadTimeout(1000);
+            connection.setRequestMethod("GET");
+            int code = connection.getResponseCode();
+            if (code >= 200 && code < 300) {
+                return true;
+            }
+            env.warn("LLM 健康检查返回状态码: " + code);
+            return false;
         } catch (IOException e) {
             return false;
         }
@@ -142,6 +167,13 @@ public class ProcessManager {
         return process != null && process.isAlive();
     }
 
+    public boolean isLlmHealthy() {
+        if (!isServiceRunning(ServiceType.LLM)) {
+            return false;
+        }
+        return isLlmServiceReady(config.getLlmPort());
+    }
+
     public Process getServiceProcess(ServiceType serviceType) {
         return processes.get(serviceType);
     }
@@ -149,7 +181,10 @@ public class ProcessManager {
     public void startLlmServer() {
         env.info("启动 JavaLlamaServer (独立 JVM 进程)");
 
-        killOrphanedLlmProcess();
+        if (!prepareLlmPort()) {
+            env.error("LLM 端口不可用，取消启动", null);
+            return;
+        }
 
         if (isServiceRunning(ServiceType.LLM)) {
             env.info("检测到上一次 LLM 服务未完全停止，强制清理...");
@@ -221,122 +256,166 @@ public class ProcessManager {
         }
     }
 
-    private void killOrphanedLlmProcess() {
+    private boolean prepareLlmPort() {
         int port = config.getLlmPort();
-        if (!isServiceReady(port)) {
-            return;
+        if (!isPortOpen(port)) {
+            return true;
         }
+        env.warn("检测到 LLM 端口 " + port + " 已被占用，开始保守清理检查...");
+        if (!killOrphanedLlmProcess()) {
+            return false;
+        }
+        for (int i = 0; i < 10; i++) {
+            if (!isPortOpen(port)) {
+                return true;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return !isPortOpen(port);
+    }
 
-        env.warn("检测到 LLM 端口 " + port + " 被占用，尝试查找并清理残留进程...");
+    private boolean killOrphanedLlmProcess() {
+        int port = config.getLlmPort();
+        if (!isPortOpen(port)) {
+            return true;
+        }
 
         long myPid = ProcessHandle.current().pid();
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        boolean killedAny = false;
 
         try {
             if (isWindows) {
-                killOrphanedOnWindows(port, myPid);
+                killedAny = killOrphanedOnWindows(port, myPid);
             } else {
-                killOrphanedOnUnix(port, myPid);
+                killedAny = killOrphanedOnUnix(port, myPid);
             }
         } catch (Exception e) {
             env.error("检测残留 LLM 进程失败", e);
+            return false;
         }
 
-        if (isServiceReady(port)) {
-            env.error("LLM 端口 " + port + " 仍被占用，可能启动失败", null);
-        } else {
-            env.info("残留进程已清理，端口 " + port + " 已释放");
+        if (isPortOpen(port)) {
+            if (killedAny) {
+                env.error("LLM 端口 " + port + " 仍被占用，停止继续启动以避免误杀其他服务", null);
+            } else {
+                env.warn("LLM 端口 " + port + " 被进程占用，未执行清理");
+            }
+            return false;
         }
 
-        for (int i = 0; i < 10; i++) {
-            if (!isServiceReady(port)) break;
-            try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
-        }
+        env.info("残留进程已清理，端口 " + port + " 已释放");
+        return true;
     }
 
-    private void killOrphanedOnWindows(int port, long myPid) throws Exception {
+    private boolean killOrphanedOnWindows(int port, long myPid) throws Exception {
+        boolean killedAny = false;
         ProcessBuilder pb = new ProcessBuilder("netstat", "-ano");
         pb.redirectErrorStream(true);
         Process netstat = pb.start();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(netstat.getInputStream()));
-        String line;
-        while ((line = reader.readLine()) != null) {
-            String lower = line.toLowerCase();
-            if (!lower.contains("listening") || !lower.contains(":" + port + " ")) continue;
-            String[] parts = line.trim().split("\\s+");
-            if (parts.length < 5) continue;
-            String pidStr = parts[parts.length - 1];
-            long pid;
-            try {
-                pid = Long.parseLong(pidStr);
-            } catch (NumberFormatException e) {
-                continue;
-            }
-            if (pid <= 0 || pid == myPid) continue;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(netstat.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String lower = line.toLowerCase();
+                if (!lower.contains("listening") || !lower.contains(":" + port + " ")) continue;
+                String[] parts = line.trim().split("\\s+");
+                if (parts.length < 5) continue;
+                String pidStr = parts[parts.length - 1];
+                long pid;
+                try {
+                    pid = Long.parseLong(pidStr);
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                if (pid <= 0 || pid == myPid) continue;
 
-            env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
+                env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
 
-            if (!isJavaProcess(pid)) {
-                env.warn("PID " + pid + " 非 Java 进程，跳过终止（端口可能被其他程序占用）");
-                continue;
-            }
+                if (!isOwnedLlmProcess(pid, port)) {
+                    env.warn("PID " + pid + " 不是可确认的 LLM 残留进程，跳过终止");
+                    continue;
+                }
 
-            try {
-                ProcessHandle.of(pid).ifPresent(ph -> {
-                    env.info("正在终止残留 JVM 进程 PID: " + pid);
-                    ph.destroyForcibly();
-                });
-                Thread.sleep(1000);
-            } catch (Exception e) {
-                env.error("终止进程 PID " + pid + " 失败", e);
+                try {
+                    ProcessHandle.of(pid).ifPresent(ph -> {
+                        env.info("正在终止残留 JVM 进程 PID: " + pid);
+                        ph.destroyForcibly();
+                    });
+                    killedAny = true;
+                    Thread.sleep(1000);
+                } catch (Exception e) {
+                    env.error("终止进程 PID " + pid + " 失败", e);
+                }
             }
         }
         netstat.waitFor(5, TimeUnit.SECONDS);
         netstat.destroy();
+        return killedAny;
     }
 
-    private void killOrphanedOnUnix(int port, long myPid) throws Exception {
+    private boolean killOrphanedOnUnix(int port, long myPid) throws Exception {
+        boolean killedAny = false;
         ProcessBuilder pb = new ProcessBuilder("lsof", "-i", ":" + port, "-t");
         pb.redirectErrorStream(true);
         Process lsof = pb.start();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(lsof.getInputStream()));
-        String line;
-        while ((line = reader.readLine()) != null) {
-            long pid;
-            try {
-                pid = Long.parseLong(line.trim());
-            } catch (NumberFormatException e) {
-                continue;
-            }
-            if (pid <= 0 || pid == myPid) continue;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(lsof.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                long pid;
+                try {
+                    pid = Long.parseLong(line.trim());
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                if (pid <= 0 || pid == myPid) continue;
 
-            env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
+                env.info("发现占用端口 " + port + " 的进程 PID: " + pid);
 
-            if (!isJavaProcess(pid)) {
-                env.warn("PID " + pid + " 非 Java 进程，跳过终止（端口可能被其他程序占用）");
-                continue;
-            }
+                if (!isOwnedLlmProcess(pid, port)) {
+                    env.warn("PID " + pid + " 不是可确认的 LLM 残留进程，跳过终止");
+                    continue;
+                }
 
-            try {
-                ProcessHandle.of(pid).ifPresent(ph -> {
-                    env.info("正在终止残留 JVM 进程 PID: " + pid);
-                    ph.destroyForcibly();
-                });
-                Thread.sleep(1000);
-            } catch (Exception e) {
-                env.error("终止进程 PID " + pid + " 失败", e);
+                try {
+                    ProcessHandle.of(pid).ifPresent(ph -> {
+                        env.info("正在终止残留 JVM 进程 PID: " + pid);
+                        ph.destroyForcibly();
+                    });
+                    killedAny = true;
+                    Thread.sleep(1000);
+                } catch (Exception e) {
+                    env.error("终止进程 PID " + pid + " 失败", e);
+                }
             }
         }
         lsof.waitFor(5, TimeUnit.SECONDS);
         lsof.destroy();
+        return killedAny;
     }
 
-    private boolean isJavaProcess(long pid) {
+    private boolean isOwnedLlmProcess(long pid, int port) {
         try {
-            Optional<String> cmd = ProcessHandle.of(pid).flatMap(ph -> ph.info().command());
-            if (cmd.isEmpty()) return false;
-            String cmdStr = cmd.get().toLowerCase();
-            return cmdStr.contains("java") || cmdStr.contains("javaw");
+            Optional<ProcessHandle> handleOptional = ProcessHandle.of(pid);
+            if (handleOptional.isEmpty()) {
+                return false;
+            }
+            ProcessHandle handle = handleOptional.get();
+            ProcessHandle.Info info = handle.info();
+            String command = info.command().orElse("").toLowerCase();
+            if (!(command.contains("java") || command.contains("javaw"))) {
+                return false;
+            }
+            String[] arguments = info.arguments().orElse(new String[0]);
+            String joinedArguments = String.join(" ", arguments).toLowerCase();
+            return joinedArguments.contains("com.javallamaserver.core.serverapp")
+                    || joinedArguments.contains("javallamaserver")
+                    || joinedArguments.contains("--port " + port)
+                    || joinedArguments.contains("--port=" + port);
         } catch (Exception e) {
             return false;
         }

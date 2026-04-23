@@ -5,6 +5,11 @@ public class LlmChunkEvent extends TianshuEvent {
     private final int turnId;
 
     public LlmChunkEvent(String text, int turnId) {
+        this(text, turnId, 0L);
+    }
+
+    public LlmChunkEvent(String text, int turnId, long sessionId) {
+        super(sessionId);
         this.text = text;
         this.turnId = turnId;
     }

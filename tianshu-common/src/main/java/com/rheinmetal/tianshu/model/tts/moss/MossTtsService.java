@@ -343,7 +343,12 @@ public class MossTtsService implements AutoCloseable {
                 List<Integer> frame = new ArrayList<>();
 
                 if (sessions.containsKey("local_cached_step")) {
-                    frame = generateFrameWithCachedStep(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
+                    try {
+                        frame = generateFrameWithCachedStep(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
+                    } catch (Exception e) {
+                        env.warn("MOSS local_cached_step 失败，回退到 local_decoder: " + e.getMessage());
+                        frame = generateFrameWithLocalDecoder(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
+                    }
                     if (frame.isEmpty()) {
                         break;
                     }
@@ -542,6 +547,10 @@ public class MossTtsService implements AutoCloseable {
         int localHeads = modelConfig.get("local_heads").getAsInt();
         int localHeadDim = modelConfig.get("local_head_dim").getAsInt();
 
+        if (localHeads <= 0 || localHeadDim <= 0) {
+            throw new IllegalStateException("MOSS local cache 配置非法: localHeads=" + localHeads + ", localHeadDim=" + localHeadDim);
+        }
+
         Map<String, OnnxTensor> result = new HashMap<>();
         for (int layerIndex = 0; layerIndex < localLayers; layerIndex++) {
             float[][][][] empty = new float[1][0][localHeads][localHeadDim];
@@ -578,6 +587,12 @@ public class MossTtsService implements AutoCloseable {
 
     public float[][] synthesizeToWaveform(String text, List<List<Integer>> promptAudioCodes) throws Exception {
         int[] textTokenIds = encodeText(text);
+        
+        // 3. 核心防御：如果 Tokenizer 转换出来是空的，也别往下走
+        if (textTokenIds == null || textTokenIds.length == 0) {
+            return new float[][]{new float[0]};
+        }
+
         RequestRows requestRows = buildVoiceCloneRequestRows(promptAudioCodes, textTokenIds);
         List<List<Integer>> generatedFrames = generateAudioFrames(requestRows);
         DecodeResult decodeResult = decodeFullAudio(generatedFrames);

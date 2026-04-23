@@ -5,13 +5,12 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.constant.ModelPresets;
-import com.rheinmetal.tianshu.constant.ModelUrls;
 import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.Engine.AsrEngine;
 import com.rheinmetal.tianshu.core.Engine.TtsEngine;
+import com.rheinmetal.tianshu.event.InterruptEvent;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
-import com.rheinmetal.tianshu.model.ModelDownloader;
 import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
@@ -31,12 +30,9 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -44,23 +40,77 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 
 public class TianshuCoreManager {
 
+    public interface DownloadProgressCallback {
+        void onProgress(String label, int percent);
+        void onComplete();
+        void onError(String message);
+    }
+
+    public interface PreviewAsrCallback {
+        void onReady();
+        void onResult(String text);
+        void onError(String message);
+        void onFinish();
+    }
+
+    public interface PreviewTtsCallback {
+        void onReady();
+        void onPlaying();
+        void onError(String message);
+        void onFinish();
+    }
+
+    public enum EnginePhase {
+        IDLE,
+        INITIALIZING,
+        PARTIALLY_READY,
+        FULLY_READY,
+        RESTARTING,
+        DESTROYED
+    }
+
     public static class State {
         private volatile boolean asrReady = false;
         private volatile boolean llmReady = false;
         private volatile boolean ttsReady = false;
+        private volatile EnginePhase phase = EnginePhase.IDLE;
 
         public boolean isAsrReady() { return asrReady; }
         public boolean isLlmReady() { return llmReady; }
         public boolean isTtsReady() { return ttsReady; }
+        public EnginePhase getPhase() { return phase; }
 
-        void setAsrReady(boolean v) { asrReady = v; }
-        void setLlmReady(boolean v) { llmReady = v; }
-        void setTtsReady(boolean v) { ttsReady = v; }
+        public boolean isAnyReady() { return asrReady || llmReady || ttsReady; }
+        public boolean isAllReady() { return asrReady && llmReady && ttsReady; }
+
+        void setAsrReady(boolean v) {
+            asrReady = v;
+            refreshPhase();
+        }
+        void setLlmReady(boolean v) {
+            llmReady = v;
+            refreshPhase();
+        }
+        void setTtsReady(boolean v) {
+            ttsReady = v;
+            refreshPhase();
+        }
+
+        void setPhase(EnginePhase p) { phase = p; }
 
         void reset() {
             asrReady = false;
             llmReady = false;
             ttsReady = false;
+            phase = EnginePhase.IDLE;
+        }
+
+        private void refreshPhase() {
+            if (asrReady && llmReady && ttsReady) {
+                phase = EnginePhase.FULLY_READY;
+            } else if (asrReady || llmReady || ttsReady) {
+                phase = EnginePhase.PARTIALLY_READY;
+            }
         }
     }
 
@@ -95,7 +145,7 @@ public class TianshuCoreManager {
         this.envSetupManager = new EnvSetupManager(env, nativeLibBridge);
         this.processManager = new ProcessManager(env, config, nativeLibBridge, () -> {
             state.setLlmReady(true);
-            env.displayMessageToPlayer("\u00a7b[\u5929\u6781] \u00a7f\u4e2d\u67a2\u6838\u5fc3\u5df2\u5c31\u7eea");
+            env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f中枢核心已就绪"));
         });
         this.threadPool = new TianshuThreadPool(env);
         this.modelManager = new ModelManager(config);
@@ -126,16 +176,72 @@ public class TianshuCoreManager {
     }
 
     public boolean isEngineReady() {
-        return state.isAsrReady() && state.isLlmReady() && state.isTtsReady();
+        return state.isAllReady() && initialized;
     }
 
     public boolean isInitialized() {
         return initialized;
     }
 
+    public boolean isAsrReady() {
+        return state.isAsrReady();
+    }
+
+    public boolean isLlmReady() {
+        return state.isLlmReady();
+    }
+
+    public boolean isTtsReady() {
+        return state.isTtsReady();
+    }
+
+    public EnginePhase getEnginePhase() {
+        return state.getPhase();
+    }
+
+    public boolean canAcceptVoiceInput() {
+        return state.isAsrReady() && initialized && state.getPhase() != EnginePhase.RESTARTING;
+    }
+
+    public boolean canProcessConversation() {
+        if (!state.isAsrReady() || !state.isLlmReady() || !initialized || state.getPhase() == EnginePhase.RESTARTING) {
+            return false;
+        }
+        if (state.isLlmReady() && !processManager.isLlmHealthy()) {
+            state.setLlmReady(false);
+            return false;
+        }
+        return true;
+    }
+
+    public boolean canPlayTts() {
+        return state.isTtsReady() && initialized && state.getPhase() != EnginePhase.RESTARTING;
+    }
+
+    public boolean isLlmHealthy() {
+        return processManager.isLlmHealthy();
+    }
+
+    public boolean isDownloadPaused() {
+        return downloadPaused;
+    }
+
+    public void pauseDownload() {
+        downloadPaused = true;
+    }
+
+    public void resumeDownload() {
+        downloadPaused = false;
+    }
+
+    public void cancelDownload() {
+        downloadCancelled = true;
+        downloadPaused = false;
+    }
+
     public void tryInitEngine() {
         if (state.isAsrReady()) {
-            env.info("引擎已就绪，跳过初始化");
+            env.info("ASR 引擎已就绪，跳过初始化");
             return;
         }
 
@@ -149,13 +255,13 @@ public class TianshuCoreManager {
             File originalDir = new File(originalModelPath);
 
             if (!originalDir.exists() || !originalDir.isDirectory()) {
-                env.info("模型目录不存在，静默等待");
+                env.info("ASR 模型目录不存在，静默等待");
                 return;
             }
 
             File tokensFile = new File(originalDir, "tokens.txt");
             if (!tokensFile.exists() || !tokensFile.isFile()) {
-                env.info("模型文件不完整，静默等待");
+                env.info("ASR 模型文件不完整，静默等待");
                 return;
             }
 
@@ -169,10 +275,10 @@ public class TianshuCoreManager {
             asrEngine.initialize(safeDir.getAbsolutePath());
 
             state.setAsrReady(true);
-            env.info("引擎初始化成功");
-            env.displayMessageToPlayer("\u00a7b[\u5929\u6781] \u00a7f\u6001\u52bf\u611f\u77e5\u5df2\u5c31\u7eea");
+            env.info("ASR 引擎初始化成功");
+            env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f态势感知已就绪"));
         } catch (Throwable t) {
-            env.error("引擎初始化失败", t);
+            env.error("ASR 引擎初始化失败", t);
         }
     }
 
@@ -186,6 +292,8 @@ public class TianshuCoreManager {
 
         try {
             env.info("开始初始化 Workers...");
+            state.setPhase(EnginePhase.INITIALIZING);
+            state.setLlmReady(false);
 
             asrWorker = new AsrWorker(audioBridge, this, env, config);
             llmWorker = new LlmWorker(this, env, config);
@@ -198,7 +306,7 @@ public class TianshuCoreManager {
             ttsWorker.initEngine();
             if (ttsWorker.isEngineInitialized()) {
                 state.setTtsReady(true);
-                env.displayMessageToPlayer("\u00a7b[\u5929\u6781] \u00a7f\u7075\u97f3\u5171\u9e23\u5df2\u5c31\u7eea");
+                env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f灵音共鸣已就绪"));
             }
 
             new Thread(() -> processManager.startLlmServer(), "LLM-Process-Starter").start();
@@ -208,11 +316,250 @@ public class TianshuCoreManager {
         } catch (Exception e) {
             env.error("Workers 初始化失败", e);
             initialized = false;
+            state.setPhase(EnginePhase.IDLE);
         }
+    }
+
+    public void restartEngineAsync(boolean llmChanged, Runnable onComplete) {
+        if (isRestarting) {
+            env.warn("引擎正在重启，忽略重复请求");
+            return;
+        }
+        isRestarting = true;
+        state.setPhase(EnginePhase.RESTARTING);
+        new Thread(() -> {
+            try {
+                env.info("开始异步重启引擎，llmChanged=" + llmChanged);
+                long restartSession = eventBus.beginNewSession();
+                eventBus.clearAllQueues();
+                eventBus.publishEvent(new InterruptEvent(restartSession));
+                audioBridge.stopRecording();
+                audioBridge.stopStreamRecording();
+                audioBridge.stopTtsPlayback();
+                if (ttsWorker != null) {
+                    ttsWorker.interruptSynthesis();
+                }
+
+                if (llmChanged) {
+                    state.setLlmReady(false);
+                    processManager.stopService(ProcessManager.ServiceType.LLM);
+                    processManager.startLlmServer();
+                }
+
+                state.setTtsReady(false);
+                if (ttsWorker != null) {
+                    ttsWorker.shutdownEngine();
+                    ttsWorker.initEngine();
+                    if (ttsWorker.isEngineInitialized()) {
+                        state.setTtsReady(true);
+                    }
+                }
+
+                if (!llmChanged && !state.isLlmReady()) {
+                    env.info("LLM 未就绪且未变更，尝试重新启动 LLM 服务");
+                    processManager.startLlmServer();
+                }
+            } catch (Exception e) {
+                env.error("异步重启引擎失败", e);
+            } finally {
+                isRestarting = false;
+                state.refreshPhase();
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            }
+        }, "Tianshu-Restart-Engine").start();
+    }
+
+    public long interruptOngoingProcessing() {
+        env.info("打断正在进行的 LLM/TTS 处理");
+        audioBridge.stopTtsPlayback();
+        if (ttsWorker != null) ttsWorker.interruptSynthesis();
+        return eventBus.interruptLlmAndTts();
+    }
+
+    public TtsModelInfo resolveCurrentTtsModelInfo() {
+        Path modelPath = config.getTtsModelPath();
+        if (modelPath == null || modelPath.getFileName() == null) {
+            return null;
+        }
+        String dirName = modelPath.getFileName().toString();
+        List<TtsModelInfo> matchedZipVoice = new ArrayList<>();
+        for (TtsModelInfo info : ModelManager.loadTtsModelCatalog()) {
+            if (info == null || info.name == null) {
+                continue;
+            }
+            if (info.name.equalsIgnoreCase(dirName) || modelPath.endsWith(info.name)) {
+                return info;
+            }
+            if ("zipvoice".equals(info.getEngineType())) {
+                matchedZipVoice.add(info);
+            }
+        }
+        if ("ZipVoice".equalsIgnoreCase(dirName)) {
+            for (TtsModelInfo info : matchedZipVoice) {
+                if ("ZipVoice-int8".equalsIgnoreCase(info.name)) {
+                    return info;
+                }
+            }
+            return matchedZipVoice.isEmpty() ? null : matchedZipVoice.get(0);
+        }
+        return null;
+    }
+
+    public Path resolveCurrentTtsModelDir() {
+        TtsModelInfo info = resolveCurrentTtsModelInfo();
+        if (info != null) {
+            return resolveTtsModelDir(info);
+        }
+        return config.getTtsModelPath();
+    }
+
+    public boolean hasTtsModelContent(TtsModelInfo info) {
+        Path modelDir = resolveTtsModelDir(info);
+        if (modelDir == null || !Files.exists(modelDir)) {
+            return false;
+        }
+        try (var stream = Files.list(modelDir)) {
+            return stream.findAny().isPresent();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    public void deleteTtsModel(TtsModelInfo info) {
+        Path modelDir = resolveTtsModelDir(info);
+        if (modelDir == null || !Files.exists(modelDir)) {
+            return;
+        }
+        try {
+            deleteRecursively(modelDir);
+        } catch (IOException e) {
+            env.error("删除 TTS 模型失败", e);
+        }
+    }
+
+    public void downloadTtsModel(TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
+        if (info == null) {
+            callback.onError("TTS 模型信息为空");
+            return;
+        }
+        downloadCancelled = false;
+        downloadPaused = false;
+        Thread.ofVirtual().start(() -> {
+            try {
+                Path modelDir = resolveTtsModelDir(info);
+                if (modelDir == null) {
+                    callback.onError("无法解析模型目录");
+                    return;
+                }
+                if (info.downloadUrl != null && !info.downloadUrl.isBlank()) {
+                    downloadArchiveTtsModel(info, modelDir, proxyUrl, callback);
+                } else if ("moss".equals(info.getEngineType())) {
+                    downloadMossModel(modelDir, callback);
+                } else {
+                    downloadSherpaModel(info, modelDir, callback);
+                }
+                ModelSettings.saveTtsSettings(modelDir, ModelSettings.loadTtsSettings(modelDir));
+                callback.onProgress("完成", 100);
+                callback.onComplete();
+            } catch (Exception e) {
+                callback.onError(e.getMessage() != null ? e.getMessage() : "下载失败");
+            }
+        });
+    }
+
+    public void downloadPresetModels(VramTier tier, DownloadProgressCallback callback) {
+        if (tier == VramTier.CUSTOM) {
+            callback.onError("自定义预设不支持一键下载");
+            return;
+        }
+        downloadCancelled = false;
+        downloadPaused = false;
+        Thread.ofVirtual().start(() -> {
+            try {
+                HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
+
+                callback.onProgress("ASR:", 5);
+                Path asrDir = config.getAsrBasePath().resolve(ModelPresets.getPresetAsrName(tier));
+                downloader.downloadModelFiles(ModelPresets.getPresetAsrName(tier).equals("ParaformerOnnx")
+                        ? "csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14"
+                        : "csukuangfj/sherpa-onnx-zipformer-multi-zh-hans-2023-10-24",
+                        asrDir, "main", true, 3);
+                callback.onProgress("ASR:", 100);
+
+                callback.onProgress("LLM:", 5);
+                Path llmDir = config.getLlmBasePath().resolve(ModelPresets.getPresetLlmName(tier));
+                downloader.downloadModelFiles(ModelPresets.getPresetTtsModelId(tier).startsWith("OpenMOSS")
+                        ? "csukuangfj/sherpa-onnx-vits-zh-hf-keqing"
+                        : ModelPresets.getPresetTtsModelId(tier),
+                        llmDir, "main", true, 3);
+                callback.onProgress("LLM:", 100);
+
+                callback.onProgress("TTS:", 5);
+                String ttsName = ModelPresets.getPresetTtsName(tier);
+                Path ttsDir = config.getTtsBasePath().resolve(ttsName);
+                if (ttsName.contains("MOSS")) {
+                    downloader.downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", ttsDir, "main", true, 3);
+                    downloader.downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", ttsDir, "main", true, 3);
+                } else {
+                    downloader.downloadModelFiles(ModelPresets.getPresetTtsModelId(tier), ttsDir, "main", true, 3);
+                }
+                callback.onProgress("TTS:", 100);
+
+                callback.onComplete();
+            } catch (Exception e) {
+                callback.onError(e.getMessage() != null ? e.getMessage() : "预设模型下载失败");
+            }
+        });
+    }
+
+    public void openVoiceLibraryFolder() {
+        try {
+            Path dir = config.getVoiceLibraryPath();
+            Files.createDirectories(dir);
+            env.openFolder(dir);
+        } catch (Exception e) {
+            env.error("打开音色库目录失败", e);
+        }
+    }
+
+    public List<String> listVoiceSamples() {
+        Path voiceDir = config.getVoiceLibraryPath();
+        if (!Files.isDirectory(voiceDir)) {
+            return Collections.emptyList();
+        }
+        try (var stream = Files.list(voiceDir)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> {
+                        String lower = name.toLowerCase();
+                        return lower.endsWith(".wav") || lower.endsWith(".mp3") || lower.endsWith(".flac");
+                    })
+                    .sorted(String::compareToIgnoreCase)
+                    .toList();
+        } catch (IOException e) {
+            return Collections.emptyList();
+        }
+    }
+
+    public void previewAsr(PreviewAsrCallback callback) {
+        callback.onError("ASR 试听暂不可用");
+        callback.onFinish();
+    }
+
+    public void previewTts(String text, float speed, TtsModelInfo info, PreviewTtsCallback callback) {
+        callback.onError("TTS 试听暂不可用");
+        callback.onFinish();
     }
 
     public void destroy() {
         env.info("核心管理器：销毁全部资源");
+
+        long stoppedSession = eventBus.beginNewSession();
+        eventBus.clearAllQueues();
+        eventBus.publishEvent(new InterruptEvent(stoppedSession));
 
         if (asrWorker != null) asrWorker.stop();
         if (llmWorker != null) llmWorker.stop();
@@ -227,6 +574,7 @@ public class TianshuCoreManager {
 
         eventBus.clearAllQueues();
         state.reset();
+        state.setPhase(EnginePhase.DESTROYED);
         initialized = false;
     }
 
@@ -234,11 +582,13 @@ public class TianshuCoreManager {
         env.info("环境配置完成，尝试初始化引擎");
         reloadNatives();
         tryInitEngine();
+        initWorkers();
     }
 
     public void onModelDownloadFinished() {
         env.info("模型下载完成，尝试初始化引擎");
         tryInitEngine();
+        initWorkers();
     }
 
     public void reloadNatives() {
@@ -251,644 +601,199 @@ public class TianshuCoreManager {
         }
     }
 
-    public interface PreviewAsrCallback {
-        void onReady();
-        void onResult(String text);
-        void onError(String message);
-        void onFinish();
-    }
-
-    public void previewAsr(PreviewAsrCallback callback) {
-        new Thread(() -> {
-            boolean wasStreaming = asrWorker != null && asrWorker.isStreaming();
-            eventBus.publishEvent(new com.rheinmetal.tianshu.event.StopStreamRecordingEvent());
-
-            AsrEngine previewEngine = new AsrEngine(env);
-            try {
-                Thread.sleep(300);
-                Path modelPath = config.getAsrModelPath();
-                previewEngine.initialize(modelPath.toString());
-                callback.onReady();
-                audioBridge.startRecording();
-                Thread.sleep(5000);
-                byte[] audioData = audioBridge.stopRecording();
-                if (audioData == null || audioData.length == 0) {
-                    callback.onError("未录到有效音频");
-                    return;
-                }
-                String result = previewEngine.recognizeComplete(audioData);
-                callback.onResult((result == null || result.isBlank()) ? "未识别到内容" : result);
-            } catch (Throwable t) {
-                env.error("ASR 试听失败", t);
-                try { audioBridge.stopRecording(); } catch (Throwable ignored) {}
-                callback.onError("试听失败，请检查模型与麦克风");
-            } finally {
-                try { previewEngine.shutdown(); } catch (Throwable ignored) {}
-                if (wasStreaming) {
-                    eventBus.publishEvent(new com.rheinmetal.tianshu.event.StartStreamRecordingEvent());
-                }
-                callback.onFinish();
-            }
-        }, "Tianshu-ASR-Preview").start();
-    }
-
-    public interface PreviewTtsCallback {
-        void onReady();
-        void onPlaying();
-        void onError(String message);
-        void onFinish();
-    }
-
-    public void previewTts(String text, float speed, TtsModelInfo info, PreviewTtsCallback callback) {
-        new Thread(() -> {
-            TtsEngine previewEngine = new TtsEngine(env, config);
-            try {
-                TtsModelInfo resolvedInfo = info != null ? info : resolveCurrentTtsModelInfo();
-                Path modelPath = resolveTtsPhysicalModelPath(resolvedInfo);
-                if (modelPath == null) modelPath = config.getTtsModelPath();
-                if (modelPath == null || !Files.exists(modelPath)) {
-                    callback.onError("模型目录不存在，请先下载模型");
-                    return;
-                }
-                if (resolvedInfo != null) {
-                    String vocoderPath = resolveVocoderPath(modelPath);
-                    if (resolvedInfo.needVocoder && vocoderPath != null) {
-                        previewEngine.initialize(modelPath.toString(), resolvedInfo, vocoderPath);
-                    } else {
-                        previewEngine.initialize(modelPath.toString(), resolvedInfo);
-                    }
-                } else {
-                    previewEngine.initialize(modelPath.toString());
-                }
-                if (!previewEngine.isInitialized()) {
-                    callback.onError("模型初始化失败，请检查模型文件是否完整");
-                    return;
-                }
-                callback.onReady();
-                previewEngine.setSpeed(speed);
-                if (resolvedInfo != null && resolvedInfo.supportsVoiceClone()) {
-                    Path voiceSample = resolveEffectiveVoiceSample(resolvedInfo, modelPath);
-                    previewEngine.setVoiceSamplePath(voiceSample);
-                }
-                audioBridge.startTtsPlayback(previewEngine.getSampleRate());
-                Thread.sleep(120);
-                previewEngine.synthesizeSpeech(text, audioBridge::feedTtsAudio);
-                audioBridge.stopTtsPlayback();
-                callback.onPlaying();
-            } catch (Throwable t) {
-                env.error("TTS 试听失败", t);
-                try { audioBridge.stopTtsPlayback(); } catch (Throwable ignored) {}
-                callback.onError("试听失败: " + t.getMessage());
-            } finally {
-                try { previewEngine.shutdown(); } catch (Throwable ignored) {}
-                callback.onFinish();
-            }
-        }, "Tianshu-TTS-Preview").start();
-    }
-
-    public interface DownloadProgressCallback {
-        void onProgress(String label, int percent);
-        void onComplete();
-        void onError(String message);
-    }
-
-    public void cancelDownload() {
-        downloadCancelled = true;
-        downloadPaused = false;
-    }
-
-    public void pauseDownload() {
-        downloadPaused = true;
-    }
-
-    public void resumeDownload() {
-        downloadPaused = false;
-    }
-
-    public boolean isDownloadPaused() {
-        return downloadPaused;
-    }
-
-    private void checkDownloadState() throws Exception {
-        while (downloadPaused && !downloadCancelled) {
-            Thread.sleep(200);
+    private Path resolveTtsModelDir(TtsModelInfo info) {
+        if (info == null || info.name == null) {
+            return null;
         }
-        if (downloadCancelled) {
-            throw new Exception("下载已取消");
-        }
-    }
-
-    public void downloadPresetModels(VramTier tier, DownloadProgressCallback callback) {
-        List<String> asrUrls = switch (tier) {
-            case LIGHT -> ModelUrls.ASR_LIGHT_URLS;
-            case STANDARD -> ModelUrls.ASR_STANDARD_URLS;
-            case DELUXE -> ModelUrls.ASR_DELUXE_URLS;
-            default -> ModelUrls.ASR_STANDARD_URLS;
-        };
-        String llmUrl = switch (tier) {
-            case LIGHT -> ModelUrls.LLM_LIGHT_URL;
-            case STANDARD -> ModelUrls.LLM_STANDARD_URL;
-            case DELUXE -> ModelUrls.LLM_DELUXE_URL;
-            default -> ModelUrls.LLM_STANDARD_URL;
-        };
-
-        if (asrUrls.stream().anyMatch(u -> u.contains("example.com"))
-                || llmUrl.contains("example.com")
-                || asrUrls.isEmpty() || llmUrl.isEmpty()) {
-            callback.onError("模型下载链接未配置");
-            return;
-        }
-
-        String ttsModelId = ModelPresets.getPresetTtsModelId(tier);
-        TtsModelInfo ttsInfo = findTtsModelById(ttsModelId);
-        if (ttsInfo == null) {
-            callback.onError("未找到预设TTS模型: " + ttsModelId);
-            return;
-        }
-
-        ArrayDeque<Map.Entry<String, Path>> queue = new ArrayDeque<>();
-        Path asrDir = config.getAsrModelPath();
-        for (String url : asrUrls) addDownloadTask(queue, url, asrDir);
-        addDownloadTask(queue, llmUrl, config.getLlmModelPath());
-
-        if (!queue.isEmpty()) {
-            DownloadProgressCallback ttsCallback = new DownloadProgressCallback() {
-                @Override public void onProgress(String label, int percent) { callback.onProgress(label, percent); }
-                @Override public void onError(String message) { callback.onError(message); }
-                @Override public void onComplete() { callback.onComplete(); }
-            };
-            executeDownloadQueue(queue, new DownloadProgressCallback() {
-                @Override public void onProgress(String label, int percent) { callback.onProgress(label, percent); }
-                @Override public void onError(String message) { callback.onError(message); }
-                @Override public void onComplete() {
-                    downloadTtsModel(ttsInfo, ttsCallback);
-                }
-            });
-        } else {
-            downloadTtsModel(ttsInfo, callback);
-        }
-    }
-
-    private TtsModelInfo findTtsModelById(String modelId) {
-        List<TtsModelInfo> catalog = ModelManager.loadTtsModelCatalog();
-        for (TtsModelInfo info : catalog) {
-            if (modelId.equals(info.id)) return info;
-        }
-        return null;
-    }
-
-    private void addDownloadTask(ArrayDeque<Map.Entry<String, Path>> queue, String url, Path baseDir) {
-        try {
-            String fileName = new java.net.URI(url).getPath().substring(new java.net.URI(url).getPath().lastIndexOf('/') + 1);
-            Path filePath = baseDir.resolve(fileName);
-            if (!Files.exists(filePath)) {
-                queue.add(Map.entry(url, filePath));
-            }
-        } catch (Exception e) {
-            // skip invalid url
-        }
-    }
-
-    private void executeDownloadQueue(ArrayDeque<Map.Entry<String, Path>> queue, DownloadProgressCallback callback) {
-        if (queue.isEmpty()) {
-            callback.onComplete();
-            return;
-        }
-        Map.Entry<String, Path> task = queue.poll();
-        String url = task.getKey();
-        Path filePath = task.getValue();
-
-        String label;
-        if (filePath.startsWith(config.getAsrModelPath())) {
-            label = "ASR:";
-        } else if (filePath.startsWith(config.getLlmModelPath())) {
-            label = "LLM:";
-        } else {
-            label = "TTS:";
-        }
-
-        ModelDownloader.downloadAsync(url, filePath, new ModelDownloader.DownloadCallback() {
-            @Override
-            public void onProgress(long downloadedBytes, long totalBytes) {
-                if (totalBytes > 0) {
-                    int progress = (int) Math.round((double) downloadedBytes * 100 / totalBytes);
-                    callback.onProgress(label, progress);
-                }
-            }
-
-            @Override
-            public void onSuccess(Path p) {
-                executeDownloadQueue(queue, callback);
-            }
-
-            @Override
-            public void onError(String m) {
-                queue.clear();
-                callback.onError(m);
-            }
-        });
-    }
-
-    public void restartEngineAsync(Runnable onDone) {
-        restartEngineAsync(true, onDone);
-    }
-
-    public void restartEngineAsync(boolean restartLlm, Runnable onDone) {
-        if (isRestarting) {
-            env.warn("引擎正在重启中，请稍后再试");
-            return;
-        }
-        isRestarting = true;
-        new Thread(() -> {
-            try {
-            if (asrWorker != null) asrWorker.stop();
-            if (ttsWorker != null) ttsWorker.stop();
-            if (asrEngine != null) {
-                asrEngine.shutdown();
-                asrEngine = null;
-            }
-            state.setAsrReady(false);
-            state.setTtsReady(false);
-            initialized = false;
-            eventBus.clearAllQueues();
-
-            if (restartLlm) {
-                processManager.stopServices();
-            }
-
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-
-            tryInitEngine();
-
-            if (asrWorker != null) asrWorker = null;
-            if (ttsWorker != null) ttsWorker = null;
-            asrWorker = new AsrWorker(audioBridge, this, env, config);
-            ttsWorker = new TtsWorker(audioBridge, this, env, config);
-            threadPool.getAsrWorker().execute(asrWorker);
-            threadPool.getTtsWorker().execute(ttsWorker);
-            ttsWorker.initEngine();
-            if (ttsWorker.isEngineInitialized()) {
-                state.setTtsReady(true);
-                env.displayMessageToPlayer("\u00a7b[\u5929\u6781] \u00a7f\u7075\u97f3\u5171\u9e23\u5df2\u5c31\u7eea");
-            }
-            initialized = true;
-
-            if (restartLlm) {
-                new Thread(() -> processManager.startLlmServer(), "LLM-Process-Starter").start();
-            }
-
-            if (onDone != null) onDone.run();
-            } finally {
-                isRestarting = false;
-            }
-        }, "Tianshu-Restarter").start();
-    }
-
-    public void downloadTtsModel(TtsModelInfo info, DownloadProgressCallback callback) {
-        downloadTtsModel(info, null, callback);
-    }
-
-    public void downloadTtsModel(TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
-        downloadCancelled = false;
-        downloadPaused = false;
-        new Thread(() -> {
-            try {
-                Path ttsBasePath = config.getTtsBasePath();
-                String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
-                Path modelDir = ttsBasePath.resolve(modelDirName);
-                HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-
-                if ("moss".equals(info.getEngineType())) {
-                    callback.onProgress("TTS:下载主模型", 0);
-                    checkDownloadState();
-                    downloader.downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3);
-
-                    callback.onProgress("TTS:下载音频编码器", 50);
-                    checkDownloadState();
-                    downloader.downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", modelDir, "main", true, 3);
-                } else if ("zipvoice".equals(info.getEngineType()) && info.downloadUrl != null && !info.downloadUrl.isBlank()) {
-                    downloadZipVoiceModel(info, modelDir, proxyUrl, callback);
-                    return;
-                } else {
-                    callback.onProgress("TTS:探测网络", 0);
-                    checkDownloadState();
-                    downloader.downloadModelFiles(info.id, modelDir, "main", true, 3);
-
-                    if (info.needVocoder) {
-                        callback.onProgress("TTS:下载声码器", 50);
-                        checkDownloadState();
-                        Path vocoderDir = modelDir.resolve("vocoders");
-                        downloader.downloadVocoder(vocoderDir, 3);
-                    }
-                }
-
-                callback.onProgress("TTS:完成", 100);
-                ModelManager.invalidateTtsCache();
-                callback.onComplete();
-            } catch (Exception e) {
-                if (downloadCancelled) {
-                    callback.onError("下载已取消");
-                } else {
-                    env.error("TTS 模型下载失败: " + info.name, e);
-                    callback.onError("下载失败: " + e.getMessage());
-                }
-            }
-        }, "TTS-Downloader-" + info.name).start();
-    }
-
-    public boolean hasTtsModelContent(TtsModelInfo info) {
-        if (info == null || info.name == null) return false;
-        Path modelDir = resolveTtsPhysicalModelPath(info);
-        if (!Files.exists(modelDir) || !Files.isDirectory(modelDir)) return false;
-        try {
-            return Files.list(modelDir).findAny().isPresent();
-        } catch (Exception e) {
-            env.error("检查 TTS 模型目录失败: " + info.name, e);
-            return false;
-        }
-    }
-
-    public void deleteTtsModel(TtsModelInfo info) {
-        if (info == null || info.name == null) return;
-        Path modelDir = resolveTtsPhysicalModelPath(info);
-        try {
-            deleteRecursively(modelDir);
-            ModelManager.invalidateTtsCache();
-        } catch (Exception e) {
-            env.error("删除 TTS 模型失败: " + info.name, e);
-        }
-    }
-
-    private void deleteRecursively(Path path) throws Exception {
-        if (!Files.exists(path)) return;
-        if (Files.isDirectory(path)) {
-            try (var entries = Files.list(path)) {
-                for (Path child : entries.toList()) {
-                    deleteRecursively(child);
-                }
-            }
-        }
-        Files.deleteIfExists(path);
-    }
-
-    private void downloadZipVoiceModel(TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
-        if (Files.exists(modelDir) && Files.list(modelDir).findAny().isPresent()) {
-            env.info("ZipVoice 模型目录已存在，跳过下载: " + modelDir);
-            callback.onProgress("TTS:完成", 100);
-            callback.onComplete();
-            return;
-        }
-
-        Files.createDirectories(modelDir);
-        String downloadUrl = info.downloadUrl;
-        String effectiveProxy = (proxyUrl != null && !proxyUrl.isBlank()) ? proxyUrl : "https://gh-proxy.org/";
-
-        boolean githubReachable = checkGithubReachable();
-        String actualUrl;
-        if (githubReachable) {
-            actualUrl = downloadUrl;
-            env.info("GitHub 直连可用，使用直连下载");
-        } else {
-            actualUrl = effectiveProxy + downloadUrl;
-            env.info("GitHub 直连不可用，使用代理: " + effectiveProxy);
-        }
-
-        Path archivePath = modelDir.resolve("model.tar.bz2");
-        try {
-            callback.onProgress("TTS:下载模型", 0);
-            downloadFileWithProgress(actualUrl, archivePath, callback, 3);
-        } catch (Exception e) {
-            if (downloadCancelled) throw e;
-            if (githubReachable) {
-                env.warn("直连下载失败，尝试代理下载: " + e.getMessage());
-                actualUrl = effectiveProxy + downloadUrl;
-                downloadFileWithProgress(actualUrl, archivePath, callback, 3);
-            } else {
-                throw e;
-            }
-        }
-
-        callback.onProgress("TTS:解压模型", 90);
-        checkDownloadState();
-        extractTarBz2(archivePath, modelDir, info.archiveSubDir);
-        Files.deleteIfExists(archivePath);
-
-        callback.onProgress("TTS:完成", 100);
-        callback.onComplete();
-    }
-
-    private boolean checkGithubReachable() {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("github.com", 443), 5000);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private void downloadFileWithProgress(String urlStr, Path target, DownloadProgressCallback callback, int maxRetries) throws Exception {
-        IOException lastException = null;
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                checkDownloadState();
-                HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(300000);
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "MC-Mod-TTS-Downloader/1.0");
-
-                int code = conn.getResponseCode();
-                if (code != 200) {
-                    throw new IOException("HTTP " + code);
-                }
-
-                long contentLength = conn.getContentLengthLong();
-                Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-                try (InputStream in = conn.getInputStream();
-                     OutputStream out = Files.newOutputStream(tmp)) {
-                    byte[] buf = new byte[8192];
-                    long totalRead = 0;
-                    int len;
-                    while ((len = in.read(buf)) != -1) {
-                        checkDownloadState();
-                        out.write(buf, 0, len);
-                        totalRead += len;
-                        if (contentLength > 0) {
-                            int pct = (int) (totalRead * 80 / contentLength);
-                            callback.onProgress("TTS:下载模型", Math.min(pct, 80));
-                        }
-                    }
-                } finally {
-                    conn.disconnect();
-                }
-
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                return;
-            } catch (IOException e) {
-                if (downloadCancelled) throw new Exception("下载已取消");
-                lastException = e;
-                env.warn("下载重试 " + attempt + "/" + maxRetries + ": " + e.getMessage());
-                try { Thread.sleep(1000L * attempt); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); return; }
-            }
-        }
-        throw new IOException("下载失败，重试 " + maxRetries + " 次后仍不成功: " + urlStr, lastException);
-    }
-
-    private void extractTarBz2(Path archivePath, Path targetDir, String archiveSubDir) throws Exception {
-        try (InputStream fi = Files.newInputStream(archivePath);
-             InputStream bi = new BZip2CompressorInputStream(fi);
-             TarArchiveInputStream tis = new TarArchiveInputStream(bi)) {
-            TarArchiveEntry entry;
-            while ((entry = tis.getNextTarEntry()) != null) {
-                checkDownloadState();
-                String entryName = entry.getName();
-                if (archiveSubDir != null && !archiveSubDir.isBlank()) {
-                    if (entryName.startsWith(archiveSubDir + "/")) {
-                        entryName = entryName.substring(archiveSubDir.length() + 1);
-                    } else if (entryName.startsWith(archiveSubDir)) {
-                        entryName = entryName.substring(archiveSubDir.length());
-                        if (entryName.startsWith("/")) entryName = entryName.substring(1);
-                    } else {
-                        continue;
-                    }
-                }
-                if (entryName.isEmpty()) continue;
-
-                Path safeBaseDir = targetDir.toAbsolutePath().normalize();
-                Path targetFile = safeBaseDir.resolve(entryName).normalize();
-                if (!targetFile.startsWith(safeBaseDir)) continue;
-
-                if (entry.isDirectory()) {
-                    Files.createDirectories(targetFile);
-                } else {
-                    Files.createDirectories(targetFile.getParent());
-                    try (OutputStream out = Files.newOutputStream(targetFile)) {
-                        tis.transferTo(out);
-                    }
-                }
-            }
-        }
-    }
-
-    public String resolveVocoderPath(Path modelDir) {
-        Path vocoderDir = modelDir.resolve("vocoders");
-        File dir = vocoderDir.toFile();
-        if (!dir.exists() || !dir.isDirectory()) return null;
-
-        File[] files = dir.listFiles();
-        if (files == null) return null;
-
-        for (File f : files) {
-            if (f.isFile() && f.getName().toLowerCase().endsWith(".onnx")) {
-                return f.getAbsolutePath();
-            }
-        }
-
-        for (File subDir : files) {
-            if (subDir.isDirectory()) {
-                File[] subFiles = subDir.listFiles();
-                if (subFiles != null) {
-                    for (File f : subFiles) {
-                        if (f.isFile() && f.getName().toLowerCase().endsWith(".onnx")) {
-                            return f.getAbsolutePath();
-                        }
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    public TtsModelInfo resolveCurrentTtsModelInfo() {
-        Path modelPath = config.getTtsModelPath();
-        if (modelPath == null) return null;
-        String dirName = modelPath.getFileName() != null ? modelPath.getFileName().toString() : null;
-        if (dirName == null) return null;
-
-        List<TtsModelInfo> catalog = ModelManager.loadTtsModelCatalog();
-        for (TtsModelInfo info : catalog) {
-            if (dirName.equals(info.name)) return info;
-        }
-        return null;
-    }
-
-    public Path resolveTtsPhysicalModelPath(TtsModelInfo info) {
-        if (info == null || info.name == null) return config.getTtsModelPath();
         String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
         return config.getTtsBasePath().resolve(modelDirName);
     }
 
-    public String getZipVoiceCustomVoicePath(TtsModelInfo info) {
-        if (info == null || info.name == null) return null;
-        Path modelDir = config.getTtsBasePath().resolve(info.name);
-        return modelDir.resolve("custom_prompt.wav").toString();
+    private void downloadSherpaModel(TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
+        callback.onProgress("解析 HuggingFace 文件", 5);
+        HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
+        downloader.downloadModelFiles(info.id, modelDir, "main", true, 3);
+        callback.onProgress("下载完成", 95);
     }
 
-    public Path getVoiceLibraryPath() {
-        return config.getVoiceLibraryPath();
+    private void downloadMossModel(Path modelDir, DownloadProgressCallback callback) throws Exception {
+        callback.onProgress("下载 MOSS 模型", 5);
+        HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
+        downloader.downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3);
+        downloader.downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", modelDir, "main", true, 3);
+        callback.onProgress("下载完成", 95);
     }
 
-    public List<String> listVoiceSamples() {
-        Path voiceDir = config.getVoiceLibraryPath();
-        List<String> samples = new ArrayList<>();
-        if (!Files.exists(voiceDir)) return samples;
-        try (var stream = Files.list(voiceDir)) {
-            stream.filter(p -> {
-                String name = p.getFileName().toString().toLowerCase();
-                return name.endsWith(".wav") || name.endsWith(".mp3") || name.endsWith(".flac");
-            }).forEach(p -> samples.add(p.getFileName().toString()));
-        } catch (Exception ignored) {}
-        Collections.sort(samples);
-        return samples;
+    private void downloadArchiveTtsModel(TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
+        Files.createDirectories(modelDir.getParent());
+        String archiveName = archiveName(info.downloadUrl);
+        Path archivePath = modelDir.getParent().resolve(archiveName);
+        String finalUrl = buildDownloadUrl(info.downloadUrl, proxyUrl);
+
+        callback.onProgress("下载压缩包", 5);
+        downloadFile(finalUrl, archivePath, 5, 60_000, (downloaded, total) -> {
+            int percent = total > 0 ? Math.min(85, (int) (downloaded * 80 / total) + 5) : 40;
+            callback.onProgress("下载压缩包", percent);
+        });
+
+        callback.onProgress("解压模型", 90);
+        Path tempDir = modelDir.getParent().resolve(modelDir.getFileName().toString() + "-extract");
+        deleteRecursivelyIfExists(tempDir);
+        Files.createDirectories(tempDir);
+        extractTarBz2(archivePath, tempDir);
+
+        Path extractedModelDir = resolveExtractedModelDir(tempDir);
+        deleteRecursivelyIfExists(modelDir);
+        Files.move(extractedModelDir, modelDir, StandardCopyOption.REPLACE_EXISTING);
+        deleteRecursivelyIfExists(tempDir);
+        Files.deleteIfExists(archivePath);
+        callback.onProgress("解压完成", 95);
     }
 
-    public Path resolveVoiceSamplePath(String fileName) {
-        if (fileName == null || fileName.isBlank()) return null;
-        return config.getVoiceLibraryPath().resolve(fileName);
-    }
-
-    public Path resolveDefaultVoiceSample(TtsModelInfo info) {
-        if (info == null) return null;
-        String defaultSample = info.defaultVoiceSample;
-        if (defaultSample != null && !defaultSample.isBlank()) {
-            Path modelDir = resolveTtsPhysicalModelPath(info);
-            Path inModel = modelDir.resolve(defaultSample);
-            if (Files.exists(inModel)) return inModel;
-        }
-        Path voiceDir = config.getVoiceLibraryPath();
-        if (Files.exists(voiceDir)) {
-            try (var stream = Files.list(voiceDir)) {
-                Path first = stream.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".wav"))
-                        .sorted().findFirst().orElse(null);
-                if (first != null) return first;
-            } catch (Exception ignored) {}
-        }
-        return null;
-    }
-
-    public void openVoiceLibraryFolder() {
-        try {
-            Path voiceDir = config.getVoiceLibraryPath();
-            Files.createDirectories(voiceDir);
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().open(voiceDir.toFile());
+    private Path resolveExtractedModelDir(Path extractedRoot) throws IOException {
+        try (var stream = Files.list(extractedRoot)) {
+            List<Path> entries = stream.toList();
+            if (entries.size() == 1 && Files.isDirectory(entries.get(0))) {
+                return entries.get(0);
             }
-        } catch (Exception e) {
-            env.error("无法打开音色库目录", e);
+        }
+        return extractedRoot;
+    }
+
+    private String buildDownloadUrl(String downloadUrl, String proxyUrl) {
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            return downloadUrl;
+        }
+        String normalizedProxy = proxyUrl.endsWith("/") ? proxyUrl : proxyUrl + "/";
+        if (downloadUrl.startsWith(normalizedProxy)) {
+            return downloadUrl;
+        }
+        return normalizedProxy + downloadUrl;
+    }
+
+    private String archiveName(String downloadUrl) {
+        int idx = downloadUrl.lastIndexOf('/');
+        return idx >= 0 ? downloadUrl.substring(idx + 1) : "model.tar.bz2";
+    }
+
+    private void extractTarBz2(Path archive, Path targetDir) throws IOException {
+        try (InputStream fis = Files.newInputStream(archive);
+             InputStream bis = new java.io.BufferedInputStream(fis);
+             BZip2CompressorInputStream bzIn = new BZip2CompressorInputStream(bis);
+             TarArchiveInputStream tarIn = new TarArchiveInputStream(bzIn)) {
+            TarArchiveEntry entry;
+            while ((entry = tarIn.getNextEntry()) != null) {
+                Path outputPath = targetDir.resolve(entry.getName()).normalize();
+                if (!outputPath.startsWith(targetDir.normalize())) {
+                    throw new IOException("非法压缩包路径: " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    Files.createDirectories(outputPath);
+                    continue;
+                }
+                Files.createDirectories(outputPath.getParent());
+                try (OutputStream out = Files.newOutputStream(outputPath)) {
+                    tarIn.transferTo(out);
+                }
+            }
         }
     }
 
-    public Path resolveEffectiveVoiceSample(TtsModelInfo info, Path modelDir) {
-        ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(modelDir);
-        String selected = settings.selectedVoiceSample;
-        if (selected != null && !selected.isBlank()) {
-            Path selectedPath = resolveVoiceSamplePath(selected);
-            if (selectedPath != null && Files.exists(selectedPath)) return selectedPath;
+    private interface ProgressListener {
+        void onProgress(long downloaded, long total);
+    }
+
+    private void downloadFile(String urlString, Path targetPath, int maxRetries, int timeoutMillis, ProgressListener listener) throws IOException {
+        IOException last = null;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            waitIfDownloadPaused();
+            HttpURLConnection conn = null;
+            Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".downloading");
+            try {
+                Files.createDirectories(targetPath.getParent());
+                conn = (HttpURLConnection) new URL(urlString).openConnection();
+                conn.setConnectTimeout(timeoutMillis);
+                conn.setReadTimeout(timeoutMillis);
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("User-Agent", "Tianshu-Downloader/1.0");
+                int code = conn.getResponseCode();
+                if (code != 200) {
+                    throw new IOException("HTTP 错误: " + code);
+                }
+                long total = conn.getContentLengthLong();
+                long downloaded = 0L;
+                try (InputStream in = conn.getInputStream();
+                     OutputStream out = Files.newOutputStream(tempPath)) {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        if (downloadCancelled) {
+                            throw new IOException("下载已取消");
+                        }
+                        waitIfDownloadPaused();
+                        out.write(buffer, 0, read);
+                        downloaded += read;
+                        listener.onProgress(downloaded, total);
+                    }
+                }
+                Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                return;
+            } catch (IOException e) {
+                last = e;
+                Files.deleteIfExists(tempPath);
+                if (downloadCancelled) {
+                    throw e;
+                }
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
+            }
         }
-        return resolveDefaultVoiceSample(info);
+        throw last != null ? last : new IOException("下载失败");
+    }
+
+    private void waitIfDownloadPaused() throws IOException {
+        while (downloadPaused) {
+            if (downloadCancelled) {
+                throw new IOException("下载已取消");
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("下载线程被中断", e);
+            }
+        }
+        if (downloadCancelled) {
+            throw new IOException("下载已取消");
+        }
+    }
+
+    private void deleteRecursivelyIfExists(Path path) throws IOException {
+        if (Files.exists(path)) {
+            deleteRecursively(path);
+        }
+    }
+
+    private void deleteRecursively(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return;
+        }
+        try (var walk = Files.walk(path)) {
+            walk.sorted((a, b) -> b.getNameCount() - a.getNameCount())
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw e;
+        }
     }
 }

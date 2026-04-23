@@ -38,6 +38,19 @@ public class NeoForgeEnvironment implements IGameEnvironment {
     }
 
     @Override
+    public void openFolder(Path dir) {
+        if (dir == null || !java.nio.file.Files.isDirectory(dir)) {
+            warn("无法打开目录，路径无效: " + dir);
+            return;
+        }
+        try {
+            net.minecraft.Util.getPlatform().openFile(dir.toFile());
+        } catch (Exception e) {
+            LOGGER.error("打开目录失败: " + dir, e);
+        }
+    }
+
+    @Override
     public void info(String msg) {
         LOGGER.info(msg);
     }

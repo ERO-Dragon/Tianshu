@@ -186,7 +186,10 @@ public class HuggingFaceDownloader {
     }
 
     private void downloadFile(String url, Path target, int maxRetries) throws IOException {
-        Files.createDirectories(target.getParent());
+        Files.createDirectories(target.getParent()); 
+        // 增加这一行：清理上次下载失败留下的尸体
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+        try { Files.deleteIfExists(tmp); } catch (IOException ignored) {}
         IOException lastException = null;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
@@ -201,7 +204,6 @@ public class HuggingFaceDownloader {
                     throw new IOException("HTTP " + conn.getResponseCode());
                 }
 
-                Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
                 try (InputStream in = conn.getInputStream();
                      OutputStream out = Files.newOutputStream(tmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
                     byte[] buf = new byte[8192];

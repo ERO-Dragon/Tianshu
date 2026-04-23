@@ -13,6 +13,8 @@ public interface IGameEnvironment {
 
     boolean isClientSide();
 
+    void openFolder(Path dir);
+
     void info(String msg);
     void warn(String msg);
     void error(String msg, Throwable t);

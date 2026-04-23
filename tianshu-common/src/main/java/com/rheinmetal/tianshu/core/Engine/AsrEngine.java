@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.core.Engine;
 
+import com.k2fsa.sherpa.onnx.OnlineModelConfig;
+import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineRecognizer;
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig;
 import com.k2fsa.sherpa.onnx.OnlineStream;
-import com.k2fsa.sherpa.onnx.OnlineModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
-import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.ModelSettings;
 
@@ -16,10 +16,17 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class AsrEngine {
 
-    private final ReentrantLock streamLock = new ReentrantLock();
+    public static final class StreamingSession {
+        private final OnlineStream stream;
+        private final ReentrantLock lock = new ReentrantLock();
+
+        private StreamingSession(OnlineStream stream) {
+            this.stream = stream;
+        }
+    }
+
     private final IGameEnvironment env;
     private OnlineRecognizer recognizer;
-    private OnlineStream stream;
     private boolean isTransducer = false;
     private String modelDirPath;
 
@@ -121,18 +128,29 @@ public class AsrEngine {
         }
     }
 
-    public OnlineStream createStream() {
+    public StreamingSession createStreamingSession() {
         if (recognizer == null) {
             env.error("ASR 引擎未初始化", null);
             return null;
         }
-        stream = recognizer.createStream();
-        return stream;
+        return new StreamingSession(recognizer.createStream());
     }
 
-    public String feedAudio(byte[] pcmData) {
-        if (recognizer == null || stream == null) return "";
-        streamLock.lock();
+    public void releaseStreamingSession(StreamingSession session) {
+        if (session == null) {
+            return;
+        }
+        session.lock.lock();
+        try {
+            session.stream.release();
+        } finally {
+            session.lock.unlock();
+        }
+    }
+
+    public String feedAudio(StreamingSession session, byte[] pcmData) {
+        if (recognizer == null || session == null || pcmData == null || pcmData.length == 0) return "";
+        session.lock.lock();
         try {
             float[] samples = new float[pcmData.length / 2];
             for (int i = 0; i != samples.length; ++i) {
@@ -141,33 +159,33 @@ public class AsrEngine {
                 int s = (high << 8) + low;
                 samples[i] = (float) s / 32768;
             }
-            stream.acceptWaveform(samples, 16000);
-            while (recognizer.isReady(stream)) {
-                recognizer.decode(stream);
+            session.stream.acceptWaveform(samples, 16000);
+            while (recognizer.isReady(session.stream)) {
+                recognizer.decode(session.stream);
             }
+            return recognizer.getResult(session.stream).getText();
         } finally {
-            streamLock.unlock();
-        }
-        return recognizer.getResult(stream).getText();
-    }
-
-    public boolean isEndpoint() {
-        if (recognizer == null || stream == null) return false;
-        streamLock.lock();
-        try {
-            return recognizer.isEndpoint(stream);
-        } finally {
-            streamLock.unlock();
+            session.lock.unlock();
         }
     }
 
-    public void reset() {
-        if (recognizer == null || stream == null) return;
-        streamLock.lock();
+    public boolean isEndpoint(StreamingSession session) {
+        if (recognizer == null || session == null) return false;
+        session.lock.lock();
         try {
-            recognizer.reset(stream);
+            return recognizer.isEndpoint(session.stream);
         } finally {
-            streamLock.unlock();
+            session.lock.unlock();
+        }
+    }
+
+    public void reset(StreamingSession session) {
+        if (recognizer == null || session == null) return;
+        session.lock.lock();
+        try {
+            recognizer.reset(session.stream);
+        } finally {
+            session.lock.unlock();
         }
     }
 
@@ -195,28 +213,23 @@ public class AsrEngine {
         return result;
     }
 
-    public String forceFlush() {
-        if (recognizer == null || stream == null) return "";
-        String result = "";
-        streamLock.lock();
+    public String forceFlush(StreamingSession session) {
+        if (recognizer == null || session == null) return "";
+        session.lock.lock();
         try {
-            stream.acceptWaveform(new float[(int) (0.3 * 16000)], 16000);
-            while (recognizer.isReady(stream)) {
-                recognizer.decode(stream);
+            session.stream.acceptWaveform(new float[(int) (0.3 * 16000)], 16000);
+            while (recognizer.isReady(session.stream)) {
+                recognizer.decode(session.stream);
             }
-            result = recognizer.getResult(stream).getText();
-            recognizer.reset(stream);
+            String result = recognizer.getResult(session.stream).getText();
+            recognizer.reset(session.stream);
+            return result;
         } finally {
-            streamLock.unlock();
+            session.lock.unlock();
         }
-        return result;
     }
 
     public void shutdown() {
-        if (stream != null) {
-            stream.release();
-            stream = null;
-        }
         if (recognizer != null) {
             recognizer.release();
             recognizer = null;
