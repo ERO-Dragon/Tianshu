@@ -6,10 +6,46 @@
         "artifact": "sherpa.onnx"
       },
       "version": {
-        "range": "[874a75b22b1782c67f7237acf1bbaee8]",
-        "artifactVersion": "874a75b22b1782c67f7237acf1bbaee8"
+        "range": "[0e967ec4aaf80e992038f497feb0e9c2]",
+        "artifactVersion": "0e967ec4aaf80e992038f497feb0e9c2"
       },
-      "path": "META-INF/jarjar/sherpa-onnx-v1.12.36.jar",
+      "path": "META-INF/jarjar/sherpa-onnx-v1.12.39.jar",
+      "isObfuscated": false
+    },
+    {
+      "identifier": {
+        "group": "",
+        "artifact": "com.microsoft.onnxruntime"
+      },
+      "version": {
+        "range": "[bd8e7b475c7918f3c9c6ac7cf1e8df34]",
+        "artifactVersion": "bd8e7b475c7918f3c9c6ac7cf1e8df34"
+      },
+      "path": "META-INF/jarjar/onnxruntime-1.24.3.jar",
+      "isObfuscated": false
+    },
+    {
+      "identifier": {
+        "group": "",
+        "artifact": "sentencepiece4j"
+      },
+      "version": {
+        "range": "[5042aa1607a78b748238994e6c12d9fc]",
+        "artifactVersion": "5042aa1607a78b748238994e6c12d9fc"
+      },
+      "path": "META-INF/jarjar/sentencepiece4j-1.0.2.jar",
+      "isObfuscated": false
+    },
+    {
+      "identifier": {
+        "group": "",
+        "artifact": "com.google.protobuf"
+      },
+      "version": {
+        "range": "[e0da2e6147e378d0b82d7ec57d59bf00]",
+        "artifactVersion": "e0da2e6147e378d0b82d7ec57d59bf00"
+      },
+      "path": "META-INF/jarjar/protobuf-java-4.33.2.jar",
       "isObfuscated": false
     }
   ]
