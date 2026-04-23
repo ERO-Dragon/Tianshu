@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.client.TianshuClient;
 import com.rheinmetal.tianshu.config.NeoForgeConfig;
 import org.slf4j.Logger;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
 
@@ -18,6 +19,7 @@ public class Tianshu {
 
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, NeoForgeConfig.SPEC);
         modEventBus.addListener(TianshuClient::registerKeyMappings);
+        modEventBus.addListener(TianshuClient::registerReloadListeners);
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(TianshuClient::registerOverlays);
     }

@@ -310,18 +310,13 @@ public class MossTtsService implements AutoCloseable {
     public List<List<Integer>> generateAudioFrames(RequestRows requestRows) throws Exception {
         JsonObject generationDefaults = manifest.getAsJsonObject("generation_defaults");
         JsonObject ttsConfig = manifest.getAsJsonObject("tts_config");
-
-        float[][][] inputIds = new float[1][requestRows.inputIds.size()][requestRows.inputIds.get(0).length];
-        for (int i = 0; i < requestRows.inputIds.size(); i++) {
-            for (int j = 0; j < requestRows.inputIds.get(i).length; j++) {
-                inputIds[0][i][j] = requestRows.inputIds.get(i)[j];
-            }
-        }
+        JsonObject ttsOnnx = ttsMeta.getAsJsonObject("onnx");
 
         List<List<Integer>> generatedFrames = new ArrayList<>();
         List<List<Integer>> previousTokensByChannel = new ArrayList<>();
         List<Set<Integer>> previousTokenSetsByChannel = new ArrayList<>();
         int nVq = ttsConfig.get("n_vq").getAsInt();
+        int rowWidth = nVq + 1;
 
         for (int i = 0; i < nVq; i++) {
             previousTokensByChannel.add(new ArrayList<>());
@@ -337,30 +332,69 @@ public class MossTtsService implements AutoCloseable {
 
             OrtSession.Result prefillResult = sessions.get("prefill").run(prefillInputs);
             float[][] globalHidden = extractLastHidden((float[][][]) prefillResult.get("global_hidden").get().getValue());
+            int pastValidLength = sumAttentionMask(requestRows.attentionMask[0]);
+            Map<String, OnnxTensor> pastByName = extractPastByName(prefillResult, ttsOnnx.getAsJsonArray("prefill_output_names"), "present_", "past_");
 
-            int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
-            for (int stepIndex = 0; stepIndex < maxNewFrames; stepIndex++) {
-                List<Integer> frame = new ArrayList<>();
+            try {
+                int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
+                for (int stepIndex = 0; stepIndex < maxNewFrames; stepIndex++) {
+                    List<Integer> frame;
 
-                if (sessions.containsKey("local_cached_step")) {
-                    try {
+                    if (sessions.containsKey("local_greedy_frame") && !generationDefaults.get("do_sample").getAsBoolean()) {
+                        GreedyFrameResult greedyFrame = runLocalGreedyFrame(globalHidden, previousTokenSetsByChannel, generationDefaults);
+                        if (!greedyFrame.shouldContinue) {
+                            break;
+                        }
+                        frame = greedyFrame.frame;
+                        for (int channelIndex = 0; channelIndex < frame.size(); channelIndex++) {
+                            int sampledToken = frame.get(channelIndex);
+                            previousTokensByChannel.get(channelIndex).add(sampledToken);
+                            previousTokenSetsByChannel.get(channelIndex).add(sampledToken);
+                        }
+                    } else if (sessions.containsKey("local_fixed_sampled_frame") && "fixed".equalsIgnoreCase(generationDefaults.get("sample_mode").getAsString())) {
+                        try {
+                            GreedyFrameResult fixedFrame = runLocalFixedSampledFrame(globalHidden, previousTokenSetsByChannel);
+                            if (!fixedFrame.shouldContinue) {
+                                break;
+                            }
+                            frame = fixedFrame.frame;
+                            for (int channelIndex = 0; channelIndex < frame.size(); channelIndex++) {
+                                int sampledToken = frame.get(channelIndex);
+                                previousTokensByChannel.get(channelIndex).add(sampledToken);
+                                previousTokenSetsByChannel.get(channelIndex).add(sampledToken);
+                            }
+                        } catch (Exception e) {
+                            env.warn("MOSS local_fixed_sampled_frame 失败，回退到后备分支: " + e.getMessage());
+                            if (sessions.containsKey("local_cached_step")) {
+                                frame = generateFrameWithCachedStep(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
+                            } else {
+                                frame = generateFrameWithLocalDecoder(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
+                            }
+                            if (frame.isEmpty()) {
+                                break;
+                            }
+                        }
+                    } else if (sessions.containsKey("local_cached_step")) {
                         frame = generateFrameWithCachedStep(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
-                    } catch (Exception e) {
-                        env.warn("MOSS local_cached_step 失败，回退到 local_decoder: " + e.getMessage());
+                        if (frame.isEmpty()) {
+                            break;
+                        }
+                    } else {
                         frame = generateFrameWithLocalDecoder(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
+                        if (frame.isEmpty()) {
+                            break;
+                        }
                     }
-                    if (frame.isEmpty()) {
-                        break;
-                    }
-                } else {
-                    frame = generateFrameWithLocalDecoder(globalHidden, previousTokensByChannel, previousTokenSetsByChannel);
-                    if (frame.isEmpty()) {
-                        break;
-                    }
-                }
 
-                generatedFrames.add(frame);
-                globalHidden = updateGlobalHidden(frame, globalHidden, ttsConfig);
+                    generatedFrames.add(frame);
+                    DecodeStepResult decodeStep = runDecodeStep(frame, pastValidLength, pastByName, rowWidth, ttsConfig, ttsOnnx);
+                    globalHidden = decodeStep.globalHidden;
+                    pastValidLength += 1;
+                    closeTensors(pastByName);
+                    pastByName = decodeStep.nextPastByName;
+                }
+            } finally {
+                closeTensors(pastByName);
             }
         }
 
@@ -378,49 +412,51 @@ public class MossTtsService implements AutoCloseable {
         Map<String, OnnxTensor> localPast = createEmptyLocalCachedPast();
         int localPastValidLength = 0;
 
-        CachedStepResult firstStep = runLocalCachedStep(globalHidden, 0, 0, 0, 0, localPastValidLength, localPast);
-        localPastValidLength += 1;
+        try {
+            CachedStepResult firstStep = runLocalCachedStep(globalHidden, 0, 0, 0, 0, localPastValidLength, localPast);
+            localPastValidLength += 1;
 
-        int nextTextToken = sampleAssistantTextToken(firstStep.textLogits, generationDefaults, ttsConfig);
-        if (nextTextToken != ttsConfig.get("audio_assistant_slot_token_id").getAsInt()) {
+            int nextTextToken = sampleAssistantTextToken(firstStep.textLogits, generationDefaults, ttsConfig);
+            if (nextTextToken != ttsConfig.get("audio_assistant_slot_token_id").getAsInt()) {
+                closeTensors(firstStep.nextLocalPast);
+                return List.of();
+            }
+
             closeTensors(localPast);
-            closeTensors(firstStep.nextLocalPast);
-            return List.of();
-        }
+            localPast = firstStep.nextLocalPast;
 
-        closeTensors(localPast);
-        localPast = firstStep.nextLocalPast;
-
-        CachedStepResult secondStep = runLocalCachedStep(globalHidden, nextTextToken, 0, 0, 1, localPastValidLength, localPast);
-        localPastValidLength += 1;
-        closeTensors(localPast);
-        localPast = secondStep.nextLocalPast;
-
-        List<Integer> frame = new ArrayList<>();
-        float[] firstChannelLogits = sliceAudioChannelLogits(secondStep.audioLogits, 0);
-        int sampledToken = sampleAudioToken(firstChannelLogits, previousTokensByChannel.get(0), previousTokenSetsByChannel.get(0), generationDefaults);
-        frame.add(sampledToken);
-        previousTokensByChannel.get(0).add(sampledToken);
-        previousTokenSetsByChannel.get(0).add(sampledToken);
-
-        int previousToken = sampledToken;
-        int nVq = ttsConfig.get("n_vq").getAsInt();
-        for (int channelIndex = 1; channelIndex < nVq; channelIndex++) {
-            CachedStepResult channelStep = runLocalCachedStep(globalHidden, 0, previousToken, channelIndex - 1, 2, localPastValidLength, localPast);
+            CachedStepResult secondStep = runLocalCachedStep(globalHidden, nextTextToken, 0, 0, 1, localPastValidLength, localPast);
             localPastValidLength += 1;
             closeTensors(localPast);
-            localPast = channelStep.nextLocalPast;
+            localPast = secondStep.nextLocalPast;
 
-            float[] channelLogits = sliceAudioChannelLogits(channelStep.audioLogits, channelIndex);
-            sampledToken = sampleAudioToken(channelLogits, previousTokensByChannel.get(channelIndex), previousTokenSetsByChannel.get(channelIndex), generationDefaults);
+            List<Integer> frame = new ArrayList<>();
+            float[] firstChannelLogits = sliceAudioChannelLogits(secondStep.audioLogits, 0);
+            int sampledToken = sampleAudioToken(firstChannelLogits, previousTokensByChannel.get(0), previousTokenSetsByChannel.get(0), generationDefaults);
             frame.add(sampledToken);
-            previousTokensByChannel.get(channelIndex).add(sampledToken);
-            previousTokenSetsByChannel.get(channelIndex).add(sampledToken);
-            previousToken = sampledToken;
-        }
+            previousTokensByChannel.get(0).add(sampledToken);
+            previousTokenSetsByChannel.get(0).add(sampledToken);
 
-        closeTensors(localPast);
-        return frame;
+            int previousToken = sampledToken;
+            int nVq = ttsConfig.get("n_vq").getAsInt();
+            for (int channelIndex = 1; channelIndex < nVq; channelIndex++) {
+                CachedStepResult channelStep = runLocalCachedStep(globalHidden, 0, previousToken, channelIndex - 1, 2, localPastValidLength, localPast);
+                localPastValidLength += 1;
+                closeTensors(localPast);
+                localPast = channelStep.nextLocalPast;
+
+                float[] channelLogits = sliceAudioChannelLogits(channelStep.audioLogits, channelIndex);
+                sampledToken = sampleAudioToken(channelLogits, previousTokensByChannel.get(channelIndex), previousTokenSetsByChannel.get(channelIndex), generationDefaults);
+                frame.add(sampledToken);
+                previousTokensByChannel.get(channelIndex).add(sampledToken);
+                previousTokenSetsByChannel.get(channelIndex).add(sampledToken);
+                previousToken = sampledToken;
+            }
+
+            return frame;
+        } finally {
+            closeTensors(localPast);
+        }
     }
 
     private List<Integer> generateFrameWithLocalDecoder(
@@ -450,8 +486,14 @@ public class MossTtsService implements AutoCloseable {
         return frame;
     }
 
-    private float[][] updateGlobalHidden(List<Integer> frame, float[][] currentGlobalHidden, JsonObject ttsConfig) throws Exception {
-        int rowWidth = ttsConfig.get("n_vq").getAsInt() + 1;
+    private DecodeStepResult runDecodeStep(
+            List<Integer> frame,
+            int pastValidLength,
+            Map<String, OnnxTensor> pastByName,
+            int rowWidth,
+            JsonObject ttsConfig,
+            JsonObject ttsOnnx
+    ) throws Exception {
         int[][][] nextRow = new int[1][1][rowWidth];
         int audioPad = ttsConfig.get("audio_pad_token_id").getAsInt();
         for (int i = 0; i < rowWidth; i++) {
@@ -463,12 +505,84 @@ public class MossTtsService implements AutoCloseable {
         }
 
         try (OnnxTensor inputIdsTensor = OnnxTensor.createTensor(ortEnvironment, nextRow);
-             OnnxTensor pastValidLengthsTensor = OnnxTensor.createTensor(ortEnvironment, IntBuffer.wrap(new int[]{1}), new long[]{1})) {
+             OnnxTensor pastValidLengthsTensor = OnnxTensor.createTensor(ortEnvironment, IntBuffer.wrap(new int[]{pastValidLength}), new long[]{1})) {
             Map<String, OnnxTensor> inputs = new HashMap<>();
             inputs.put("input_ids", inputIdsTensor);
             inputs.put("past_valid_lengths", pastValidLengthsTensor);
+            for (JsonElement inputNameElement : ttsOnnx.getAsJsonArray("decode_input_names")) {
+                String inputName = inputNameElement.getAsString();
+                if (!"input_ids".equals(inputName) && !"past_valid_lengths".equals(inputName)) {
+                    inputs.put(inputName, pastByName.get(inputName));
+                }
+            }
+
             OrtSession.Result result = sessions.get("decode").run(inputs);
-            return extractLastHidden((float[][][]) result.get("global_hidden").get().getValue());
+            float[][] globalHidden = extractLastHidden((float[][][]) result.get("global_hidden").get().getValue());
+            Map<String, OnnxTensor> nextPastByName = extractPastByName(result, ttsOnnx.getAsJsonArray("decode_output_names"), "present_", "past_");
+            return new DecodeStepResult(globalHidden, nextPastByName);
+        }
+    }
+
+    private GreedyFrameResult runLocalGreedyFrame(
+            float[][] globalHidden,
+            List<Set<Integer>> previousTokenSetsByChannel,
+            JsonObject generationDefaults
+    ) throws Exception {
+        int nVq = manifest.getAsJsonObject("tts_config").get("n_vq").getAsInt();
+        int audioCodebookSize = ttsMeta.getAsJsonObject("model_config").getAsJsonArray("audio_codebook_sizes").get(0).getAsInt();
+        int[][][] repetitionSeenMask = new int[1][nVq][audioCodebookSize];
+        for (int channelIndex = 0; channelIndex < previousTokenSetsByChannel.size(); channelIndex++) {
+            for (Integer tokenId : previousTokenSetsByChannel.get(channelIndex)) {
+                if (tokenId != null && tokenId >= 0 && tokenId < audioCodebookSize) {
+                    repetitionSeenMask[0][channelIndex][tokenId] = 1;
+                }
+            }
+        }
+
+        try (OnnxTensor globalHiddenTensor = OnnxTensor.createTensor(ortEnvironment, globalHidden);
+             OnnxTensor repetitionSeenMaskTensor = OnnxTensor.createTensor(ortEnvironment, repetitionSeenMask);
+             OnnxTensor repetitionPenaltyTensor = OnnxTensor.createTensor(ortEnvironment, new float[][]{{generationDefaults.get("audio_repetition_penalty").getAsFloat()}})) {
+            Map<String, OnnxTensor> inputs = new HashMap<>();
+            inputs.put("global_hidden", globalHiddenTensor);
+            inputs.put("repetition_seen_mask", repetitionSeenMaskTensor);
+            inputs.put("repetition_penalty", repetitionPenaltyTensor);
+
+            OrtSession.Result result = sessions.get("local_greedy_frame").run(inputs);
+            boolean shouldContinue = extractBooleanScalar(result, "should_continue");
+            List<Integer> frame = flattenFrameTokenIds(result.get("frame_token_ids").get().getValue());
+            return new GreedyFrameResult(shouldContinue, frame);
+        }
+    }
+
+    private GreedyFrameResult runLocalFixedSampledFrame(
+            float[][] globalHidden,
+            List<Set<Integer>> previousTokenSetsByChannel
+    ) throws Exception {
+        int nVq = manifest.getAsJsonObject("tts_config").get("n_vq").getAsInt();
+        int audioCodebookSize = ttsMeta.getAsJsonObject("model_config").getAsJsonArray("audio_codebook_sizes").get(0).getAsInt();
+        int[][][] repetitionSeenMask = new int[1][nVq][audioCodebookSize];
+        for (int channelIndex = 0; channelIndex < previousTokenSetsByChannel.size(); channelIndex++) {
+            for (Integer tokenId : previousTokenSetsByChannel.get(channelIndex)) {
+                if (tokenId != null && tokenId >= 0 && tokenId < audioCodebookSize) {
+                    repetitionSeenMask[0][channelIndex][tokenId] = 1;
+                }
+            }
+        }
+
+        try (OnnxTensor globalHiddenTensor = OnnxTensor.createTensor(ortEnvironment, globalHidden);
+             OnnxTensor repetitionSeenMaskTensor = OnnxTensor.createTensor(ortEnvironment, repetitionSeenMask);
+             OnnxTensor assistantRandomUTensor = OnnxTensor.createTensor(ortEnvironment, new float[][]{{Math.min(0.99999994f, Math.max(0.0f, random.nextFloat()))}});
+             OnnxTensor audioRandomUTensor = OnnxTensor.createTensor(ortEnvironment, buildAudioRandomU(nVq))) {
+            Map<String, OnnxTensor> inputs = new HashMap<>();
+            inputs.put("global_hidden", globalHiddenTensor);
+            inputs.put("repetition_seen_mask", repetitionSeenMaskTensor);
+            inputs.put("assistant_random_u", assistantRandomUTensor);
+            inputs.put("audio_random_u", audioRandomUTensor);
+
+            OrtSession.Result result = sessions.get("local_fixed_sampled_frame").run(inputs);
+            boolean shouldContinue = extractBooleanScalar(result, "should_continue");
+            List<Integer> frame = flattenFrameTokenIds(result.get("frame_token_ids").get().getValue());
+            return new GreedyFrameResult(shouldContinue, frame);
         }
     }
 
@@ -527,7 +641,7 @@ public class MossTtsService implements AutoCloseable {
 
             OrtSession.Result result = sessions.get("local_cached_step").run(inputs);
             float[] textLogits = ((float[][]) result.get("text_logits").get().getValue())[0];
-            float[][] audioLogits = (float[][]) result.get("audio_logits").get().getValue();
+            float[][] audioLogits = extractAudioLogits(result.get("audio_logits").get().getValue());
 
             Map<String, OnnxTensor> nextLocalPast = new HashMap<>();
             JsonArray outputNames = ttsMeta.getAsJsonObject("onnx").getAsJsonArray("local_cached_output_names");
@@ -649,6 +763,78 @@ public class MossTtsService implements AutoCloseable {
                 generationDefaults.get("audio_top_p").getAsFloat(),
                 random
         );
+    }
+
+    private float[][] buildAudioRandomU(int nVq) {
+        float[][] values = new float[1][nVq];
+        for (int index = 0; index < nVq; index++) {
+            values[0][index] = Math.min(0.99999994f, Math.max(0.0f, random.nextFloat()));
+        }
+        return values;
+    }
+
+    private int sumAttentionMask(int[] attentionRow) {
+        int total = 0;
+        for (int value : attentionRow) {
+            total += value;
+        }
+        return total;
+    }
+
+    private Map<String, OnnxTensor> extractPastByName(
+            OrtSession.Result result,
+            JsonArray outputNames,
+            String sourcePrefix,
+            String targetPrefix
+    ) throws Exception {
+        Map<String, OnnxTensor> nextPast = new HashMap<>();
+        for (int i = 1; i < outputNames.size(); i++) {
+            String outputName = outputNames.get(i).getAsString();
+            Object value = result.get(outputName).get().getValue();
+            nextPast.put(outputName.replace(sourcePrefix, targetPrefix), cloneTensor(value));
+        }
+        return nextPast;
+    }
+
+    private boolean extractBooleanScalar(OrtSession.Result result, String outputName) throws Exception {
+        Object value = result.get(outputName).get().getValue();
+        if (value instanceof boolean[] boolArray && boolArray.length > 0) {
+            return boolArray[0];
+        }
+        if (value instanceof long[] longArray && longArray.length > 0) {
+            return longArray[0] != 0L;
+        }
+        if (value instanceof int[] intArray && intArray.length > 0) {
+            return intArray[0] != 0;
+        }
+        if (value instanceof byte[] byteArray && byteArray.length > 0) {
+            return byteArray[0] != 0;
+        }
+        throw new IllegalArgumentException("Unsupported boolean scalar type: " + value.getClass());
+    }
+
+    private List<Integer> flattenFrameTokenIds(Object value) {
+        if (value instanceof int[] tensor1d) {
+            List<Integer> frame = new ArrayList<>(tensor1d.length);
+            for (int tokenId : tensor1d) {
+                frame.add(tokenId);
+            }
+            return frame;
+        }
+        if (value instanceof long[] tensor1dLong) {
+            List<Integer> frame = new ArrayList<>(tensor1dLong.length);
+            for (long tokenId : tensor1dLong) {
+                frame.add((int) tokenId);
+            }
+            return frame;
+        }
+        if (value instanceof int[][] tensor2d) {
+            return flattenFrameTokenIds(tensor2d.length == 0 ? new int[0] : tensor2d[0]);
+        }
+        if (value instanceof long[][] tensor2dLong) {
+            return flattenFrameTokenIds(tensor2dLong.length == 0 ? new long[0] : tensor2dLong[0]);
+        }
+        throw new IllegalArgumentException("Unsupported frame_token_ids type: " + value.getClass());
     }
 
     private float[] sliceAudioChannelLogits(float[][] audioLogits, int channelIndex) {
@@ -810,6 +996,26 @@ public class MossTtsService implements AutoCloseable {
             this.textLogits = textLogits;
             this.audioLogits = audioLogits;
             this.nextLocalPast = nextLocalPast;
+        }
+    }
+
+    public static final class DecodeStepResult {
+        public final float[][] globalHidden;
+        public final Map<String, OnnxTensor> nextPastByName;
+
+        public DecodeStepResult(float[][] globalHidden, Map<String, OnnxTensor> nextPastByName) {
+            this.globalHidden = globalHidden;
+            this.nextPastByName = nextPastByName;
+        }
+    }
+
+    public static final class GreedyFrameResult {
+        public final boolean shouldContinue;
+        public final List<Integer> frame;
+
+        public GreedyFrameResult(boolean shouldContinue, List<Integer> frame) {
+            this.shouldContinue = shouldContinue;
+            this.frame = frame;
         }
     }
 

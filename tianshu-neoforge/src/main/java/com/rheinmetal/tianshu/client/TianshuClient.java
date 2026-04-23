@@ -3,10 +3,13 @@ package com.rheinmetal.tianshu.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
+import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
+import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
 import com.rheinmetal.tianshu.config.NeoForgeConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
+import com.rheinmetal.tianshu.ir.IRParseResult;
 import com.rheinmetal.tianshu.gui.TianshuGUI;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
@@ -22,6 +25,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -65,6 +69,7 @@ public class TianshuClient {
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
+            ClientItemCommandManager.ensureIndex("client login");
             if (!isOnnxRuntimeLoaded) {
                 try {
                     LOGGER.info("正在加载Onnx自己的 onnxruntime.dll为OnnxRuntime和SherpaOnnx提供支持");
@@ -101,6 +106,9 @@ public class TianshuClient {
         event.register(VOICE_KEY);
     }
 
+    public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
+        event.registerReloadListener(new ItemCommandReloadListener());
+    }
     @SubscribeEvent
     public static void onClientTick(PlayerTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -216,8 +224,15 @@ public class TianshuClient {
             if (e instanceof AsrFinalTextEvent asrEvent) {
                 if (Minecraft.getInstance().player != null) {
                     Minecraft.getInstance().player.displayClientMessage(
-                            Component.literal("\u00a7a[ASR] \u00a7f" + asrEvent.getText()), false
+                        Component.literal("\u00a7a[ASR] \u00a7f" + asrEvent.getText()), false
                     );
+                    IRParseResult parseResult = ClientItemCommandManager.parsePlayerCommand(asrEvent.getText());
+                    String preview = ClientItemCommandManager.formatPreview(parseResult);
+                    if (!preview.isEmpty()) {
+                        Minecraft.getInstance().player.displayClientMessage(
+                                Component.literal("\u00a76[IR] \u00a7f" + preview), false
+                        );
+                    }
                 }
             } else if (e instanceof LlmChunkEvent chunk) {
                 currentLlmReply.append(chunk.getText());

@@ -71,6 +71,7 @@ dependencies {
     implementation files('../libs/onnxruntime-1.24.3.jar')
     implementation files('../libs/commons-compress-1.28.0.jar')
     implementation files('../libs/sentencepiece4j-1.0.2.jar')
+    implementation files('../libs/pinyin4j-2.5.1.jar')
     
     implementation files('../libs/protobuf-java-4.33.2.jar')
     jarJar files('../libs/sherpa-onnx-v1.12.39.jar')
@@ -78,6 +79,7 @@ dependencies {
     // jarJar files('../libs/commons-compress-1.28.0.jar')
     jarJar files('../libs/sentencepiece4j-1.0.2.jar')
     jarJar files('../libs/protobuf-java-4.33.2.jar')
+    jarJar files('../libs/pinyin4j-2.5.1.jar')
 }
 
 sourceSets.main.resources {
