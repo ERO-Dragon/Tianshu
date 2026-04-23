@@ -113,7 +113,7 @@ public class TtsWorker implements Runnable {
                     }
 
                     if (synthesizing) {
-                        audioManager.stopTtsPlayback();
+                        audioManager.finishTtsPlayback();
                         synthesizing = false;
                         env.info("TTS 流式播放通道已播完并关闭");
                     }

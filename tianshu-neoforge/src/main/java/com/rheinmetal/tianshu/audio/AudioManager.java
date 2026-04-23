@@ -244,6 +244,19 @@ public class AudioManager implements IAudioBridge {
     }
 
     @Override
+    public void finishTtsPlayback() {
+        SourceDataLine line = ttsDataLine;
+        if (line != null) {
+            try {
+                line.drain();
+            } catch (Exception e) {
+                LOGGER.error("等待 TTS 播放尾音完成异常", e);
+            }
+        }
+        stopTtsPlayback();
+    }
+
+    @Override
     public void stopTtsPlayback() {
         SourceDataLine line = ttsDataLine;
         ttsDataLine = null;

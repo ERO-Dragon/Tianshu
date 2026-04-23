@@ -18,6 +18,8 @@ public interface IAudioBridge {
 
     void feedTtsAudio(byte[] audio);
 
+    void finishTtsPlayback();
+
     void stopTtsPlayback();
 
     void playAudio(byte[] audioData, int sampleRate);

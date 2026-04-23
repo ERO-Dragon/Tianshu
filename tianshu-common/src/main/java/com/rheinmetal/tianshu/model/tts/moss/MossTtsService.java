@@ -495,7 +495,7 @@ public class MossTtsService implements AutoCloseable {
 
             OrtSession.Result result = sessions.get("local_decoder").run(inputs);
             float[] textLogits = ((float[][]) result.get("text_logits").get().getValue())[0];
-            float[][] audioLogits = (float[][]) result.get("audio_logits").get().getValue();
+            float[][] audioLogits = extractAudioLogits(result.get("audio_logits").get().getValue());
             return new LocalDecoderResult(textLogits, audioLogits);
         }
     }
@@ -657,6 +657,19 @@ public class MossTtsService implements AutoCloseable {
         int perChannel = totalLength / nVq;
         int start = channelIndex * perChannel;
         return Arrays.copyOfRange(audioLogits[0], start, start + perChannel);
+    }
+
+    private float[][] extractAudioLogits(Object value) {
+        if (value instanceof float[][] tensor2d) {
+            return tensor2d;
+        }
+        if (value instanceof float[][][] tensor3d) {
+            if (tensor3d.length == 0) {
+                throw new IllegalArgumentException("audio_logits 为空 batch");
+            }
+            return tensor3d[0];
+        }
+        throw new IllegalArgumentException("Unsupported audio_logits type: " + value.getClass());
     }
 
     private float[][] extractLastHidden(float[][][] hiddenStates) {
