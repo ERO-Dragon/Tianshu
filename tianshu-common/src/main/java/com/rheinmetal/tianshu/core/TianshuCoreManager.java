@@ -10,7 +10,11 @@ import com.rheinmetal.tianshu.core.Engine.AsrEngine;
 import com.rheinmetal.tianshu.core.Engine.TtsEngine;
 import com.rheinmetal.tianshu.event.InterruptEvent;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
+import com.rheinmetal.tianshu.model.AsrModelDownloader;
+import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
+import com.rheinmetal.tianshu.model.ModelFilesMissingException;
 import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
@@ -124,6 +128,7 @@ public class TianshuCoreManager {
     private final ProcessManager processManager;
     private final TianshuThreadPool threadPool;
     private final ModelManager modelManager;
+    private final AsrModelDownloader asrModelDownloader;
 
     private AsrEngine asrEngine;
     private AsrWorker asrWorker;
@@ -149,6 +154,7 @@ public class TianshuCoreManager {
         });
         this.threadPool = new TianshuThreadPool(env);
         this.modelManager = new ModelManager(config);
+        this.asrModelDownloader = new AsrModelDownloader(env);
     }
 
     public State getState() {
@@ -223,20 +229,23 @@ public class TianshuCoreManager {
     }
 
     public boolean isDownloadPaused() {
-        return downloadPaused;
+        return downloadPaused || asrModelDownloader.isDownloadPaused();
     }
 
     public void pauseDownload() {
         downloadPaused = true;
+        asrModelDownloader.pauseDownload();
     }
 
     public void resumeDownload() {
         downloadPaused = false;
+        asrModelDownloader.resumeDownload();
     }
 
     public void cancelDownload() {
         downloadCancelled = true;
         downloadPaused = false;
+        asrModelDownloader.cancelDownload();
     }
 
     public void tryInitEngine() {
@@ -251,28 +260,49 @@ public class TianshuCoreManager {
         }
 
         try {
-            String originalModelPath = config.getAsrModelPath().toString();
-            File originalDir = new File(originalModelPath);
-
-            if (!originalDir.exists() || !originalDir.isDirectory()) {
+            Path originalModelPath = config.getAsrModelPath();
+            if (originalModelPath == null || !Files.isDirectory(originalModelPath)) {
                 env.info("ASR 模型目录不存在，静默等待");
                 return;
             }
 
-            File tokensFile = new File(originalDir, "tokens.txt");
-            if (!tokensFile.exists() || !tokensFile.isFile()) {
-                env.info("ASR 模型文件不完整，静默等待");
-                return;
-            }
-
-            File safeDir = PathUtils.getSafeModelDir(originalDir);
-            if (safeDir == null) {
-                env.error("获取安全模型目录失败", null);
-                return;
-            }
+            String dirName = originalModelPath.getFileName() != null ? originalModelPath.getFileName().toString() : "";
+            AsrModelInfo modelInfo = AsrModelManager.getModelByName(dirName);
 
             asrEngine = new AsrEngine(env);
-            asrEngine.initialize(safeDir.getAbsolutePath());
+
+            if (modelInfo != null) {
+                Path modelDir = originalModelPath.resolve(modelInfo.name);
+                if (!Files.isDirectory(modelDir)) {
+                    modelDir = originalModelPath;
+                }
+                File safeDir = PathUtils.getSafeModelDir(modelDir.toFile());
+                if (safeDir == null) {
+                    env.error("获取安全模型目录失败", null);
+                    return;
+                }
+                try {
+                    if (!asrEngine.initialize(modelInfo, safeDir.toPath())) {
+                        env.error("ASR 引擎初始化失败，模型类型可能尚未适配", null);
+                        env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 引擎初始化失败，该模型类型尚未适配"));
+                        return;
+                    }
+                } catch (ModelFilesMissingException e) {
+                    env.error("ASR 模型文件缺失: " + e.getMessage(), null);
+                    env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 模型文件缺失，请重新下载"));
+                    return;
+                }
+            } else {
+                File safeDir = PathUtils.getSafeModelDir(originalModelPath.toFile());
+                if (safeDir == null) {
+                    env.error("获取安全模型目录失败", null);
+                    return;
+                }
+                if (!asrEngine.initialize(safeDir.getAbsolutePath())) {
+                    env.error("ASR 引擎初始化失败", null);
+                    return;
+                }
+            }
 
             state.setAsrReady(true);
             env.info("ASR 引擎初始化成功");
@@ -378,6 +408,65 @@ public class TianshuCoreManager {
         return eventBus.interruptLlmAndTts();
     }
 
+    public AsrModelInfo resolveCurrentAsrModelInfo() {
+        Path modelPath = config.getAsrModelPath();
+        if (modelPath == null || modelPath.getFileName() == null) {
+            return null;
+        }
+        String dirName = modelPath.getFileName().toString();
+        AsrModelInfo info = AsrModelManager.getModelByName(dirName);
+        if (info != null) return info;
+        return AsrModelManager.getModelById(dirName);
+    }
+
+    public Path resolveAsrModelDir(AsrModelInfo info) {
+        if (info == null || info.name == null) return null;
+        return config.getAsrBasePath().resolve(info.name);
+    }
+
+    public boolean hasAsrModelContent(AsrModelInfo info) {
+        Path modelDir = resolveAsrModelDir(info);
+        if (modelDir == null || !Files.exists(modelDir)) return false;
+        return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath());
+    }
+
+    public void deleteAsrModel(AsrModelInfo info) {
+        Path modelDir = resolveAsrModelDir(info);
+        if (modelDir == null || !Files.exists(modelDir)) return;
+        try {
+            deleteRecursively(modelDir);
+        } catch (IOException e) {
+            env.error("删除 ASR 模型失败", e);
+        }
+    }
+
+    public void downloadAsrModel(AsrModelInfo info, String githubProxyUrl, DownloadProgressCallback callback) {
+        if (info == null) {
+            callback.onError("ASR 模型信息为空");
+            return;
+        }
+        asrModelDownloader.download(info, resolveAsrModelDir(info), githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
+            @Override
+            public void onProgress(String label, int percent) {
+                callback.onProgress(label, percent);
+            }
+
+            @Override
+            public void onComplete() {
+                callback.onComplete();
+            }
+
+            @Override
+            public void onError(String message) {
+                callback.onError(message);
+            }
+        });
+    }
+
+    public AsrModelDownloader getAsrModelDownloader() {
+        return asrModelDownloader;
+    }
+
     public TtsModelInfo resolveCurrentTtsModelInfo() {
         Path modelPath = config.getTtsModelPath();
         if (modelPath == null || modelPath.getFileName() == null) {
@@ -478,17 +567,27 @@ public class TianshuCoreManager {
         downloadPaused = false;
         Thread.ofVirtual().start(() -> {
             try {
-                HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-
                 callback.onProgress("ASR:", 5);
-                Path asrDir = config.getAsrBasePath().resolve(ModelPresets.getPresetAsrName(tier));
-                downloader.downloadModelFiles(ModelPresets.getPresetAsrName(tier).equals("ParaformerOnnx")
-                        ? "csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14"
-                        : "csukuangfj/sherpa-onnx-zipformer-multi-zh-hans-2023-10-24",
-                        asrDir, "main", true, 3);
+                AsrModelInfo asrModel = AsrModelManager.getDefaultModel(tier);
+                if (asrModel != null) {
+                    Path asrDir = config.getAsrBasePath().resolve(asrModel.name);
+                    asrModelDownloader.downloadSync(asrModel, asrDir, null, new AsrModelDownloader.DownloadProgressCallback() {
+                        @Override public void onProgress(String label, int percent) { callback.onProgress("ASR:", percent); }
+                        @Override public void onComplete() {}
+                        @Override public void onError(String message) { throw new RuntimeException("ASR 下载失败: " + message); }
+                    });
+                } else {
+                    HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
+                    Path asrDir = config.getAsrBasePath().resolve(ModelPresets.getPresetAsrName(tier));
+                    downloader.downloadModelFiles(ModelPresets.getPresetAsrName(tier).equals("ParaformerOnnx")
+                            ? "csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14"
+                            : "csukuangfj/sherpa-onnx-zipformer-multi-zh-hans-2023-10-24",
+                            asrDir, "main", true, 3);
+                }
                 callback.onProgress("ASR:", 100);
 
                 callback.onProgress("LLM:", 5);
+                HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
                 Path llmDir = config.getLlmBasePath().resolve(ModelPresets.getPresetLlmName(tier));
                 downloader.downloadModelFiles(ModelPresets.getPresetTtsModelId(tier).startsWith("OpenMOSS")
                         ? "csukuangfj/sherpa-onnx-vits-zh-hf-keqing"

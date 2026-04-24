@@ -1,0 +1,5074 @@
+[
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-2023-06-26",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-2023-06-26",
+      "size": 307666046,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+      "size": 127887156,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
+      "size": 74004050,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-trilingual-zh-cantonese-en",
+      "id": "csukuangfj/sherpa-onnx-paraformer-trilingual-zh-cantonese-en",
+      "size": 1059453702,
+      "lang": [
+        "zh",
+        "yue",
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-en-2024-03-09",
+      "id": "csukuangfj/sherpa-onnx-paraformer-en-2024-03-09",
+      "size": 1021641665,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-zh-small-2024-03-09",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09",
+      "size": 77920048,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-zh-2023-03-28",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-2023-03-28",
+      "size": 1035472389,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-zh-2024-03-09",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-2024-03-09",
+      "size": 996591364,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+      "id": "csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+      "size": 1047319737,
+      "lang": [
+        "zh",
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en",
+      "id": "csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en",
+      "size": 1047671211,
+      "lang": [
+        "zh",
+        "yue",
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-zh-2023-09-14",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14",
+      "size": 234051698,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-cantonese-2024-03-13",
+      "id": "csukuangfj/sherpa-onnx-zipformer-cantonese-2024-03-13",
+      "size": 329964914,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-cantonese-2024-03-13.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16",
+      "size": 458187351,
+      "lang": [
+        "zh",
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-small-2024-03-18",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-small-2024-03-18",
+      "size": 184604253,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-small-2024-03-18.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-lstm-zh-2023-02-20",
+      "id": "csukuangfj/sherpa-onnx-lstm-zh-2023-02-20",
+      "size": 417007347,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-lstm-en-2023-02-17",
+      "id": "csukuangfj/sherpa-onnx-lstm-en-2023-02-17",
+      "size": 384245724,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-conformer-zh-2023-05-23",
+      "id": "csukuangfj/sherpa-onnx-streaming-conformer-zh-2023-05-23",
+      "size": 528814124,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "icefall-asr-zipformer-streaming-wenetspeech-20230615",
+      "id": "csukuangfj/icefall-asr-zipformer-streaming-wenetspeech-20230615",
+      "size": 331870551,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/icefall-asr-zipformer-streaming-wenetspeech-20230615.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-en-2023-02-21",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-02-21",
+      "size": 397939030,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-fr-2023-04-14",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-fr-2023-04-14",
+      "size": 398444115,
+      "lang": [
+        "fr"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-fr-2023-04-14.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-en-2023-06-21",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21",
+      "size": 506956414,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-conformer-zh-stateless2-2023-05-23",
+      "id": "csukuangfj/sherpa-onnx-conformer-zh-stateless2-2023-05-23",
+      "size": 456480884,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-conformer-en-2023-03-18",
+      "id": "csukuangfj/sherpa-onnx-conformer-en-2023-03-18",
+      "size": 425360617,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-conformer-zh-2023-05-23",
+      "id": "csukuangfj/sherpa-onnx-conformer-zh-2023-05-23",
+      "size": 497332649,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "icefall-asr-cv-corpus-13.0-2023-03-09-en-pruned-transducer-stateless7-2023-04-17",
+      "id": "csukuangfj/icefall-asr-cv-corpus-13.0-2023-03-09-en-pruned-transducer-stateless7-2023-04-17",
+      "size": 401716549,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/icefall-asr-cv-corpus-13.0-2023-03-09-en-pruned-transducer-stateless7-2023-04-17.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "icefall-asr-zipformer-wenetspeech-20230615",
+      "id": "csukuangfj/icefall-asr-zipformer-wenetspeech-20230615",
+      "size": 340291239,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/icefall-asr-zipformer-wenetspeech-20230615.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-small-en-2023-06-26",
+      "id": "csukuangfj/sherpa-onnx-zipformer-small-en-2023-06-26",
+      "size": 112232184,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-large-en-2023-06-26",
+      "id": "csukuangfj/sherpa-onnx-zipformer-large-en-2023-06-26",
+      "size": 688420438,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "icefall-asr-multidataset-pruned_transducer_stateless7-2023-05-04",
+      "id": "csukuangfj/icefall-asr-multidataset-pruned_transducer_stateless7-2023-05-04",
+      "size": 399988468,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/icefall-asr-multidataset-pruned_transducer_stateless7-2023-05-04.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-2023-04-01",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-2023-04-01",
+      "size": 507298088,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-2023-03-30",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-2023-03-30",
+      "size": 509679958,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-multi-zh-hans-2023-9-2",
+      "id": "csukuangfj/sherpa-onnx-zipformer-multi-zh-hans-2023-9-2",
+      "size": 309195644,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-multi-zh-hans-2023-9-2.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-en-citrinet-512",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-en-citrinet-512",
+      "size": 164307491,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-en-conformer-small",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-small",
+      "size": 76482338,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-en-conformer-medium",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-medium",
+      "size": 165685608,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-en-conformer-large",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-large",
+      "size": 610719312,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-tdnn-yesno",
+      "id": "csukuangfj/sherpa-onnx-tdnn-yesno",
+      "size": 480960,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "OTHER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ctc-en-2023-10-02",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ctc-en-2023-10-02",
+      "size": 383165059,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zh-wenet-aishell",
+      "id": "csukuangfj/sherpa-onnx-zh-wenet-aishell",
+      "size": 355342084,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zh-wenet-aishell2",
+      "id": "csukuangfj/sherpa-onnx-zh-wenet-aishell2",
+      "size": 355984004,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-en-wenet-librispeech",
+      "id": "csukuangfj/sherpa-onnx-en-wenet-librispeech",
+      "size": 357301262,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zh-wenet-wenetspeech",
+      "id": "csukuangfj/sherpa-onnx-zh-wenet-wenetspeech",
+      "size": 889448244,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-en-wenet-gigaspeech",
+      "id": "csukuangfj/sherpa-onnx-en-wenet-gigaspeech",
+      "size": 933151114,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-conformer-en-2023-05-09",
+      "id": "csukuangfj/sherpa-onnx-streaming-conformer-en-2023-05-09",
+      "size": 657452145,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+      "size": 511274346,
+      "lang": [
+        "zh",
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-telespeech-ctc-zh-2024-06-04",
+      "id": "csukuangfj/sherpa-onnx-telespeech-ctc-zh-2024-06-04",
+      "size": 569846066,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TELESPEECH",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-telespeech-ctc-int8-zh-2024-06-04",
+      "id": "csukuangfj/sherpa-onnx-telespeech-ctc-int8-zh-2024-06-04",
+      "size": 183168450,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TELESPEECH",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-thai-2024-06-20",
+      "id": "csukuangfj/sherpa-onnx-zipformer-thai-2024-06-20",
+      "size": 695605000,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-thai-2024-06-20.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-korean-2024-06-24",
+      "id": "csukuangfj/sherpa-onnx-zipformer-korean-2024-06-24",
+      "size": 329740690,
+      "lang": [
+        "ko"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-korean-2024-06-24.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-korean-2024-06-16",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-korean-2024-06-16",
+      "size": 418218652,
+      "lang": [
+        "ko"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-korean-2024-06-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-libriheavy-20230926-small",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-libriheavy-20230926-small",
+      "size": 307822974,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-libriheavy-20230926-medium",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-libriheavy-20230926-medium",
+      "size": 306674407,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-libriheavy-20230926-large",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-libriheavy-20230926-large",
+      "size": 305316263,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-libriheavy-20230830-small-punct-case",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-libriheavy-20230830-small-punct-case",
+      "size": 309964940,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-libriheavy-20230830-medium-punct-case",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-libriheavy-20230830-medium-punct-case",
+      "size": 306891038,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-en-libriheavy-20230830-large-punct-case",
+      "id": "csukuangfj/sherpa-onnx-zipformer-en-libriheavy-20230830-large-punct-case",
+      "size": 306893541,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-small.en",
+      "id": "csukuangfj/sherpa-onnx-whisper-small.en",
+      "size": 635693775,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "small-encoder.onnx",
+        "small-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-medium-aishell",
+      "id": "csukuangfj/sherpa-onnx-whisper-medium-aishell",
+      "size": 686537184,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "medium-encoder.onnx",
+        "medium-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-tiny",
+      "id": "csukuangfj/sherpa-onnx-whisper-tiny",
+      "size": 116204861,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "tiny-encoder.onnx",
+        "tiny-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-small",
+      "id": "csukuangfj/sherpa-onnx-whisper-small",
+      "size": 639387718,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "small-encoder.onnx",
+        "small-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-tiny.en",
+      "id": "csukuangfj/sherpa-onnx-whisper-tiny.en",
+      "size": 118071777,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "tiny-encoder.onnx",
+        "tiny-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-large-v3",
+      "id": "csukuangfj/sherpa-onnx-whisper-large-v3",
+      "size": 1068482488,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "large-encoder.onnx",
+        "large-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-large-v1",
+      "id": "csukuangfj/sherpa-onnx-whisper-large-v1",
+      "size": 1066424971,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "large-encoder.onnx",
+        "large-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+      "id": "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+      "size": 1047870769,
+      "lang": [
+        "zh",
+        "en",
+        "ja",
+        "ko",
+        "yue"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "SENSEVOICE",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "size": 310414022,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ru-2024-09-18",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ru-2024-09-18",
+      "size": 297360353,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ru-2024-09-18.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-small-zipformer-ru-2024-09-18",
+      "id": "csukuangfj/sherpa-onnx-small-zipformer-ru-2024-09-18",
+      "size": 109906654,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-small-zipformer-ru-2024-09-18.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-base.en",
+      "id": "csukuangfj/sherpa-onnx-whisper-base.en",
+      "size": 208576005,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-base",
+      "id": "csukuangfj/sherpa-onnx-whisper-base",
+      "size": 207557382,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-distil-small.en",
+      "id": "csukuangfj/sherpa-onnx-whisper-distil-small.en",
+      "size": 453710017,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "small-encoder.onnx",
+        "small-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-distil-large-v2",
+      "id": "csukuangfj/sherpa-onnx-whisper-distil-large-v2",
+      "size": 576607838,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "large-encoder.onnx",
+        "large-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-distil-medium.en",
+      "id": "csukuangfj/sherpa-onnx-whisper-distil-medium.en",
+      "size": 1007278599,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "medium-encoder.onnx",
+        "medium-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-turbo",
+      "id": "csukuangfj/sherpa-onnx-whisper-turbo",
+      "size": 563790207,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01",
+      "size": 713097333,
+      "lang": [
+        "ja"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-tiny-en-int8",
+      "id": "csukuangfj/sherpa-onnx-moonshine-tiny-en-int8",
+      "size": 107600538,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "tiny-encoder.onnx",
+        "tiny-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-en-int8",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
+      "size": 250807309,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-zh-en-2023-11-22",
+      "id": "csukuangfj/sherpa-onnx-zipformer-zh-en-2023-11-22",
+      "size": 312398028,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-zh-en-2023-11-22.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17",
+      "size": 437969761,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-gigaspeech-2023-12-12",
+      "id": "csukuangfj/sherpa-onnx-zipformer-gigaspeech-2023-12-12",
+      "size": 307044202,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-gigaspeech-2023-12-12.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-small-ctc-zh-2025-04-01",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-small-ctc-zh-2025-04-01",
+      "size": 87170593,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01",
+      "size": 21264113,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": true,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02",
+      "id": "csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02",
+      "size": 80671385,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "DOLPHIN",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-dolphin-base-ctc-multi-lang-2025-04-02",
+      "id": "csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-2025-04-02",
+      "size": 299947395,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "DOLPHIN",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",
+      "id": "csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",
+      "size": 191534345,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "DOLPHIN",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-dolphin-small-ctc-multi-lang-2025-04-02",
+      "id": "csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-2025-04-02",
+      "size": 775077198,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "DOLPHIN",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ru-int8-2025-04-20",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ru-int8-2025-04-20",
+      "size": 60239942,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ru-2025-04-20",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ru-2025-04-20",
+      "size": 248548768,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-vi-int8-2025-04-20",
+      "id": "csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20",
+      "size": 60181038,
+      "lang": [
+        "vi"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-vi-2025-04-20",
+      "id": "csukuangfj/sherpa-onnx-zipformer-vi-2025-04-20",
+      "size": 256226028,
+      "lang": [
+        "vi"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-giga-am-v2-russian-2025-04-19",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v2-russian-2025-04-19",
+      "size": 172422327,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-giga-am-russian-2024-10-24",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-giga-am-russian-2024-10-24",
+      "size": 205384624,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-giga-am-v2-russian-2025-04-19",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v2-russian-2025-04-19",
+      "size": 166917722,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-giga-am-russian-2024-10-24",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-giga-am-russian-2024-10-24",
+      "size": 200460845,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-12-12",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-12-12",
+      "size": 310380628,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-12-12.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
+      "size": 132634597,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-zh-fp16-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-fp16-2025-06-30",
+      "size": 282222967,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-fp16-2025-06-30.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-zh-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-2025-06-30",
+      "size": 594086504,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-2025-06-30.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-zh-int8-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-zh-int8-2025-06-30",
+      "size": 127965713,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-zh-int8-2025-06-30.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-zh-fp16-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-zh-fp16-2025-06-30",
+      "size": 280100839,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-zh-fp16-2025-06-30.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-zh-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-zh-2025-06-30",
+      "size": 589650025,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-zh-2025-06-30.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30",
+      "size": 597755927,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30",
+      "size": 590044704,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-multi-zh-hans-int8-2023-12-13",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-multi-zh-hans-int8-2023-12-13",
+      "size": 62041550,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-int8-2023-12-13.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-multi-zh-hans-fp16-2023-12-13",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-multi-zh-hans-fp16-2023-12-13",
+      "size": 122843077,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-fp16-2023-12-13.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-12-13",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-12-13",
+      "size": 253004827,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-12-13.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-int8-2023-12-13",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-int8-2023-12-13",
+      "size": 57020894,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-int8-2023-12-13.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-fp16-2023-12-13",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-fp16-2023-12-13",
+      "size": 119955475,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-fp16-2023-12-13.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-2023-12-13",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-2023-12-13",
+      "size": 247200045,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-multi-zh-hans-2023-12-13.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03",
+      "size": 301377906,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ctc-zh-fp16-2025-07-03",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ctc-zh-fp16-2025-07-03",
+      "size": 574653936,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ctc-zh-fp16-2025-07-03.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr",
+      "id": "csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr",
+      "size": 717064890,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
+      "size": 153692328,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms",
+      "size": 432030807,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms-int8",
+      "size": 99459493,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms",
+      "size": 432119316,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms-int8",
+      "size": 102616827,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms",
+      "size": 432042787,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms-int8",
+      "size": 100366946,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-80ms",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-80ms",
+      "size": 450212918,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-80ms.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-80ms-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-80ms-int8",
+      "size": 102813625,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-80ms-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms",
+      "size": 450305733,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8",
+      "size": 105913204,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-1040ms",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-1040ms",
+      "size": 450226958,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-1040ms.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-1040ms-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-1040ms-int8",
+      "size": 103918085,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-1040ms-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000",
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000",
+      "size": 434206949,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000-int8",
+      "size": 104337827,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-es-1424",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-es-1424",
+      "size": 430895387,
+      "lang": [
+        "es"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-es-1424-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-es-1424-int8",
+      "size": 103489263,
+      "lang": [
+        "es"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-fast-conformer-ctc-es-1424-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288",
+      "size": 434219034,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288-int8",
+      "size": 102875642,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-en-24500",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-24500",
+      "size": 431106517,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-en-24500-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-24500-int8",
+      "size": 104402565,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-fast-conformer-ctc-en-24500-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000",
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000",
+      "size": 452590463,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-be-de-en-es-fr-hr-it-pl-ru-uk-20k",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-be-de-en-es-fr-hr-it-pl-ru-uk-20k",
+      "size": 434978386,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-transducer-es-1424",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-transducer-es-1424",
+      "size": 449124440,
+      "lang": [
+        "es"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-ctc-be-de-en-es-fr-hr-it-pl-ru-uk-20k-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-be-de-en-es-fr-hr-it-pl-ru-uk-20k-int8",
+      "size": 102261698,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-fast-conformer-ctc-be-de-en-es-fr-hr-it-pl-ru-uk-20k-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-transducer-en-de-es-fr-14288",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-transducer-en-de-es-fr-14288",
+      "size": 456509408,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-transducer-en-24500",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-transducer-en-24500",
+      "size": 449358274,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-fast-conformer-transducer-be-de-en-es-fr-hr-it-pl-ru-uk-20k",
+      "id": "csukuangfj/sherpa-onnx-nemo-fast-conformer-transducer-be-de-en-es-fr-hr-it-pl-ru-uk-20k",
+      "size": 457513113,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8",
+      "size": 489389564,
+      "lang": [
+        "ja"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-stt_pt_fastconformer_hybrid_large_pc",
+      "id": "csukuangfj/sherpa-onnx-nemo-stt_pt_fastconformer_hybrid_large_pc",
+      "size": 432538743,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-stt_pt_fastconformer_hybrid_large_pc.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-stt_pt_fastconformer_hybrid_large_pc-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-stt_pt_fastconformer_hybrid_large_pc-int8",
+      "size": 103316407,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-stt_pt_fastconformer_hybrid_large_pc-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-stt_de_fastconformer_hybrid_large_pc",
+      "id": "csukuangfj/sherpa-onnx-nemo-stt_de_fastconformer_hybrid_large_pc",
+      "size": 430887716,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-stt_de_fastconformer_hybrid_large_pc.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-stt_de_fastconformer_hybrid_large_pc-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-stt_de_fastconformer_hybrid_large_pc-int8",
+      "size": 104563862,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-stt_de_fastconformer_hybrid_large_pc-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-stt_pt_fastconformer_hybrid_large_pc",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-stt_pt_fastconformer_hybrid_large_pc",
+      "size": 448333812,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-transducer-stt_pt_fastconformer_hybrid_large_pc.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-stt_pt_fastconformer_hybrid_large_pc-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-stt_pt_fastconformer_hybrid_large_pc-int8",
+      "size": 106540904,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-transducer-stt_pt_fastconformer_hybrid_large_pc-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc",
+      "size": 449136352,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc-int8",
+      "size": 108125093,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16",
+      "size": 50536402,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ctc-small-zh-fp16-2025-07-16",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-fp16-2025-07-16",
+      "size": 90130351,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ctc-small-zh-fp16-2025-07-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-ctc-small-zh-2025-07-16",
+      "id": "csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-2025-07-16",
+      "size": 181218985,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ctc-small-zh-2025-07-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "size": 487170055,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+      "size": 482468385,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06",
+      "size": 57220361,
+      "lang": [
+        "fr"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06",
+      "size": 124394665,
+      "lang": [
+        "es"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06",
+      "size": 57267600,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-de-kroko-2025-08-06",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-de-kroko-2025-08-06",
+      "size": 57565698,
+      "lang": [
+        "de"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-de-kroko-2025-08-06.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16",
+      "size": 24110855,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16",
+      "size": 89653224,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-distil-large-v3",
+      "id": "csukuangfj/sherpa-onnx-whisper-distil-large-v3",
+      "size": 529350808,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "large-encoder.onnx",
+        "large-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-distil-large-v3.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-whisper-distil-large-v3.5",
+      "id": "csukuangfj/sherpa-onnx-whisper-distil-large-v3.5",
+      "size": 528659059,
+      "lang": [
+        "multilingual"
+      ],
+      "modelFiles": [
+        "large-encoder.onnx",
+        "large-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WHISPER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-distil-large-v3.5.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+      "id": "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+      "size": 163002883,
+      "lang": [
+        "zh",
+        "en",
+        "ja",
+        "ko",
+        "yue"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "SENSEVOICE",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-t-one-russian-2025-09-08",
+      "id": "csukuangfj/sherpa-onnx-streaming-t-one-russian-2025-09-08",
+      "size": 128468156,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "OTHER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-t-one-russian-2025-09-08.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
+      "id": "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
+      "size": 165783878,
+      "lang": [
+        "zh",
+        "en",
+        "ja",
+        "ko",
+        "yue"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "SENSEVOICE",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2025-09-09",
+      "id": "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2025-09-09",
+      "size": 886547748,
+      "lang": [
+        "zh",
+        "en",
+        "ja",
+        "ko",
+        "yue"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": true,
+      "isStreaming": false,
+      "modelType": "SENSEVOICE",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2025-09-09.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-int8-2025-09-10",
+      "id": "csukuangfj/sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-int8-2025-09-10",
+      "size": 117203117,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-int8-2025-09-10.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-2025-09-10",
+      "id": "csukuangfj/sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-2025-09-10",
+      "size": 344911539,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-2025-09-10.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-zh-int8-2025-10-07",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-int8-2025-10-07",
+      "size": 228262632,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-paraformer-zh-int8-2025-10-07.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-paraformer-zh-2025-10-07",
+      "id": "csukuangfj/sherpa-onnx-paraformer-zh-2025-10-07",
+      "size": 822554565,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "PARAFORMER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-paraformer-zh-2025-10-07.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10",
+      "size": 258999581,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "MID",
+      "downloadUrl": null,
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+      "size": 170197019,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
+      "id": "csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
+      "size": 167388020,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
+      "size": 163282594,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16",
+      "id": "csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16",
+      "size": 163286197,
+      "lang": [
+        "ru"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-medasr-ctc-en-int8-2025-12-25",
+      "id": "csukuangfj/sherpa-onnx-medasr-ctc-en-int8-2025-12-25",
+      "size": 131831040,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-medasr-ctc-en-int8-2025-12-25.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-medasr-ctc-en-2025-12-25",
+      "id": "csukuangfj/sherpa-onnx-medasr-ctc-en-2025-12-25",
+      "size": 403195234,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-medasr-ctc-en-2025-12-25.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17",
+      "id": "csukuangfj/sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17",
+      "size": 187693225,
+      "lang": [
+        "zh",
+        "en",
+        "ja",
+        "ko"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "SENSEVOICE",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-sense-voice-funasr-nano-2025-12-17",
+      "id": "csukuangfj/sherpa-onnx-sense-voice-funasr-nano-2025-12-17",
+      "size": 452562911,
+      "lang": [
+        "zh",
+        "en",
+        "ja",
+        "ko"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "SENSEVOICE",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-funasr-nano-2025-12-17.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-funasr-nano-fp16-2025-12-30",
+      "id": "csukuangfj/sherpa-onnx-funasr-nano-fp16-2025-12-30",
+      "size": 1030076153,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "FUNASR_NANO",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-funasr-nano-fp16-2025-12-30.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-nemotron-speech-streaming-en-0.6b-int8-2026-01-14",
+      "id": "csukuangfj/sherpa-onnx-nemotron-speech-streaming-en-0.6b-int8-2026-01-14",
+      "size": 468994262,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "NEMO",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-int8-2026-01-14.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-int8-2026-02-03",
+      "id": "csukuangfj/sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-int8-2026-02-03",
+      "size": 116168264,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-int8-2026-02-03.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-2026-02-03",
+      "id": "csukuangfj/sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-2026-02-03",
+      "size": 337995253,
+      "lang": [
+        "zh"
+      ],
+      "modelFiles": [
+        "encoder.onnx",
+        "decoder.onnx",
+        "ctc_decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "WENET",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-wenetspeech-wu-u2pp-conformer-ctc-zh-2026-02-03.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12",
+      "id": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12",
+      "size": 786404815,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "OMNILINGUAL",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-v2-int8-2026-02-05",
+      "id": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-v2-int8-2026-02-05",
+      "size": 787296506,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "OMNILINGUAL",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-v2-int8-2026-02-05.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12",
+      "id": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12",
+      "size": 292571207,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "OMNILINGUAL",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-v2-int8-2026-02-05",
+      "id": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-v2-int8-2026-02-05",
+      "size": 292313120,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "OMNILINGUAL",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-v2-int8-2026-02-05.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09",
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09",
+      "size": 87289525,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": true,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-vi-30M-int8-2026-02-09",
+      "id": "csukuangfj/sherpa-onnx-zipformer-vi-30M-int8-2026-02-09",
+      "size": 26442384,
+      "lang": [
+        "vi"
+      ],
+      "modelFiles": [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-vi-30M-int8-2026-02-09.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-zipformer-vi-30M-2026-02-09",
+      "id": "csukuangfj/sherpa-onnx-zipformer-vi-30M-2026-02-09",
+      "size": 95081562,
+      "lang": [
+        "vi"
+      ],
+      "modelFiles": [
+        "encoder-epoch-99-avg-1.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "TRANSDUCER",
+      "supportHotwords": true,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-vi-30M-2026-02-09.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+      "id": "csukuangfj/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+      "size": 520516278,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.int8.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "CTC",
+      "supportHotwords": false,
+      "recommendedTier": "HIGH",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25.tar.bz2",
+      "isInt8Available": true,
+      "qualityTier": "HIGH",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+      "id": "csukuangfj/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+      "size": 838589068,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "OTHER",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27",
+      "size": 49153415,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "tiny-encoder.onnx",
+        "tiny-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-tiny-ja-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-tiny-ja-quantized-2026-02-27",
+      "size": 47889565,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "tiny-encoder.onnx",
+        "tiny-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-ja-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
+      "size": 29858559,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "tiny-encoder.onnx",
+        "tiny-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-zh-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-zh-quantized-2026-02-27",
+      "size": 99905420,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-zh-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-vi-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-vi-quantized-2026-02-27",
+      "size": 106719129,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-vi-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-uk-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-uk-quantized-2026-02-27",
+      "size": 111037143,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-uk-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-ja-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-ja-quantized-2026-02-27",
+      "size": 104162109,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-ja-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-es-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-es-quantized-2026-02-27",
+      "size": 50846902,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-es-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "LOW"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
+      "size": 111266225,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-en-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-moonshine-base-ar-quantized-2026-02-27",
+      "id": "csukuangfj/sherpa-onnx-moonshine-base-ar-quantized-2026-02-27",
+      "size": 119143068,
+      "lang": [
+        "en"
+      ],
+      "modelFiles": [
+        "base-encoder.onnx",
+        "base-decoder.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "MOONSHINE",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-ar-quantized-2026-02-27.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "LOW",
+      "performanceClass": "MID"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+      "id": "csukuangfj/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+      "size": 878702423,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "QWEN3_ASR",
+      "supportHotwords": false,
+      "recommendedTier": "MID",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "HIGH",
+      "performanceClass": "HIGH"
+    },
+    {
+      "author": "csukuangfj",
+      "name": "sherpa-onnx-funasr-nano-int8-2025-12-30",
+      "id": "csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30",
+      "size": 841730611,
+      "lang": [
+        "unknown"
+      ],
+      "modelFiles": [
+        "model.onnx"
+      ],
+      "lexiconFiles": [
+        "tokens.txt"
+      ],
+      "pinned": false,
+      "isStreaming": false,
+      "modelType": "FUNASR_NANO",
+      "supportHotwords": false,
+      "recommendedTier": "LOW",
+      "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2",
+      "isInt8Available": false,
+      "qualityTier": "MID",
+      "performanceClass": "HIGH"
+    }
+  ]

@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.EnvSetupManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.core.Engine.AsrEngine;
+import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
@@ -396,6 +398,10 @@ public class TianshuGUI extends Screen {
             this.addRenderableWidget(BrightButton.create(Component.literal("选择模型"), b -> {
                 minecraft.setScreen(new TtsModelSelectScreen(this, config, coreManager, audioManager, nativeLibBridge));
             }).pos(buttonX, buttonY).size(buttonWidth, buttonHeight).build());
+        } else if ("ASR".equals(type)) {
+            this.addRenderableWidget(BrightButton.create(Component.literal("选择模型"), b -> {
+                minecraft.setScreen(new AsrModelSelectScreen(this, config, coreManager, audioManager, nativeLibBridge));
+            }).pos(buttonX, buttonY).size(buttonWidth, buttonHeight).build());
         } else {
             this.addRenderableWidget(BrightButton.create(Component.literal("选择模型"), b -> {
                 minecraft.setScreen(new ModelSelectScreen(this, type, config, coreManager, audioManager, nativeLibBridge));
@@ -737,12 +743,24 @@ public class TianshuGUI extends Screen {
         } else if (!asrPreviewResult.isEmpty()) {
             lines.add("识别结果: " + asrPreviewResult);
         } else {
-            Path asrDir = resolveModelDir("ASR");
-            if (asrDir != null) {
-                boolean transducer = AsrEngine.detectTransducer(asrDir);
-                if (transducer) {
-                    boolean hasHotwords = Files.exists(asrDir.resolve("hotwords.txt"));
+            AsrModelInfo asrInfo = coreManager.resolveCurrentAsrModelInfo();
+            if (asrInfo != null) {
+                lines.add("类型: " + asrInfo.getModelType());
+                if (asrInfo.isStreaming) lines.add("流式识别");
+                lines.add("质量 " + asrInfo.getQualityTier() + " | 性能 " + asrInfo.getPerformanceClass());
+                if (asrInfo.supportHotwords) {
+                    Path asrDir = resolveModelDir("ASR");
+                    boolean hasHotwords = asrDir != null && Files.exists(asrDir.resolve("hotwords.txt"));
                     lines.add(hasHotwords ? "热词增强已启用" : "可点击下方\"热词\"添加热词");
+                }
+            } else {
+                Path asrDir = resolveModelDir("ASR");
+                if (asrDir != null) {
+                    boolean transducer = AsrEngine.detectTransducer(asrDir);
+                    if (transducer) {
+                        boolean hasHotwords = Files.exists(asrDir.resolve("hotwords.txt"));
+                        lines.add(hasHotwords ? "热词增强已启用" : "可点击下方\"热词\"添加热词");
+                    }
                 }
             }
         }
