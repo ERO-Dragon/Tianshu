@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.ir.collection.IntArrayList;
 import com.rheinmetal.tianshu.ir.collection.IntOpenHashSet;
 import com.rheinmetal.tianshu.ir.collection.Long2LongOpenHashMap;
 
+import java.util.List;
 import java.util.Map;
 
 public final class IndexBuilder {
@@ -12,29 +13,23 @@ public final class IndexBuilder {
     public static int[] INDEX_POOL = new int[0];
     public static int writeOffset = 0;
     public static Long2LongOpenHashMap indexDirectory = new Long2LongOpenHashMap();
-    public static int[] entityPinyinLengthArray = new int[0];
-    public static String[][] entityTokenArray = new String[0][];
-    public static String[] entityJoinedTokenArray = new String[0];
 
     private IndexBuilder() {
     }
 
-    public static void build(Map<String, String> rawDict) {
+    public static void build(Map<String, List<String>> rawDict) {
         int itemCount = IRBaseUtils.buildMapping(rawDict);
         INDEX_POOL = new int[Math.max(16, itemCount * 50)];
         writeOffset = 0;
         indexDirectory = new Long2LongOpenHashMap(Math.max(16, itemCount * 8));
-        entityPinyinLengthArray = new int[itemCount];
-        entityTokenArray = new String[itemCount][];
-        entityJoinedTokenArray = new String[itemCount];
 
         Int2ObjectOpenHashMap<IntOpenHashSet> documentFrequencyBuckets = new Int2ObjectOpenHashMap<>(itemCount * 4);
 
+        // 第一个循环：算词频，双轨喂入
         for (int internalId = 0; internalId < itemCount; internalId++) {
-            String name = IRBaseUtils.localizedNameArray[internalId];
-            String[] tokens = IRBaseUtils.tokenize(name);
-            IntOpenHashSet localSeen = new IntOpenHashSet(tokens.length * 2 + 4);
-            collectDocumentFrequency(tokens, internalId, localSeen, documentFrequencyBuckets);
+            IntOpenHashSet localSeen = new IntOpenHashSet(32);
+            collectDocumentFrequency(IRBaseUtils.primaryAliasTokensArray[internalId], internalId, localSeen, documentFrequencyBuckets);
+            collectDocumentFrequency(IRBaseUtils.fallbackAliasTokensArray[internalId], internalId, localSeen, documentFrequencyBuckets);
         }
 
         IntOpenHashSet stopGramHashes = new IntOpenHashSet(documentFrequencyBuckets.size());
@@ -48,14 +43,10 @@ public final class IndexBuilder {
         }
 
         Int2ObjectOpenHashMap<IntArrayList> tempBuckets = new Int2ObjectOpenHashMap<>(itemCount * 8);
+        // 第二个循环：建倒排表，双轨喂入
         for (int internalId = 0; internalId < itemCount; internalId++) {
-            String name = IRBaseUtils.localizedNameArray[internalId];
-            String[] tokens = IRBaseUtils.tokenize(name);
-            String joinedTokens = IRBaseUtils.joinTokens(tokens);
-            entityTokenArray[internalId] = tokens;
-            entityJoinedTokenArray[internalId] = joinedTokens;
-            entityPinyinLengthArray[internalId] = joinedTokens.length();
-            collectPostingLists(tokens, internalId, stopGramHashes, tempBuckets);
+            collectPostingLists(IRBaseUtils.primaryAliasTokensArray[internalId], internalId, stopGramHashes, tempBuckets);
+            collectPostingLists(IRBaseUtils.fallbackAliasTokensArray[internalId], internalId, stopGramHashes, tempBuckets);
         }
 
         Int2ObjectOpenHashMap.EntryIterator<IntArrayList> bucketIterator = tempBuckets.entryIterator();

@@ -15,13 +15,10 @@ public final class IRCommandService {
     private volatile CommandParser parser;
     private volatile int indexedItemCount;
 
-    public void rebuild(Map<String, String> rawDict) {
+    public void rebuild(Map<String, List<String>> rawDict) {
         lifecycleLock.writeLock().lock();
         try {
-            if (rawDict == null || rawDict.isEmpty()) {
-                clearInternal();
-                return;
-            }
+            if (rawDict == null || rawDict.isEmpty()) { clearInternal(); return; }
             IndexBuilder.build(rawDict);
             parser = new CommandParser();
             indexedItemCount = rawDict.size();
@@ -111,9 +108,7 @@ public final class IRCommandService {
     public IRSnapshot snapshot(String fingerprint) {
         lifecycleLock.readLock().lock();
         try {
-            if (!isReady()) {
-                return null;
-            }
+            if (!isReady()) { return null; }
             int entryCount = IndexBuilder.indexDirectory.size();
             long[] directoryKeys = new long[entryCount];
             long[] directoryValues = new long[entryCount];
@@ -128,16 +123,13 @@ public final class IRCommandService {
                 fingerprint,
                 IRBaseUtils.reverseLookupArray.clone(),
                 IRBaseUtils.localizedNameArray.clone(),
-                cloneNested(IndexBuilder.entityTokenArray),
-                IndexBuilder.entityJoinedTokenArray.clone(),
-                IndexBuilder.entityPinyinLengthArray.clone(),
+                cloneNested(IRBaseUtils.primaryAliasTokensArray),   // 换成主轨道
+                cloneNested(IRBaseUtils.fallbackAliasTokensArray),  // 换成副轨道
                 copyActiveIndexPool(),
                 directoryKeys,
                 directoryValues
             );
-        } finally {
-            lifecycleLock.readLock().unlock();
-        }
+        } finally { lifecycleLock.readLock().unlock(); }
     }
 
     private void clearInternal() {
@@ -146,9 +138,8 @@ public final class IRCommandService {
         IndexBuilder.INDEX_POOL = new int[0];
         IndexBuilder.writeOffset = 0;
         IndexBuilder.indexDirectory = new Long2LongOpenHashMap();
-        IndexBuilder.entityPinyinLengthArray = new int[0];
-        IndexBuilder.entityTokenArray = new String[0][];
-        IndexBuilder.entityJoinedTokenArray = new String[0];
+        IRBaseUtils.primaryAliasTokensArray = new String[0][];
+        IRBaseUtils.fallbackAliasTokensArray = new String[0][];
         IRBaseUtils.reverseLookupArray = new String[0];
         IRBaseUtils.localizedNameArray = new String[0];
         IRBaseUtils.forwardLookupMap = Map.of();
@@ -158,15 +149,13 @@ public final class IRCommandService {
         IRBaseUtils.reverseLookupArray = snapshot.reverseLookupArray.clone();
         IRBaseUtils.localizedNameArray = snapshot.localizedNameArray.clone();
         IRBaseUtils.forwardLookupMap = buildForwardLookup(snapshot.reverseLookupArray);
-        IndexBuilder.entityTokenArray = cloneNested(snapshot.entityTokenArray);
-        IndexBuilder.entityJoinedTokenArray = snapshot.entityJoinedTokenArray.clone();
-        IndexBuilder.entityPinyinLengthArray = snapshot.entityPinyinLengthArray.clone();
+        IRBaseUtils.primaryAliasTokensArray = cloneNested(snapshot.primaryAliasTokensArray); 
+        IRBaseUtils.fallbackAliasTokensArray = cloneNested(snapshot.fallbackAliasTokensArray);
+
         IndexBuilder.INDEX_POOL = snapshot.indexPool.clone();
         IndexBuilder.writeOffset = snapshot.indexPool.length;
         Long2LongOpenHashMap restoredDirectory = new Long2LongOpenHashMap(Math.max(16, snapshot.directoryKeys.length * 2));
-        for (int i = 0; i < snapshot.directoryKeys.length; i++) {
-            restoredDirectory.put(snapshot.directoryKeys[i], snapshot.directoryValues[i]);
-        }
+        for (int i = 0; i < snapshot.directoryKeys.length; i++) { restoredDirectory.put(snapshot.directoryKeys[i], snapshot.directoryValues[i]); }
         IndexBuilder.indexDirectory = restoredDirectory;
     }
 

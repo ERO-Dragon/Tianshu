@@ -135,6 +135,9 @@ public class TianshuCoreManager {
     private LlmWorker llmWorker;
     private TtsWorker ttsWorker;
 
+    private volatile boolean previewRunning = false;
+    private volatile Thread previewThread = null;
+
     private volatile boolean initialized = false;
     private volatile boolean downloadCancelled = false;
     private volatile boolean downloadPaused = false;
@@ -376,6 +379,12 @@ public class TianshuCoreManager {
                     processManager.startLlmServer();
                 }
 
+                state.setAsrReady(false);
+                if (asrEngine != null) {
+                    asrEngine.shutdown();
+                    asrEngine = null;
+                }
+
                 state.setTtsReady(false);
                 if (ttsWorker != null) {
                     ttsWorker.shutdownEngine();
@@ -384,6 +393,8 @@ public class TianshuCoreManager {
                         state.setTtsReady(true);
                     }
                 }
+
+                tryInitEngine();
 
                 if (!llmChanged && !state.isLlmReady()) {
                     env.info("LLM 未就绪且未变更，尝试重新启动 LLM 服务");
@@ -644,13 +655,117 @@ public class TianshuCoreManager {
     }
 
     public void previewAsr(PreviewAsrCallback callback) {
-        callback.onError("ASR 试听暂不可用");
-        callback.onFinish();
+        if (!state.isAsrReady() || asrEngine == null) {
+            callback.onError("ASR 引擎未就绪，请先下载并加载模型");
+            callback.onFinish();
+            return;
+        }
+        if (previewRunning) {
+            callback.onError("试听/试音正在播放中，请等待完成");
+            callback.onFinish();
+            return;
+        }
+
+        previewRunning = true;
+        Thread t = Thread.ofVirtual().start(() -> {
+            try {
+                env.info("ASR 试听: 开始录音");
+                audioBridge.startRecording();
+                callback.onReady();
+
+                Thread.sleep(5000);
+                if (!previewRunning) return;
+
+                byte[] audioData = audioBridge.stopRecording();
+                if (audioData == null || audioData.length == 0) {
+                    callback.onError("未采集到音频数据，请检查麦克风");
+                    return;
+                }
+
+                env.info("ASR 试听: 录音完成，音频长度=" + audioData.length + " bytes");
+                String result = asrEngine.recognizeComplete(audioData);
+
+                if (result != null && !result.isEmpty()) {
+                    env.info("ASR 试听: 识别成功，文本=" + result);
+                    callback.onResult(result);
+                } else {
+                    callback.onError("未识别到语音内容，请尝试说话更清晰");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                callback.onError("ASR 试听被中断");
+            } catch (Exception e) {
+                env.error("ASR 试听失败", e);
+                callback.onError("ASR 试听失败: " + e.getMessage());
+            } finally {
+                audioBridge.stopRecording();
+                previewRunning = false;
+                previewThread = null;
+                callback.onFinish();
+            }
+        });
+        previewThread = t;
     }
 
     public void previewTts(String text, float speed, TtsModelInfo info, PreviewTtsCallback callback) {
-        callback.onError("TTS 试听暂不可用");
-        callback.onFinish();
+        if (ttsWorker == null || !ttsWorker.isEngineInitialized()) {
+            callback.onError("TTS 引擎未就绪，请先下载并加载模型");
+            callback.onFinish();
+            return;
+        }
+        if (previewRunning) {
+            callback.onError("试听/试音正在播放中，请等待完成");
+            callback.onFinish();
+            return;
+        }
+
+        previewRunning = true;
+        Thread t = Thread.ofVirtual().start(() -> {
+            try {
+                env.info("TTS 试听: 开始合成，文本=" + text);
+                callback.onReady();
+
+                audioBridge.startTtsPlayback(ttsWorker.getSampleRate());
+                callback.onPlaying();
+                ttsWorker.synthesizeForPreview(text, speed, audio -> {
+                    if (!previewRunning) return;
+                    audioBridge.feedTtsAudio(audio);
+                });
+
+                if (previewRunning) {
+                    audioBridge.finishTtsPlayback();
+                    env.info("TTS 试听: 播放完成");
+                }
+            } catch (Exception e) {
+                env.error("TTS 试听失败", e);
+                callback.onError("TTS 试听失败: " + e.getMessage());
+            } finally {
+                audioBridge.stopTtsPlayback();
+                previewRunning = false;
+                previewThread = null;
+                callback.onFinish();
+            }
+        });
+        previewThread = t;
+    }
+
+    public boolean isPreviewRunning() {
+        return previewRunning;
+    }
+
+    public void stopPreview() {
+        if (!previewRunning) return;
+        previewRunning = false;
+        Thread t = previewThread;
+        if (t != null) {
+            t.interrupt();
+        }
+        try {
+            audioBridge.stopRecording();
+        } catch (Throwable ignored) {}
+        try {
+            audioBridge.stopTtsPlayback();
+        } catch (Throwable ignored) {}
     }
 
     public void destroy() {

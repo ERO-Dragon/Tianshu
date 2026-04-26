@@ -16,6 +16,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import java.io.IOException;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -123,6 +124,9 @@ public class MossTtsService implements AutoCloseable {
 
         sessions.put("codec_encode", createSession(codecDir.resolve(codecFiles.get("encode").getAsString())));
         sessions.put("codec_decode", createSession(codecDir.resolve(codecFiles.get("decode_full").getAsString())));
+        if (codecFiles.has("decode_step") && !codecFiles.get("decode_step").isJsonNull()) {
+            sessions.put("codec_decode_step", createSession(codecDir.resolve(codecFiles.get("decode_step").getAsString())));
+        }
     }
 
     private OrtSession createSession(Path modelPath) throws OrtException {
@@ -164,8 +168,12 @@ public class MossTtsService implements AutoCloseable {
             inputs.put("input_lengths", lengthsTensor);
 
             OrtSession.Result result = sessions.get("codec_encode").run(inputs);
-            int[][][] audioCodes = (int[][][]) result.get("audio_codes").get().getValue();
-            int[] audioCodeLengths = (int[]) result.get("audio_code_lengths").get().getValue();
+            int[][][] audioCodes;
+            int[] audioCodeLengths;
+            try (result) {
+                audioCodes = (int[][][]) result.get("audio_codes").get().getValue();
+                audioCodeLengths = (int[]) result.get("audio_code_lengths").get().getValue();
+            }
             int codeLength = audioCodeLengths[0];
             int numQuantizers = codecMeta.getAsJsonObject("codec_config").get("num_quantizers").getAsInt();
 
@@ -331,9 +339,14 @@ public class MossTtsService implements AutoCloseable {
             prefillInputs.put("attention_mask", attentionMaskTensor);
 
             OrtSession.Result prefillResult = sessions.get("prefill").run(prefillInputs);
-            float[][] globalHidden = extractLastHidden((float[][][]) prefillResult.get("global_hidden").get().getValue());
+            float[][] globalHidden;
+            Map<String, OnnxTensor> pastByName;
+            try (prefillResult) {
+                globalHidden = extractLastHidden((float[][][]) prefillResult.get("global_hidden").get().getValue());
+                pastByName = extractPastByName(prefillResult, ttsOnnx.getAsJsonArray("prefill_output_names"), "present_", "past_");
+            }
+
             int pastValidLength = sumAttentionMask(requestRows.attentionMask[0]);
-            Map<String, OnnxTensor> pastByName = extractPastByName(prefillResult, ttsOnnx.getAsJsonArray("prefill_output_names"), "present_", "past_");
 
             try {
                 int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
@@ -517,8 +530,12 @@ public class MossTtsService implements AutoCloseable {
             }
 
             OrtSession.Result result = sessions.get("decode").run(inputs);
-            float[][] globalHidden = extractLastHidden((float[][][]) result.get("global_hidden").get().getValue());
-            Map<String, OnnxTensor> nextPastByName = extractPastByName(result, ttsOnnx.getAsJsonArray("decode_output_names"), "present_", "past_");
+            float[][] globalHidden;
+            Map<String, OnnxTensor> nextPastByName;
+            try (result) {
+                globalHidden = extractLastHidden((float[][][]) result.get("global_hidden").get().getValue());
+                nextPastByName = extractPastByName(result, ttsOnnx.getAsJsonArray("decode_output_names"), "present_", "past_");
+            }
             return new DecodeStepResult(globalHidden, nextPastByName);
         }
     }
@@ -548,8 +565,12 @@ public class MossTtsService implements AutoCloseable {
             inputs.put("repetition_penalty", repetitionPenaltyTensor);
 
             OrtSession.Result result = sessions.get("local_greedy_frame").run(inputs);
-            boolean shouldContinue = extractBooleanScalar(result, "should_continue");
-            List<Integer> frame = flattenFrameTokenIds(result.get("frame_token_ids").get().getValue());
+            boolean shouldContinue;
+            List<Integer> frame;
+            try (result) {
+                shouldContinue = extractBooleanScalar(result, "should_continue");
+                frame = flattenFrameTokenIds(result.get("frame_token_ids").get().getValue());
+            }
             return new GreedyFrameResult(shouldContinue, frame);
         }
     }
@@ -571,7 +592,7 @@ public class MossTtsService implements AutoCloseable {
 
         try (OnnxTensor globalHiddenTensor = OnnxTensor.createTensor(ortEnvironment, globalHidden);
              OnnxTensor repetitionSeenMaskTensor = OnnxTensor.createTensor(ortEnvironment, repetitionSeenMask);
-             OnnxTensor assistantRandomUTensor = OnnxTensor.createTensor(ortEnvironment, new float[][]{{Math.min(0.99999994f, Math.max(0.0f, random.nextFloat()))}});
+             OnnxTensor assistantRandomUTensor = OnnxTensor.createTensor(ortEnvironment, FloatBuffer.wrap(new float[]{Math.min(0.99999994f, Math.max(0.0f, random.nextFloat()))}), new long[]{1});
              OnnxTensor audioRandomUTensor = OnnxTensor.createTensor(ortEnvironment, buildAudioRandomU(nVq))) {
             Map<String, OnnxTensor> inputs = new HashMap<>();
             inputs.put("global_hidden", globalHiddenTensor);
@@ -580,8 +601,12 @@ public class MossTtsService implements AutoCloseable {
             inputs.put("audio_random_u", audioRandomUTensor);
 
             OrtSession.Result result = sessions.get("local_fixed_sampled_frame").run(inputs);
-            boolean shouldContinue = extractBooleanScalar(result, "should_continue");
-            List<Integer> frame = flattenFrameTokenIds(result.get("frame_token_ids").get().getValue());
+            boolean shouldContinue;
+            List<Integer> frame;
+            try (result) {
+                shouldContinue = extractBooleanScalar(result, "should_continue");
+                frame = flattenFrameTokenIds(result.get("frame_token_ids").get().getValue());
+            }
             return new GreedyFrameResult(shouldContinue, frame);
         }
     }
@@ -608,8 +633,12 @@ public class MossTtsService implements AutoCloseable {
             inputs.put("audio_prefix_token_ids", audioPrefixTensor);
 
             OrtSession.Result result = sessions.get("local_decoder").run(inputs);
-            float[] textLogits = ((float[][]) result.get("text_logits").get().getValue())[0];
-            float[][] audioLogits = extractAudioLogits(result.get("audio_logits").get().getValue());
+            float[] textLogits;
+            float[][] audioLogits;
+            try (result) {
+                textLogits = ((float[][]) result.get("text_logits").get().getValue())[0];
+                audioLogits = extractAudioLogits(result.get("audio_logits").get().getValue());
+            }
             return new LocalDecoderResult(textLogits, audioLogits);
         }
     }
@@ -640,16 +669,20 @@ public class MossTtsService implements AutoCloseable {
             inputs.putAll(localPastByName);
 
             OrtSession.Result result = sessions.get("local_cached_step").run(inputs);
-            float[] textLogits = ((float[][]) result.get("text_logits").get().getValue())[0];
-            float[][] audioLogits = extractAudioLogits(result.get("audio_logits").get().getValue());
-
+            float[] textLogits;
+            float[][] audioLogits;
             Map<String, OnnxTensor> nextLocalPast = new HashMap<>();
-            JsonArray outputNames = ttsMeta.getAsJsonObject("onnx").getAsJsonArray("local_cached_output_names");
-            for (int i = 2; i < outputNames.size(); i++) {
-                String outputName = outputNames.get(i).getAsString();
-                String nextName = outputName.replace("local_present_", "local_past_");
-                Object value = result.get(outputName).get().getValue();
-                nextLocalPast.put(nextName, cloneTensor(value));
+            try (result) {
+                textLogits = ((float[][]) result.get("text_logits").get().getValue())[0];
+                audioLogits = extractAudioLogits(result.get("audio_logits").get().getValue());
+
+                JsonArray outputNames = ttsMeta.getAsJsonObject("onnx").getAsJsonArray("local_cached_output_names");
+                for (int i = 2; i < outputNames.size(); i++) {
+                    String outputName = outputNames.get(i).getAsString();
+                    String nextName = outputName.replace("local_present_", "local_past_");
+                    Object value = result.get(outputName).get().getValue();
+                    nextLocalPast.put(nextName, cloneTensor(value));
+                }
             }
             return new CachedStepResult(textLogits, audioLogits, nextLocalPast);
         }
@@ -666,10 +699,13 @@ public class MossTtsService implements AutoCloseable {
         }
 
         Map<String, OnnxTensor> result = new HashMap<>();
+        long[] shape = new long[]{1, 0, localHeads, localHeadDim};
+        int elementCount = 0;
         for (int layerIndex = 0; layerIndex < localLayers; layerIndex++) {
-            float[][][][] empty = new float[1][0][localHeads][localHeadDim];
-            result.put("local_past_key_" + layerIndex, OnnxTensor.createTensor(ortEnvironment, empty));
-            result.put("local_past_value_" + layerIndex, OnnxTensor.createTensor(ortEnvironment, empty));
+            FloatBuffer zerosKey = FloatBuffer.wrap(new float[elementCount]);
+            FloatBuffer zerosValue = FloatBuffer.wrap(new float[elementCount]);
+            result.put("local_past_key_" + layerIndex, OnnxTensor.createTensor(ortEnvironment, zerosKey, shape));
+            result.put("local_past_value_" + layerIndex, OnnxTensor.createTensor(ortEnvironment, zerosValue, shape));
         }
         return result;
     }
@@ -693,33 +729,323 @@ public class MossTtsService implements AutoCloseable {
             inputs.put("audio_code_lengths", lengthsTensor);
 
             OrtSession.Result result = sessions.get("codec_decode").run(inputs);
-            float[][][] audio = (float[][][]) result.get("audio").get().getValue();
-            int audioLength = ((int[]) result.get("audio_lengths").get().getValue())[0];
+            float[][][] audio;
+            int audioLength;
+            try (result) {
+                audio = (float[][][]) result.get("audio").get().getValue();
+                audioLength = ((int[]) result.get("audio_lengths").get().getValue())[0];
+            }
             return new DecodeResult(sliceChannelMajorAudio(audio, 0, audioLength), audioLength);
         }
     }
 
+    public DecodeResult decodeFullAudioSafe(List<List<Integer>> generatedFrames) throws Exception {
+        if (generatedFrames.isEmpty()) {
+            return new DecodeResult(new float[0][], 0);
+        }
+        try {
+            return decodeFullAudio(generatedFrames);
+        } catch (Exception e) {
+            env.warn("MOSS decodeFullAudio 失败，回退到流式解码: " + e.getMessage());
+            return decodeStreamingAudio(generatedFrames);
+        }
+    }
+
+    private DecodeResult decodeStreamingAudio(List<List<Integer>> generatedFrames) throws Exception {
+        if (!sessions.containsKey("codec_decode_step")) {
+            throw new IllegalStateException("codec_decode_step session 未加载，无法流式解码");
+        }
+        JsonObject streamingDecode = codecMeta.getAsJsonObject("streaming_decode");
+        if (streamingDecode == null) {
+            throw new IllegalStateException("codec_meta 中没有 streaming_decode 配置");
+        }
+
+        Map<String, OnnxTensor> stateFeeds = createStreamingDecodeState();
+        Map<String, String> outputToInputName = buildStreamingOutputToInputMapping();
+        List<OnnxTensor> toClose = new ArrayList<>();
+
+        int channels = codecMeta.getAsJsonObject("codec_config").get("channels").getAsInt();
+        List<float[]> audioChunks = new ArrayList<>();
+        int totalAudioLength = 0;
+        int chunkSize = 8;
+
+        try {
+            for (int startIndex = 0; startIndex < generatedFrames.size(); startIndex += chunkSize) {
+                int endIndex = Math.min(startIndex + chunkSize, generatedFrames.size());
+                List<List<Integer>> frameChunk = generatedFrames.subList(startIndex, endIndex);
+                int frameCount = frameChunk.size();
+
+                int[][][] audioCodes = new int[1][frameCount][generatedFrames.get(0).size()];
+                for (int i = 0; i < frameCount; i++) {
+                    for (int j = 0; j < frameChunk.get(i).size(); j++) {
+                        audioCodes[0][i][j] = frameChunk.get(i).get(j);
+                    }
+                }
+
+                Map<String, OnnxTensor> inputs = new HashMap<>();
+                inputs.put("audio_codes", OnnxTensor.createTensor(ortEnvironment, audioCodes));
+                inputs.put("audio_code_lengths", OnnxTensor.createTensor(ortEnvironment,
+                        IntBuffer.wrap(new int[]{frameCount}), new long[]{1}));
+                for (Map.Entry<String, OnnxTensor> entry : stateFeeds.entrySet()) {
+                    inputs.put(entry.getKey(), entry.getValue());
+                }
+
+                OrtSession.Result result = sessions.get("codec_decode_step").run(inputs);
+                try (result) {
+                    float[][][] audio = (float[][][]) result.get("audio").get().getValue();
+                    int audioLength = ((int[]) result.get("audio_lengths").get().getValue())[0];
+                    if (audioLength > 0) {
+                        for (int ch = 0; ch < channels; ch++) {
+                            audioChunks.add(Arrays.copyOfRange(audio[0][ch], 0, audioLength));
+                        }
+                        totalAudioLength += audioLength;
+                    }
+
+                    JsonArray stepOutputNames = codecMeta.getAsJsonObject("onnx").getAsJsonArray("decode_step_output_names");
+                    for (int i = 2; i < stepOutputNames.size(); i++) {
+                        String outputName = stepOutputNames.get(i).getAsString();
+                        Object value = result.get(outputName).get().getValue();
+                        String inputName = outputToInputName.getOrDefault(outputName, outputName);
+                        OnnxTensor newTensor = cloneTensor(value);
+                        OnnxTensor old = stateFeeds.put(inputName, newTensor);
+                        if (old != null) toClose.add(old);
+                    }
+                }
+            }
+        } finally {
+            closeTensors(stateFeeds);
+            for (OnnxTensor t : toClose) {
+                try { t.close(); } catch (Exception ignored) {}
+            }
+        }
+
+        float[][] mergedChannels = new float[channels][totalAudioLength];
+        int offset = 0;
+        for (int i = 0; i < audioChunks.size(); i += channels) {
+            for (int ch = 0; ch < channels; ch++) {
+                float[] chunk = audioChunks.get(i + ch);
+                System.arraycopy(chunk, 0, mergedChannels[ch], offset, chunk.length);
+            }
+            if (i + channels <= audioChunks.size()) {
+                offset += audioChunks.get(i).length;
+            }
+        }
+        return new DecodeResult(mergedChannels, totalAudioLength);
+    }
+
+    private Map<String, OnnxTensor> createStreamingDecodeState() throws OrtException {
+        JsonObject streamingDecode = codecMeta.getAsJsonObject("streaming_decode");
+        Map<String, OnnxTensor> state = new HashMap<>();
+
+        JsonArray transformerOffsets = streamingDecode.getAsJsonArray("transformer_offsets");
+        for (int i = 0; i < transformerOffsets.size(); i++) {
+            JsonObject spec = transformerOffsets.get(i).getAsJsonObject();
+            String inputName = spec.get("input_name").getAsString();
+            JsonArray shapeArr = spec.getAsJsonArray("shape");
+            long[] shape = new long[shapeArr.size()];
+            int totalElements = 1;
+            for (int j = 0; j < shapeArr.size(); j++) {
+                shape[j] = shapeArr.get(j).getAsLong();
+                totalElements *= (int) shape[j];
+            }
+            IntBuffer zeros = IntBuffer.wrap(new int[totalElements]);
+            state.put(inputName, OnnxTensor.createTensor(ortEnvironment, zeros, shape));
+        }
+
+        JsonArray attentionCaches = streamingDecode.getAsJsonArray("attention_caches");
+        for (int i = 0; i < attentionCaches.size(); i++) {
+            JsonObject spec = attentionCaches.get(i).getAsJsonObject();
+
+            long[] offsetShape = jsonArrayToLongArray(spec.getAsJsonArray("offset_shape"));
+            IntBuffer offsetZeros = IntBuffer.wrap(new int[(int) product(offsetShape)]);
+            state.put(spec.get("offset_input_name").getAsString(),
+                    OnnxTensor.createTensor(ortEnvironment, offsetZeros, offsetShape));
+
+            long[] cacheShape = jsonArrayToLongArray(spec.getAsJsonArray("cache_shape"));
+            FloatBuffer cacheZeros = FloatBuffer.wrap(new float[(int) product(cacheShape)]);
+            state.put(spec.get("cached_keys_input_name").getAsString(),
+                    OnnxTensor.createTensor(ortEnvironment, cacheZeros, cacheShape));
+            FloatBuffer cacheZerosV = FloatBuffer.wrap(new float[(int) product(cacheShape)]);
+            state.put(spec.get("cached_values_input_name").getAsString(),
+                    OnnxTensor.createTensor(ortEnvironment, cacheZerosV, cacheShape));
+
+            long[] posShape = jsonArrayToLongArray(spec.getAsJsonArray("positions_shape"));
+            IntBuffer posData = IntBuffer.wrap(new int[(int) product(posShape)]);
+            Arrays.fill(posData.array(), -1);
+            state.put(spec.get("cached_positions_input_name").getAsString(),
+                    OnnxTensor.createTensor(ortEnvironment, posData, posShape));
+        }
+        return state;
+    }
+
+    private Map<String, String> buildStreamingOutputToInputMapping() {
+        JsonObject streamingDecode = codecMeta.getAsJsonObject("streaming_decode");
+        Map<String, String> mapping = new HashMap<>();
+        JsonArray transformerOffsets = streamingDecode.getAsJsonArray("transformer_offsets");
+        for (int i = 0; i < transformerOffsets.size(); i++) {
+            JsonObject spec = transformerOffsets.get(i).getAsJsonObject();
+            mapping.put(spec.get("output_name").getAsString(), spec.get("input_name").getAsString());
+        }
+        JsonArray attentionCaches = streamingDecode.getAsJsonArray("attention_caches");
+        for (int i = 0; i < attentionCaches.size(); i++) {
+            JsonObject spec = attentionCaches.get(i).getAsJsonObject();
+            mapping.put(spec.get("offset_output_name").getAsString(), spec.get("offset_input_name").getAsString());
+            mapping.put(spec.get("cached_keys_output_name").getAsString(), spec.get("cached_keys_input_name").getAsString());
+            mapping.put(spec.get("cached_values_output_name").getAsString(), spec.get("cached_values_input_name").getAsString());
+            mapping.put(spec.get("cached_positions_output_name").getAsString(), spec.get("cached_positions_input_name").getAsString());
+        }
+        return mapping;
+    }
+
+    private long[] jsonArrayToLongArray(JsonArray arr) {
+        long[] result = new long[arr.size()];
+        for (int i = 0; i < arr.size(); i++) {
+            result[i] = arr.get(i).getAsLong();
+        }
+        return result;
+    }
+
+    private long product(long[] arr) {
+        long p = 1;
+        for (long v : arr) p *= v;
+        return p;
+    }
+
     public float[][] synthesizeToWaveform(String text, List<List<Integer>> promptAudioCodes) throws Exception {
+        List<String> chunks = splitVoiceCloneText(text);
+        if (chunks.isEmpty()) {
+            return new float[][]{new float[0]};
+        }
+        if (chunks.size() == 1) {
+            return synthesizeSingleChunk(chunks.get(0), promptAudioCodes);
+        }
+        int sampleRate = getSampleRate();
+        int channels = codecMeta != null && codecMeta.has("codec_config")
+                ? codecMeta.getAsJsonObject("codec_config").get("channels").getAsInt() : 1;
+        float interChunkPauseShort = 0.24f;
+        int pauseSamplesShort = (int) (sampleRate * interChunkPauseShort);
+        float interChunkPauseLong = 0.40f;
+        int pauseSamplesLong = (int) (sampleRate * interChunkPauseLong);
+
+        List<float[][]> chunkAudios = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            float[][] chunkAudio = synthesizeSingleChunk(chunks.get(i), promptAudioCodes);
+            if (chunkAudio == null || chunkAudio.length == 0 || chunkAudio[0].length == 0) {
+                continue;
+            }
+            chunkAudios.add(chunkAudio);
+            if (i < chunks.size() - 1) {
+                int pauseSamples = isSentenceEnding(chunks.get(i)) ? pauseSamplesLong : pauseSamplesShort;
+                float[][] silence = new float[channels][pauseSamples];
+                chunkAudios.add(silence);
+            }
+        }
+        if (chunkAudios.isEmpty()) {
+            return new float[][]{new float[0]};
+        }
+        int totalLength = 0;
+        for (float[][] ca : chunkAudios) {
+            totalLength += ca[0].length;
+        }
+        float[][] merged = new float[channels][totalLength];
+        int offset = 0;
+        for (float[][] ca : chunkAudios) {
+            for (int ch = 0; ch < channels; ch++) {
+                System.arraycopy(ca[Math.min(ch, ca.length - 1)], 0, merged[ch], offset, ca[Math.min(ch, ca.length - 1)].length);
+            }
+            offset += ca[0].length;
+        }
+        return merged;
+    }
+
+    private float[][] synthesizeSingleChunk(String text, List<List<Integer>> promptAudioCodes) throws Exception {
         int[] textTokenIds = encodeText(text);
-        
-        // 3. 核心防御：如果 Tokenizer 转换出来是空的，也别往下走
         if (textTokenIds == null || textTokenIds.length == 0) {
             return new float[][]{new float[0]};
         }
-
         RequestRows requestRows = buildVoiceCloneRequestRows(promptAudioCodes, textTokenIds);
         List<List<Integer>> generatedFrames = generateAudioFrames(requestRows);
-        DecodeResult decodeResult = decodeFullAudio(generatedFrames);
+        if (generatedFrames.isEmpty()) {
+            return new float[][]{new float[0]};
+        }
+        DecodeResult decodeResult = decodeFullAudioSafe(generatedFrames);
         return decodeResult.channels;
     }
 
+    private boolean isSentenceEnding(String text) {
+        if (text.isEmpty()) return false;
+        char last = text.charAt(text.length() - 1);
+        return "。！？!?.;；".indexOf(last) >= 0;
+    }
+
+    private List<String> splitVoiceCloneText(String text) {
+        text = text.trim();
+        if (text.isEmpty()) return List.of();
+        List<String> results = new ArrayList<>();
+        List<String> bySentence = splitByPunctuation(text, "。！？!.;；");
+        for (String sentence : bySentence) {
+            sentence = sentence.trim();
+            if (sentence.isEmpty()) continue;
+            List<String> byClause = splitByPunctuation(sentence, "，,、：:");
+            for (String clause : byClause) {
+                clause = clause.trim();
+                if (clause.isEmpty()) continue;
+                results.add(clause);
+            }
+        }
+        if (results.size() <= 1) return results;
+        List<String> merged = new ArrayList<>();
+        StringBuilder current = new StringBuilder(results.get(0));
+        for (int i = 1; i < results.size(); i++) {
+            String piece = results.get(i);
+            int estTokens = estimateTokens(current.toString()) + estimateTokens(piece);
+            if (estTokens <= 75) {
+                current.append(piece);
+            } else {
+                merged.add(current.toString());
+                current = new StringBuilder(piece);
+            }
+        }
+        if (current.length() > 0) merged.add(current.toString());
+        return merged;
+    }
+
+    private List<String> splitByPunctuation(String text, String punctuations) {
+        List<String> parts = new ArrayList<>();
+        int last = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (punctuations.indexOf(text.charAt(i)) >= 0) {
+                String part = text.substring(last, i + 1).trim();
+                if (!part.isEmpty()) parts.add(part);
+                last = i + 1;
+            }
+        }
+        if (last < text.length()) {
+            String remaining = text.substring(last).trim();
+            if (!remaining.isEmpty()) parts.add(remaining);
+        }
+        return parts;
+    }
+
+    private int estimateTokens(String text) {
+        int count = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c > 127) {
+                count += 2;
+            } else {
+                count += 1;
+            }
+        }
+        return Math.max(1, count / 2);
+    }
+
     public SynthesisResult synthesize(String text, List<List<Integer>> promptAudioCodes, Path outputWavPath) throws Exception {
+        float[][] waveform = synthesizeToWaveform(text, promptAudioCodes);
+        WavWriter.writeWaveFile(outputWavPath, waveform, getSampleRate());
         int[] textTokenIds = encodeText(text);
-        RequestRows requestRows = buildVoiceCloneRequestRows(promptAudioCodes, textTokenIds);
-        List<List<Integer>> generatedFrames = generateAudioFrames(requestRows);
-        DecodeResult decodeResult = decodeFullAudio(generatedFrames);
-        WavWriter.writeWaveFile(outputWavPath, decodeResult.channels, codecMeta.getAsJsonObject("codec_config").get("sample_rate").getAsInt());
-        return new SynthesisResult(text, textTokenIds, generatedFrames, decodeResult.channels, outputWavPath);
+        List<List<Integer>> generatedFrames = List.of();
+        return new SynthesisResult(text, textTokenIds != null ? textTokenIds : new int[0], generatedFrames, waveform, outputWavPath);
     }
 
     public int getSampleRate() {
@@ -809,6 +1135,15 @@ public class MossTtsService implements AutoCloseable {
         }
         if (value instanceof byte[] byteArray && byteArray.length > 0) {
             return byteArray[0] != 0;
+        }
+        if (value instanceof int[][] int2d && int2d.length > 0 && int2d[0].length > 0) {
+            return int2d[0][0] != 0;
+        }
+        if (value instanceof long[][] long2d && long2d.length > 0 && long2d[0].length > 0) {
+            return long2d[0][0] != 0L;
+        }
+        if (value instanceof boolean[][] bool2d && bool2d.length > 0 && bool2d[0].length > 0) {
+            return bool2d[0][0];
         }
         throw new IllegalArgumentException("Unsupported boolean scalar type: " + value.getClass());
     }

@@ -13,6 +13,16 @@ import com.rheinmetal.tianshu.ir.IRParseResult;
 import com.rheinmetal.tianshu.gui.TianshuGUI;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
+import com.rheinmetal.tianshu.platform.provider.NeoForgeEnvironmentProvider;
+import com.rheinmetal.tianshu.platform.provider.NeoForgeInventoryProvider;
+import com.rheinmetal.tianshu.platform.provider.NeoForgePlayerStateProvider;
+import com.rheinmetal.tianshu.platform.provider.NeoForgeRecipeProvider;
+import com.rheinmetal.tianshu.platform.provider.NeoForgeTargetScanner;
+import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
+import com.rheinmetal.tianshu.provider.IInventoryDataProvider;
+import com.rheinmetal.tianshu.provider.IPlayerStateProvider;
+import com.rheinmetal.tianshu.provider.IRecipeDataProvider;
+import com.rheinmetal.tianshu.provider.ITargetScannerProvider;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
@@ -51,6 +61,18 @@ public class TianshuClient {
     private static AudioManager audioManager;
     private static TianshuCoreManager coreManager;
 
+    private static ITargetScannerProvider targetScanner;
+    private static IInventoryDataProvider inventoryProvider;
+    private static IEnvironmentAwarenessProvider environmentProvider;
+    private static IPlayerStateProvider playerStateProvider;
+    private static IRecipeDataProvider recipeProvider;
+
+    public static ITargetScannerProvider getTargetScanner() { return targetScanner; }
+    public static IInventoryDataProvider getInventoryProvider() { return inventoryProvider; }
+    public static IEnvironmentAwarenessProvider getEnvironmentProvider() { return environmentProvider; }
+    public static IPlayerStateProvider getPlayerStateProvider() { return playerStateProvider; }
+    public static IRecipeDataProvider getRecipeProvider() { return recipeProvider; }
+
     public static void init() {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
@@ -63,6 +85,12 @@ public class TianshuClient {
         audioManager.ensureHardwareRunning();
 
         coreManager = new TianshuCoreManager(env, config, nativeLibBridge, audioManager);
+
+        targetScanner = new NeoForgeTargetScanner();
+        inventoryProvider = new NeoForgeInventoryProvider();
+        environmentProvider = new NeoForgeEnvironmentProvider();
+        playerStateProvider = new NeoForgePlayerStateProvider();
+        recipeProvider = new NeoForgeRecipeProvider();
 
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenInit);
@@ -128,7 +156,7 @@ public class TianshuClient {
     }
 
     private static void handleVoiceKey() {
-        if (!coreManager.isEngineReady()) return;
+        if (!coreManager.canAcceptVoiceInput()) return;
 
         TriggerMode currentMode = config.getTriggerMode();
 
@@ -170,6 +198,13 @@ public class TianshuClient {
                     isVoiceKeyPressed = true;
                     coreManager.getEventBus().publishEvent(new StartStreamRecordingEvent());
                     LOGGER.info("启动热词模式");
+                }
+                boolean isDown = VOICE_KEY.isDown();
+                if (isDown && !wasAlwaysKeyTriggered) {
+                    wasAlwaysKeyTriggered = true;
+                    coreManager.getEventBus().publishEvent(new ForceAsrFlushEvent());
+                } else if (!isDown) {
+                    wasAlwaysKeyTriggered = false;
                 }
             }
         }
@@ -222,12 +257,23 @@ public class TianshuClient {
         while (!eventBus.getUiQueue().isEmpty()) {
             TianshuEvent e = eventBus.getUiQueue().poll();
             if (e instanceof AsrFinalTextEvent asrEvent) {
+                String asrText = asrEvent.getText();
+                LOGGER.info("[IR-ASR] ASR 识别文本: {}", asrText);
                 if (Minecraft.getInstance().player != null) {
                     Minecraft.getInstance().player.displayClientMessage(
-                        Component.literal("\u00a7a[ASR] \u00a7f" + asrEvent.getText()), false
+                        Component.literal("\u00a7a[ASR] \u00a7f" + asrText), false
                     );
-                    IRParseResult parseResult = ClientItemCommandManager.parsePlayerCommand(asrEvent.getText());
+
+                    // 解析 ASR 识别文本
+                    IRParseResult parseResult = ClientItemCommandManager.parsePlayerCommand(asrText);
                     String preview = ClientItemCommandManager.formatPreview(parseResult);
+                    LOGGER.info("[IR-ASR] IR 解析结果: ready={}, units={}, preview={}", parseResult.isReady(), parseResult.hasUnits(), preview);
+                    if (parseResult.hasUnits()) {
+                        for (int i = 0; i < parseResult.getUnits().size(); i++) {
+                            var unit = parseResult.getUnits().get(i);
+                            LOGGER.info("[IR-ASR]   [{}] intent={}, target={}, negated={}", i, unit.intent, unit.targetRealItemId, unit.isNegated);
+                        }
+                    }
                     if (!preview.isEmpty()) {
                         Minecraft.getInstance().player.displayClientMessage(
                                 Component.literal("\u00a76[IR] \u00a7f" + preview), false

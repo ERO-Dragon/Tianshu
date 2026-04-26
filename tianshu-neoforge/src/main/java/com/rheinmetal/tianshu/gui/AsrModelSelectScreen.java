@@ -77,8 +77,9 @@ public class AsrModelSelectScreen extends Screen {
     private String downloadingModel = null;
     private volatile int downloadProgress = 0;
 
-    private static final int CARD_HEIGHT = 50;
+    private static final int CARD_HEIGHT = 64;
     private static final int CARD_GAP = 4;
+    private static final int SCROLLBAR_WIDTH = 6;
 
     public AsrModelSelectScreen(Screen parent, NeoForgeConfig config, TianshuCoreManager coreManager,
                                 AudioManager audioManager, NeoForgeNativeLibBridge nativeLibBridge) {
@@ -229,19 +230,24 @@ public class AsrModelSelectScreen extends Screen {
         int cardAreaX = (this.width - listWidth) / 2;
         int cardStartY = 44;
 
-        int sortBtnWidth = 66;
-        int sortBtnGap = 4;
+        int sortBtnWidth = 50;
+        int sortBtnGap = 3;
+        int scrollbarSpace = SCROLLBAR_WIDTH + 2;
+        int effectiveListWidth = listWidth - scrollbarSpace;
+        String sortHintText = "当前排序: ";
+        int sortHintWidth = this.font.width(sortHintText) + 2;
+        int totalSortWidth = sortHintWidth + sortBtnWidth * 3 + sortBtnGap * 2;
+        int sortStartX = cardAreaX + effectiveListWidth - totalSortWidth;
         int sortRowY = cardStartY;
-        int totalSortWidth = sortBtnWidth * 3 + sortBtnGap * 2;
-        int sortStartX = cardAreaX + Math.max(0, (listWidth - totalSortWidth) / 2);
         for (int i = 0; i < SortMode.values().length; i++) {
             SortMode mode = SortMode.values()[i];
+            int btnX = sortStartX + sortHintWidth + i * (sortBtnWidth + sortBtnGap);
             TianshuGUI.BrightButton btn = TianshuGUI.BrightButton.create(Component.literal(mode.label), b -> {
                 sortMode = mode;
                 scrollOffset = 0;
                 smoothScrollY = 0;
                 rebuildPage();
-            }).pos(sortStartX + i * (sortBtnWidth + sortBtnGap), sortRowY).size(sortBtnWidth, 16).build();
+            }).pos(btnX, sortRowY).size(sortBtnWidth, 14).build();
             btn.active = sortMode != mode;
             this.addRenderableWidget(btn);
         }
@@ -264,8 +270,9 @@ public class AsrModelSelectScreen extends Screen {
 
         int cardAreaHeight = this.height - 90 - (cardStartY - 44);
         int visibleCount = Math.max(1, cardAreaHeight / (CARD_HEIGHT + CARD_GAP));
-
         int maxScroll = Math.max(0, models.size() - visibleCount);
+        int maxScrollPixels = maxScroll * (CARD_HEIGHT + CARD_GAP);
+
         if (scrollOffset > maxScroll) scrollOffset = maxScroll;
         if (scrollOffset < 0) scrollOffset = 0;
 
@@ -283,7 +290,7 @@ public class AsrModelSelectScreen extends Screen {
             int btnW = 40;
             int btnH = 14;
             int btnGap = 3;
-            int btnRowX = cardAreaX + listWidth - btnW - 6;
+            int btnRowX = cardAreaX + effectiveListWidth - btnW - 6;
             int btnRowY = cardY + CARD_HEIGHT - btnH - 3;
 
             if (isDownloading) {
@@ -439,8 +446,16 @@ public class AsrModelSelectScreen extends Screen {
         List<AsrModelInfo> models = getCurrentModels();
         boolean hasGithubModel = models.stream().anyMatch(m -> m.downloadUrl != null && !m.downloadUrl.isBlank());
 
-        String sortHint = "当前排序: " + sortMode.label;
-        g.drawString(this.font, sortHint, cardAreaX, 48, 0xFFD8E6F0);
+        int scrollbarSpace = SCROLLBAR_WIDTH + 2;
+        int effectiveListWidth = listWidth - scrollbarSpace;
+
+        String sortHintText = "当前排序: ";
+        int sortHintWidth = this.font.width(sortHintText);
+        int sortBtnWidth = 50;
+        int sortBtnGap = 3;
+        int totalSortWidth = sortHintWidth + sortBtnWidth * 3 + sortBtnGap * 2;
+        int sortStartX = cardAreaX + effectiveListWidth - totalSortWidth;
+        g.drawString(this.font, sortHintText, sortStartX, 46, 0xFFD8E6F0);
 
         if (hasGithubModel) {
             g.drawString(this.font, "代理:", cardAreaX + 4, cardStartY + 4, 0xFFCCCCCC);
@@ -452,6 +467,8 @@ public class AsrModelSelectScreen extends Screen {
 
         int cardAreaHeight = this.height - 90 - (cardStartY - 44);
         int visibleCount = Math.max(1, cardAreaHeight / (CARD_HEIGHT + CARD_GAP));
+        int maxScrollR = Math.max(0, models.size() - visibleCount);
+        int maxScrollPixelsR = maxScrollR * (CARD_HEIGHT + CARD_GAP);
 
         if (models.isEmpty()) {
             String hint = "该语言暂无可用模型";
@@ -462,7 +479,7 @@ public class AsrModelSelectScreen extends Screen {
 
         double partialOffset = smoothScrollY % (CARD_HEIGHT + CARD_GAP);
 
-        g.enableScissor(cardAreaX, cardStartY, cardAreaX + listWidth, cardStartY + cardAreaHeight);
+        g.enableScissor(cardAreaX, cardStartY, cardAreaX + effectiveListWidth, cardStartY + cardAreaHeight);
         g.pose().pushPose();
         g.pose().translate(0, -partialOffset, 0);
 
@@ -470,13 +487,15 @@ public class AsrModelSelectScreen extends Screen {
             int idx = i + scrollOffset;
             AsrModelInfo info = models.get(idx);
             int cardY = cardStartY + i * (CARD_HEIGHT + CARD_GAP);
+            int cardRight = cardAreaX + effectiveListWidth;
 
-            g.fill(cardAreaX, cardY, cardAreaX + listWidth, cardY + CARD_HEIGHT, 0xCC31475E);
-            g.fill(cardAreaX, cardY, cardAreaX + listWidth, cardY + 1, 0xFFA1C7ED);
-            g.fill(cardAreaX, cardY + CARD_HEIGHT - 1, cardAreaX + listWidth, cardY + CARD_HEIGHT, 0xFFA1C7ED);
+            g.fill(cardAreaX, cardY, cardRight, cardY + CARD_HEIGHT, 0xCC31475E);
+            g.fill(cardAreaX, cardY, cardRight, cardY + 1, 0xFFA1C7ED);
+            g.fill(cardAreaX, cardY + CARD_HEIGHT - 1, cardRight, cardY + CARD_HEIGHT, 0xFFA1C7ED);
             g.fill(cardAreaX, cardY, cardAreaX + 1, cardY + CARD_HEIGHT, 0xFFA1C7ED);
+            g.fill(cardRight - 1, cardY, cardRight, cardY + CARD_HEIGHT, 0xFFA1C7ED);
 
-            g.drawString(this.font, info.name, cardAreaX + 6, cardY + 4, 0xFFFFFF);
+            g.drawString(this.font, info.getDisplayName(), cardAreaX + 6, cardY + 4, 0xFFFFFF);
 
             String sizeStr = formatSize(info.size);
             String typeLabel = info.getModelType();
@@ -484,26 +503,71 @@ public class AsrModelSelectScreen extends Screen {
             String hotwordLabel = info.supportHotwords ? " | 热词" : "";
             g.drawString(this.font, typeLabel + " | " + streamLabel + hotwordLabel + " | ~" + sizeStr, cardAreaX + 6, cardY + 18, 0xD8E6F0);
 
-            String scoreLine = "质量 " + info.getQualityTier() + " | 性能 " + info.getPerformanceClass() + " | 性价比 " + info.getValueScore();
-            g.drawString(this.font, scoreLine, cardAreaX + 6, cardY + 30, 0xFFB8D8B8);
+            int qualityColor = getTierColor(info.getQualityTier());
+            int perfColor = getTierColor(info.getPerformanceClass());
+            String qualityText = getTierChinese(info.getQualityTier());
+            String perfText = getTierChinese(info.getPerformanceClass());
+            int cx = cardAreaX + 6;
+            g.drawString(this.font, "质量 ", cx, cardY + 32, 0xFFB8D8B8);
+            cx += this.font.width("质量 ");
+            g.drawString(this.font, qualityText, cx, cardY + 32, qualityColor);
+            cx += this.font.width(qualityText);
+            g.drawString(this.font, " | 性能 ", cx, cardY + 32, 0xFFB8D8B8);
+            cx += this.font.width(" | 性能 ");
+            g.drawString(this.font, perfText, cx, cardY + 32, perfColor);
+            cx += this.font.width(perfText);
+            g.drawString(this.font, " | 性价比 " + info.getValueScore(), cx, cardY + 32, 0xFFB8D8B8);
 
             if (!info.isEngineSupported()) {
-                g.drawString(this.font, "[尚未适配]", cardAreaX + 6, cardY + 42, 0xFFFFAA44);
+                g.drawString(this.font, "[尚未适配]", cardAreaX + 6, cardY + 48, 0xFFFFAA44);
             } else if (downloadingModel != null && downloadingModel.equals(info.name)) {
-                g.drawString(this.font, "下载中 " + downloadProgress + "%", cardAreaX + 6, cardY + 42, 0xFFFFCC44);
+                g.drawString(this.font, "下载中 " + downloadProgress + "%", cardAreaX + 6, cardY + 48, 0xFFFFCC44);
             } else if (isModelDownloaded(info)) {
-                g.drawString(this.font, "已下载", cardAreaX + 6, cardY + 42, 0xFF66FF66);
+                g.drawString(this.font, "已下载", cardAreaX + 6, cardY + 48, 0xFF66FF66);
             }
         }
 
         g.pose().popPose();
         g.disableScissor();
 
+        int totalContentHeight = models.size() * (CARD_HEIGHT + CARD_GAP);
+        if (totalContentHeight > cardAreaHeight) {
+            int scrollbarX = cardAreaX + effectiveListWidth + 1;
+            int scrollbarHeight = cardAreaHeight;
+            g.fill(scrollbarX, cardStartY, scrollbarX + SCROLLBAR_WIDTH, cardStartY + scrollbarHeight, 0x40303030);
+
+            int thumbHeight = Math.max(20, (int) ((double) cardAreaHeight / totalContentHeight * scrollbarHeight));
+            int maxThumbY = scrollbarHeight - thumbHeight;
+            double scrollRatio = maxScrollPixelsR > 0 ? smoothScrollY / maxScrollPixelsR : 0;
+            int thumbY = cardStartY + (int) (scrollRatio * maxThumbY);
+            g.fill(scrollbarX, thumbY, scrollbarX + SCROLLBAR_WIDTH, thumbY + thumbHeight, 0x80A1C7ED);
+        }
+
         if (models.size() > visibleCount) {
             String scrollHint = (scrollOffset + 1) + "-" + Math.min(scrollOffset + visibleCount, models.size()) + "/" + models.size();
             int sw = this.font.width(scrollHint);
             g.drawString(this.font, scrollHint, (this.width - sw) / 2, this.height - 48, 0xAAAAAA);
         }
+    }
+
+    private static int getTierColor(String tier) {
+        if (tier == null) return 0xFFB8D8B8;
+        return switch (tier.toUpperCase()) {
+            case "HIGH" -> 0xFF66FF66;
+            case "MID" -> 0xFFFFAA44;
+            case "LOW" -> 0xFFFF6666;
+            default -> 0xFFB8D8B8;
+        };
+    }
+
+    private static String getTierChinese(String tier) {
+        if (tier == null) return "中";
+        return switch (tier.toUpperCase()) {
+            case "HIGH" -> "高";
+            case "MID" -> "中";
+            case "LOW" -> "低";
+            default -> "中";
+        };
     }
 
     private String formatSize(long bytes) {

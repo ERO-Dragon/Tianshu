@@ -3,7 +3,9 @@ package com.rheinmetal.tianshu.ir;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class IRSnapshot {
@@ -13,9 +15,8 @@ public final class IRSnapshot {
     public final String fingerprint;
     public final String[] reverseLookupArray;
     public final String[] localizedNameArray;
-    public final String[][] entityTokenArray;
-    public final String[] entityJoinedTokenArray;
-    public final int[] entityPinyinLengthArray;
+    public final String[][] primaryAliasTokensArray;
+    public final String[][] fallbackAliasTokensArray;
     public final int[] indexPool;
     public final long[] directoryKeys;
     public final long[] directoryValues;
@@ -24,9 +25,8 @@ public final class IRSnapshot {
         String fingerprint,
         String[] reverseLookupArray,
         String[] localizedNameArray,
-        String[][] entityTokenArray,
-        String[] entityJoinedTokenArray,
-        int[] entityPinyinLengthArray,
+        String[][] primaryAliasTokensArray,
+        String[][] fallbackAliasTokensArray,
         int[] indexPool,
         long[] directoryKeys,
         long[] directoryValues
@@ -34,9 +34,8 @@ public final class IRSnapshot {
         this.fingerprint = fingerprint;
         this.reverseLookupArray = reverseLookupArray;
         this.localizedNameArray = localizedNameArray;
-        this.entityTokenArray = entityTokenArray;
-        this.entityJoinedTokenArray = entityJoinedTokenArray;
-        this.entityPinyinLengthArray = entityPinyinLengthArray;
+        this.primaryAliasTokensArray = primaryAliasTokensArray;
+        this.fallbackAliasTokensArray = fallbackAliasTokensArray;
         this.indexPool = indexPool;
         this.directoryKeys = directoryKeys;
         this.directoryValues = directoryValues;
@@ -48,9 +47,8 @@ public final class IRSnapshot {
         output.writeUTF(fingerprint);
         writeStringArray(output, reverseLookupArray);
         writeStringArray(output, localizedNameArray);
-        writeNestedStringArray(output, entityTokenArray);
-        writeStringArray(output, entityJoinedTokenArray);
-        writeIntArray(output, entityPinyinLengthArray);
+        writeNestedStringArray(output, primaryAliasTokensArray);
+        writeNestedStringArray(output, fallbackAliasTokensArray);
         writeIntArray(output, indexPool);
         writeLongArray(output, directoryKeys);
         writeLongArray(output, directoryValues);
@@ -66,18 +64,28 @@ public final class IRSnapshot {
             throw new IOException("Unsupported IR snapshot version: " + version);
         }
         return new IRSnapshot(
-            input.readUTF(),
-            readStringArray(input),
-            readStringArray(input),
-            readNestedStringArray(input),
-            readStringArray(input),
-            readIntArray(input),
-            readIntArray(input),
-            readLongArray(input),
-            readLongArray(input)
+                input.readUTF(),
+                readStringArray(input),
+                readStringArray(input),
+                readNestedStringArray(input),
+                readNestedStringArray(input),
+                readIntArray(input),
+                readLongArray(input),
+                readLongArray(input)
         );
     }
-
+    public Map<String, List<String>> rebuildRawDictionary() {
+        LinkedHashMap<String, List<String>> rawDict = new LinkedHashMap<>(reverseLookupArray.length);
+        for (int i = 0; i < reverseLookupArray.length; i++) {
+            List<String> aliases = new ArrayList<>();
+            aliases.add(localizedNameArray[i]); // 主语言（中文原文）
+            if (fallbackAliasTokensArray[i] != null && fallbackAliasTokensArray[i].length > 0) {
+                aliases.add(IRBaseUtils.joinTokens(fallbackAliasTokensArray[i])); // 英文兜底拼接回去
+            }
+            rawDict.put(reverseLookupArray[i], aliases);
+        }
+        return rawDict;
+    }
     private static void writeStringArray(DataOutputStream output, String[] values) throws IOException {
         output.writeInt(values.length);
         for (String value : values) {
@@ -142,11 +150,4 @@ public final class IRSnapshot {
         return values;
     }
 
-    public Map<String, String> rebuildRawDictionary() {
-        LinkedHashMap<String, String> rawDict = new LinkedHashMap<>(reverseLookupArray.length);
-        for (int i = 0; i < reverseLookupArray.length; i++) {
-            rawDict.put(reverseLookupArray[i], localizedNameArray[i]);
-        }
-        return rawDict;
-    }
 }

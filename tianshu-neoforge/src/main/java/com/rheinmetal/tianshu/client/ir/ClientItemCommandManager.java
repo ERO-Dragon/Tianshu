@@ -26,26 +26,28 @@ public final class ClientItemCommandManager {
 
     public static void rebuildIndex(String reason) {
         try {
-            Map<String, String> dictionary = DICTIONARY_BUILDER.build();
+            // 【关键修复】类型对齐为 Map<String, List<String>>
+            Map<String, List<String>> dictionary = DICTIONARY_BUILDER.build();
             if (dictionary.isEmpty()) {
                 LOGGER.warn("IR 物品字典为空，跳过建表，reason={}", reason);
                 IR_SERVICE.clear();
                 return;
             }
+            
             String fingerprint = CACHE_STORE.buildFingerprint(dictionary);
             IRSnapshot cachedSnapshot = tryLoadSnapshot(fingerprint, reason);
+            
             if (cachedSnapshot != null) {
                 IR_SERVICE.restore(cachedSnapshot);
                 lastBuildReason = reason + " [cache]";
-                LOGGER.info("IR 索引缓存加载完成，items={}, reason={}, file={}",
-                    IR_SERVICE.getIndexedItemCount(), reason, CACHE_STORE.cacheFilePath());
+                LOGGER.info("IR 索引缓存加载完成，items={}, reason={}, file={}", IR_SERVICE.getIndexedItemCount(), reason, CACHE_STORE.cacheFilePath());
                 return;
             }
+            
             IR_SERVICE.rebuild(dictionary);
             trySaveSnapshot(fingerprint, reason);
             lastBuildReason = reason;
-            LOGGER.info("IR 索引构建完成，items={}, reason={}, file={}",
-                IR_SERVICE.getIndexedItemCount(), reason, CACHE_STORE.cacheFilePath());
+            LOGGER.info("IR 索引构建完成，items={}, reason={}, file={}", IR_SERVICE.getIndexedItemCount(), reason, CACHE_STORE.cacheFilePath());
         } catch (Throwable throwable) {
             LOGGER.error("IR 索引构建失败，reason={}", reason, throwable);
         }

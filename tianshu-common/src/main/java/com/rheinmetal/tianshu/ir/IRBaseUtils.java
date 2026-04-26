@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.ir;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class IRBaseUtils {
@@ -15,23 +16,48 @@ public final class IRBaseUtils {
     public static String[] localizedNameArray = EMPTY_STRING_ARRAY;
     public static Map<String, Integer> forwardLookupMap = Map.of();
 
+    public static String[][] primaryAliasTokensArray = new String[0][];
+    public static String[][] fallbackAliasTokensArray = new String[0][];
+
     private IRBaseUtils() {
     }
 
-    public static int buildMapping(Map<String, String> rawDict) {
+    public static int buildMapping(Map<String, List<String>> rawDict) {
         LinkedHashMap<String, Integer> idMap = new LinkedHashMap<>(Math.max(16, rawDict.size()));
-        String[] reverse = new String[rawDict.size()];
-        String[] names = new String[rawDict.size()];
+        int itemCount = rawDict.size();
+        String[] reverse = new String[itemCount];
+        String[] names = new String[itemCount];
+        String[][] primaryTokens = new String[itemCount][];
+        String[][] fallbackTokens = new String[itemCount][];
         int index = 0;
-        for (Map.Entry<String, String> entry : rawDict.entrySet()) {
+        for (Map.Entry<String, List<String>> entry : rawDict.entrySet()) {
             idMap.put(entry.getKey(), index);
             reverse[index] = entry.getKey();
-            names[index] = entry.getValue() == null ? "" : entry.getValue();
+            List<String> aliases = entry.getValue();
+            
+            if (aliases == null || aliases.isEmpty()) {
+                names[index] = "";
+                primaryTokens[index] = EMPTY_STRING_ARRAY;
+                fallbackTokens[index] = EMPTY_STRING_ARRAY;
+            } else {
+                names[index] = aliases.get(0);
+                // 索引 0 必定是主语言（如中文），直接切词存入主轨道
+                primaryTokens[index] = tokenize(aliases.get(0)); 
+                
+                // 索引 1 必定是英文兜底，切词存入副轨道
+                if (aliases.size() > 1) {
+                    fallbackTokens[index] = tokenize(aliases.get(1)); 
+                } else {
+                    fallbackTokens[index] = EMPTY_STRING_ARRAY;
+                }
+            }
             index++;
         }
         reverseLookupArray = reverse;
         localizedNameArray = names;
         forwardLookupMap = idMap;
+        primaryAliasTokensArray = primaryTokens;
+        fallbackAliasTokensArray = fallbackTokens;
         return index;
     }
 

@@ -34,7 +34,7 @@ public class NeoForgeEnvironment implements IGameEnvironment {
 
     @Override
     public boolean isClientSide() {
-        return Minecraft.getInstance().isSameThread();
+        return true;
     }
 
     @Override

@@ -127,10 +127,28 @@ public class AsrWorker implements Runnable {
         audioQueue.clear();
         String result = getAsrEngine().forceFlush(streamingEngineSession);
         if (isMeaningfulText(result)) {
-            long sessionId = coreManager.interruptOngoingProcessing();
-            int currentTurnId = turnId.incrementAndGet();
-            coreManager.getEventBus().publishEvent(new AsrFinalTextEvent(result, currentTurnId, sessionId));
-            env.info("ASR 强制截断识别完成，turnId: " + currentTurnId + ", sessionId=" + sessionId);
+            if (isWakeWordMode()) {
+                String wakeWord = config.getWakeWord();
+                if (result.contains(wakeWord)) {
+                    long sessionId = coreManager.interruptOngoingProcessing();
+                    int currentTurnId = turnId.incrementAndGet();
+                    int index = result.indexOf(wakeWord) + wakeWord.length();
+                    String realCommand = result.substring(index).trim();
+                    if (isMeaningfulText(realCommand)) {
+                        coreManager.getEventBus().publishEvent(new AsrFinalTextEvent(realCommand, currentTurnId, sessionId));
+                        env.info("ASR 强制截断命中唤醒词，提取命令: " + realCommand + ", turnId: " + currentTurnId);
+                    } else {
+                        env.info("ASR 强制截断命中唤醒词，但唤醒词后无有效命令");
+                    }
+                } else {
+                    env.info("ASR 强制截断未命中唤醒词: " + wakeWord);
+                }
+            } else {
+                long sessionId = coreManager.interruptOngoingProcessing();
+                int currentTurnId = turnId.incrementAndGet();
+                coreManager.getEventBus().publishEvent(new AsrFinalTextEvent(result, currentTurnId, sessionId));
+                env.info("ASR 强制截断识别完成，turnId: " + currentTurnId + ", sessionId=" + sessionId);
+            }
         }
     }
 

@@ -253,6 +253,22 @@ public class TtsWorker implements Runnable {
         return ttsEngine.isInitialized();
     }
 
+    public int getSampleRate() {
+        return ttsEngine.getSampleRate();
+    }
+
+    public void synthesizeForPreview(String text, float speed, java.util.function.Consumer<byte[]> onAudio) {
+        if (!ttsEngine.isInitialized()) return;
+        float origSpeed = speed;
+        ttsEngine.setSpeed(speed);
+        try {
+            ttsEngine.resetInterrupt();
+            ttsEngine.synthesizeSpeech(text, onAudio);
+        } finally {
+            ttsEngine.setSpeed(origSpeed);
+        }
+    }
+    
     private void handleInterruptEvent(InterruptEvent interruptEvent) {
         long sessionId = interruptEvent.getSessionId();
         currentSessionId.set(sessionId);

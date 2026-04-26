@@ -3,7 +3,7 @@
         "author": "csukuangfj",
         "name": "kokoro-en-v0_19",
         "id": "csukuangfj/kokoro-en-v0_19",
-        "size": 314572800,
+        "size": 319625534,
         "needVocoder": false,
         "lang": [
             "en"
@@ -25,7 +25,7 @@
         "author": "csukuangfj",
         "name": "kokoro-multi-lang-v1_0",
         "id": "csukuangfj/kokoro-multi-lang-v1_0",
-        "size": 314572800,
+        "size": 349418188,
         "needVocoder": false,
         "lang": [
             "en",
@@ -56,7 +56,7 @@
         "author": "csukuangfj",
         "name": "kokoro-multi-lang-v1_1",
         "id": "csukuangfj/kokoro-multi-lang-v1_1",
-        "size": 314572800,
+        "size": 364816464,
         "needVocoder": false,
         "lang": [
             "en",
@@ -87,7 +87,7 @@
         "author": "csukuangfj",
         "name": "matcha-icefall-zh-baker",
         "id": "csukuangfj/matcha-icefall-zh-baker",
-        "size": 67108864,
+        "size": 75480569,
         "needVocoder": true,
         "lang": [
             "zh"
@@ -115,7 +115,7 @@
         "author": "csukuangfj",
         "name": "matcha-icefall-zh-en",
         "id": "csukuangfj/matcha-icefall-zh-en",
-        "size": 67108864,
+        "size": 79033838,
         "needVocoder": true,
         "lang": [
             "en",
@@ -144,7 +144,7 @@
         "author": "csukuangfj",
         "name": "matcha-tts-fa_en-khadijah",
         "id": "csukuangfj/matcha-tts-fa_en-khadijah",
-        "size": 67108864,
+        "size": 76510007,
         "needVocoder": true,
         "lang": [
             "en",
@@ -163,7 +163,7 @@
         "author": "csukuangfj",
         "name": "matcha-tts-fa_en-musa",
         "id": "csukuangfj/matcha-tts-fa_en-musa",
-        "size": 67108864,
+        "size": 76511100,
         "needVocoder": true,
         "lang": [
             "en",
@@ -182,7 +182,7 @@
         "author": "csukuangfj",
         "name": "sherpa-onnx-vits-zh-ll",
         "id": "csukuangfj/sherpa-onnx-vits-zh-ll",
-        "size": 67108864,
+        "size": 118810709,
         "needVocoder": false,
         "lang": [
             "zh"
@@ -207,7 +207,7 @@
         "author": "csukuangfj",
         "name": "vits-cantonese-hf-xiaomaiiwn",
         "id": "csukuangfj/vits-cantonese-hf-xiaomaiiwn",
-        "size": 67108864,
+        "size": 107995442,
         "needVocoder": false,
         "lang": [],
         "modelFiles": [

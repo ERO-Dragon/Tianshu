@@ -1,5 +1,10 @@
 package com.rheinmetal.tianshu.core.Engine;
 
+import com.k2fsa.sherpa.onnx.OfflineModelConfig;
+import com.k2fsa.sherpa.onnx.OfflineParaformerModelConfig;
+import com.k2fsa.sherpa.onnx.OfflineRecognizer;
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig;
+import com.k2fsa.sherpa.onnx.OfflineStream;
 import com.k2fsa.sherpa.onnx.OnlineModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineRecognizer;
@@ -30,8 +35,10 @@ public class AsrEngine {
     }
 
     private final IGameEnvironment env;
-    private OnlineRecognizer recognizer;
+    private OnlineRecognizer onlineRecognizer;
+    private OfflineRecognizer offlineRecognizer;
     private boolean isTransducer = false;
+    private boolean isOffline = false;
     private String modelDirPath;
 
     public AsrEngine(IGameEnvironment env) {
@@ -85,8 +92,7 @@ public class AsrEngine {
             if (singleModelPath != null) env.info("  Model: " + singleModelPath);
             if (tokensPath != null) env.info("  Tokens: " + tokensPath);
 
-            OnlineModelConfig modelConfig;
-            OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder();
+            boolean isSingleFile = encoderPath == null && decoderPath == null && singleModelPath != null;
 
             switch (modelInfo.getModelType()) {
                 case AsrModelInfo.TYPE_TRANSDUCER -> {
@@ -95,63 +101,33 @@ public class AsrEngine {
                         return false;
                     }
                     isTransducer = true;
+                    isOffline = false;
                     env.info("检测到 Transducer 流式模型");
-                    OnlineTransducerModelConfig.Builder transBuilder = OnlineTransducerModelConfig.builder()
-                            .setEncoder(encoderPath)
-                            .setDecoder(decoderPath);
-                    if (joinerPath != null) {
-                        transBuilder.setJoiner(joinerPath);
-                    }
-                    OnlineTransducerModelConfig transducer = transBuilder.build();
-
-                    modelConfig = OnlineModelConfig.builder()
-                            .setTransducer(transducer)
-                            .setTokens(tokensPath)
-                            .setNumThreads(2)
-                            .setDebug(true)
-                            .build();
-
-                    if (modelInfo.supportHotwords) {
-                        Path hotwordsFile = modelDir.resolve("hotwords.txt");
-                        if (Files.exists(hotwordsFile)) {
-                            env.info("检测到热词文件: " + hotwordsFile);
-                            configBuilder.setDecodingMethod("modified_beam_search")
-                                    .setHotwordsFile(hotwordsFile.toAbsolutePath().toString());
-                            ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(modelDir);
-                            configBuilder.setHotwordsScore((float) settings.hotwordsScore);
-                            env.info("热词已启用，解码方式: modified_beam_search，分数: " + settings.hotwordsScore);
-                        } else {
-                            configBuilder.setDecodingMethod("greedy_search");
-                            env.info("模型支持热词但未检测到 hotwords.txt，使用 greedy_search");
-                        }
-                    } else {
-                        configBuilder.setDecodingMethod("greedy_search");
-                        env.info("模型不支持热词，使用 greedy_search");
-                    }
+                    initOnlineTransducer(encoderPath, decoderPath, joinerPath, tokensPath, modelInfo, modelDir);
                 }
                 case AsrModelInfo.TYPE_PARAFORMER,
                         AsrModelInfo.TYPE_CTC,
                         AsrModelInfo.TYPE_WENET,
                         AsrModelInfo.TYPE_TELESPEECH -> {
-                    if (encoderPath == null || decoderPath == null || tokensPath == null) {
-                        env.error(modelInfo.getModelType() + " 模型缺少必要文件 (encoder/decoder/tokens)", null);
-                        return false;
+                    if (isSingleFile) {
+                        if (tokensPath == null) {
+                            env.error(modelInfo.getModelType() + " 单文件模型缺少 tokens 文件", null);
+                            return false;
+                        }
+                        isTransducer = false;
+                        isOffline = true;
+                        env.info("检测到 " + modelInfo.getModelType() + " 离线单文件模型，使用 OfflineRecognizer");
+                        initOfflineParaformer(singleModelPath, tokensPath);
+                    } else {
+                        if (encoderPath == null || decoderPath == null || tokensPath == null) {
+                            env.error(modelInfo.getModelType() + " 模型缺少必要文件 (encoder/decoder/tokens)", null);
+                            return false;
+                        }
+                        isTransducer = false;
+                        isOffline = false;
+                        env.info("检测到 " + modelInfo.getModelType() + " 模型，按 Paraformer 流式方式初始化");
+                        initOnlineParaformer(encoderPath, decoderPath, tokensPath);
                     }
-                    isTransducer = false;
-                    env.info("检测到 " + modelInfo.getModelType() + " 模型，按 Paraformer 兼容方式初始化");
-                    OnlineParaformerModelConfig paraformer = OnlineParaformerModelConfig.builder()
-                            .setEncoder(encoderPath)
-                            .setDecoder(decoderPath)
-                            .build();
-
-                    modelConfig = OnlineModelConfig.builder()
-                            .setParaformer(paraformer)
-                            .setTokens(tokensPath)
-                            .setNumThreads(2)
-                            .setDebug(true)
-                            .build();
-
-                    configBuilder.setDecodingMethod("greedy_search");
                 }
                 case AsrModelInfo.TYPE_WHISPER,
                         AsrModelInfo.TYPE_NEMO,
@@ -170,14 +146,87 @@ public class AsrEngine {
                 }
             }
 
-            configBuilder.setOnlineModelConfig(modelConfig);
-            recognizer = new OnlineRecognizer(configBuilder.build());
-            env.info("ASR 引擎初始化成功 (modelType=" + modelInfo.getModelType() + ", Transducer=" + isTransducer + ")");
+            env.info("ASR 引擎初始化成功 (modelType=" + modelInfo.getModelType() + ", Transducer=" + isTransducer + ", Offline=" + isOffline + ")");
         } catch (Throwable t) {
             env.error("ASR 引擎创建失败，请检查模型文件是否损坏", t);
             return false;
         }
         return true;
+    }
+
+    private void initOnlineTransducer(String encoderPath, String decoderPath, String joinerPath, String tokensPath, AsrModelInfo modelInfo, Path modelDir) {
+        OnlineTransducerModelConfig.Builder transBuilder = OnlineTransducerModelConfig.builder()
+                .setEncoder(encoderPath)
+                .setDecoder(decoderPath);
+        if (joinerPath != null) {
+            transBuilder.setJoiner(joinerPath);
+        }
+        OnlineTransducerModelConfig transducer = transBuilder.build();
+
+        OnlineModelConfig modelConfig = OnlineModelConfig.builder()
+                .setTransducer(transducer)
+                .setTokens(tokensPath)
+                .setNumThreads(2)
+                .setDebug(true)
+                .build();
+
+        OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder();
+        if (modelInfo.supportHotwords) {
+            Path hotwordsFile = modelDir.resolve("hotwords.txt");
+            if (Files.exists(hotwordsFile)) {
+                env.info("检测到热词文件: " + hotwordsFile);
+                configBuilder.setDecodingMethod("modified_beam_search")
+                        .setHotwordsFile(hotwordsFile.toAbsolutePath().toString());
+                ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(modelDir);
+                configBuilder.setHotwordsScore((float) settings.hotwordsScore);
+                env.info("热词已启用，解码方式: modified_beam_search，分数: " + settings.hotwordsScore);
+            } else {
+                configBuilder.setDecodingMethod("greedy_search");
+                env.info("模型支持热词但未检测到 hotwords.txt，使用 greedy_search");
+            }
+        } else {
+            configBuilder.setDecodingMethod("greedy_search");
+            env.info("模型不支持热词，使用 greedy_search");
+        }
+        configBuilder.setOnlineModelConfig(modelConfig);
+        onlineRecognizer = new OnlineRecognizer(configBuilder.build());
+    }
+
+    private void initOnlineParaformer(String encoderPath, String decoderPath, String tokensPath) {
+        OnlineParaformerModelConfig paraformer = OnlineParaformerModelConfig.builder()
+                .setEncoder(encoderPath)
+                .setDecoder(decoderPath)
+                .build();
+
+        OnlineModelConfig modelConfig = OnlineModelConfig.builder()
+                .setParaformer(paraformer)
+                .setTokens(tokensPath)
+                .setNumThreads(2)
+                .setDebug(true)
+                .build();
+
+        OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder();
+        configBuilder.setDecodingMethod("greedy_search");
+        configBuilder.setOnlineModelConfig(modelConfig);
+        onlineRecognizer = new OnlineRecognizer(configBuilder.build());
+    }
+
+    private void initOfflineParaformer(String modelPath, String tokensPath) {
+        OfflineParaformerModelConfig paraformer = OfflineParaformerModelConfig.builder()
+                .setModel(modelPath)
+                .build();
+
+        OfflineModelConfig modelConfig = OfflineModelConfig.builder()
+                .setParaformer(paraformer)
+                .setTokens(tokensPath)
+                .setNumThreads(2)
+                .setDebug(true)
+                .build();
+
+        OfflineRecognizerConfig config = OfflineRecognizerConfig.builder()
+                .setOfflineModelConfig(modelConfig)
+                .build();
+        offlineRecognizer = new OfflineRecognizer(config);
     }
 
     public boolean initialize(String modelDir) {
@@ -191,7 +240,26 @@ public class AsrEngine {
             File joiner = findModelFile(dir, "joiner", ".onnx");
             File tokensFile = findModelFile(dir, "tokens", ".txt");
 
-            if (encoder == null || decoder == null || tokensFile == null) {
+            if (tokensFile == null) {
+                env.error("找不到 tokens 文件！", null);
+                return false;
+            }
+
+            File singleModel = null;
+            if (encoder == null || decoder == null) {
+                singleModel = findAnyModelFile(dir);
+            }
+
+            if (singleModel != null && encoder == null) {
+                isTransducer = false;
+                isOffline = true;
+                env.info("检测到单文件离线模型: " + singleModel.getName());
+                initOfflineParaformer(singleModel.getAbsolutePath(), tokensFile.getAbsolutePath());
+                env.info("ASR 引擎初始化成功 (Offline=true)");
+                return true;
+            }
+
+            if (encoder == null || decoder == null) {
                 env.error("找不到必要的模型文件！", null);
                 return false;
             }
@@ -209,6 +277,7 @@ public class AsrEngine {
 
             if (joiner != null) {
                 isTransducer = true;
+                isOffline = false;
                 env.info("检测到 Transducer 流式模型");
                 OnlineTransducerModelConfig transducer = OnlineTransducerModelConfig.builder()
                         .setEncoder(encoder.getAbsolutePath())
@@ -237,6 +306,7 @@ public class AsrEngine {
                 }
             } else {
                 isTransducer = false;
+                isOffline = false;
                 env.info("检测到 Paraformer 流式模型");
                 OnlineParaformerModelConfig paraformer = OnlineParaformerModelConfig.builder()
                         .setEncoder(encoder.getAbsolutePath())
@@ -254,13 +324,26 @@ public class AsrEngine {
             }
 
             configBuilder.setOnlineModelConfig(modelConfig);
-            recognizer = new OnlineRecognizer(configBuilder.build());
-            env.info("ASR 引擎初始化成功 (Transducer=" + isTransducer + ")");
+            onlineRecognizer = new OnlineRecognizer(configBuilder.build());
+            env.info("ASR 引擎初始化成功 (Transducer=" + isTransducer + ", Offline=" + isOffline + ")");
         } catch (Throwable t) {
             env.error("ASR 引擎创建失败，请检查模型文件是否损坏", t);
             return false;
         }
         return true;
+    }
+
+    private File findAnyModelFile(File dir) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return null;
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (File file : files) {
+            String name = file.getName().toLowerCase();
+            if (file.isFile() && name.endsWith(".onnx") && !name.contains("encoder") && !name.contains("decoder") && !name.contains("joiner")) {
+                return file;
+            }
+        }
+        return null;
     }
 
     private File findModelFile(File dir, String keyword, String extension) {
@@ -276,12 +359,20 @@ public class AsrEngine {
         return null;
     }
 
+    public boolean isOffline() {
+        return isOffline;
+    }
+
     public StreamingSession createStreamingSession() {
-        if (recognizer == null) {
+        if (isOffline) {
+            env.warn("离线模型不支持流式识别，请使用 PTT 模式");
+            return null;
+        }
+        if (onlineRecognizer == null) {
             env.error("ASR 引擎未初始化", null);
             return null;
         }
-        return new StreamingSession(recognizer.createStream());
+        return new StreamingSession(onlineRecognizer.createStream());
     }
 
     public void releaseStreamingSession(StreamingSession session) {
@@ -297,7 +388,7 @@ public class AsrEngine {
     }
 
     public String feedAudio(StreamingSession session, byte[] pcmData) {
-        if (recognizer == null || session == null || pcmData == null || pcmData.length == 0) return "";
+        if (onlineRecognizer == null || session == null || pcmData == null || pcmData.length == 0) return "";
         session.lock.lock();
         try {
             float[] samples = new float[pcmData.length / 2];
@@ -308,39 +399,36 @@ public class AsrEngine {
                 samples[i] = (float) s / 32768;
             }
             session.stream.acceptWaveform(samples, 16000);
-            while (recognizer.isReady(session.stream)) {
-                recognizer.decode(session.stream);
+            while (onlineRecognizer.isReady(session.stream)) {
+                onlineRecognizer.decode(session.stream);
             }
-            return recognizer.getResult(session.stream).getText();
+            return onlineRecognizer.getResult(session.stream).getText();
         } finally {
             session.lock.unlock();
         }
     }
 
     public boolean isEndpoint(StreamingSession session) {
-        if (recognizer == null || session == null) return false;
+        if (onlineRecognizer == null || session == null) return false;
         session.lock.lock();
         try {
-            return recognizer.isEndpoint(session.stream);
+            return onlineRecognizer.isEndpoint(session.stream);
         } finally {
             session.lock.unlock();
         }
     }
 
     public void reset(StreamingSession session) {
-        if (recognizer == null || session == null) return;
+        if (onlineRecognizer == null || session == null) return;
         session.lock.lock();
         try {
-            recognizer.reset(session.stream);
+            onlineRecognizer.reset(session.stream);
         } finally {
             session.lock.unlock();
         }
     }
 
     public String recognizeComplete(byte[] fullAudio) {
-        if (recognizer == null) return "";
-        OnlineStream tempStream = recognizer.createStream();
-
         float[] samples = new float[fullAudio.length / 2];
         for (int i = 0; i != samples.length; ++i) {
             short low = (short) fullAudio[2 * i];
@@ -349,28 +437,37 @@ public class AsrEngine {
             samples[i] = (float) s / 32768;
         }
 
-        tempStream.acceptWaveform(samples, 16000);
-        tempStream.acceptWaveform(new float[(int) (0.8 * 16000)], 16000);
-
-        while (recognizer.isReady(tempStream)) {
-            recognizer.decode(tempStream);
+        if (isOffline && offlineRecognizer != null) {
+            OfflineStream tempStream = offlineRecognizer.createStream();
+            tempStream.acceptWaveform(samples, 16000);
+            offlineRecognizer.decode(tempStream);
+            String result = offlineRecognizer.getResult(tempStream).getText();
+            tempStream.release();
+            return result;
         }
 
-        String result = recognizer.getResult(tempStream).getText();
+        if (onlineRecognizer == null) return "";
+        OnlineStream tempStream = onlineRecognizer.createStream();
+        tempStream.acceptWaveform(samples, 16000);
+        tempStream.acceptWaveform(new float[(int) (0.8 * 16000)], 16000);
+        while (onlineRecognizer.isReady(tempStream)) {
+            onlineRecognizer.decode(tempStream);
+        }
+        String result = onlineRecognizer.getResult(tempStream).getText();
         tempStream.release();
         return result;
     }
 
     public String forceFlush(StreamingSession session) {
-        if (recognizer == null || session == null) return "";
+        if (onlineRecognizer == null || session == null) return "";
         session.lock.lock();
         try {
             session.stream.acceptWaveform(new float[(int) (0.3 * 16000)], 16000);
-            while (recognizer.isReady(session.stream)) {
-                recognizer.decode(session.stream);
+            while (onlineRecognizer.isReady(session.stream)) {
+                onlineRecognizer.decode(session.stream);
             }
-            String result = recognizer.getResult(session.stream).getText();
-            recognizer.reset(session.stream);
+            String result = onlineRecognizer.getResult(session.stream).getText();
+            onlineRecognizer.reset(session.stream);
             return result;
         } finally {
             session.lock.unlock();
@@ -378,9 +475,13 @@ public class AsrEngine {
     }
 
     public void shutdown() {
-        if (recognizer != null) {
-            recognizer.release();
-            recognizer = null;
+        if (onlineRecognizer != null) {
+            onlineRecognizer.release();
+            onlineRecognizer = null;
+        }
+        if (offlineRecognizer != null) {
+            offlineRecognizer.release();
+            offlineRecognizer = null;
         }
         env.info("ASR 引擎已安全关闭");
     }

@@ -36,7 +36,7 @@ public class TtsEngine {
     }
 
     public void setSpeed(float speed) {
-        this.speed = Math.max(0.5f, Math.min(2.0f, speed));
+        this.speed = Math.max(0.1f, Math.min(5.0f, speed));
     }
 
     public void setSpeakerId(int speakerId) {
@@ -313,6 +313,18 @@ public class TtsEngine {
         }
         if (info.lexiconFiles != null && !info.lexiconFiles.isEmpty()) {
             vitsBuilder.setLexicon(joinPaths(modelDir, info.lexiconFiles));
+        } else {
+            File lexicon = findFile(modelDir, "lexicon", ".txt");
+            if (lexicon != null) {
+                vitsBuilder.setLexicon(lexicon.getAbsolutePath());
+                env.info("VITS 自动检测到 lexicon: " + lexicon.getName());
+            }
+        }
+
+        File dictDir = new File(modelDir, "dict");
+        if (dictDir.exists() && dictDir.isDirectory()) {
+            vitsBuilder.setDictDir(dictDir.getAbsolutePath());
+            env.info("VITS 自动检测到 dict 目录: " + dictDir.getAbsolutePath());
         }
 
         env.info("VITS 配置: model=" + modelPath + ", tokens=" + tokensPath);
@@ -323,16 +335,43 @@ public class TtsEngine {
                 .setDebug(false)
                 .build();
 
-        return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
+        List<String> effectiveRuleFsts = info.ruleFsts;
+        String autoRuleFstsPath = null;
+        if ((effectiveRuleFsts == null || effectiveRuleFsts.isEmpty())) {
+            autoRuleFstsPath = autoDetectRuleFsts(modelDir);
+            if (autoRuleFstsPath != null) {
+                env.info("VITS 自动检测到 ruleFsts: " + autoRuleFstsPath);
+            }
+        }
+        return buildConfigWithRuleFsts(modelConfig, modelDir, effectiveRuleFsts, autoRuleFstsPath);
+    }
+
+    private String autoDetectRuleFsts(File modelDir) {
+        StringBuilder sb = new StringBuilder();
+        String[] fstNames = {"date", "number", "phone", "new_heteronym"};
+        for (String name : fstNames) {
+            File fst = findFile(modelDir, name, ".fst");
+            if (fst != null) {
+                if (sb.length() > 0) sb.append(",");
+                sb.append(fst.getAbsolutePath());
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : null;
     }
 
     private OfflineTtsConfig buildConfigWithRuleFsts(OfflineTtsModelConfig modelConfig, File modelDir, List<String> ruleFsts) {
+        return buildConfigWithRuleFsts(modelConfig, modelDir, ruleFsts, null);
+    }
+
+    private OfflineTtsConfig buildConfigWithRuleFsts(OfflineTtsModelConfig modelConfig, File modelDir, List<String> ruleFsts, String autoRuleFstsPath) {
         OfflineTtsConfig.Builder configBuilder = OfflineTtsConfig.builder()
                 .setModel(modelConfig)
                 .setMaxNumSentences(1);
 
         if (ruleFsts != null && !ruleFsts.isEmpty()) {
             configBuilder.setRuleFsts(joinPaths(modelDir, ruleFsts));
+        } else if (autoRuleFstsPath != null && !autoRuleFstsPath.isBlank()) {
+            configBuilder.setRuleFsts(autoRuleFstsPath);
         }
 
         return configBuilder.build();

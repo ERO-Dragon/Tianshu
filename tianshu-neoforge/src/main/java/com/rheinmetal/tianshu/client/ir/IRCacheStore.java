@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 
 final class IRCacheStore {
@@ -25,15 +26,24 @@ final class IRCacheStore {
         return cacheDirectory().resolve(CACHE_FILE_NAME);
     }
 
-    String buildFingerprint(Map<String, String> dictionary) {
+    String buildFingerprint(Map<String, List<String>> dictionary) {
         String languageCode = currentLanguageCode();
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             updateDigest(digest, languageCode);
-            for (Map.Entry<String, String> entry : dictionary.entrySet()) {
+            
+            for (Map.Entry<String, List<String>> entry : dictionary.entrySet()) {
                 updateDigest(digest, entry.getKey());
-                updateDigest(digest, entry.getValue());
+                // 【修复点 2】把该物品的所有别名都纳入指纹计算
+                // 这样只要别名列表有任何增减变化，指纹就会改变，触发索引重建
+                List<String> aliases = entry.getValue();
+                if (aliases != null) {
+                    for (String alias : aliases) {
+                        updateDigest(digest, alias);
+                    }
+                }
             }
+            
             return languageCode + "-" + HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 unavailable", exception);

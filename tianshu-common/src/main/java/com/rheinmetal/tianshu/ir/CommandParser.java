@@ -2,22 +2,46 @@ package com.rheinmetal.tianshu.ir;
 
 import com.rheinmetal.tianshu.ir.collection.Int2ObjectOpenHashMap;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public final class CommandParser {
+    private final String[] prioritySplitters;
+    private final String[] parallelSplitters;
+    private final String[] negations;
+    private final String[] fillerWords;
+    private final Intent[] detectableIntents;
 
-    private static final String[] PRIORITY_SPLITTERS = {"但是", "不过", "然后"};
-    private static final String[] PARALLEL_SPLITTERS = {"和", "跟", "与", "、"};
-    private static final String[] NEGATIONS = {"不", "别", "不要", "别把", "别动", "别扔"};
-    private static final String[] DROP_WORDS = {"扔", "丢", "丢掉", "扔掉", "丢弃", "丢了"};
-    private static final String[] STORE_WORDS = {"收", "收起", "存", "存入", "放回", "放进去", "收进去"};
-    private static final String[] USE_WORDS = {"用", "使用", "拿", "装备"};
-    private static final String[] CRAFT_WORDS = {"做", "合成", "制作"};
-    private static final String[] FILLER_WORDS = {"那个", "这个", "一下", "一下子", "给我", "把", "将", "都", "再", "去", "帮我", "帮", "请", "吧"};
+    // ========== 物理外挂日志方法 ==========
+    private static void debugLog(String msg) {
+        try {
+            // 直接写到游戏运行目录的 logs 文件夹下
+            Path logPath = Paths.get("logs", "ir_debug.txt");
+            String line = "[" + System.currentTimeMillis() + "] " + msg + "\n";
+            Files.write(logPath, line.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            e.printStackTrace(); // 如果连文件都写不了，那就真的只能抛异常了
+        }
+    }
+    // =====================================
+
+    public CommandParser() {
+        Map<String, String[]> keywords = IntentKeywordLoader.load();
+        this.prioritySplitters = keywords.getOrDefault("PRIORITY_SPLITTERS", new String[0]);
+        this.parallelSplitters = keywords.getOrDefault("PARALLEL_SPLITTERS", new String[0]);
+        this.negations = keywords.getOrDefault("NEGATIONS", new String[0]);
+        this.fillerWords = keywords.getOrDefault("FILLER_WORDS", new String[0]);
+        this.detectableIntents = IntentKeywordLoader.getDetectableIntents().toArray(new Intent[0]);
+    }
 
     public List<ParseUnit> parse(String rawText, Set<Integer> contextInternalIds) {
         if (rawText == null || rawText.isBlank()) {
@@ -39,8 +63,20 @@ public final class CommandParser {
         return results;
     }
 
-    private ParseUnit parseSingleSubQuery(SubQuery subQuery, Set<Integer> contextInternalIds) {
+    private ParseUnit parseSingleSubQuery(SubQuery subQuery, Set<Integer> contextInternalIds) {// ===== 【日志 1：看意图剥离后，剩下的实体到底是什么】 =====
+
+        debugLog("[DEBUG-1 实体提取] rawChunk = " + subQuery.rawChunk);
+
         String[] tokens = IRBaseUtils.tokenize(subQuery.rawChunk);
+        
+        // ===== 【日志 2：看分词和转拼音到底对不对】 =====
+        debugLog("[DEBUG-2 Tokenize] 结果 = " + Arrays.toString(tokens) + " | 长度 = " + tokens.length);
+
+        if (tokens.length < 2) {
+            debugLog("[DEBUG-2] 长度不足2，已被拦截！");
+            return null;
+        }
+        debugLog("[DEBUG] 提取实体: " + subQuery.rawChunk + " -> 分词结果: " + Arrays.toString(tokens));
         if (tokens.length < 2) {
             return null;
         }
@@ -48,7 +84,11 @@ public final class CommandParser {
         QueryVariant variant = buildQueryVariant(tokens);
         Int2ObjectOpenHashMap<MutableVote> votes = new Int2ObjectOpenHashMap<>(64);
         int queryTotalGramCount = collectVotes(variant, votes);
+        // ===== 【日志 3：看是不是被 Stop-Gram 黑名单杀光了】 =====
+        debugLog("[DEBUG-3 投票阶段] queryTotalGramCount = " + queryTotalGramCount + " | votesSize = " + votes.size());
+
         if (queryTotalGramCount == 0) {
+            debugLog("[DEBUG-3] 有效 gram 为 0，已被拦截！");
             return null;
         }
 
@@ -56,6 +96,7 @@ public final class CommandParser {
         if (topCandidates.length == 0) {
             return null;
         }
+        debugLog("[DEBUG-4 排序阶段] topCandidates 剩余数量 = " + topCandidates.length); // 必须去掉注释！
 
         ScoredCandidate[] ranked = rankCandidates(topCandidates, variant, contextInternalIds);
         if (ranked.length == 0) {
@@ -66,7 +107,7 @@ public final class CommandParser {
         ScoredCandidate top1 = ranked[0];
         ScoredCandidate top2 = ranked.length > 1 ? ranked[1] : null;
 
-        if (top1.score < 0.25d) {
+        if (top1.score < 0.15d) {
             return null;
         }
         if (top2 != null && top1.score - top2.score < 0.1d) {
@@ -78,26 +119,26 @@ public final class CommandParser {
     }
 
     private List<SubQuery> splitToSubQueries(String rawText) {
-        List<String> primaryParts = splitByKeywords(rawText, PRIORITY_SPLITTERS);
+        List<String> primaryParts = splitByKeywords(rawText, prioritySplitters);
         List<SubQuery> subQueries = new ArrayList<>();
         for (String part : primaryParts) {
             String normalizedPart = normalizeChunk(part);
             if (normalizedPart.isEmpty()) {
                 continue;
             }
-            boolean parentNeg = containsAny(normalizedPart, NEGATIONS);
+            boolean parentNeg = containsAny(normalizedPart, negations);
             Intent parentIntent = detectIntent(normalizedPart);
-            List<String> secondaryParts = splitByKeywords(normalizedPart, PARALLEL_SPLITTERS);
+            List<String> secondaryParts = splitByKeywords(normalizedPart, parallelSplitters);
             for (String subPart : secondaryParts) {
                 String normalized = normalizeChunk(subPart);
                 if (normalized.isEmpty()) {
                     continue;
                 }
-                boolean localNeg = containsAny(normalized, NEGATIONS);
+                boolean localNeg = containsAny(normalized, negations);
                 boolean neg = localNeg || parentNeg;
                 Intent localIntent = detectIntent(normalized);
                 Intent intent = localIntent == Intent.UNKNOWN ? parentIntent : localIntent;
-                String entityChunk = extractEntityChunk(normalized);
+                String entityChunk = extractEntityChunk(normalized, intent);
                 if (!entityChunk.isEmpty()) {
                     subQueries.add(new SubQuery(entityChunk, neg, intent));
                 }
@@ -133,36 +174,34 @@ public final class CommandParser {
 
     private String normalizeChunk(String chunk) {
         String result = chunk;
-        for (String filler : FILLER_WORDS) {
+        for (String filler : fillerWords) {
             result = result.replace(filler, " ");
         }
         return result.replace('，', ' ').replace(',', ' ').trim();
     }
 
     private Intent detectIntent(String text) {
-        if (containsAny(text, DROP_WORDS)) {
-            return Intent.DROP;
-        }
-        if (containsAny(text, STORE_WORDS)) {
-            return Intent.STORE;
-        }
-        if (containsAny(text, CRAFT_WORDS)) {
-            return Intent.CRAFT;
-        }
-        if (containsAny(text, USE_WORDS)) {
-            return Intent.USE;
-        }
-        return Intent.UNKNOWN;
-    }
+        Intent bestIntent = Intent.UNKNOWN;
+        int bestLength = 0;
 
-    private String extractEntityChunk(String text) {
+        for (Intent intent : detectableIntents) {
+            for (String keyword : IntentKeywordLoader.getKeywords(intent)) {
+                if (text.contains(keyword) && keyword.length() > bestLength) {
+                    bestLength = keyword.length();
+                    bestIntent = intent;
+                }
+            }
+        }
+
+        return bestIntent;
+    }
+    private String extractEntityChunk(String text, Intent currentIntent) {
         String result = text;
-        result = stripKeywords(result, NEGATIONS);
-        result = stripKeywords(result, DROP_WORDS);
-        result = stripKeywords(result, STORE_WORDS);
-        result = stripKeywords(result, USE_WORDS);
-        result = stripKeywords(result, CRAFT_WORDS);
-        result = stripKeywords(result, FILLER_WORDS);
+        result = stripKeywords(result, negations);
+        if (currentIntent != Intent.UNKNOWN) {
+            result = stripBoundaryKeywords(result, IntentKeywordLoader.getKeywords(currentIntent));
+        }
+        result = stripKeywords(result, fillerWords);
         return result.trim();
     }
 
@@ -170,6 +209,25 @@ public final class CommandParser {
         String result = text;
         for (String keyword : keywords) {
             result = result.replace(keyword, " ");
+        }
+        return result;
+    }
+
+    private String stripBoundaryKeywords(String text, String[] keywords) {
+        String result = text;
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (String keyword : keywords) {
+                if (keyword.isEmpty()) continue;
+                if (result.startsWith(keyword)) {
+                    result = result.substring(keyword.length()).trim();
+                    changed = true;
+                } else if (result.endsWith(keyword)) {
+                    result = result.substring(0, result.length() - keyword.length()).trim();
+                    changed = true;
+                }
+            }
         }
         return result;
     }
@@ -241,47 +299,70 @@ public final class CommandParser {
         List<Candidate> candidates = new ArrayList<>(votes.size());
         Int2ObjectOpenHashMap.EntryIterator<MutableVote> voteIterator = votes.entryIterator();
         while (voteIterator.next()) {
-            int candidateId = voteIterator.key();
-            int voteCount = voteIterator.value().count;
-            if (queryTotalGramCount >= 3 && voteCount < 2) {
-                continue;
-            }
-            int entityLength = IndexBuilder.entityPinyinLengthArray[candidateId];
-            if (Math.abs(entityLength - queryLength) > 2) {
-                continue;
-            }
+            int candidateId = voteIterator.key(); int voteCount = voteIterator.value().count;
+            if (queryTotalGramCount >= 3 && voteCount < 2) { continue; }
             candidates.add(new Candidate(candidateId, voteCount));
         }
-        if (candidates.isEmpty()) {
-            return new Candidate[0];
-        }
+        if (candidates.isEmpty()) { return new Candidate[0]; }
         candidates.sort(Comparator.comparingInt((Candidate c) -> c.voteCount).reversed());
         int limit = Math.min(50, candidates.size());
         return candidates.subList(0, limit).toArray(new Candidate[0]);
-    }
+      }
 
     private ScoredCandidate[] rankCandidates(Candidate[] candidates, QueryVariant variant, Set<Integer> contextInternalIds) {
         List<ScoredCandidate> ranked = new ArrayList<>(candidates.length);
         LcsWorkspace lcsWorkspace = new LcsWorkspace();
+        final double PRIMARY_WEIGHT = 1.0;   // 中文绝对优先
+        final double FALLBACK_WEIGHT = 0.85; // 英文兜底，防无中文Mod死档
+
+debugLog("[RANK-基准] 用户输入拼接: " + variant.joined + " (长度:" + variant.joined.length() + ")");
+
         for (Candidate candidate : candidates) {
-            String[] candidateTokens = IndexBuilder.entityTokenArray[candidate.internalId];
-            if (candidateTokens.length == 0) {
-                continue;
+            int internalId = candidate.internalId;
+            String[] pTokens = IRBaseUtils.primaryAliasTokensArray[internalId];
+            String[] fTokens = IRBaseUtils.fallbackAliasTokensArray[internalId];
+
+            if ((pTokens == null || pTokens.length == 0) && (fTokens == null || fTokens.length == 0)) { continue; }
+
+            String realItemId = IRBaseUtils.reverseLookupArray[internalId];
+
+            // --- 1. 计算主轨道分数 (中文) ---
+            double pFinalScore = 0.0;
+            if (pTokens != null && pTokens.length > 0) {
+                String pJoined = IRBaseUtils.joinTokens(pTokens);
+debugLog("[RANK-主轨道] 候选: " + realItemId + " | 索引串: " + pJoined);
+                double pLcs = computeLcsRatio(variant.joined, pJoined, lcsWorkspace);
+                double pOverlap = computeCharOverlapRatio(variant.joined, pJoined);
+                double pBaseScore = (pLcs * 0.6d) + (pOverlap * 0.4d);
+                int pLenDiff = Math.abs(pJoined.length() - variant.joined.length());
+                // 修正了原来的 Bug: 原来是 > 2 里面套了 - 6
+                double pPenalty = (pLenDiff > 6) ? (pLenDiff - 6) * 0.03d : 0.0;
+                pFinalScore = (pBaseScore * PRIMARY_WEIGHT) - pPenalty;
+debugLog("[RANK-主轨道得分] 基础=" + String.format("%.4f", pBaseScore) + ", 扣分=" + String.format("%.4f", pPenalty) + ", 加权后=" + String.format("%.4f", pFinalScore));
             }
-            String candidateJoined = IndexBuilder.entityJoinedTokenArray[candidate.internalId];
-            double lcsRatio = computeLcsRatio(variant.joined, candidateJoined, lcsWorkspace);
-            double overlapRatio = computeCharOverlapRatio(variant.joined, candidateJoined);
-            double score = (lcsRatio * 0.6d) + (overlapRatio * 0.4d);
-            if (candidateTokens.length < 3) {
-                score *= 0.5d;
+
+            // --- 2. 计算副轨道分数 (英文兜底) ---
+            double fFinalScore = 0.0;
+            if (fTokens != null && fTokens.length > 0) {
+                String fJoined = IRBaseUtils.joinTokens(fTokens);
+debugLog("[RANK-副轨道] 候选: " + realItemId + " | 索引串: " + fJoined);
+                double fLcs = computeLcsRatio(variant.joined, fJoined, lcsWorkspace);
+                double fOverlap = computeCharOverlapRatio(variant.joined, fJoined);
+                double fBaseScore = (fLcs * 0.6d) + (fOverlap * 0.4d);
+                int fLenDiff = Math.abs(fJoined.length() - variant.joined.length());
+                double fPenalty = (fLenDiff > 6) ? (fLenDiff - 6) * 0.03d : 0.0;
+                fFinalScore = (fBaseScore * FALLBACK_WEIGHT) - fPenalty;
+debugLog("[RANK-副轨道得分] 基础=" + String.format("%.4f", fBaseScore) + ", 扣分=" + String.format("%.4f", fPenalty) + ", 加权后=" + String.format("%.4f", fFinalScore));
             }
-            if (variant.baseTokens.length <= 3 && contextInternalIds.contains(candidate.internalId)) {
-                score += 10.0d;
-            } else if (variant.baseTokens.length > 3 && contextInternalIds.contains(candidate.internalId)) {
-                score += 0.3d;
-            }
-            ranked.add(new ScoredCandidate(candidate.internalId, score));
+
+            double finalScore = Math.max(pFinalScore, fFinalScore);
+
+            if (variant.baseTokens.length <= 3 && contextInternalIds.contains(internalId)) { finalScore += 10.0d; }
+            else if (variant.baseTokens.length > 3 && contextInternalIds.contains(internalId)) { finalScore += 0.3d; }
+
+            ranked.add(new ScoredCandidate(internalId, finalScore));
         }
+debugLog("[RANK-结束] 总共参与排序的物品数: " + ranked.size());
         return ranked.toArray(new ScoredCandidate[0]);
     }
 

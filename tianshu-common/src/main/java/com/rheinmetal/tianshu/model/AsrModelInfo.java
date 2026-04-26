@@ -40,6 +40,13 @@ public class AsrModelInfo {
     public boolean isInt8Available;
     public String qualityTier;
     public String performanceClass;
+    public String displayName;
+
+    public String getDisplayName() {
+        if (displayName != null && !displayName.isBlank()) return displayName;
+        if (name != null && !name.isBlank()) return name;
+        return id != null ? id : "未知模型";
+    }
 
     public String getModelType() {
         if (modelType != null && !modelType.isBlank()) return modelType;
@@ -79,11 +86,6 @@ public class AsrModelInfo {
 
     public boolean isArchiveDownload() {
         return downloadUrl != null && !downloadUrl.isBlank();
-    }
-
-    public String getDisplayName() {
-        if (name != null && !name.isBlank()) return name;
-        return id != null ? id : "未知模型";
     }
 
     public List<String> getAllRequiredFiles() {

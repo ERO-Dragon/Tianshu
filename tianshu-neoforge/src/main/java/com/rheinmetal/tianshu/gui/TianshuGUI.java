@@ -82,8 +82,6 @@ public class TianshuGUI extends Screen {
     private final String initialCustomLlm;
     private final String initialCustomTts;
 
-    private volatile boolean asrPreviewRunning = false;
-    private volatile boolean ttsPreviewRunning = false;
     private volatile String asrPreviewResult = "";
     private float ttsSpeed = 1.0f;
     private TtsSpeedSlider ttsSpeedSlider;
@@ -291,11 +289,15 @@ public class TianshuGUI extends Screen {
 
         int bottomRowY = blockHeight - 26;
 
-        this.addRenderableWidget(BrightButton.create(
-                Component.literal(asrPreviewRunning ? "试音中" : "试音"), b -> startAsrPreview())
+        boolean previewRunning = coreManager.isPreviewRunning();
+
+        BrightButton asrPreviewBtn = BrightButton.create(
+                Component.literal(previewRunning ? "试音中" : "试音"), b -> startAsrPreview())
                 .pos(innerX + 10, asrY + bottomRowY)
                 .size(48, 16)
-                .build());
+                .build();
+        asrPreviewBtn.active = !previewRunning;
+        this.addRenderableWidget(asrPreviewBtn);
 
         Path asrModelDir = resolveModelDir("ASR");
         boolean isTransducer = asrModelDir != null && AsrEngine.detectTransducer(asrModelDir);
@@ -307,11 +309,13 @@ public class TianshuGUI extends Screen {
         hotwordBtn.active = isTransducer && asrModelDir != null;
         this.addRenderableWidget(hotwordBtn);
 
-        this.addRenderableWidget(BrightButton.create(
-                Component.literal(ttsPreviewRunning ? "试听中" : "试听"), b -> startTtsPreview())
+        BrightButton ttsPreviewBtn = BrightButton.create(
+                Component.literal(previewRunning ? "试听中" : "试听"), b -> startTtsPreview())
                 .pos(innerX + 10, ttsY + bottomRowY)
                 .size(48, 16)
-                .build());
+                .build();
+        ttsPreviewBtn.active = !previewRunning;
+        this.addRenderableWidget(ttsPreviewBtn);
 
         Path ttsModelDir = resolveModelDir("TTS");
         TtsModelInfo currentTtsInfo = ttsModelDir != null ? coreManager.resolveCurrentTtsModelInfo() : null;
@@ -486,8 +490,7 @@ public class TianshuGUI extends Screen {
     }
 
     private void startAsrPreview() {
-        if (asrPreviewRunning) return;
-        asrPreviewRunning = true;
+        if (coreManager.isPreviewRunning()) return;
         asrPreviewResult = "";
         infoText = Component.literal("ASR 试听准备中，请在开始录制后说话...");
         infoTextExpiryTime = System.currentTimeMillis() + 10000;
@@ -522,15 +525,13 @@ public class TianshuGUI extends Screen {
 
             @Override
             public void onFinish() {
-                asrPreviewRunning = false;
                 Minecraft.getInstance().execute(TianshuGUI.this::init);
             }
         });
     }
 
     private void startTtsPreview() {
-        if (ttsPreviewRunning) return;
-        ttsPreviewRunning = true;
+        if (coreManager.isPreviewRunning()) return;
         infoText = Component.literal("TTS 试听准备中...");
         infoTextExpiryTime = System.currentTimeMillis() + 10000;
         this.init();
@@ -562,7 +563,6 @@ public class TianshuGUI extends Screen {
 
             @Override
             public void onFinish() {
-                ttsPreviewRunning = false;
                 Minecraft.getInstance().execute(TianshuGUI.this::init);
             }
         });
@@ -738,7 +738,7 @@ public class TianshuGUI extends Screen {
 
     private List<String> getAsrInfoLines() {
         List<String> lines = new ArrayList<>();
-        if (asrPreviewRunning) {
+        if (coreManager.isPreviewRunning()) {
             lines.add("正在录音，请说话...");
         } else if (!asrPreviewResult.isEmpty()) {
             lines.add("识别结果: " + asrPreviewResult);
@@ -779,7 +779,7 @@ public class TianshuGUI extends Screen {
 
     private List<String> getTtsInfoLines() {
         List<String> lines = new ArrayList<>();
-        if (ttsPreviewRunning) lines.add("正在播放试听...");
+        if (coreManager.isPreviewRunning()) lines.add("正在播放试听...");
         Path ttsDir = resolveModelDir("TTS");
         if (ttsDir != null) {
             ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(ttsDir);
@@ -825,12 +825,7 @@ public class TianshuGUI extends Screen {
 
     @Override
     public void onClose() {
-        try {
-            if (asrPreviewRunning) audioManager.stopRecording();
-            if (ttsPreviewRunning) audioManager.stopTtsPlayback();
-        } catch (Throwable ignored) {}
-        asrPreviewRunning = false;
-        ttsPreviewRunning = false;
+        coreManager.stopPreview();
         super.onClose();
     }
 
@@ -878,7 +873,7 @@ public class TianshuGUI extends Screen {
         private final Path modelDir;
 
         TtsSpeedSlider(int x, int y, int width, int height, float initialSpeed, Path modelDir) {
-            super(x, y, width, height, Component.literal("语速"), (initialSpeed - 0.5) / 1.5);
+            super(x, y, width, height, Component.literal("语速"), Math.min(1.0, Math.max(0.0, initialSpeed / 5.0f)));
             this.speed = initialSpeed;
             this.modelDir = modelDir;
             updateMessage();
@@ -886,13 +881,12 @@ public class TianshuGUI extends Screen {
 
         @Override
         protected void updateMessage() {
-            setMessage(Component.literal("语速: " + String.format("%.1f", speed)));
+            setMessage(Component.literal("语速: " + String.format("%.1f", speed) + "x"));
         }
 
         @Override
         protected void applyValue() {
-            speed = (float) (0.5 + value * 1.5);
-            speed = Math.round(speed * 10.0f) / 10.0f;
+            speed = Math.round((float) (value * 5.0) * 10.0f) / 10.0f;
             ttsSpeed = speed;
             ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(modelDir);
             settings.speed = speed;
