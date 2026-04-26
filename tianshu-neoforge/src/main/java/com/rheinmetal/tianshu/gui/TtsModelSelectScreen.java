@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.gui;
 
 import com.rheinmetal.tianshu.audio.AudioManager;
-import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
@@ -75,7 +75,7 @@ public class TtsModelSelectScreen extends Screen {
     private static final int PAGE_MODELS = 2;
 
     private final Screen parent;
-    private final NeoForgeConfig config;
+    private final ClientConfig config;
     private final TianshuCoreManager coreManager;
     private final AudioManager audioManager;
     private final NeoForgeNativeLibBridge nativeLibBridge;
@@ -104,7 +104,7 @@ public class TtsModelSelectScreen extends Screen {
     private static final int TIER_CARD_HEIGHT = 80;
     private static final int TIER_CARD_GAP = 16;
 
-    public TtsModelSelectScreen(Screen parent, NeoForgeConfig config, TianshuCoreManager coreManager,
+    public TtsModelSelectScreen(Screen parent, ClientConfig config, TianshuCoreManager coreManager,
                                 AudioManager audioManager, NeoForgeNativeLibBridge nativeLibBridge) {
         super(Component.literal("TTS 模型选择"));
         this.parent = parent;

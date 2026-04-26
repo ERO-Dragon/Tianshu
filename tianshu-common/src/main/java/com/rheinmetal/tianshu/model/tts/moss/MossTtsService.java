@@ -958,6 +958,25 @@ public class MossTtsService implements AutoCloseable {
         return merged;
     }
 
+    public interface StreamingAudioCallback {
+        void onChunkAudio(float[][] audio, int chunkIndex, int totalChunks);
+    }
+
+    public void synthesizeStreaming(String text, List<List<Integer>> promptAudioCodes, StreamingAudioCallback callback) throws Exception {
+        List<String> chunks = splitVoiceCloneText(text);
+        if (chunks.isEmpty()) {
+            return;
+        }
+        int totalChunks = chunks.size();
+        for (int i = 0; i < totalChunks; i++) {
+            float[][] chunkAudio = synthesizeSingleChunk(chunks.get(i), promptAudioCodes);
+            if (chunkAudio == null || chunkAudio.length == 0 || chunkAudio[0].length == 0) {
+                continue;
+            }
+            callback.onChunkAudio(chunkAudio, i, totalChunks);
+        }
+    }
+
     private float[][] synthesizeSingleChunk(String text, List<List<Integer>> promptAudioCodes) throws Exception {
         int[] textTokenIds = encodeText(text);
         if (textTokenIds == null || textTokenIds.length == 0) {

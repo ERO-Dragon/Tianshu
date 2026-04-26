@@ -19,47 +19,32 @@ import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class NeoForgeRecipeProvider implements IRecipeDataProvider {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_NBT_NODES = 30;
 
-    private volatile Map<String, List<RecipeData>> recipeCache;
+    private final Map<String, List<RecipeData>> recipeCache = new ConcurrentHashMap<>();
 
     @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public RecipeTreeData getRecipeTree(String itemId) {
         if (itemId == null || itemId.isBlank()) {
             return new RecipeTreeData(itemId, Collections.emptyList());
         }
 
-        Map<String, List<RecipeData>> cache = getOrBuildCache();
-        List<RecipeData> matched = cache.getOrDefault(itemId, Collections.emptyList());
-        return new RecipeTreeData(itemId, matched);
-    }
-
-    private Map<String, List<RecipeData>> getOrBuildCache() {
-        if (recipeCache != null) {
-            return recipeCache;
+        List<RecipeData> cached = recipeCache.get(itemId);
+        if (cached != null) {
+            return new RecipeTreeData(itemId, cached);
         }
-        synchronized (this) {
-            if (recipeCache != null) {
-                return recipeCache;
-            }
-            Map<String, List<RecipeData>> built = buildRecipeCache();
-            recipeCache = built;
-            LOGGER.info("配方缓存构建完成，共 {} 个物品条目", built.size());
-            return recipeCache;
-        }
-    }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private Map<String, List<RecipeData>> buildRecipeCache() {
-        Map<String, List<RecipeData>> cache = new LinkedHashMap<>();
+        List<RecipeData> matched = new ArrayList<>();
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) {
-            return cache;
+            return new RecipeTreeData(itemId, Collections.emptyList());
         }
 
         Level level = mc.level;
@@ -77,6 +62,7 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
                         if (resultStack.isEmpty()) continue;
 
                         String resultItemId = resultStack.getItemHolder().getRegisteredName();
+                        if (!itemId.equals(resultItemId)) continue;
 
                         List<IngredientData> ingredients = extractIngredients(holder);
                         IngredientData result = toItemData(resultStack);
@@ -84,9 +70,7 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
                         String recipeId = holder.id().toString();
                         String recipeType = type.toString();
 
-                        RecipeData recipeData = new RecipeData(recipeId, recipeType, result, ingredients);
-
-                        cache.computeIfAbsent(resultItemId, k -> new ArrayList<>()).add(recipeData);
+                        matched.add(new RecipeData(recipeId, recipeType, result, ingredients));
                     } catch (Exception e) {
                         LOGGER.warn("解析配方失败 {}: {}", holder.id(), e.getMessage());
                     }
@@ -96,15 +80,19 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
             }
         }
 
-        Map<String, List<RecipeData>> frozen = new LinkedHashMap<>(cache.size());
-        for (Map.Entry<String, List<RecipeData>> entry : cache.entrySet()) {
-            frozen.put(entry.getKey(), Collections.unmodifiableList(entry.getValue()));
-        }
-        return Collections.unmodifiableMap(frozen);
+        List<RecipeData> frozen = Collections.unmodifiableList(matched);
+        recipeCache.put(itemId, frozen);
+        LOGGER.debug("按需加载配方: {} -> {} 条", itemId, frozen.size());
+
+        return new RecipeTreeData(itemId, frozen);
     }
 
     public void invalidateCache() {
-        recipeCache = null;
+        recipeCache.clear();
+    }
+
+    public void invalidateCache(String itemId) {
+        recipeCache.remove(itemId);
     }
 
     private List<IngredientData> extractIngredients(RecipeHolder<?> holder) {
@@ -114,25 +102,7 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
             for (Ingredient ingredient : ingredientList) {
                 if (ingredient.isEmpty()) continue;
                 try {
-                    ItemStack[] stacks = ingredient.getItems();
-                    if (stacks == null || stacks.length == 0) continue;
-
-                    if (stacks.length == 1) {
-                        ingredients.add(toItemData(stacks[0]));
-                    } else {
-                        StringBuilder names = new StringBuilder();
-                        StringBuilder ids = new StringBuilder();
-                        int count = 1;
-                        for (ItemStack stack : stacks) {
-                            if (stack.isEmpty()) continue;
-                            if (names.length() > 0) names.append("/");
-                            names.append(LocalizationHelper.safeGetDisplayName(stack.getHoverName().getString()));
-                            if (ids.length() > 0) ids.append("/");
-                            ids.append(stack.getItemHolder().getRegisteredName());
-                            count = stack.getCount();
-                        }
-                        ingredients.add(new IngredientData(ids.toString(), names.toString(), count));
-                    }
+                    ingredients.add(resolveIngredient(ingredient));
                 } catch (Exception e) {
                     ingredients.add(new IngredientData("unknown", "未知", 1));
                 }
@@ -141,6 +111,72 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
             LOGGER.warn("提取原料列表失败: {}", e.getMessage());
         }
         return ingredients;
+    }
+
+    private IngredientData resolveIngredient(Ingredient ingredient) {
+        ItemStack[] stacks = ingredient.getItems();
+        if (stacks == null || stacks.length == 0) {
+            return new IngredientData("empty", "空", 0);
+        }
+
+        List<String> tagItems = new ArrayList<>();
+        String tagId = null;
+
+        if (stacks.length > 1) {
+            try {
+                Set<String> commonTags = null;
+                for (ItemStack stack : stacks) {
+                    if (stack.isEmpty()) continue;
+                    Set<String> itemTags = new HashSet<>();
+                    stack.getItemHolder().tags()
+                            .map(t -> t.location().toString())
+                            .forEach(itemTags::add);
+                    if (commonTags == null) {
+                        commonTags = itemTags;
+                    } else {
+                        commonTags.retainAll(itemTags);
+                    }
+                }
+
+                if (commonTags != null && !commonTags.isEmpty()) {
+                    String best = null;
+                    for (String tag : commonTags) {
+                        if (tag.contains("crafting") || tag.contains("recipe") || tag.equals("minecraft:item_built_in_entity")) continue;
+                        if (best == null || tag.length() > best.length()) {
+                            best = tag;
+                        }
+                    }
+                    if (best != null) {
+                        tagId = "#" + best;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        for (ItemStack stack : stacks) {
+            if (!stack.isEmpty()) tagItems.add(stack.getItemHolder().getRegisteredName());
+        }
+
+        if (stacks.length == 1) {
+            IngredientData data = toItemData(stacks[0]);
+            return new IngredientData(data.getItemId(), data.getDisplayName(), data.getCount(),
+                    data.getNbtHints(), tagId, tagItems.isEmpty() ? null : tagItems);
+        }
+
+        StringBuilder names = new StringBuilder();
+        StringBuilder ids = new StringBuilder();
+        int count = 1;
+        for (ItemStack stack : stacks) {
+            if (stack.isEmpty()) continue;
+            if (names.length() > 0) names.append("/");
+            names.append(LocalizationHelper.safeGetDisplayName(stack.getHoverName().getString()));
+            if (ids.length() > 0) ids.append("/");
+            ids.append(stack.getItemHolder().getRegisteredName());
+            count = stack.getCount();
+        }
+
+        return new IngredientData(ids.toString(), names.toString(), count, null,
+                tagId, tagItems.isEmpty() ? null : tagItems);
     }
 
     private IngredientData toItemData(ItemStack stack) {

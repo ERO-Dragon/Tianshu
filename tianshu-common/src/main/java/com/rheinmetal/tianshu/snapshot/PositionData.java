@@ -8,14 +8,16 @@ public final class PositionData {
     public final float yaw;
     public final float pitch;
     public final String dimension;
+    public final String playerUuid;
 
-    public PositionData(double x, double y, double z, float yaw, float pitch, String dimension) {
+    public PositionData(double x, double y, double z, float yaw, float pitch, String dimension, String playerUuid) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.yaw = yaw;
         this.pitch = pitch;
         this.dimension = dimension;
+        this.playerUuid = playerUuid;
     }
 
     public double getX() { return x; }
@@ -24,6 +26,7 @@ public final class PositionData {
     public float getYaw() { return yaw; }
     public float getPitch() { return pitch; }
     public String getDimension() { return dimension; }
+    public String getPlayerUuid() { return playerUuid; }
 
     public double distanceTo(PositionData other) {
         if (other == null) return -1;

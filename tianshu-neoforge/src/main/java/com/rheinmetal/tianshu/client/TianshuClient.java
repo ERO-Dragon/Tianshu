@@ -5,24 +5,21 @@ import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
-import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
+import com.rheinmetal.tianshu.function.AcousticRadar.AcousticRadarEngine;
+import com.rheinmetal.tianshu.function.AcousticRadar.RadarOutput;
+import com.rheinmetal.tianshu.function.AcousticRadar.RadarIndicator;
+import com.rheinmetal.tianshu.core.FeatureManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
 import com.rheinmetal.tianshu.ir.IRParseResult;
 import com.rheinmetal.tianshu.gui.TianshuGUI;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeEnvironmentProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeInventoryProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgePlayerStateProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeRecipeProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeTargetScanner;
-import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
-import com.rheinmetal.tianshu.provider.IInventoryDataProvider;
-import com.rheinmetal.tianshu.provider.IPlayerStateProvider;
-import com.rheinmetal.tianshu.provider.IRecipeDataProvider;
-import com.rheinmetal.tianshu.provider.ITargetScannerProvider;
+import com.rheinmetal.tianshu.platform.provider.*;
+import com.rheinmetal.tianshu.provider.*;
+
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
@@ -56,7 +53,7 @@ public class TianshuClient {
     private static final StringBuilder currentLlmReply = new StringBuilder();
 
     private static NeoForgeEnvironment env;
-    private static NeoForgeConfig config;
+    private static ClientConfig config;
     private static NeoForgeNativeLibBridge nativeLibBridge;
     private static AudioManager audioManager;
     private static TianshuCoreManager coreManager;
@@ -66,17 +63,32 @@ public class TianshuClient {
     private static IEnvironmentAwarenessProvider environmentProvider;
     private static IPlayerStateProvider playerStateProvider;
     private static IRecipeDataProvider recipeProvider;
+    private static IWorldDataProvider worldDataProvider;
+    private static IRenderContextProvider renderContextProvider;
+    private static ISocialDataProvider socialDataProvider;
+    private static IAudioEventProvider audioEventProvider;
+    private static WorldStateProvider worldStateProvider;
+
+    private static AcousticRadarEngine acousticRadarEngine;
+    private static int acousticRadarTickCounter = 0;
+    // 战术雷达更新间隔，单位：tick
+    private static final int ACOUSTIC_RADAR_INTERVAL = 2;
 
     public static ITargetScannerProvider getTargetScanner() { return targetScanner; }
     public static IInventoryDataProvider getInventoryProvider() { return inventoryProvider; }
     public static IEnvironmentAwarenessProvider getEnvironmentProvider() { return environmentProvider; }
     public static IPlayerStateProvider getPlayerStateProvider() { return playerStateProvider; }
     public static IRecipeDataProvider getRecipeProvider() { return recipeProvider; }
+    public static IWorldDataProvider getWorldDataProvider() { return worldDataProvider; }
+    public static IRenderContextProvider getRenderContextProvider() { return renderContextProvider; }
+    public static ISocialDataProvider getSocialDataProvider() { return socialDataProvider; }
+    public static IAudioEventProvider getAudioEventProvider() { return audioEventProvider; }
+    public static WorldStateProvider getWorldStateProvider() { return worldStateProvider; }
 
     public static void init() {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
-        config = new NeoForgeConfig();
+        config = new ClientConfig();
         nativeLibBridge = new NeoForgeNativeLibBridge();
         nativeLibBridge.ensureDirectories();
         nativeLibBridge.extractAndLoadAll();
@@ -91,6 +103,24 @@ public class TianshuClient {
         environmentProvider = new NeoForgeEnvironmentProvider();
         playerStateProvider = new NeoForgePlayerStateProvider();
         recipeProvider = new NeoForgeRecipeProvider();
+        worldDataProvider = new NeoForgeWorldDataProvider();
+        renderContextProvider = new NeoForgeRenderContextProvider();
+        socialDataProvider = new NeoForgeSocialDataProvider();
+        audioEventProvider = new NeoForgeAudioEventProvider();
+
+        worldStateProvider = new WorldStateProvider(
+                playerStateProvider,
+                inventoryProvider,
+                environmentProvider,
+                targetScanner,
+                worldDataProvider,
+                recipeProvider,
+                renderContextProvider,
+                socialDataProvider,
+                audioEventProvider
+        );
+
+        ClientConfig.syncToFeatureManager();
 
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenInit);
@@ -153,6 +183,7 @@ public class TianshuClient {
         }
 
         handleVoiceKey();
+        tickAcousticRadar(minecraft);
     }
 
     private static void handleVoiceKey() {
@@ -265,7 +296,7 @@ public class TianshuClient {
                     );
 
                     // 解析 ASR 识别文本
-                    IRParseResult parseResult = ClientItemCommandManager.parsePlayerCommand(asrText);
+                    IRParseResult parseResult = ClientItemCommandManager.parsePlayerCommand(asrText, true);
                     String preview = ClientItemCommandManager.formatPreview(parseResult);
                     LOGGER.info("[IR-ASR] IR 解析结果: ready={}, units={}, preview={}", parseResult.isReady(), parseResult.hasUnits(), preview);
                     if (parseResult.hasUnits()) {
@@ -299,9 +330,74 @@ public class TianshuClient {
         }
     }
 
+    private static void tickAcousticRadar(Minecraft minecraft) {
+        if (!FeatureManager.isAudioRadarEnabled()) {
+            if (acousticRadarEngine != null) {
+                acousticRadarEngine.shutdown();
+                acousticRadarEngine = null;
+                LOGGER.info("[战术雷达] 功能已关闭，释放引擎实例");
+            }
+            return;
+        }
+
+        if (minecraft.player == null || minecraft.level == null) return;
+
+        if (acousticRadarEngine == null) {
+            acousticRadarEngine = new AcousticRadarEngine(
+                    environmentProvider,
+                    playerStateProvider,
+                    audioEventProvider,
+                    text -> coreManager.speakAlert(text)
+            );
+            acousticRadarTickCounter = 0;
+            LOGGER.info("[战术雷达] 功能已开启，懒加载引擎实例");
+        }
+
+        acousticRadarTickCounter++;
+        if (acousticRadarTickCounter < ACOUSTIC_RADAR_INTERVAL) return;
+        acousticRadarTickCounter = 0;
+
+        try {
+            var player = minecraft.player;
+            com.rheinmetal.tianshu.snapshot.PositionData playerPos =
+                    new com.rheinmetal.tianshu.snapshot.PositionData(
+                            player.getX(), player.getY(), player.getZ(),
+                            player.getYRot(), player.getXRot(),
+                            player.level().dimension().location().toString(),
+                            player.getUUID().toString()
+                    );
+
+            RadarOutput output = acousticRadarEngine.tickSync(playerPos);
+            if (output == null || output.getIndicators().isEmpty()) return;
+
+            for (RadarIndicator indicator : output.getIndicators()) {
+                String dir = computeDirectionLabel(indicator.getRelativeAngle());
+                String msg = "\u00a7e[雷达] \u00a7f" + dir + " " + indicator.getDisplayName()
+                        + " " + String.format("%.0f", indicator.getDistance()) + "格";
+                minecraft.player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal(msg), false);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("战术雷达tick异常: {}", e.getMessage());
+        }
+    }
+
+    private static String computeDirectionLabel(double relativeAngle) {
+        double abs = Math.abs(relativeAngle);
+        if (abs < 22.5) return "正前方";
+        else if (abs < 67.5) return relativeAngle > 0 ? "左前方" : "右前方";
+        else if (abs < 112.5) return relativeAngle > 0 ? "左方" : "右方";
+        else if (abs < 157.5) return relativeAngle > 0 ? "左后方" : "右后方";
+        else return "正后方";
+    }
+
     public static void shutdownClient() {
         LOGGER.info("关闭天枢客户端资源");
         coreManager.destroy();
+        if (acousticRadarEngine != null) {
+            acousticRadarEngine.shutdown();
+            acousticRadarEngine = null;
+        }
         isVoiceKeyPressed = false;
         lastTriggerMode = null;
         currentLlmReply.setLength(0);

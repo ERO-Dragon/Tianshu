@@ -21,18 +21,27 @@ public final class CommandParser {
     private final String[] fillerWords;
     private final Intent[] detectableIntents;
 
-    // ========== 物理外挂日志方法 ==========
+    public static double PRIMARY_WEIGHT = 1.0;
+    public static double FALLBACK_WEIGHT = 0.85;
+
+    private static final double FASTIR_HEAL_THRESHOLD = 0.25d;
+    private static final double FASTIR_INTERCEPT_HIGH_RATIO = 0.5d;
+    private static final double FASTIR_INTERCEPT_HIGH_THRESHOLD = 0.40d;
+    private static final double FASTIR_INTERCEPT_MID_RATIO_LOW = 0.2d;
+    private static final double FASTIR_INTERCEPT_MID_THRESHOLD = 0.25d;
+    private static final double FINALIR_FIXED_THRESHOLD = 0.50d;
+    private static final double HEAL_PINYIN_OVERLAP_THRESHOLD = 0.4d;
+    private static final int HEAL_MAX_CANDIDATES = 5;
+
     private static void debugLog(String msg) {
         try {
-            // 直接写到游戏运行目录的 logs 文件夹下
             Path logPath = Paths.get("logs", "ir_debug.txt");
             String line = "[" + System.currentTimeMillis() + "] " + msg + "\n";
             Files.write(logPath, line.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
-            e.printStackTrace(); // 如果连文件都写不了，那就真的只能抛异常了
+            e.printStackTrace();
         }
     }
-    // =====================================
 
     public CommandParser() {
         Map<String, String[]> keywords = IntentKeywordLoader.load();
@@ -43,48 +52,206 @@ public final class CommandParser {
         this.detectableIntents = IntentKeywordLoader.getDetectableIntents().toArray(new Intent[0]);
     }
 
-    public List<ParseUnit> parse(String rawText, Set<Integer> contextInternalIds) {
+    public IRParseResult parse(String rawText, Set<Integer> contextInternalIds, boolean isFastIR) {
         if (rawText == null || rawText.isBlank()) {
-            return List.of();
+            return new IRParseResult(false, rawText, rawText, List.of());
         }
 
         List<SubQuery> subQueries = splitToSubQueries(rawText);
         if (subQueries.isEmpty()) {
-            return List.of();
+            return new IRParseResult(true, rawText, rawText, List.of());
         }
 
         List<ParseUnit> results = new ArrayList<>(subQueries.size());
+        LcsWorkspace sharedLcsWorkspace = new LcsWorkspace();
+
         for (SubQuery subQuery : subQueries) {
-            ParseUnit unit = parseSingleSubQuery(subQuery, contextInternalIds);
+            ParseUnit unit = parseSingleSubQuery(subQuery, contextInternalIds, sharedLcsWorkspace);
             if (unit != null) {
                 results.add(unit);
             }
         }
-        return results;
+
+        String healedRawText = rawText;
+
+        if (results.isEmpty()) {
+            if (isFastIR) {
+                FastIRFallbackResult fallback = processFastIRFallback(rawText, contextInternalIds, sharedLcsWorkspace);
+                healedRawText = fallback.healedText;
+                if (fallback.interceptedUnit != null) {
+                    results.add(fallback.interceptedUnit);
+                }
+            } else {
+                ScoredCandidate best = findBestCandidateForIntercept(rawText, contextInternalIds, sharedLcsWorkspace);
+                if (best != null) {
+                    double threshold = FINALIR_FIXED_THRESHOLD;
+                    debugLog("[分支A] isFastIR=false, bestScore=" + String.format("%.4f", best.score) + ", threshold=" + String.format("%.4f", threshold));
+                    if (best.score >= threshold) {
+                        String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
+                        Intent detectedIntent = detectIntent(rawText);
+                        results.add(new ParseUnit(detectedIntent, targetRealItemId, false));
+                    }
+                }
+            }
+        } else if (isFastIR) {
+            healedRawText = healRawTextFromRanked(rawText, executeRankQuery(rawText, contextInternalIds, sharedLcsWorkspace));
+        }
+
+        return new IRParseResult(true, rawText, healedRawText, results);
     }
 
-    private ParseUnit parseSingleSubQuery(SubQuery subQuery, Set<Integer> contextInternalIds) {// ===== 【日志 1：看意图剥离后，剩下的实体到底是什么】 =====
+    private static final class FastIRFallbackResult {
+        final ParseUnit interceptedUnit;
+        final String healedText;
 
+        FastIRFallbackResult(ParseUnit interceptedUnit, String healedText) {
+            this.interceptedUnit = interceptedUnit;
+            this.healedText = healedText;
+        }
+    }
+
+    private FastIRFallbackResult processFastIRFallback(String rawText, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
+        ScoredCandidate[] ranked = executeRankQuery(rawText, contextInternalIds, lcsWorkspace);
+
+        ParseUnit interceptedUnit = null;
+        if (ranked.length > 0) {
+            ScoredCandidate best = ranked[0];
+            double threshold = computeInterceptThreshold(rawText, best);
+            debugLog("[分支A] isFastIR=true, bestScore=" + String.format("%.4f", best.score) + ", threshold=" + String.format("%.4f", threshold));
+            if (best.score >= threshold) {
+                String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
+                Intent detectedIntent = detectIntent(rawText);
+                interceptedUnit = new ParseUnit(detectedIntent, targetRealItemId, false);
+            }
+        }
+
+        String healedText = healRawTextFromRanked(rawText, ranked);
+
+        return new FastIRFallbackResult(interceptedUnit, healedText);
+    }
+
+    private ScoredCandidate[] executeRankQuery(String rawText, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
+        String[] tokens = IRBaseUtils.tokenize(rawText);
+        if (tokens.length < 2) {
+            return new ScoredCandidate[0];
+        }
+
+        QueryVariant variant = buildQueryVariant(tokens);
+        Int2ObjectOpenHashMap<MutableVote> votes = new Int2ObjectOpenHashMap<>(64);
+        int queryTotalGramCount = collectVotes(variant, votes);
+        if (queryTotalGramCount == 0) {
+            return new ScoredCandidate[0];
+        }
+
+        Candidate[] topCandidates = collectTopCandidates(votes, queryTotalGramCount, variant.joined.length());
+        if (topCandidates.length == 0) {
+            return new ScoredCandidate[0];
+        }
+
+        ScoredCandidate[] ranked = rankCandidates(topCandidates, variant, contextInternalIds, lcsWorkspace);
+        if (ranked.length == 0) {
+            return new ScoredCandidate[0];
+        }
+
+        Arrays.sort(ranked, Comparator.comparingDouble((ScoredCandidate c) -> c.score).reversed());
+        return ranked;
+    }
+
+    private double computeInterceptThreshold(String rawText, ScoredCandidate best) {
+        String target = IRBaseUtils.localizedNameArray[best.internalId];
+        if (target == null || target.isEmpty()) {
+            return Double.MAX_VALUE;
+        }
+        double entityRatio = (double) target.length() / rawText.length();
+        if (entityRatio >= FASTIR_INTERCEPT_HIGH_RATIO) {
+            return FASTIR_INTERCEPT_HIGH_THRESHOLD;
+        } else if (entityRatio > FASTIR_INTERCEPT_MID_RATIO_LOW) {
+            return FASTIR_INTERCEPT_MID_THRESHOLD;
+        } else {
+            return Double.MAX_VALUE;
+        }
+    }
+
+    private ScoredCandidate findBestCandidateForIntercept(String rawText, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
+        ScoredCandidate[] ranked = executeRankQuery(rawText, contextInternalIds, lcsWorkspace);
+        return ranked.length > 0 ? ranked[0] : null;
+    }
+
+    private String healRawTextFromRanked(String rawText, ScoredCandidate[] ranked) {
+        if (ranked.length == 0) {
+            return rawText;
+        }
+
+        StringBuilder builder = new StringBuilder(rawText);
+        int offsetAccum = 0;
+
+        int limit = Math.min(HEAL_MAX_CANDIDATES, ranked.length);
+        for (int ci = 0; ci < limit; ci++) {
+            ScoredCandidate sc = ranked[ci];
+            if (sc.score < FASTIR_HEAL_THRESHOLD) {
+                break;
+            }
+
+            String target = IRBaseUtils.localizedNameArray[sc.internalId];
+            if (target == null || target.isEmpty()) {
+                continue;
+            }
+
+            int minLen = Math.max(2, target.length() - 1);
+            int maxLen = Math.min(rawText.length(), target.length() + 1);
+
+            String[] targetPinyinTokens = IRBaseUtils.tokenize(target);
+            String targetPinyinJoined = IRBaseUtils.joinTokens(targetPinyinTokens);
+
+            int bestStart = -1;
+            int bestEnd = -1;
+            double bestOverlap = 0.0d;
+
+            for (int windowLen = minLen; windowLen <= maxLen; windowLen++) {
+                for (int start = 0; start <= rawText.length() - windowLen; start++) {
+                    int end = start + windowLen;
+                    String slice = rawText.substring(start, end);
+                    String[] slicePinyinTokens = IRBaseUtils.tokenize(slice);
+                    if (slicePinyinTokens.length == 0) {
+                        continue;
+                    }
+                    String slicePinyinJoined = IRBaseUtils.joinTokens(slicePinyinTokens);
+                    double overlap = computeCharOverlapRatio(slicePinyinJoined, targetPinyinJoined);
+                    if (overlap > bestOverlap) {
+                        bestOverlap = overlap;
+                        bestStart = start;
+                        bestEnd = end;
+                    }
+                }
+            }
+
+            if (bestOverlap > HEAL_PINYIN_OVERLAP_THRESHOLD && bestStart >= 0) {
+                int adjustedStart = bestStart + offsetAccum;
+                int adjustedEnd = bestEnd + offsetAccum;
+                builder.replace(adjustedStart, adjustedEnd, target);
+                offsetAccum += target.length() - (bestEnd - bestStart);
+                debugLog("[治愈] 替换: [" + bestStart + "," + bestEnd + ") -> " + target + ", overlap=" + String.format("%.4f", bestOverlap));
+            }
+        }
+
+        return builder.toString();
+    }
+
+    private ParseUnit parseSingleSubQuery(SubQuery subQuery, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
         debugLog("[DEBUG-1 实体提取] rawChunk = " + subQuery.rawChunk);
 
         String[] tokens = IRBaseUtils.tokenize(subQuery.rawChunk);
-        
-        // ===== 【日志 2：看分词和转拼音到底对不对】 =====
+
         debugLog("[DEBUG-2 Tokenize] 结果 = " + Arrays.toString(tokens) + " | 长度 = " + tokens.length);
 
         if (tokens.length < 2) {
             debugLog("[DEBUG-2] 长度不足2，已被拦截！");
             return null;
         }
-        debugLog("[DEBUG] 提取实体: " + subQuery.rawChunk + " -> 分词结果: " + Arrays.toString(tokens));
-        if (tokens.length < 2) {
-            return null;
-        }
 
         QueryVariant variant = buildQueryVariant(tokens);
         Int2ObjectOpenHashMap<MutableVote> votes = new Int2ObjectOpenHashMap<>(64);
         int queryTotalGramCount = collectVotes(variant, votes);
-        // ===== 【日志 3：看是不是被 Stop-Gram 黑名单杀光了】 =====
         debugLog("[DEBUG-3 投票阶段] queryTotalGramCount = " + queryTotalGramCount + " | votesSize = " + votes.size());
 
         if (queryTotalGramCount == 0) {
@@ -96,9 +263,9 @@ public final class CommandParser {
         if (topCandidates.length == 0) {
             return null;
         }
-        debugLog("[DEBUG-4 排序阶段] topCandidates 剩余数量 = " + topCandidates.length); // 必须去掉注释！
+        debugLog("[DEBUG-4 排序阶段] topCandidates 剩余数量 = " + topCandidates.length);
 
-        ScoredCandidate[] ranked = rankCandidates(topCandidates, variant, contextInternalIds);
+        ScoredCandidate[] ranked = rankCandidates(topCandidates, variant, contextInternalIds, lcsWorkspace);
         if (ranked.length == 0) {
             return null;
         }
@@ -195,6 +362,7 @@ public final class CommandParser {
 
         return bestIntent;
     }
+
     private String extractEntityChunk(String text, Intent currentIntent) {
         String result = text;
         result = stripKeywords(result, negations);
@@ -299,71 +467,76 @@ public final class CommandParser {
         List<Candidate> candidates = new ArrayList<>(votes.size());
         Int2ObjectOpenHashMap.EntryIterator<MutableVote> voteIterator = votes.entryIterator();
         while (voteIterator.next()) {
-            int candidateId = voteIterator.key(); int voteCount = voteIterator.value().count;
-            if (queryTotalGramCount >= 3 && voteCount < 2) { continue; }
+            int candidateId = voteIterator.key();
+            int voteCount = voteIterator.value().count;
+            if (queryTotalGramCount >= 3 && voteCount < 2) {
+                continue;
+            }
             candidates.add(new Candidate(candidateId, voteCount));
         }
-        if (candidates.isEmpty()) { return new Candidate[0]; }
+        if (candidates.isEmpty()) {
+            return new Candidate[0];
+        }
         candidates.sort(Comparator.comparingInt((Candidate c) -> c.voteCount).reversed());
         int limit = Math.min(50, candidates.size());
         return candidates.subList(0, limit).toArray(new Candidate[0]);
-      }
+    }
 
-    private ScoredCandidate[] rankCandidates(Candidate[] candidates, QueryVariant variant, Set<Integer> contextInternalIds) {
+    private ScoredCandidate[] rankCandidates(Candidate[] candidates, QueryVariant variant, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
         List<ScoredCandidate> ranked = new ArrayList<>(candidates.length);
-        LcsWorkspace lcsWorkspace = new LcsWorkspace();
-        final double PRIMARY_WEIGHT = 1.0;   // 中文绝对优先
-        final double FALLBACK_WEIGHT = 0.85; // 英文兜底，防无中文Mod死档
 
-debugLog("[RANK-基准] 用户输入拼接: " + variant.joined + " (长度:" + variant.joined.length() + ")");
+        debugLog("[RANK-基准] 用户输入拼接: " + variant.joined + " (长度:" + variant.joined.length() + ")");
 
         for (Candidate candidate : candidates) {
             int internalId = candidate.internalId;
             String[] pTokens = IRBaseUtils.primaryAliasTokensArray[internalId];
             String[] fTokens = IRBaseUtils.fallbackAliasTokensArray[internalId];
 
-            if ((pTokens == null || pTokens.length == 0) && (fTokens == null || fTokens.length == 0)) { continue; }
+            if ((pTokens == null || pTokens.length == 0) && (fTokens == null || fTokens.length == 0)) {
+                continue;
+            }
 
             String realItemId = IRBaseUtils.reverseLookupArray[internalId];
 
-            // --- 1. 计算主轨道分数 (中文) ---
-            double pFinalScore = 0.0;
+            double pFinalScore = 0.0d;
             if (pTokens != null && pTokens.length > 0) {
+                double pBaseScore = calculateBaseScore(variant.joined, pTokens, lcsWorkspace);
                 String pJoined = IRBaseUtils.joinTokens(pTokens);
-debugLog("[RANK-主轨道] 候选: " + realItemId + " | 索引串: " + pJoined);
-                double pLcs = computeLcsRatio(variant.joined, pJoined, lcsWorkspace);
-                double pOverlap = computeCharOverlapRatio(variant.joined, pJoined);
-                double pBaseScore = (pLcs * 0.6d) + (pOverlap * 0.4d);
                 int pLenDiff = Math.abs(pJoined.length() - variant.joined.length());
-                // 修正了原来的 Bug: 原来是 > 2 里面套了 - 6
-                double pPenalty = (pLenDiff > 6) ? (pLenDiff - 6) * 0.03d : 0.0;
+                double pPenalty = (pLenDiff > 6) ? (pLenDiff - 6) * 0.03d : 0.0d;
                 pFinalScore = (pBaseScore * PRIMARY_WEIGHT) - pPenalty;
-debugLog("[RANK-主轨道得分] 基础=" + String.format("%.4f", pBaseScore) + ", 扣分=" + String.format("%.4f", pPenalty) + ", 加权后=" + String.format("%.4f", pFinalScore));
+                debugLog("[RANK-主轨道] 候选: " + realItemId + " | 基础=" + String.format("%.4f", pBaseScore) + ", 加权后=" + String.format("%.4f", pFinalScore));
             }
 
-            // --- 2. 计算副轨道分数 (英文兜底) ---
-            double fFinalScore = 0.0;
+            double fFinalScore = 0.0d;
             if (fTokens != null && fTokens.length > 0) {
+                double fBaseScore = calculateBaseScore(variant.joined, fTokens, lcsWorkspace);
                 String fJoined = IRBaseUtils.joinTokens(fTokens);
-debugLog("[RANK-副轨道] 候选: " + realItemId + " | 索引串: " + fJoined);
-                double fLcs = computeLcsRatio(variant.joined, fJoined, lcsWorkspace);
-                double fOverlap = computeCharOverlapRatio(variant.joined, fJoined);
-                double fBaseScore = (fLcs * 0.6d) + (fOverlap * 0.4d);
                 int fLenDiff = Math.abs(fJoined.length() - variant.joined.length());
-                double fPenalty = (fLenDiff > 6) ? (fLenDiff - 6) * 0.03d : 0.0;
+                double fPenalty = (fLenDiff > 6) ? (fLenDiff - 6) * 0.03d : 0.0d;
                 fFinalScore = (fBaseScore * FALLBACK_WEIGHT) - fPenalty;
-debugLog("[RANK-副轨道得分] 基础=" + String.format("%.4f", fBaseScore) + ", 扣分=" + String.format("%.4f", fPenalty) + ", 加权后=" + String.format("%.4f", fFinalScore));
+                debugLog("[RANK-副轨道] 候选: " + realItemId + " | 基础=" + String.format("%.4f", fBaseScore) + ", 加权后=" + String.format("%.4f", fFinalScore));
             }
 
             double finalScore = Math.max(pFinalScore, fFinalScore);
 
-            if (variant.baseTokens.length <= 3 && contextInternalIds.contains(internalId)) { finalScore += 10.0d; }
-            else if (variant.baseTokens.length > 3 && contextInternalIds.contains(internalId)) { finalScore += 0.3d; }
+            if (variant.baseTokens.length <= 3 && contextInternalIds.contains(internalId)) {
+                finalScore += 10.0d;
+            } else if (variant.baseTokens.length > 3 && contextInternalIds.contains(internalId)) {
+                finalScore += 0.3d;
+            }
 
             ranked.add(new ScoredCandidate(internalId, finalScore));
         }
-debugLog("[RANK-结束] 总共参与排序的物品数: " + ranked.size());
+        debugLog("[RANK-结束] 总共参与排序的物品数: " + ranked.size());
         return ranked.toArray(new ScoredCandidate[0]);
+    }
+
+    private double calculateBaseScore(String queryJoined, String[] candidateTokens, LcsWorkspace lcsWorkspace) {
+        String candidateJoined = IRBaseUtils.joinTokens(candidateTokens);
+        double lcsRatio = computeLcsRatio(queryJoined, candidateJoined, lcsWorkspace);
+        double overlapRatio = computeCharOverlapRatio(queryJoined, candidateJoined);
+        return (lcsRatio * 0.6d) + (overlapRatio * 0.4d);
     }
 
     private double computeLcsRatio(String a, String b, LcsWorkspace workspace) {

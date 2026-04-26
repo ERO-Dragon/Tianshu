@@ -59,18 +59,18 @@ public final class IRCommandService {
         return indexedItemCount;
     }
 
-    public IRParseResult parse(String rawText, ItemContextProvider contextProvider) {
+    public IRParseResult parse(String rawText, ItemContextProvider contextProvider, boolean isFastIR) {
         lifecycleLock.readLock().lock();
         try {
             CommandParser currentParser = parser;
             if (currentParser == null || rawText == null || rawText.isBlank()) {
-                return new IRParseResult(currentParser != null, rawText, List.of());
+                return new IRParseResult(currentParser != null, rawText, rawText, List.of());
             }
             Set<Integer> contextIds = contextProvider == null ? Set.of() : contextProvider.getContextInternalIds();
             if (contextIds == null) {
                 contextIds = Set.of();
             }
-            return new IRParseResult(true, rawText, currentParser.parse(rawText, contextIds));
+            return currentParser.parse(rawText, contextIds, isFastIR);
         } finally {
             lifecycleLock.readLock().unlock();
         }

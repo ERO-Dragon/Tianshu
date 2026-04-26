@@ -2,9 +2,7 @@ package com.rheinmetal.tianshu.platform.provider;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.provider.IInventoryDataProvider;
-import com.rheinmetal.tianshu.snapshot.InventorySnapshot;
-import com.rheinmetal.tianshu.snapshot.ItemSnapshot;
-import com.rheinmetal.tianshu.snapshot.MatchedSlotData;
+import com.rheinmetal.tianshu.snapshot.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentMap;
@@ -18,6 +16,9 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.InventoryMenu;
 import org.slf4j.Logger;
 
 import java.util.*;
@@ -27,6 +28,27 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_NBT_NODES = 50;
 
+    private static final Set<String> PROTECTED_ITEM_IDS = Set.of(
+            "minecraft:ender_chest",
+            "minecraft:shulker_box",
+            "minecraft:white_shulker_box",
+            "minecraft:orange_shulker_box",
+            "minecraft:magenta_shulker_box",
+            "minecraft:light_blue_shulker_box",
+            "minecraft:yellow_shulker_box",
+            "minecraft:lime_shulker_box",
+            "minecraft:pink_shulker_box",
+            "minecraft:gray_shulker_box",
+            "minecraft:light_gray_shulker_box",
+            "minecraft:cyan_shulker_box",
+            "minecraft:purple_shulker_box",
+            "minecraft:blue_shulker_box",
+            "minecraft:brown_shulker_box",
+            "minecraft:green_shulker_box",
+            "minecraft:red_shulker_box",
+            "minecraft:black_shulker_box"
+    );
+
     @Override
     public ItemSnapshot getMainHandItemData() {
         Minecraft mc = Minecraft.getInstance();
@@ -35,9 +57,9 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
     }
 
     @Override
-    public InventorySnapshot getAllInventoryItemsData() {
+    public List<ItemSnapshot> getAllInventoryItemsData() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return new InventorySnapshot(Collections.emptyList(), -1, null, null, Collections.emptyList());
+        if (mc.player == null) return Collections.emptyList();
 
         Player player = mc.player;
         Inventory inv = player.getInventory();
@@ -50,16 +72,7 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
             }
         }
 
-        ItemSnapshot mainHand = toItemSnapshot(player.getMainHandItem(), inv.selected);
-        ItemSnapshot offHand = toItemSnapshot(player.getItemBySlot(EquipmentSlot.OFFHAND), Inventory.SLOT_OFFHAND);
-
-        List<ItemSnapshot> armor = new ArrayList<>();
-        armor.add(toItemSnapshot(player.getItemBySlot(EquipmentSlot.HEAD), -1));
-        armor.add(toItemSnapshot(player.getItemBySlot(EquipmentSlot.CHEST), -1));
-        armor.add(toItemSnapshot(player.getItemBySlot(EquipmentSlot.LEGS), -1));
-        armor.add(toItemSnapshot(player.getItemBySlot(EquipmentSlot.FEET), -1));
-
-        return new InventorySnapshot(items, inv.selected, mainHand, offHand, armor);
+        return items;
     }
 
     @Override
@@ -85,6 +98,42 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
         return results;
     }
 
+
+    @Override
+    public List<ItemSnapshot> findItemsByCategory(String category) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || category == null) return Collections.emptyList();
+
+        List<ItemSnapshot> result = new ArrayList<>();
+        Inventory inv = mc.player.getInventory();
+        String lowerCat = category.toLowerCase();
+
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack stack = inv.getItem(i);
+            if (stack.isEmpty()) continue;
+
+            ItemSnapshot snapshot = toItemSnapshot(stack, i);
+            if (snapshot != null && lowerCat.equals(snapshot.getItemCategory())) {
+                result.add(snapshot);
+            }
+        }
+
+        return result;
+    }
+
+    @Override
+    public boolean isProtectedItem(ItemSnapshot item) {
+        if (item == null) return false;
+
+        if (item.isHasCustomName()) return true;
+        if (item.isHasMending()) return true;
+        if (item.isHasCurseOfBinding()) return true;
+
+        if (PROTECTED_ITEM_IDS.contains(item.getItemId())) return true;
+
+        return false;
+    }
+
     private ItemSnapshot toItemSnapshot(ItemStack stack, int slotIndex) {
         if (stack.isEmpty()) return null;
 
@@ -102,7 +151,96 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
         List<String> enchantments = extractEnchantments(stack);
         Map<String, String> attributes = extractAttributes(stack);
 
-        return new ItemSnapshot(slotIndex, itemId, displayName, count, maxDamage, damage, durabilityPercent, enchantments, attributes);
+        boolean hasCustomName = stack.has(DataComponents.CUSTOM_NAME);
+
+        boolean hasMending = false;
+        boolean hasCurseOfBinding = false;
+        try {
+            ItemEnchantments enchants = stack.get(DataComponents.ENCHANTMENTS);
+            if (enchants != null) {
+                for (var entry : enchants.entrySet()) {
+                    String enchId = entry.getKey().unwrapKey()
+                            .map(key -> key.location().toString())
+                            .orElse("");
+                    if (enchId.contains("mending")) hasMending = true;
+                    if (enchId.contains("binding_curse")) hasCurseOfBinding = true;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        float attackDamage = 0f;
+        float attackSpeed = 0f;
+        float armor = 0f;
+        try {
+            var attrMods = stack.get(DataComponents.ATTRIBUTE_MODIFIERS);
+            if (attrMods != null) {
+                for (var mod : attrMods.modifiers()) {
+                    String attrId = mod.attribute().unwrapKey()
+                            .map(key -> key.location().toString())
+                            .orElse("");
+                    if (attrId.contains("attack_damage")) {
+                        attackDamage += (float) mod.modifier().amount();
+                    } else if (attrId.contains("attack_speed")) {
+                        attackSpeed += (float) mod.modifier().amount();
+                    } else if (attrId.contains("armor")) {
+                        armor += (float) mod.modifier().amount();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        int foodNutrition = -1;
+        float foodSaturation = 0f;
+        try {
+            FoodProperties food = stack.get(DataComponents.FOOD);
+            if (food != null) {
+                foodNutrition = food.nutrition();
+                foodSaturation = food.saturation();
+            }
+        } catch (Exception ignored) {}
+
+        String itemCategory = resolveItemCategory(stack);
+
+        return new ItemSnapshot(
+                slotIndex, itemId, displayName, count,
+                maxDamage, damage, durabilityPercent,
+                enchantments, attributes,
+                hasCustomName, hasMending, hasCurseOfBinding,
+                attackDamage, attackSpeed, armor,
+                foodNutrition, foodSaturation, itemCategory
+        );
+    }
+
+    private String resolveItemCategory(ItemStack stack) {
+        try {
+            if (stack.getItem() instanceof net.minecraft.world.item.SwordItem
+                    || stack.getItem() instanceof net.minecraft.world.item.AxeItem
+                    || stack.getItem() instanceof net.minecraft.world.item.TridentItem
+                    || stack.getItem() instanceof net.minecraft.world.item.MaceItem) {
+                return "weapon";
+            }
+            if (stack.getItem() instanceof net.minecraft.world.item.PickaxeItem
+                    || stack.getItem() instanceof net.minecraft.world.item.ShovelItem
+                    || stack.getItem() instanceof net.minecraft.world.item.HoeItem
+                    || stack.getItem() instanceof net.minecraft.world.item.ShearsItem) {
+                return "tool";
+            }
+            if (stack.getItem() instanceof net.minecraft.world.item.ArmorItem
+                    || stack.getItem() instanceof net.minecraft.world.item.ElytraItem) {
+                return "armor";
+            }
+            if (stack.getItem() instanceof net.minecraft.world.item.BlockItem) {
+                return "block";
+            }
+            if (stack.has(DataComponents.FOOD)) {
+                return "food";
+            }
+            if (stack.getItem() instanceof net.minecraft.world.item.BowItem
+                    || stack.getItem() instanceof net.minecraft.world.item.CrossbowItem) {
+                return "weapon";
+            }
+        } catch (Exception ignored) {}
+        return "misc";
     }
 
     private List<String> extractEnchantments(ItemStack stack) {

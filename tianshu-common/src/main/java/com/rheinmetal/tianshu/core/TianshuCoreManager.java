@@ -419,6 +419,24 @@ public class TianshuCoreManager {
         return eventBus.interruptLlmAndTts();
     }
 
+    public void speakAlert(String text) {
+        if (ttsWorker == null || !ttsWorker.isEngineInitialized()) return;
+
+        interruptOngoingProcessing();
+
+        threadPool.getToolWorker().execute(() -> {
+            try {
+                env.info("[战术雷达] TTS预警播报: " + text);
+                audioBridge.startTtsPlayback(ttsWorker.getSampleRate());
+                ttsWorker.synthesizeForPreview(text, 1.2f, audio -> audioBridge.feedTtsAudio(audio));
+                audioBridge.finishTtsPlayback();
+            } catch (Exception e) {
+                env.error("[战术雷达] TTS预警播报失败", e);
+                audioBridge.stopTtsPlayback();
+            }
+        });
+    }
+
     public AsrModelInfo resolveCurrentAsrModelInfo() {
         Path modelPath = config.getAsrModelPath();
         if (modelPath == null || modelPath.getFileName() == null) {

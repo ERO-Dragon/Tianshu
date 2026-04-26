@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.gui;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
-import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
@@ -29,7 +29,7 @@ public class ModelSelectScreen extends Screen {
 
     private final Screen parent;
     private final String modelType;
-    private final NeoForgeConfig config;
+    private final ClientConfig config;
     private final TianshuCoreManager coreManager;
     private final AudioManager audioManager;
     private final NeoForgeNativeLibBridge nativeLibBridge;
@@ -38,7 +38,7 @@ public class ModelSelectScreen extends Screen {
     private static final int CARD_HEIGHT = 36;
     private static final int CARD_GAP = 6;
 
-    public ModelSelectScreen(Screen parent, String modelType, NeoForgeConfig config,
+    public ModelSelectScreen(Screen parent, String modelType, ClientConfig config,
                              TianshuCoreManager coreManager, AudioManager audioManager,
                              NeoForgeNativeLibBridge nativeLibBridge) {
         super(Component.literal("选择" + modelType + "模型"));

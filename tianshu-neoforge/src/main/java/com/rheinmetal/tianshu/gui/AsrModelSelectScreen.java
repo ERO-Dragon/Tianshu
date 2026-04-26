@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.gui;
 
 import com.rheinmetal.tianshu.audio.AudioManager;
-import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
@@ -57,7 +57,7 @@ public class AsrModelSelectScreen extends Screen {
     private static final int PAGE_MODELS = 1;
 
     private final Screen parent;
-    private final NeoForgeConfig config;
+    private final ClientConfig config;
     private final TianshuCoreManager coreManager;
     private final AudioManager audioManager;
     private final NeoForgeNativeLibBridge nativeLibBridge;
@@ -81,7 +81,7 @@ public class AsrModelSelectScreen extends Screen {
     private static final int CARD_GAP = 4;
     private static final int SCROLLBAR_WIDTH = 6;
 
-    public AsrModelSelectScreen(Screen parent, NeoForgeConfig config, TianshuCoreManager coreManager,
+    public AsrModelSelectScreen(Screen parent, ClientConfig config, TianshuCoreManager coreManager,
                                 AudioManager audioManager, NeoForgeNativeLibBridge nativeLibBridge) {
         super(Component.literal("ASR 模型选择"));
         this.parent = parent;

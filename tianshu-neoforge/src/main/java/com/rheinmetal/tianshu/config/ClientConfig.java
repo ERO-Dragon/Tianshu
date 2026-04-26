@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.config;
 import com.rheinmetal.tianshu.constant.ModelPresets;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.constant.VramTier;
+import com.rheinmetal.tianshu.core.FeatureManager;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -11,7 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
+public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     public static final ModConfigSpec SPEC;
 
@@ -27,6 +28,14 @@ public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_LLM_NAME;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_TTS_NAME;
 
+    public static final ModConfigSpec.BooleanValue TACTICAL_RADAR_ENABLED;
+    public static final ModConfigSpec.BooleanValue NAVIGATION_ENABLED;
+    public static final ModConfigSpec.BooleanValue RECIPE_PANEL_ENABLED;
+    public static final ModConfigSpec.BooleanValue AUDIO_RADAR_ENABLED;
+    public static final ModConfigSpec.BooleanValue COMPANION_CARD_ENABLED;
+    public static final ModConfigSpec.BooleanValue DURABILITY_ALERT_ENABLED;
+    public static final ModConfigSpec.BooleanValue CHAT_ASSISTANT;
+
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
@@ -36,12 +45,29 @@ public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig
         WAKE_WORD = builder.define("wakeWord", "天枢");
         builder.pop();
 
+        builder.comment("功能开关（纯客户端）").push("features");
+        TACTICAL_RADAR_ENABLED = builder.comment("战术 MR 系统")
+                .define("tacticalRadar", true);
+        NAVIGATION_ENABLED = builder.comment("导航 HUD")
+                .define("navigation", true);
+        RECIPE_PANEL_ENABLED = builder.comment("悬浮合成面板")
+                .define("recipePanel", true);
+        AUDIO_RADAR_ENABLED = builder.comment("听觉预警雷达")
+                .define("audioRadar", true);
+        COMPANION_CARD_ENABLED = builder.comment("智能伴生卡片")
+                .define("companionCard", true);
+        DURABILITY_ALERT_ENABLED = builder.comment("关键链路熔断预警系统")
+                .define("durabilityAlert", true);
+        CHAT_ASSISTANT = builder.comment("聊天助手（同声传译与语音发送）")
+                .define("chatAssistant", true);
+        builder.pop();
+
         builder.comment("性能与显存设置").push("performance");
         VRAM_TIER = builder.defineEnum("vramTier", VramTier.STANDARD);
         CUSTOM_VRAM_GB = builder.defineInRange("customVramGB", 8, 1, 128);
         builder.pop();
 
-        builder.comment("底层服务设置").push("internal");
+        builder.comment("底层服务设置（尽量不要修改）").push("internal");
         ASR_PORT = builder.defineInRange("asrPort", 18765, 1024, 65535);
         LLM_PORT = builder.defineInRange("llmPort", 18766, 1024, 65535);
         TTS_PORT = builder.defineInRange("ttsPort", 18767, 1024, 65535);
@@ -245,6 +271,66 @@ public class NeoForgeConfig implements com.rheinmetal.tianshu.api.ITianshuConfig
         }
 
         return modelDir.resolve(ModelPresets.getPresetLlmFileName(tier));
+    }
+
+    public boolean isTacticalRadarEnabled() {
+        return TACTICAL_RADAR_ENABLED.get();
+    }
+
+    public void setTacticalRadarEnabled(boolean enabled) {
+        TACTICAL_RADAR_ENABLED.set(enabled);
+    }
+
+    public boolean isNavigationEnabled() {
+        return NAVIGATION_ENABLED.get();
+    }
+
+    public void setNavigationEnabled(boolean enabled) {
+        NAVIGATION_ENABLED.set(enabled);
+    }
+
+    public boolean isRecipePanelEnabled() {
+        return RECIPE_PANEL_ENABLED.get();
+    }
+
+    public void setRecipePanelEnabled(boolean enabled) {
+        RECIPE_PANEL_ENABLED.set(enabled);
+    }
+
+    public boolean isAudioRadarEnabled() {
+        return AUDIO_RADAR_ENABLED.get();
+    }
+
+    public void setAudioRadarEnabled(boolean enabled) {
+        AUDIO_RADAR_ENABLED.set(enabled);
+    }
+
+    public boolean isCompanionCardEnabled() {
+        return COMPANION_CARD_ENABLED.get();
+    }
+
+    public void setCompanionCardEnabled(boolean enabled) {
+        COMPANION_CARD_ENABLED.set(enabled);
+    }
+
+    public boolean isDurabilityAlertEnabled() {
+        return DURABILITY_ALERT_ENABLED.get();
+    }
+
+    public void setDurabilityAlertEnabled(boolean enabled) {
+        DURABILITY_ALERT_ENABLED.set(enabled);
+    }
+
+    public static void syncToFeatureManager() {
+        FeatureManager.syncFromClientConfig(
+                TACTICAL_RADAR_ENABLED.get(),
+                NAVIGATION_ENABLED.get(),
+                RECIPE_PANEL_ENABLED.get(),
+                AUDIO_RADAR_ENABLED.get(),
+                COMPANION_CARD_ENABLED.get(),
+                DURABILITY_ALERT_ENABLED.get(),
+                CHAT_ASSISTANT.get()
+        );
     }
 
     @Override

@@ -71,9 +71,9 @@ public final class ClientItemCommandManager {
         return lastBuildReason;
     }
 
-    public static IRParseResult parsePlayerCommand(String rawText) {
+    public static IRParseResult parsePlayerCommand(String rawText, boolean isFastIR) {
         ensureIndex("parse fallback");
-        return IR_SERVICE.parse(rawText, CONTEXT_COLLECTOR);
+        return IR_SERVICE.parse(rawText, CONTEXT_COLLECTOR, isFastIR);
     }
 
     public static String formatPreview(IRParseResult parseResult) {

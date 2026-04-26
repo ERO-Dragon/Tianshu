@@ -179,7 +179,9 @@ public class TtsWorker implements Runnable {
 
     private String cleanForTts(String rawText) {
         if (rawText == null || rawText.isBlank()) return "";
-        String cleaned = rawText.replace('\r', ' ').replace('\n', ' ');
+        String cleaned = rawText.replaceAll("<(?:think|reasoning|reflection)[^>]*>[\\s\\S]*?</(?:think|reasoning|reflection)>", "");
+        cleaned = cleaned.replaceAll("<(?:think|reasoning|reflection)[^>]*/>", "");
+        cleaned = cleaned.replace('\r', ' ').replace('\n', ' ');
         cleaned = cleaned.replaceAll("\\s+", " ").trim();
         return cleaned;
     }

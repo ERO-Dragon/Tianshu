@@ -9,6 +9,7 @@ public final class DeathContextData {
     public final double z;
     public final String dimension;
     public final String killerEntityId;
+    public final String killerDisplayName;
 
     public DeathContextData(
             String damageSourceId,
@@ -17,7 +18,8 @@ public final class DeathContextData {
             double y,
             double z,
             String dimension,
-            String killerEntityId
+            String killerEntityId,
+            String killerDisplayName
     ) {
         this.damageSourceId = damageSourceId;
         this.deathMessage = deathMessage;
@@ -26,6 +28,7 @@ public final class DeathContextData {
         this.z = z;
         this.dimension = dimension;
         this.killerEntityId = killerEntityId;
+        this.killerDisplayName = killerDisplayName;
     }
 
     public String getDamageSourceId() { return damageSourceId; }
@@ -35,4 +38,5 @@ public final class DeathContextData {
     public double getZ() { return z; }
     public String getDimension() { return dimension; }
     public String getKillerEntityId() { return killerEntityId; }
+    public String getKillerDisplayName() { return killerDisplayName; }
 }

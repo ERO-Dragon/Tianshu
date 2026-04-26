@@ -2,7 +2,9 @@ package com.rheinmetal.tianshu;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.client.TianshuClient;
-import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.config.ClientConfig;
+import com.rheinmetal.tianshu.config.ServerConfig;
+import com.rheinmetal.tianshu.network.NetworkHandler;
 import org.slf4j.Logger;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
@@ -17,7 +19,8 @@ public class Tianshu {
     public Tianshu(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("天枢模组开始加载...");
 
-        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, NeoForgeConfig.SPEC);
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC);
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, ServerConfig.SPEC);
         modEventBus.addListener(TianshuClient::registerKeyMappings);
         modEventBus.addListener(TianshuClient::registerReloadListeners);
         modEventBus.addListener(this::commonSetup);

@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.gui;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
-import com.rheinmetal.tianshu.config.NeoForgeConfig;
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.EnvSetupManager;
@@ -54,7 +54,7 @@ public class TianshuGUI extends Screen {
     private static final String TTS_PREVIEW_TEXT = "你好，我是天枢，这是当前音色的试听效果。";
 
     private final TianshuCoreManager coreManager;
-    private final NeoForgeConfig config;
+    private final ClientConfig config;
     private final AudioManager audioManager;
     private final NeoForgeNativeLibBridge nativeLibBridge;
 
@@ -90,7 +90,7 @@ public class TianshuGUI extends Screen {
     private static final String[] PERSONA_PRESETS = {"默认", "开朗健谈", "稳健务实", "温柔体贴", "严肃专业"};
     private static final String[] PERSONA_PROMPTS = {"", "你是一个开朗、健谈的助手，喜欢用轻松愉快的语气回答问题，偶尔会开个小玩笑。", "你是一个稳健、务实的助手，回答简洁明了，注重实用性和准确性。", "你是一个温柔、体贴的助手，善于倾听，回答时充满关怀。", "你是一个严肃、专业的助手，回答严谨精确，注重逻辑和数据。"};
 
-    public TianshuGUI(TianshuCoreManager coreManager, NeoForgeConfig config, AudioManager audioManager, NeoForgeNativeLibBridge nativeLibBridge) {
+    public TianshuGUI(TianshuCoreManager coreManager, ClientConfig config, AudioManager audioManager, NeoForgeNativeLibBridge nativeLibBridge) {
         super(TITLE);
         this.coreManager = coreManager;
         this.config = config;

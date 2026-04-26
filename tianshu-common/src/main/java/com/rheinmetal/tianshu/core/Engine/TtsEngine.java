@@ -636,14 +636,19 @@ public class TtsEngine {
                 env.info("MOSS-TTS 合成被中断（编码后）: " + text);
                 return;
             }
-            float[][] channels = mossTtsService.synthesizeToWaveform(text, promptAudioCodes);
+
+            mossTtsService.synthesizeStreaming(text, promptAudioCodes, (audio, chunkIndex, totalChunks) -> {
+                if (interrupted) return;
+                byte[] pcm = floatSamplesToPcm16(audio);
+                if (pcm.length > 0) {
+                    onAudioChunk.accept(pcm);
+                }
+                env.info("MOSS-TTS sub-chunk " + (chunkIndex + 1) + "/" + totalChunks + " 完成");
+            });
+
             if (interrupted) {
                 env.info("MOSS-TTS 合成被中断: " + text);
                 return;
-            }
-            byte[] pcm = floatSamplesToPcm16(channels);
-            if (pcm.length > 0) {
-                onAudioChunk.accept(pcm);
             }
             env.info("MOSS-TTS 合成完成: " + text);
         } catch (Exception e) {
@@ -660,26 +665,17 @@ public class TtsEngine {
         env.info("ZipVoice 开始合成: " + text + " (speed=" + speed + ")");
 
         try {
-            GenerationConfig generationConfig = new GenerationConfig();
-            generationConfig.setSpeed(speed);
+            GeneratedAudio directAudio = tts.generate(text, 0, speed);
+            env.info("ZipVoice direct generate: samples=" + (directAudio.getSamples() != null ? directAudio.getSamples().length : "null")
+                    + ", sampleRate=" + directAudio.getSampleRate());
 
-            if (voiceSamplePath != null && Files.exists(voiceSamplePath)) {
-                WaveReader reader = new WaveReader(voiceSamplePath.toString());
-                generationConfig.setReferenceAudio(reader.getSamples());
-                generationConfig.setReferenceSampleRate(reader.getSampleRate());
-                generationConfig.setReferenceText("");
-                generationConfig.setNumSteps(5);
-                env.info("ZipVoice 使用参考音频: " + voiceSamplePath + ", sampleRate=" + reader.getSampleRate());
-            }
-
-            tts.generateWithConfigAndCallback(text, generationConfig, samples -> {
-                if (interrupted) return 0;
-                byte[] pcm = floatSamplesToPcm16(samples);
+            if (directAudio.getSamples() != null && directAudio.getSamples().length > 0) {
+                byte[] pcm = floatSamplesToPcm16(directAudio.getSamples());
                 if (pcm.length > 0) {
                     onAudioChunk.accept(pcm);
                 }
-                return 1;
-            });
+            }
+
             if (interrupted) {
                 env.info("ZipVoice 合成被中断: " + text);
             } else {
@@ -706,6 +702,10 @@ public class TtsEngine {
         if (channels == null || channels.length == 0 || channels[0].length == 0) return new byte[0];
         float[] mono = channels[0];
         return floatSamplesToPcm16(mono);
+    }
+
+    public boolean isMossEngine() {
+        return isMossEngine;
     }
 
     public int getSampleRate() {
