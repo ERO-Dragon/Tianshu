@@ -8,6 +8,7 @@ public class ServerConfig {
 
     public static final ModConfigSpec.BooleanValue ALLOW_AUTO_EQUIP;
     public static final ModConfigSpec.BooleanValue ALLOW_AUTO_TRASH;
+    public static final ModConfigSpec.BooleanValue ALLOW_HIGH_PRECISION_MODE;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -17,6 +18,8 @@ public class ServerConfig {
                 .define("allowAutoEquip", true);
         ALLOW_AUTO_TRASH = builder.comment("是否允许客户端使用一键扔垃圾功能")
                 .define("allowAutoTrash", true);
+        ALLOW_HIGH_PRECISION_MODE = builder.comment("是否允许客户端使用高精度雷达")
+                .define("allowHighPrecisionMode", true);
         builder.pop();
 
         SPEC = builder.build();

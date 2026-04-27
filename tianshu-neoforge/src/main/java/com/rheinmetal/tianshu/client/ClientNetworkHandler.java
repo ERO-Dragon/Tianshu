@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.client;
 
 import com.rheinmetal.tianshu.core.FeatureManager;
+import com.rheinmetal.tianshu.function.AcousticRadar.RadarLockState;
+import com.rheinmetal.tianshu.network.S2CLockAlertPacket;
 import com.rheinmetal.tianshu.network.S2CSyncPermissionPacket;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -11,6 +13,16 @@ public class ClientNetworkHandler {
         context.enqueueWork(() -> {
             FeatureManager.setAutoEquip(packet.allowAutoEquip());
             FeatureManager.setAutoTrash(packet.allowAutoTrash());
+            FeatureManager.setHighPrecisionMode(packet.allowHighPrecisionMode());
+        });
+    }
+
+    /**
+     * 处理服务端发来的定向锁定信息包
+     */
+    public static void handleLockAlert(S2CLockAlertPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            RadarLockState.updateFromServer(packet.lockedEntityUuids());
         });
     }
 }

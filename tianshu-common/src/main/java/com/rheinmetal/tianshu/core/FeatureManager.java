@@ -7,6 +7,7 @@ public final class FeatureManager {
     // ═══════ 服务端管控（零信任，默认 false，仅由 S2C 包写入） ═══════
     private static volatile boolean autoEquipAllowed = false;
     private static volatile boolean autoTrashAllowed = false;
+    private static volatile boolean highPrecisionModeAllowed = false;
 
     // ═══════ 客户端偏好（由 ClientConfig 同步，默认 true） ═══════
     private static volatile boolean tacticalRadarEnabled = true;
@@ -24,6 +25,9 @@ public final class FeatureManager {
 
     public static boolean isAutoTrashAllowed() { return autoTrashAllowed; }
     public static void setAutoTrash(boolean v) { autoTrashAllowed = v; }
+
+    public static boolean isHighPrecisionModeAllowed() { return highPrecisionModeAllowed; }
+    public static void setHighPrecisionMode(boolean v) { highPrecisionModeAllowed = v; }
 
     // ─── 客户端偏好 ───
 

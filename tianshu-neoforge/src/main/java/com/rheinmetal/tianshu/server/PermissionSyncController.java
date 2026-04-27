@@ -23,7 +23,8 @@ public class PermissionSyncController {
         // [零信任红线] 唯一权限下发入口：读取 ServerConfig -> 构造 S2C 包 -> 发送
         boolean allowAutoEquip = ServerConfig.ALLOW_AUTO_EQUIP.get();
         boolean allowAutoTrash = ServerConfig.ALLOW_AUTO_TRASH.get();
-        S2CSyncPermissionPacket packet = new S2CSyncPermissionPacket(allowAutoEquip, allowAutoTrash);
+        boolean allowHighPrecisionMode = ServerConfig.ALLOW_HIGH_PRECISION_MODE.get();
+        S2CSyncPermissionPacket packet = new S2CSyncPermissionPacket(allowAutoEquip, allowAutoTrash, allowHighPrecisionMode);
         PacketDistributor.sendToPlayer(player, packet);
     }
 

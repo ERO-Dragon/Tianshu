@@ -231,6 +231,17 @@ public class NeoForgePlayerStateProvider implements IPlayerStateProvider {
         return lastDamageGameTick;
     }
 
+    @Override
+    public float getCurrentDynamicFov() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null) {
+                return mc.player.getFieldOfViewModifier();
+            }
+        } catch (Exception ignored) {}
+        return 70.0f;
+    }
+
     private PositionData toPositionData(Player player) {
         return new PositionData(
                 player.getX(), player.getY(), player.getZ(),

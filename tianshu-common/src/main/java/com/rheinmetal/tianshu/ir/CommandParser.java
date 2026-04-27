@@ -85,7 +85,7 @@ public final class CommandParser {
                 ScoredCandidate best = findBestCandidateForIntercept(rawText, contextInternalIds, sharedLcsWorkspace);
                 if (best != null) {
                     double threshold = FINALIR_FIXED_THRESHOLD;
-                    debugLog("[分支A] isFastIR=false, bestScore=" + String.format("%.4f", best.score) + ", threshold=" + String.format("%.4f", threshold));
+debugLog("[分支A] isFastIR=false, bestScore=" + String.format("%.4f", best.score) + ", threshold=" + String.format("%.4f", threshold));
                     if (best.score >= threshold) {
                         String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
                         Intent detectedIntent = detectIntent(rawText);
@@ -117,7 +117,7 @@ public final class CommandParser {
         if (ranked.length > 0) {
             ScoredCandidate best = ranked[0];
             double threshold = computeInterceptThreshold(rawText, best);
-            debugLog("[分支A] isFastIR=true, bestScore=" + String.format("%.4f", best.score) + ", threshold=" + String.format("%.4f", threshold));
+debugLog("[分支A] isFastIR=true, bestScore=" + String.format("%.4f", best.score) + ", threshold=" + String.format("%.4f", threshold));
             if (best.score >= threshold) {
                 String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
                 Intent detectedIntent = detectIntent(rawText);
@@ -230,7 +230,7 @@ public final class CommandParser {
                 int adjustedEnd = bestEnd + offsetAccum;
                 builder.replace(adjustedStart, adjustedEnd, target);
                 offsetAccum += target.length() - (bestEnd - bestStart);
-                debugLog("[治愈] 替换: [" + bestStart + "," + bestEnd + ") -> " + target + ", overlap=" + String.format("%.4f", bestOverlap));
+debugLog("[治愈] 替换: [" + bestStart + "," + bestEnd + ") -> " + target + ", overlap=" + String.format("%.4f", bestOverlap));
             }
         }
 
@@ -238,24 +238,24 @@ public final class CommandParser {
     }
 
     private ParseUnit parseSingleSubQuery(SubQuery subQuery, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
-        debugLog("[DEBUG-1 实体提取] rawChunk = " + subQuery.rawChunk);
+debugLog("[DEBUG-1 实体提取] rawChunk = " + subQuery.rawChunk);
 
         String[] tokens = IRBaseUtils.tokenize(subQuery.rawChunk);
 
-        debugLog("[DEBUG-2 Tokenize] 结果 = " + Arrays.toString(tokens) + " | 长度 = " + tokens.length);
+debugLog("[DEBUG-2 Tokenize] 结果 = " + Arrays.toString(tokens) + " | 长度 = " + tokens.length);
 
         if (tokens.length < 2) {
-            debugLog("[DEBUG-2] 长度不足2，已被拦截！");
+debugLog("[DEBUG-2] 长度不足2，已被拦截！");
             return null;
         }
 
         QueryVariant variant = buildQueryVariant(tokens);
         Int2ObjectOpenHashMap<MutableVote> votes = new Int2ObjectOpenHashMap<>(64);
         int queryTotalGramCount = collectVotes(variant, votes);
-        debugLog("[DEBUG-3 投票阶段] queryTotalGramCount = " + queryTotalGramCount + " | votesSize = " + votes.size());
+debugLog("[DEBUG-3 投票阶段] queryTotalGramCount = " + queryTotalGramCount + " | votesSize = " + votes.size());
 
         if (queryTotalGramCount == 0) {
-            debugLog("[DEBUG-3] 有效 gram 为 0，已被拦截！");
+debugLog("[DEBUG-3] 有效 gram 为 0，已被拦截！");
             return null;
         }
 
@@ -263,7 +263,7 @@ public final class CommandParser {
         if (topCandidates.length == 0) {
             return null;
         }
-        debugLog("[DEBUG-4 排序阶段] topCandidates 剩余数量 = " + topCandidates.length);
+debugLog("[DEBUG-4 排序阶段] topCandidates 剩余数量 = " + topCandidates.length);
 
         ScoredCandidate[] ranked = rankCandidates(topCandidates, variant, contextInternalIds, lcsWorkspace);
         if (ranked.length == 0) {
@@ -485,7 +485,7 @@ public final class CommandParser {
     private ScoredCandidate[] rankCandidates(Candidate[] candidates, QueryVariant variant, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
         List<ScoredCandidate> ranked = new ArrayList<>(candidates.length);
 
-        debugLog("[RANK-基准] 用户输入拼接: " + variant.joined + " (长度:" + variant.joined.length() + ")");
+debugLog("[RANK-基准] 用户输入拼接: " + variant.joined + " (长度:" + variant.joined.length() + ")");
 
         for (Candidate candidate : candidates) {
             int internalId = candidate.internalId;
@@ -505,7 +505,7 @@ public final class CommandParser {
                 int pLenDiff = Math.abs(pJoined.length() - variant.joined.length());
                 double pPenalty = (pLenDiff > 6) ? (pLenDiff - 6) * 0.03d : 0.0d;
                 pFinalScore = (pBaseScore * PRIMARY_WEIGHT) - pPenalty;
-                debugLog("[RANK-主轨道] 候选: " + realItemId + " | 基础=" + String.format("%.4f", pBaseScore) + ", 加权后=" + String.format("%.4f", pFinalScore));
+debugLog("[RANK-主轨道] 候选: " + realItemId + " | 基础=" + String.format("%.4f", pBaseScore) + ", 加权后=" + String.format("%.4f", pFinalScore));
             }
 
             double fFinalScore = 0.0d;
@@ -515,7 +515,7 @@ public final class CommandParser {
                 int fLenDiff = Math.abs(fJoined.length() - variant.joined.length());
                 double fPenalty = (fLenDiff > 6) ? (fLenDiff - 6) * 0.03d : 0.0d;
                 fFinalScore = (fBaseScore * FALLBACK_WEIGHT) - fPenalty;
-                debugLog("[RANK-副轨道] 候选: " + realItemId + " | 基础=" + String.format("%.4f", fBaseScore) + ", 加权后=" + String.format("%.4f", fFinalScore));
+debugLog("[RANK-副轨道] 候选: " + realItemId + " | 基础=" + String.format("%.4f", fBaseScore) + ", 加权后=" + String.format("%.4f", fFinalScore));
             }
 
             double finalScore = Math.max(pFinalScore, fFinalScore);
@@ -528,7 +528,7 @@ public final class CommandParser {
 
             ranked.add(new ScoredCandidate(internalId, finalScore));
         }
-        debugLog("[RANK-结束] 总共参与排序的物品数: " + ranked.size());
+debugLog("[RANK-结束] 总共参与排序的物品数: " + ranked.size());
         return ranked.toArray(new ScoredCandidate[0]);
     }
 

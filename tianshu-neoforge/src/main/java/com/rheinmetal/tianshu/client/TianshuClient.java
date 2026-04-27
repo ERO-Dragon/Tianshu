@@ -371,7 +371,8 @@ public class TianshuClient {
                     }
             );
             acousticRadarTickCounter = 0;
-            LOGGER.info("[战术雷达] 功能已开启，懒加载引擎实例");
+            acousticRadarEngine.start();
+            LOGGER.info("[战术雷达] 功能已开启");
         }
 
         acousticRadarTickCounter++;

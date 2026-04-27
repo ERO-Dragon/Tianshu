@@ -7,7 +7,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-public record S2CSyncPermissionPacket(boolean allowAutoEquip, boolean allowAutoTrash) implements CustomPacketPayload {
+public record S2CSyncPermissionPacket(boolean allowAutoEquip, boolean allowAutoTrash, boolean allowHighPrecisionMode) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<S2CSyncPermissionPacket> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Tianshu.MOD_ID, "sync_permission"));
@@ -17,6 +17,8 @@ public record S2CSyncPermissionPacket(boolean allowAutoEquip, boolean allowAutoT
             S2CSyncPermissionPacket::allowAutoEquip,
             ByteBufCodecs.BOOL,
             S2CSyncPermissionPacket::allowAutoTrash,
+            ByteBufCodecs.BOOL,
+            S2CSyncPermissionPacket::allowHighPrecisionMode,
             S2CSyncPermissionPacket::new
     );
 

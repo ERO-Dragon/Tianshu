@@ -20,5 +20,10 @@ public class NetworkHandler {
                 S2CSyncPermissionPacket.STREAM_CODEC,
                 ClientNetworkHandler::handleSyncPermission
         );
+        registrar.playToClient(
+                S2CLockAlertPacket.TYPE,
+                S2CLockAlertPacket.STREAM_CODEC,
+                ClientNetworkHandler::handleLockAlert
+        );
     }
 }

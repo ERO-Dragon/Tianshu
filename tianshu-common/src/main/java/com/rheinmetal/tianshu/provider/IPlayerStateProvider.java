@@ -15,4 +15,6 @@ public interface IPlayerStateProvider {
     PositionData getSpawnPoint();
 
     long getLastDamageTick();
+
+    float getCurrentDynamicFov();
 }
