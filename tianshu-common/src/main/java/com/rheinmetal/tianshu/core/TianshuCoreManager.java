@@ -421,17 +421,30 @@ public class TianshuCoreManager {
 
     public void speakAlert(String text) {
         if (ttsWorker == null || !ttsWorker.isEngineInitialized()) return;
-
-        interruptOngoingProcessing();
-
         threadPool.getToolWorker().execute(() -> {
             try {
-                env.info("[战术雷达] TTS预警播报: " + text);
+                env.info("[战术雷达] TTS排队播报: " + text);
                 audioBridge.startTtsPlayback(ttsWorker.getSampleRate());
                 ttsWorker.synthesizeForPreview(text, 1.2f, audio -> audioBridge.feedTtsAudio(audio));
                 audioBridge.finishTtsPlayback();
             } catch (Exception e) {
-                env.error("[战术雷达] TTS预警播报失败", e);
+                env.error("[战术雷达] TTS排队播报失败", e);
+                audioBridge.stopTtsPlayback();
+            }
+        });
+    }
+
+    public void speakAlertWithInterrupt(String text) {
+        if (ttsWorker == null || !ttsWorker.isEngineInitialized()) return;
+        interruptOngoingProcessing();
+        threadPool.getToolWorker().execute(() -> {
+            try {
+                env.info("[战术雷达] TTS打断播报: " + text);
+                audioBridge.startTtsPlayback(ttsWorker.getSampleRate());
+                ttsWorker.synthesizeForPreview(text, 1.2f, audio -> audioBridge.feedTtsAudio(audio));
+                audioBridge.finishTtsPlayback();
+            } catch (Exception e) {
+                env.error("[战术雷达] TTS打断播报失败", e);
                 audioBridge.stopTtsPlayback();
             }
         });

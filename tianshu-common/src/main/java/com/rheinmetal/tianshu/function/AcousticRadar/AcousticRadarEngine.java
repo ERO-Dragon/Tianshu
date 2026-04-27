@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public class AcousticRadarEngine {
 
@@ -23,7 +24,12 @@ public class AcousticRadarEngine {
     private final IPlayerStateProvider playerState;
     private final IAudioEventProvider audioEvent;
     private final AlertSpeaker alertSpeaker;
+    private final AlertTextProvider textProvider;
+    private final Consumer<Double> scanRequirementUpdater;
+    private volatile double radarRange = 16.0; // 这个值只在设置菜单里改
+    private volatile boolean isRunning = false; // 这个值在游戏里动态开关
 
+    
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Tianshu-Radar-Async");
         t.setDaemon(true);
@@ -56,22 +62,76 @@ public class AcousticRadarEngine {
     private volatile boolean isInAlertState = false;
     private volatile int alertCooldownTimer = 0;
 
+    private volatile String pendingLevel3Speech = null;
+    private volatile String pendingLevel3Type = null;
+    private volatile String pendingLevel4SightSpeech = null;
+    private volatile String pendingLevel4ThreatListSpeech = null;
+    private volatile boolean hasBroadcastedThreatList = false;
+
+    private final Set<String> knownThreatUuids = ConcurrentHashMap.newKeySet();
+
     private volatile long currentTick = 0;
     private volatile boolean running = true;
-    private volatile boolean soundHookForceTrigger = false;
 
     public AcousticRadarEngine(
             IEnvironmentAwarenessProvider environment,
             IPlayerStateProvider playerState,
             IAudioEventProvider audioEvent,
-            AlertSpeaker alertSpeaker
+            AlertSpeaker alertSpeaker,
+            AlertTextProvider textProvider,
+            Consumer<Double> scanRequirementUpdater // <--- 新增
     ) {
         this.environment = environment;
         this.playerState = playerState;
         this.audioEvent = audioEvent;
         this.alertSpeaker = alertSpeaker;
+        this.textProvider = textProvider;
+        this.scanRequirementUpdater = scanRequirementUpdater;
     }
 
+    // 游戏内快捷键动态开启
+    public void start() {
+        this.isRunning = true;
+        // 不用管底层是谁，直接通过回调大喊：“我需要 radarRange 这么大的框！”
+        notifyRequirementChanged();
+    }
+
+    // 游戏内快捷键动态关闭
+    public void stop() {
+        this.isRunning = false;
+        // 大喊：“我不需要框了（传0）！”
+        notifyRequirementChanged();
+    }
+
+    // 设置菜单里调整范围
+    public void setRadarRange(double newRange) {
+        this.radarRange = Math.max(4.0, Math.min(32.0, newRange));
+        // 只有在雷达处于开启状态时，才需要大喊
+        if (this.isRunning) {
+            notifyRequirementChanged();
+        }
+    }
+
+    // 提供给未来 MR 系统查询当前雷达需求的方法（统筹者需要用到）
+    public double getRadarRange() {
+        return radarRange;
+    }
+
+    public boolean isRunning() {
+        return isRunning;
+    }
+    
+    // ---------------- 私有辅助方法 ----------------
+
+    /**
+     * 封装状态变更通知，避免重复代码
+     */
+    private void notifyRequirementChanged() {
+        if (this.scanRequirementUpdater != null) {
+            double requestRadius = this.isRunning ? this.radarRange : 0.0;
+            this.scanRequirementUpdater.accept(requestRadius);
+        }
+    }
     public RadarOutput tickSync(PositionData playerPos) {
         if (playerPos == null) return volatileOutput.get();
 
@@ -111,9 +171,38 @@ public class AcousticRadarEngine {
         }
 
         processLevel2Radar(hostilesInRadar, tick);
-        processSoundHook(playerPos, tick);
-        processLevel3Perception(hostilesInAlert, tick);
+        processLevel3Perception(hostilesInAlert, tick, playerPos.getPlayerUuid());
         processLevel4LockedAlert(hostilesInAlert, tick, playerPos.getPlayerUuid());
+
+        if (pendingLevel3Speech != null) {
+            String toSpeak = pendingLevel3Speech;
+            String type = pendingLevel3Type;
+            pendingLevel3Speech = null;
+            pendingLevel3Type = null;
+            level3PresenceSet.add(type);
+            if (alertSpeaker != null) {
+                if (!isInAlertState) alertSpeaker.speakAlertWithInterrupt(toSpeak);
+                else alertSpeaker.speakAlert(toSpeak);
+            }
+        }
+
+        if (pendingLevel4SightSpeech != null) {
+            String sightText = pendingLevel4SightSpeech;
+            pendingLevel4SightSpeech = null;
+            if (alertSpeaker != null) {
+                if (!isInAlertState) alertSpeaker.speakAlertWithInterrupt(sightText);
+                else alertSpeaker.speakAlert(sightText);
+            }
+            isInAlertState = true;
+        }
+
+        if (pendingLevel4ThreatListSpeech != null) {
+            if (alertSpeaker != null) {
+                alertSpeaker.speakAlert(pendingLevel4ThreatListSpeech);
+            }
+            pendingLevel4ThreatListSpeech = null;
+            hasBroadcastedThreatList = true;
+        }
 
         List<RadarIndicator> indicators = buildRadarIndicators(tick);
 
@@ -163,93 +252,125 @@ public class AcousticRadarEngine {
         return rec != null ? rec.getEntryTick() : 0L;
     }
 
-    private void processLevel3Perception(List<NearbyEntityData> hostilesInAlert, long tick) {
+    private void processLevel3Perception(List<NearbyEntityData> hostilesInAlert, long tick, String localPlayerUuid) {
         Set<String> currentTypesIn8 = new HashSet<>();
         for (NearbyEntityData entity : hostilesInAlert) {
             currentTypesIn8.add(extractEntityType(entity));
         }
 
-        for (String type : currentTypesIn8) {
-            if (!level3PresenceSet.contains(type)) {
-                level3PresenceSet.add(type);
-                String displayName = resolveDisplayName(hostilesInAlert, type);
-                String speech = "注意，检测到" + displayName + "在附近";
-                if (alertSpeaker != null) {
-                    alertSpeaker.speakAlert(speech);
-                }
-            }
-        }
+        level3PresenceSet.removeIf(type -> !currentTypesIn8.contains(type));
 
-        Iterator<String> setIt = level3PresenceSet.iterator();
-        while (setIt.hasNext()) {
-            String type = setIt.next();
-            if (!currentTypesIn8.contains(type)) {
-                setIt.remove();
+        if (pendingLevel3Speech != null) return;
+
+        for (NearbyEntityData entity : hostilesInAlert) {
+            String type = extractEntityType(entity);
+
+            boolean isTargetingMe = entity.getTargetUuid() != null && entity.getTargetUuid().equals(localPlayerUuid);
+            if (isTargetingMe) continue;
+
+            if (!level3PresenceSet.contains(type)) {
+                String displayName = resolveDisplayName(hostilesInAlert, type);
+                pendingLevel3Speech = textProvider.getLevel3DetectionText(displayName);
+                pendingLevel3Type = type;
+                break;
             }
         }
     }
 
     private void processLevel4LockedAlert(List<NearbyEntityData> hostilesInAlert, long tick, String localPlayerUuid) {
-        boolean anyLocking = false;
+        Set<String> currentBlindLockedUuids = new HashSet<>();
+        Set<String> currentAllLockedUuids = new HashSet<>();
+
         for (NearbyEntityData entity : hostilesInAlert) {
             boolean isTargetingMe = entity.getTargetUuid() != null && entity.getTargetUuid().equals(localPlayerUuid);
-            if (isTargetingMe && !entity.isLineOfSight()) {
-                anyLocking = true;
-                break;
+            if (!isTargetingMe) continue;
+
+            currentAllLockedUuids.add(entity.getUuid());
+            if (!entity.isLineOfSight()) {
+                currentBlindLockedUuids.add(entity.getUuid());
             }
         }
 
-        if (anyLocking || soundHookForceTrigger) {
-            soundHookForceTrigger = false;
+        Set<String> newBlindUuids = new HashSet<>(currentBlindLockedUuids);
+        newBlindUuids.removeAll(knownThreatUuids);
+
+        if (!newBlindUuids.isEmpty()) {
             alertCooldownTimer = 0;
-            if (!isInAlertState) {
-                isInAlertState = true;
-                Map<String, Integer> counts = countHostilesByType(hostilesInAlert);
-                String speech = buildLockedAlertSpeech(counts);
-                if (alertSpeaker != null) {
-                    alertSpeaker.speakAlert(speech);
+            pendingLevel3Speech = null;
+            pendingLevel3Type = null;
+            pendingLevel4SightSpeech = null;
+
+            double sumAngle = 0;
+            int blindCount = 0;
+            Set<String> blindTypes = new HashSet<>();
+            for (NearbyEntityData entity : hostilesInAlert) {
+                if (newBlindUuids.contains(entity.getUuid())) {
+                    sumAngle += entity.getHorizontalAngle();
+                    blindCount++;
+                    blindTypes.add(extractEntityType(entity));
+                }
+            }
+            String blindDirection = "未知";
+            String blindType = "敌人";
+            if (blindCount > 0) {
+                blindDirection = computeDirectionLabel(sumAngle / blindCount);
+                if (blindTypes.size() == 1) {
+                    blindType = blindTypes.iterator().next();
+                }
+            }
+
+            if (alertSpeaker != null) {
+                alertSpeaker.speakAlertWithInterrupt(textProvider.getLevel4BlindSpotText(blindDirection, blindType));
+            }
+            knownThreatUuids.addAll(currentAllLockedUuids);
+
+            for (NearbyEntityData entity : hostilesInAlert) {
+                boolean isTargetingMe = entity.getTargetUuid() != null && entity.getTargetUuid().equals(localPlayerUuid);
+                if (isTargetingMe && entity.isLineOfSight()) {
+                    pendingLevel4SightSpeech = textProvider.getLevel4SightEngageText();
+                    break;
+                }
+            }
+
+            if (!hasBroadcastedThreatList) {
+                String content = buildThreatListContent(hostilesInAlert, currentAllLockedUuids);
+                if (!content.isEmpty()) {
+                    pendingLevel4ThreatListSpeech = textProvider.getLevel4ThreatListText(content);
+                }
+            }
+
+            isInAlertState = true;
+            return;
+        }
+
+        if (!currentAllLockedUuids.isEmpty()) {
+            alertCooldownTimer = 0;
+
+            if (!isInAlertState && pendingLevel4SightSpeech == null) {
+                pendingLevel4SightSpeech = textProvider.getLevel4SightEngageText();
+            }
+
+            if (!hasBroadcastedThreatList && pendingLevel4ThreatListSpeech == null) {
+                String content = buildThreatListContent(hostilesInAlert, currentAllLockedUuids);
+                if (!content.isEmpty()) {
+                    pendingLevel4ThreatListSpeech = textProvider.getLevel4ThreatListText(content);
                 }
             }
         } else {
-            if (isInAlertState) {
+            if (isInAlertState || pendingLevel4SightSpeech != null) {
                 alertCooldownTimer++;
                 if (alertCooldownTimer >= DISAPPEAR_TICKS_LV4) {
                     isInAlertState = false;
+                    pendingLevel4SightSpeech = null;
+                    pendingLevel4ThreatListSpeech = null;
+                    hasBroadcastedThreatList = false;
                     alertCooldownTimer = 0;
+                    knownThreatUuids.clear();
                 }
             }
         }
-    }
 
-    private Map<String, Integer> countHostilesByType(List<NearbyEntityData> hostilesInAlert) {
-        Map<String, Integer> counts = new LinkedHashMap<>();
-        for (NearbyEntityData entity : hostilesInAlert) {
-            String type = extractEntityType(entity);
-            counts.merge(type, 1, Integer::sum);
-        }
-        return counts;
-    }
-
-    private String buildLockedAlertSpeech(Map<String, Integer> counts) {
-        StringBuilder sb = new StringBuilder("警告，已被锁定，警戒范围内共有：");
-        boolean first = true;
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (!first) sb.append("，");
-            sb.append(entry.getValue()).append("只").append(entry.getKey());
-            first = false;
-        }
-        return sb.toString();
-    }
-
-    private void processSoundHook(PositionData playerPos, long tick) {
-        List<SoundEventData> sounds = audioEvent.pollRecentSoundEvents();
-        for (SoundEventData sound : sounds) {
-            String sid = sound.getSoundEventId().toLowerCase();
-            if (sid.contains("creeper.primed") || sid.contains("tnt.primed") || sid.contains("generic.explode")) {
-                soundHookForceTrigger = true; // 仅置位！
-                break;
-            }
-        }
+        knownThreatUuids.retainAll(currentAllLockedUuids);
     }
 
     private List<RadarIndicator> buildRadarIndicators(long tick) {
@@ -285,6 +406,25 @@ public class AcousticRadarEngine {
         if (raw.contains("blaze")) return "烈焰人";
         if (raw.contains("ghast")) return "恶魂";
         return entity.getDisplayName();
+    }
+
+    private String buildThreatListContent(List<NearbyEntityData> hostilesInAlert, Set<String> lockedUuids) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (NearbyEntityData entity : hostilesInAlert) {
+            if (lockedUuids.contains(entity.getUuid())) {
+                String type = extractEntityType(entity);
+                counts.merge(type, 1, Integer::sum);
+            }
+        }
+        if (counts.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (!first) sb.append("，");
+            sb.append(entry.getValue()).append("只").append(entry.getKey());
+            first = false;
+        }
+        return sb.toString();
     }
 
     private String resolveDisplayName(List<NearbyEntityData> entities, String type) {
@@ -324,6 +464,12 @@ public class AcousticRadarEngine {
         level3PresenceSet.clear();
         isInAlertState = false;
         alertCooldownTimer = 0;
+        pendingLevel3Speech = null;
+        pendingLevel3Type = null;
+        pendingLevel4SightSpeech = null;
+        pendingLevel4ThreatListSpeech = null;
+        hasBroadcastedThreatList = false;
+        knownThreatUuids.clear();
         volatileOutput.set(null);
         currentTick = 0;
     }

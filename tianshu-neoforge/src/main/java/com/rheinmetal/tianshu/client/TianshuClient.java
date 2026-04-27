@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.AcousticRadar.AcousticRadarEngine;
+import com.rheinmetal.tianshu.function.AcousticRadar.AlertSpeaker;
+import com.rheinmetal.tianshu.function.AcousticRadar.DefaultAlertTextProvider;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarOutput;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarIndicator;
 import com.rheinmetal.tianshu.core.FeatureManager;
@@ -347,7 +349,26 @@ public class TianshuClient {
                     environmentProvider,
                     playerStateProvider,
                     audioEventProvider,
-                    text -> coreManager.speakAlert(text)
+                    new AlertSpeaker() {
+                        @Override
+                        public void speakAlert(String text) {
+                            coreManager.speakAlert(text);
+                        }
+
+                        @Override
+                        public void speakAlertWithInterrupt(String text) {
+                            coreManager.speakAlertWithInterrupt(text);
+                        }
+                    },
+                    new DefaultAlertTextProvider(),
+                    // 【新增】：将底层 Provider 的方法包装成回调传进去
+                    requiredRadius -> {
+                        // 目前只有雷达，直接透传。
+                        // 将来如果你加了 MR 系统，这里改成取最大值：
+                        // double finalRadius = Math.max(requiredRadius, mrSystem.getRequiredRadius());
+                        // environmentProvider.setActiveScanRadius(finalRadius);
+                        environmentProvider.setActiveScanRadius(requiredRadius);
+                    }
             );
             acousticRadarTickCounter = 0;
             LOGGER.info("[战术雷达] 功能已开启，懒加载引擎实例");
