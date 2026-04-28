@@ -198,7 +198,11 @@ private static void debugLog(String msg) {
         //     );
         // }
         boolean highPrecision = FeatureManager.isHighPrecisionModeAllowed();
-        // debugLog("[雷达诊断] 高精度模式:{} "+ highPrecision + "；雷达范围:"+ RADAR_RANGE);
+debugLog("[雷达诊断] Tick=" + tick + " 高精度=" + highPrecision + " 雷达范围=" + RADAR_RANGE + " 警戒范围=" + ALERT_RANGE + " 实体数=" + hostilesInAlert.size());
+        if (highPrecision) {
+            Set<UUID> serverLocks = RadarLockState.getServerLockedUuids();
+debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUIDs=" + serverLocks);
+        }
         processLevel2Radar(hostilesInRadar, tick);
         processLevel3Perception(hostilesInAlert, tick, playerPos.getPlayerUuid(), highPrecision);
         processLevel4LockedAlert(hostilesInAlert, tick, playerPos.getPlayerUuid(), highPrecision);
@@ -327,6 +331,7 @@ private static void debugLog(String msg) {
             boolean isLocked = false;
             if (isHighPrecisionMode) {
                 isLocked = RadarLockState.isLockedByServer(UUID.fromString(entity.getUuid()));
+debugLog("[雷达诊断-L4] 实体=" + entity.getDisplayName() + " UUID=" + entity.getUuid() + " 服务端锁定=" + isLocked + " 距离=" + String.format("%.1f", entity.getDistance()) + " 角度=" + String.format("%.1f", entity.getHorizontalAngle()));
             } else {
                 // 降级模式：无遮挡即锁定
                 isLocked = entity.isLineOfSight();
@@ -390,8 +395,11 @@ private static void debugLog(String msg) {
                 }
             }
             isInAlertState = true;
+            knownThreatUuids.addAll(currentAllThreatUuids);
             return;
         }
+
+debugLog("[雷达诊断-L4] 当前威胁=" + currentAllThreatUuids.size() + " 盲区=" + currentBlindUuids.size() + " 前方=" + currentFrontalUuids.size() + " known=" + knownThreatUuids.size());
 
         if (!currentAllThreatUuids.isEmpty()) {
             alertCooldownTimer = 0;
@@ -399,21 +407,25 @@ private static void debugLog(String msg) {
             // 只有前方新威胁时的处理（带 8 向）
             Set<String> newFrontalOnlyUuids = new HashSet<>(currentFrontalUuids);
             newFrontalOnlyUuids.removeAll(knownThreatUuids);
+debugLog("[雷达诊断-L4] newFrontalOnly=" + newFrontalOnlyUuids.size() + " isInAlertState=" + isInAlertState + " primaryNewFrontal=" + (primaryNewFrontal != null));
             
             if (!isInAlertState && pendingLevel4SightSpeech == null && !newFrontalOnlyUuids.isEmpty() && primaryNewFrontal != null) {
                 String frontalDirection = computeDirectionLabel(primaryNewFrontal.getHorizontalAngle());
                 pendingLevel4SightSpeech = frontalDirection+textProvider.getLevel4SightEngageText();
+debugLog("[雷达诊断-L4] 触发前方接敌播报: " + frontalDirection);
             }
             
             // 处理原本就在视野内的续存状态
             if (!isInAlertState && pendingLevel4SightSpeech == null && !currentFrontalUuids.isEmpty()) {
                 pendingLevel4SightSpeech = textProvider.getLevel4SightEngageText();
+debugLog("[雷达诊断-L4] 触发续存前方播报");
             }
 
             if (!hasBroadcastedThreatList && pendingLevel4ThreatListSpeech == null) {
                 String content = buildThreatListContent(hostilesInAlert, currentAllThreatUuids);
                 if (!content.isEmpty()) {
                     pendingLevel4ThreatListSpeech = textProvider.getLevel4ThreatListText(content);
+debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
                 }
             }
         } else {

@@ -89,29 +89,10 @@ public class LockAlertController {
     }
 
     /**
-     * 判断 Mob 是否为敌对实体（简化判定）
+     * 判断 Mob 是否为敌对实体
+     * 使用 Minecraft 原生 Enemy 接口判定，覆盖所有敌对生物（包括 Mod 新增）
      */
     private static boolean isHostile(Mob mob) {
-        // 使用实体类型进行基础判定，覆盖常见敌对生物
-        String typeName = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).toString();
-        return typeName.contains("zombie") ||
-               typeName.contains("skeleton") ||
-               typeName.contains("creeper") ||
-               typeName.contains("spider") ||
-               typeName.contains("enderman") ||
-               typeName.contains("witch") ||
-               typeName.contains("phantom") ||
-               typeName.contains("blaze") ||
-               typeName.contains("ghast") ||
-               typeName.contains("slime") ||
-               typeName.contains("guardian") ||
-               typeName.contains("hoglin") ||
-               typeName.contains("piglin_brute") ||
-               typeName.contains("warden") ||
-               typeName.contains("ravager") ||
-               typeName.contains("vex") ||
-               typeName.contains("pillager") ||
-               typeName.contains("evoker") ||
-               typeName.contains("vindicator");
+        return mob instanceof net.minecraft.world.entity.monster.Enemy;
     }
 }

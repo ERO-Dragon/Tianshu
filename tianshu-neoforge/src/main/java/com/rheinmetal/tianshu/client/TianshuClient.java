@@ -39,6 +39,9 @@ import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+
+import java.util.Set;
+
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -75,6 +78,11 @@ public class TianshuClient {
     private static int acousticRadarTickCounter = 0;
     // 战术雷达更新间隔，单位：tick
     private static final int ACOUSTIC_RADAR_INTERVAL = 2;
+
+    // 二级雷达：已播报过的指示器（防止重复刷屏）
+    private static final Set<String> announcedIndicators = new java.util.HashSet<>();
+    // 二级雷达：指示器过期清理计时
+    private static int indicatorClearCounter = 0;
 
     public static ITargetScannerProvider getTargetScanner() { return targetScanner; }
     public static IInventoryDataProvider getInventoryProvider() { return inventoryProvider; }
@@ -390,9 +398,24 @@ public class TianshuClient {
                     );
 
             RadarOutput output = acousticRadarEngine.tickSync(playerPos);
-            if (output == null || output.getIndicators().isEmpty()) return;
+            if (output == null || output.getIndicators().isEmpty()) {
+                announcedIndicators.clear();
+                return;
+            }
+
+            // 每 60 tick 清理一次已播报记录，允许同类型怪物重新触发
+            indicatorClearCounter++;
+            if (indicatorClearCounter >= 60) {
+                announcedIndicators.clear();
+                indicatorClearCounter = 0;
+            }
 
             for (RadarIndicator indicator : output.getIndicators()) {
+                // 用 entityType 作为唯一键，同类型怪物只播报一次
+                String indicatorKey = indicator.getEntityType();
+                if (announcedIndicators.contains(indicatorKey)) continue;
+                announcedIndicators.add(indicatorKey);
+
                 String dir = computeDirectionLabel(indicator.getRelativeAngle());
                 String msg = "\u00a7e[雷达] \u00a7f" + dir + " " + indicator.getDisplayName()
                         + " " + String.format("%.0f", indicator.getDistance()) + "格";
@@ -406,10 +429,10 @@ public class TianshuClient {
 
     private static String computeDirectionLabel(double relativeAngle) {
         double abs = Math.abs(relativeAngle);
-        if (abs < 22.5) return "正前方";
+        if (abs < 22.5) return "前方";
         else if (abs < 67.5) return relativeAngle > 0 ? "左前方" : "右前方";
         else if (abs < 112.5) return relativeAngle > 0 ? "左方" : "右方";
-        else if (abs < 157.5) return relativeAngle > 0 ? "左后方" : "右后方";
+        else if (abs <157.5) return relativeAngle > 0 ? "左后方" : "右后方";
         else return "正后方";
     }
 
