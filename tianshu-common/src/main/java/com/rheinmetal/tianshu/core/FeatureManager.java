@@ -17,6 +17,7 @@ public final class FeatureManager {
     private static volatile boolean companionCardEnabled = true;
     private static volatile boolean durabilityAlertEnabled = true;
     private static volatile boolean chatAssistantEnabled = true;
+    private static volatile boolean tacticalMrEnabled = true;
 
     // ─── 服务端管控 ───
 
@@ -52,13 +53,13 @@ public final class FeatureManager {
     public static boolean isChatAssistantEnabled() { return chatAssistantEnabled; }
     public static void setChatAssistantEnabled(boolean v) { chatAssistantEnabled = v; }
 
-    /**
-     * 客户端启动时或 ClientConfig 热重载时调用，将 ClientConfig 的持久化值同步到内存。
-     */
+    public static boolean isTacticalMrEnabled() { return tacticalMrEnabled; }
+    public static void setTacticalMrEnabled(boolean v) { tacticalMrEnabled = v; }
+
     public static void syncFromClientConfig(
             boolean tacticalRadar, boolean navigation, boolean recipePanel,
             boolean audioRadar, boolean companionCard, boolean durabilityAlert,
-            boolean chatAssistant
+            boolean chatAssistant, boolean tacticalMr
     ) {
         tacticalRadarEnabled = tacticalRadar;
         navigationEnabled = navigation;
@@ -67,5 +68,6 @@ public final class FeatureManager {
         companionCardEnabled = companionCard;
         durabilityAlertEnabled = durabilityAlert;
         chatAssistantEnabled = chatAssistant;
+        tacticalMrEnabled = tacticalMr;
     }
 }

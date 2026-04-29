@@ -35,6 +35,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue COMPANION_CARD_ENABLED;
     public static final ModConfigSpec.BooleanValue DURABILITY_ALERT_ENABLED;
     public static final ModConfigSpec.BooleanValue CHAT_ASSISTANT;
+    public static final ModConfigSpec.BooleanValue TACTICAL_MR_ENABLED;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -60,6 +61,8 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 .define("durabilityAlert", true);
         CHAT_ASSISTANT = builder.comment("聊天助手（同声传译与语音发送）")
                 .define("chatAssistant", true);
+        TACTICAL_MR_ENABLED = builder.comment("全息战术 MR 系统")
+                .define("tacticalMr", true);
         builder.pop();
 
         builder.comment("性能与显存设置").push("performance");
@@ -329,8 +332,17 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 AUDIO_RADAR_ENABLED.get(),
                 COMPANION_CARD_ENABLED.get(),
                 DURABILITY_ALERT_ENABLED.get(),
-                CHAT_ASSISTANT.get()
+                CHAT_ASSISTANT.get(),
+                TACTICAL_MR_ENABLED.get()
         );
+    }
+
+    public boolean isTacticalMrEnabled() {
+        return TACTICAL_MR_ENABLED.get();
+    }
+
+    public void setTacticalMrEnabled(boolean enabled) {
+        TACTICAL_MR_ENABLED.set(enabled);
     }
 
     @Override

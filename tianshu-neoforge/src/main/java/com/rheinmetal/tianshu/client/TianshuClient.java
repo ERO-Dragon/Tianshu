@@ -12,6 +12,8 @@ import com.rheinmetal.tianshu.function.AcousticRadar.AlertSpeaker;
 import com.rheinmetal.tianshu.function.AcousticRadar.DefaultAlertTextProvider;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarOutput;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarIndicator;
+import com.rheinmetal.tianshu.function.MR.MrConstants;
+import com.rheinmetal.tianshu.function.MR.MrEngine;
 import com.rheinmetal.tianshu.core.FeatureManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
@@ -77,8 +79,11 @@ public class TianshuClient {
 
     private static AcousticRadarEngine acousticRadarEngine;
     private static int acousticRadarTickCounter = 0;
-    // 战术雷达更新间隔，单位：tick
     private static final int ACOUSTIC_RADAR_INTERVAL = 2;
+
+    private static MrEngine mrEngine;
+    private static MrRenderer mrRenderer;
+    private static int mrTickCounter = 0;
 
     // 二级雷达：已播报过的指示器（防止重复刷屏）
     private static final Set<String> announcedIndicators = new java.util.HashSet<>();
@@ -195,6 +200,7 @@ public class TianshuClient {
 
         handleVoiceKey();
         tickAcousticRadar(minecraft);
+        tickMrSystem(minecraft);
     }
 
     private static void handleVoiceKey() {
@@ -287,6 +293,11 @@ public class TianshuClient {
                 ResourceLocation.fromNamespaceAndPath("tianshu", "llm_reply"),
                 TianshuClient::renderLlmReply
         );
+        event.registerAbove(
+                ResourceLocation.fromNamespaceAndPath("tianshu", "llm_reply"),
+                ResourceLocation.fromNamespaceAndPath("tianshu", "mr_cards"),
+                TianshuClient::renderMrCards
+        );
     }
 
     public static void renderLlmReply(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
@@ -376,11 +387,8 @@ public class TianshuClient {
                     new DefaultAlertTextProvider(),
                     // 【新增】：将底层 Provider 的方法包装成回调传进去
                     requiredRadius -> {
-                        // 目前只有雷达，直接透传。
-                        // 将来如果你加了 MR 系统，这里改成取最大值：
-                        // double finalRadius = Math.max(requiredRadius, mrSystem.getRequiredRadius());
-                        // environmentProvider.setActiveScanRadius(finalRadius);
-                        environmentProvider.setActiveScanRadius(requiredRadius);
+                        double mrRadius = (mrEngine != null && mrEngine.isRunning()) ? mrEngine.getRequiredRadius() : 0.0;
+                        environmentProvider.setActiveScanRadius(Math.max(requiredRadius, mrRadius));
                     }
             );
             acousticRadarTickCounter = 0;
@@ -448,9 +456,66 @@ public class TianshuClient {
             acousticRadarEngine.shutdown();
             acousticRadarEngine = null;
         }
+        if (mrEngine != null) {
+            mrEngine.stop();
+            mrEngine = null;
+            mrRenderer = null;
+        }
         isVoiceKeyPressed = false;
         lastTriggerMode = null;
         currentLlmReply.setLength(0);
         LOGGER.info("天枢客户端资源清理完成");
+    }
+
+    private static void tickMrSystem(Minecraft minecraft) {
+        if (!FeatureManager.isTacticalMrEnabled()) {
+            if (mrEngine != null) {
+                mrEngine.stop();
+                mrEngine = null;
+                mrRenderer = null;
+                LOGGER.info("[MR] 全息战术系统已关闭，释放引擎实例");
+            }
+            return;
+        }
+
+        if (minecraft.player == null || minecraft.level == null) return;
+
+        if (mrEngine == null) {
+            mrEngine = new MrEngine(environmentProvider, renderContextProvider);
+            mrRenderer = new MrRenderer(mrEngine);
+            mrEngine.start();
+            mrTickCounter = 0;
+            LOGGER.info("[MR] 全息战术系统已启动");
+        }
+
+        mrTickCounter++;
+        if (mrTickCounter < MrConstants.TICK_INTERVAL) return;
+        mrTickCounter = 0;
+
+        try {
+            var player = minecraft.player;
+            com.rheinmetal.tianshu.snapshot.PositionData playerPos =
+                    new com.rheinmetal.tianshu.snapshot.PositionData(
+                            player.getX(), player.getY(), player.getZ(),
+                            player.getYRot(), player.getXRot(),
+                            player.level().dimension().location().toString(),
+                            player.getUUID().toString()
+                    );
+            mrEngine.tick(playerPos);
+
+            if (acousticRadarEngine != null) {
+                double radarRadius = acousticRadarEngine.getRadarRange();
+                double mrRadius = mrEngine.getRequiredRadius();
+                environmentProvider.setActiveScanRadius(Math.max(radarRadius, mrRadius));
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[MR] tick异常: {}", e.getMessage());
+        }
+    }
+
+    public static void renderMrCards(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+        if (mrRenderer != null) {
+            mrRenderer.render(guiGraphics, deltaTracker);
+        }
     }
 }
