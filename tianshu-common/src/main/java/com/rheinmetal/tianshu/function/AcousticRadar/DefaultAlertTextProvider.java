@@ -18,6 +18,6 @@ public class DefaultAlertTextProvider implements AlertTextProvider {
 
     @Override
     public String getLevel4ThreatListText(String content) {
-        return "警戒范围内有，" + content;
+        return "警戒范围内有" + content;
     }
 }

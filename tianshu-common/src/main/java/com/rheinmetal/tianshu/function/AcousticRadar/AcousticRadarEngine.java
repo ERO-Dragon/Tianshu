@@ -12,17 +12,13 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.logging.Logger;
 
 public class AcousticRadarEngine {
 
-    private volatile double RADAR_RANGE =32.0;// 这个值只在设置菜单里改
-    private volatile double ALERT_RANGE = RADAR_RANGE/2;
+    private volatile double RADAR_RANGE = 32.0;
+    private volatile double ALERT_RANGE = RADAR_RANGE / 2;
+
     private static final int DEBOUNCE_TICKS_LV2 = 20;
     private static final int DISAPPEAR_TICKS_LV4 = 60;
     private static final int INDICATOR_DURATION_TICKS = 60;
@@ -33,69 +29,60 @@ public class AcousticRadarEngine {
     private final AlertSpeaker alertSpeaker;
     private final AlertTextProvider textProvider;
     private final Consumer<Double> scanRequirementUpdater;
-    private volatile boolean isRunning = false; // 这个值在游戏里动态开关
 
-    
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "Tianshu-Radar-Async");
-        t.setDaemon(true);
-        return t;
-    });
+    private volatile boolean isRunning = false;
 
-    private final AtomicReference<RadarOutput> volatileOutput = new AtomicReference<>(null);
+    private RadarOutput lastOutput = null;
 
     private static final class EntityEntryRecord {
         final NearbyEntityData entity;
         final long entryTick;
-
         EntityEntryRecord(NearbyEntityData entity, long entryTick) {
             this.entity = entity;
             this.entryTick = entryTick;
         }
-
         NearbyEntityData getEntity() { return entity; }
         long getEntryTick() { return entryTick; }
     }
 
-    private final Map<String, NearbyEntityData> latestRadarTargetMap = new ConcurrentHashMap<>();
-    private final Map<String, Long> indicatorExpiryMap = new ConcurrentHashMap<>();
+    private final Map<String, NearbyEntityData> latestRadarTargetMap = new HashMap<>();
+    private final Map<String, Long> indicatorExpiryMap = new HashMap<>();
+    private final Map<String, EntityEntryRecord> entityPool = new HashMap<>();
+    private final Map<String, Integer> entityOutOfRangeTimers = new HashMap<>();
+    private final Set<String> level3PresenceSet = new HashSet<>();
 
-    private final ConcurrentHashMap<String, EntityEntryRecord> entityPool = new ConcurrentHashMap<>();
-    private final Map<String, Integer> entityOutOfRangeTimers = new ConcurrentHashMap<>();
+    private boolean hasActiveThreat = false;
+    private int alertCooldownTimer = 0;
+    private String pendingLevel3Speech = null;
+    private String pendingLevel3Type = null;
+    private String pendingLevel4Speech = null;
+    private boolean isLevel4Interruptive = false;
+    private boolean hasBroadcastedThreatList = false;
 
-    private final Set<String> level3PresenceSet = ConcurrentHashMap.newKeySet();
+    private final Set<String> knownThreatUuids = new HashSet<>();
+    private final Set<String> historicalBlindSet = new HashSet<>(); 
+    private volatile boolean isTTSBusy = false;
+    private boolean wasBlindSpotEmpty = true;
 
-    private volatile boolean hasActiveThreat = false;
-    private volatile int alertCooldownTimer = 0;
+    private long currentTick = 0;
 
-    private volatile String pendingLevel3Speech = null;
-    private volatile String pendingLevel3Type = null;
-    private volatile String pendingLevel4SightSpeech = null;
-    private volatile String pendingLevel4BlindSpeech = null;
-    private volatile String pendingLevel4ThreatListSpeech = null;
-    private volatile boolean hasBroadcastedThreatList = false;
-
-    private final Set<String> knownThreatUuids = ConcurrentHashMap.newKeySet();
-
-    private volatile long currentTick = 0;
-    private volatile boolean engineRunning = true;
-//Debug Log
-private static void debugLog(String msg) {
-    try {
-        Path logPath = Paths.get("logs", "radar_debug.txt");
-        String line = "[" + System.currentTimeMillis() + "] " + msg + "\n";
-        Files.write(logPath, line.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-    } catch (IOException e) {
-        e.printStackTrace();
+    private static void debugLog(String msg) {
+        try {
+            Path logPath = Paths.get("logs", "radar_debug.txt");
+            String line = "[" + System.currentTimeMillis() + "] " + msg + "\n";
+            Files.write(logPath, line.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
-}
+
     public AcousticRadarEngine(
             IEnvironmentAwarenessProvider environment,
             IPlayerStateProvider playerState,
             IAudioEventProvider audioEvent,
             AlertSpeaker alertSpeaker,
             AlertTextProvider textProvider,
-            Consumer<Double> scanRequirementUpdater // <--- 新增
+            Consumer<Double> scanRequirementUpdater
     ) {
         this.environment = environment;
         this.playerState = playerState;
@@ -105,52 +92,40 @@ private static void debugLog(String msg) {
         this.scanRequirementUpdater = scanRequirementUpdater;
     }
 
-    // 游戏内快捷键动态开启
     public void start() {
         this.isRunning = true;
-        // 不用管底层是谁，直接通过回调大喊：“我需要 RADAR_RANGE 这么大的框！”
         notifyRequirementChanged();
     }
 
-    // 游戏内快捷键动态关闭
     public void stop() {
         this.isRunning = false;
-        // 大喊：“我不需要框了（传0）！”
         notifyRequirementChanged();
     }
 
-    // 设置菜单里调整范围
     public void setRadarRange(double newRange) {
         this.RADAR_RANGE = Math.max(4.0, Math.min(32.0, newRange));
-        this.ALERT_RANGE = this.RADAR_RANGE/2;
-        // 只有在雷达处于开启状态时，才需要大喊
+        this.ALERT_RANGE = this.RADAR_RANGE / 2;
         if (this.isRunning) {
             notifyRequirementChanged();
         }
     }
 
-    // 提供给未来 MR 系统查询当前雷达需求的方法（统筹者需要用到）
-    public double getRadarRange() {
-        return RADAR_RANGE;
-    }
+    public double getRadarRange() { return RADAR_RANGE; }
+    public boolean isRunning() { return isRunning; }
 
-    public boolean isRunning() {
-        return isRunning;
-    }
-    
-    // ---------------- 私有辅助方法 ----------------
-
-    /**
-     * 封装状态变更通知，避免重复代码
-     */
     private void notifyRequirementChanged() {
         if (this.scanRequirementUpdater != null) {
             double requestRadius = this.isRunning ? this.RADAR_RANGE : 0.0;
             this.scanRequirementUpdater.accept(requestRadius);
         }
     }
+
+    public void onTtsPlaybackFinished() {
+        isTTSBusy = false;
+    }
+
     public RadarOutput tickSync(PositionData playerPos) {
-        if (playerPos == null || !isRunning) return volatileOutput.get();
+        if (playerPos == null || !isRunning) return lastOutput;
 
         currentTick++;
         final long tickSnapshot = currentTick;
@@ -158,105 +133,74 @@ private static void debugLog(String msg) {
         final float yaw = playerPos.getYaw(), pitch = playerPos.getPitch();
         final String dim = playerPos.getDimension();
 
-        executor.submit(() -> {
-            if (!engineRunning || !isRunning) return;
-            try {
-                PositionData asyncPos = new PositionData(px, py, pz, yaw, pitch, dim, playerPos.getPlayerUuid());
-                RadarOutput result = computeInternal(asyncPos, tickSnapshot);
-                volatileOutput.set(result);
-            } catch (Exception ignored) {}
-        });
-
+        PositionData posData = new PositionData(px, py, pz, yaw, pitch, dim, playerPos.getPlayerUuid());
+        lastOutput = computeInternal(posData, tickSnapshot);
         dispatchPendingSpeech();
 
-        return volatileOutput.get();
+        return lastOutput;
     }
 
     private void dispatchPendingSpeech() {
-        if (pendingLevel4BlindSpeech != null) {
-            String blindText = pendingLevel4BlindSpeech;
-            pendingLevel4BlindSpeech = null;
+        if (pendingLevel4Speech != null) {
+            String text = pendingLevel4Speech;
+            boolean needInterrupt = isLevel4Interruptive;
+
+            pendingLevel4Speech = null;
+            isLevel4Interruptive = false;
+
             if (alertSpeaker != null) {
-                alertSpeaker.speakAlertWithInterrupt(blindText);
-            }
-        } else if (pendingLevel4SightSpeech != null) {
-            String sightText = pendingLevel4SightSpeech;
-            pendingLevel4SightSpeech = null;
-            if (alertSpeaker != null) {
-                if (!hasActiveThreat) {
-                    alertSpeaker.speakAlertWithInterrupt(sightText);
+                isTTSBusy = true;
+                if (needInterrupt) {
+                    alertSpeaker.speakAlertWithInterrupt(text);
+                    hasActiveThreat = true;
                 } else {
-                    alertSpeaker.speakAlert(sightText);
+                    alertSpeaker.speakAlert(text);
                 }
             }
-            hasActiveThreat = true;
+            return;
         }
 
         if (pendingLevel3Speech != null) {
+            if (hasActiveThreat) {
+                pendingLevel3Speech = null;
+                pendingLevel3Type = null;
+                return;
+            }
             String toSpeak = pendingLevel3Speech;
-            String type = pendingLevel3Type;
             pendingLevel3Speech = null;
             pendingLevel3Type = null;
             if (alertSpeaker != null) {
-                if (!hasActiveThreat) {
-                    alertSpeaker.speakAlertWithInterrupt(toSpeak);
-                } else {
-                    alertSpeaker.speakAlert(toSpeak);
-                }
+                isTTSBusy = true;
+                alertSpeaker.speakAlertWithInterrupt(toSpeak);
             }
-        }
-
-        if (pendingLevel4ThreatListSpeech != null) {
-            if (alertSpeaker != null) {
-                alertSpeaker.speakAlert(pendingLevel4ThreatListSpeech);
-            }
-            pendingLevel4ThreatListSpeech = null;
-            hasBroadcastedThreatList = true;
         }
     }
 
     private RadarOutput computeInternal(PositionData playerPos, long tick) {
         List<NearbyEntityData> allEntities = environment.getNearbyHostiles(RADAR_RANGE);
-
         List<NearbyEntityData> hostilesInRadar = new ArrayList<>();
         List<NearbyEntityData> hostilesInAlert = new ArrayList<>();
 
         for (NearbyEntityData entity : allEntities) {
             if (!entity.isHostile()) continue;
             double dist = entity.getDistance();
-            if (dist <= RADAR_RANGE) {
-                hostilesInRadar.add(entity);
-            }
-            if (dist <= ALERT_RANGE) {
-                hostilesInAlert.add(entity);
-            }
+            if (dist <= RADAR_RANGE) hostilesInRadar.add(entity);
+            if (dist <= ALERT_RANGE) hostilesInAlert.add(entity);
         }
 
-        // for (NearbyEntityData entity : hostilesInAlert) {
-        //     // 只打印前3个，防止刷屏
-        //     if (hostilesInAlert.indexOf(entity) > 2) break;
-        //     String target = entity.getTargetUuid() != null ? entity.getTargetUuid() : "NULL(无目标)";
-        //     debugLog("[雷达诊断] Tick:{} | 怪物:{} | 距离:{} | 视线:{} | 锁定的UUID:{}"+
-        //         tick+
-        //         entity.getDisplayName()+
-        //         String.format("%.1f", entity.getDistance())+
-        //         entity.isLineOfSight()+"      "+
-        //         target
-        //     );
-        // }
         boolean highPrecision = FeatureManager.isHighPrecisionModeAllowed();
-debugLog("[雷达诊断] Tick=" + tick + " 高精度=" + highPrecision + " 雷达范围=" + RADAR_RANGE + " 警戒范围=" + ALERT_RANGE + " 实体数=" + hostilesInAlert.size());
+        debugLog("[雷达诊断] Tick=" + tick + " 高精度=" + highPrecision + " 雷达范围=" + RADAR_RANGE + " 警戒范围=" + ALERT_RANGE + " 实体数=" + hostilesInAlert.size());
+
         if (highPrecision) {
             Set<UUID> serverLocks = RadarLockState.getServerLockedUuids();
-debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUIDs=" + serverLocks);
+            debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size());
         }
+
         processLevel2Radar(hostilesInRadar, tick);
         processLevel3Perception(hostilesInAlert, tick, playerPos.getPlayerUuid(), highPrecision);
-        processLevel4LockedAlert(hostilesInAlert, tick, playerPos.getPlayerUuid(), highPrecision);
+        processLevel4LockedAlert(hostilesInAlert, hostilesInRadar, tick, playerPos.getPlayerUuid(), highPrecision);
 
-        List<RadarIndicator> indicators = buildRadarIndicators(tick);
-
-        return new RadarOutput(indicators, tick);
+        return new RadarOutput(buildRadarIndicators(tick), tick);
     }
 
     private void processLevel2Radar(List<NearbyEntityData> hostilesInRadar, long tick) {
@@ -264,31 +208,29 @@ debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUI
         for (NearbyEntityData entity : hostilesInRadar) {
             String entityUuid = entity.getUuid();
             currentEntityUuids.add(entityUuid);
-
             if (!entityPool.containsKey(entityUuid)) {
                 entityPool.put(entityUuid, new EntityEntryRecord(entity, tick));
                 indicatorExpiryMap.put(entityUuid, tick + INDICATOR_DURATION_TICKS);
             }
             entityOutOfRangeTimers.remove(entityUuid);
         }
-
-        for (Map.Entry<String, EntityEntryRecord> entry : entityPool.entrySet()) {
+        Iterator<Map.Entry<String, EntityEntryRecord>> it = entityPool.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, EntityEntryRecord> entry = it.next();
             String entityUuid = entry.getKey();
             if (!currentEntityUuids.contains(entityUuid)) {
                 int timer = entityOutOfRangeTimers.getOrDefault(entityUuid, 0) + 1;
                 entityOutOfRangeTimers.put(entityUuid, timer);
                 if (timer >= DEBOUNCE_TICKS_LV2) {
-                    entityPool.remove(entityUuid);
+                    it.remove();
                     entityOutOfRangeTimers.remove(entityUuid);
                     indicatorExpiryMap.remove(entityUuid);
                 }
             }
         }
-
         latestRadarTargetMap.clear();
         for (EntityEntryRecord record : entityPool.values()) {
             if (record.getEntryTick() + INDICATOR_DURATION_TICKS <= tick) continue;
-
             String type = extractEntityType(record.getEntity());
             NearbyEntityData existing = latestRadarTargetMap.get(type);
             if (existing == null || record.getEntryTick() > getEntityEntryTick(existing)) {
@@ -301,6 +243,7 @@ debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUI
         EntityEntryRecord rec = entityPool.get(entity.getUuid());
         return rec != null ? rec.getEntryTick() : 0L;
     }
+
     private void processLevel3Perception(List<NearbyEntityData> hostilesInAlert, long tick, String localPlayerUuid, boolean isHighPrecisionMode) {
         Set<String> currentTypesIn8 = new HashSet<>();
         for (NearbyEntityData entity : hostilesInAlert) {
@@ -308,6 +251,7 @@ debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUI
         }
         level3PresenceSet.removeIf(type -> !currentTypesIn8.contains(type));
 
+        if (isTTSBusy) return;
         if (pendingLevel3Speech != null) return;
 
         for (NearbyEntityData entity : hostilesInAlert) {
@@ -315,14 +259,10 @@ debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUI
             if (isHighPrecisionMode) {
                 isThreat = RadarLockState.isLockedByServer(UUID.fromString(entity.getUuid()));
             } else {
-                // 降级模式：只有被墙挡住，才视为“没锁定”，归入 L3
                 isThreat = entity.isLineOfSight();
             }
-
-            // 如果是 L4 级威胁，跳过它
             if (isThreat) continue;
 
-            // 剩下的全是 L3
             String type = extractEntityType(entity);
             if (!level3PresenceSet.contains(type)) {
                 String displayName = resolveDisplayName(hostilesInAlert, type);
@@ -333,116 +273,148 @@ debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size() + " UUI
             }
         }
     }
-    private void processLevel4LockedAlert(List<NearbyEntityData> hostilesInAlert, long tick, String localPlayerUuid, boolean isHighPrecisionMode) {
-        Set<String> currentBlindUuids = new HashSet<>();
-        Set<String> currentFrontalUuids = new HashSet<>();
+
+    private void processLevel4LockedAlert(List<NearbyEntityData> hostilesInAlert, List<NearbyEntityData> hostilesInRadar, long tick, String localPlayerUuid, boolean isHighPrecisionMode) {
         Set<String> currentAllThreatUuids = new HashSet<>();
-
-        float fovThreshold = getCurrentDynamicFov() / 2.0f;
+        Set<String> currentFrontalUuids = new HashSet<>();
         
-        NearbyEntityData primaryNewFrontal = null;
-        double minFrontalDist = Double.MAX_VALUE;
-        NearbyEntityData primaryNewBlind = null;
-        double minBlindDist = Double.MAX_VALUE;
+        // 【关键点1】每帧新建一个纯瞬态快照，不碰历史池！
+        Set<String> currentBlindSnapshot = new HashSet<>();
 
+        float rawFov = getCurrentDynamicFov();
+        if (rawFov <= 10.0f || rawFov > 180.0f) rawFov = 70.0f;
+        float fovThreshold = rawFov / 2.0f;
+
+        // === 第一阶段：只收集，不写 knownThreatUuids ===
         for (NearbyEntityData entity : hostilesInAlert) {
             boolean isLocked = false;
             if (isHighPrecisionMode) {
                 isLocked = RadarLockState.isLockedByServer(UUID.fromString(entity.getUuid()));
-debugLog("[雷达诊断-L4] 实体=" + entity.getDisplayName() + " UUID=" + entity.getUuid() + " 服务端锁定=" + isLocked + " 距离=" + String.format("%.1f", entity.getDistance()) + " 角度=" + String.format("%.1f", entity.getHorizontalAngle()));
             } else {
-                // 降级模式：无遮挡即锁定
                 isLocked = entity.isLineOfSight();
             }
-
             if (isLocked) {
                 currentAllThreatUuids.add(entity.getUuid());
                 double absAngle = Math.abs(entity.getHorizontalAngle());
-                boolean isNew = !knownThreatUuids.contains(entity.getUuid());
                 
-                // 用动态 FOV 替代原版的 120.0 硬编码
                 if (absAngle > fovThreshold) {
-                    currentBlindUuids.add(entity.getUuid());
-                    if (isNew && entity.getDistance() < minBlindDist) {
-                        minBlindDist = entity.getDistance();
-                        primaryNewBlind = entity;
+                    // 在盲区：加入瞬态快照用于跃迁计算
+                    currentBlindSnapshot.add(entity.getUuid());
+                    // 不在已知历史里，才加入历史盲区池（用于转正）
+                    if (!knownThreatUuids.contains(entity.getUuid())) {
+                        historicalBlindSet.add(entity.getUuid());
                     }
                 } else {
+                    // 在前方：加入前方集合
                     currentFrontalUuids.add(entity.getUuid());
-                    if (isNew && entity.getDistance() < minFrontalDist) {
-                        minFrontalDist = entity.getDistance();
-                        primaryNewFrontal = entity;
-                    }
+                    // 【关键点2】真正的盲区转正！从历史池中剔除，代表已被视线捕获
+                    historicalBlindSet.remove(entity.getUuid());
                 }
             }
         }
 
-        Set<String> newBlindUuids = new HashSet<>(currentBlindUuids);
-        newBlindUuids.removeAll(knownThreatUuids);
+        // === 第二阶段：基于瞬态快照计算跃迁 ===
+        boolean isBlindSpotNowEmpty = currentBlindSnapshot.isEmpty();
+        boolean blindSpotBecameNonEmpty = wasBlindSpotEmpty && !isBlindSpotNowEmpty;
+        wasBlindSpotEmpty = isBlindSpotNowEmpty;
 
-        if (!newBlindUuids.isEmpty()) {
+        // === 第三阶段：计算新前方怪（必须在修改 known 之前） ===
+        Set<String> newFrontalUuids = new HashSet<>(currentFrontalUuids);
+        newFrontalUuids.removeAll(knownThreatUuids);
+
+        // === 第四阶段：统一更新历史记录 ===
+        knownThreatUuids.addAll(currentFrontalUuids);
+        // 本帧确认存在的盲区怪，也拉入已知（防止下帧转头看到时被误判为前方新怪）
+        knownThreatUuids.addAll(historicalBlindSet);
+        
+        // 【关键点3】历史池保洁：敌意信号消失的怪，如果还在历史池里，立刻扫地出门，防止僵尸数据
+        historicalBlindSet.retainAll(currentAllThreatUuids);
+
+        boolean hasNewFrontal = !newFrontalUuids.isEmpty();
+        boolean shouldTrigger = false;
+        boolean isPeaceFirstStrike = false;
+
+        if (!hasActiveThreat) {
+            if (blindSpotBecameNonEmpty || hasNewFrontal) {
+                shouldTrigger = true;
+                isPeaceFirstStrike = true;
+            }
+        } else {
+            if (blindSpotBecameNonEmpty) {
+                shouldTrigger = true;
+            }
+        }
+
+        debugLog("[L4诊断] Tick=" + tick + " | knownSize=" + knownThreatUuids.size() + " | histBlindSize=" + historicalBlindSet.size() + " | snapshotSize=" + currentBlindSnapshot.size() + " | blindBecameNonEmpty=" + blindSpotBecameNonEmpty + " | newFrontal=" + hasNewFrontal + " | shouldTrigger=" + shouldTrigger);
+
+        // L4 拥有绝对打断权，无视 isTTSBusy 直接赋值
+        if (shouldTrigger) {
             alertCooldownTimer = 0;
             pendingLevel3Speech = null;
             pendingLevel3Type = null;
-            pendingLevel4SightSpeech = null;
+            String mainText = null;
 
-            String blindDirection = "未知";
-            String blindType = "敌人";
-            if (primaryNewBlind != null) {
-                blindDirection = computeDirectionLabel(primaryNewBlind.getHorizontalAngle());
-                blindType = extractEntityType(primaryNewBlind);
-            }
-            pendingLevel4BlindSpeech = textProvider.getLevel4BlindSpotText(blindDirection, blindType);
-
-            if (!hasBroadcastedThreatList) {
-                String content = buildThreatListContent(hostilesInAlert, currentAllThreatUuids);
-                if (!content.isEmpty()) {
-                    pendingLevel4ThreatListSpeech = textProvider.getLevel4ThreatListText(content);
+            // 优先播报盲区（注意这里要遍历瞬态快照找最近的）
+            if (!currentBlindSnapshot.isEmpty()) {
+                NearbyEntityData primaryBlind = null;
+                double minDist = Double.MAX_VALUE;
+                for (NearbyEntityData entity : hostilesInAlert) {
+                    if (currentBlindSnapshot.contains(entity.getUuid()) && entity.getDistance() < minDist) {
+                        minDist = entity.getDistance();
+                        primaryBlind = entity;
+                    }
+                }
+                if (primaryBlind != null) {
+                    String blindDirection = computeDirectionLabel(primaryBlind.getHorizontalAngle());
+                    String blindType = extractEntityType(primaryBlind);
+                    mainText = textProvider.getLevel4BlindSpotText(blindDirection, blindType);
+                }
+            } else if (hasNewFrontal) {
+                NearbyEntityData primaryFrontal = null;
+                double minDist = Double.MAX_VALUE;
+                for (NearbyEntityData entity : hostilesInAlert) {
+                    if (newFrontalUuids.contains(entity.getUuid()) && entity.getDistance() < minDist) {
+                        minDist = entity.getDistance();
+                        primaryFrontal = entity;
+                    }
+                }
+                if (primaryFrontal != null) {
+                    String frontalDirection = computeDirectionLabel(primaryFrontal.getHorizontalAngle());
+                    mainText = frontalDirection + textProvider.getLevel4SightEngageText();
                 }
             }
-            hasActiveThreat = true;
-            knownThreatUuids.addAll(currentBlindUuids);
-            return;
+
+            if (mainText != null) {
+                if (isPeaceFirstStrike && !hasBroadcastedThreatList) {
+                    String content = buildInsightThreatListContent(hostilesInRadar);
+                    if (!content.isEmpty()) {
+                        mainText += "。" + textProvider.getLevel4ThreatListText(content);
+                        hasBroadcastedThreatList = true;
+                    }
+                }
+                pendingLevel4Speech = mainText;
+                isLevel4Interruptive = true;
+            }
         }
 
-debugLog("[雷达诊断-L4] 当前威胁=" + currentAllThreatUuids.size() + " 盲区=" + currentBlindUuids.size() + " 前方=" + currentFrontalUuids.size() + " known=" + knownThreatUuids.size());
-
+        // 脱战重置
         if (!currentAllThreatUuids.isEmpty()) {
             alertCooldownTimer = 0;
-            
-            // 只有前方新威胁时的处理（带 8 向）
-            Set<String> newFrontalOnlyUuids = new HashSet<>(currentFrontalUuids);
-            newFrontalOnlyUuids.removeAll(knownThreatUuids);
-debugLog("[雷达诊断-L4] newFrontalOnly=" + newFrontalOnlyUuids.size() + " hasActiveThreat=" + hasActiveThreat + " primaryNewFrontal=" + (primaryNewFrontal != null));
-            
-            if (pendingLevel4SightSpeech == null && !newFrontalOnlyUuids.isEmpty() && primaryNewFrontal != null) {
-                String frontalDirection = computeDirectionLabel(primaryNewFrontal.getHorizontalAngle());
-                pendingLevel4SightSpeech = frontalDirection+textProvider.getLevel4SightEngageText();
-debugLog("[雷达诊断-L4] 触发前方接敌播报: " + frontalDirection);
-            }
-
-            if (!hasBroadcastedThreatList && pendingLevel4ThreatListSpeech == null) {
-                String content = buildThreatListContent(hostilesInAlert, currentAllThreatUuids);
-                if (!content.isEmpty()) {
-                    pendingLevel4ThreatListSpeech = textProvider.getLevel4ThreatListText(content);
-debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
-                }
-            }
         } else {
-            if (hasActiveThreat || pendingLevel4SightSpeech != null) {
+            if (hasActiveThreat || pendingLevel4Speech != null) {
                 alertCooldownTimer++;
                 if (alertCooldownTimer >= DISAPPEAR_TICKS_LV4) {
                     hasActiveThreat = false;
-                    pendingLevel4SightSpeech = null;
-                    pendingLevel4ThreatListSpeech = null;
+                    pendingLevel4Speech = null;
+                    isLevel4Interruptive = false;
                     hasBroadcastedThreatList = false;
                     alertCooldownTimer = 0;
                     knownThreatUuids.clear();
+                    historicalBlindSet.clear(); // 记得改名
+                    wasBlindSpotEmpty = true;
                 }
             }
         }
-        knownThreatUuids.addAll(currentAllThreatUuids);
-        knownThreatUuids.retainAll(currentAllThreatUuids);
     }
 
     private List<RadarIndicator> buildRadarIndicators(long tick) {
@@ -452,12 +424,7 @@ debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
             NearbyEntityData entity = entry.getValue();
             Long expiry = indicatorExpiryMap.get(entity.getUuid());
             if (expiry != null && tick < expiry) {
-                indicators.add(new RadarIndicator(
-                        type,
-                        entity.getDisplayName(),
-                        entity.getHorizontalAngle(),
-                        entity.getDistance()
-                ));
+                indicators.add(new RadarIndicator(type, entity.getDisplayName(), entity.getHorizontalAngle(), entity.getDistance()));
             }
         }
         return indicators;
@@ -480,10 +447,10 @@ debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
         return entity.getDisplayName();
     }
 
-    private String buildThreatListContent(List<NearbyEntityData> hostilesInAlert, Set<String> lockedUuids) {
+    private String buildInsightThreatListContent(List<NearbyEntityData> hostilesInRadar) {
         Map<String, Integer> counts = new LinkedHashMap<>();
-        for (NearbyEntityData entity : hostilesInAlert) {
-            if (lockedUuids.contains(entity.getUuid())) {
+        for (NearbyEntityData entity : hostilesInRadar) {
+            if (entity.isLineOfSight()) {
                 String type = extractEntityType(entity);
                 counts.merge(type, 1, Integer::sum);
             }
@@ -501,9 +468,7 @@ debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
 
     private String resolveDisplayName(List<NearbyEntityData> entities, String type) {
         for (NearbyEntityData e : entities) {
-            if (extractEntityType(e).equals(type)) {
-                return e.getDisplayName();
-            }
+            if (extractEntityType(e).equals(type)) return e.getDisplayName();
         }
         return type;
     }
@@ -518,24 +483,16 @@ debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
     }
 
     private float getCurrentDynamicFov() {
-        try {
-            return this.playerState.getCurrentDynamicFov();
-        } catch (Exception ignored) {}
+        try { return this.playerState.getCurrentDynamicFov(); } catch (Exception ignored) {}
         return 70.0f;
     }
 
-    public RadarOutput getLastOutput() {
-        return volatileOutput.get();
-    }
+    public RadarOutput getLastOutput() { return lastOutput; }
 
     public void shutdown() {
-        engineRunning = false;
-        executor.shutdownNow();
     }
 
     public void reset() {
-        engineRunning = false;
-        executor.shutdownNow();
         latestRadarTargetMap.clear();
         indicatorExpiryMap.clear();
         entityPool.clear();
@@ -545,12 +502,13 @@ debugLog("[雷达诊断-L4] 触发威胁列表: " + content);
         alertCooldownTimer = 0;
         pendingLevel3Speech = null;
         pendingLevel3Type = null;
-        pendingLevel4SightSpeech = null;
-        pendingLevel4BlindSpeech = null;
-        pendingLevel4ThreatListSpeech = null;
+        pendingLevel4Speech = null;
         hasBroadcastedThreatList = false;
         knownThreatUuids.clear();
-        volatileOutput.set(null);
+        historicalBlindSet.clear();
+        wasBlindSpotEmpty = true;
+        isTTSBusy = false;
+        lastOutput = null;
         currentTick = 0;
     }
 }

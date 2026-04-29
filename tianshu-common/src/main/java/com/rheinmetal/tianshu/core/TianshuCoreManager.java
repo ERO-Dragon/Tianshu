@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.core.Engine.AsrEngine;
 import com.rheinmetal.tianshu.core.Engine.TtsEngine;
 import com.rheinmetal.tianshu.event.InterruptEvent;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
+import com.rheinmetal.tianshu.event.TtsPlaybackEndEvent;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
@@ -424,6 +425,8 @@ public class TianshuCoreManager {
         threadPool.getToolWorker().execute(() -> {
             try {
                 env.info("[战术雷达] TTS排队播报: " + text);
+                audioBridge.setOnPlaybackFinished(() ->
+                        eventBus.publishEvent(new TtsPlaybackEndEvent("acoustic_radar")));
                 audioBridge.startTtsPlayback(ttsWorker.getSampleRate());
                 ttsWorker.synthesizeForPreview(text, 1.2f, audio -> audioBridge.feedTtsAudio(audio));
                 audioBridge.finishTtsPlayback();
@@ -440,6 +443,8 @@ public class TianshuCoreManager {
         threadPool.getToolWorker().execute(() -> {
             try {
                 env.info("[战术雷达] TTS打断播报: " + text);
+                audioBridge.setOnPlaybackFinished(() ->
+                        eventBus.publishEvent(new TtsPlaybackEndEvent("acoustic_radar")));
                 audioBridge.startTtsPlayback(ttsWorker.getSampleRate());
                 ttsWorker.synthesizeForPreview(text, 1.2f, audio -> audioBridge.feedTtsAudio(audio));
                 audioBridge.finishTtsPlayback();

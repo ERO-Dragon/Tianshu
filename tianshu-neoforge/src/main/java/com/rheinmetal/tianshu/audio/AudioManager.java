@@ -36,6 +36,7 @@ public class AudioManager implements IAudioBridge {
 
     private volatile Mixer.Info currentMicMixer = null;
     private volatile int currentMicIndex = -1;
+    private volatile Runnable onPlaybackFinished;
 
     private Mixer.Info findRealPhysicalMic(DataLine.Info info) {
         Mixer.Info fallbackMic = null;
@@ -254,10 +255,21 @@ public class AudioManager implements IAudioBridge {
             }
         }
         stopTtsPlayback();
+        Runnable cb = onPlaybackFinished;
+        onPlaybackFinished = null;
+        if (cb != null) {
+            cb.run();
+        }
+    }
+
+    @Override
+    public void setOnPlaybackFinished(Runnable callback) {
+        this.onPlaybackFinished = callback;
     }
 
     @Override
     public void stopTtsPlayback() {
+        onPlaybackFinished = null;
         SourceDataLine line = ttsDataLine;
         ttsDataLine = null;
         if (line != null) {

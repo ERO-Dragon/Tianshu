@@ -236,7 +236,11 @@ public class NeoForgePlayerStateProvider implements IPlayerStateProvider {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null) {
-                return mc.player.getFieldOfViewModifier();
+                float fovRadians = mc.player.getFieldOfViewModifier();
+                if (fovRadians > 0 && fovRadians < 2 * Math.PI) { 
+                    return (float) Math.toDegrees(fovRadians);
+                }
+                return fovRadians; // 如果已经是度数了，直接返回
             }
         } catch (Exception ignored) {}
         return 70.0f;

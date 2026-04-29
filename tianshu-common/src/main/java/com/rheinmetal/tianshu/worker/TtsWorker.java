@@ -113,6 +113,9 @@ public class TtsWorker implements Runnable {
                     }
 
                     if (synthesizing) {
+                        audioManager.setOnPlaybackFinished(() ->
+                                coreManager.getEventBus().publishEvent(
+                                        new TtsPlaybackEndEvent("llm", sessionId)));
                         audioManager.finishTtsPlayback();
                         synthesizing = false;
                         env.info("TTS 流式播放通道已播完并关闭");

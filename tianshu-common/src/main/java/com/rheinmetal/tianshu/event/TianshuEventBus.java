@@ -68,6 +68,8 @@ public class TianshuEventBus {
                 ttsQueue.put(event);
                 uiQueue.put(event);
             } else if (event instanceof TtsAudioEvent) {
+            } else if (event instanceof TtsPlaybackEndEvent) {
+                uiQueue.put(event);
             } else if (event instanceof StartListeningEvent ||
                        event instanceof StopListeningEvent ||
                        event instanceof StartStreamRecordingEvent ||

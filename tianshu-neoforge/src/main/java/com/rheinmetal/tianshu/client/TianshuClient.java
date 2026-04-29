@@ -34,6 +34,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -178,7 +179,7 @@ public class TianshuClient {
         event.registerReloadListener(new ItemCommandReloadListener());
     }
     @SubscribeEvent
-    public static void onClientTick(PlayerTickEvent.Post event) {
+    public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) return;
 
@@ -330,6 +331,10 @@ public class TianshuClient {
                     );
                     currentLlmReply.setLength(0);
                 }
+            } else if (e instanceof TtsPlaybackEndEvent ttsEnd) {
+                if ("acoustic_radar".equals(ttsEnd.getSource()) && acousticRadarEngine != null) {
+                    acousticRadarEngine.onTtsPlaybackFinished();
+                }
             }
         }
 
@@ -430,10 +435,10 @@ public class TianshuClient {
     private static String computeDirectionLabel(double relativeAngle) {
         double abs = Math.abs(relativeAngle);
         if (abs < 22.5) return "前方";
-        else if (abs < 67.5) return relativeAngle > 0 ? "左前方" : "右前方";
-        else if (abs < 112.5) return relativeAngle > 0 ? "左方" : "右方";
-        else if (abs <157.5) return relativeAngle > 0 ? "左后方" : "右后方";
-        else return "正后方";
+        else if (abs < 67.5) return relativeAngle > 0 ? "右前方" : "左前方";
+        else if (abs < 112.5) return relativeAngle > 0 ? "右方" : "左方";
+        else if (abs <157.5) return relativeAngle > 0 ? "右后方" : "左后方";
+        else return "后方";
     }
 
     public static void shutdownClient() {

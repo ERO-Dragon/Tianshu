@@ -131,14 +131,16 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                 }
 
                 float attackDamage = 0f;
-                try {
-                    attackDamage = (float) living.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-                } catch (NullPointerException ignored) {}
+                {
+                    var attr = living.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+                    if (attr != null) attackDamage = (float) attr.getValue();
+                }
 
                 float armorValue = 0f;
-                try {
-                    armorValue = (float) living.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
-                } catch (NullPointerException ignored) {}
+                {
+                    var attr = living.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
+                    if (attr != null) armorValue = (float) attr.getValue();
+                }
 
                 String targetUuid = null;
                 if (living instanceof net.minecraft.world.entity.Mob mob) {

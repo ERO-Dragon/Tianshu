@@ -20,6 +20,8 @@ public interface IAudioBridge {
 
     void finishTtsPlayback();
 
+    void setOnPlaybackFinished(Runnable callback);
+
     void stopTtsPlayback();
 
     void playAudio(byte[] audioData, int sampleRate);
