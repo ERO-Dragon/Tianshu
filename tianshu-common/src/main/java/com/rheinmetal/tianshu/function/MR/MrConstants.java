@@ -43,4 +43,19 @@ public final class MrConstants {
 
     public static final int TICK_INTERVAL = 2;
     public static final float TICK_DURATION = 0.05f;
+
+    public static final float FOCUS_DELAY_SECONDS = 3.0f;
+    public static final float APPEAR_ANIM_DURATION = 1.2f / APPEAR_SPEED;
+    public static final float MAX_STAGGER_DELAY = (STAGGER_MAX_PER_SECOND - 1) * STAGGER_DELAY;
+    public static final float SCANNING_WARMUP = APPEAR_ANIM_DURATION + MAX_STAGGER_DELAY;
+    public static final float GAZE_FOCUS_DURATION = FOCUS_DELAY_SECONDS;
+    public static final int FONT_LINE_HEIGHT = 9;
+    public static final float CONTENT_PADDING_X = 4.0f;
+    public static final float CONTENT_PADDING_Y = 3.0f;
+    public static final float CONTENT_BAR_HEIGHT = 4.0f;
+    public static final float CONTENT_BAR_SPACING = 7.0f;
+    public static final float CONTENT_BAR_MARGIN = 8.0f;
+    public static final float STATS_START_OFFSET = 40.0f;
+    public static final float WEAPON_ICON_SLOT = 18.0f;
+    public static final float ATK_TEXT_SLOT = 25.0f;
 }

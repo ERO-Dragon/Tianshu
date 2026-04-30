@@ -18,9 +18,12 @@ public class MrEngine {
     private final IRenderContextProvider renderContextProvider;
 
     private final Map<String, TrackedCard> activeCards = new LinkedHashMap<>();
-    private float staggerClock = 0.0f;
     private int staggerCountThisSecond = 0;
     private float staggerSecondTimer = 0.0f;
+
+    private float scanningTimer = 0.0f;
+    private float gazeTimer = 0.0f;
+    private String lastGazeUuid = null;
 
     private volatile boolean running = false;
 
@@ -66,6 +69,9 @@ public class MrEngine {
     public void start() {
         stateMachine.transitionToScanning();
         running = true;
+        scanningTimer = 0.0f;
+        gazeTimer = 0.0f;
+        lastGazeUuid = null;
     }
 
     public void stop() {
@@ -73,27 +79,37 @@ public class MrEngine {
         running = false;
         activeCards.clear();
         outputQueue.clear();
+        scanningTimer = 0.0f;
+        gazeTimer = 0.0f;
+        lastGazeUuid = null;
     }
 
     public void tick(PositionData playerPos) {
+        tick(playerPos, MrConstants.TICK_DURATION);
+    }
+
+    public void tick(PositionData playerPos, float deltaTime) {
         if (!stateMachine.isActive() || playerPos == null) {
             outputQueue.clear();
             return;
         }
 
-        float deltaTime = MrConstants.TICK_DURATION;
+        if (deltaTime <= 0.0f) {
+            deltaTime = MrConstants.TICK_DURATION;
+        }
+
         staggerSecondTimer += deltaTime;
         if (staggerSecondTimer >= 1.0f) {
             staggerSecondTimer -= 1.0f;
             staggerCountThisSecond = 0;
         }
 
-        List<NearbyEntityData> hostiles = environmentProvider.getNearbyHostiles(MrConstants.MR_RANGE);
+        List<NearbyEntityData> hostiles = new ArrayList<>(environmentProvider.getNearbyHostiles(MrConstants.MR_RANGE));
 
         hostiles.sort(Comparator.comparingDouble(NearbyEntityData::getDistance));
 
         if (hostiles.size() > MrConstants.MAX_CARDS) {
-            hostiles = hostiles.subList(0, MrConstants.MAX_CARDS);
+            hostiles = new ArrayList<>(hostiles.subList(0, MrConstants.MAX_CARDS));
         }
 
         MatrixSnapshot projMatrix = renderContextProvider.getProjectionMatrix();
@@ -111,7 +127,8 @@ public class MrEngine {
 
         for (NearbyEntityData entity : hostiles) {
             String uuid = entity.getUuid();
-            currentUuids.add(uuid);
+
+            TrackedCard tracked = activeCards.get(uuid);
 
             double entityWorldX = playerPos.getX() + entity.getRelativeX();
             double entityWorldY = playerPos.getY() + entity.getRelativeY() + 1.8 + 0.2;
@@ -119,20 +136,28 @@ public class MrEngine {
 
             float[] screenPos = MrProjector.project(
                     entityWorldX, entityWorldY, entityWorldZ,
-                    playerPos.getX(), playerPos.getY(), playerPos.getZ(),
-                    playerPos.getYaw(), playerPos.getPitch(),
-                    projData, mvData,
+                    mvData, projData,
                     screenW, screenH
             );
 
-            if (screenPos == null) continue;
+            if (screenPos == null) {
+                if (tracked != null) {
+                    tracked.animation.triggerDisappear();
+                }
+                continue;
+            }
 
             float anchorX = screenPos[0];
             float anchorY = screenPos[1];
 
-            if (!MrProjector.isInHardBounds(anchorX, anchorY, screenW, screenH)) continue;
+            if (!MrProjector.isInHardBounds(anchorX, anchorY, screenW, screenH)) {
+                if (tracked != null) {
+                    tracked.animation.triggerInstantKill();
+                    activeCards.remove(uuid);
+                }
+                continue;
+            }
 
-            TrackedCard tracked = activeCards.get(uuid);
             if (tracked == null) {
                 tracked = new TrackedCard(uuid);
                 float staggerDelay = 0.0f;
@@ -143,6 +168,8 @@ public class MrEngine {
                 tracked.animation.setStaggerDelay(staggerDelay);
                 activeCards.put(uuid, tracked);
             }
+
+            currentUuids.add(uuid);
 
             if (!entity.isLineOfSight() && tracked.wasLineOfSight) {
                 tracked.losGraceTimer = 0.0f;
@@ -217,6 +244,8 @@ public class MrEngine {
                 tracked.animation.triggerDeath();
             }
 
+            boolean hasMainHand = entity.getMainHandItemId() != null && !entity.getMainHandItemId().isEmpty();
+
             MrCardSnapshot snap = new MrCardSnapshot();
             snap.anchorX = anchorX;
             snap.anchorY = anchorY;
@@ -238,29 +267,80 @@ public class MrEngine {
             snap.isBackground = false;
             snap.shouldKill = layoutResult.whipBroken;
             snap.isGrayscale = isGrayscale;
+            snap.hasMainHandItem = hasMainHand;
             snap.displayName = entity.getDisplayName();
+            snap.mainHandItemId = entity.getMainHandItemId();
+            snap.entityUuid = uuid;
             snap.health = entity.getHealth();
             snap.maxHealth = entity.getMaxHealth();
             snap.distance = dist;
             snap.attackDamage = entity.getAttackDamage();
             snap.armorValue = entity.getArmorValue();
-            snap.mainHandItemId = entity.getMainHandItemId();
-            snap.accentColor = entity.isHostile() ? MrConstants.COLOR_HOSTILE : MrConstants.COLOR_NEUTRAL;
-            snap.entityUuid = uuid;
+            precomputeVisuals(snap);
 
             tracked.lastSnapshot = snap;
             frameSnapshots.add(snap);
         }
 
+        if (stateMachine.isScanning()) {
+            scanningTimer += deltaTime;
+            if (scanningTimer >= MrConstants.SCANNING_WARMUP && !frameSnapshots.isEmpty()) {
+                String crosshairUuid = environmentProvider.getCrosshairTargetEntityUuid();
+
+                boolean foundInFrame = false;
+                if (crosshairUuid != null) {
+                    for (MrCardSnapshot s : frameSnapshots) {
+                        if (crosshairUuid.equals(s.entityUuid) && s.isHostile) {
+                            foundInFrame = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundInFrame) {
+                    if (crosshairUuid.equals(lastGazeUuid)) {
+                        gazeTimer += deltaTime;
+                    } else {
+                        lastGazeUuid = crosshairUuid;
+                        gazeTimer = 0.0f;
+                    }
+                    if (gazeTimer >= MrConstants.GAZE_FOCUS_DURATION) {
+                        stateMachine.transitionToFocusing(crosshairUuid);
+                        gazeTimer = 0.0f;
+                        lastGazeUuid = null;
+                    }
+                } else {
+                    lastGazeUuid = null;
+                    gazeTimer = Math.max(0.0f, gazeTimer - deltaTime);
+                }
+            }
+        }
+
         if (stateMachine.isFocusing()) {
             String focusedUuid = stateMachine.getFocusedEntityUuid();
+            boolean focusedVisible = false;
             for (MrCardSnapshot snap : frameSnapshots) {
-                if (!snap.entityUuid.equals(focusedUuid)) {
-                    snap.isBackground = true;
-                    snap.scale *= MrConstants.BACKGROUND_SCALE;
-                    snap.cardWidth *= MrConstants.BACKGROUND_SCALE;
-                    snap.cardHeight *= MrConstants.BACKGROUND_SCALE;
-                    snap.alpha *= 0.4f;
+                if (snap.entityUuid.equals(focusedUuid)) {
+                    focusedVisible = true;
+                    break;
+                }
+            }
+
+            if (!focusedVisible) {
+                stateMachine.transitionToScanning();
+                scanningTimer = MrConstants.SCANNING_WARMUP;
+                gazeTimer = 0.0f;
+                lastGazeUuid = null;
+            } else {
+                for (MrCardSnapshot snap : frameSnapshots) {
+                    if (!snap.entityUuid.equals(focusedUuid)) {
+                        snap.isBackground = true;
+                        snap.scale *= MrConstants.BACKGROUND_SCALE;
+                        snap.cardWidth *= MrConstants.BACKGROUND_SCALE;
+                        snap.cardHeight *= MrConstants.BACKGROUND_SCALE;
+                        snap.alpha *= 0.4f;
+                        precomputeVisuals(snap);
+                    }
                 }
             }
         }
@@ -275,6 +355,18 @@ public class MrEngine {
                 tracked.animation.tick(deltaTime);
                 if (tracked.animation.isFullyDead()) {
                     it.remove();
+                } else if (tracked.lastSnapshot != null) {
+                    MrCardSnapshot fadingSnapshot = tracked.lastSnapshot.copy();
+                    float fadeAlpha = Math.max(0.0f, Math.min(1.0f,
+                            fadingSnapshot.distanceFadeAlpha * tracked.animation.getAnimationAlpha()));
+                    fadingSnapshot.alpha = fadeAlpha;
+                    fadingSnapshot.appearProgress = tracked.animation.getAppearProgress();
+                    fadingSnapshot.disappearProgress = tracked.animation.getDisappearProgress();
+                    fadingSnapshot.isLineOfSight = false;
+                    precomputeVisuals(fadingSnapshot);
+
+                    tracked.lastSnapshot = fadingSnapshot;
+                    frameSnapshots.add(fadingSnapshot);
                 }
             }
         }
@@ -285,5 +377,53 @@ public class MrEngine {
         for (MrCardSnapshot snap : frameSnapshots) {
             outputQueue.offer(snap);
         }
+    }
+
+    private void precomputeVisuals(MrCardSnapshot snap) {
+        float healthRatio = snap.maxHealth > 0.0f
+                ? Math.max(0.0f, Math.min(1.0f, snap.health / snap.maxHealth))
+                : 0.0f;
+
+        int baseColor = snap.isHostile ? MrConstants.COLOR_HOSTILE : MrConstants.COLOR_NEUTRAL;
+        int accentR = (baseColor >> 16) & 0xFF;
+        int accentG = (baseColor >> 8) & 0xFF;
+        int accentB = baseColor & 0xFF;
+
+        if (snap.isGrayscale) {
+            int gray = (accentR + accentG + accentB) / 3;
+            accentR = gray;
+            accentG = gray;
+            accentB = gray;
+        }
+
+        int textAlphaInt = (int) (Math.max(0.0f, Math.min(1.0f, snap.alpha)) * 255.0f) & 0xFF;
+        float barFullWidth = Math.max(0.0f, snap.cardWidth - MrConstants.CONTENT_BAR_MARGIN);
+        int healthR = (int) (255 * (1.0f - healthRatio));
+        int healthG = (int) (255 * healthRatio);
+
+        snap.accentColor = baseColor;
+        snap.accentR = accentR;
+        snap.accentG = accentG;
+        snap.accentB = accentB;
+        snap.textAlphaColor = (textAlphaInt << 24) | 0xFFFFFF;
+        snap.accentTextColor = (textAlphaInt << 24) | (accentR << 16) | (accentG << 8) | accentB;
+        snap.healthBarBgColor = (textAlphaInt << 24) | 0x333333;
+        snap.healthBarColor = (textAlphaInt << 24) | (healthR << 16) | (healthG << 8);
+        snap.healthBarFullWidth = barFullWidth;
+        snap.healthBarFillWidth = barFullWidth * healthRatio;
+        snap.glitchOffset = snap.entityUuid != null ? ((snap.entityUuid.hashCode() & 3) - 1) : 0;
+        snap.distanceText = String.format("%.0fm", snap.distance);
+        snap.attackText = snap.attackDamage > 0 ? String.format("%.0f", snap.attackDamage) : null;
+        snap.armorText = snap.armorValue > 0 ? "\u26E8 " + String.format("%.0f", snap.armorValue) : null;
+        snap.contentStartX = snap.cardWidth > 0.0f ? MrConstants.CONTENT_PADDING_X : 0.0f;
+        snap.contentStartY = snap.cardHeight > 0.0f ? MrConstants.CONTENT_PADDING_Y : 0.0f;
+        snap.contentNameEndY = snap.contentStartY + MrConstants.FONT_LINE_HEIGHT + 2.0f;
+        snap.contentBarEndY = snap.contentNameEndY + MrConstants.CONTENT_BAR_SPACING;
+        snap.contentStatsY = snap.contentBarEndY;
+        snap.statsStartX = snap.contentStartX + MrConstants.STATS_START_OFFSET;
+        snap.weaponIconX = snap.statsStartX;
+        snap.weaponIconY = snap.contentStatsY - 4.0f;
+        snap.atkTextX = snap.hasMainHandItem ? snap.weaponIconX + MrConstants.WEAPON_ICON_SLOT : snap.statsStartX;
+        snap.defTextX = snap.atkTextX + MrConstants.ATK_TEXT_SLOT;
     }
 }

@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.MR;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class MrWhipLayout {
@@ -54,14 +57,11 @@ public class MrWhipLayout {
         currentJointX = bj[0];
         currentJointY = bj[1];
 
-        float targetCx = targetCardX;
-        float targetCy = currentJointY;
-
         float factor = MrConstants.DAMPING_FACTOR * deltaTime * 20.0f;
         if (factor > 1.0f) factor = 1.0f;
 
-        currentCardX += (targetCx - currentCardX) * factor;
-        currentCardY += (targetCy - currentCardY) * factor;
+        currentCardX += (targetCardX - currentCardX) * factor;
+        currentCardY += (targetCardY - currentCardY) * factor;
 
         float dx = currentCardX - currentJointX;
         float dy = currentCardY - currentJointY;
@@ -121,35 +121,73 @@ public class MrWhipLayout {
     }
 
     public static void resolveCollisions(List<MrCardSnapshot> cards) {
-        int n = cards.size();
-        for (int i = 0; i < n; i++) {
-            MrCardSnapshot a = cards.get(i);
-            for (int j = i + 1; j < n; j++) {
-                MrCardSnapshot b = cards.get(j);
+        if (cards.size() <= 1) return;
 
-                float aLeft = a.cardX;
-                float aRight = a.cardX + a.cardWidth * a.scale;
-                float aTop = a.cardY;
-                float aBottom = a.cardY + a.cardHeight * a.scale;
+        List<MrCardSnapshot> sorted = new ArrayList<>(cards);
+        Collections.sort(sorted, Comparator.comparingDouble(c -> c.cardY + c.cardHeight * 0.5f));
 
-                float bLeft = b.cardX;
-                float bRight = b.cardX + b.cardWidth * b.scale;
-                float bTop = b.cardY;
-                float bBottom = b.cardY + b.cardHeight * b.scale;
+        for (int pass = 0; pass < 3; pass++) {
+            for (int i = 0; i < sorted.size(); i++) {
+                MrCardSnapshot a = sorted.get(i);
+                float aCenterY = a.cardY + a.cardHeight * 0.5f;
 
-                boolean overlapX = aLeft < bRight && aRight > bLeft;
-                boolean overlapY = aTop < bBottom && aBottom > bTop;
+                for (int j = i + 1; j < sorted.size(); j++) {
+                    MrCardSnapshot b = sorted.get(j);
+                    float bCenterY = b.cardY + b.cardHeight * 0.5f;
 
-                if (overlapX && overlapY) {
-                    float overlapH = Math.min(aRight - bLeft, bRight - aLeft);
-                    float pushX = overlapH * 0.5f + 2.0f;
+                    float aLeft = a.cardX;
+                    float aRight = a.cardX + a.cardWidth;
+                    float aTop = a.cardY;
+                    float aBottom = a.cardY + a.cardHeight;
 
-                    if (a.cardX <= b.cardX) {
-                        a.cardX -= pushX;
-                        b.cardX += pushX;
-                    } else {
-                        a.cardX += pushX;
-                        b.cardX -= pushX;
+                    float bLeft = b.cardX;
+                    float bRight = b.cardX + b.cardWidth;
+                    float bTop = b.cardY;
+                    float bBottom = b.cardY + b.cardHeight;
+
+                    boolean overlapX = aLeft < bRight && aRight > bLeft;
+                    boolean overlapY = aTop < bBottom && aBottom > bTop;
+
+                    if (overlapX && overlapY) {
+                        float horizontalGuideY = a.cardY + a.cardHeight * 0.5f;
+
+                        if (bCenterY >= horizontalGuideY) {
+                            float pushY = (a.cardY + a.cardHeight) - b.cardY + 2.0f;
+                            b.cardY += pushY;
+                        } else {
+                            float pushY = b.cardY + b.cardHeight - a.cardY + 2.0f;
+                            a.cardY += pushY;
+                        }
+                    }
+                }
+            }
+        }
+
+        for (int pass = 0; pass < 3; pass++) {
+            for (int i = 0; i < sorted.size(); i++) {
+                MrCardSnapshot a = sorted.get(i);
+                for (int j = i + 1; j < sorted.size(); j++) {
+                    MrCardSnapshot b = sorted.get(j);
+
+                    float aLeft = a.cardX;
+                    float aRight = a.cardX + a.cardWidth;
+                    float aTop = a.cardY;
+                    float aBottom = a.cardY + a.cardHeight;
+
+                    float bLeft = b.cardX;
+                    float bRight = b.cardX + b.cardWidth;
+                    float bTop = b.cardY;
+                    float bBottom = b.cardY + b.cardHeight;
+
+                    boolean overlapX = aLeft < bRight && aRight > bLeft;
+                    boolean overlapY = aTop < bBottom && aBottom > bTop;
+
+                    if (overlapX && overlapY) {
+                        if (a.cardX <= b.cardX) {
+                            b.cardX = aRight + 2.0f;
+                        } else {
+                            a.cardX = bRight + 2.0f;
+                        }
                     }
                 }
             }

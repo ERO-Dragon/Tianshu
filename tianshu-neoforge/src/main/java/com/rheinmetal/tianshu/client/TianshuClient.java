@@ -501,12 +501,15 @@ public class TianshuClient {
                             player.level().dimension().location().toString(),
                             player.getUUID().toString()
                     );
-            mrEngine.tick(playerPos);
+            float mrDeltaTime = MrConstants.TICK_DURATION * MrConstants.TICK_INTERVAL;
+            mrEngine.tick(playerPos, mrDeltaTime);
 
+            double mrRadius = mrEngine.getRequiredRadius();
             if (acousticRadarEngine != null) {
                 double radarRadius = acousticRadarEngine.getRadarRange();
-                double mrRadius = mrEngine.getRequiredRadius();
                 environmentProvider.setActiveScanRadius(Math.max(radarRadius, mrRadius));
+            } else {
+                environmentProvider.setActiveScanRadius(mrRadius);
             }
         } catch (Exception e) {
             LOGGER.warn("[MR] tick异常: {}", e.getMessage());

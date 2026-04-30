@@ -293,6 +293,15 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         }
     }
 
+    @Override
+    public String getCrosshairTargetEntityUuid() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.crosshairPickEntity != null) {
+            return mc.crosshairPickEntity.getUUID().toString();
+        }
+        return null;
+    }
+
     private boolean isHighValueBlock(String blockId) {
         if (blockId == null) return false;
         return blockId.contains("diamond_ore") || blockId.contains("deepslate_diamond_ore") || blockId.contains("ancient_debris") || blockId.contains("emerald_ore") || blockId.contains("deepslate_emerald_ore") || blockId.contains("gold_ore") || blockId.contains("deepslate_gold_ore") || blockId.contains("lapis_ore") || blockId.contains("deepslate_lapis_ore");

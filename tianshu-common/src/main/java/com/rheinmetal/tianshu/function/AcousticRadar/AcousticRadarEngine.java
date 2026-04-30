@@ -282,8 +282,8 @@ public class AcousticRadarEngine {
         Set<String> currentBlindSnapshot = new HashSet<>();
 
         float rawFov = getCurrentDynamicFov();
-        if (rawFov <= 10.0f || rawFov > 180.0f) rawFov = 70.0f;
-        float fovThreshold = rawFov / 2.0f;
+        // if (rawFov <= 10.0f || rawFov > 180.0f) rawFov = 70.0f;
+        float fovThreshold = Math.abs(rawFov);
 
         // === 第一阶段：只收集，不写 knownThreatUuids ===
         for (NearbyEntityData entity : hostilesInAlert) {
@@ -298,10 +298,10 @@ public class AcousticRadarEngine {
                 double absAngle = Math.abs(entity.getHorizontalAngle());
                 
                 if (absAngle > fovThreshold) {
-                    // 在盲区：加入瞬态快照用于跃迁计算
-                    currentBlindSnapshot.add(entity.getUuid());
                     // 不在已知历史里，才加入历史盲区池（用于转正）
                     if (!knownThreatUuids.contains(entity.getUuid())) {
+                        // 在盲区：加入瞬态快照用于跃迁计算
+                        currentBlindSnapshot.add(entity.getUuid());
                         historicalBlindSet.add(entity.getUuid());
                     }
                 } else {

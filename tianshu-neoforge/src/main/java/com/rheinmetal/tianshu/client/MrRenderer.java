@@ -8,10 +8,21 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MrRenderer {
 
     private final MrEngine engine;
+    private final Map<String, ItemStack> itemCache = new HashMap<>();
+    private final List<MrCardSnapshot> lastFrameSnapshots = new ArrayList<>();
 
     public MrRenderer(MrEngine engine) {
         this.engine = engine;
@@ -26,36 +37,45 @@ public class MrRenderer {
         Font font = mc.font;
 
         MrCardSnapshot snap;
+        boolean receivedNewFrame = false;
+        List<MrCardSnapshot> incomingSnapshots = new ArrayList<>();
         while ((snap = engine.getOutputQueue().poll()) != null) {
-            drawCard(g, snap, font);
+            incomingSnapshots.add(snap);
+            receivedNewFrame = true;
+        }
+        if (receivedNewFrame) {
+            lastFrameSnapshots.clear();
+            lastFrameSnapshots.addAll(incomingSnapshots);
+        }
+        for (MrCardSnapshot cachedSnap : lastFrameSnapshots) {
+            drawCard(g, cachedSnap, font, mc);
         }
     }
 
-    private void drawCard(GuiGraphics g, MrCardSnapshot s, Font font) {
+    private void drawCard(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
         if (s.alpha <= 0.01f) return;
 
-        int accentR = (s.accentColor >> 16) & 0xFF;
-        int accentG = (s.accentColor >> 8) & 0xFF;
-        int accentB = s.accentColor & 0xFF;
-
-        if (s.isGrayscale) {
-            int gray = (accentR + accentG + accentB) / 3;
-            accentR = gray;
-            accentG = gray;
-            accentB = gray;
-        }
+        int r = s.accentR;
+        int gr = s.accentG;
+        int b = s.accentB;
 
         float ap = s.appearProgress;
+        float dp = s.disappearProgress;
 
-        drawTetherLine(g, s, accentR, accentG, accentB, ap);
+        if (dp < 1.0f) {
+            drawDisappearCard(g, s, r, gr, b, dp);
+            return;
+        }
+
+        drawTetherLine(g, s, r, gr, b, ap);
 
         if (ap > 0.5f) {
             float boxProgress = Math.min(1.0f, (ap - 0.5f) / 0.5f);
-            drawCardBackground(g, s, boxProgress, accentR, accentG, accentB);
+            drawCardBackground(g, s, boxProgress, r, gr, b);
         }
 
         if (ap > 1.0f) {
-            drawCardContent(g, s, font, accentR, accentG, accentB);
+            drawCardContent(g, s, font, mc);
         }
 
         if (s.isBackground) {
@@ -67,6 +87,57 @@ public class MrRenderer {
                     (int) (s.cardX + s.cardWidth), (int) (s.cardY + s.cardHeight),
                     (ma << 24)
             );
+        }
+    }
+
+    private void drawDisappearCard(GuiGraphics g, MrCardSnapshot s, int r, int gr, int b, float dp) {
+        float h = s.cardHeight * dp;
+        float y = s.cardY + (s.cardHeight - h);
+
+        int bgAlpha = (int) (s.alpha * 0.6f * 255.0f * dp) & 0xFF;
+        int bgColor = (bgAlpha << 24);
+
+        if (dp > 0.3f) {
+            g.fill((int) s.cardX + s.glitchOffset, (int) y,
+                    (int) (s.cardX + s.cardWidth), (int) (y + h), bgColor);
+        }
+
+        if (dp > 0.5f) {
+            int alphaOuter = (int) (s.alpha * 0.3f * 255.0f * dp) & 0xFF;
+            int alphaInner = (int) (s.alpha * 0.9f * 255.0f * dp) & 0xFF;
+            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+
+            drawLine(g, (int) s.cardX, (int) y, (int) (s.cardX + s.cardWidth), (int) y,
+                    MrConstants.NEON_WIDTH_OUTER, colorOuter);
+            drawLine(g, (int) s.cardX, (int) y, (int) (s.cardX + s.cardWidth), (int) y,
+                    MrConstants.NEON_WIDTH_INNER, colorInner);
+        }
+
+        if (dp > 0.6f) {
+            int alphaOuter = (int) (s.alpha * 0.3f * 255.0f * dp) & 0xFF;
+            int alphaInner = (int) (s.alpha * 0.9f * 255.0f * dp) & 0xFF;
+            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+
+            int cx = (int) (s.cardX + s.cardWidth * 0.5f);
+            int cy = (int) (y + h);
+            drawLine(g, cx, cy, (int) s.jointX, (int) s.jointY,
+                    MrConstants.NEON_WIDTH_OUTER, colorOuter);
+            drawLine(g, cx, cy, (int) s.jointX, (int) s.jointY,
+                    MrConstants.NEON_WIDTH_INNER, colorInner);
+        }
+
+        if (dp > 0.8f) {
+            int alphaOuter = (int) (s.alpha * 0.3f * 255.0f * dp) & 0xFF;
+            int alphaInner = (int) (s.alpha * 0.9f * 255.0f * dp) & 0xFF;
+            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+
+            drawLine(g, (int) s.jointX, (int) s.jointY, (int) s.anchorX, (int) s.anchorY,
+                    MrConstants.NEON_WIDTH_OUTER, colorOuter);
+            drawLine(g, (int) s.jointX, (int) s.jointY, (int) s.anchorX, (int) s.anchorY,
+                    MrConstants.NEON_WIDTH_INNER, colorInner);
         }
     }
 
@@ -114,18 +185,16 @@ public class MrRenderer {
         float y = s.cardY + (s.cardHeight - h) * 0.5f;
 
         int bgAlpha = (int) (s.alpha * 0.6f * 255.0f) & 0xFF;
-        int bgColor = (bgAlpha << 24) | 0x000000;
 
-        g.fill((int) x, (int) y, (int) (x + w), (int) (y + h), bgColor);
+        g.fill((int) x, (int) y, (int) (x + w), (int) (y + h), (bgAlpha << 24));
 
         if (boxProgress > 0.8f) {
             int corner = MrConstants.CUT_CORNER_SIZE;
-            int screenBg = (bgAlpha << 24);
 
-            g.fill((int) x, (int) y, (int) x + corner, (int) y + corner, screenBg);
-            g.fill((int) (x + w - corner), (int) y, (int) (x + w), (int) y + corner, screenBg);
-            g.fill((int) x, (int) (y + h - corner), (int) x + corner, (int) (y + h), screenBg);
-            g.fill((int) (x + w - corner), (int) (y + h - corner), (int) (x + w), (int) (y + h), screenBg);
+            g.fill((int) x, (int) y, (int) x + corner, (int) y + corner, (bgAlpha << 24));
+            g.fill((int) (x + w - corner), (int) y, (int) (x + w), (int) y + corner, (bgAlpha << 24));
+            g.fill((int) x, (int) (y + h - corner), (int) x + corner, (int) (y + h), (bgAlpha << 24));
+            g.fill((int) (x + w - corner), (int) (y + h - corner), (int) (x + w), (int) (y + h), (bgAlpha << 24));
 
             int borderAlpha = (int) (s.alpha * 0.8f * 255.0f) & 0xFF;
             int borderColor = (borderAlpha << 24) | (r << 16) | (gr << 8) | b;
@@ -137,49 +206,60 @@ public class MrRenderer {
         }
     }
 
-    private void drawCardContent(GuiGraphics g, MrCardSnapshot s, Font font, int r, int gr, int b) {
-        int textAlpha = (int) (s.alpha * 255.0f) & 0xFF;
-        int textColor = (textAlpha << 24) | 0xFFFFFF;
-        int accentTextColor = (textAlpha << 24) | (r << 16) | (gr << 8) | b;
-
-        float contentX = s.cardX + 4;
-        float contentY = s.cardY + 3;
+    private void drawCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
+        int ix = (int) s.contentStartX;
+        int iy = (int) s.contentStartY;
 
         if (s.displayName != null) {
-            g.drawString(font, s.displayName, (int) contentX, (int) contentY, accentTextColor, true);
-            contentY += font.lineHeight + 2;
+            g.drawString(font, s.displayName, (int) (s.cardX + ix), (int) (s.cardY + iy), s.accentTextColor, true);
         }
 
         if (s.maxHealth > 0) {
-            float barWidth = s.cardWidth - 8;
-            float healthRatio = s.health / s.maxHealth;
-
-            int barBgColor = (textAlpha << 24) | 0x333333;
-            g.fill((int) contentX, (int) contentY, (int) (contentX + barWidth), (int) contentY + 4, barBgColor);
-
-            int healthR = (int) (255 * (1 - healthRatio));
-            int healthG = (int) (255 * healthRatio);
-            int healthColor = (textAlpha << 24) | (healthR << 16) | (healthG << 8);
-            g.fill((int) contentX, (int) contentY, (int) (contentX + barWidth * healthRatio), (int) contentY + 4, healthColor);
-
-            contentY += 7;
+            int barX = (int) (s.cardX + ix);
+            int barY = (int) (s.cardY + s.contentNameEndY);
+            g.fill(barX, barY, barX + (int) s.healthBarFullWidth, barY + (int) MrConstants.CONTENT_BAR_HEIGHT, s.healthBarBgColor);
+            g.fill(barX, barY, barX + (int) s.healthBarFillWidth, barY + (int) MrConstants.CONTENT_BAR_HEIGHT, s.healthBarColor);
         }
 
-        String distanceText = String.format("%.0fm", s.distance);
-        g.drawString(font, distanceText, (int) contentX, (int) contentY, textColor, false);
+        int statsX = (int) (s.cardX + ix);
+        int statsY = (int) (s.cardY + s.contentStatsY);
 
-        float statsX = contentX + 40;
-
-        if (s.attackDamage > 0) {
-            String atkText = "\u2694 " + String.format("%.0f", s.attackDamage);
-            g.drawString(font, atkText, (int) statsX, (int) contentY, textColor, false);
-            statsX += 35;
+        if (s.distanceText != null) {
+            g.drawString(font, s.distanceText, statsX, statsY, s.textAlphaColor, false);
         }
 
-        if (s.armorValue > 0) {
-            String defText = "\u26E8 " + String.format("%.0f", s.armorValue);
-            g.drawString(font, defText, (int) statsX, (int) contentY, textColor, false);
+        if (s.attackText != null) {
+            if (s.hasMainHandItem) {
+                ItemStack weaponStack = resolveItemStack(s.mainHandItemId);
+                if (weaponStack != null) {
+                    g.renderItem(weaponStack, (int) (s.cardX + s.weaponIconX), (int) (s.cardY + s.weaponIconY));
+                }
+            }
+            g.drawString(font, s.attackText, (int) (s.cardX + s.atkTextX), statsY, s.textAlphaColor, false);
         }
+
+        if (s.armorText != null) {
+            g.drawString(font, s.armorText, (int) (s.cardX + s.defTextX), statsY, s.textAlphaColor, false);
+        }
+    }
+
+    private ItemStack resolveItemStack(String itemId) {
+        if (itemId == null || itemId.isEmpty()) return null;
+
+        ItemStack cached = itemCache.get(itemId);
+        if (cached != null) return cached;
+
+        try {
+            ResourceLocation loc = ResourceLocation.parse(itemId);
+            Item item = BuiltInRegistries.ITEM.getOptional(loc).orElse(null);
+            if (item != null) {
+                ItemStack stack = new ItemStack(item);
+                itemCache.put(itemId, stack);
+                return stack;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private void drawLine(GuiGraphics g, int x1, int y1, int x2, int y2, int width, int color) {

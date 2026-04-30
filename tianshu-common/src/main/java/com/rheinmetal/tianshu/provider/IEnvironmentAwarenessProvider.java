@@ -19,4 +19,6 @@ public interface IEnvironmentAwarenessProvider {
     MiningTargetData getCurrentMiningTarget();
 
     void setActiveScanRadius(double radius);
+
+    String getCrosshairTargetEntityUuid();
 }

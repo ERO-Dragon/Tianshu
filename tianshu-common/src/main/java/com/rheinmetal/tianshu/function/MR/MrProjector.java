@@ -6,43 +6,38 @@ public final class MrProjector {
 
     public static float[] project(
             double worldX, double worldY, double worldZ,
-            double playerX, double playerY, double playerZ,
-            float yaw, float pitch,
-            float[] projMatrix, float[] mvMatrix,
+            float[] modelViewMatrix,
+            float[] projectionMatrix,
             int screenWidth, int screenHeight
     ) {
-        float relX = (float) (worldX - playerX);
-        float relY = (float) (worldY - playerY);
-        float relZ = (float) (worldZ - playerZ);
+        if (modelViewMatrix == null || modelViewMatrix.length != 16) return null;
+        if (projectionMatrix == null || projectionMatrix.length != 16) return null;
 
-        float yawRad = (float) Math.toRadians(yaw);
-        float pitchRad = (float) Math.toRadians(pitch);
+        float x = (float) worldX;
+        float y = (float) worldY;
+        float z = (float) worldZ;
+        float w = 1.0f;
 
-        float cosY = (float) Math.cos(yawRad);
-        float sinY = (float) Math.sin(yawRad);
-        float cosP = (float) Math.cos(pitchRad);
-        float sinP = (float) Math.sin(pitchRad);
+        float vx = modelViewMatrix[0] * x + modelViewMatrix[4] * y + modelViewMatrix[8]  * z + modelViewMatrix[12] * w;
+        float vy = modelViewMatrix[1] * x + modelViewMatrix[5] * y + modelViewMatrix[9]  * z + modelViewMatrix[13] * w;
+        float vz = modelViewMatrix[2] * x + modelViewMatrix[6] * y + modelViewMatrix[10] * z + modelViewMatrix[14] * w;
+        float vw = modelViewMatrix[3] * x + modelViewMatrix[7] * y + modelViewMatrix[11] * z + modelViewMatrix[15] * w;
 
-        float rx = relX * cosY + relZ * sinY;
-        float ry = relY;
-        float rz = -relX * sinY + relZ * cosY;
+        if (vw != 0.0f) {
+            vx /= vw;
+            vy /= vw;
+            vz /= vw;
+            vw = 1.0f;
+        }
 
-        float ey = ry * cosP - rz * sinP;
-        float ez = ry * sinP + rz * cosP;
+        float cx = projectionMatrix[0] * vx + projectionMatrix[4] * vy + projectionMatrix[8]  * vz + projectionMatrix[12] * vw;
+        float cy = projectionMatrix[1] * vx + projectionMatrix[5] * vy + projectionMatrix[9]  * vz + projectionMatrix[13] * vw;
+        float cw = projectionMatrix[3] * vx + projectionMatrix[7] * vy + projectionMatrix[11] * vz + projectionMatrix[15] * vw;
 
-        if (ez >= -0.1f) return null;
+        if (cw <= 0.001f) return null;
 
-        float[] m = mvMatrix != null ? mvMatrix : projMatrix;
-        if (m == null || m.length != 16) return null;
-
-        float clipX = m[0] * rx + m[4] * ey + m[8] * ez + m[12];
-        float clipY = m[1] * rx + m[5] * ey + m[9] * ez + m[13];
-        float clipW = m[3] * rx + m[7] * ey + m[11] * ez + m[15];
-
-        if (clipW <= 0.001f) return null;
-
-        float ndcX = clipX / clipW;
-        float ndcY = clipY / clipW;
+        float ndcX = cx / cw;
+        float ndcY = cy / cw;
 
         if (ndcX < -1.5f || ndcX > 1.5f || ndcY < -1.5f || ndcY > 1.5f) return null;
 

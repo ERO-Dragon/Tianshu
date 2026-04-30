@@ -23,7 +23,7 @@ public class MrAnimationController {
     }
 
     public void triggerDisappear() {
-        if (state == STATE_DEAD) return;
+        if (state == STATE_DEAD || state == STATE_DISAPPEARING) return;
         state = STATE_DISAPPEARING;
         disappearProgress = 1.0f;
     }
