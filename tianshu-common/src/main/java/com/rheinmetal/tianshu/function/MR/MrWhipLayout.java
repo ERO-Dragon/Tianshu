@@ -13,26 +13,17 @@ public class MrWhipLayout {
     private float currentCardY = 0.0f;
     private boolean initialized = false;
 
-    private float lastDirectionAngle = -90.0f;
-    private boolean hasLastDirection = false;
-
-    private float softBoundAlpha = 1.0f;
-
     public static class LayoutResult {
         public float jointX;
         public float jointY;
         public float cardX;
         public float cardY;
-        public boolean whipBroken;
-        public float softBoundAlpha;
 
-        public LayoutResult(float jx, float jy, float cx, float cy, boolean broken, float alpha) {
+        public LayoutResult(float jx, float jy, float cx, float cy) {
             this.jointX = jx;
             this.jointY = jy;
             this.cardX = cx;
             this.cardY = cy;
-            this.whipBroken = broken;
-            this.softBoundAlpha = alpha;
         }
     }
 
@@ -44,78 +35,51 @@ public class MrWhipLayout {
             float deltaTime
     ) {
         if (!initialized) {
-            float[] bInit = computeJointPoint(anchorX, anchorY, screenWidth, screenHeight);
+            float[] bInit = computeJointPoint(anchorX, anchorY, scale, screenWidth, screenHeight);
             currentJointX = bInit[0];
             currentJointY = bInit[1];
             currentCardX = targetCardX;
             currentCardY = targetCardY;
             initialized = true;
-            return new LayoutResult(currentJointX, currentJointY, currentCardX, currentCardY, false, 1.0f);
+            return new LayoutResult(currentJointX, currentJointY, currentCardX, currentCardY);
         }
 
-        float[] bj = computeJointPoint(anchorX, anchorY, screenWidth, screenHeight);
+        float[] bj = computeJointPoint(anchorX, anchorY, scale, screenWidth, screenHeight);
         currentJointX = bj[0];
         currentJointY = bj[1];
 
-        float factor = MrConstants.DAMPING_FACTOR * deltaTime * 20.0f;
+        float dx = targetCardX - currentCardX;
+        float dy = targetCardY - currentCardY;
+        float distToTarget = (float) Math.sqrt(dx * dx + dy * dy);
+        float dynamicDamping = MrConstants.DAMPING_FACTOR * (1.0f + distToTarget / MrConstants.DAMPING_DISTANCE_REFERENCE);
+        dynamicDamping = Math.min(MrConstants.DAMPING_MAX_FACTOR, dynamicDamping);
+        float factor = dynamicDamping * deltaTime * 20.0f;
         if (factor > 1.0f) factor = 1.0f;
 
-        currentCardX += (targetCardX - currentCardX) * factor;
-        currentCardY += (targetCardY - currentCardY) * factor;
+        currentCardX += dx * factor;
+        currentCardY += dy * factor;
 
-        float dx = currentCardX - currentJointX;
-        float dy = currentCardY - currentJointY;
-        float distBC = (float) Math.sqrt(dx * dx + dy * dy);
-        boolean whipBroken = distBC > MrConstants.WHIP_KILL_THRESHOLD;
-
-        if (whipBroken) {
-            initialized = false;
-        }
-
-        if (!MrProjector.isInSoftBounds(anchorX, anchorY, screenWidth, screenHeight)) {
-            softBoundAlpha -= deltaTime * 3.0f;
-            if (softBoundAlpha < 0.0f) softBoundAlpha = 0.0f;
-        } else {
-            softBoundAlpha += deltaTime * 3.0f;
-            if (softBoundAlpha > 1.0f) softBoundAlpha = 1.0f;
-        }
-
-        return new LayoutResult(currentJointX, currentJointY, currentCardX, currentCardY, whipBroken, softBoundAlpha);
+        return new LayoutResult(currentJointX, currentJointY, currentCardX, currentCardY);
     }
 
-    private float[] computeJointPoint(float ax, float ay, int sw, int sh) {
+    private float[] computeJointPoint(float ax, float ay, float scale, int sw, int sh) {
         float normalizedY = ay / (float) sh;
+        float segmentLength = MrConstants.RIGID_SEGMENT_LENGTH * scale;
+        float bx;
+        float by;
 
-        float directionAngle;
-        if (normalizedY < 0.35f) {
-            directionAngle = -90.0f;
-        } else if (normalizedY > 0.65f) {
-            directionAngle = 90.0f;
+        if (normalizedY < 0.2f) {
+            bx = ax;
+            by = ay + segmentLength;
+        } else if (normalizedY > 0.8f) {
+            bx = ax;
+            by = ay - segmentLength;
         } else {
-            float t = MrProjector.smoothstep(0.35f, 0.65f, normalizedY);
-            if (hasLastDirection) {
-                directionAngle = lastDirectionAngle;
-            } else {
-                directionAngle = normalizedY < 0.5f ? -90.0f : 90.0f;
-            }
-
-            float targetAngle = normalizedY < 0.5f ? -90.0f : 90.0f;
-            if (hasLastDirection) {
-                float diff = targetAngle - directionAngle;
-                if (diff > 180.0f) diff -= 360.0f;
-                if (diff < -180.0f) diff += 360.0f;
-                directionAngle += diff * t;
-            } else {
-                directionAngle = -90.0f + 180.0f * t;
-            }
+            float centerX = sw * 0.5f;
+            float direction = ax < centerX ? 1.0f : -1.0f;
+            bx = ax + direction * segmentLength;
+            by = ay;
         }
-
-        lastDirectionAngle = directionAngle;
-        hasLastDirection = true;
-
-        double rad = Math.toRadians(directionAngle);
-        float bx = ax + (float) Math.cos(rad) * MrConstants.RIGID_SEGMENT_LENGTH;
-        float by = ay + (float) Math.sin(rad) * MrConstants.RIGID_SEGMENT_LENGTH;
 
         return new float[]{bx, by};
     }
@@ -124,7 +88,9 @@ public class MrWhipLayout {
         if (cards.size() <= 1) return;
 
         List<MrCardSnapshot> sorted = new ArrayList<>(cards);
-        Collections.sort(sorted, Comparator.comparingDouble(c -> c.cardY + c.cardHeight * 0.5f));
+        Collections.sort(sorted, Comparator
+                .comparing((MrCardSnapshot c) -> !c.isFocused)
+                .thenComparingDouble(c -> c.cardY + c.cardHeight * 0.5f));
 
         for (int pass = 0; pass < 3; pass++) {
             for (int i = 0; i < sorted.size(); i++) {
@@ -149,14 +115,22 @@ public class MrWhipLayout {
                     boolean overlapY = aTop < bBottom && aBottom > bTop;
 
                     if (overlapX && overlapY) {
-                        float horizontalGuideY = a.cardY + a.cardHeight * 0.5f;
-
-                        if (bCenterY >= horizontalGuideY) {
-                            float pushY = (a.cardY + a.cardHeight) - b.cardY + 2.0f;
+                        if (a.isFocused && !b.isFocused) {
+                            float pushY = pushAwayFromFocusedY(a, b);
                             b.cardY += pushY;
-                        } else {
-                            float pushY = b.cardY + b.cardHeight - a.cardY + 2.0f;
+                        } else if (!a.isFocused && b.isFocused) {
+                            float pushY = pushAwayFromFocusedY(b, a);
                             a.cardY += pushY;
+                        } else {
+                            float horizontalGuideY = a.cardY + a.cardHeight * 0.5f;
+
+                            if (bCenterY >= horizontalGuideY) {
+                                float pushY = (a.cardY + a.cardHeight) - b.cardY + 2.0f;
+                                b.cardY += pushY;
+                            } else {
+                                float pushY = b.cardY + b.cardHeight - a.cardY + 2.0f;
+                                a.cardY += pushY;
+                            }
                         }
                     }
                 }
@@ -183,7 +157,11 @@ public class MrWhipLayout {
                     boolean overlapY = aTop < bBottom && aBottom > bTop;
 
                     if (overlapX && overlapY) {
-                        if (a.cardX <= b.cardX) {
+                        if (a.isFocused && !b.isFocused) {
+                            b.cardX = pushAwayFromFocusedX(a, b);
+                        } else if (!a.isFocused && b.isFocused) {
+                            a.cardX = pushAwayFromFocusedX(b, a);
+                        } else if (a.cardX <= b.cardX) {
                             b.cardX = aRight + 2.0f;
                         } else {
                             a.cardX = bRight + 2.0f;
@@ -194,9 +172,27 @@ public class MrWhipLayout {
         }
     }
 
+    private static float pushAwayFromFocusedY(MrCardSnapshot focused, MrCardSnapshot other) {
+        float focusedCenterY = focused.cardY + focused.cardHeight * 0.5f;
+        float otherCenterY = other.cardY + other.cardHeight * 0.5f;
+        float spacing = 2.0f;
+        if (otherCenterY >= focusedCenterY) {
+            return focused.cardY + focused.cardHeight - other.cardY + spacing;
+        }
+        return focused.cardY - (other.cardY + other.cardHeight) - spacing;
+    }
+
+    private static float pushAwayFromFocusedX(MrCardSnapshot focused, MrCardSnapshot other) {
+        float focusedCenterX = focused.cardX + focused.cardWidth * 0.5f;
+        float otherCenterX = other.cardX + other.cardWidth * 0.5f;
+        float spacing = 2.0f;
+        if (otherCenterX >= focusedCenterX) {
+            return focused.cardX + focused.cardWidth + spacing;
+        }
+        return focused.cardX - other.cardWidth - spacing;
+    }
+
     public void reset() {
         initialized = false;
-        hasLastDirection = false;
-        softBoundAlpha = 1.0f;
     }
 }

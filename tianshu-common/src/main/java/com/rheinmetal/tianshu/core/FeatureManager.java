@@ -10,6 +10,7 @@ public final class FeatureManager {
     private static volatile boolean highPrecisionModeAllowed = false;
 
     // ═══════ 客户端偏好（由 ClientConfig 同步，默认 true） ═══════
+    private static volatile boolean tianshuEnabled = true;
     private static volatile boolean tacticalRadarEnabled = true;
     private static volatile boolean navigationEnabled = true;
     private static volatile boolean recipePanelEnabled = true;
@@ -32,13 +33,16 @@ public final class FeatureManager {
 
     // ─── 客户端偏好 ───
 
+    public static boolean isTianshuEnabled() { return tianshuEnabled; }
+    public static void setTianshuEnabled(boolean v) { tianshuEnabled = v; }
+
     public static boolean isTacticalRadarEnabled() { return tacticalRadarEnabled; }
     public static void setTacticalRadarEnabled(boolean v) { tacticalRadarEnabled = v; }
 
     public static boolean isNavigationEnabled() { return navigationEnabled; }
     public static void setNavigationEnabled(boolean v) { navigationEnabled = v; }
 
-    public static boolean isRecipePanelEnabled() { return recipePanelEnabled; }
+    public static boolean isRecipePanelEnabled() { return tianshuEnabled && recipePanelEnabled; }
     public static void setRecipePanelEnabled(boolean v) { recipePanelEnabled = v; }
 
     public static boolean isAudioRadarEnabled() { return audioRadarEnabled; }
@@ -57,10 +61,11 @@ public final class FeatureManager {
     public static void setTacticalMrEnabled(boolean v) { tacticalMrEnabled = v; }
 
     public static void syncFromClientConfig(
-            boolean tacticalRadar, boolean navigation, boolean recipePanel,
+            boolean tianshu, boolean tacticalRadar, boolean navigation, boolean recipePanel,
             boolean audioRadar, boolean companionCard, boolean durabilityAlert,
             boolean chatAssistant, boolean tacticalMr
     ) {
+        tianshuEnabled = tianshu;
         tacticalRadarEnabled = tacticalRadar;
         navigationEnabled = navigation;
         recipePanelEnabled = recipePanel;

@@ -75,13 +75,12 @@ public final class MrCardSnapshot {
     float disappearProgress;        // 消失动画 1.0 → 0.0
 
     // ─── 状态标志 ───
-    boolean isAlive;                // 实体是否存活（死亡切灰度）
-    boolean isHostile;              // 敌对 = 橙色，中立 = 绿色
-    boolean isLineOfSight;          // 是否可见（影响卡片显隐）
+    boolean isAlive;                // 实体是否存活
+    boolean isHostile;              // 敌对 = 橙红色，中立 = 亮蓝色
+    boolean isLineOfSight;          // 是否可见（LOS 丢失时 A 点冻结并触发消失动画）
     boolean isFocused;              // 是否为聚焦主角
     boolean isBackground;           // 是否为 FOCUSING 时的背景卡片
-    boolean shouldKill;             // 超硬边框/超鞭子阈值，标记强杀
-    boolean isGrayscale;            // 灰度滤镜（死亡实体）
+    boolean hasMainHandItem;        // 是否有主手物品
 
     // ─── 实体数据（极简） ───
     String displayName;             // 实体显示名
@@ -137,11 +136,6 @@ public final class MrProjector {
         float[] modelViewMatrix, float[] projectionMatrix,
         int screenWidth, int screenHeight
     );
-
-    /**
-     * 判断投影点是否在屏幕硬边框内（marginPercent = HARD_MARGIN_PERCENT）
-     */
-    public static boolean isInHardBounds(float sx, float sy, int sw, int sh);
 }
 ```
 
@@ -154,9 +148,9 @@ public final class MrProjector {
 ### 3.3 MrStateMachine — 三态状态机
 
 ```
-    ┌────────┐  语音"打开扫描"   ┌──────────┐  准星对准敌对实体凝视3秒  ┌──────────┐
-    │ SILENT │ ──────────────▶  │ SCANNING │ ───────────────────────▶  │ FOCUSING │
-    └────────┘                  └──────────┘  (需先经过≈1.5s预热期)     └──────────┘
+    ┌────────┐  语音"打开扫描"   ┌──────────┐  准星对准实体：1s aim warmup + 3s gaze  ┌──────────┐
+    │ SILENT │ ──────────────▶  │ SCANNING │ ─────────────────────────────────────▶  │ FOCUSING │
+    └────────┘                  └──────────┘  (需先经过 2s scanning warmup)            └──────────┘
          ▲                           │                                  │
          │         语音"关闭扫描"      │                                  │
          │◀──────────────────────────┘                                  │
@@ -204,26 +198,26 @@ public class MrStateMachine {
 **每 tick 执行流程**：
 ```
 1. if stateMachine == SILENT → 清空 outputQueue，return
-2. 从 IEnvironmentAwarenessProvider 获取 getNearbyHostiles(mrRange)
+2. 从 IEnvironmentAwarenessProvider 获取 MR 范围内实体快照
 3. 对每个实体：
-   a. MrProjector.project() → 得到 A 点屏幕坐标
-   b. 计算距离缩放 scale = base_dist / dist
-   c. 计算纵深透明 alpha = 1.0 - (dist / 32) * 0.2
-   d. 计算方向导向 B 点（带死区力场算法）
-   e. MrWhipLayout 计算带阻尼的 C 点
-4. 群体防撞布局推挤
-5. MrAnimationController 驱动 appearProgress / disappearProgress
-6. 异常熔断检查（硬边框/鞭子超限/遮挡反转/死亡灰度）
+   a. MrProjector.project() → 得到 A 点屏幕坐标；LOS 丢失时使用 lastSeenAnchor 冻结 A 点
+   b. 计算距离缩放 scale = base_dist / dist，并平滑叠加聚焦/背景缩放因子
+   c. 计算基础透明度与距离透明度，聚焦背景卡片通过 alphaFactor 平滑降低
+   d. 根据屏幕分区计算 A→B 刚性段，AB 长度随 scale 透视缩放
+   e. 根据统一几何结果计算 B→C 目标方向、C 点、连接边、卡片目标矩形
+4. 进行预布局方向搜索：按聚焦、敌对、距离排序；先判断 C 点占用，再用 AABB 判断矩形重叠；八方向失败后沿原始 A→C 方向延长；最后才选择最不坏候选
+5. MrWhipLayout 使用动态阻尼让当前卡片位置追向目标卡片矩形，保留鞭子滞后效果
+6. MrAnimationController 驱动 appearProgress / disappearProgress；LOS 丢失、出屏、死亡、离开范围均走正常消失/恢复动画，不做硬杀
 7. P2 预计算：所有颜色/文本/布局像素值填入 Snapshot（渲染器零计算）
 8. 凝视聚焦逻辑（仅 SCANNING 状态）：
    a. scanningTimer 累积时间
-   b. scanningTimer >= SCANNING_WARMUP 后激活准星检测
-   c. 获取 getCrosshairTargetEntityUuid()，比对当前帧中的敌对实体
+   b. scanningTimer >= SCANNING_WARMUP 后进入 aim warmup
+   c. aim warmup 完成后，获取 getCrosshairTargetEntityUuid() 并比对当前帧实体
    d. 同一目标持续对准 → gazeTimer += deltaTime
    e. 准星移开或目标不在列表 → gazeTimer -= deltaTime（反向衰减，不低于 0）
-   f. 目标切换 → gazeTimer 保持（不重置）
+   f. 目标切换 → 立即进入新实体自己的凝视计时过程
    g. gazeTimer >= GAZE_FOCUS_DURATION → transitionToFocusing(uuid)
-9. FOCUSING 特殊处理（主角放大，群演缩小）
+9. FOCUSING 特殊处理：主角卡片平滑放大，背景卡片平滑缩小/降透明；聚焦文本逐字输出，输出完成后才开始退出倒计时
 10. 打包为 MrCardSnapshot，塞入 outputQueue
 ```
 
@@ -231,28 +225,36 @@ public class MrStateMachine {
 
 ```
 三级结构：
-  A（实体头顶） ─── 0阻尼刚性 ──→ B（线段拐点） ─── 0.15f阻尼 ──→ C（卡片锚点）
+  A（实体头顶） ─── 0阻尼刚性 ──→ B（线段拐点） ─── 动态阻尼 ──→ C（卡片连接点）
 
 关键参数：
-- DAMPING_FACTOR = 0.15f          ← B→C 阻尼系数
-- WHIP_KILL_THRESHOLD = 300.0f    ← 鞭子拉断阈值（像素）
-- RIGID_SEGMENT_LENGTH = 40.0f    ← A→B 刚性线段长度（像素）
+- DAMPING_FACTOR = 0.15f                    ← B→C 基础阻尼系数
+- DAMPING_DISTANCE_REFERENCE = 200.0f       ← 动态阻尼距离参考
+- DAMPING_MAX_FACTOR = 0.75f                ← 动态阻尼上限
+- RIGID_SEGMENT_LENGTH = 40.0f              ← A→B 基础刚性线段长度（会乘 scale）
+- BC_REST_ANGLE_DEGREES = 40.0f             ← B→C 静息目标角
 
-B 点计算（带死区力场导向）：
-  - 实体在屏幕上半部 → B 在 A 的正上方
-  - 实体在屏幕下半部 → B 在 A 的正下方
-  - 中间过渡区 → Smoothstep 插值旋转方向
-  - 穿越正中心时依赖上一帧方向记忆划弧线
+B 点计算：
+  - 实体在屏幕上方 1/5 → B 在 A 下方
+  - 实体在屏幕下方 1/5 → B 在 A 上方
+  - 实体在屏幕中间区域 → 根据左右半屏向外水平延伸
+  - AB 段无阻尼，直接跟随 A 点；长度为 RIGID_SEGMENT_LENGTH × scale
 
-C 点计算：
-  - 每帧：cardX += (targetCardX - cardX) * DAMPING_FACTOR * dt
-  - cardY 同理
-  - 若 |C - target| > WHIP_KILL_THRESHOLD → 标记 shouldKill，重新实例化
+C 点与卡片目标：
+  - 静息态下 B→C 长度与 A→B 等长
+  - B→C 目标方向由屏幕分区与 40° 静息角统一推导
+  - C 点落在卡片上边或下边，C 点横向比例由实体屏幕横向比例映射到 CONNECTOR_EDGE_MIN/MAX_RATIO
+  - 卡片目标矩形由 C 点、连接边、横向比例统一反推，不单独平移拼凑
 
-群体防撞：
-  - 横向防撞：穿过每个 C 点画无限长水平辅助线，其他卡片的 top/bottom 刚性吸附
-  - 纵向防撞：单向强制推挤，遇阻死锁
-  - 禁止弹簧力（防抖动死循环）
+当前卡片位置：
+  - currentCardX/Y 通过动态阻尼追向目标 cardX/Y
+  - 距离越远，阻尼越大；接近目标后阻尼自然降低
+  - 不再存在鞭子拉断强杀阈值，快速转头时靠动态阻尼追赶
+
+群体布局：
+  - 不在 MrWhipLayout 内做事后 resolveCollisions 推挤
+  - MrEngine 在生成目标位置前进行预布局方向搜索
+  - 预布局只给出目标 C 点与目标卡片矩形，实际显示仍由鞭子阻尼平滑追向目标
 ```
 
 ### 3.6 MrAnimationController — Tron 动效驱动
@@ -265,18 +267,18 @@ C 点计算：
   > 1.0 后允许文字浮现
 
 消失动画（disappearProgress: 1.0 → 0.0，镜像反转）：
-  文字 Glitch 挤压 → 横线回缩 → 斜线弹回 → 竖线缩回
+  卡片框与内容一起压缩 → B→C 线回缩 → A→B 线回缩
 
 帧率无关：
   progress += SPEED * deltaTime
   所有阻尼乘以 deltaTime
 
 错峰调度：
-  同一秒内最多 10 张卡，按距离排序，每张延迟 0.1s 实例化
+  仅 MR 刚开启时对初始实体按距离排序并分配 0.1s 间隔；启动阶段结束后，新实体立即播放出现动画
 
 颜色系统：
-  敌对 = accentColor(0xFF, 0x66, 0x00)  橙色
-  中立 = accentColor(0x00, 0xFF, 0x88)  绿色
+  敌对 = accentColor(0xFF, 0x55, 0x33)  橙红色
+  中立 = accentColor(0x33, 0xAA, 0xFF)  亮蓝色
 ```
 
 ### 3.7 MrRenderer — 主线程无脑绘制器（P2 预计算架构）
@@ -299,16 +301,16 @@ void onRender(GuiGraphics g, DeltaTracker dt) {
 }
 
 void drawCard(GuiGraphics g, MrCardSnapshot s) {
-    // 1. disappearProgress < 1.0 → 绘制消失动画（Glitch 压缩 → 横线回缩 → 斜线 → 竖线）
-    // 2. 根据 appearProgress 绘制牵引线（竖线→斜线→框展开）
-    // 3. 根据 appearProgress 绘制卡片背景（切角矩形）
-    // 4. appearProgress > 1.0 → 绘制内容（所有值从 snapshot 直取）：
+    // 1. disappearProgress < 1.0 → 绘制消失动画（卡片框与内容一起压缩 → B→C → A→B）
+    // 2. 根据 appearProgress 绘制牵引线（A→B → B→C）
+    // 3. 根据 appearProgress 绘制卡片背景（按 C 所在上/下边单边展开）
+    // 4. appearProgress 完成后绘制内容（所有值从 snapshot 直取）：
     //    a. 实体名称（s.accentTextColor 直取）
     //    b. 血条（s.healthBarBgColor / s.healthBarColor / s.healthBarFillWidth 直取）
-    //    c. 距离（s.distanceText 直取）
-    //    d. 武器图标（resolveItemStack 缓存）+ 攻击力文本
-    //    e. 护甲文本
-    // 5. isBackground → 叠加深半透明遮罩
+    //    c. 距离图标 + s.distanceText
+    //    d. 铁剑图标 + 攻击力文本
+    //    e. 铁胸甲图标 + 护甲文本
+    // 5. isBackground → 不盖黑色蒙版，由 Engine 预先平滑降低 alpha 并缩小 scale
     // 唯一保留的 NeoForge 层解析：resolveItemStack（ID → ItemStack 缓存映射）
 }
 ```
@@ -389,54 +391,55 @@ requiredRadius -> {
 |------|---|------|
 | MR_RANGE | 32.0 | MR 感知半径（格） |
 | MAX_CARDS | 10 | 最大同时显示卡片数 |
-| DAMPING_FACTOR | 0.15f | B→C 鞭子阻尼系数 |
-| WHIP_KILL_THRESHOLD | 300.0f | 鞭子拉断阈值（像素） |
-| RIGID_SEGMENT_LENGTH | 40.0f | A→B 刚性线段长度（像素） |
-| DISTANCE_ALPHA_FACTOR | 0.2f | 纵深透明衰减系数 |
+| DAMPING_FACTOR | 0.15f | B→C 基础阻尼系数 |
+| DAMPING_DISTANCE_REFERENCE | 200.0f | 动态阻尼距离参考 |
+| DAMPING_MAX_FACTOR | 0.75f | 动态阻尼上限 |
+| RIGID_SEGMENT_LENGTH | 40.0f | A→B 基础刚性线段长度（会乘 scale） |
+| BC_REST_ANGLE_DEGREES | 40.0f | B→C 静息目标角 |
+| CONNECTOR_EDGE_MIN_RATIO | 0.2f | C 点在连接边上的最小横向比例 |
+| CONNECTOR_EDGE_MAX_RATIO | 0.8f | C 点在连接边上的最大横向比例 |
+| BASE_ALPHA | 0.8f | 卡片基础透明度 |
+| MIN_DISTANCE_ALPHA | 0.5f | 距离透明度最低值 |
+| DISTANCE_ALPHA_FACTOR | 0.5f | 纵深透明衰减系数 |
 | BASE_DISTANCE | 8.0 | 伪 3D 基准距离（scale=1.0 的距离） |
-| SOFT_MARGIN_PERCENT | 0.03f | 软边框百分比 |
-| HARD_MARGIN_PERCENT | 0.01f | 硬边框百分比 |
-| APPEAR_SPEED | 2.0f | 出现动画速度（进度/秒） |
-| DISAPPEAR_SPEED | 3.0f | 消失动画速度（更快） |
-| CARD_BASE_WIDTH | 120.0f | 卡片基础宽度（像素） |
-| CARD_BASE_HEIGHT | 50.0f | 卡片基础高度（像素） |
-| CUT_CORNER_SIZE | 8 | 切角矩形切角大小（像素） |
-| NEON_WIDTH_INNER | 1 | 霓虹亮线宽度 |
-| NEON_WIDTH_OUTER | 3 | 霓虹底线宽度 |
-| STAGGER_MAX_PER_SECOND | 10 | 每秒最大新实例化卡片数 |
-| STAGGER_DELAY | 0.1f | 错峰延迟间隔（秒） |
-| COLOR_HOSTILE | 0xFF6600 | 敌对主题色（橙） |
-| COLOR_NEUTRAL | 0x00FF88 | 中立主题色（绿） |
-| COLOR_BACKGROUND_MASK | 0x99000000 | 背景卡片遮罩色 |
-| LOS_FOLLOW_GRACE_PERIOD | 1.0f | 遮挡反转跟随宽限期（秒） |
+| APPEAR_SPEED | 1.0f | 出现动画速度（1 秒完成） |
+| DISAPPEAR_SPEED | 1.0f | 消失动画速度（与出现对称） |
+| CARD_BASE_WIDTH_RATIO | 0.0625f | 卡片基础宽度相对屏幕宽度比例 |
+| CARD_BASE_HEIGHT_RATIO | 0.046f | 卡片基础高度相对屏幕高度比例 |
+| CARD_MIN_BASE_WIDTH / HEIGHT | 96 / 40 | 基础卡片最小尺寸 |
+| CARD_MAX_BASE_WIDTH / HEIGHT | 160 / 72 | 基础卡片最大尺寸 |
+| CARD_MAX_FOCUSED_WIDTH_RATIO | 0.25f | 聚焦卡片最大宽度比例 |
+| CARD_MAX_FOCUSED_AREA_RATIO | 0.08f | 聚焦卡片基础放大面积比例上限；只约束基础聚焦框，不限制 LLM 文本继续撑高卡片 |
+| CUT_CORNER_HEIGHT_RATIO | 0.18f | 切角大小相对卡片高度比例 |
+| NEON_OUTER/INNER_* | 见 MrConstants | 霓虹边框宽度按卡片高度缩放 |
+| ORIGIN_MARKER_* | 见 MrConstants | A 点原点标记尺寸按卡片高度缩放 |
+| STAGGER_DELAY | 0.1f | 初始错峰间隔 |
+| COLOR_HOSTILE | 0xFF5533 | 敌对主题色（橙红） |
+| COLOR_NEUTRAL | 0x33AAFF | 非敌对主题色（亮蓝） |
 | BACKGROUND_SCALE | 0.75f | FOCUSING 背景卡片缩放比 |
-| FOCUS_SCALE | 1.5f | FOCUSING 主角卡片缩放比 |
-| DEATH_TIME_SECONDS | 1.0f | 死亡后停留时间（秒） |
+| FOCUS_SCALE | 2.0f | FOCUSING 主角卡片额外放大倍数 |
+| UI_TRANSITION_SPEED | 6.0f | 聚焦/背景视觉过渡速度 |
+| BACKGROUND_ALPHA_FACTOR | 0.4f | 背景卡片透明度倍率 |
 | TICK_INTERVAL | 2 | MR tick 间隔（MC tick） |
 | TICK_DURATION | 0.05f | 单 MC tick 时长（秒） |
-| FOCUS_DELAY_SECONDS | 3.0f | 凝视聚焦所需时长（秒） |
-| APPEAR_ANIM_DURATION | 0.6f | 出现动画总时长（1.2 / APPEAR_SPEED） |
-| MAX_STAGGER_DELAY | 0.9f | 最大错峰延迟（9 × 0.1s） |
-| SCANNING_WARMUP | ≈1.5s | 扫描预热期（动画+错峰），此后才允许聚焦 |
+| FOCUS_AIM_WARMUP_SECONDS | 1.0f | 准星进入目标后的瞄准预热 |
 | GAZE_FOCUS_DURATION | 3.0f | 准星对准目标触发聚焦的凝视时长 |
+| FOCUS_EXIT_COUNTDOWN_SECONDS | 5.0f | 聚焦文本输出完成后的退出倒计时 |
+| FOCUS_TEXT_CHARS_PER_SECOND | 32.0f | 聚焦详情文本逐字显示速度 |
+| APPEAR_ANIM_DURATION | 1.0f | 出现动画总时长 |
+| SCANNING_WARMUP | 2.0f | 扫描预热期，之后才允许进入 aim warmup |
 | FONT_LINE_HEIGHT | 9 | MC 默认字体行高（像素） |
-| CONTENT_PADDING_X | 4.0f | 卡片内容水平内边距 |
-| CONTENT_PADDING_Y | 3.0f | 卡片内容垂直内边距 |
-| CONTENT_BAR_HEIGHT | 4.0f | 血条高度（像素） |
-| CONTENT_BAR_SPACING | 7.0f | 名称到血条的间距 |
-| CONTENT_BAR_MARGIN | 8.0f | 血条左右边距 |
-| STATS_START_OFFSET | 40.0f | 统计区域起始偏移 |
-| WEAPON_ICON_SLOT | 18.0f | 武器图标占用宽度 |
-| ATK_TEXT_SLOT | 25.0f | 攻击力文本占用宽度 |
+| CONTENT_* / STATS_* | 见 MrConstants | 内容排版与图标间距 |
 
 ---
 
-## 七、异常熔断规则汇总
+## 七、异常与恢复规则汇总
 
 | 异常场景 | 触发条件 | 处理方式 |
 |---------|---------|---------|
-| 超硬边框 | 投影坐标越出屏幕 1% | 瞬间强杀（不播消失动画） |
-| 超软边框 | 投影坐标越出屏幕 3% | Alpha 阻尼平滑淡出 |
-| 鞭子拉断 | B→C 距离 > 300px | 强杀旧卡片，新位置重播出现动画 |
-| 遮挡反转 | lineOfSight == false | A 点跟随 1 秒后播消失；中途恢复则目标进度切 1.0 阻尼重展 |
-| 实体死亡 | !isAlive | 瞬间切灰度，等 deathTime 后播倒放消失 |
+| 投影点出屏 | A 点投影在屏幕外但仍可得到坐标 | 不硬杀，卡片继续由阻尼跟随，同时进入正常消失动画；恢复时按动画恢复逻辑接回 |
+| LOS 丢失 | lineOfSight == false | A 点冻结在最后可见位置，立即播放消失动画；实体恢复可见时取消消失并平滑恢复 |
+| 实体离开范围 | 不再出现在 MR 范围实体列表 | 使用最后快照继续驱动消失动画，不瞬移、不冻结卡片布局 |
+| 实体死亡 | !isAlive | 直接播放正常消失动画，不灰度、不停留 |
+| 快速转头导致 B→C 拉长 | 当前卡片位置距离目标很远 | 不拉断、不重播出现动画；动态阻尼提高追赶速度 |
+| 消失过程中目标恢复 | disappearProgress 尚未归零时目标重新可用 | 根据当前消失阶段恢复出现动画，避免闪烁和瞬移 |

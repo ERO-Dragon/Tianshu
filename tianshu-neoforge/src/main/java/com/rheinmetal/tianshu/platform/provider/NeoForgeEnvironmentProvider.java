@@ -156,8 +156,9 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                         relativeAngle, distance, hostile,
                         health, maxHealth,
                         motionX, motionY, motionZ,
-                        pullingBow, charging, // 传入修正后的变量
+                        pullingBow, charging,
                         lineOfSight,
+                        living.getBbHeight(),
                         mainHandItemId, attackDamage, armorValue
                 );
                 allResult.add(data);

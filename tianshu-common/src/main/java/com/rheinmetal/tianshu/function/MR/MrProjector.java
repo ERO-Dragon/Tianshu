@@ -39,26 +39,12 @@ public final class MrProjector {
         float ndcX = cx / cw;
         float ndcY = cy / cw;
 
-        if (ndcX < -1.5f || ndcX > 1.5f || ndcY < -1.5f || ndcY > 1.5f) return null;
+        if (ndcX < -3.0f || ndcX > 3.0f || ndcY < -3.0f || ndcY > 3.0f) return null;
 
         float screenX = (ndcX * 0.5f + 0.5f) * screenWidth;
         float screenY = (1.0f - (ndcY * 0.5f + 0.5f)) * screenHeight;
 
         return new float[]{screenX, screenY};
-    }
-
-    public static boolean isInSoftBounds(float sx, float sy, int sw, int sh) {
-        float marginPxX = sw * MrConstants.SOFT_MARGIN_PERCENT;
-        float marginPxY = sh * MrConstants.SOFT_MARGIN_PERCENT;
-        return sx >= marginPxX && sx <= sw - marginPxX
-                && sy >= marginPxY && sy <= sh - marginPxY;
-    }
-
-    public static boolean isInHardBounds(float sx, float sy, int sw, int sh) {
-        float marginPxX = sw * MrConstants.HARD_MARGIN_PERCENT;
-        float marginPxY = sh * MrConstants.HARD_MARGIN_PERCENT;
-        return sx >= marginPxX && sx <= sw - marginPxX
-                && sy >= marginPxY && sy <= sh - marginPxY;
     }
 
     public static float smoothstep(float edge0, float edge1, float x) {

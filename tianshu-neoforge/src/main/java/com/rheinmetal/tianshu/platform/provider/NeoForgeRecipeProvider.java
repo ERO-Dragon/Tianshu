@@ -27,6 +27,7 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
     private static final int MAX_NBT_NODES = 30;
 
     private final Map<String, List<RecipeData>> recipeCache = new ConcurrentHashMap<>();
+    private final Map<String, List<RecipeData>> usageCache = new ConcurrentHashMap<>();
 
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -89,10 +90,79 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
 
     public void invalidateCache() {
         recipeCache.clear();
+        usageCache.clear();
     }
 
     public void invalidateCache(String itemId) {
         recipeCache.remove(itemId);
+        usageCache.remove(itemId);
+    }
+
+    @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public RecipeTreeData getUsageTree(String itemId) {
+        if (itemId == null || itemId.isBlank()) {
+            return new RecipeTreeData(itemId, Collections.emptyList());
+        }
+
+        List<RecipeData> cached = usageCache.get(itemId);
+        if (cached != null) {
+            return new RecipeTreeData(itemId, cached);
+        }
+
+        List<RecipeData> matched = new ArrayList<>();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) {
+            return new RecipeTreeData(itemId, Collections.emptyList());
+        }
+
+        Level level = mc.level;
+        RecipeManager recipeManager = level.getRecipeManager();
+        HolderLookup.Provider registries = level.registryAccess();
+
+        for (RecipeType<?> type : BuiltInRegistries.RECIPE_TYPE) {
+            try {
+                List<? extends RecipeHolder<?>> recipes = recipeManager.getAllRecipesFor((RecipeType) type);
+                if (recipes == null || recipes.isEmpty()) continue;
+
+                for (RecipeHolder<?> holder : recipes) {
+                    try {
+                        List<IngredientData> ingredients = extractIngredients(holder);
+                        if (!containsIngredient(ingredients, itemId)) continue;
+
+                        ItemStack resultStack = holder.value().getResultItem(registries);
+                        if (resultStack.isEmpty()) continue;
+
+                        IngredientData result = toItemData(resultStack);
+                        matched.add(new RecipeData(holder.id().toString(), type.toString(), result, ingredients));
+                    } catch (Exception e) {
+                        LOGGER.warn("解析用途配方失败 {}: {}", holder.id(), e.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.warn("遍历用途配方类型 {} 失败: {}", type, e.getMessage());
+            }
+        }
+
+        List<RecipeData> frozen = Collections.unmodifiableList(matched);
+        usageCache.put(itemId, frozen);
+        LOGGER.debug("按需加载用途: {} -> {} 条", itemId, frozen.size());
+        return new RecipeTreeData(itemId, frozen);
+    }
+
+    private boolean containsIngredient(List<IngredientData> ingredients, String itemId) {
+        for (IngredientData ingredient : ingredients) {
+            if (ingredient == null) continue;
+            if (itemId.equals(ingredient.getItemId())) return true;
+            if (ingredient.getItemId() != null) {
+                String[] ids = ingredient.getItemId().split("/");
+                for (String id : ids) {
+                    if (itemId.equals(id)) return true;
+                }
+            }
+            if (ingredient.getTagItems().contains(itemId)) return true;
+        }
+        return false;
     }
 
     private List<IngredientData> extractIngredients(RecipeHolder<?> holder) {

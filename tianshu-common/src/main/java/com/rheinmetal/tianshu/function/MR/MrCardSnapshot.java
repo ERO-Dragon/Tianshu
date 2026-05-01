@@ -6,6 +6,12 @@ public final class MrCardSnapshot {
     public float anchorY;
     public float jointX;
     public float jointY;
+    public float connectorX;
+    public float connectorY;
+    public float connectorEdgeRatio;
+    public boolean connectorOnTopEdge;
+    public float connectorDirectionX;
+    public float connectorDirectionY;
     public float cardX;
     public float cardY;
 
@@ -24,12 +30,14 @@ public final class MrCardSnapshot {
     public boolean isLineOfSight;
     public boolean isFocused;
     public boolean isBackground;
-    public boolean shouldKill;
-    public boolean isGrayscale;
     public boolean hasMainHandItem;
 
     public String displayName;
+    public String entityId;
     public String mainHandItemId;
+    public String distanceIconItemId;
+    public String attackIconItemId;
+    public String armorIconItemId;
     public String entityUuid;
 
     public float health;
@@ -54,16 +62,28 @@ public final class MrCardSnapshot {
     public String distanceText;
     public String attackText;
     public String armorText;
+    public String focusedDetailText;
+    public int focusedDetailVisibleChars;
+    public boolean focusedDetailOutputFinished;
 
     public float contentStartX;
     public float contentStartY;
+    public float nameIconX;
+    public float nameIconY;
+    public float nameTextX;
+    public float nameTextY;
     public float statsStartX;
     public float contentNameEndY;
     public float contentBarEndY;
     public float contentStatsY;
-    public float weaponIconX;
-    public float weaponIconY;
+    public float distanceIconX;
+    public float distanceIconY;
+    public float distanceTextX;
+    public float attackIconX;
+    public float attackIconY;
     public float atkTextX;
+    public float armorIconX;
+    public float armorIconY;
     public float defTextX;
 
     public MrCardSnapshot() {}
@@ -74,6 +94,12 @@ public final class MrCardSnapshot {
         s.anchorY = this.anchorY;
         s.jointX = this.jointX;
         s.jointY = this.jointY;
+        s.connectorX = this.connectorX;
+        s.connectorY = this.connectorY;
+        s.connectorEdgeRatio = this.connectorEdgeRatio;
+        s.connectorOnTopEdge = this.connectorOnTopEdge;
+        s.connectorDirectionX = this.connectorDirectionX;
+        s.connectorDirectionY = this.connectorDirectionY;
         s.cardX = this.cardX;
         s.cardY = this.cardY;
         s.cardWidth = this.cardWidth;
@@ -88,11 +114,13 @@ public final class MrCardSnapshot {
         s.isLineOfSight = this.isLineOfSight;
         s.isFocused = this.isFocused;
         s.isBackground = this.isBackground;
-        s.shouldKill = this.shouldKill;
-        s.isGrayscale = this.isGrayscale;
         s.hasMainHandItem = this.hasMainHandItem;
         s.displayName = this.displayName;
+        s.entityId = this.entityId;
         s.mainHandItemId = this.mainHandItemId;
+        s.distanceIconItemId = this.distanceIconItemId;
+        s.attackIconItemId = this.attackIconItemId;
+        s.armorIconItemId = this.armorIconItemId;
         s.entityUuid = this.entityUuid;
         s.health = this.health;
         s.maxHealth = this.maxHealth;
@@ -113,15 +141,27 @@ public final class MrCardSnapshot {
         s.distanceText = this.distanceText;
         s.attackText = this.attackText;
         s.armorText = this.armorText;
+        s.focusedDetailText = this.focusedDetailText;
+        s.focusedDetailVisibleChars = this.focusedDetailVisibleChars;
+        s.focusedDetailOutputFinished = this.focusedDetailOutputFinished;
         s.contentStartX = this.contentStartX;
         s.contentStartY = this.contentStartY;
+        s.nameIconX = this.nameIconX;
+        s.nameIconY = this.nameIconY;
+        s.nameTextX = this.nameTextX;
+        s.nameTextY = this.nameTextY;
         s.statsStartX = this.statsStartX;
         s.contentNameEndY = this.contentNameEndY;
         s.contentBarEndY = this.contentBarEndY;
         s.contentStatsY = this.contentStatsY;
-        s.weaponIconX = this.weaponIconX;
-        s.weaponIconY = this.weaponIconY;
+        s.distanceIconX = this.distanceIconX;
+        s.distanceIconY = this.distanceIconY;
+        s.distanceTextX = this.distanceTextX;
+        s.attackIconX = this.attackIconX;
+        s.attackIconY = this.attackIconY;
         s.atkTextX = this.atkTextX;
+        s.armorIconX = this.armorIconX;
+        s.armorIconY = this.armorIconY;
         s.defTextX = this.defTextX;
         return s;
     }

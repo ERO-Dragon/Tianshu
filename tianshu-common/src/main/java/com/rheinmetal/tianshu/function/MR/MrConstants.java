@@ -8,46 +8,66 @@ public final class MrConstants {
     public static final int MAX_CARDS = 10;
 
     public static final float DAMPING_FACTOR = 0.15f;
-    public static final float WHIP_KILL_THRESHOLD = 300.0f;
+    public static final float DAMPING_DISTANCE_REFERENCE = 200.0f;
+    public static final float DAMPING_MAX_FACTOR = 0.75f;
     public static final float RIGID_SEGMENT_LENGTH = 40.0f;
+    public static final float BC_REST_ANGLE_DEGREES = 40.0f;
+    public static final float CONNECTOR_EDGE_MIN_RATIO = 0.2f;
+    public static final float CONNECTOR_EDGE_MAX_RATIO = 0.8f;
 
-    public static final float DISTANCE_ALPHA_FACTOR = 0.2f;
+    public static final float BASE_ALPHA = 0.8f;
+    public static final float MIN_DISTANCE_ALPHA = 0.5f;
+    public static final float DISTANCE_ALPHA_FACTOR = 0.5f;
     public static final double BASE_DISTANCE = 8.0;
 
-    public static final float SOFT_MARGIN_PERCENT = 0.03f;
-    public static final float HARD_MARGIN_PERCENT = 0.01f;
+    public static final float APPEAR_SPEED = 1.0f;
+    public static final float DISAPPEAR_SPEED = 1.0f;
 
-    public static final float APPEAR_SPEED = 2.0f;
-    public static final float DISAPPEAR_SPEED = 3.0f;
+    public static final float CARD_BASE_WIDTH_RATIO = 0.0625f;
+    public static final float CARD_BASE_HEIGHT_RATIO = 0.046f;
+    public static final float CARD_MIN_BASE_WIDTH = 96.0f;
+    public static final float CARD_MIN_BASE_HEIGHT = 40.0f;
+    public static final float CARD_MAX_BASE_WIDTH = 160.0f;
+    public static final float CARD_MAX_BASE_HEIGHT = 72.0f;
+    public static final float CARD_MAX_FOCUSED_WIDTH_RATIO = 0.25f;
+    public static final float CARD_MAX_FOCUSED_AREA_RATIO = 0.08f;
+    public static final float CUT_CORNER_HEIGHT_RATIO = 0.18f;
+    public static final float CUT_CORNER_MIN_SIZE = 6.0f;
+    public static final float CUT_CORNER_MAX_SIZE = 18.0f;
 
-    public static final float CARD_BASE_WIDTH = 120.0f;
-    public static final float CARD_BASE_HEIGHT = 50.0f;
-    public static final int CUT_CORNER_SIZE = 8;
-
-    public static final int NEON_WIDTH_INNER = 1;
-    public static final int NEON_WIDTH_OUTER = 3;
+    public static final float NEON_OUTER_WIDTH_HEIGHT_RATIO = 0.05f;
+    public static final float NEON_OUTER_WIDTH_MIN = 2.0f;
+    public static final float NEON_OUTER_WIDTH_MAX = 5.0f;
+    public static final float NEON_INNER_WIDTH_HEIGHT_RATIO = 0.02f;
+    public static final float NEON_INNER_WIDTH_MIN = 1.0f;
+    public static final float NEON_INNER_WIDTH_MAX = 2.0f;
+    public static final float ORIGIN_MARKER_OUTER_RADIUS_HEIGHT_RATIO = 0.075f;
+    public static final float ORIGIN_MARKER_OUTER_RADIUS_MIN = 3.0f;
+    public static final float ORIGIN_MARKER_OUTER_RADIUS_MAX = 7.0f;
+    public static final float ORIGIN_MARKER_INNER_RADIUS_HEIGHT_RATIO = 0.05f;
+    public static final float ORIGIN_MARKER_INNER_RADIUS_MIN = 2.0f;
+    public static final float ORIGIN_MARKER_INNER_RADIUS_MAX = 5.0f;
 
     public static final int STAGGER_MAX_PER_SECOND = 10;
     public static final float STAGGER_DELAY = 0.1f;
 
-    public static final int COLOR_HOSTILE = 0xFF6600;
-    public static final int COLOR_NEUTRAL = 0x00FF88;
-    public static final int COLOR_BACKGROUND_MASK = 0x99000000;
-
-    public static final float LOS_FOLLOW_GRACE_PERIOD = 1.0f;
+    public static final int COLOR_HOSTILE = 0xFF5533;
+    public static final int COLOR_NEUTRAL = 0x33AAFF;
 
     public static final float BACKGROUND_SCALE = 0.75f;
-    public static final float FOCUS_SCALE = 1.5f;
+    public static final float FOCUS_SCALE = 2.0f;
+    public static final float UI_TRANSITION_SPEED = 6.0f;
+    public static final float BACKGROUND_ALPHA_FACTOR = 0.4f;
 
-    public static final float DEATH_TIME_SECONDS = 1.0f;
-
-    public static final int TICK_INTERVAL = 2;
+    public static final int TICK_INTERVAL = 1;
     public static final float TICK_DURATION = 0.05f;
 
     public static final float FOCUS_DELAY_SECONDS = 3.0f;
-    public static final float APPEAR_ANIM_DURATION = 1.2f / APPEAR_SPEED;
-    public static final float MAX_STAGGER_DELAY = (STAGGER_MAX_PER_SECOND - 1) * STAGGER_DELAY;
-    public static final float SCANNING_WARMUP = APPEAR_ANIM_DURATION + MAX_STAGGER_DELAY;
+    public static final float FOCUS_AIM_WARMUP_SECONDS = 1.0f;
+    public static final float FOCUS_EXIT_COUNTDOWN_SECONDS = 5.0f;
+    public static final float FOCUS_TEXT_CHARS_PER_SECOND = 32.0f;
+    public static final float APPEAR_ANIM_DURATION = 1.0f;
+    public static final float SCANNING_WARMUP = 2.0f;
     public static final float GAZE_FOCUS_DURATION = FOCUS_DELAY_SECONDS;
     public static final int FONT_LINE_HEIGHT = 9;
     public static final float CONTENT_PADDING_X = 4.0f;
@@ -55,7 +75,7 @@ public final class MrConstants {
     public static final float CONTENT_BAR_HEIGHT = 4.0f;
     public static final float CONTENT_BAR_SPACING = 7.0f;
     public static final float CONTENT_BAR_MARGIN = 8.0f;
-    public static final float STATS_START_OFFSET = 40.0f;
-    public static final float WEAPON_ICON_SLOT = 18.0f;
-    public static final float ATK_TEXT_SLOT = 25.0f;
+    public static final float STATS_ICON_SIZE = 16.0f;
+    public static final float STATS_ICON_TEXT_GAP = 3.0f;
+    public static final float STATS_GROUP_GAP = 10.0f;
 }

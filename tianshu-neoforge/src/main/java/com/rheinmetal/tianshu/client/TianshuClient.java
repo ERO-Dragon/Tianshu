@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
+import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphController;
+import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphStorage;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
 import com.rheinmetal.tianshu.config.ClientConfig;
@@ -43,6 +45,7 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
+import java.nio.file.Path;
 import java.util.Set;
 
 import org.lwjgl.glfw.GLFW;
@@ -53,6 +56,8 @@ public class TianshuClient {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public static KeyMapping VOICE_KEY;
+    public static KeyMapping CRAFTING_GRAPH_INTERACTION_KEY;
+    public static KeyMapping MR_TOGGLE_KEY;
 
     private static boolean wasAlwaysKeyTriggered = false;
     private static boolean isVoiceKeyPressed = false;
@@ -84,6 +89,10 @@ public class TianshuClient {
     private static MrEngine mrEngine;
     private static MrRenderer mrRenderer;
     private static int mrTickCounter = 0;
+    private static boolean mrUserEnabled = false;
+
+    private static CraftingGraphController craftingGraphController;
+    private static CraftingGraphStorage craftingGraphStorage;
 
     // 二级雷达：已播报过的指示器（防止重复刷屏）
     private static final Set<String> announcedIndicators = new java.util.HashSet<>();
@@ -136,10 +145,24 @@ public class TianshuClient {
                 audioEventProvider
         );
 
+        craftingGraphStorage = new CraftingGraphStorage(craftingGraphStorageRoot());
+        craftingGraphController = new CraftingGraphController(recipeProvider, inventoryProvider, craftingGraphStorage);
+        craftingGraphController.setInteractionKey(
+                TianshuClient::isCraftingGraphInteractionKeyDown,
+                TianshuClient::isCraftingGraphInteractionKey
+        );
+        craftingGraphController.setAlphaMultiplier(ClientConfig.CRAFTING_GRAPH_ALPHA.get().floatValue());
+
         ClientConfig.syncToFeatureManager();
 
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenInit);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseClickedPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseReleasedPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseDraggedPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseScrolledPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onKeyPressedPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onCharTypedPre);
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
@@ -177,7 +200,21 @@ public class TianshuClient {
                 GLFW.GLFW_KEY_V,
                 "key.categories.tianshu"
         );
+        CRAFTING_GRAPH_INTERACTION_KEY = new KeyMapping(
+                "key.tianshu.crafting_graph_interaction",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_TAB,
+                "key.categories.tianshu"
+        );
+        MR_TOGGLE_KEY = new KeyMapping(
+                "key.tianshu.mr_toggle",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_LEFT_ALT,
+                "key.categories.tianshu"
+        );
         event.register(VOICE_KEY);
+        event.register(CRAFTING_GRAPH_INTERACTION_KEY);
+        event.register(MR_TOGGLE_KEY);
     }
 
     public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
@@ -199,8 +236,23 @@ public class TianshuClient {
         }
 
         handleVoiceKey();
+        handleMrToggleKey();
         tickAcousticRadar(minecraft);
         tickMrSystem(minecraft);
+        tickCraftingGraph();
+    }
+
+    private static void handleMrToggleKey() {
+        if (MR_TOGGLE_KEY == null) return;
+        while (MR_TOGGLE_KEY.consumeClick()) {
+            if (!FeatureManager.isTacticalMrEnabled()) {
+                mrUserEnabled = false;
+                LOGGER.info("[MR] 总控关闭，忽略用户开关请求");
+                continue;
+            }
+            mrUserEnabled = !mrUserEnabled;
+            LOGGER.info("[MR] 用户{}全息战术系统", mrUserEnabled ? "开启" : "关闭");
+        }
     }
 
     private static void handleVoiceKey() {
@@ -297,6 +349,11 @@ public class TianshuClient {
                 ResourceLocation.fromNamespaceAndPath("tianshu", "llm_reply"),
                 ResourceLocation.fromNamespaceAndPath("tianshu", "mr_cards"),
                 TianshuClient::renderMrCards
+        );
+        event.registerAbove(
+                ResourceLocation.fromNamespaceAndPath("tianshu", "mr_cards"),
+                ResourceLocation.fromNamespaceAndPath("tianshu", "crafting_graph"),
+                TianshuClient::renderCraftingGraph
         );
     }
 
@@ -401,6 +458,8 @@ public class TianshuClient {
         acousticRadarTickCounter = 0;
 
         try {
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+
             var player = minecraft.player;
             com.rheinmetal.tianshu.snapshot.PositionData playerPos =
                     new com.rheinmetal.tianshu.snapshot.PositionData(
@@ -452,6 +511,11 @@ public class TianshuClient {
     public static void shutdownClient() {
         LOGGER.info("关闭天枢客户端资源");
         coreManager.destroy();
+        if (craftingGraphController != null) {
+            craftingGraphController.shutdown();
+            craftingGraphController = null;
+        }
+        craftingGraphStorage = null;
         if (acousticRadarEngine != null) {
             acousticRadarEngine.shutdown();
             acousticRadarEngine = null;
@@ -467,12 +531,24 @@ public class TianshuClient {
         LOGGER.info("天枢客户端资源清理完成");
     }
 
+    private static double computeRequiredEnvironmentScanRadius() {
+        double radarRadius = acousticRadarEngine != null ? acousticRadarEngine.getRadarRange() : 0.0;
+        double mrRadius = (mrEngine != null && mrEngine.isRunning() && FeatureManager.isTacticalMrEnabled() && mrUserEnabled)
+                ? mrEngine.getRequiredRadius()
+                : 0.0;
+        return Math.max(radarRadius, mrRadius);
+    }
+
     private static void tickMrSystem(Minecraft minecraft) {
-        if (!FeatureManager.isTacticalMrEnabled()) {
+        if (!FeatureManager.isTacticalMrEnabled() || !mrUserEnabled) {
+            if (!FeatureManager.isTacticalMrEnabled()) {
+                mrUserEnabled = false;
+            }
             if (mrEngine != null) {
                 mrEngine.stop();
                 mrEngine = null;
                 mrRenderer = null;
+                environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
                 LOGGER.info("[MR] 全息战术系统已关闭，释放引擎实例");
             }
             return;
@@ -485,6 +561,7 @@ public class TianshuClient {
             mrRenderer = new MrRenderer(mrEngine);
             mrEngine.start();
             mrTickCounter = 0;
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
             LOGGER.info("[MR] 全息战术系统已启动");
         }
 
@@ -493,6 +570,8 @@ public class TianshuClient {
         mrTickCounter = 0;
 
         try {
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+
             var player = minecraft.player;
             com.rheinmetal.tianshu.snapshot.PositionData playerPos =
                     new com.rheinmetal.tianshu.snapshot.PositionData(
@@ -503,14 +582,7 @@ public class TianshuClient {
                     );
             float mrDeltaTime = MrConstants.TICK_DURATION * MrConstants.TICK_INTERVAL;
             mrEngine.tick(playerPos, mrDeltaTime);
-
-            double mrRadius = mrEngine.getRequiredRadius();
-            if (acousticRadarEngine != null) {
-                double radarRadius = acousticRadarEngine.getRadarRange();
-                environmentProvider.setActiveScanRadius(Math.max(radarRadius, mrRadius));
-            } else {
-                environmentProvider.setActiveScanRadius(mrRadius);
-            }
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
         } catch (Exception e) {
             LOGGER.warn("[MR] tick异常: {}", e.getMessage());
         }
@@ -519,6 +591,83 @@ public class TianshuClient {
     public static void renderMrCards(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
         if (mrRenderer != null) {
             mrRenderer.render(guiGraphics, deltaTracker);
+        }
+    }
+
+    private static Path craftingGraphStorageRoot() {
+        return Minecraft.getInstance().gameDirectory.toPath()
+                .resolve("config")
+                .resolve("TianshuAIAssistant")
+                .resolve("cache")
+                .resolve("crafting_graph");
+    }
+
+    private static boolean isCraftingGraphInteractionKeyDown() {
+        return CRAFTING_GRAPH_INTERACTION_KEY != null && CRAFTING_GRAPH_INTERACTION_KEY.isDown();
+    }
+
+    private static boolean isCraftingGraphInteractionKey(int keyCode) {
+        return CRAFTING_GRAPH_INTERACTION_KEY != null && CRAFTING_GRAPH_INTERACTION_KEY.matches(keyCode, 0);
+    }
+
+    private static boolean isCraftingGraphEnabled() {
+        ClientConfig.syncToFeatureManager();
+        return FeatureManager.isRecipePanelEnabled();
+    }
+
+    private static void tickCraftingGraph() {
+        if (!isCraftingGraphEnabled()) return;
+        if (craftingGraphController != null) {
+            craftingGraphController.tick();
+        }
+    }
+
+    public static void renderCraftingGraph(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+        if (!isCraftingGraphEnabled()) return;
+        if (craftingGraphController != null) {
+            craftingGraphController.getRenderer().render(guiGraphics, deltaTracker.getGameTimeDeltaPartialTick(false));
+        }
+    }
+
+    private static void onMouseClickedPre(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (isCraftingGraphEnabled() && craftingGraphController != null
+                && craftingGraphController.mouseClicked(event.getMouseX(), event.getMouseY(), event.getButton())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onMouseReleasedPre(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (isCraftingGraphEnabled() && craftingGraphController != null
+                && craftingGraphController.mouseReleased(event.getMouseX(), event.getMouseY(), event.getButton())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onMouseDraggedPre(ScreenEvent.MouseDragged.Pre event) {
+        if (isCraftingGraphEnabled() && craftingGraphController != null
+                && craftingGraphController.mouseDragged(event.getMouseX(), event.getMouseY(), event.getMouseButton(), event.getDragX(), event.getDragY())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onMouseScrolledPre(ScreenEvent.MouseScrolled.Pre event) {
+        if (isCraftingGraphEnabled() && craftingGraphController != null
+                && craftingGraphController.mouseScrolled(event.getMouseX(), event.getMouseY(), event.getScrollDeltaY())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onKeyPressedPre(ScreenEvent.KeyPressed.Pre event) {
+        if (isCraftingGraphEnabled() && craftingGraphController != null
+                && craftingGraphController.keyPressed(event.getKeyCode())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onCharTypedPre(ScreenEvent.CharacterTyped.Pre event) {
+        if (isCraftingGraphEnabled() && craftingGraphController != null
+                && craftingGraphController.charTyped(event.getCodePoint())) {
+            event.setCanceled(true);
         }
     }
 }

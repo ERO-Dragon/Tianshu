@@ -189,11 +189,11 @@ public class AcousticRadarEngine {
         }
 
         boolean highPrecision = FeatureManager.isHighPrecisionModeAllowed();
-        debugLog("[雷达诊断] Tick=" + tick + " 高精度=" + highPrecision + " 雷达范围=" + RADAR_RANGE + " 警戒范围=" + ALERT_RANGE + " 实体数=" + hostilesInAlert.size());
+// debugLog("[雷达诊断] Tick=" + tick + " 高精度=" + highPrecision + " 雷达范围=" + RADAR_RANGE + " 警戒范围=" + ALERT_RANGE + " 实体数=" + hostilesInAlert.size());
 
         if (highPrecision) {
             Set<UUID> serverLocks = RadarLockState.getServerLockedUuids();
-            debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size());
+// debugLog("[雷达诊断] 服务端锁定实体数=" + serverLocks.size());
         }
 
         processLevel2Radar(hostilesInRadar, tick);
@@ -345,7 +345,7 @@ public class AcousticRadarEngine {
             }
         }
 
-        debugLog("[L4诊断] Tick=" + tick + " | knownSize=" + knownThreatUuids.size() + " | histBlindSize=" + historicalBlindSet.size() + " | snapshotSize=" + currentBlindSnapshot.size() + " | blindBecameNonEmpty=" + blindSpotBecameNonEmpty + " | newFrontal=" + hasNewFrontal + " | shouldTrigger=" + shouldTrigger);
+// debugLog("[L4诊断] Tick=" + tick + " | knownSize=" + knownThreatUuids.size() + " | histBlindSize=" + historicalBlindSet.size() + " | snapshotSize=" + currentBlindSnapshot.size() + " | blindBecameNonEmpty=" + blindSpotBecameNonEmpty + " | newFrontal=" + hasNewFrontal + " | shouldTrigger=" + shouldTrigger);
 
         // L4 拥有绝对打断权，无视 isTTSBusy 直接赋值
         if (shouldTrigger) {

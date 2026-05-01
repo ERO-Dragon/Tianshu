@@ -28,6 +28,7 @@ public final class NearbyEntityData {
     public final boolean sneaking;
 
     public final boolean lineOfSight;
+    public final float boundingHeight;
 
     public final String mainHandItemId;
     public final float attackDamage;
@@ -52,6 +53,7 @@ public final class NearbyEntityData {
             boolean pullingBow,
             boolean sneaking,
             boolean lineOfSight,
+            float boundingHeight,
             String mainHandItemId,
             float attackDamage,
             float armorValue
@@ -74,6 +76,7 @@ public final class NearbyEntityData {
         this.pullingBow = pullingBow;
         this.sneaking = sneaking;
         this.lineOfSight = lineOfSight;
+        this.boundingHeight = boundingHeight;
         this.mainHandItemId = mainHandItemId;
         this.attackDamage = attackDamage;
         this.armorValue = armorValue;
@@ -97,6 +100,7 @@ public final class NearbyEntityData {
     public boolean isPullingBow() { return pullingBow; }
     public boolean isSneaking() { return sneaking; }
     public boolean isLineOfSight() { return lineOfSight; }
+    public float getBoundingHeight() { return boundingHeight; }
     public String getMainHandItemId() { return mainHandItemId; }
     public float getAttackDamage() { return attackDamage; }
     public float getArmorValue() { return armorValue; }

@@ -36,6 +36,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue DURABILITY_ALERT_ENABLED;
     public static final ModConfigSpec.BooleanValue CHAT_ASSISTANT;
     public static final ModConfigSpec.BooleanValue TACTICAL_MR_ENABLED;
+    public static final ModConfigSpec.DoubleValue CRAFTING_GRAPH_ALPHA;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -51,8 +52,10 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 .define("tacticalRadar", true);
         NAVIGATION_ENABLED = builder.comment("导航 HUD")
                 .define("navigation", true);
-        RECIPE_PANEL_ENABLED = builder.comment("悬浮合成面板")
+        RECIPE_PANEL_ENABLED = builder.comment("左侧合成图谱工作台")
                 .define("recipePanel", true);
+        CRAFTING_GRAPH_ALPHA = builder.comment("合成图谱整体透明度倍率，范围 0.2 到 1.0")
+                .defineInRange("craftingGraphAlpha", 0.86, 0.2, 1.0);
         AUDIO_RADAR_ENABLED = builder.comment("听觉预警雷达")
                 .define("audioRadar", true);
         COMPANION_CARD_ENABLED = builder.comment("智能伴生卡片")
@@ -326,6 +329,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     public static void syncToFeatureManager() {
         FeatureManager.syncFromClientConfig(
+                AI_ENABLED.get(),
                 TACTICAL_RADAR_ENABLED.get(),
                 NAVIGATION_ENABLED.get(),
                 RECIPE_PANEL_ENABLED.get(),
@@ -348,5 +352,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void save() {
         SPEC.save();
+        syncToFeatureManager();
     }
 }

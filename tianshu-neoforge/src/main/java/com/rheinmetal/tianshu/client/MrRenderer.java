@@ -8,8 +8,12 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -17,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class MrRenderer {
 
@@ -63,10 +68,11 @@ public class MrRenderer {
         float dp = s.disappearProgress;
 
         if (dp < 1.0f) {
-            drawDisappearCard(g, s, r, gr, b, dp);
+            drawDisappearCard(g, s, font, mc, r, gr, b, dp);
             return;
         }
 
+        drawOriginMarker(g, s, r, gr, b, Math.min(1.0f, ap * 2.0f));
         drawTetherLine(g, s, r, gr, b, ap);
 
         if (ap > 0.5f) {
@@ -77,68 +83,64 @@ public class MrRenderer {
         if (ap > 1.0f) {
             drawCardContent(g, s, font, mc);
         }
+    }
 
-        if (s.isBackground) {
-            int maskColor = MrConstants.COLOR_BACKGROUND_MASK;
-            float maskAlpha = (float) ((maskColor >> 24) & 0xFF) / 255.0f * s.alpha;
-            int ma = (int) (maskAlpha * 255.0f) & 0xFF;
-            g.fill(
-                    (int) s.cardX, (int) s.cardY,
-                    (int) (s.cardX + s.cardWidth), (int) (s.cardY + s.cardHeight),
-                    (ma << 24)
-            );
+    private void drawDisappearCard(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc, int r, int gr, int b, float dp) {
+        int outerWidth = computeOuterLineWidth(s.cardHeight);
+        int innerWidth = computeInnerLineWidth(s.cardHeight);
+
+        int alphaOuter = (int) (s.alpha * 0.3f * 255.0f) & 0xFF;
+        int alphaInner = (int) (s.alpha * 0.9f * 255.0f) & 0xFF;
+        int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+        int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+
+        if (dp > 0.5f) {
+            float boxProgress = Math.min(1.0f, (dp - 0.5f) / 0.5f);
+            drawCardBackground(g, s, boxProgress, r, gr, b);
+            drawCompressedCardContent(g, s, font, mc, boxProgress);
+        }
+
+        int ax = (int) s.anchorX;
+        int ay = (int) s.anchorY;
+        int bx = (int) s.jointX;
+        int by = (int) s.jointY;
+        int cx = (int) s.connectorX;
+        int cy = (int) s.connectorY;
+
+        if (dp > 0.3f) {
+            drawLine(g, ax, ay, bx, by, outerWidth, colorOuter);
+            drawLine(g, ax, ay, bx, by, innerWidth, colorInner);
+
+            float t = Math.min(1.0f, (dp - 0.3f) / 0.2f);
+            int endX = bx + (int) ((cx - bx) * t);
+            int endY = by + (int) ((cy - by) * t);
+            drawLine(g, bx, by, endX, endY, outerWidth, colorOuter);
+            drawLine(g, bx, by, endX, endY, innerWidth, colorInner);
+            drawOriginMarker(g, s, r, gr, b, Math.min(1.0f, dp));
+        } else if (dp > 0.0f) {
+            float t = dp / 0.3f;
+            int endX = ax + (int) ((bx - ax) * t);
+            int endY = ay + (int) ((by - ay) * t);
+            drawLine(g, ax, ay, endX, endY, outerWidth, colorOuter);
+            drawLine(g, ax, ay, endX, endY, innerWidth, colorInner);
+            drawOriginMarker(g, s, r, gr, b, t);
         }
     }
 
-    private void drawDisappearCard(GuiGraphics g, MrCardSnapshot s, int r, int gr, int b, float dp) {
-        float h = s.cardHeight * dp;
-        float y = s.cardY + (s.cardHeight - h);
-
-        int bgAlpha = (int) (s.alpha * 0.6f * 255.0f * dp) & 0xFF;
-        int bgColor = (bgAlpha << 24);
-
-        if (dp > 0.3f) {
-            g.fill((int) s.cardX + s.glitchOffset, (int) y,
-                    (int) (s.cardX + s.cardWidth), (int) (y + h), bgColor);
-        }
-
-        if (dp > 0.5f) {
-            int alphaOuter = (int) (s.alpha * 0.3f * 255.0f * dp) & 0xFF;
-            int alphaInner = (int) (s.alpha * 0.9f * 255.0f * dp) & 0xFF;
-            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
-            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-
-            drawLine(g, (int) s.cardX, (int) y, (int) (s.cardX + s.cardWidth), (int) y,
-                    MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, (int) s.cardX, (int) y, (int) (s.cardX + s.cardWidth), (int) y,
-                    MrConstants.NEON_WIDTH_INNER, colorInner);
-        }
-
-        if (dp > 0.6f) {
-            int alphaOuter = (int) (s.alpha * 0.3f * 255.0f * dp) & 0xFF;
-            int alphaInner = (int) (s.alpha * 0.9f * 255.0f * dp) & 0xFF;
-            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
-            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-
-            int cx = (int) (s.cardX + s.cardWidth * 0.5f);
-            int cy = (int) (y + h);
-            drawLine(g, cx, cy, (int) s.jointX, (int) s.jointY,
-                    MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, cx, cy, (int) s.jointX, (int) s.jointY,
-                    MrConstants.NEON_WIDTH_INNER, colorInner);
-        }
-
-        if (dp > 0.8f) {
-            int alphaOuter = (int) (s.alpha * 0.3f * 255.0f * dp) & 0xFF;
-            int alphaInner = (int) (s.alpha * 0.9f * 255.0f * dp) & 0xFF;
-            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
-            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-
-            drawLine(g, (int) s.jointX, (int) s.jointY, (int) s.anchorX, (int) s.anchorY,
-                    MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, (int) s.jointX, (int) s.jointY, (int) s.anchorX, (int) s.anchorY,
-                    MrConstants.NEON_WIDTH_INNER, colorInner);
-        }
+    private void drawOriginMarker(GuiGraphics g, MrCardSnapshot s, int r, int gr, int b, float progress) {
+        float p = Math.max(0.0f, Math.min(1.0f, progress));
+        int alphaOuter = (int) (s.alpha * 0.25f * 255.0f * p) & 0xFF;
+        int alphaInner = (int) (s.alpha * 0.85f * 255.0f * p) & 0xFF;
+        int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+        int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+        int ax = (int) s.anchorX;
+        int ay = (int) s.anchorY;
+        int outerRadius = computeOriginOuterRadius(s.cardHeight);
+        int innerRadius = computeOriginInnerRadius(s.cardHeight);
+        drawRectOutline(g, ax - outerRadius, ay - outerRadius, ax + outerRadius, ay + outerRadius,
+                computeOuterLineWidth(s.cardHeight), colorOuter);
+        drawRectOutline(g, ax - innerRadius, ay - innerRadius, ax + innerRadius, ay + innerRadius,
+                computeInnerLineWidth(s.cardHeight), colorInner);
     }
 
     private void drawTetherLine(GuiGraphics g, MrCardSnapshot s, int r, int gr, int b, float ap) {
@@ -147,6 +149,8 @@ public class MrRenderer {
 
         int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
         int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+        int outerWidth = computeOuterLineWidth(s.cardHeight);
+        int innerWidth = computeInnerLineWidth(s.cardHeight);
 
         int ax = (int) s.anchorX;
         int ay = (int) s.anchorY;
@@ -157,61 +161,88 @@ public class MrRenderer {
             float t = ap / 0.3f;
             int endX = ax + (int) ((bx - ax) * t);
             int endY = ay + (int) ((by - ay) * t);
-            drawLine(g, ax, ay, endX, endY, MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, ax, ay, endX, endY, MrConstants.NEON_WIDTH_INNER, colorInner);
+            drawLine(g, ax, ay, endX, endY, outerWidth, colorOuter);
+            drawLine(g, ax, ay, endX, endY, innerWidth, colorInner);
         } else if (ap <= 0.5f) {
-            drawLine(g, ax, ay, bx, by, MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, ax, ay, bx, by, MrConstants.NEON_WIDTH_INNER, colorInner);
+            drawLine(g, ax, ay, bx, by, outerWidth, colorOuter);
+            drawLine(g, ax, ay, bx, by, innerWidth, colorInner);
 
             float t = (ap - 0.3f) / 0.2f;
-            int cx = (int) s.cardX;
-            int cy = (int) s.cardY;
+            int cx = (int) s.connectorX;
+            int cy = (int) s.connectorY;
             int endX = bx + (int) ((cx - bx) * t);
             int endY = by + (int) ((cy - by) * t);
-            drawLine(g, bx, by, endX, endY, MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, bx, by, endX, endY, MrConstants.NEON_WIDTH_INNER, colorInner);
+            drawLine(g, bx, by, endX, endY, outerWidth, colorOuter);
+            drawLine(g, bx, by, endX, endY, innerWidth, colorInner);
         } else {
-            drawLine(g, ax, ay, bx, by, MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, ax, ay, bx, by, MrConstants.NEON_WIDTH_INNER, colorInner);
-            drawLine(g, bx, by, (int) s.cardX, (int) s.cardY, MrConstants.NEON_WIDTH_OUTER, colorOuter);
-            drawLine(g, bx, by, (int) s.cardX, (int) s.cardY, MrConstants.NEON_WIDTH_INNER, colorInner);
+            drawLine(g, ax, ay, bx, by, outerWidth, colorOuter);
+            drawLine(g, ax, ay, bx, by, innerWidth, colorInner);
+            drawLine(g, bx, by, (int) s.connectorX, (int) s.connectorY, outerWidth, colorOuter);
+            drawLine(g, bx, by, (int) s.connectorX, (int) s.connectorY, innerWidth, colorInner);
         }
     }
 
     private void drawCardBackground(GuiGraphics g, MrCardSnapshot s, float boxProgress, int r, int gr, int b) {
-        float w = s.cardWidth * boxProgress;
+        float w = s.cardWidth;
         float h = s.cardHeight * boxProgress;
-        float x = s.cardX + (s.cardWidth - w) * 0.5f;
-        float y = s.cardY + (s.cardHeight - h) * 0.5f;
+        float x = s.cardX;
+        float y = s.connectorOnTopEdge ? s.cardY : s.cardY + s.cardHeight - h;
 
         int bgAlpha = (int) (s.alpha * 0.6f * 255.0f) & 0xFF;
+        int bgCenterAlpha = (int) (s.alpha * 0.32f * 255.0f) & 0xFF;
+        int bgOuter = (bgAlpha << 24) | ((r / 4) << 16) | ((gr / 4) << 8) | (b / 4);
+        int bgCenter = (bgCenterAlpha << 24) | ((r / 2) << 16) | ((gr / 2) << 8) | (b / 2);
 
-        g.fill((int) x, (int) y, (int) (x + w), (int) (y + h), (bgAlpha << 24));
+        int midY = (int) (y + h * 0.5f);
+        g.fillGradient((int) x, (int) y, (int) (x + w), midY, bgOuter, bgCenter);
+        g.fillGradient((int) x, midY, (int) (x + w), (int) (y + h), bgCenter, bgOuter);
 
         if (boxProgress > 0.8f) {
-            int corner = MrConstants.CUT_CORNER_SIZE;
-
-            g.fill((int) x, (int) y, (int) x + corner, (int) y + corner, (bgAlpha << 24));
-            g.fill((int) (x + w - corner), (int) y, (int) (x + w), (int) y + corner, (bgAlpha << 24));
-            g.fill((int) x, (int) (y + h - corner), (int) x + corner, (int) (y + h), (bgAlpha << 24));
-            g.fill((int) (x + w - corner), (int) (y + h - corner), (int) (x + w), (int) (y + h), (bgAlpha << 24));
-
-            int borderAlpha = (int) (s.alpha * 0.8f * 255.0f) & 0xFF;
-            int borderColor = (borderAlpha << 24) | (r << 16) | (gr << 8) | b;
-
-            drawLine(g, (int) (x + corner), (int) y, (int) (x + w - corner), (int) y, MrConstants.NEON_WIDTH_INNER, borderColor);
-            drawLine(g, (int) (x + corner), (int) (y + h), (int) (x + w - corner), (int) (y + h), MrConstants.NEON_WIDTH_INNER, borderColor);
-            drawLine(g, (int) x, (int) (y + corner), (int) x, (int) (y + h - corner), MrConstants.NEON_WIDTH_INNER, borderColor);
-            drawLine(g, (int) (x + w), (int) (y + corner), (int) (x + w), (int) (y + h - corner), MrConstants.NEON_WIDTH_INNER, borderColor);
+            int corner = computeCutCornerSize(w, h);
+            int alphaOuter = (int) (s.alpha * 0.28f * 255.0f) & 0xFF;
+            int alphaInner = (int) (s.alpha * 0.9f * 255.0f) & 0xFF;
+            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+            drawCutCornerBorder(g, (int) x, (int) y, (int) (x + w), (int) (y + h), corner,
+                    computeOuterLineWidth(h), colorOuter);
+            drawCutCornerBorder(g, (int) x, (int) y, (int) (x + w), (int) (y + h), corner,
+                    computeInnerLineWidth(h), colorInner);
         }
+    }
+
+    private void drawCompressedCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc, float boxProgress) {
+        float p = Math.max(0.0f, Math.min(1.0f, boxProgress));
+        if (p <= 0.01f) return;
+        int clipX1 = (int) s.cardX;
+        int clipX2 = (int) (s.cardX + s.cardWidth);
+        int clipY1;
+        int clipY2;
+        float pivotY;
+        if (s.connectorOnTopEdge) {
+            clipY1 = (int) s.cardY;
+            clipY2 = (int) (s.cardY + s.cardHeight * p);
+            pivotY = s.cardY;
+        } else {
+            clipY1 = (int) (s.cardY + s.cardHeight * (1.0f - p));
+            clipY2 = (int) (s.cardY + s.cardHeight);
+            pivotY = s.cardY + s.cardHeight;
+        }
+        g.enableScissor(clipX1, clipY1, clipX2, clipY2);
+        g.pose().pushPose();
+        g.pose().translate(0.0f, pivotY, 0.0f);
+        g.pose().scale(1.0f, p, 1.0f);
+        g.pose().translate(0.0f, -pivotY, 0.0f);
+        drawCardContent(g, s, font, mc);
+        g.pose().popPose();
+        g.disableScissor();
     }
 
     private void drawCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
         int ix = (int) s.contentStartX;
-        int iy = (int) s.contentStartY;
 
         if (s.displayName != null) {
-            g.drawString(font, s.displayName, (int) (s.cardX + ix), (int) (s.cardY + iy), s.accentTextColor, true);
+            drawEntityFaceIcon(g, mc, s, (int) (s.cardX + s.nameIconX), (int) (s.cardY + s.nameIconY));
+            g.drawString(font, s.displayName, (int) (s.cardX + s.nameTextX), (int) (s.cardY + s.nameTextY), s.accentTextColor, true);
         }
 
         if (s.maxHealth > 0) {
@@ -221,26 +252,138 @@ public class MrRenderer {
             g.fill(barX, barY, barX + (int) s.healthBarFillWidth, barY + (int) MrConstants.CONTENT_BAR_HEIGHT, s.healthBarColor);
         }
 
-        int statsX = (int) (s.cardX + ix);
         int statsY = (int) (s.cardY + s.contentStatsY);
 
+        ItemStack distanceStack = resolveItemStack(s.distanceIconItemId);
+        if (distanceStack != null) {
+            g.renderItem(distanceStack, (int) (s.cardX + s.distanceIconX), (int) (s.cardY + s.distanceIconY));
+        }
         if (s.distanceText != null) {
-            g.drawString(font, s.distanceText, statsX, statsY, s.textAlphaColor, false);
+            g.drawString(font, s.distanceText, (int) (s.cardX + s.distanceTextX), statsY, s.textAlphaColor, false);
         }
 
-        if (s.attackText != null) {
-            if (s.hasMainHandItem) {
-                ItemStack weaponStack = resolveItemStack(s.mainHandItemId);
-                if (weaponStack != null) {
-                    g.renderItem(weaponStack, (int) (s.cardX + s.weaponIconX), (int) (s.cardY + s.weaponIconY));
-                }
+        ItemStack attackStack = resolveItemStack(s.attackIconItemId);
+        if (attackStack != null) {
+            g.renderItem(attackStack, (int) (s.cardX + s.attackIconX), (int) (s.cardY + s.attackIconY));
+        }
+        g.drawString(font, s.attackText != null ? s.attackText : "0", (int) (s.cardX + s.atkTextX), statsY, s.textAlphaColor, false);
+
+        ItemStack armorStack = resolveItemStack(s.armorIconItemId);
+        if (armorStack != null) {
+            g.renderItem(armorStack, (int) (s.cardX + s.armorIconX), (int) (s.cardY + s.armorIconY));
+        }
+        g.drawString(font, s.armorText != null ? s.armorText : "0", (int) (s.cardX + s.defTextX), statsY, s.textAlphaColor, false);
+
+        if (s.isFocused && s.focusedDetailText != null && !s.focusedDetailText.isEmpty()) {
+            drawFocusedDetailText(g, s, font);
+        }
+    }
+
+    private void drawFocusedDetailText(GuiGraphics g, MrCardSnapshot s, Font font) {
+        int visibleChars = Math.max(0, Math.min(s.focusedDetailVisibleChars, s.focusedDetailText.length()));
+        String visibleText = s.focusedDetailText.substring(0, visibleChars);
+        List<String> wrappedLines = wrapText(font, visibleText, Math.max(1, (int) (s.cardWidth - s.contentStartX * 2.0f)));
+        int x = (int) (s.cardX + s.contentStartX);
+        int y = (int) (s.cardY + s.contentStatsY + MrConstants.FONT_LINE_HEIGHT + 8.0f);
+        for (String line : wrappedLines) {
+            g.drawString(font, line, x, y, s.textAlphaColor, false);
+            y += MrConstants.FONT_LINE_HEIGHT;
+        }
+    }
+
+    private List<String> wrapText(Font font, String text, int maxWidth) {
+        List<String> result = new ArrayList<>();
+        String[] explicitLines = text.split("\n", -1);
+        for (String explicitLine : explicitLines) {
+            appendWrappedLine(font, explicitLine, maxWidth, result);
+        }
+        if (result.isEmpty()) result.add("");
+        return result;
+    }
+
+    private void appendWrappedLine(Font font, String line, int maxWidth, List<String> result) {
+        if (line.isEmpty()) {
+            result.add("");
+            return;
+        }
+        int start = 0;
+        while (start < line.length()) {
+            int end = line.length();
+            while (end > start + 1 && font.width(line.substring(start, end)) > maxWidth) {
+                end--;
             }
-            g.drawString(font, s.attackText, (int) (s.cardX + s.atkTextX), statsY, s.textAlphaColor, false);
+            result.add(line.substring(start, end));
+            start = end;
+        }
+    }
+
+    private void drawEntityFaceIcon(GuiGraphics g, Minecraft mc, MrCardSnapshot s, int x, int y) {
+        ItemStack skullStack = resolveItemStack(resolveEntitySkullItemId(s.entityId));
+        if (skullStack != null) {
+            g.renderItem(skullStack, x, y);
+            return;
         }
 
-        if (s.armorText != null) {
-            g.drawString(font, s.armorText, (int) (s.cardX + s.defTextX), statsY, s.textAlphaColor, false);
+        ResourceLocation texture = resolveEntityTexture(mc, s);
+        if (texture == null) {
+            ItemStack fallback = resolveItemStack("minecraft:player_head");
+            if (fallback != null) g.renderItem(fallback, x, y);
+            return;
         }
+        g.blit(texture, x, y, 8.0f, 8.0f, 16, 16, 64, 64);
+    }
+
+    private String resolveEntitySkullItemId(String entityId) {
+        if ("minecraft:zombie".equals(entityId)) return "minecraft:zombie_head";
+        if ("minecraft:skeleton".equals(entityId)) return "minecraft:skeleton_skull";
+        if ("minecraft:wither_skeleton".equals(entityId)) return "minecraft:wither_skeleton_skull";
+        if ("minecraft:creeper".equals(entityId)) return "minecraft:creeper_head";
+        if ("minecraft:piglin".equals(entityId)) return "minecraft:piglin_head";
+        if ("minecraft:ender_dragon".equals(entityId)) return "minecraft:dragon_head";
+        return null;
+    }
+
+    private ResourceLocation resolveEntityTexture(Minecraft mc, MrCardSnapshot s) {
+        if (mc.level == null || s == null) return null;
+        Entity liveEntity = resolveLiveEntity(mc, s.entityUuid);
+        if (liveEntity != null) {
+            try {
+                return getEntityTexture(mc, liveEntity);
+            } catch (Exception ignored) {
+            }
+        }
+        return resolveEntityTypeTexture(mc, s.entityId);
+    }
+
+    private Entity resolveLiveEntity(Minecraft mc, String entityUuid) {
+        if (mc.level == null || entityUuid == null || entityUuid.isEmpty()) return null;
+        try {
+            UUID uuid = UUID.fromString(entityUuid);
+            for (Entity entity : mc.level.entitiesForRendering()) {
+                if (uuid.equals(entity.getUUID())) return entity;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private ResourceLocation resolveEntityTypeTexture(Minecraft mc, String entityId) {
+        if (mc.level == null || entityId == null || entityId.isEmpty()) return null;
+        try {
+            ResourceLocation loc = ResourceLocation.parse(entityId);
+            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(loc).orElse(null);
+            if (type == null) return null;
+            Entity entity = type.create(mc.level);
+            if (entity == null) return null;
+            return getEntityTexture(mc, entity);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private <T extends Entity> ResourceLocation getEntityTexture(Minecraft mc, T entity) {
+        EntityRenderer<? super T> renderer = mc.getEntityRenderDispatcher().getRenderer(entity);
+        return renderer.getTextureLocation(entity);
     }
 
     private ItemStack resolveItemStack(String itemId) {
@@ -260,6 +403,54 @@ public class MrRenderer {
         } catch (Exception ignored) {
         }
         return null;
+    }
+
+    private int computeOuterLineWidth(float height) {
+        float scaled = height * MrConstants.NEON_OUTER_WIDTH_HEIGHT_RATIO;
+        float clamped = Math.max(MrConstants.NEON_OUTER_WIDTH_MIN, Math.min(MrConstants.NEON_OUTER_WIDTH_MAX, scaled));
+        return Math.max(1, Math.round(clamped));
+    }
+
+    private int computeInnerLineWidth(float height) {
+        float scaled = height * MrConstants.NEON_INNER_WIDTH_HEIGHT_RATIO;
+        float clamped = Math.max(MrConstants.NEON_INNER_WIDTH_MIN, Math.min(MrConstants.NEON_INNER_WIDTH_MAX, scaled));
+        return Math.max(1, Math.round(clamped));
+    }
+
+    private int computeOriginOuterRadius(float height) {
+        float scaled = height * MrConstants.ORIGIN_MARKER_OUTER_RADIUS_HEIGHT_RATIO;
+        float clamped = Math.max(MrConstants.ORIGIN_MARKER_OUTER_RADIUS_MIN, Math.min(MrConstants.ORIGIN_MARKER_OUTER_RADIUS_MAX, scaled));
+        return Math.max(1, Math.round(clamped));
+    }
+
+    private int computeOriginInnerRadius(float height) {
+        float scaled = height * MrConstants.ORIGIN_MARKER_INNER_RADIUS_HEIGHT_RATIO;
+        float clamped = Math.max(MrConstants.ORIGIN_MARKER_INNER_RADIUS_MIN, Math.min(MrConstants.ORIGIN_MARKER_INNER_RADIUS_MAX, scaled));
+        return Math.max(1, Math.round(clamped));
+    }
+
+    private int computeCutCornerSize(float width, float height) {
+        float scaled = height * MrConstants.CUT_CORNER_HEIGHT_RATIO;
+        float clamped = Math.max(MrConstants.CUT_CORNER_MIN_SIZE, Math.min(MrConstants.CUT_CORNER_MAX_SIZE, scaled));
+        return Math.max(1, Math.min((int) clamped, (int) Math.min(width, height) / 3));
+    }
+
+    private void drawCutCornerBorder(GuiGraphics g, int left, int top, int right, int bottom, int corner, int width, int color) {
+        drawLine(g, left + corner, top, right - corner, top, width, color);
+        drawLine(g, right - corner, top, right, top + corner, width, color);
+        drawLine(g, right, top + corner, right, bottom - corner, width, color);
+        drawLine(g, right, bottom - corner, right - corner, bottom, width, color);
+        drawLine(g, right - corner, bottom, left + corner, bottom, width, color);
+        drawLine(g, left + corner, bottom, left, bottom - corner, width, color);
+        drawLine(g, left, bottom - corner, left, top + corner, width, color);
+        drawLine(g, left, top + corner, left + corner, top, width, color);
+    }
+
+    private void drawRectOutline(GuiGraphics g, int left, int top, int right, int bottom, int width, int color) {
+        drawLine(g, left, top, right, top, width, color);
+        drawLine(g, right, top, right, bottom, width, color);
+        drawLine(g, right, bottom, left, bottom, width, color);
+        drawLine(g, left, bottom, left, top, width, color);
     }
 
     private void drawLine(GuiGraphics g, int x1, int y1, int x2, int y2, int width, int color) {

@@ -11,6 +11,7 @@
   "examplemod.configuration.magicNumberIntroduction": "Magic Number Text",
   "examplemod.configuration.magicNumber": "Magic Number",
   "key.categories.tianshu": "天枢AI",
-  "key.tianshu.activate": "语音开关 (按住说话)"
+  "key.tianshu.activate": "语音开关 (按住说话)",
+  "key.tianshu.crafting_graph_interaction": "合成图谱交互键"
 
 }
