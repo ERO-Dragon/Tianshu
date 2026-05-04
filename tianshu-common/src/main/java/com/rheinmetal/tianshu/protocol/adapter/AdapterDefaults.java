@@ -27,6 +27,7 @@ public record AdapterDefaults(
         if (failurePolicy == null) failurePolicy = FailurePolicy.REPORT_ONLY;
         if (deadlineMs <= 0L) deadlineMs = 30_000L;
         if (expireMs <= 0L) expireMs = Math.max(deadlineMs + 30_000L, 60_000L);
+        if (expireMs < deadlineMs) expireMs = deadlineMs;
         maxConcurrency = Math.max(1, maxConcurrency);
         queueCapacity = Math.max(1, queueCapacity);
     }
@@ -55,7 +56,27 @@ public record AdapterDefaults(
         return new AdapterDefaults(priority, threadPolicy, value, cancellationScope, failurePolicy, deadlineMs, expireMs, maxConcurrency, queueCapacity, cancellable, supportsStreaming);
     }
 
+    public AdapterDefaults withCancellationScope(CancellationScope value) {
+        return new AdapterDefaults(priority, threadPolicy, deliveryPolicy, value, failurePolicy, deadlineMs, expireMs, maxConcurrency, queueCapacity, cancellable, supportsStreaming);
+    }
+
+    public AdapterDefaults withFailurePolicy(FailurePolicy value) {
+        return new AdapterDefaults(priority, threadPolicy, deliveryPolicy, cancellationScope, value, deadlineMs, expireMs, maxConcurrency, queueCapacity, cancellable, supportsStreaming);
+    }
+
     public AdapterDefaults withTiming(long deadlineMs, long expireMs) {
         return new AdapterDefaults(priority, threadPolicy, deliveryPolicy, cancellationScope, failurePolicy, deadlineMs, expireMs, maxConcurrency, queueCapacity, cancellable, supportsStreaming);
+    }
+
+    public AdapterDefaults withConcurrency(int maxConcurrency, int queueCapacity) {
+        return new AdapterDefaults(priority, threadPolicy, deliveryPolicy, cancellationScope, failurePolicy, deadlineMs, expireMs, maxConcurrency, queueCapacity, cancellable, supportsStreaming);
+    }
+
+    public AdapterDefaults withCancellable(boolean value) {
+        return new AdapterDefaults(priority, threadPolicy, deliveryPolicy, cancellationScope, failurePolicy, deadlineMs, expireMs, maxConcurrency, queueCapacity, value, supportsStreaming);
+    }
+
+    public AdapterDefaults withSupportsStreaming(boolean value) {
+        return new AdapterDefaults(priority, threadPolicy, deliveryPolicy, cancellationScope, failurePolicy, deadlineMs, expireMs, maxConcurrency, queueCapacity, cancellable, value);
     }
 }

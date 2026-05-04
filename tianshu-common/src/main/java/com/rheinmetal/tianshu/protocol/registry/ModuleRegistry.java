@@ -12,7 +12,7 @@ public final class ModuleRegistry {
     public void register(ModuleDescriptor descriptor) {
         ModuleDescriptor existing = modules.putIfAbsent(descriptor.moduleId(), descriptor);
         if (existing != null) {
-            throw new IllegalStateException("Module already registered: " + descriptor.moduleId());
+            return;
         }
     }
 

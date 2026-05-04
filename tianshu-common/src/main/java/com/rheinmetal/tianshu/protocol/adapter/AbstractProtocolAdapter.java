@@ -56,8 +56,18 @@ public abstract class AbstractProtocolAdapter {
 
     protected final void registerCapability(String capabilityId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy, EnvelopeHandler handler, AdapterDefaults options) {
         AdapterDefaults effective = options(options);
-        CapabilityDescriptor capability = new CapabilityDescriptor(capabilityId, payloadType, payloadClass, brokerType, packetTypes(acceptedPacketTypes), minPriority, completionPolicy);
-        runtime.registerModule(moduleDescriptor(List.of(capability), effective), handler);
+        CapabilityDescriptor capability = capabilityDescriptor(capabilityId, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, completionPolicy);
+        runtime.registerModule(moduleDescriptor(List.of(capability), effective), Objects.requireNonNull(handler, "handler"));
+    }
+
+    protected final void registerDirectRoute(String routeId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {
+        registerDirectRoute(routeId, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, CompletionPolicy.AUTO_COMPLETE_ON_RETURN, handler, defaults);
+    }
+
+    protected final void registerDirectRoute(String routeId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy, EnvelopeHandler handler, AdapterDefaults options) {
+        AdapterDefaults effective = options(options);
+        CapabilityDescriptor capability = capabilityDescriptor(routeId, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, completionPolicy);
+        runtime.registerDirectRoute(routeId, moduleDescriptor(List.of(), effective), capability, Objects.requireNonNull(handler, "handler"));
     }
 
     protected final void subscribeTopic(String topicId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {
@@ -67,7 +77,7 @@ public abstract class AbstractProtocolAdapter {
     protected final void subscribeTopic(String topicId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy, EnvelopeHandler handler, AdapterDefaults options) {
         AdapterDefaults effective = options(options);
         TopicSubscriptionDescriptor subscription = new TopicSubscriptionDescriptor(topicId, payloadType, payloadClass, brokerType, packetTypes(acceptedPacketTypes), minPriority, completionPolicy);
-        runtime.subscribeTopic(moduleDescriptor(List.of(), effective), subscription, handler);
+        runtime.subscribeTopic(moduleDescriptor(List.of(), effective), subscription, Objects.requireNonNull(handler, "handler"));
     }
 
     protected final TianshuEnvelope publishTopic(String topicId, PayloadType payloadType, ITianshuPayload payload) {
@@ -75,7 +85,7 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final TianshuEnvelope publishTopic(String topicId, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
-        return submit(EnvelopeBuilder.eventTopic(sourceId, topicId, payloadType, payload), options);
+        return submitToTopic(topicId, PacketType.EVENT, payloadType, payload, options);
     }
 
     protected final TianshuEnvelope publishTopic(TianshuEnvelope parent, String topicId, PayloadType payloadType, ITianshuPayload payload) {
@@ -83,12 +93,28 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final TianshuEnvelope publishTopic(TianshuEnvelope parent, String topicId, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        return submitToTopic(parent, topicId, PacketType.EVENT, payloadType, payload, options);
+    }
+
+    protected final TianshuEnvelope submitToTopic(String topicId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
+        return submitToTopic(topicId, packetType, payloadType, payload, defaults);
+    }
+
+    protected final TianshuEnvelope submitToTopic(String topicId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        return submit(EnvelopeBuilder.eventTopic(sourceId, topicId, payloadType, payload).packetType(packetType), options);
+    }
+
+    protected final TianshuEnvelope submitToTopic(TianshuEnvelope parent, String topicId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
+        return submitToTopic(parent, topicId, packetType, payloadType, payload, defaults);
+    }
+
+    protected final TianshuEnvelope submitToTopic(TianshuEnvelope parent, String topicId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
         Objects.requireNonNull(parent, "parent");
         return submit(EnvelopeBuilder.childOf(parent)
                 .sourceId(sourceId)
                 .targetMode(TargetMode.TOPIC)
                 .target(topicId)
-                .packetType(PacketType.EVENT)
+                .packetType(packetType)
                 .payloadType(payloadType)
                 .payload(payload), options);
     }
@@ -98,7 +124,7 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final TianshuEnvelope requestCapability(String capabilityId, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
-        return submit(EnvelopeBuilder.requestCapability(sourceId, capabilityId, payloadType, payload), options);
+        return submitToCapability(capabilityId, PacketType.REQUEST, payloadType, payload, AckPolicy.EXPECT_SUCCESS_OR_FAILURE, options);
     }
 
     protected final TianshuEnvelope requestCapability(TianshuEnvelope parent, String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
@@ -106,15 +132,7 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final TianshuEnvelope requestCapability(TianshuEnvelope parent, String capabilityId, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
-        Objects.requireNonNull(parent, "parent");
-        return submit(EnvelopeBuilder.childOf(parent)
-                .sourceId(sourceId)
-                .targetMode(TargetMode.CAPABILITY)
-                .target(capabilityId)
-                .packetType(PacketType.REQUEST)
-                .payloadType(payloadType)
-                .ackPolicy(AckPolicy.EXPECT_SUCCESS_OR_FAILURE)
-                .payload(payload), options);
+        return submitToCapability(parent, capabilityId, PacketType.REQUEST, payloadType, payload, AckPolicy.EXPECT_SUCCESS_OR_FAILURE, options);
     }
 
     protected final TianshuEnvelope commandCapability(String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
@@ -122,7 +140,7 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final TianshuEnvelope commandCapability(String capabilityId, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
-        return submit(EnvelopeBuilder.commandToCapability(sourceId, capabilityId, payloadType, payload), options);
+        return submitToCapability(capabilityId, PacketType.COMMAND, payloadType, payload, AckPolicy.NONE, options);
     }
 
     protected final TianshuEnvelope commandCapability(TianshuEnvelope parent, String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
@@ -130,17 +148,92 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final TianshuEnvelope commandCapability(TianshuEnvelope parent, String capabilityId, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        return submitToCapability(parent, capabilityId, PacketType.COMMAND, payloadType, payload, AckPolicy.NONE, options);
+    }
+
+    protected final TianshuEnvelope submitToCapability(String capabilityId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
+        return submitToCapability(capabilityId, packetType, payloadType, payload, AckPolicy.NONE, defaults);
+    }
+
+    protected final TianshuEnvelope submitToCapability(String capabilityId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        return submitToCapability(capabilityId, packetType, payloadType, payload, AckPolicy.NONE, options);
+    }
+
+    protected final TianshuEnvelope submitToCapability(String capabilityId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AckPolicy ackPolicy, AdapterDefaults options) {
+        return submit(EnvelopeBuilder.commandToCapability(sourceId, capabilityId, payloadType, payload)
+                .packetType(packetType)
+                .ackPolicy(ackPolicy), options);
+    }
+
+    protected final TianshuEnvelope submitToCapability(TianshuEnvelope parent, String capabilityId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
+        return submitToCapability(parent, capabilityId, packetType, payloadType, payload, AckPolicy.NONE, defaults);
+    }
+
+    protected final TianshuEnvelope submitToCapability(TianshuEnvelope parent, String capabilityId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        return submitToCapability(parent, capabilityId, packetType, payloadType, payload, AckPolicy.NONE, options);
+    }
+
+    protected final TianshuEnvelope submitToCapability(TianshuEnvelope parent, String capabilityId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AckPolicy ackPolicy, AdapterDefaults options) {
         Objects.requireNonNull(parent, "parent");
         return submit(EnvelopeBuilder.childOf(parent)
                 .sourceId(sourceId)
                 .targetMode(TargetMode.CAPABILITY)
                 .target(capabilityId)
-                .packetType(PacketType.COMMAND)
+                .packetType(packetType)
+                .payloadType(payloadType)
+                .ackPolicy(ackPolicy)
+                .payload(payload), options);
+    }
+
+    protected final TianshuEnvelope submitDirect(String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
+        return submitDirect(routeId, packetType, payloadType, payload, defaults);
+    }
+
+    protected final TianshuEnvelope submitDirect(String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        return submit(EnvelopeBuilder.create()
+                .sourceId(sourceId)
+                .targetMode(TargetMode.DIRECT)
+                .target(routeId)
+                .packetType(packetType)
                 .payloadType(payloadType)
                 .payload(payload), options);
     }
 
+    protected final TianshuEnvelope submitDirect(TianshuEnvelope parent, String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
+        return submitDirect(parent, routeId, packetType, payloadType, payload, defaults);
+    }
+
+    protected final TianshuEnvelope submitDirect(TianshuEnvelope parent, String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        Objects.requireNonNull(parent, "parent");
+        return submit(EnvelopeBuilder.childOf(parent)
+                .sourceId(sourceId)
+                .targetMode(TargetMode.DIRECT)
+                .target(routeId)
+                .packetType(packetType)
+                .payloadType(payloadType)
+                .payload(payload), options);
+    }
+
+    protected final TianshuEnvelope respondTo(TianshuEnvelope parent, PayloadType payloadType, ITianshuPayload payload) {
+        return respondTo(parent, payloadType, payload, defaults);
+    }
+
+    protected final TianshuEnvelope respondTo(TianshuEnvelope parent, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
+        Objects.requireNonNull(parent, "parent");
+        return submit(EnvelopeBuilder.responseTo(sourceId, parent, payloadType, payload), options);
+    }
+
+    protected final TianshuEnvelope cancelEnvelope(TianshuEnvelope targetEnvelope, String reasonCode, String message) {
+        return cancelEnvelope(targetEnvelope, reasonCode, message, defaults);
+    }
+
+    protected final TianshuEnvelope cancelEnvelope(TianshuEnvelope targetEnvelope, String reasonCode, String message, AdapterDefaults options) {
+        Objects.requireNonNull(targetEnvelope, "targetEnvelope");
+        return submit(EnvelopeBuilder.cancelEnvelope(sourceId, targetEnvelope, reasonCode, message), options);
+    }
+
     protected final TianshuEnvelope submit(EnvelopeBuilder builder, AdapterDefaults options) {
+        Objects.requireNonNull(builder, "builder");
         AdapterDefaults effective = options(options);
         long now = System.currentTimeMillis();
         TianshuEnvelope envelope = builder
@@ -155,6 +248,10 @@ public abstract class AbstractProtocolAdapter {
                 .build();
         runtime.submit(envelope);
         return envelope;
+    }
+
+    private CapabilityDescriptor capabilityDescriptor(String capabilityId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy) {
+        return new CapabilityDescriptor(capabilityId, payloadType, payloadClass, brokerType, packetTypes(acceptedPacketTypes), minPriority, completionPolicy);
     }
 
     private ModuleDescriptor moduleDescriptor(List<CapabilityDescriptor> capabilities, AdapterDefaults options) {
