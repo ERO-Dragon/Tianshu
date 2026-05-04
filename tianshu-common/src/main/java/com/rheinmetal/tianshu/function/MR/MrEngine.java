@@ -1,10 +1,12 @@
 package com.rheinmetal.tianshu.function.MR;
 
 import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
+import com.rheinmetal.tianshu.provider.IPlayerStateProvider;
 import com.rheinmetal.tianshu.provider.IRenderContextProvider;
 import com.rheinmetal.tianshu.snapshot.MatrixSnapshot;
 import com.rheinmetal.tianshu.snapshot.NearbyEntityData;
 import com.rheinmetal.tianshu.snapshot.PositionData;
+import com.rheinmetal.tianshu.snapshot.WorldEnvironmentData;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,16 +19,23 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class MrEngine {
 
-    private static final int PROJECTION_MISS_GRACE_TICKS = 6;
-    private static final int LINE_OF_SIGHT_MISS_GRACE_TICKS = 6;
+    private static final int OCCLUSION_MISS_GRACE_TICKS = 6;
 
     private final MrStateMachine stateMachine = new MrStateMachine();
     private final ConcurrentLinkedQueue<MrCardSnapshot> outputQueue = new ConcurrentLinkedQueue<>();
 
     private final IEnvironmentAwarenessProvider environmentProvider;
     private final IRenderContextProvider renderContextProvider;
+    private final IPlayerStateProvider playerStateProvider;
+    private final MrTuningProvider tuningProvider;
 
     private final Map<String, TrackedCard> activeCards = new LinkedHashMap<>();
+    private final List<NearbyEntityData> tickEntities = new ArrayList<>();
+    private final List<MrCardSnapshot> frameSnapshots = new ArrayList<>();
+    private final Set<String> currentUuids = new HashSet<>();
+    private final List<MrCardSnapshot> orderedSnapshots = new ArrayList<>();
+    private final List<MrCardSnapshot> placedSnapshots = new ArrayList<>();
+    private final List<EntityScreenRect> entityScreenRects = new ArrayList<>();
     private boolean initialStaggerDone = false;
     private int initialStaggerIndex = 0;
 
@@ -38,6 +47,7 @@ public class MrEngine {
     private String lastGazeUuid = null;
 
     private volatile boolean running = false;
+    private volatile boolean closing = false;
 
     private static void debugLog(String msg) {
         try {
@@ -56,18 +66,168 @@ public class MrEngine {
         final float cardY;
         final float connectorDirectionX;
         final float connectorDirectionY;
+        final int connectorEdge;
         final boolean connectorOnTopEdge;
         final float connectorEdgeRatio;
 
-        TargetGeometry(float cardX, float cardY, float connectorDirectionX, float connectorDirectionY, boolean connectorOnTopEdge, float connectorEdgeRatio) {
+        TargetGeometry(float cardX, float cardY, float connectorDirectionX, float connectorDirectionY, int connectorEdge, boolean connectorOnTopEdge, float connectorEdgeRatio) {
             this.cardX = cardX;
             this.cardY = cardY;
             this.connectorDirectionX = connectorDirectionX;
             this.connectorDirectionY = connectorDirectionY;
+            this.connectorEdge = connectorEdge;
             this.connectorOnTopEdge = connectorOnTopEdge;
             this.connectorEdgeRatio = connectorEdgeRatio;
         }
     }
+
+    private static final class LayoutCandidate {
+        final float jointX;
+        final float jointY;
+        final float cardX;
+        final float cardY;
+        final float connectorDirectionX;
+        final float connectorDirectionY;
+        final int connectorEdge;
+        final boolean connectorOnTopEdge;
+        final float score;
+        final boolean acceptable;
+
+        LayoutCandidate(float jointX, float jointY, float cardX, float cardY, float connectorDirectionX, float connectorDirectionY, int connectorEdge, boolean connectorOnTopEdge, float score, boolean acceptable) {
+            this.jointX = jointX;
+            this.jointY = jointY;
+            this.cardX = cardX;
+            this.cardY = cardY;
+            this.connectorDirectionX = connectorDirectionX;
+            this.connectorDirectionY = connectorDirectionY;
+            this.connectorEdge = connectorEdge;
+            this.connectorOnTopEdge = connectorOnTopEdge;
+            this.score = score;
+            this.acceptable = acceptable;
+        }
+    }
+
+    private static final class CandidateEvaluation {
+        final float score;
+        final boolean acceptable;
+
+        CandidateEvaluation(float score, boolean acceptable) {
+            this.score = score;
+            this.acceptable = acceptable;
+        }
+    }
+
+    private static final class EntityScreenRect {
+        final String uuid;
+        final float left;
+        final float top;
+        final float right;
+        final float bottom;
+        final float priorityWeight;
+
+        EntityScreenRect(String uuid, float left, float top, float right, float bottom, float priorityWeight) {
+            this.uuid = uuid;
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+            this.priorityWeight = priorityWeight;
+        }
+    }
+
+    private static final class LayoutContext {
+        final List<MrCardSnapshot> placed;
+        final List<EntityScreenRect> entityRects;
+        final int screenW;
+        final int screenH;
+        final float originalX;
+        final float originalY;
+        final float originalJointX;
+        final float originalJointY;
+        final float originalDirectionX;
+        final float originalDirectionY;
+        final String entityUuid;
+
+        LayoutContext(List<MrCardSnapshot> placed, List<EntityScreenRect> entityRects, int screenW, int screenH, float originalX, float originalY, float originalJointX, float originalJointY, float originalDirectionX, float originalDirectionY, String entityUuid) {
+            this.placed = placed;
+            this.entityRects = entityRects;
+            this.screenW = screenW;
+            this.screenH = screenH;
+            this.originalX = originalX;
+            this.originalY = originalY;
+            this.originalJointX = originalJointX;
+            this.originalJointY = originalJointY;
+            this.originalDirectionX = originalDirectionX;
+            this.originalDirectionY = originalDirectionY;
+            this.entityUuid = entityUuid;
+        }
+    }
+
+    private static final class AbDirection {
+        final float x;
+        final float y;
+
+        AbDirection(float x, float y) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    private static final class BcDirection {
+        final float x;
+        final float y;
+
+        BcDirection(float x, float y) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    private static final class Segment {
+        final float x1;
+        final float y1;
+        final float x2;
+        final float y2;
+
+        Segment(float x1, float y1, float x2, float y2) {
+            this.x1 = x1;
+            this.y1 = y1;
+            this.x2 = x2;
+            this.y2 = y2;
+        }
+    }
+
+    private static final class SegmentPair {
+        final Segment ab;
+        final Segment bc;
+
+        SegmentPair(Segment ab, Segment bc) {
+            this.ab = ab;
+            this.bc = bc;
+        }
+    }
+
+    private static final class LayoutEvaluationOptions {
+        final boolean checkLines;
+
+        LayoutEvaluationOptions(boolean checkLines) {
+            this.checkLines = checkLines;
+        }
+    }
+
+    private static final LayoutEvaluationOptions FULL_LAYOUT_EVALUATION = new LayoutEvaluationOptions(true);
+    private static final LayoutEvaluationOptions CARD_ONLY_LAYOUT_EVALUATION = new LayoutEvaluationOptions(false);
+
+    private static final float LAYOUT_ACCEPTABLE_SCORE = 0.001f;
+
+    private static final AbDirection[] AB_DIRECTIONS = new AbDirection[]{
+            new AbDirection(1.0f, 0.0f),
+            new AbDirection(-1.0f, 0.0f),
+            new AbDirection(0.0f, -1.0f),
+            new AbDirection(0.0f, 1.0f)
+    };
+
+    private static final float[] AC_EXTENSION_FACTORS = new float[]{1.25f, 1.5f, 1.75f, 2.0f};
 
     private static final class TrackedCard {
         final String uuid;
@@ -79,17 +239,22 @@ public class MrEngine {
         float lastSeenAnchorX = 0.0f;
         float lastSeenAnchorY = 0.0f;
         boolean hasLastSeenAnchor = false;
-        boolean wasLineOfSight = true;
+        boolean wasOcclusionVisible = true;
         String focusedDetailText = "";
         float focusedDetailVisibleChars = 0.0f;
         boolean focusedDetailOutputFinished = false;
         float layoutOffsetX = 0.0f;
         float layoutOffsetY = 0.0f;
+        float lockedQuadrantX = 0.0f;
+        float lockedQuadrantY = 0.0f;
+        boolean hasLockedQuadrant = false;
+        boolean suppressingForLimit = false;
         float lastLayoutDirectionX = 0.0f;
         float lastLayoutDirectionY = 0.0f;
         boolean hasLastLayoutDirection = false;
         int projectionMissTicks = 0;
-        int lineOfSightMissTicks = 0;
+        int occlusionMissTicks = 0;
+        boolean animationTickedThisFrame = false;
 
         TrackedCard(String uuid) {
             this.uuid = uuid;
@@ -102,8 +267,27 @@ public class MrEngine {
             IEnvironmentAwarenessProvider environmentProvider,
             IRenderContextProvider renderContextProvider
     ) {
+        this(environmentProvider, renderContextProvider, null, MrTuningProvider.defaults());
+    }
+
+    public MrEngine(
+            IEnvironmentAwarenessProvider environmentProvider,
+            IRenderContextProvider renderContextProvider,
+            MrTuningProvider tuningProvider
+    ) {
+        this(environmentProvider, renderContextProvider, null, tuningProvider);
+    }
+
+    public MrEngine(
+            IEnvironmentAwarenessProvider environmentProvider,
+            IRenderContextProvider renderContextProvider,
+            IPlayerStateProvider playerStateProvider,
+            MrTuningProvider tuningProvider
+    ) {
         this.environmentProvider = environmentProvider;
         this.renderContextProvider = renderContextProvider;
+        this.playerStateProvider = playerStateProvider;
+        this.tuningProvider = tuningProvider != null ? tuningProvider : MrTuningProvider.defaults();
     }
 
     public MrStateMachine getStateMachine() {
@@ -114,12 +298,28 @@ public class MrEngine {
         return outputQueue;
     }
 
+    public void tickAnimations(float deltaTime) {
+        if (deltaTime <= 0.0f || deltaTime > 0.25f) return;
+        for (TrackedCard tracked : activeCards.values()) {
+            if (tracked.animationTickedThisFrame) continue;
+            tracked.animation.tick(deltaTime);
+        }
+    }
+
     public boolean isRunning() {
         return running;
     }
 
+    public boolean isClosing() {
+        return closing;
+    }
+
+    public boolean isCloseAnimationFinished() {
+        return closing && activeCards.isEmpty() && outputQueue.isEmpty();
+    }
+
     public double getRequiredRadius() {
-        return stateMachine.isActive() ? MrConstants.MR_RANGE : 0.0;
+        return (stateMachine.isActive() || closing) ? MrConstants.MR_RANGE : 0.0;
     }
 
     public void start() {
@@ -137,6 +337,7 @@ public class MrEngine {
     }
 
     public void stop() {
+        closing = false;
         stateMachine.transitionToSilent();
         running = false;
         activeCards.clear();
@@ -152,14 +353,29 @@ public class MrEngine {
         debugLog("stop state=" + stateMachine.getState() + " running=" + running);
     }
 
+    public void beginClosing() {
+        if (!running || closing) return;
+        closing = true;
+        scanningTimer = 0.0f;
+        aimWarmupTimer = 0.0f;
+        gazeTimer = 0.0f;
+        focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+        lastGazeUuid = null;
+        for (TrackedCard tracked : activeCards.values()) {
+            tracked.animation.triggerDisappear();
+        }
+        stateMachine.transitionToSilent();
+        debugLog("beginClosing activeCards=" + activeCards.size());
+    }
+
     public void tick(PositionData playerPos) {
         tick(playerPos, MrConstants.TICK_DURATION);
     }
 
     public void tick(PositionData playerPos, float deltaTime) {
-        if (!stateMachine.isActive() || playerPos == null) {
+        if (playerPos == null || (!stateMachine.isActive() && !closing)) {
             if (debugTickCounter == 0) {
-                debugLog("tick skipped active=" + stateMachine.isActive() + " playerPos=" + (playerPos != null));
+                debugLog("tick skipped active=" + stateMachine.isActive() + " closing=" + closing + " playerPos=" + (playerPos != null));
             }
             outputQueue.clear();
             return;
@@ -169,7 +385,12 @@ public class MrEngine {
             deltaTime = MrConstants.TICK_DURATION;
         }
 
-        List<NearbyEntityData> entities = new ArrayList<>(environmentProvider.getNearbyEntities(MrConstants.MR_RANGE));
+        tickEntities.clear();
+        if (!closing) {
+            tickEntities.addAll(environmentProvider.getNearbyEntities(MrConstants.MR_RANGE));
+        }
+        List<NearbyEntityData> entities = tickEntities;
+        float environmentAlphaFactor = computeEnvironmentAlphaFactor();
         debugTickCounter++;
         boolean shouldLogDebug = debugTickCounter <= 10 || debugTickCounter % 20 == 0;
         if (entities.isEmpty() && shouldLogDebug) {
@@ -179,10 +400,6 @@ public class MrEngine {
         entities.sort(Comparator
                 .comparing(NearbyEntityData::isHostile).reversed()
                 .thenComparingDouble(NearbyEntityData::getDistance));
-
-        if (entities.size() > MrConstants.MAX_CARDS) {
-            entities = new ArrayList<>(entities.subList(0, MrConstants.MAX_CARDS));
-        }
 
         MatrixSnapshot projMatrix = renderContextProvider.getProjectionMatrix();
         MatrixSnapshot mvMatrix = renderContextProvider.getModelViewMatrix();
@@ -200,32 +417,41 @@ public class MrEngine {
         float[] projData = matrixProjectionAvailable ? projMatrix.getData() : null;
         float[] mvData = matrixProjectionAvailable ? mvMatrix.getData() : null;
 
-        Set<String> currentUuids = new HashSet<>();
-        List<MrCardSnapshot> frameSnapshots = new ArrayList<>();
+        currentUuids.clear();
+        frameSnapshots.clear();
+        Set<String> selectedUuids = selectVisibleCardUuids(entities, playerPos, projData, mvData, matrixProjectionAvailable, screenW, screenH);
+        buildVisibleEntityScreenRects(entities, playerPos, projData, mvData, matrixProjectionAvailable, selectedUuids, screenW, screenH, entityScreenRects);
+        suppressUnselectedCards(selectedUuids);
+        for (TrackedCard tracked : activeCards.values()) {
+            tracked.animationTickedThisFrame = false;
+        }
         int projectionFailedCount = 0;
         int projectionGraceCount = 0;
-        int lineOfSightMissingCount = 0;
-        int lineOfSightGraceCount = 0;
+        int occlusionMissingCount = 0;
+        int occlusionGraceCount = 0;
         int disappearingCount = 0;
 
         for (NearbyEntityData entity : entities) {
             String uuid = entity.getUuid();
+            if (!selectedUuids.contains(uuid)) continue;
 
             TrackedCard tracked = activeCards.get(uuid);
+            boolean entityInView = isEntityInsideCurrentFov(playerPos, entity, screenW, screenH);
 
             double entityWorldX = playerPos.getX() + entity.getRelativeX();
             double entityWorldY = playerPos.getY() + entity.getRelativeY() + entity.getBoundingHeight() + 0.2;
             double entityWorldZ = playerPos.getZ() + entity.getRelativeZ();
 
             float[] screenPos = null;
-            if (matrixProjectionAvailable) {
+            if (matrixProjectionAvailable && entityInView) {
                 screenPos = MrProjector.project(
                         entityWorldX, entityWorldY, entityWorldZ,
                         mvData, projData,
                         screenW, screenH
                 );
             }
-            if (screenPos == null) {
+
+            if (screenPos == null && entityInView) {
                 screenPos = projectFromPlayerView(playerPos, entity, screenW, screenH);
             }
 
@@ -233,28 +459,18 @@ public class MrEngine {
                 projectionFailedCount++;
                 if (tracked != null) {
                     tracked.projectionMissTicks++;
-                    if (tracked.projectionMissTicks <= PROJECTION_MISS_GRACE_TICKS && tracked.lastSnapshot != null) {
-                        projectionGraceCount++;
-                        MrCardSnapshot retainedSnapshot = tracked.lastSnapshot.copy();
-                        retainedSnapshot.alpha = Math.max(0.0f, Math.min(1.0f,
-                                retainedSnapshot.distanceFadeAlpha * tracked.animation.getAnimationAlpha()
-                                        * tracked.visualAlphaFactor));
-                        tracked.animation.tick(deltaTime);
-                        frameSnapshots.add(retainedSnapshot);
-                        currentUuids.add(uuid);
-                    } else {
-                        tracked.animation.triggerDisappear();
-                    }
+                    tracked.animation.triggerDisappear();
                 }
                 continue;
             }
 
             float anchorX = screenPos[0];
             float anchorY = screenPos[1];
-            boolean lineOfSight = entity.isLineOfSight();
+            boolean occlusionVisible = entity.isOcclusionVisible();
             boolean entityAlive = entity.getHealth() > 0.0f;
 
             if (tracked == null) {
+                if (closing || !entityAlive || !occlusionVisible) continue;
                 tracked = new TrackedCard(uuid);
                 float staggerDelay = 0.0f;
                 if (!initialStaggerDone) {
@@ -266,24 +482,37 @@ public class MrEngine {
             }
 
             currentUuids.add(uuid);
+            tracked.suppressingForLimit = false;
             tracked.projectionMissTicks = 0;
 
-            if (entityAlive) {
-                if (lineOfSight) {
-                    tracked.lineOfSightMissTicks = 0;
-                    tracked.wasLineOfSight = true;
-                } else {
-                    lineOfSightMissingCount++;
-                    tracked.lineOfSightMissTicks++;
-                    if (tracked.lineOfSightMissTicks <= LINE_OF_SIGHT_MISS_GRACE_TICKS) {
-                        lineOfSightGraceCount++;
-                    }
-                    tracked.wasLineOfSight = false;
-                }
+            if (entityAlive && occlusionVisible && !closing) {
+                tracked.occlusionMissTicks = 0;
+                tracked.wasOcclusionVisible = true;
                 tracked.lastSeenAnchorX = anchorX;
                 tracked.lastSeenAnchorY = anchorY;
                 tracked.hasLastSeenAnchor = true;
                 tracked.animation.recoverAppear();
+            } else if (entityAlive && !closing) {
+                occlusionMissingCount++;
+                tracked.occlusionMissTicks++;
+                if (tracked.occlusionMissTicks <= OCCLUSION_MISS_GRACE_TICKS) {
+                    occlusionGraceCount++;
+                    tracked.wasOcclusionVisible = true;
+                    tracked.lastSeenAnchorX = anchorX;
+                    tracked.lastSeenAnchorY = anchorY;
+                    tracked.hasLastSeenAnchor = true;
+                    tracked.animation.recoverAppear();
+                } else {
+                    tracked.wasOcclusionVisible = false;
+                    if (!tracked.hasLastSeenAnchor) {
+                        tracked.lastSeenAnchorX = anchorX;
+                        tracked.lastSeenAnchorY = anchorY;
+                        tracked.hasLastSeenAnchor = true;
+                    }
+                    anchorX = tracked.lastSeenAnchorX;
+                    anchorY = tracked.lastSeenAnchorY;
+                    tracked.animation.triggerDisappear();
+                }
             } else {
                 if (!tracked.hasLastSeenAnchor) {
                     tracked.lastSeenAnchorX = anchorX;
@@ -301,6 +530,7 @@ public class MrEngine {
             }
 
             tracked.animation.tick(deltaTime);
+            tracked.animationTickedThisFrame = true;
 
             if (tracked.animation.isFullyDead()) {
                 activeCards.remove(uuid);
@@ -315,7 +545,7 @@ public class MrEngine {
             float baseCardW = computeBaseCardWidth(screenW);
             float baseCardH = computeBaseCardHeight(screenH);
             float scale = (float) (MrConstants.BASE_DISTANCE / Math.max(dist, 1.0));
-            scale = Math.max(0.4f, Math.min(1.5f, scale));
+            scale = Math.max(getMinCardScale(), Math.min(getMaxCardScale(), scale));
 
             boolean isFocused = stateMachine.isFocusing()
                     && uuid.equals(stateMachine.getFocusedEntityUuid());
@@ -338,7 +568,7 @@ public class MrEngine {
             }
             float cardH = computeCardHeight(baseCardH, scale, cardW, isFocusedThisFrame, tracked.focusedDetailText);
 
-            TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, scale, cardW, cardH, screenW, screenH);
+            TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, scale, cardW, cardH, screenW, screenH, tracked);
             float targetCardX = targetGeometry.cardX;
             float targetCardY = targetGeometry.cardY;
 
@@ -346,7 +576,8 @@ public class MrEngine {
                     anchorX, anchorY,
                     targetCardX, targetCardY,
                     scale, cardW, cardH,
-                    screenW, screenH, deltaTime
+                    screenW, screenH, deltaTime, getSegmentLength(),
+                    getCardDamping(), getCardMinDamping(), getCardMaxDamping()
             );
 
             float distanceFactor = 1.0f - (dist / (float) MrConstants.MR_RANGE) * MrConstants.DISTANCE_ALPHA_FACTOR;
@@ -365,6 +596,7 @@ public class MrEngine {
             snap.cardWidth = cardW;
             snap.cardHeight = cardH;
             snap.connectorEdgeRatio = targetGeometry.connectorEdgeRatio;
+            snap.connectorEdge = targetGeometry.connectorEdge;
             snap.connectorOnTopEdge = targetGeometry.connectorOnTopEdge;
             snap.connectorDirectionX = targetGeometry.connectorDirectionX;
             snap.connectorDirectionY = targetGeometry.connectorDirectionY;
@@ -372,11 +604,12 @@ public class MrEngine {
             snap.scale = scale;
             snap.alpha = Math.max(0.0f, Math.min(1.0f, alpha));
             snap.distanceFadeAlpha = distanceAlpha;
+            snap.environmentAlphaFactor = environmentAlphaFactor;
             snap.appearProgress = tracked.animation.getAppearProgress();
             snap.disappearProgress = tracked.animation.getDisappearProgress();
             snap.isAlive = entityAlive;
             snap.isHostile = entity.isHostile();
-            snap.isLineOfSight = lineOfSight;
+            snap.isOcclusionVisible = occlusionVisible;
             snap.isFocused = isFocused;
             snap.isBackground = isBackground;
             snap.hasMainHandItem = hasMainHand;
@@ -389,9 +622,14 @@ public class MrEngine {
             snap.distance = dist;
             snap.attackDamage = entity.getAttackDamage();
             snap.armorValue = entity.getArmorValue();
+            snap.relativeX = entity.getRelativeX();
+            snap.relativeY = entity.getRelativeY();
+            snap.relativeZ = entity.getRelativeZ();
+            snap.eyeHeight = entity.getEyeHeight();
             snap.focusedDetailText = tracked.focusedDetailText;
             snap.focusedDetailVisibleChars = Math.round(tracked.focusedDetailVisibleChars);
             snap.focusedDetailOutputFinished = tracked.focusedDetailOutputFinished;
+            applyFocusProgress(snap);
             precomputeVisuals(snap);
 
             tracked.lastSnapshot = snap;
@@ -399,10 +637,10 @@ public class MrEngine {
         }
 
         if (shouldLogDebug) {
-            debugLog("tick=" + debugTickCounter + " active=true state=" + stateMachine.getState() + " entities=" + entities.size() + " projected=" + frameSnapshots.size() + " projection_failed=" + projectionFailedCount + " projection_grace=" + projectionGraceCount + " los_missing=" + lineOfSightMissingCount + " los_grace=" + lineOfSightGraceCount + " disappearing=" + disappearingCount + " tracked=" + activeCards.size() + " screen=" + screenW + "x" + screenH);
+            debugLog("tick=" + debugTickCounter + " active=true state=" + stateMachine.getState() + " entities=" + entities.size() + " projected=" + frameSnapshots.size() + " projection_failed=" + projectionFailedCount + " projection_grace=" + projectionGraceCount + " occlusion_missing=" + occlusionMissingCount + " occlusion_grace=" + occlusionGraceCount + " disappearing=" + disappearingCount + " tracked=" + activeCards.size() + " screen=" + screenW + "x" + screenH);
         }
 
-        if (stateMachine.isScanning()) {
+        if (stateMachine.isScanning() && !closing) {
             scanningTimer += deltaTime;
             if (scanningTimer >= MrConstants.SCANNING_WARMUP && !frameSnapshots.isEmpty()) {
                 String crosshairUuid = environmentProvider.getCrosshairTargetEntityUuid();
@@ -434,11 +672,11 @@ public class MrEngine {
             }
         }
 
-        if (!initialStaggerDone && scanningTimer >= MrConstants.SCANNING_WARMUP) {
+        if (!initialStaggerDone && scanningTimer >= MrConstants.SCANNING_WARMUP && !closing) {
             initialStaggerDone = true;
         }
 
-        if (stateMachine.isFocusing()) {
+        if (stateMachine.isFocusing() && !closing) {
             String focusedUuid = stateMachine.getFocusedEntityUuid();
             boolean focusedVisible = false;
             for (MrCardSnapshot snap : frameSnapshots) {
@@ -486,7 +724,10 @@ public class MrEngine {
             if (!currentUuids.contains(uuid)) {
                 TrackedCard tracked = entry.getValue();
                 tracked.animation.triggerDisappear();
-                tracked.animation.tick(deltaTime);
+                if (!tracked.suppressingForLimit) {
+                    tracked.animation.tick(deltaTime);
+                    tracked.animationTickedThisFrame = true;
+                }
                 if (tracked.animation.isFullyDead()) {
                     it.remove();
                 } else if (tracked.lastSnapshot != null) {
@@ -498,7 +739,8 @@ public class MrEngine {
                             fadingSnapshot.scale,
                             fadingSnapshot.cardWidth,
                             fadingSnapshot.cardHeight,
-                            screenW, screenH
+                            screenW, screenH,
+                            tracked
                     );
                     MrWhipLayout.LayoutResult layoutResult = tracked.layout.compute(
                             anchorX, anchorY,
@@ -506,7 +748,8 @@ public class MrEngine {
                             fadingSnapshot.scale,
                             fadingSnapshot.cardWidth,
                             fadingSnapshot.cardHeight,
-                            screenW, screenH, deltaTime
+                            screenW, screenH, deltaTime, getSegmentLength(),
+                            getCardDamping(), getCardMinDamping(), getCardMaxDamping()
                     );
                     float fadeAlpha = Math.max(0.0f, Math.min(1.0f,
                             fadingSnapshot.distanceFadeAlpha * tracked.animation.getAnimationAlpha()
@@ -517,11 +760,17 @@ public class MrEngine {
                     fadingSnapshot.jointY = layoutResult.jointY;
                     fadingSnapshot.cardX = layoutResult.cardX;
                     fadingSnapshot.cardY = layoutResult.cardY;
-                    updateConnectorPoint(fadingSnapshot, anchorX, screenW);
+                    fadingSnapshot.connectorEdgeRatio = targetGeometry.connectorEdgeRatio;
+                    fadingSnapshot.connectorEdge = targetGeometry.connectorEdge;
+                    fadingSnapshot.connectorOnTopEdge = targetGeometry.connectorOnTopEdge;
+                    fadingSnapshot.connectorDirectionX = targetGeometry.connectorDirectionX;
+                    fadingSnapshot.connectorDirectionY = targetGeometry.connectorDirectionY;
+                    syncConnectorAfterCardMove(fadingSnapshot);
                     fadingSnapshot.alpha = fadeAlpha;
+                    fadingSnapshot.environmentAlphaFactor = environmentAlphaFactor;
                     fadingSnapshot.appearProgress = tracked.animation.getAppearProgress();
                     fadingSnapshot.disappearProgress = tracked.animation.getDisappearProgress();
-                    fadingSnapshot.isLineOfSight = false;
+                    fadingSnapshot.isOcclusionVisible = false;
                     precomputeVisuals(fadingSnapshot);
 
                     tracked.lastSnapshot = fadingSnapshot;
@@ -533,6 +782,7 @@ public class MrEngine {
         applyPreLayoutDirectionSearch(frameSnapshots, deltaTime, screenW, screenH);
         for (MrCardSnapshot snap : frameSnapshots) {
             syncConnectorAfterCardMove(snap);
+            applyFocusProgress(snap);
             precomputeVisuals(snap);
         }
 
@@ -542,130 +792,214 @@ public class MrEngine {
         }
     }
 
+    private boolean isEntityInsideCurrentFov(PositionData playerPos, NearbyEntityData entity, int screenW, int screenH) {
+        float currentFov = 70.0f;
+        if (playerStateProvider != null) {
+            try {
+                currentFov = playerStateProvider.getCurrentDynamicFov();
+            } catch (Exception ignored) {
+            }
+        }
+        if (currentFov <= 10.0f || currentFov > 180.0f) currentFov = 70.0f;
+        double verticalFov = Math.toRadians(currentFov);
+        double horizontalFov = 2.0 * Math.atan(Math.tan(verticalFov * 0.5) * ((double) screenW / Math.max(1, screenH)));
+        double horizontalLimit = Math.toDegrees(horizontalFov * 0.5) * 1.08;
+        if (Math.abs(entity.getHorizontalAngle()) > horizontalLimit) return false;
+        double horizontalDistance = Math.max(0.1, Math.sqrt(entity.getRelativeX() * entity.getRelativeX() + entity.getRelativeZ() * entity.getRelativeZ()));
+        double headOffset = Math.min(0.18, Math.max(0.04, entity.getEyeHeight() * 0.08));
+        double targetHeightFromEye = entity.getRelativeY() + entity.getEyeHeight() + headOffset - 1.62;
+        double targetPitchDeg = Math.toDegrees(Math.atan2(targetHeightFromEye, horizontalDistance)) + playerPos.getPitch();
+        return Math.abs(targetPitchDeg) <= Math.toDegrees(verticalFov * 0.5) * 1.18;
+    }
+
     private float[] projectFromPlayerView(PositionData playerPos, NearbyEntityData entity, int screenW, int screenH) {
-        double verticalFov = Math.toRadians(70.0);
+        float currentFov = 70.0f;
+        if (playerStateProvider != null) {
+            try {
+                currentFov = playerStateProvider.getCurrentDynamicFov();
+            } catch (Exception ignored) {
+            }
+        }
+        if (currentFov <= 10.0f || currentFov > 180.0f) currentFov = 70.0f;
+        double verticalFov = Math.toRadians(currentFov);
         double horizontalFov = 2.0 * Math.atan(Math.tan(verticalFov * 0.5) * ((double) screenW / Math.max(1, screenH)));
         double relativeYawRad = Math.toRadians(entity.getHorizontalAngle());
         double ndcX = Math.tan(relativeYawRad) / Math.tan(horizontalFov * 0.5);
         double horizontalDistance = Math.max(0.1, Math.sqrt(entity.getRelativeX() * entity.getRelativeX() + entity.getRelativeZ() * entity.getRelativeZ()));
-        double targetHeightFromEye = entity.getRelativeY() + entity.getBoundingHeight() + 0.2 - 1.62;
-        double pitchRad = Math.toRadians(playerPos.getPitch());
+        double headOffset = Math.min(0.18, Math.max(0.04, entity.getEyeHeight() * 0.08));
+        double targetHeightFromEye = entity.getRelativeY() + entity.getEyeHeight() + headOffset - 1.62;
         double targetPitchRad = Math.atan2(targetHeightFromEye, horizontalDistance);
-        double relativePitchRad = targetPitchRad + pitchRad;
+        double relativePitchRad = targetPitchRad + Math.toRadians(playerPos.getPitch());
         double ndcY = Math.tan(relativePitchRad) / Math.tan(verticalFov * 0.5);
-        if (ndcX < -3.0 || ndcX > 3.0 || ndcY < -3.0 || ndcY > 3.0) return null;
+        if (ndcX < -1.08 || ndcX > 1.08 || ndcY < -1.08 || ndcY > 1.08) return null;
         float screenX = (float) ((ndcX * 0.5 + 0.5) * screenW);
         float screenY = (float) ((0.5 - ndcY * 0.5) * screenH);
         return new float[]{screenX, screenY};
     }
 
-    private void applyPreLayoutDirectionSearch(List<MrCardSnapshot> snapshots, float deltaTime, int screenW, int screenH) {
-        List<MrCardSnapshot> ordered = new ArrayList<>(snapshots);
-        ordered.sort(Comparator
-                .comparing((MrCardSnapshot s) -> !s.isFocused)
-                .thenComparing((MrCardSnapshot s) -> !s.isHostile)
-                .thenComparingDouble(s -> s.distance));
+    private Set<String> selectVisibleCardUuids(List<NearbyEntityData> entities, PositionData playerPos, float[] projData, float[] mvData, boolean matrixProjectionAvailable, int screenW, int screenH) {
+        Set<String> selected = new HashSet<>();
+        for (NearbyEntityData entity : entities) {
+            if (selected.size() >= MrConstants.MAX_CARDS) break;
+            String uuid = entity.getUuid();
+            if (uuid == null || uuid.isEmpty()) continue;
+            if (entity.getHealth() <= 0.0f || !entity.isOcclusionVisible()) continue;
+            if (!isEntityInsideCurrentFov(playerPos, entity, screenW, screenH)) continue;
+            float[] screenPos = projectEntityAnchor(playerPos, entity, projData, mvData, matrixProjectionAvailable, screenW, screenH);
+            if (screenPos == null) continue;
+            selected.add(uuid);
+        }
+        return selected;
+    }
 
-        List<MrCardSnapshot> placed = new ArrayList<>();
-        for (MrCardSnapshot snap : ordered) {
-            if (!snap.isFocused) {
-                chooseBestCandidatePosition(snap, deltaTime, placed, screenW, screenH);
-            } else {
-                TrackedCard tracked = activeCards.get(snap.entityUuid);
-                if (tracked != null) {
-                    tracked.layoutOffsetX = smoothApproach(tracked.layoutOffsetX, 0.0f, deltaTime);
-                    tracked.layoutOffsetY = smoothApproach(tracked.layoutOffsetY, 0.0f, deltaTime);
-                }
+    private void suppressUnselectedCards(Set<String> selectedUuids) {
+        for (Map.Entry<String, TrackedCard> entry : activeCards.entrySet()) {
+            TrackedCard tracked = entry.getValue();
+            boolean selected = selectedUuids.contains(entry.getKey());
+            tracked.suppressingForLimit = !selected;
+            if (!selected) {
+                tracked.animation.triggerDisappear();
             }
-            syncConnectorAfterCardMove(snap);
-            placed.add(snap);
         }
     }
 
-    private void chooseBestCandidatePosition(MrCardSnapshot snap, float deltaTime, List<MrCardSnapshot> placed, int screenW, int screenH) {
-        if (placed.isEmpty()) return;
+    private void buildVisibleEntityScreenRects(List<NearbyEntityData> entities, PositionData playerPos, float[] projData, float[] mvData, boolean matrixProjectionAvailable, Set<String> selectedUuids, int screenW, int screenH, List<EntityScreenRect> rects) {
+        rects.clear();
+        for (NearbyEntityData entity : entities) {
+            String uuid = entity.getUuid();
+            if (uuid == null || uuid.isEmpty()) continue;
+            if (!selectedUuids.contains(uuid)) continue;
+            if (entity.getHealth() <= 0.0f || !entity.isOcclusionVisible()) continue;
+            float[] screenPos = projectEntityAnchor(playerPos, entity, projData, mvData, matrixProjectionAvailable, screenW, screenH);
+            if (screenPos == null) continue;
+            float width = Math.max(12.0f, Math.min(48.0f, entity.getBoundingHeight() * 8.0f));
+            float height = Math.max(18.0f, Math.min(72.0f, entity.getBoundingHeight() * 18.0f));
+            float left = screenPos[0] - width * 0.5f;
+            float top = screenPos[1] - height * 0.45f;
+            float priority = (entity.isHostile() ? 1.6f : 1.0f) * (1.0f + Math.max(0.0f, (float) MrConstants.MR_RANGE - (float) entity.getDistance()) / (float) MrConstants.MR_RANGE);
+            rects.add(new EntityScreenRect(uuid, left, top, left + width, top + height, priority));
+        }
+    }
+
+    private float[] projectEntityAnchor(PositionData playerPos, NearbyEntityData entity, float[] projData, float[] mvData, boolean matrixProjectionAvailable, int screenW, int screenH) {
+        boolean entityInView = isEntityInsideCurrentFov(playerPos, entity, screenW, screenH);
+        if (!entityInView) return null;
+        double entityWorldX = playerPos.getX() + entity.getRelativeX();
+        double entityWorldY = playerPos.getY() + entity.getRelativeY() + entity.getBoundingHeight() + 0.2;
+        double entityWorldZ = playerPos.getZ() + entity.getRelativeZ();
+        float[] screenPos = null;
+        if (matrixProjectionAvailable) {
+            screenPos = MrProjector.project(entityWorldX, entityWorldY, entityWorldZ, mvData, projData, screenW, screenH);
+        }
+        if (screenPos == null) {
+            screenPos = projectFromPlayerView(playerPos, entity, screenW, screenH);
+        }
+        return screenPos;
+    }
+
+    private void applyPreLayoutDirectionSearch(List<MrCardSnapshot> snapshots, float deltaTime, int screenW, int screenH) {
+        for (MrCardSnapshot snap : snapshots) {
+            TrackedCard tracked = activeCards.get(snap.entityUuid);
+            if (tracked != null) {
+                tracked.layoutOffsetX = smoothApproach(tracked.layoutOffsetX, 0.0f, deltaTime);
+                tracked.layoutOffsetY = smoothApproach(tracked.layoutOffsetY, 0.0f, deltaTime);
+            }
+            syncConnectorAfterCardMove(snap);
+        }
+    }
+
+    private void chooseBestCandidatePosition(MrCardSnapshot snap, float deltaTime, List<MrCardSnapshot> placed, List<EntityScreenRect> entityRects, int screenW, int screenH) {
         TrackedCard tracked = activeCards.get(snap.entityUuid);
         float originalX = snap.cardX;
         float originalY = snap.cardY;
         float ratio = snap.connectorEdgeRatio;
-        float originalConnectorX = originalX + snap.cardWidth * ratio;
-        float originalConnectorY = snap.connectorOnTopEdge ? originalY : originalY + snap.cardHeight;
+        float originalConnectorX;
+        float originalConnectorY;
+        if (snap.connectorEdge == 2 || snap.connectorEdge == 3) {
+            originalConnectorX = snap.connectorEdge == 2 ? originalX : originalX + snap.cardWidth;
+            originalConnectorY = originalY + snap.cardHeight * ratio;
+        } else {
+            originalConnectorX = originalX + snap.cardWidth * ratio;
+            originalConnectorY = snap.connectorEdge == 0 ? originalY : originalY + snap.cardHeight;
+        }
         float originalAcX = originalConnectorX - snap.anchorX;
         float originalAcY = originalConnectorY - snap.anchorY;
         float originalAcLength = (float) Math.sqrt(originalAcX * originalAcX + originalAcY * originalAcY);
         float originalAcDirectionX = originalAcLength > 0.001f ? originalAcX / originalAcLength : snap.connectorDirectionX;
         float originalAcDirectionY = originalAcLength > 0.001f ? originalAcY / originalAcLength : snap.connectorDirectionY;
-        float segmentLength = MrConstants.RIGID_SEGMENT_LENGTH * snap.scale;
-        float cPointRadius = Math.max(4.0f, Math.min(snap.cardWidth, snap.cardHeight) * 0.08f);
-        float[][] directions = buildCandidateDirections(snap.anchorX, snap.anchorY, screenW, screenH);
-        if (tracked != null && tracked.hasLastLayoutDirection) {
-            directions = prioritizeDirection(directions, tracked.lastLayoutDirectionX, tracked.lastLayoutDirectionY);
-        }
+        LayoutContext context = new LayoutContext(placed, entityRects, screenW, screenH, originalX, originalY, snap.jointX, snap.jointY, snap.connectorDirectionX, snap.connectorDirectionY, snap.entityUuid);
 
-        float bestX = originalX;
-        float bestY = originalY;
-        float bestDirectionX = snap.connectorDirectionX;
-        float bestDirectionY = snap.connectorDirectionY;
-        boolean bestConnectorOnTop = snap.connectorOnTopEdge;
-        float bestScore = Float.MAX_VALUE;
+        LayoutCandidate defaultCandidate = buildLayoutCandidate(snap, snap.jointX, snap.jointY, originalX, originalY, snap.connectorDirectionX, snap.connectorDirectionY, snap.connectorOnTopEdge, context, FULL_LAYOUT_EVALUATION);
+        if (defaultCandidate.acceptable) return;
 
-        for (float[] direction : directions) {
-            float connectorX = snap.jointX + direction[0] * segmentLength;
-            float connectorY = snap.jointY + direction[1] * segmentLength;
-            boolean connectorOnTop = direction[1] >= 0.0f;
-            float cardX = connectorX - snap.cardWidth * ratio;
-            float cardY = connectorOnTop ? connectorY : connectorY - snap.cardHeight;
-            float score = computeLayoutCandidateScore(cardX, cardY, snap.cardWidth, snap.cardHeight, connectorX, connectorY, cPointRadius, placed, screenW, screenH, originalX, originalY);
-            if (score < bestScore) {
-                bestScore = score;
-                bestX = cardX;
-                bestY = cardY;
-                bestDirectionX = direction[0];
-                bestDirectionY = direction[1];
-                bestConnectorOnTop = connectorOnTop;
-            }
-            if (score <= 0.0f) break;
-        }
-
-        if (bestScore > snap.cardWidth * snap.cardHeight * 0.2f) {
-            float step = Math.max(8.0f, segmentLength * 0.5f);
-            for (int i = 1; i <= 8; i++) {
-                float length = originalAcLength + step * i;
-                float connectorX = snap.anchorX + originalAcDirectionX * length;
-                float connectorY = snap.anchorY + originalAcDirectionY * length;
-                boolean connectorOnTop = originalAcDirectionY >= 0.0f;
+        LayoutCandidate bestFallback = defaultCandidate;
+        float segmentLength = getSegmentLength() * snap.scale;
+        AbDirection[] abDirections = prioritizeAbDirections(AB_DIRECTIONS, snap.jointX - snap.anchorX, snap.jointY - snap.anchorY);
+        for (AbDirection abDirection : abDirections) {
+            float jointX = snap.anchorX + abDirection.x * segmentLength;
+            float jointY = snap.anchorY + abDirection.y * segmentLength;
+            BcDirection[] bcDirections = buildBcOptionsForAb(abDirection);
+            bcDirections = prioritizeBcDirections(bcDirections, snap.connectorDirectionX, snap.connectorDirectionY);
+            for (BcDirection bcDirection : bcDirections) {
+                float connectorX = jointX + bcDirection.x * segmentLength;
+                float connectorY = jointY + bcDirection.y * segmentLength;
+                boolean connectorOnTop = bcDirection.y >= 0.0f;
                 float cardX = connectorX - snap.cardWidth * ratio;
                 float cardY = connectorOnTop ? connectorY : connectorY - snap.cardHeight;
-                float score = computeLayoutCandidateScore(cardX, cardY, snap.cardWidth, snap.cardHeight, connectorX, connectorY, cPointRadius, placed, screenW, screenH, originalX, originalY);
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestX = cardX;
-                    bestY = cardY;
-                    bestDirectionX = originalAcDirectionX;
-                    bestDirectionY = originalAcDirectionY;
-                    bestConnectorOnTop = connectorOnTop;
+                LayoutCandidate candidate = buildLayoutCandidate(snap, jointX, jointY, cardX, cardY, bcDirection.x, bcDirection.y, connectorOnTop, context, FULL_LAYOUT_EVALUATION);
+                if (candidate.acceptable) {
+                    applyLayoutCandidate(snap, tracked, candidate, originalX, originalY, deltaTime);
+                    return;
                 }
-                if (score <= 0.0f) break;
+                if (candidate.score < bestFallback.score) bestFallback = candidate;
             }
         }
 
+        float extensionBaseLength = Math.max(originalAcLength, segmentLength * 2.0f);
+        for (float factor : AC_EXTENSION_FACTORS) {
+            float length = extensionBaseLength * factor;
+            float connectorX = snap.anchorX + originalAcDirectionX * length;
+            float connectorY = snap.anchorY + originalAcDirectionY * length;
+            boolean connectorOnTop = originalAcDirectionY >= 0.0f;
+            float cardX = connectorX - snap.cardWidth * ratio;
+            float cardY = connectorOnTop ? connectorY : connectorY - snap.cardHeight;
+            LayoutCandidate candidate = buildLayoutCandidate(snap, snap.jointX, snap.jointY, cardX, cardY, originalAcDirectionX, originalAcDirectionY, connectorOnTop, context, CARD_ONLY_LAYOUT_EVALUATION);
+            if (candidate.acceptable) {
+                applyLayoutCandidate(snap, tracked, candidate, originalX, originalY, deltaTime);
+                return;
+            }
+            if (candidate.score < bestFallback.score) bestFallback = candidate;
+        }
+
+        applyLayoutCandidate(snap, tracked, bestFallback, originalX, originalY, deltaTime);
+    }
+
+    private void applyLayoutCandidate(MrCardSnapshot snap, TrackedCard tracked, LayoutCandidate candidate, float originalX, float originalY, float deltaTime) {
         if (tracked == null) {
-            snap.cardX = bestX;
-            snap.cardY = bestY;
-            snap.connectorDirectionX = bestDirectionX;
-            snap.connectorDirectionY = bestDirectionY;
-            snap.connectorOnTopEdge = bestConnectorOnTop;
+            snap.jointX = candidate.jointX;
+            snap.jointY = candidate.jointY;
+            snap.cardX = candidate.cardX;
+            snap.cardY = candidate.cardY;
+            syncConnectorAfterCardMove(snap);
+            snap.connectorDirectionX = candidate.connectorDirectionX;
+            snap.connectorDirectionY = candidate.connectorDirectionY;
+            snap.connectorEdge = candidate.connectorEdge;
+            snap.connectorOnTopEdge = candidate.connectorOnTopEdge;
             return;
         }
-        float targetOffsetX = bestX - originalX;
-        float targetOffsetY = bestY - originalY;
+        float targetOffsetX = candidate.cardX - originalX;
+        float targetOffsetY = candidate.cardY - originalY;
         tracked.layoutOffsetX = smoothApproach(tracked.layoutOffsetX, targetOffsetX, deltaTime);
         tracked.layoutOffsetY = smoothApproach(tracked.layoutOffsetY, targetOffsetY, deltaTime);
+        snap.jointX = candidate.jointX;
+        snap.jointY = candidate.jointY;
         snap.cardX = originalX + tracked.layoutOffsetX;
         snap.cardY = originalY + tracked.layoutOffsetY;
-        snap.connectorDirectionX = bestDirectionX;
-        snap.connectorDirectionY = bestDirectionY;
-        snap.connectorOnTopEdge = bestConnectorOnTop;
+        syncConnectorAfterCardMove(snap);
+        snap.connectorDirectionX = candidate.connectorDirectionX;
+        snap.connectorDirectionY = candidate.connectorDirectionY;
+        snap.connectorEdge = candidate.connectorEdge;
+        snap.connectorOnTopEdge = candidate.connectorOnTopEdge;
         float magnitude = (float) Math.sqrt(targetOffsetX * targetOffsetX + targetOffsetY * targetOffsetY);
         if (magnitude > 0.001f) {
             tracked.lastLayoutDirectionX = targetOffsetX / magnitude;
@@ -675,99 +1009,143 @@ public class MrEngine {
     }
 
 
-    private float[][] prioritizeDirection(float[][] directions, float dirX, float dirY) {
-        float[][] ordered = new float[directions.length][2];
-        int index = 0;
-        float bestScore = -Float.MAX_VALUE;
-        int bestIndex = 0;
-        for (int i = 0; i < directions.length; i++) {
-            float score = directions[i][0] * dirX + directions[i][1] * dirY;
-            if (score > bestScore) {
-                bestScore = score;
-                bestIndex = i;
-            }
-        }
-        for (int i = bestIndex; i < directions.length; i++) {
-            ordered[index++] = directions[i];
-        }
-        for (int i = 0; i < bestIndex; i++) {
-            ordered[index++] = directions[i];
-        }
+    private AbDirection[] prioritizeAbDirections(AbDirection[] directions, float currentX, float currentY) {
+        AbDirection[] ordered = Arrays.copyOf(directions, directions.length);
+        float length = (float) Math.sqrt(currentX * currentX + currentY * currentY);
+        if (length <= 0.001f) return ordered;
+        float dirX = currentX / length;
+        float dirY = currentY / length;
+        Arrays.sort(ordered, Comparator.comparingDouble(d -> -(d.x * dirX + d.y * dirY)));
         return ordered;
     }
 
-    private float[][] buildCandidateDirections(float anchorX, float anchorY, int screenW, int screenH) {
-        float horizontal = anchorX < screenW * 0.5f ? 1.0f : -1.0f;
-        float normalizedY = anchorY / (float) screenH;
-        float vertical = normalizedY < 0.5f ? 1.0f : -1.0f;
-        float segmentLength = 1.0f;
-        float abX;
-        float abY;
-        if (normalizedY < 0.2f) {
-            abX = 0.0f;
-            abY = segmentLength;
-        } else if (normalizedY > 0.8f) {
-            abX = 0.0f;
-            abY = -segmentLength;
-        } else {
-            abX = horizontal * segmentLength;
-            abY = 0.0f;
-        }
-
-        double bcRad = Math.toRadians(vertical > 0.0f
-                ? MrConstants.BC_REST_ANGLE_DEGREES
-                : -MrConstants.BC_REST_ANGLE_DEGREES);
-        float bcX = horizontal * (float) Math.cos(bcRad) * segmentLength;
-        float bcY = (float) Math.sin(bcRad) * segmentLength;
-        float baseAngle = normalizeAngle((float) Math.atan2(abY + bcY, abX + bcX));
-        float theta = Math.abs(baseAngle);
-        if (theta > Math.PI * 0.5f) {
-            theta = (float) Math.PI - theta;
-        }
-
-        float[] candidateAbsAngles = baseAngle >= Math.PI * 0.5f || baseAngle <= -Math.PI * 0.5f
-                ? new float[]{copySign((float) Math.PI - theta, baseAngle), copySign((float) Math.PI - theta, -baseAngle), copySign((float) Math.PI * 0.5f + theta, baseAngle), copySign((float) Math.PI * 0.5f + theta, -baseAngle), copySign((float) Math.PI * 0.5f - theta, baseAngle), copySign((float) Math.PI * 0.5f - theta, -baseAngle), copySign(theta, baseAngle), copySign(theta, -baseAngle)}
-                : new float[]{copySign(theta, baseAngle), copySign(theta, -baseAngle), copySign((float) Math.PI * 0.5f - theta, baseAngle), copySign((float) Math.PI * 0.5f - theta, -baseAngle), copySign((float) Math.PI * 0.5f + theta, baseAngle), copySign((float) Math.PI * 0.5f + theta, -baseAngle), copySign((float) Math.PI - theta, baseAngle), copySign((float) Math.PI - theta, -baseAngle)};
-
-        float[][] directions = new float[candidateAbsAngles.length][2];
-        for (int i = 0; i < candidateAbsAngles.length; i++) {
-            directions[i][0] = (float) Math.cos(candidateAbsAngles[i]);
-            directions[i][1] = (float) Math.sin(candidateAbsAngles[i]);
-        }
-        return directions;
+    private BcDirection[] prioritizeBcDirections(BcDirection[] directions, float currentX, float currentY) {
+        BcDirection[] ordered = Arrays.copyOf(directions, directions.length);
+        float length = (float) Math.sqrt(currentX * currentX + currentY * currentY);
+        if (length <= 0.001f) return ordered;
+        float dirX = currentX / length;
+        float dirY = currentY / length;
+        Arrays.sort(ordered, Comparator.comparingDouble(d -> -(d.x * dirX + d.y * dirY)));
+        return ordered;
     }
 
-    private float normalizeAngle(float angle) {
-        while (angle > Math.PI) angle -= (float) Math.PI * 2.0f;
-        while (angle <= -Math.PI) angle += (float) Math.PI * 2.0f;
-        return angle;
+    private BcDirection[] buildBcOptionsForAb(AbDirection abDirection) {
+        float theta = (float) Math.toRadians(MrConstants.BC_REST_ANGLE_DEGREES);
+        float cos = (float) Math.cos(theta);
+        float sin = (float) Math.sin(theta);
+        if (Math.abs(abDirection.x) > Math.abs(abDirection.y)) {
+            float horizontal = abDirection.x >= 0.0f ? 1.0f : -1.0f;
+            return new BcDirection[]{
+                    new BcDirection(horizontal * cos, -sin),
+                    new BcDirection(horizontal * cos, sin)
+            };
+        }
+        float vertical = abDirection.y >= 0.0f ? 1.0f : -1.0f;
+        return new BcDirection[]{
+                new BcDirection(-sin, vertical * cos),
+                new BcDirection(sin, vertical * cos)
+        };
     }
 
-    private float copySign(float value, float sign) {
-        return sign >= 0.0f ? Math.abs(value) : -Math.abs(value);
+    private LayoutCandidate buildLayoutCandidate(MrCardSnapshot snap, float jointX, float jointY, float cardX, float cardY, float directionX, float directionY, boolean connectorOnTop, LayoutContext context, LayoutEvaluationOptions options) {
+        int edge = connectorOnTop ? 0 : 1;
+        float connectorX = cardX + snap.cardWidth * snap.connectorEdgeRatio;
+        float connectorY = connectorOnTop ? cardY : cardY + snap.cardHeight;
+        CandidateEvaluation evaluation = evaluateLayoutCandidate(snap, jointX, jointY, cardX, cardY, connectorX, connectorY, directionX, directionY, context, options);
+        return new LayoutCandidate(jointX, jointY, cardX, cardY, directionX, directionY, edge, connectorOnTop, evaluation.score, evaluation.acceptable);
     }
 
-    private float computeLayoutCandidateScore(float x, float y, float width, float height, float connectorX, float connectorY, float cPointRadius, List<MrCardSnapshot> placed, int screenW, int screenH, float originalX, float originalY) {
+    private CandidateEvaluation evaluateLayoutCandidate(MrCardSnapshot snap, float jointX, float jointY, float cardX, float cardY, float connectorX, float connectorY, float directionX, float directionY, LayoutContext context, LayoutEvaluationOptions options) {
         float score = 0.0f;
-        for (MrCardSnapshot other : placed) {
-            score += computeCPointOccupancyPenalty(connectorX, connectorY, cPointRadius, other);
-            score += computeOverlapArea(x, y, width, height, other.cardX, other.cardY, other.cardWidth, other.cardHeight);
+        for (MrCardSnapshot other : context.placed) {
+            score += computeOverlapArea(cardX, cardY, snap.cardWidth, snap.cardHeight, other.cardX, other.cardY, other.cardWidth, other.cardHeight) * 6.0f;
         }
-        score += computeOutOfScreenPenalty(x, y, width, height, screenW, screenH);
-        float dx = x - originalX;
-        float dy = y - originalY;
-        score += (float) Math.sqrt(dx * dx + dy * dy) * 0.05f;
-        return score;
+        for (EntityScreenRect rect : context.entityRects) {
+            if (snap.entityUuid != null && snap.entityUuid.equals(rect.uuid)) continue;
+            score += computeOverlapArea(cardX, cardY, snap.cardWidth, snap.cardHeight, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) * rect.priorityWeight * 10.0f;
+        }
+        score += computeOutOfScreenPenalty(cardX, cardY, snap.cardWidth, snap.cardHeight, context.screenW, context.screenH);
+        float dx = cardX - context.originalX;
+        float dy = cardY - context.originalY;
+        score += (float) Math.sqrt(dx * dx + dy * dy) * 0.08f;
+        float jointDx = jointX - context.originalJointX;
+        float jointDy = jointY - context.originalJointY;
+        score += (float) Math.sqrt(jointDx * jointDx + jointDy * jointDy) * 0.12f;
+        float directionDot = directionX * context.originalDirectionX + directionY * context.originalDirectionY;
+        score += Math.max(0.0f, 1.0f - directionDot) * snap.cardWidth * snap.cardHeight * 0.15f;
+
+        if (options.checkLines) {
+            Segment candidateAb = new Segment(snap.anchorX, snap.anchorY, jointX, jointY);
+            Segment candidateBc = new Segment(jointX, jointY, connectorX, connectorY);
+            for (MrCardSnapshot other : context.placed) {
+                SegmentPair otherSegments = buildSegments(other);
+                if (segmentsIntersect(candidateAb, otherSegments.ab)
+                        || segmentsIntersect(candidateAb, otherSegments.bc)
+                        || segmentsIntersect(candidateBc, otherSegments.ab)
+                        || segmentsIntersect(candidateBc, otherSegments.bc)) {
+                    score += snap.cardWidth * snap.cardHeight * 2.0f;
+                }
+            }
+            for (EntityScreenRect rect : context.entityRects) {
+                if (snap.entityUuid != null && snap.entityUuid.equals(rect.uuid)) continue;
+                if (segmentIntersectsRect(candidateAb, rect) || segmentIntersectsRect(candidateBc, rect)) {
+                    score += snap.cardWidth * snap.cardHeight * rect.priorityWeight;
+                }
+            }
+        }
+        return new CandidateEvaluation(score, score <= LAYOUT_ACCEPTABLE_SCORE);
     }
 
-    private float computeCPointOccupancyPenalty(float connectorX, float connectorY, float radius, MrCardSnapshot other) {
-        float closestX = Math.max(other.cardX, Math.min(connectorX, other.cardX + other.cardWidth));
-        float closestY = Math.max(other.cardY, Math.min(connectorY, other.cardY + other.cardHeight));
-        float dx = connectorX - closestX;
-        float dy = connectorY - closestY;
-        float distanceSquared = dx * dx + dy * dy;
-        if (distanceSquared > radius * radius) return 0.0f;
-        return other.cardWidth * other.cardHeight;
+    private void buildEntityScreenRects(List<MrCardSnapshot> snapshots, List<EntityScreenRect> rects) {
+        rects.clear();
+        for (MrCardSnapshot snapshot : snapshots) {
+            float width = Math.max(12.0f, snapshot.cardWidth * 0.22f);
+            float height = Math.max(18.0f, Math.min(72.0f, snapshot.cardHeight * 0.9f + snapshot.eyeHeight * 18.0f));
+            float left = snapshot.anchorX - width * 0.5f;
+            float top = snapshot.anchorY - height * 0.45f;
+            float priority = (snapshot.isFocused ? 3.0f : 1.0f) * (snapshot.isHostile ? 1.6f : 1.0f) * (1.0f + Math.max(0.0f, (float) MrConstants.MR_RANGE - snapshot.distance) / (float) MrConstants.MR_RANGE);
+            rects.add(new EntityScreenRect(snapshot.entityUuid, left, top, left + width, top + height, priority));
+        }
+    }
+
+    private SegmentPair buildSegments(MrCardSnapshot snap) {
+        return new SegmentPair(
+                new Segment(snap.anchorX, snap.anchorY, snap.jointX, snap.jointY),
+                new Segment(snap.jointX, snap.jointY, snap.connectorX, snap.connectorY)
+        );
+    }
+
+    private boolean segmentIntersectsRect(Segment segment, EntityScreenRect rect) {
+        if (pointInRect(segment.x1, segment.y1, rect) || pointInRect(segment.x2, segment.y2, rect)) return true;
+        return segmentsIntersect(segment, new Segment(rect.left, rect.top, rect.right, rect.top))
+                || segmentsIntersect(segment, new Segment(rect.right, rect.top, rect.right, rect.bottom))
+                || segmentsIntersect(segment, new Segment(rect.right, rect.bottom, rect.left, rect.bottom))
+                || segmentsIntersect(segment, new Segment(rect.left, rect.bottom, rect.left, rect.top));
+    }
+
+    private boolean pointInRect(float x, float y, EntityScreenRect rect) {
+        return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    }
+
+    private boolean segmentsIntersect(Segment a, Segment b) {
+        float d1 = direction(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1);
+        float d2 = direction(a.x1, a.y1, a.x2, a.y2, b.x2, b.y2);
+        float d3 = direction(b.x1, b.y1, b.x2, b.y2, a.x1, a.y1);
+        float d4 = direction(b.x1, b.y1, b.x2, b.y2, a.x2, a.y2);
+        if (((d1 > 0.0f && d2 < 0.0f) || (d1 < 0.0f && d2 > 0.0f))
+                && ((d3 > 0.0f && d4 < 0.0f) || (d3 < 0.0f && d4 > 0.0f))) return true;
+        return d1 == 0.0f && onSegment(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1)
+                || d2 == 0.0f && onSegment(a.x1, a.y1, a.x2, a.y2, b.x2, b.y2)
+                || d3 == 0.0f && onSegment(b.x1, b.y1, b.x2, b.y2, a.x1, a.y1)
+                || d4 == 0.0f && onSegment(b.x1, b.y1, b.x2, b.y2, a.x2, a.y2);
+    }
+
+    private float direction(float ax, float ay, float bx, float by, float cx, float cy) {
+        return (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
+    }
+
+    private boolean onSegment(float ax, float ay, float bx, float by, float cx, float cy) {
+        return cx >= Math.min(ax, bx) && cx <= Math.max(ax, bx) && cy >= Math.min(ay, by) && cy <= Math.max(ay, by);
     }
 
     private float computeOverlapArea(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh) {
@@ -800,12 +1178,24 @@ public class MrEngine {
         return false;
     }
 
+    private void applyFocusProgress(MrCardSnapshot snap) {
+        if (!stateMachine.isScanning() || closing || snap.entityUuid == null || !snap.entityUuid.equals(lastGazeUuid)) {
+            snap.focusProgress = 0.0f;
+            snap.focusProgressActive = false;
+            return;
+        }
+        float total = MrConstants.FOCUS_AIM_WARMUP_SECONDS + MrConstants.GAZE_FOCUS_DURATION;
+        float progress = total > 0.0f ? (aimWarmupTimer + gazeTimer) / total : 1.0f;
+        snap.focusProgress = Math.max(0.0f, Math.min(1.0f, progress));
+        snap.focusProgressActive = snap.focusProgress > 0.0f;
+    }
+
     private void updateFocusedDetailText(TrackedCard tracked, NearbyEntityData entity, float deltaTime) {
         String detailText = buildFocusedDetailText(entity);
         if (!detailText.equals(tracked.focusedDetailText)) {
             tracked.focusedDetailText = detailText;
-            tracked.focusedDetailVisibleChars = 0.0f;
-            tracked.focusedDetailOutputFinished = detailText.isEmpty();
+            tracked.focusedDetailVisibleChars = Math.min(tracked.focusedDetailVisibleChars, tracked.focusedDetailText.length());
+            tracked.focusedDetailOutputFinished = tracked.focusedDetailText.isEmpty() || tracked.focusedDetailVisibleChars >= tracked.focusedDetailText.length();
         }
         if (!tracked.focusedDetailOutputFinished) {
             tracked.focusedDetailVisibleChars += deltaTime * MrConstants.FOCUS_TEXT_CHARS_PER_SECOND;
@@ -824,16 +1214,37 @@ public class MrEngine {
 
     private String buildFocusedDetailText(NearbyEntityData entity) {
         StringBuilder builder = new StringBuilder();
-        builder.append("ID ").append(entity.getEntityId());
+        builder.append("ENTITY ").append(safeText(entity.getDisplayName(), entity.getEntityId()));
+        builder.append("\nID ").append(safeText(entity.getEntityId(), "unknown"));
+        builder.append("\nUUID ").append(shortUuid(entity.getUuid()));
         builder.append("\nHP ").append(String.format("%.1f/%.1f", entity.getHealth(), entity.getMaxHealth()));
         builder.append("  DIST ").append(String.format("%.1fm", entity.getDistance()));
         builder.append("\nATK ").append(String.format("%.1f", entity.getAttackDamage()));
         builder.append("  ARM ").append(String.format("%.1f", entity.getArmorValue()));
-        builder.append("\nLOS ").append(entity.isLineOfSight() ? "LOCKED" : "LOST");
+        builder.append("  TYPE ").append(entity.isHostile() ? "HOSTILE" : "NEUTRAL");
+        builder.append("\nPOS ").append(String.format("%.1f %.1f %.1f", entity.getRelativeX(), entity.getRelativeY(), entity.getRelativeZ()));
+        builder.append("\nMOTION ").append(String.format("%.2f %.2f %.2f", entity.getMotionX(), entity.getMotionY(), entity.getMotionZ()));
+        builder.append("\nBODY H ").append(String.format("%.2f", entity.getBoundingHeight()));
+        builder.append("  EYE H ").append(String.format("%.2f", entity.getEyeHeight()));
+        builder.append("\nOCC ").append(entity.isOcclusionVisible() ? "VISIBLE" : "BLOCKED");
+        builder.append("  SNEAK ").append(entity.isSneaking() ? "YES" : "NO");
+        builder.append("  BOW ").append(entity.isPullingBow() ? "YES" : "NO");
+        if (entity.getTargetUuid() != null && !entity.getTargetUuid().isEmpty()) {
+            builder.append("\nTARGET ").append(shortUuid(entity.getTargetUuid()));
+        }
         if (entity.getMainHandItemId() != null && !entity.getMainHandItemId().isEmpty()) {
-            builder.append("  MAIN ").append(entity.getMainHandItemId());
+            builder.append("\nMAIN ").append(entity.getMainHandItemId());
         }
         return builder.toString();
+    }
+
+    private String safeText(String value, String fallback) {
+        return value != null && !value.isEmpty() ? value : fallback;
+    }
+
+    private String shortUuid(String uuid) {
+        if (uuid == null || uuid.isEmpty()) return "unknown";
+        return uuid.length() <= 8 ? uuid : uuid.substring(0, 8);
     }
 
     private void transitionFocusBackToScanning() {
@@ -905,28 +1316,143 @@ public class MrEngine {
         return Math.max(1, lines);
     }
 
-    private TargetGeometry computeTargetGeometry(float anchorX, float anchorY, float scale, float cardW, float cardH, int screenW, int screenH) {
-        float[] joint = computeRestJointPoint(anchorX, anchorY, scale, screenW, screenH);
-        float normalizedX = anchorX / (float) screenW;
-        float normalizedY = anchorY / (float) screenH;
-        boolean connectorOnTop = normalizedY < 0.5f;
-        float baseAngle = buildTargetAngle(normalizedX, connectorOnTop);
-        float segmentLength = MrConstants.RIGID_SEGMENT_LENGTH * scale;
-        float directionX = (float) Math.cos(baseAngle);
-        float directionY = (float) Math.sin(baseAngle);
-        float connectorX = joint[0] + directionX * segmentLength;
-        float connectorY = joint[1] + directionY * segmentLength;
-        float ratio = computeConnectorEdgeRatio(anchorX, screenW);
-        float cardX = connectorX - cardW * ratio;
-        float cardY = connectorOnTop ? connectorY : connectorY - cardH;
-        return new TargetGeometry(cardX, cardY, directionX, directionY, connectorOnTop, ratio);
+    private TargetGeometry computeTargetGeometry(float anchorX, float anchorY, float scale, float cardW, float cardH, int screenW, int screenH, TrackedCard tracked) {
+        float segmentLength = getSegmentLength() * scale;
+        float defaultQuadrantX = anchorX < screenW * 0.5f ? 1.0f : -1.0f;
+        float defaultQuadrantY = anchorY < screenH * 0.5f ? 1.0f : -1.0f;
+        if (tracked != null) {
+            if (!tracked.hasLockedQuadrant) {
+                chooseInitialQuadrant(anchorX, anchorY, segmentLength, cardW, cardH, screenW, screenH, tracked);
+            } else {
+                float projectedX = anchorX + tracked.lockedQuadrantX * segmentLength * 2.0f;
+                float projectedY = anchorY + tracked.lockedQuadrantY * segmentLength * 1.25f;
+                boolean tooFarOutside = projectedX < -cardW * 1.1f
+                        || projectedX > screenW + cardW * 0.1f
+                        || projectedY < -cardH * 1.1f
+                        || projectedY > screenH + cardH * 0.1f;
+                if (tooFarOutside) {
+                    tracked.lockedQuadrantX = defaultQuadrantX;
+                    tracked.lockedQuadrantY = defaultQuadrantY;
+                }
+            }
+            defaultQuadrantX = tracked.lockedQuadrantX;
+            defaultQuadrantY = tracked.lockedQuadrantY;
+        }
+
+        float targetCenterX = anchorX + defaultQuadrantX * (segmentLength * 2.0f + cardW * 0.5f);
+        float targetCenterY = anchorY + defaultQuadrantY * (segmentLength * 1.25f + cardH * 0.35f);
+        float cardX = targetCenterX - cardW * 0.5f;
+        float cardY = targetCenterY - cardH * 0.5f;
+        cardX = Math.max(4.0f, Math.min(screenW - cardW - 4.0f, cardX));
+        cardY = Math.max(4.0f, Math.min(screenH - cardH - 4.0f, cardY));
+
+        float leftDistance = Math.abs(anchorX - cardX);
+        float rightDistance = Math.abs(anchorX - (cardX + cardW));
+        float topDistance = Math.abs(anchorY - cardY);
+        float bottomDistance = Math.abs(anchorY - (cardY + cardH));
+        int edge = 0;
+        float best = topDistance;
+        if (bottomDistance < best) {
+            best = bottomDistance;
+            edge = 1;
+        }
+        if (leftDistance < best) {
+            best = leftDistance;
+            edge = 2;
+        }
+        if (rightDistance < best) {
+            edge = 3;
+        }
+
+        float connectorX;
+        float connectorY;
+        float ratio;
+        if (edge == 0 || edge == 1) {
+            connectorX = Math.max(cardX + cardW * MrConstants.CONNECTOR_EDGE_MIN_RATIO, Math.min(cardX + cardW * MrConstants.CONNECTOR_EDGE_MAX_RATIO, anchorX));
+            ratio = (connectorX - cardX) / Math.max(1.0f, cardW);
+            connectorY = edge == 0 ? cardY : cardY + cardH;
+        } else {
+            connectorY = Math.max(cardY + cardH * MrConstants.CONNECTOR_EDGE_MIN_RATIO, Math.min(cardY + cardH * MrConstants.CONNECTOR_EDGE_MAX_RATIO, anchorY));
+            ratio = (connectorY - cardY) / Math.max(1.0f, cardH);
+            connectorX = edge == 2 ? cardX : cardX + cardW;
+        }
+        float directionX = connectorX > anchorX ? 1.0f : connectorX < anchorX ? -1.0f : 0.0f;
+        float directionY = connectorY > anchorY ? 1.0f : connectorY < anchorY ? -1.0f : 0.0f;
+        if (tracked != null) {
+            tracked.lastLayoutDirectionX = directionX;
+            tracked.lastLayoutDirectionY = directionY;
+            tracked.hasLastLayoutDirection = true;
+        }
+        return new TargetGeometry(cardX, cardY, directionX, directionY, edge, edge == 0, ratio);
     }
 
-    private float buildTargetAngle(float normalizedX, boolean connectorOnTop) {
+    private void chooseInitialQuadrant(float anchorX, float anchorY, float segmentLength, float cardW, float cardH, int screenW, int screenH, TrackedCard tracked) {
+        float preferredX = anchorX < screenW * 0.5f ? 1.0f : -1.0f;
+        float preferredY = anchorY < screenH * 0.5f ? 1.0f : -1.0f;
+        float[][] quadrants = new float[][]{
+                {preferredX, preferredY},
+                {-preferredX, preferredY},
+                {preferredX, -preferredY},
+                {-preferredX, -preferredY}
+        };
+        float bestScore = Float.MAX_VALUE;
+        float bestX = preferredX;
+        float bestY = preferredY;
+        for (float[] quadrant : quadrants) {
+            float cardX = computeCandidateCardX(anchorX, quadrant[0], segmentLength, cardW, screenW);
+            float cardY = computeCandidateCardY(anchorY, quadrant[1], segmentLength, cardH, screenH);
+            float score = computeInitialQuadrantScore(cardX, cardY, cardW, cardH, tracked.uuid, quadrant[0], quadrant[1], preferredX, preferredY, screenW, screenH);
+            if (score < bestScore) {
+                bestScore = score;
+                bestX = quadrant[0];
+                bestY = quadrant[1];
+            }
+        }
+        tracked.lockedQuadrantX = bestX;
+        tracked.lockedQuadrantY = bestY;
+        tracked.hasLockedQuadrant = true;
+    }
+
+    private float computeCandidateCardX(float anchorX, float quadrantX, float segmentLength, float cardW, int screenW) {
+        float targetCenterX = anchorX + quadrantX * (segmentLength * 2.0f + cardW * 0.5f);
+        float cardX = targetCenterX - cardW * 0.5f;
+        return Math.max(4.0f, Math.min(screenW - cardW - 4.0f, cardX));
+    }
+
+    private float computeCandidateCardY(float anchorY, float quadrantY, float segmentLength, float cardH, int screenH) {
+        float targetCenterY = anchorY + quadrantY * (segmentLength * 1.25f + cardH * 0.35f);
+        float cardY = targetCenterY - cardH * 0.5f;
+        return Math.max(4.0f, Math.min(screenH - cardH - 4.0f, cardY));
+    }
+
+    private float computeInitialQuadrantScore(float cardX, float cardY, float cardW, float cardH, String uuid, float quadrantX, float quadrantY, float preferredX, float preferredY, int screenW, int screenH) {
+        float score = 0.0f;
+        for (MrCardSnapshot other : frameSnapshots) {
+            if (uuid != null && uuid.equals(other.entityUuid)) continue;
+            score += computeOverlapArea(cardX, cardY, cardW, cardH, other.cardX, other.cardY, other.cardWidth, other.cardHeight) * 8.0f;
+        }
+        for (EntityScreenRect rect : entityScreenRects) {
+            if (uuid != null && uuid.equals(rect.uuid)) continue;
+            score += computeOverlapArea(cardX, cardY, cardW, cardH, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) * rect.priorityWeight * 12.0f;
+        }
+        score += computeOutOfScreenPenalty(cardX, cardY, cardW, cardH, screenW, screenH);
+        if (quadrantX != preferredX) score += cardW * cardH * 0.08f;
+        if (quadrantY != preferredY) score += cardW * cardH * 0.06f;
+        return score;
+    }
+
+    private float buildTargetAngle(float normalizedX, float normalizedY) {
         float horizontalDirection = normalizedX < 0.5f ? 1.0f : -1.0f;
-        float verticalDirection = connectorOnTop ? 1.0f : -1.0f;
+        float verticalDirection = computePreferredBcVerticalDirection(normalizedY);
         float angle = (float) Math.toRadians(MrConstants.BC_REST_ANGLE_DEGREES);
         return (float) Math.atan2(verticalDirection * Math.sin(angle), horizontalDirection * Math.cos(angle));
+    }
+
+    private float computePreferredBcVerticalDirection(float normalizedY) {
+        if (normalizedY < 0.2f) return 1.0f;
+        if (normalizedY > 0.8f) return -1.0f;
+        float middleProgress = (normalizedY - 0.2f) / 0.6f;
+        return middleProgress < 2.0f / 3.0f ? -1.0f : 1.0f;
     }
 
     private float computeConnectorEdgeRatio(float anchorX, int screenW) {
@@ -941,9 +1467,94 @@ public class MrEngine {
         return current + (target - current) * Math.max(0.0f, Math.min(1.0f, t));
     }
 
+    private float getMinCardScale() {
+        try {
+            return Math.max(0.1f, Math.min(4.0f, tuningProvider.getMinCardScale()));
+        } catch (Exception ignored) {
+            return MrConstants.CARD_MIN_SCALE;
+        }
+    }
+
+    private float getMaxCardScale() {
+        try {
+            return Math.max(getMinCardScale(), Math.min(4.0f, tuningProvider.getMaxCardScale()));
+        } catch (Exception ignored) {
+            return MrConstants.CARD_MAX_SCALE;
+        }
+    }
+
+    private float getSegmentLength() {
+        try {
+            return Math.max(8.0f, Math.min(160.0f, tuningProvider.getSegmentLength()));
+        } catch (Exception ignored) {
+            return MrConstants.RIGID_SEGMENT_LENGTH;
+        }
+    }
+
+    private float getCardDamping() {
+        try {
+            return Math.max(0.01f, Math.min(0.95f, tuningProvider.getCardDamping()));
+        } catch (Exception ignored) {
+            return MrConstants.DAMPING_FACTOR;
+        }
+    }
+
+    private float getCardMinDamping() {
+        try {
+            return Math.max(0.01f, Math.min(0.95f, tuningProvider.getCardMinDamping()));
+        } catch (Exception ignored) {
+            return MrConstants.DAMPING_FACTOR;
+        }
+    }
+
+    private float getCardMaxDamping() {
+        try {
+            return Math.max(getCardMinDamping(), Math.min(0.95f, tuningProvider.getCardMaxDamping()));
+        } catch (Exception ignored) {
+            return MrConstants.DAMPING_MAX_FACTOR;
+        }
+    }
+
+    private float computeEnvironmentAlphaFactor() {
+        float dayAlpha = getDayAlphaFactor();
+        float nightAlpha = getNightAlphaFactor();
+        try {
+            WorldEnvironmentData environment = environmentProvider.getWorldEnvironmentInfo();
+            if (environment == null) return dayAlpha;
+            long dayTime = environment.dayTimeTicks % 24000L;
+            if (dayTime < 12000L) return dayAlpha;
+            if (dayTime < 13000L) return lerp(dayAlpha, nightAlpha, (dayTime - 12000L) / 1000.0f);
+            if (dayTime < 23000L) return nightAlpha;
+            return lerp(nightAlpha, dayAlpha, (dayTime - 23000L) / 1000.0f);
+        } catch (Exception ignored) {
+            return dayAlpha;
+        }
+    }
+
+    private float getDayAlphaFactor() {
+        try {
+            return Math.max(0.05f, Math.min(1.5f, tuningProvider.getDayAlphaFactor()));
+        } catch (Exception ignored) {
+            return MrConstants.DAY_ALPHA_FACTOR;
+        }
+    }
+
+    private float getNightAlphaFactor() {
+        try {
+            return Math.max(0.05f, Math.min(1.5f, tuningProvider.getNightAlphaFactor()));
+        } catch (Exception ignored) {
+            return MrConstants.NIGHT_ALPHA_FACTOR;
+        }
+    }
+
+    private float lerp(float from, float to, float t) {
+        float p = Math.max(0.0f, Math.min(1.0f, t));
+        return from + (to - from) * p;
+    }
+
     private float[] computeRestJointPoint(float ax, float ay, float scale, int sw, int sh) {
         float normalizedY = ay / (float) sh;
-        float segmentLength = MrConstants.RIGID_SEGMENT_LENGTH * scale;
+        float segmentLength = getSegmentLength() * scale;
 
         if (normalizedY < 0.2f) {
             return new float[]{ax, ay + segmentLength};
@@ -956,14 +1567,15 @@ public class MrEngine {
         return new float[]{ax + direction * segmentLength, ay};
     }
 
-    private void updateConnectorPoint(MrCardSnapshot snap, float anchorX, int screenW) {
-        snap.connectorEdgeRatio = computeConnectorEdgeRatio(anchorX, screenW);
-        syncConnectorAfterCardMove(snap);
-    }
-
     private void syncConnectorAfterCardMove(MrCardSnapshot snap) {
-        snap.connectorX = snap.cardX + snap.cardWidth * snap.connectorEdgeRatio;
-        snap.connectorY = snap.connectorOnTopEdge ? snap.cardY : snap.cardY + snap.cardHeight;
+        if (snap.connectorEdge == 2 || snap.connectorEdge == 3) {
+            snap.connectorX = snap.connectorEdge == 2 ? snap.cardX : snap.cardX + snap.cardWidth;
+            snap.connectorY = snap.cardY + snap.cardHeight * snap.connectorEdgeRatio;
+        } else {
+            snap.connectorX = snap.cardX + snap.cardWidth * snap.connectorEdgeRatio;
+            snap.connectorY = snap.connectorEdge == 0 ? snap.cardY : snap.cardY + snap.cardHeight;
+        }
+        snap.orthogonalHorizontalFirst = Math.abs(snap.connectorX - snap.anchorX) >= Math.abs(snap.connectorY - snap.anchorY);
     }
 
     private void precomputeVisuals(MrCardSnapshot snap) {
@@ -976,59 +1588,75 @@ public class MrEngine {
         int accentG = (baseColor >> 8) & 0xFF;
         int accentB = baseColor & 0xFF;
 
-        int textAlphaInt = (int) (Math.max(0.0f, Math.min(1.0f, snap.alpha)) * 255.0f) & 0xFF;
-        float barFullWidth = Math.max(0.0f, snap.cardWidth - MrConstants.CONTENT_BAR_MARGIN);
+        int contentAlphaInt = (int) (Math.max(0.0f, Math.min(1.0f, snap.alpha * snap.environmentAlphaFactor)) * 255.0f) & 0xFF;
+        float barFullWidth = Math.max(0.0f, snap.cardWidth - MrConstants.CONTENT_BAR_MARGIN * snap.scale);
         int healthColor;
         if (healthRatio > 0.6f) {
-            healthColor = (textAlphaInt << 24) | 0x33DD66;
+            healthColor = (contentAlphaInt << 24) | 0x33DD66;
         } else if (healthRatio > 0.3f) {
-            healthColor = (textAlphaInt << 24) | 0xFFCC33;
+            healthColor = (contentAlphaInt << 24) | 0xFFCC33;
         } else {
-            healthColor = (textAlphaInt << 24) | 0xFF3333;
+            healthColor = (contentAlphaInt << 24) | 0xFF3333;
         }
 
         snap.accentColor = baseColor;
         snap.accentR = accentR;
         snap.accentG = accentG;
         snap.accentB = accentB;
-        snap.textAlphaColor = (textAlphaInt << 24) | 0xFFFFFF;
-        snap.accentTextColor = (textAlphaInt << 24) | (accentR << 16) | (accentG << 8) | accentB;
-        snap.healthBarBgColor = (textAlphaInt << 24) | 0x333333;
+        snap.textAlphaColor = (contentAlphaInt << 24) | 0xFFFFFF;
+        snap.accentTextColor = (contentAlphaInt << 24) | (accentR << 16) | (accentG << 8) | accentB;
+        snap.healthBarBgColor = (contentAlphaInt << 24) | 0x333333;
         snap.healthBarColor = healthColor;
         snap.healthBarFullWidth = barFullWidth;
         snap.healthBarFillWidth = barFullWidth * healthRatio;
         snap.glitchOffset = 0;
         snap.distanceText = String.format("%.1fm", snap.distance);
-        snap.attackText = snap.attackDamage > 0 ? String.format("%.0f", snap.attackDamage) : null;
-        snap.armorText = snap.armorValue > 0 ? String.format("%.0f", snap.armorValue) : null;
+        snap.attackText = snap.attackDamage > 0.0f ? String.format("%.0f", snap.attackDamage) : null;
+        snap.armorText = snap.armorValue > 0.0f ? String.format("%.0f", snap.armorValue) : null;
         snap.distanceIconItemId = "minecraft:compass";
-        snap.attackIconItemId = "minecraft:iron_sword";
-        snap.armorIconItemId = "minecraft:iron_chestplate";
-        snap.contentStartX = snap.cardWidth > 0.0f ? MrConstants.CONTENT_PADDING_X : 0.0f;
-        snap.contentStartY = snap.cardHeight > 0.0f ? MrConstants.CONTENT_PADDING_Y : 0.0f;
+        snap.attackIconItemId = snap.attackText != null ? "minecraft:iron_sword" : null;
+        snap.armorIconItemId = snap.armorText != null ? "minecraft:iron_chestplate" : null;
+        snap.contentStartX = snap.cardWidth > 0.0f ? MrConstants.CONTENT_PADDING_X * snap.scale : 0.0f;
+        snap.contentStartY = snap.cardHeight > 0.0f ? MrConstants.CONTENT_PADDING_Y * snap.scale : 0.0f;
+        float iconSize = MrConstants.STATS_ICON_SIZE * snap.scale;
+        float iconTextGap = Math.max(1.0f, MrConstants.STATS_ICON_TEXT_GAP * 0.45f * snap.scale);
+        float groupGap = Math.max(1.0f, MrConstants.STATS_GROUP_GAP * 0.2f * snap.scale);
+        float statTextWidth = 5.0f * snap.scale;
+        float fontLineHeight = MrConstants.FONT_LINE_HEIGHT * snap.scale;
         snap.nameIconX = snap.contentStartX;
-        snap.nameIconY = snap.contentStartY - 2.0f;
-        snap.nameTextX = snap.nameIconX + MrConstants.STATS_ICON_SIZE + MrConstants.STATS_ICON_TEXT_GAP;
+        snap.nameIconY = snap.contentStartY - 2.0f * snap.scale;
+        snap.nameTextX = snap.contentStartX;
         snap.nameTextY = snap.contentStartY;
-        snap.contentNameEndY = snap.contentStartY + MrConstants.FONT_LINE_HEIGHT + 2.0f;
-        snap.contentBarEndY = snap.contentNameEndY + MrConstants.CONTENT_BAR_SPACING;
-        snap.contentStatsY = snap.contentBarEndY;
+        snap.contentNameEndY = snap.contentStartY + fontLineHeight + 2.0f * snap.scale;
+        snap.contentBarEndY = snap.contentNameEndY + MrConstants.CONTENT_BAR_SPACING * snap.scale;
+        snap.contentStatsY = snap.contentBarEndY + 2.0f * snap.scale;
 
         float cursorX = snap.contentStartX;
-        float iconY = snap.contentStatsY - 4.0f;
+        float iconY = snap.contentStatsY - 3.0f * snap.scale;
         snap.distanceIconX = cursorX;
         snap.distanceIconY = iconY;
-        snap.distanceTextX = snap.distanceIconX + MrConstants.STATS_ICON_SIZE + MrConstants.STATS_ICON_TEXT_GAP;
-        cursorX = snap.distanceTextX + snap.distanceText.length() * 6.0f + MrConstants.STATS_GROUP_GAP;
+        snap.distanceTextX = snap.distanceIconX + iconSize + iconTextGap;
+        cursorX = snap.distanceTextX + snap.distanceText.length() * statTextWidth + groupGap;
 
-        snap.attackIconX = cursorX;
-        snap.attackIconY = iconY;
-        snap.atkTextX = snap.attackIconX + MrConstants.STATS_ICON_SIZE + MrConstants.STATS_ICON_TEXT_GAP;
-        String attackText = snap.attackText != null ? snap.attackText : "0";
-        cursorX = snap.atkTextX + attackText.length() * 6.0f + MrConstants.STATS_GROUP_GAP;
+        if (snap.attackText != null) {
+            snap.attackIconX = cursorX;
+            snap.attackIconY = iconY;
+            snap.atkTextX = snap.attackIconX + iconSize + iconTextGap;
+            cursorX = snap.atkTextX + snap.attackText.length() * statTextWidth + groupGap;
+        } else {
+            snap.attackIconX = 0.0f;
+            snap.attackIconY = iconY;
+            snap.atkTextX = 0.0f;
+        }
 
-        snap.armorIconX = cursorX;
-        snap.armorIconY = iconY;
-        snap.defTextX = snap.armorIconX + MrConstants.STATS_ICON_SIZE + MrConstants.STATS_ICON_TEXT_GAP;
+        if (snap.armorText != null) {
+            snap.armorIconX = cursorX;
+            snap.armorIconY = iconY;
+            snap.defTextX = snap.armorIconX + iconSize + iconTextGap;
+        } else {
+            snap.armorIconX = 0.0f;
+            snap.armorIconY = iconY;
+            snap.defTextX = 0.0f;
+        }
     }
 }

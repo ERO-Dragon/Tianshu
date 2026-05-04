@@ -34,8 +34,31 @@ public class MrWhipLayout {
             int screenWidth, int screenHeight,
             float deltaTime
     ) {
+        return compute(anchorX, anchorY, targetCardX, targetCardY, scale, cardWidth, cardHeight, screenWidth, screenHeight, deltaTime,
+                MrConstants.RIGID_SEGMENT_LENGTH, MrConstants.DAMPING_FACTOR, MrConstants.DAMPING_FACTOR, MrConstants.DAMPING_MAX_FACTOR);
+    }
+
+    public LayoutResult compute(
+            float anchorX, float anchorY,
+            float targetCardX, float targetCardY,
+            float scale, float cardWidth, float cardHeight,
+            int screenWidth, int screenHeight,
+            float deltaTime, float segmentLengthBase
+    ) {
+        return compute(anchorX, anchorY, targetCardX, targetCardY, scale, cardWidth, cardHeight, screenWidth, screenHeight, deltaTime,
+                segmentLengthBase, MrConstants.DAMPING_FACTOR, MrConstants.DAMPING_FACTOR, MrConstants.DAMPING_MAX_FACTOR);
+    }
+
+    public LayoutResult compute(
+            float anchorX, float anchorY,
+            float targetCardX, float targetCardY,
+            float scale, float cardWidth, float cardHeight,
+            int screenWidth, int screenHeight,
+            float deltaTime, float segmentLengthBase,
+            float baseDamping, float minDamping, float maxDamping
+    ) {
         if (!initialized) {
-            float[] bInit = computeJointPoint(anchorX, anchorY, scale, screenWidth, screenHeight);
+            float[] bInit = computeJointPoint(anchorX, anchorY, scale, screenWidth, screenHeight, segmentLengthBase);
             currentJointX = bInit[0];
             currentJointY = bInit[1];
             currentCardX = targetCardX;
@@ -44,15 +67,26 @@ public class MrWhipLayout {
             return new LayoutResult(currentJointX, currentJointY, currentCardX, currentCardY);
         }
 
-        float[] bj = computeJointPoint(anchorX, anchorY, scale, screenWidth, screenHeight);
+        float[] bj = computeJointPoint(anchorX, anchorY, scale, screenWidth, screenHeight, segmentLengthBase);
         currentJointX = bj[0];
         currentJointY = bj[1];
 
         float dx = targetCardX - currentCardX;
         float dy = targetCardY - currentCardY;
         float distToTarget = (float) Math.sqrt(dx * dx + dy * dy);
-        float dynamicDamping = MrConstants.DAMPING_FACTOR * (1.0f + distToTarget / MrConstants.DAMPING_DISTANCE_REFERENCE);
-        dynamicDamping = Math.min(MrConstants.DAMPING_MAX_FACTOR, dynamicDamping);
+        float minFactor = Math.max(0.01f, Math.min(0.95f, minDamping));
+        float baseFactor = Math.max(minFactor, Math.min(0.95f, baseDamping));
+        float maxFactor = Math.max(minFactor, Math.min(0.95f, maxDamping));
+        if (maxFactor < baseFactor) {
+            baseFactor = maxFactor;
+        }
+        float distanceBlend = Math.max(0.0f, Math.min(1.0f, distToTarget / MrConstants.DAMPING_DISTANCE_REFERENCE));
+        float dynamicDamping = minFactor + (baseFactor - minFactor) * distanceBlend;
+        if (distToTarget > MrConstants.DAMPING_DISTANCE_REFERENCE) {
+            float catchupBlend = Math.max(0.0f, Math.min(1.0f,
+                    (distToTarget - MrConstants.DAMPING_DISTANCE_REFERENCE) / MrConstants.DAMPING_DISTANCE_REFERENCE));
+            dynamicDamping += (maxFactor - dynamicDamping) * catchupBlend;
+        }
         float factor = dynamicDamping * deltaTime * 20.0f;
         if (factor > 1.0f) factor = 1.0f;
 
@@ -62,9 +96,9 @@ public class MrWhipLayout {
         return new LayoutResult(currentJointX, currentJointY, currentCardX, currentCardY);
     }
 
-    private float[] computeJointPoint(float ax, float ay, float scale, int sw, int sh) {
+    private float[] computeJointPoint(float ax, float ay, float scale, int sw, int sh, float segmentLengthBase) {
         float normalizedY = ay / (float) sh;
-        float segmentLength = MrConstants.RIGID_SEGMENT_LENGTH * scale;
+        float segmentLength = segmentLengthBase * scale;
         float bx;
         float by;
 

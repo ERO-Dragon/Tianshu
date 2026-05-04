@@ -44,10 +44,14 @@ public final class CraftingGraphStorage {
         write(rootDir.resolve(CRASH_RECOVERY_FILE), data);
     }
 
+    public boolean shouldScheduleCrashRecoverySave(long nowMillis) {
+        if (nowMillis - lastAutoSaveMillis < AUTO_SAVE_INTERVAL_MILLIS) return false;
+        return pendingAutoSave == null || pendingAutoSave.isDone();
+    }
+
     public boolean scheduleCrashRecoverySave(CraftingGraphSaveData data, long nowMillis) {
         if (data == null) return false;
-        if (nowMillis - lastAutoSaveMillis < AUTO_SAVE_INTERVAL_MILLIS) return false;
-        if (pendingAutoSave != null && !pendingAutoSave.isDone()) return false;
+        if (!shouldScheduleCrashRecoverySave(nowMillis)) return false;
         String json = GSON.toJson(data);
         String hash = sha256(json);
         if (hash.equals(lastAutoSaveHash)) {

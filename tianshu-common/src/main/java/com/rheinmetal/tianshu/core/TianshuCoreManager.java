@@ -20,6 +20,16 @@ import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.utils.PathUtils;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.protocol.TargetMode;
+import com.rheinmetal.tianshu.protocol.observability.ProtocolRuntimeSnapshot;
+import com.rheinmetal.tianshu.protocol.payload.AlertThreatPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.worker.AsrWorker;
 import com.rheinmetal.tianshu.worker.LlmWorker;
 import com.rheinmetal.tianshu.worker.TtsWorker;
@@ -124,6 +134,7 @@ public class TianshuCoreManager {
     private final INativeLibBridge nativeLibBridge;
     private final IAudioBridge audioBridge;
     private final TianshuEventBus eventBus;
+    private final ProtocolRuntime protocolRuntime;
     private final State state;
     private final EnvSetupManager envSetupManager;
     private final ProcessManager processManager;
@@ -150,6 +161,7 @@ public class TianshuCoreManager {
         this.nativeLibBridge = nativeLibBridge;
         this.audioBridge = audioBridge;
         this.eventBus = new TianshuEventBus(env);
+        this.protocolRuntime = ProtocolBootstrap.create(this, env, audioBridge, env::executeOnMainThread);
         this.state = new State();
         this.envSetupManager = new EnvSetupManager(env, nativeLibBridge);
         this.processManager = new ProcessManager(env, config, nativeLibBridge, () -> {
@@ -167,6 +179,40 @@ public class TianshuCoreManager {
 
     public TianshuEventBus getEventBus() {
         return eventBus;
+    }
+
+    public ProtocolRuntime getProtocolRuntime() {
+        return protocolRuntime;
+    }
+
+    public ProtocolRuntimeSnapshot getProtocolRuntimeSnapshot() {
+        return ProtocolRuntimeSnapshot.from(protocolRuntime);
+    }
+
+    public IAudioBridge getAudioBridge() {
+        return audioBridge;
+    }
+
+    public TianshuThreadPool getThreadPool() {
+        return threadPool;
+    }
+
+    public TtsWorker getTtsWorker() {
+        return ttsWorker;
+    }
+
+    public void submitTtsAlert(String text, boolean interrupt) {
+        Priority priority = interrupt ? Priority.CRITICAL : Priority.NORMAL;
+        protocolRuntime.submit(EnvelopeBuilder.create()
+                .sourceId("acoustic_radar")
+                .targetMode(TargetMode.TOPIC)
+                .target(ProtocolTopics.ALERT_THREAT)
+                .packetType(PacketType.EVENT)
+                .payloadType(PayloadType.ALERT)
+                .priority(priority)
+                .traceId(String.valueOf(eventBus.getActiveSessionId()))
+                .payload(new AlertThreatPayload(text, priority, interrupt, "acoustic_radar", System.currentTimeMillis()))
+                .build());
     }
 
     public EnvSetupManager getEnvSetupManager() {

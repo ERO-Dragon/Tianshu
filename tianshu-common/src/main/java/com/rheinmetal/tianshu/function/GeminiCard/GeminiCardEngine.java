@@ -112,7 +112,9 @@ public final class GeminiCardEngine {
     private static boolean isSamePrimaryType(GeminiCardItemData a, GeminiCardItemData b) {
         if (a == null || b == null || a.empty() || b.empty()) return false;
         if (a.kind() == GeminiCardItemKind.OTHER || b.kind() == GeminiCardItemKind.OTHER) return false;
-        return a.kind() == b.kind();
+        if (a.kind() != b.kind()) return false;
+        if (a.comparisonKey() == null || a.comparisonKey().isBlank()) return false;
+        return Objects.equals(a.comparisonKey(), b.comparisonKey());
     }
 
     private static void appendNumericDiff(List<GeminiCardLine> lines, String label, double hoveredValue, double equippedValue) {

@@ -235,13 +235,10 @@ public class NeoForgePlayerStateProvider implements IPlayerStateProvider {
     public float getCurrentDynamicFov() {
         try {
             Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                float fovRadians = mc.player.getFieldOfViewModifier();
-                if (fovRadians > 0 && fovRadians < 2 * Math.PI) { 
-                    return (float) Math.toDegrees(fovRadians);
-                }
-                return fovRadians; // 如果已经是度数了，直接返回
-            }
+            float baseFov = mc.options.fov().get().floatValue();
+            float modifier = mc.player != null ? mc.player.getFieldOfViewModifier() : 1.0f;
+            if (modifier <= 0.0f || modifier > 4.0f) modifier = 1.0f;
+            return baseFov * modifier;
         } catch (Exception ignored) {}
         return 70.0f;
     }

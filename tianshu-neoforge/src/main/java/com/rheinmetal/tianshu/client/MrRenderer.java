@@ -1,33 +1,57 @@
 package com.rheinmetal.tianshu.client;
 
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.function.MR.MrCardSnapshot;
 import com.rheinmetal.tianshu.function.MR.MrConstants;
 import com.rheinmetal.tianshu.function.MR.MrEngine;
+import com.rheinmetal.tianshu.provider.IPlayerStateProvider;
 
+import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public class MrRenderer {
 
     private final MrEngine engine;
     private final Map<String, ItemStack> itemCache = new HashMap<>();
+    private final Map<String, MrCardSnapshot> displaySnapshots = new HashMap<>();
+    private final Map<String, Entity> visibleEntityCache = new HashMap<>();
+    private final Map<String, MrCardSnapshot> targetByUuid = new HashMap<>();
     private final List<MrCardSnapshot> lastFrameSnapshots = new ArrayList<>();
+    private final List<MrCardSnapshot> incomingSnapshots = new ArrayList<>();
+    private final GuiGeometryBatch geometryBatch = new GuiGeometryBatch();
+    private final float[] projectedAnchor = new float[2];
+    private int entityCacheRefreshFrames;
+    private float projectionForwardX;
+    private float projectionForwardY;
+    private float projectionForwardZ;
+    private float projectionRightX;
+    private float projectionRightY;
+    private float projectionRightZ;
+    private float projectionUpX;
+    private float projectionUpY;
+    private float projectionUpZ;
+    private double projectionCameraX;
+    private double projectionCameraY;
+    private double projectionCameraZ;
+    private double projectionHorizontalTan;
+    private double projectionVerticalTan;
+    private int projectionScreenW;
+    private int projectionScreenH;
 
     public MrRenderer(MrEngine engine) {
         this.engine = engine;
@@ -43,7 +67,7 @@ public class MrRenderer {
 
         MrCardSnapshot snap;
         boolean receivedNewFrame = false;
-        List<MrCardSnapshot> incomingSnapshots = new ArrayList<>();
+        incomingSnapshots.clear();
         while ((snap = engine.getOutputQueue().poll()) != null) {
             incomingSnapshots.add(snap);
             receivedNewFrame = true;
@@ -52,13 +76,328 @@ public class MrRenderer {
             lastFrameSnapshots.clear();
             lastFrameSnapshots.addAll(incomingSnapshots);
         }
+        engine.tickAnimations(dt.getGameTimeDeltaTicks() / 20.0f);
+        refreshVisibleEntityCache(mc, lastFrameSnapshots);
+        prepareProjectionFrame(mc);
         for (MrCardSnapshot cachedSnap : lastFrameSnapshots) {
-            drawCard(g, cachedSnap, font, mc);
+            updateRealtimeAnchor(cachedSnap, mc);
+        }
+        syncDisplaySnapshots(lastFrameSnapshots);
+        geometryBatch.begin();
+        for (MrCardSnapshot cachedSnap : lastFrameSnapshots) {
+            MrCardSnapshot displaySnap = displaySnapshots.get(cachedSnap.entityUuid);
+            if (displaySnap != null) {
+                drawCardGeometry(geometryBatch, displaySnap);
+            }
+        }
+        geometryBatch.flush(g);
+        for (MrCardSnapshot cachedSnap : lastFrameSnapshots) {
+            MrCardSnapshot displaySnap = displaySnapshots.get(cachedSnap.entityUuid);
+            if (displaySnap != null) {
+                drawCardIcons(g, displaySnap);
+            }
+        }
+        for (MrCardSnapshot cachedSnap : lastFrameSnapshots) {
+            MrCardSnapshot displaySnap = displaySnapshots.get(cachedSnap.entityUuid);
+            if (displaySnap != null) {
+                drawCardText(g, displaySnap, font, mc);
+            }
         }
     }
 
-    private void drawCard(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
-        if (s.alpha <= 0.01f) return;
+    private void syncDisplaySnapshots(List<MrCardSnapshot> targetSnapshots) {
+        targetByUuid.clear();
+        for (MrCardSnapshot target : targetSnapshots) {
+            if (target.entityUuid == null) continue;
+            MrCardSnapshot realtimeTarget = target;
+            targetByUuid.put(realtimeTarget.entityUuid, realtimeTarget);
+            MrCardSnapshot display = displaySnapshots.get(realtimeTarget.entityUuid);
+            if (display == null) {
+                displaySnapshots.put(realtimeTarget.entityUuid, realtimeTarget.copy());
+            } else if (realtimeTarget.disappearProgress < 1.0f || display.disappearProgress < 1.0f) {
+                smoothSnapshot(display, realtimeTarget, 1.0f);
+            } else {
+                smoothSnapshot(display, realtimeTarget, computeCardFollowFactor(display, realtimeTarget));
+            }
+        }
+        displaySnapshots.keySet().removeIf(uuid -> !targetByUuid.containsKey(uuid));
+    }
+
+    private void refreshVisibleEntityCache(Minecraft mc, List<MrCardSnapshot> targetSnapshots) {
+        if (mc.level == null || targetSnapshots.isEmpty()) {
+            visibleEntityCache.clear();
+            entityCacheRefreshFrames = 0;
+            return;
+        }
+        entityCacheRefreshFrames++;
+        boolean needsRefresh = entityCacheRefreshFrames >= 5;
+        if (!needsRefresh) {
+            for (MrCardSnapshot target : targetSnapshots) {
+                if (target.entityUuid != null && !visibleEntityCache.containsKey(target.entityUuid)) {
+                    needsRefresh = true;
+                    break;
+                }
+            }
+        }
+        if (!needsRefresh) return;
+
+        visibleEntityCache.clear();
+        entityCacheRefreshFrames = 0;
+        for (Entity entity : mc.level.entitiesForRendering()) {
+            String uuid = entity.getUUID().toString();
+            for (MrCardSnapshot target : targetSnapshots) {
+                if (uuid.equals(target.entityUuid)) {
+                    visibleEntityCache.put(uuid, entity);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void prepareProjectionFrame(Minecraft mc) {
+        Camera camera = mc.gameRenderer.getMainCamera();
+        Vec3 cameraPos = camera.getPosition();
+        Vector3f cameraForward = camera.getLookVector();
+        Vector3f cameraUp = camera.rotation().transform(new Vector3f(0.0f, 1.0f, 0.0f));
+        projectionCameraX = cameraPos.x;
+        projectionCameraY = cameraPos.y;
+        projectionCameraZ = cameraPos.z;
+        projectionForwardX = cameraForward.x();
+        projectionForwardY = cameraForward.y();
+        projectionForwardZ = cameraForward.z();
+        float forwardLength = (float) Math.sqrt(projectionForwardX * projectionForwardX + projectionForwardY * projectionForwardY + projectionForwardZ * projectionForwardZ);
+        if (forwardLength > 1.0E-6f) {
+            projectionForwardX /= forwardLength;
+            projectionForwardY /= forwardLength;
+            projectionForwardZ /= forwardLength;
+        }
+
+        projectionUpX = cameraUp.x();
+        projectionUpY = cameraUp.y();
+        projectionUpZ = cameraUp.z();
+        float upLength = (float) Math.sqrt(projectionUpX * projectionUpX + projectionUpY * projectionUpY + projectionUpZ * projectionUpZ);
+        if (upLength > 1.0E-6f) {
+            projectionUpX /= upLength;
+            projectionUpY /= upLength;
+            projectionUpZ /= upLength;
+        }
+
+        projectionRightX = projectionForwardY * projectionUpZ - projectionForwardZ * projectionUpY;
+        projectionRightY = projectionForwardZ * projectionUpX - projectionForwardX * projectionUpZ;
+        projectionRightZ = projectionForwardX * projectionUpY - projectionForwardY * projectionUpX;
+        float rightLength = (float) Math.sqrt(projectionRightX * projectionRightX + projectionRightY * projectionRightY + projectionRightZ * projectionRightZ);
+        if (rightLength > 1.0E-6f) {
+            projectionRightX /= rightLength;
+            projectionRightY /= rightLength;
+            projectionRightZ /= rightLength;
+        }
+
+        projectionUpX = projectionRightY * projectionForwardZ - projectionRightZ * projectionForwardY;
+        projectionUpY = projectionRightZ * projectionForwardX - projectionRightX * projectionForwardZ;
+        projectionUpZ = projectionRightX * projectionForwardY - projectionRightY * projectionForwardX;
+        upLength = (float) Math.sqrt(projectionUpX * projectionUpX + projectionUpY * projectionUpY + projectionUpZ * projectionUpZ);
+        if (upLength > 1.0E-6f) {
+            projectionUpX /= upLength;
+            projectionUpY /= upLength;
+            projectionUpZ /= upLength;
+        }
+
+        projectionScreenW = mc.getWindow().getGuiScaledWidth();
+        projectionScreenH = mc.getWindow().getGuiScaledHeight();
+        IPlayerStateProvider playerState = TianshuClient.getPlayerStateProvider();
+        float currentFov = playerState != null ? playerState.getCurrentDynamicFov() : 70.0f;
+        if (currentFov <= 10.0f || currentFov > 180.0f) currentFov = 70.0f;
+        double verticalFov = Math.toRadians(currentFov);
+        projectionVerticalTan = Math.tan(verticalFov * 0.5);
+        projectionHorizontalTan = projectionVerticalTan * ((double) projectionScreenW / Math.max(1, projectionScreenH));
+    }
+
+    private boolean updateRealtimeAnchor(MrCardSnapshot target, Minecraft mc) {
+        if (mc.player == null || mc.level == null || mc.getCameraEntity() == null) return false;
+        if (!target.isOcclusionVisible && target.disappearProgress >= 1.0f) return true;
+        float[] anchor = projectCurrentView(mc, target);
+        if (anchor == null) return false;
+        float anchorX = anchor[0];
+        float anchorY = anchor[1];
+        float dx = anchorX - target.anchorX;
+        float dy = anchorY - target.anchorY;
+        target.anchorX = anchorX;
+        target.anchorY = anchorY;
+        target.jointX += dx;
+        target.jointY += dy;
+        target.connectorX += dx;
+        target.connectorY += dy;
+        target.cardX += dx;
+        target.cardY += dy;
+        return true;
+    }
+
+    private float[] projectCurrentView(Minecraft mc, MrCardSnapshot target) {
+        if (projectionScreenW <= 0 || projectionScreenH <= 0) return null;
+        Entity liveEntity = resolveLiveEntity(mc, target.entityUuid);
+        double baseX;
+        double baseY;
+        double baseZ;
+        if (liveEntity != null) {
+            baseX = liveEntity.getX();
+            baseY = liveEntity.getY();
+            baseZ = liveEntity.getZ();
+        } else {
+            baseX = mc.player.getX() + target.relativeX;
+            baseY = mc.player.getY() + target.relativeY;
+            baseZ = mc.player.getZ() + target.relativeZ;
+        }
+        double eyeHeight = liveEntity != null ? liveEntity.getEyeHeight() : target.eyeHeight;
+        double headOffset = Math.min(0.18, Math.max(0.04, eyeHeight * 0.08));
+        double relX = baseX - projectionCameraX;
+        double relY = baseY + eyeHeight + headOffset - projectionCameraY;
+        double relZ = baseZ - projectionCameraZ;
+        double forward = relX * projectionForwardX + relY * projectionForwardY + relZ * projectionForwardZ;
+        if (forward <= 0.05) return null;
+        double right = relX * projectionRightX + relY * projectionRightY + relZ * projectionRightZ;
+        double viewY = relX * projectionUpX + relY * projectionUpY + relZ * projectionUpZ;
+        double ndcX = right / (forward * projectionHorizontalTan);
+        double ndcY = viewY / (forward * projectionVerticalTan);
+        if (ndcX < -1.08 || ndcX > 1.08 || ndcY < -1.08 || ndcY > 1.08) return null;
+        projectedAnchor[0] = (float) ((ndcX * 0.5 + 0.5) * projectionScreenW);
+        projectedAnchor[1] = (float) ((0.5 - ndcY * 0.5) * projectionScreenH);
+        return projectedAnchor;
+    }
+
+    private void smoothSnapshot(MrCardSnapshot display, MrCardSnapshot target, float factor) {
+        display.anchorX = target.anchorX;
+        display.anchorY = target.anchorY;
+        display.jointX = target.jointX;
+        display.jointY = target.jointY;
+        display.connectorX = lerp(display.connectorX, target.connectorX, factor);
+        display.connectorY = lerp(display.connectorY, target.connectorY, factor);
+        display.cardX = lerp(display.cardX, target.cardX, factor);
+        display.cardY = lerp(display.cardY, target.cardY, factor);
+        display.connectorEdge = target.connectorEdge;
+        display.connectorEdgeRatio = target.connectorEdgeRatio;
+        display.connectorOnTopEdge = target.connectorOnTopEdge;
+        display.connectorDirectionX = target.connectorDirectionX;
+        display.connectorDirectionY = target.connectorDirectionY;
+        display.orthogonalHorizontalFirst = target.orthogonalHorizontalFirst;
+        display.cardWidth = lerp(display.cardWidth, target.cardWidth, factor);
+        display.cardHeight = lerp(display.cardHeight, target.cardHeight, factor);
+        display.scale = lerp(display.scale, target.scale, factor);
+        display.alpha = lerp(display.alpha, target.alpha, factor);
+        display.distanceFadeAlpha = target.distanceFadeAlpha;
+        display.environmentAlphaFactor = target.environmentAlphaFactor;
+        float animationFactor = Math.max(0.04f, Math.min(0.35f, factor));
+        display.appearProgress = lerp(display.appearProgress, target.appearProgress, animationFactor);
+        display.disappearProgress = lerp(display.disappearProgress, target.disappearProgress, animationFactor);
+        if (target.appearProgress >= 1.0f && display.appearProgress > 0.995f) display.appearProgress = 1.0f;
+        if (target.disappearProgress >= 1.0f && display.disappearProgress > 0.995f) display.disappearProgress = 1.0f;
+        if (target.disappearProgress <= 0.0f && display.disappearProgress < 0.005f) display.disappearProgress = 0.0f;
+        display.isAlive = target.isAlive;
+        display.isHostile = target.isHostile;
+        display.isOcclusionVisible = target.isOcclusionVisible;
+        display.isFocused = target.isFocused;
+        display.isBackground = target.isBackground;
+        display.hasMainHandItem = target.hasMainHandItem;
+        display.displayName = target.displayName;
+        display.entityId = target.entityId;
+        display.mainHandItemId = target.mainHandItemId;
+        display.distanceIconItemId = target.distanceIconItemId;
+        display.attackIconItemId = target.attackIconItemId;
+        display.armorIconItemId = target.armorIconItemId;
+        display.health = target.health;
+        display.maxHealth = target.maxHealth;
+        display.distance = target.distance;
+        display.attackDamage = target.attackDamage;
+        display.armorValue = target.armorValue;
+        display.accentColor = target.accentColor;
+        display.accentR = target.accentR;
+        display.accentG = target.accentG;
+        display.accentB = target.accentB;
+        display.textAlphaColor = target.textAlphaColor;
+        display.accentTextColor = target.accentTextColor;
+        display.healthBarBgColor = target.healthBarBgColor;
+        display.healthBarColor = target.healthBarColor;
+        display.healthBarFillWidth = target.healthBarFillWidth;
+        display.healthBarFullWidth = target.healthBarFullWidth;
+        display.glitchOffset = target.glitchOffset;
+        display.distanceText = target.distanceText;
+        display.attackText = target.attackText;
+        display.armorText = target.armorText;
+        display.focusedDetailText = target.focusedDetailText;
+        display.focusedDetailVisibleChars = target.focusedDetailVisibleChars;
+        display.focusedDetailOutputFinished = target.focusedDetailOutputFinished;
+        display.contentStartX = target.contentStartX;
+        display.contentStartY = target.contentStartY;
+        display.nameIconX = target.nameIconX;
+        display.nameIconY = target.nameIconY;
+        display.nameTextX = target.nameTextX;
+        display.nameTextY = target.nameTextY;
+        display.statsStartX = target.statsStartX;
+        display.contentNameEndY = target.contentNameEndY;
+        display.contentBarEndY = target.contentBarEndY;
+        display.contentStatsY = target.contentStatsY;
+        display.distanceIconX = target.distanceIconX;
+        display.distanceIconY = target.distanceIconY;
+        display.distanceTextX = target.distanceTextX;
+        display.attackIconX = target.attackIconX;
+        display.attackIconY = target.attackIconY;
+        display.atkTextX = target.atkTextX;
+        display.armorIconX = target.armorIconX;
+        display.armorIconY = target.armorIconY;
+        display.defTextX = target.defTextX;
+    }
+
+    private float lerp(float from, float to, float factor) {
+        return from + (to - from) * factor;
+    }
+
+    private float getCardDamping() {
+        try {
+            return ClientConfig.TACTICAL_MR_CARD_DAMPING.get().floatValue();
+        } catch (Exception ignored) {
+            return 0.22f;
+        }
+    }
+
+    private float getCardMinDamping() {
+        try {
+            return ClientConfig.TACTICAL_MR_CARD_MIN_DAMPING.get().floatValue();
+        } catch (Exception ignored) {
+            return 0.05f;
+        }
+    }
+
+    private float getCardMaxDamping() {
+        try {
+            return ClientConfig.TACTICAL_MR_CARD_MAX_DAMPING.get().floatValue();
+        } catch (Exception ignored) {
+            return 0.75f;
+        }
+    }
+
+    private float computeCardFollowFactor(MrCardSnapshot display, MrCardSnapshot target) {
+        float baseFactor = getCardDamping();
+        float minFactor = getCardMinDamping();
+        float maxFactor = getCardMaxDamping();
+        if (maxFactor < minFactor) {
+            float swap = minFactor;
+            minFactor = maxFactor;
+            maxFactor = swap;
+        }
+        baseFactor = Math.max(minFactor, Math.min(maxFactor, baseFactor));
+        float dx = target.cardX - display.cardX;
+        float dy = target.cardY - display.cardY;
+        float distance = (float) Math.sqrt(dx * dx + dy * dy);
+        float distanceBlend = Math.max(0.0f, Math.min(1.0f, distance / 120.0f));
+        float dynamicFactor = minFactor + (baseFactor - minFactor) * distanceBlend;
+        if (distance > 120.0f) {
+            float catchupBlend = Math.max(0.0f, Math.min(1.0f, (distance - 120.0f) / 120.0f));
+            dynamicFactor += (maxFactor - dynamicFactor) * catchupBlend;
+        }
+        return Math.max(minFactor, Math.min(maxFactor, dynamicFactor));
+    }
+
+    private void drawCardGeometry(GuiGeometryBatch batch, MrCardSnapshot s) {
+        if (s.alpha <= 0.01f && s.appearProgress <= 0.01f && s.disappearProgress >= 1.0f) return;
 
         int r = s.accentR;
         int gr = s.accentG;
@@ -68,211 +407,331 @@ public class MrRenderer {
         float dp = s.disappearProgress;
 
         if (dp < 1.0f) {
-            drawDisappearCard(g, s, font, mc, r, gr, b, dp);
+            drawDisappearCardGeometry(batch, s, r, gr, b, dp);
             return;
         }
 
-        drawOriginMarker(g, s, r, gr, b, Math.min(1.0f, ap * 2.0f));
-        drawTetherLine(g, s, r, gr, b, ap);
+        boolean contentVisible = ap > 0.5f;
+        drawOriginMarker(batch, s, r, gr, b, Math.min(1.0f, ap * 2.0f));
+        drawFocusProgressTether(batch, s, r, gr, b, ap);
+        drawTetherLine(batch, s, r, gr, b, ap);
 
-        if (ap > 0.5f) {
+        if (contentVisible) {
             float boxProgress = Math.min(1.0f, (ap - 0.5f) / 0.5f);
-            drawCardBackground(g, s, boxProgress, r, gr, b);
-        }
-
-        if (ap > 1.0f) {
-            drawCardContent(g, s, font, mc);
+            drawCardBackground(batch, s, boxProgress, r, gr, b);
+            drawCardContentGeometry(batch, s, boxProgress);
         }
     }
 
-    private void drawDisappearCard(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc, int r, int gr, int b, float dp) {
-        int outerWidth = computeOuterLineWidth(s.cardHeight);
-        int innerWidth = computeInnerLineWidth(s.cardHeight);
+    private void drawCardIcons(GuiGraphics g, MrCardSnapshot s) {
+        if (s.alpha <= 0.08f) return;
+        float progress = s.disappearProgress < 1.0f ? s.disappearProgress : s.appearProgress;
+        if (progress < 0.98f) return;
+        float contentScale = Math.max(0.1f, s.scale);
+        float iconScale = Math.max(0.1f, s.scale * 0.75f);
+        int iconColor = contentColor(s, 0xFFFFFFFF);
 
-        int alphaOuter = (int) (s.alpha * 0.3f * 255.0f) & 0xFF;
-        int alphaInner = (int) (s.alpha * 0.9f * 255.0f) & 0xFF;
+        ItemStack distanceStack = resolveItemStack(s.distanceIconItemId);
+        if (distanceStack != null) {
+            drawScaledItem(g, distanceStack, s.cardX + s.distanceIconX, s.cardY + s.distanceIconY, iconScale, iconColor);
+        }
+
+        ItemStack attackStack = resolveItemStack(s.attackIconItemId);
+        if (attackStack != null && s.attackText != null) {
+            drawScaledItem(g, attackStack, s.cardX + s.attackIconX, s.cardY + s.attackIconY, iconScale, iconColor);
+        }
+
+        ItemStack armorStack = resolveItemStack(s.armorIconItemId);
+        if (armorStack != null && s.armorText != null) {
+            drawScaledItem(g, armorStack, s.cardX + s.armorIconX, s.cardY + s.armorIconY, iconScale, iconColor);
+        }
+    }
+
+    private void drawCardText(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
+        if (s.alpha <= 0.01f) return;
+        float progress = s.disappearProgress < 1.0f ? s.disappearProgress : s.appearProgress;
+        if (progress <= 0.5f) return;
+        float boxProgress = Math.min(1.0f, (progress - 0.5f) / 0.5f);
+        drawCompressedCardContent(g, s, font, mc, boxProgress);
+    }
+
+    private void drawDisappearCardGeometry(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float dp) {
+        int outerWidth = Math.max(1, computeOuterLineWidth(s.cardHeight) - 1);
+        int innerWidth = 1;
+
+        int alphaOuter = clampAlpha(s.distanceFadeAlpha * s.environmentAlphaFactor * 0.25f);
+        int alphaInner = clampAlpha(s.distanceFadeAlpha * s.environmentAlphaFactor * 0.85f);
         int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
         int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
 
         if (dp > 0.5f) {
             float boxProgress = Math.min(1.0f, (dp - 0.5f) / 0.5f);
-            drawCardBackground(g, s, boxProgress, r, gr, b);
-            drawCompressedCardContent(g, s, font, mc, boxProgress);
+            drawCardBackground(batch, s, boxProgress, r, gr, b);
+            drawCardContentGeometry(batch, s, boxProgress);
         }
 
         int ax = (int) s.anchorX;
         int ay = (int) s.anchorY;
-        int bx = (int) s.jointX;
-        int by = (int) s.jointY;
         int cx = (int) s.connectorX;
         int cy = (int) s.connectorY;
+        int bx;
+        int by;
+        if (s.orthogonalHorizontalFirst) {
+            bx = cx;
+            by = ay;
+        } else {
+            bx = ax;
+            by = cy;
+        }
 
         if (dp > 0.3f) {
-            drawLine(g, ax, ay, bx, by, outerWidth, colorOuter);
-            drawLine(g, ax, ay, bx, by, innerWidth, colorInner);
+            drawLine(batch, ax, ay, bx, by, outerWidth, colorOuter);
+            drawLine(batch, ax, ay, bx, by, innerWidth, colorInner);
 
             float t = Math.min(1.0f, (dp - 0.3f) / 0.2f);
             int endX = bx + (int) ((cx - bx) * t);
             int endY = by + (int) ((cy - by) * t);
-            drawLine(g, bx, by, endX, endY, outerWidth, colorOuter);
-            drawLine(g, bx, by, endX, endY, innerWidth, colorInner);
-            drawOriginMarker(g, s, r, gr, b, Math.min(1.0f, dp));
+            drawLine(batch, bx, by, endX, endY, outerWidth, colorOuter);
+            drawLine(batch, bx, by, endX, endY, innerWidth, colorInner);
+            drawOriginMarker(batch, s, r, gr, b, Math.min(1.0f, dp), s.distanceFadeAlpha);
         } else if (dp > 0.0f) {
             float t = dp / 0.3f;
             int endX = ax + (int) ((bx - ax) * t);
             int endY = ay + (int) ((by - ay) * t);
-            drawLine(g, ax, ay, endX, endY, outerWidth, colorOuter);
-            drawLine(g, ax, ay, endX, endY, innerWidth, colorInner);
-            drawOriginMarker(g, s, r, gr, b, t);
+            drawLine(batch, ax, ay, endX, endY, outerWidth, colorOuter);
+            drawLine(batch, ax, ay, endX, endY, innerWidth, colorInner);
+            drawOriginMarker(batch, s, r, gr, b, t, s.distanceFadeAlpha);
         }
     }
 
-    private void drawOriginMarker(GuiGraphics g, MrCardSnapshot s, int r, int gr, int b, float progress) {
-        float p = Math.max(0.0f, Math.min(1.0f, progress));
-        int alphaOuter = (int) (s.alpha * 0.25f * 255.0f * p) & 0xFF;
-        int alphaInner = (int) (s.alpha * 0.85f * 255.0f * p) & 0xFF;
-        int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
-        int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-        int ax = (int) s.anchorX;
-        int ay = (int) s.anchorY;
-        int outerRadius = computeOriginOuterRadius(s.cardHeight);
-        int innerRadius = computeOriginInnerRadius(s.cardHeight);
-        drawRectOutline(g, ax - outerRadius, ay - outerRadius, ax + outerRadius, ay + outerRadius,
-                computeOuterLineWidth(s.cardHeight), colorOuter);
-        drawRectOutline(g, ax - innerRadius, ay - innerRadius, ax + innerRadius, ay + innerRadius,
-                computeInnerLineWidth(s.cardHeight), colorInner);
+    private void drawOriginMarker(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float progress) {
+        drawOriginMarker(batch, s, r, gr, b, progress, s.alpha);
     }
 
-    private void drawTetherLine(GuiGraphics g, MrCardSnapshot s, int r, int gr, int b, float ap) {
-        int alphaOuter = (int) (s.alpha * 0.3f * 255.0f) & 0xFF;
-        int alphaInner = (int) (s.alpha * 0.9f * 255.0f) & 0xFF;
+    private void drawOriginMarker(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float progress, float alphaBase) {
+        float p = Math.max(0.0f, Math.min(1.0f, progress));
+        int alphaOuter = clampAlpha(alphaBase * 0.25f * p);
+        int alphaInner = clampAlpha(alphaBase * 0.85f * p);
+        int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
+        int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
+        int ax = (int) s.anchorX;
+        int ay = (int) s.anchorY;
+        int outerRadius = computeOriginOuterRadius(s.scale);
+        int innerRadius = computeOriginInnerRadius(s.scale);
+        drawRectOutline(batch, ax - outerRadius, ay - outerRadius, ax + outerRadius, ay + outerRadius,
+                computeOriginLineWidth(s.scale), colorOuter);
+        drawRectOutline(batch, ax - innerRadius, ay - innerRadius, ax + innerRadius, ay + innerRadius,
+                1, colorInner);
+    }
+
+    private void drawTetherLine(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float ap) {
+        float lineAlphaBase = Math.max(s.alpha, s.distanceFadeAlpha * Math.min(1.0f, ap / 0.5f));
+        int alphaOuter = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.25f);
+        int alphaInner = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.85f);
 
         int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
         int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-        int outerWidth = computeOuterLineWidth(s.cardHeight);
-        int innerWidth = computeInnerLineWidth(s.cardHeight);
+        int outerWidth = Math.max(1, computeOuterLineWidth(s.cardHeight) - 1);
+        int innerWidth = 1;
 
         int ax = (int) s.anchorX;
         int ay = (int) s.anchorY;
-        int bx = (int) s.jointX;
-        int by = (int) s.jointY;
+        int cx = (int) s.connectorX;
+        int cy = (int) s.connectorY;
+        int bx;
+        int by;
+        if (s.orthogonalHorizontalFirst) {
+            bx = cx;
+            by = ay;
+        } else {
+            bx = ax;
+            by = cy;
+        }
 
         if (ap <= 0.3f) {
             float t = ap / 0.3f;
             int endX = ax + (int) ((bx - ax) * t);
             int endY = ay + (int) ((by - ay) * t);
-            drawLine(g, ax, ay, endX, endY, outerWidth, colorOuter);
-            drawLine(g, ax, ay, endX, endY, innerWidth, colorInner);
+            drawLine(batch, ax, ay, endX, endY, outerWidth, colorOuter);
+            drawLine(batch, ax, ay, endX, endY, innerWidth, colorInner);
         } else if (ap <= 0.5f) {
-            drawLine(g, ax, ay, bx, by, outerWidth, colorOuter);
-            drawLine(g, ax, ay, bx, by, innerWidth, colorInner);
-
+            drawLine(batch, ax, ay, bx, by, outerWidth, colorOuter);
+            drawLine(batch, ax, ay, bx, by, innerWidth, colorInner);
             float t = (ap - 0.3f) / 0.2f;
-            int cx = (int) s.connectorX;
-            int cy = (int) s.connectorY;
             int endX = bx + (int) ((cx - bx) * t);
             int endY = by + (int) ((cy - by) * t);
-            drawLine(g, bx, by, endX, endY, outerWidth, colorOuter);
-            drawLine(g, bx, by, endX, endY, innerWidth, colorInner);
+            drawLine(batch, bx, by, endX, endY, outerWidth, colorOuter);
+            drawLine(batch, bx, by, endX, endY, innerWidth, colorInner);
         } else {
-            drawLine(g, ax, ay, bx, by, outerWidth, colorOuter);
-            drawLine(g, ax, ay, bx, by, innerWidth, colorInner);
-            drawLine(g, bx, by, (int) s.connectorX, (int) s.connectorY, outerWidth, colorOuter);
-            drawLine(g, bx, by, (int) s.connectorX, (int) s.connectorY, innerWidth, colorInner);
+            drawLine(batch, ax, ay, bx, by, outerWidth, colorOuter);
+            drawLine(batch, ax, ay, bx, by, innerWidth, colorInner);
+            drawLine(batch, bx, by, cx, cy, outerWidth, colorOuter);
+            drawLine(batch, bx, by, cx, cy, innerWidth, colorInner);
         }
     }
 
-    private void drawCardBackground(GuiGraphics g, MrCardSnapshot s, float boxProgress, int r, int gr, int b) {
+    private void drawFocusProgressTether(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float ap) {
+        if (!s.focusProgressActive || s.focusProgress <= 0.0f || ap <= 0.5f) return;
+
+        float progress = Math.max(0.0f, Math.min(1.0f, s.focusProgress));
+        float lineAlphaBase = Math.max(s.alpha, s.distanceFadeAlpha);
+        int alphaTrack = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.22f);
+        int alphaProgress = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.72f);
+        int trackColor = (alphaTrack << 24) | (r << 16) | (gr << 8) | b;
+        int progressColor = (alphaProgress << 24) | (r << 16) | (gr << 8) | b;
+        int trackWidth = Math.max(3, computeOuterLineWidth(s.cardHeight) + 3);
+        int progressWidth = Math.max(2, computeOuterLineWidth(s.cardHeight) + 1);
+
+        int ax = (int) s.anchorX;
+        int ay = (int) s.anchorY;
+        int cx = (int) s.connectorX;
+        int cy = (int) s.connectorY;
+        int bx;
+        int by;
+        if (s.orthogonalHorizontalFirst) {
+            bx = cx;
+            by = ay;
+        } else {
+            bx = ax;
+            by = cy;
+        }
+
+        drawLine(batch, ax, ay, bx, by, trackWidth, trackColor);
+        drawLine(batch, bx, by, cx, cy, trackWidth, trackColor);
+        drawProgressLine(batch, ax, ay, bx, by, bx, by, cx, cy, progress, progressWidth, progressColor);
+    }
+
+    private void drawProgressLine(GuiGeometryBatch batch, int ax, int ay, int bx, int by, int cx1, int cy1, int cx, int cy, float progress, int width, int color) {
+        float abLength = distance(ax, ay, bx, by);
+        float bcLength = distance(cx1, cy1, cx, cy);
+        float totalLength = abLength + bcLength;
+        if (totalLength <= 0.01f) return;
+
+        float remaining = Math.max(0.0f, Math.min(1.0f, progress)) * totalLength;
+        if (remaining <= 0.0f) return;
+
+        if (abLength > 0.01f) {
+            float abDraw = Math.min(remaining, abLength);
+            float t = abDraw / abLength;
+            int endX = ax + Math.round((bx - ax) * t);
+            int endY = ay + Math.round((by - ay) * t);
+            drawLine(batch, ax, ay, endX, endY, width, color);
+            remaining -= abDraw;
+        }
+
+        if (remaining > 0.0f && bcLength > 0.01f) {
+            float bcDraw = Math.min(remaining, bcLength);
+            float t = bcDraw / bcLength;
+            int endX = cx1 + Math.round((cx - cx1) * t);
+            int endY = cy1 + Math.round((cy - cy1) * t);
+            drawLine(batch, cx1, cy1, endX, endY, width, color);
+        }
+    }
+
+    private float distance(int x1, int y1, int x2, int y2) {
+        int dx = x2 - x1;
+        int dy = y2 - y1;
+        return (float) Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private void drawCardBackground(GuiGeometryBatch batch, MrCardSnapshot s, float boxProgress, int r, int gr, int b) {
         float w = s.cardWidth;
         float h = s.cardHeight * boxProgress;
         float x = s.cardX;
         float y = s.connectorOnTopEdge ? s.cardY : s.cardY + s.cardHeight - h;
 
-        int bgAlpha = (int) (s.alpha * 0.6f * 255.0f) & 0xFF;
-        int bgCenterAlpha = (int) (s.alpha * 0.32f * 255.0f) & 0xFF;
-        int bgOuter = (bgAlpha << 24) | ((r / 4) << 16) | ((gr / 4) << 8) | (b / 4);
-        int bgCenter = (bgCenterAlpha << 24) | ((r / 2) << 16) | ((gr / 2) << 8) | (b / 2);
+        int bgAlpha = clampAlpha(s.alpha * s.environmentAlphaFactor * 0.66f);
+        int bgColor = (bgAlpha << 24) | 0x101010;
+        int borderAlpha = clampAlpha(s.alpha * s.environmentAlphaFactor * 0.95f);
+        int borderColor = (borderAlpha << 24) | (r << 16) | (gr << 8) | b;
 
-        int midY = (int) (y + h * 0.5f);
-        g.fillGradient((int) x, (int) y, (int) (x + w), midY, bgOuter, bgCenter);
-        g.fillGradient((int) x, midY, (int) (x + w), (int) (y + h), bgCenter, bgOuter);
-
+        int left = (int) x;
+        int top = (int) y;
+        int right = (int) (x + w);
+        int bottom = (int) (y + h);
+        batch.fill(left, top, right, bottom, bgColor);
         if (boxProgress > 0.8f) {
-            int corner = computeCutCornerSize(w, h);
-            int alphaOuter = (int) (s.alpha * 0.28f * 255.0f) & 0xFF;
-            int alphaInner = (int) (s.alpha * 0.9f * 255.0f) & 0xFF;
-            int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
-            int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-            drawCutCornerBorder(g, (int) x, (int) y, (int) (x + w), (int) (y + h), corner,
-                    computeOuterLineWidth(h), colorOuter);
-            drawCutCornerBorder(g, (int) x, (int) y, (int) (x + w), (int) (y + h), corner,
-                    computeInnerLineWidth(h), colorInner);
+            int borderWidth = computeCardBorderWidth(s.scale);
+            drawInsetRectOutline(batch, left, top, right, bottom, borderWidth, borderColor);
+        }
+    }
+
+    private int clampAlpha(float alpha) {
+        return Math.max(0, Math.min(255, Math.round(alpha * 255.0f)));
+    }
+
+    private int computeCardBorderWidth(float scale) {
+        return Math.max(1, Math.min(3, Math.round(scale * 2.0f)));
+    }
+
+    private void drawCardContentGeometry(GuiGeometryBatch batch, MrCardSnapshot s, float boxProgress) {
+        if (boxProgress < 0.98f) return;
+        if (s.maxHealth > 0) {
+            int barX = (int) (s.cardX + s.contentStartX);
+            int barY = (int) (s.cardY + s.contentNameEndY);
+            int barW = (int) s.healthBarFullWidth;
+            int barFillW = (int) s.healthBarFillWidth;
+            int barH = Math.max(1, (int) (MrConstants.CONTENT_BAR_HEIGHT * s.scale));
+            batch.fill(barX, barY, barX + barW, barY + barH, s.healthBarBgColor);
+            batch.fill(barX, barY, barX + barFillW, barY + barH, s.healthBarColor);
         }
     }
 
     private void drawCompressedCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc, float boxProgress) {
-        float p = Math.max(0.0f, Math.min(1.0f, boxProgress));
-        if (p <= 0.01f) return;
-        int clipX1 = (int) s.cardX;
-        int clipX2 = (int) (s.cardX + s.cardWidth);
-        int clipY1;
-        int clipY2;
-        float pivotY;
-        if (s.connectorOnTopEdge) {
-            clipY1 = (int) s.cardY;
-            clipY2 = (int) (s.cardY + s.cardHeight * p);
-            pivotY = s.cardY;
-        } else {
-            clipY1 = (int) (s.cardY + s.cardHeight * (1.0f - p));
-            clipY2 = (int) (s.cardY + s.cardHeight);
-            pivotY = s.cardY + s.cardHeight;
-        }
-        g.enableScissor(clipX1, clipY1, clipX2, clipY2);
-        g.pose().pushPose();
-        g.pose().translate(0.0f, pivotY, 0.0f);
-        g.pose().scale(1.0f, p, 1.0f);
-        g.pose().translate(0.0f, -pivotY, 0.0f);
+        if (boxProgress < 0.98f) return;
         drawCardContent(g, s, font, mc);
-        g.pose().popPose();
-        g.disableScissor();
     }
 
     private void drawCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
-        int ix = (int) s.contentStartX;
+        drawScaledCardContent(g, s, font, mc);
+    }
 
+    private int contentColor(MrCardSnapshot s, int color) {
+        int alpha = (int) (Math.max(0.0f, Math.min(1.0f, s.alpha * s.environmentAlphaFactor)) * 255.0f) & 0xFF;
+        return (alpha << 24) | (color & 0x00FFFFFF);
+    }
+
+    private void drawScaledText(GuiGraphics g, Font font, String text, float x, float y, int color, boolean shadow, float scale) {
+        if (text == null || text.isEmpty()) return;
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0.0f);
+        g.pose().scale(scale, scale, 1.0f);
+        g.drawString(font, text, 0, 0, color, shadow);
+        g.pose().popPose();
+    }
+
+    private void drawScaledItem(GuiGraphics g, ItemStack stack, float x, float y, float scale, int argb) {
+        if (stack == null) return;
+        float alpha = ((argb >>> 24) & 0xFF) / 255.0f;
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0.0f);
+        g.pose().scale(scale, scale, 1.0f);
+        g.setColor(1.0f, 1.0f, 1.0f, alpha);
+        g.renderItem(stack, 0, 0);
+        g.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+        g.pose().popPose();
+    }
+
+    private void drawScaledCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
+        float contentScale = Math.max(0.1f, s.scale);
+        float statsScale = Math.max(0.1f, s.scale * 0.9f);
         if (s.displayName != null) {
-            drawEntityFaceIcon(g, mc, s, (int) (s.cardX + s.nameIconX), (int) (s.cardY + s.nameIconY));
-            g.drawString(font, s.displayName, (int) (s.cardX + s.nameTextX), (int) (s.cardY + s.nameTextY), s.accentTextColor, true);
+            drawScaledText(g, font, s.displayName, s.cardX + s.contentStartX, s.cardY + s.nameTextY, s.accentTextColor, true, contentScale);
         }
 
-        if (s.maxHealth > 0) {
-            int barX = (int) (s.cardX + ix);
-            int barY = (int) (s.cardY + s.contentNameEndY);
-            g.fill(barX, barY, barX + (int) s.healthBarFullWidth, barY + (int) MrConstants.CONTENT_BAR_HEIGHT, s.healthBarBgColor);
-            g.fill(barX, barY, barX + (int) s.healthBarFillWidth, barY + (int) MrConstants.CONTENT_BAR_HEIGHT, s.healthBarColor);
-        }
+        float statsY = s.cardY + s.contentStatsY;
 
-        int statsY = (int) (s.cardY + s.contentStatsY);
-
-        ItemStack distanceStack = resolveItemStack(s.distanceIconItemId);
-        if (distanceStack != null) {
-            g.renderItem(distanceStack, (int) (s.cardX + s.distanceIconX), (int) (s.cardY + s.distanceIconY));
-        }
         if (s.distanceText != null) {
-            g.drawString(font, s.distanceText, (int) (s.cardX + s.distanceTextX), statsY, s.textAlphaColor, false);
+            drawScaledText(g, font, s.distanceText, s.cardX + s.distanceTextX, statsY, s.textAlphaColor, false, statsScale);
         }
 
-        ItemStack attackStack = resolveItemStack(s.attackIconItemId);
-        if (attackStack != null) {
-            g.renderItem(attackStack, (int) (s.cardX + s.attackIconX), (int) (s.cardY + s.attackIconY));
+        if (s.attackText != null) {
+            drawScaledText(g, font, s.attackText, s.cardX + s.atkTextX, statsY, s.textAlphaColor, false, statsScale);
         }
-        g.drawString(font, s.attackText != null ? s.attackText : "0", (int) (s.cardX + s.atkTextX), statsY, s.textAlphaColor, false);
 
-        ItemStack armorStack = resolveItemStack(s.armorIconItemId);
-        if (armorStack != null) {
-            g.renderItem(armorStack, (int) (s.cardX + s.armorIconX), (int) (s.cardY + s.armorIconY));
+        if (s.armorText != null) {
+            drawScaledText(g, font, s.armorText, s.cardX + s.defTextX, statsY, s.textAlphaColor, false, statsScale);
         }
-        g.drawString(font, s.armorText != null ? s.armorText : "0", (int) (s.cardX + s.defTextX), statsY, s.textAlphaColor, false);
 
         if (s.isFocused && s.focusedDetailText != null && !s.focusedDetailText.isEmpty()) {
             drawFocusedDetailText(g, s, font);
@@ -282,12 +741,13 @@ public class MrRenderer {
     private void drawFocusedDetailText(GuiGraphics g, MrCardSnapshot s, Font font) {
         int visibleChars = Math.max(0, Math.min(s.focusedDetailVisibleChars, s.focusedDetailText.length()));
         String visibleText = s.focusedDetailText.substring(0, visibleChars);
-        List<String> wrappedLines = wrapText(font, visibleText, Math.max(1, (int) (s.cardWidth - s.contentStartX * 2.0f)));
-        int x = (int) (s.cardX + s.contentStartX);
-        int y = (int) (s.cardY + s.contentStatsY + MrConstants.FONT_LINE_HEIGHT + 8.0f);
+        List<String> wrappedLines = wrapText(font, visibleText, Math.max(1, (int) ((s.cardWidth - s.contentStartX * 2.0f) / Math.max(0.1f, s.scale))));
+        float x = s.cardX + s.contentStartX;
+        float y = s.cardY + s.contentStatsY + MrConstants.FONT_LINE_HEIGHT * s.scale + 8.0f * s.scale;
+        float contentScale = Math.max(0.1f, s.scale);
         for (String line : wrappedLines) {
-            g.drawString(font, line, x, y, s.textAlphaColor, false);
-            y += MrConstants.FONT_LINE_HEIGHT;
+            drawScaledText(g, font, line, x, y, s.textAlphaColor, false, contentScale);
+            y += Math.max(1.0f, MrConstants.FONT_LINE_HEIGHT * s.scale);
         }
     }
 
@@ -317,73 +777,9 @@ public class MrRenderer {
         }
     }
 
-    private void drawEntityFaceIcon(GuiGraphics g, Minecraft mc, MrCardSnapshot s, int x, int y) {
-        ItemStack skullStack = resolveItemStack(resolveEntitySkullItemId(s.entityId));
-        if (skullStack != null) {
-            g.renderItem(skullStack, x, y);
-            return;
-        }
-
-        ResourceLocation texture = resolveEntityTexture(mc, s);
-        if (texture == null) {
-            ItemStack fallback = resolveItemStack("minecraft:player_head");
-            if (fallback != null) g.renderItem(fallback, x, y);
-            return;
-        }
-        g.blit(texture, x, y, 8.0f, 8.0f, 16, 16, 64, 64);
-    }
-
-    private String resolveEntitySkullItemId(String entityId) {
-        if ("minecraft:zombie".equals(entityId)) return "minecraft:zombie_head";
-        if ("minecraft:skeleton".equals(entityId)) return "minecraft:skeleton_skull";
-        if ("minecraft:wither_skeleton".equals(entityId)) return "minecraft:wither_skeleton_skull";
-        if ("minecraft:creeper".equals(entityId)) return "minecraft:creeper_head";
-        if ("minecraft:piglin".equals(entityId)) return "minecraft:piglin_head";
-        if ("minecraft:ender_dragon".equals(entityId)) return "minecraft:dragon_head";
-        return null;
-    }
-
-    private ResourceLocation resolveEntityTexture(Minecraft mc, MrCardSnapshot s) {
-        if (mc.level == null || s == null) return null;
-        Entity liveEntity = resolveLiveEntity(mc, s.entityUuid);
-        if (liveEntity != null) {
-            try {
-                return getEntityTexture(mc, liveEntity);
-            } catch (Exception ignored) {
-            }
-        }
-        return resolveEntityTypeTexture(mc, s.entityId);
-    }
-
     private Entity resolveLiveEntity(Minecraft mc, String entityUuid) {
         if (mc.level == null || entityUuid == null || entityUuid.isEmpty()) return null;
-        try {
-            UUID uuid = UUID.fromString(entityUuid);
-            for (Entity entity : mc.level.entitiesForRendering()) {
-                if (uuid.equals(entity.getUUID())) return entity;
-            }
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
-
-    private ResourceLocation resolveEntityTypeTexture(Minecraft mc, String entityId) {
-        if (mc.level == null || entityId == null || entityId.isEmpty()) return null;
-        try {
-            ResourceLocation loc = ResourceLocation.parse(entityId);
-            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(loc).orElse(null);
-            if (type == null) return null;
-            Entity entity = type.create(mc.level);
-            if (entity == null) return null;
-            return getEntityTexture(mc, entity);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private <T extends Entity> ResourceLocation getEntityTexture(Minecraft mc, T entity) {
-        EntityRenderer<? super T> renderer = mc.getEntityRenderDispatcher().getRenderer(entity);
-        return renderer.getTextureLocation(entity);
+        return visibleEntityCache.get(entityUuid);
     }
 
     private ItemStack resolveItemStack(String itemId) {
@@ -417,66 +813,34 @@ public class MrRenderer {
         return Math.max(1, Math.round(clamped));
     }
 
-    private int computeOriginOuterRadius(float height) {
-        float scaled = height * MrConstants.ORIGIN_MARKER_OUTER_RADIUS_HEIGHT_RATIO;
-        float clamped = Math.max(MrConstants.ORIGIN_MARKER_OUTER_RADIUS_MIN, Math.min(MrConstants.ORIGIN_MARKER_OUTER_RADIUS_MAX, scaled));
-        return Math.max(1, Math.round(clamped));
+    private int computeOriginOuterRadius(float scale) {
+        float clamped = Math.max(0.1f, Math.min(4.0f, scale));
+        return Math.max(1, Math.round(4.0f * clamped));
     }
 
-    private int computeOriginInnerRadius(float height) {
-        float scaled = height * MrConstants.ORIGIN_MARKER_INNER_RADIUS_HEIGHT_RATIO;
-        float clamped = Math.max(MrConstants.ORIGIN_MARKER_INNER_RADIUS_MIN, Math.min(MrConstants.ORIGIN_MARKER_INNER_RADIUS_MAX, scaled));
-        return Math.max(1, Math.round(clamped));
+    private int computeOriginInnerRadius(float scale) {
+        float clamped = Math.max(0.1f, Math.min(4.0f, scale));
+        return Math.max(1, Math.round(2.0f * clamped));
     }
 
-    private int computeCutCornerSize(float width, float height) {
-        float scaled = height * MrConstants.CUT_CORNER_HEIGHT_RATIO;
-        float clamped = Math.max(MrConstants.CUT_CORNER_MIN_SIZE, Math.min(MrConstants.CUT_CORNER_MAX_SIZE, scaled));
-        return Math.max(1, Math.min((int) clamped, (int) Math.min(width, height) / 3));
+    private int computeOriginLineWidth(float scale) {
+        return Math.max(1, Math.min(3, Math.round(scale * 1.4f)));
     }
 
-    private void drawCutCornerBorder(GuiGraphics g, int left, int top, int right, int bottom, int corner, int width, int color) {
-        drawLine(g, left + corner, top, right - corner, top, width, color);
-        drawLine(g, right - corner, top, right, top + corner, width, color);
-        drawLine(g, right, top + corner, right, bottom - corner, width, color);
-        drawLine(g, right, bottom - corner, right - corner, bottom, width, color);
-        drawLine(g, right - corner, bottom, left + corner, bottom, width, color);
-        drawLine(g, left + corner, bottom, left, bottom - corner, width, color);
-        drawLine(g, left, bottom - corner, left, top + corner, width, color);
-        drawLine(g, left, top + corner, left + corner, top, width, color);
+    private void drawRectOutline(GuiGeometryBatch batch, int left, int top, int right, int bottom, int width, int color) {
+        batch.rectOutline(left, top, right, bottom, width, color);
     }
 
-    private void drawRectOutline(GuiGraphics g, int left, int top, int right, int bottom, int width, int color) {
-        drawLine(g, left, top, right, top, width, color);
-        drawLine(g, right, top, right, bottom, width, color);
-        drawLine(g, right, bottom, left, bottom, width, color);
-        drawLine(g, left, bottom, left, top, width, color);
+    private void drawInsetRectOutline(GuiGeometryBatch batch, int left, int top, int right, int bottom, int width, int color) {
+        if (width <= 0 || right <= left || bottom <= top) return;
+        int clampedWidth = Math.min(width, Math.max(1, Math.min(right - left, bottom - top) / 2));
+        batch.fill(left, top, right, top + clampedWidth, color);
+        batch.fill(left, bottom - clampedWidth, right, bottom, color);
+        batch.fill(left, top + clampedWidth, left + clampedWidth, bottom - clampedWidth, color);
+        batch.fill(right - clampedWidth, top + clampedWidth, right, bottom - clampedWidth, color);
     }
 
-    private void drawLine(GuiGraphics g, int x1, int y1, int x2, int y2, int width, int color) {
-        if (x1 == x2 && y1 == y2) return;
-
-        if (x1 == x2) {
-            int minY = Math.min(y1, y2);
-            int maxY = Math.max(y1, y2);
-            int hw = width / 2;
-            g.fill(x1 - hw, minY, x1 + hw + 1, maxY + 1, color);
-        } else if (y1 == y2) {
-            int minX = Math.min(x1, x2);
-            int maxX = Math.max(x1, x2);
-            int hh = width / 2;
-            g.fill(minX, y1 - hh, maxX + 1, y1 + hh + 1, color);
-        } else {
-            int dx = Math.abs(x2 - x1);
-            int dy = Math.abs(y2 - y1);
-            int steps = Math.max(dx, dy);
-            for (int i = 0; i <= steps; i++) {
-                float t = (float) i / steps;
-                int px = x1 + (int) ((x2 - x1) * t);
-                int py = y1 + (int) ((y2 - y1) * t);
-                int hw = width / 2;
-                g.fill(px - hw, py, px + hw + 1, py + 1, color);
-            }
-        }
+    private void drawLine(GuiGeometryBatch batch, int x1, int y1, int x2, int y2, int width, int color) {
+        batch.line(x1, y1, x2, y2, width, color);
     }
 }

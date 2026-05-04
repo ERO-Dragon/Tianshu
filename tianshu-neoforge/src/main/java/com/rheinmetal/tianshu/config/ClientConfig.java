@@ -36,6 +36,14 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue DURABILITY_ALERT_ENABLED;
     public static final ModConfigSpec.BooleanValue CHAT_ASSISTANT;
     public static final ModConfigSpec.BooleanValue TACTICAL_MR_ENABLED;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_CARD_DAMPING;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_CARD_MIN_DAMPING;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_CARD_MAX_DAMPING;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_CARD_MIN_SCALE;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_CARD_MAX_SCALE;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_SEGMENT_LENGTH;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_DAY_ALPHA;
+    public static final ModConfigSpec.DoubleValue TACTICAL_MR_NIGHT_ALPHA;
     public static final ModConfigSpec.DoubleValue CRAFTING_GRAPH_ALPHA;
 
     static {
@@ -66,6 +74,22 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 .define("chatAssistant", true);
         TACTICAL_MR_ENABLED = builder.comment("全息战术 MR 系统")
                 .define("tacticalMr", true);
+        TACTICAL_MR_CARD_DAMPING = builder.comment("全息战术 MR 卡片与 C 点的基础跟随系数，越小近距离移动越慢越稳；卡片被拉远后会自动提高跟随速度，范围 0.05 到 0.8")
+                .defineInRange("tacticalMrCardDamping", 0.22, 0.05, 0.8);
+        TACTICAL_MR_CARD_MIN_DAMPING = builder.comment("全息战术 MR 卡片与 C 点动态跟随的最小系数，控制短距离移动的慢速稳定程度，范围 0.01 到 0.8")
+                .defineInRange("tacticalMrCardMinDamping", 0.05, 0.01, 0.8);
+        TACTICAL_MR_CARD_MAX_DAMPING = builder.comment("全息战术 MR 卡片与 C 点动态跟随的最大系数，控制远距离被拉开后的追赶速度，范围 0.05 到 0.95")
+                .defineInRange("tacticalMrCardMaxDamping", 0.75, 0.05, 0.95);
+        TACTICAL_MR_CARD_MIN_SCALE = builder.comment("全息战术 MR 卡片距离缩放的最小倍率，控制远处卡片最小能缩到多小，范围 0.1 到 4.0")
+                .defineInRange("tacticalMrCardMinScale", 0.4, 0.1, 4.0);
+        TACTICAL_MR_CARD_MAX_SCALE = builder.comment("全息战术 MR 卡片距离缩放的最大倍率，控制近处卡片最大能放到多大，范围 0.1 到 4.0")
+                .defineInRange("tacticalMrCardMaxScale", 1.5, 0.1, 4.0);
+        TACTICAL_MR_SEGMENT_LENGTH = builder.comment("全息战术 MR A-B 固定线段的基础长度，实际显示会随距离缩放倍率一起变化，范围 8 到 160")
+                .defineInRange("tacticalMrSegmentLength", 40.0, 8.0, 160.0);
+        TACTICAL_MR_DAY_ALPHA = builder.comment("全息战术 MR 白天透明度倍率，数值越大越亮越明显，范围 0.05 到 1.5")
+                .defineInRange("tacticalMrDayAlpha", 1.0, 0.05, 1.5);
+        TACTICAL_MR_NIGHT_ALPHA = builder.comment("全息战术 MR 夜晚透明度倍率，黄昏后会从白天倍率过渡到该值，范围 0.05 到 1.5")
+                .defineInRange("tacticalMrNightAlpha", 0.55, 0.05, 1.5);
         builder.pop();
 
         builder.comment("性能与显存设置").push("performance");

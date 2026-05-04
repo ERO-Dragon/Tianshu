@@ -14,8 +14,11 @@ import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.CrossbowItem;
@@ -28,15 +31,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final int LOS_SAMPLE_INTERVAL = 5;
+    private static final int OCCLUSION_SAMPLE_INTERVAL = 5;
 
     // 核心：动态扫描半径。初始为 0，实现没有任何系统开启时的绝对 0 损耗
     private volatile double activeScanRadius = 0;
 
     private volatile List<NearbyEntityData> cachedHostileSnapshot = Collections.emptyList();
     private volatile List<NearbyEntityData> cachedAllEntitySnapshot = Collections.emptyList();
-    private final Map<String, Boolean> losCache = new ConcurrentHashMap<>();
-    private final Map<String, Long> losCacheTick = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> occlusionVisibleCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> occlusionVisibleCacheTick = new ConcurrentHashMap<>();
     private long lastSnapshotTick = -1;
 
     public NeoForgeEnvironmentProvider() {
@@ -49,7 +52,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
      * 如果所有系统都关闭了，传入 0 即可让底层进入休眠状态。
      */
     public void setActiveScanRadius(double radius) {
-        this.activeScanRadius = Math.max(4, radius);
+        this.activeScanRadius = radius <= 0.0 ? 0.0 : Math.max(4.0, radius);
     }
 
     private void onPlayerTick(PlayerTickEvent.Post event) {
@@ -122,7 +125,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                 // 4. 修复：干掉荒谬的怪物潜行，改为蓄力攻击判定
                 boolean charging = isMobChargingAttack(living);
 
-                boolean lineOfSight = computeLosWithSample(uuid, playerEyePos, living.getEyePosition(), level, currentTick);
+                boolean occlusionVisible = computeOcclusionVisibleWithSample(uuid, playerEyePos, living, level, currentTick);
 
                 String mainHandItemId = null;
                 net.minecraft.world.item.ItemStack mainHand = living.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
@@ -157,8 +160,8 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                         health, maxHealth,
                         motionX, motionY, motionZ,
                         pullingBow, charging,
-                        lineOfSight,
-                        living.getBbHeight(),
+                        occlusionVisible,
+                        living.getBbHeight(), living.getEyeHeight(),
                         mainHandItemId, attackDamage, armorValue
                 );
                 allResult.add(data);
@@ -170,21 +173,21 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
             }
         }
 
-        losCache.keySet().retainAll(activeUuids);
-        losCacheTick.keySet().retainAll(activeUuids);
+        occlusionVisibleCache.keySet().retainAll(activeUuids);
+        occlusionVisibleCacheTick.keySet().retainAll(activeUuids);
         cachedAllEntitySnapshot = allResult;
         cachedHostileSnapshot = hostileResult;
     }
 
-    private boolean computeLosWithSample(String uuid, Vec3 from, Vec3 to, Level level, long currentTick) {
-        Long lastTick = losCacheTick.get(uuid);
-        if (lastTick != null && (currentTick - lastTick) < LOS_SAMPLE_INTERVAL) {
-            Boolean cached = losCache.get(uuid);
+    private boolean computeOcclusionVisibleWithSample(String uuid, Vec3 from, LivingEntity living, Level level, long currentTick) {
+        Long lastTick = occlusionVisibleCacheTick.get(uuid);
+        if (lastTick != null && (currentTick - lastTick) < OCCLUSION_SAMPLE_INTERVAL) {
+            Boolean cached = occlusionVisibleCache.get(uuid);
             if (cached != null) return cached;
         }
-        boolean result = checkLineOfSight(from, to, level);
-        losCache.put(uuid, result);
-        losCacheTick.put(uuid, currentTick);
+        boolean result = checkOcclusionVisible(from, living, level);
+        occlusionVisibleCache.put(uuid, result);
+        occlusionVisibleCacheTick.put(uuid, currentTick);
         return result;
     }
 
@@ -297,6 +300,9 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     @Override
     public String getCrosshairTargetEntityUuid() {
         Minecraft mc = Minecraft.getInstance();
+        if (mc.hitResult instanceof EntityHitResult entityHit) {
+            return entityHit.getEntity().getUUID().toString();
+        }
         if (mc.crosshairPickEntity != null) {
             return mc.crosshairPickEntity.getUUID().toString();
         }
@@ -308,7 +314,39 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return blockId.contains("diamond_ore") || blockId.contains("deepslate_diamond_ore") || blockId.contains("ancient_debris") || blockId.contains("emerald_ore") || blockId.contains("deepslate_emerald_ore") || blockId.contains("gold_ore") || blockId.contains("deepslate_gold_ore") || blockId.contains("lapis_ore") || blockId.contains("deepslate_lapis_ore");
     }
 
-    private boolean checkLineOfSight(Vec3 from, Vec3 to, Level level) {
-        try { net.minecraft.world.phys.BlockHitResult hitResult = level.clip(new net.minecraft.world.level.ClipContext(from, to, net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, (net.minecraft.world.entity.Entity) null)); return hitResult.getType() == net.minecraft.world.phys.HitResult.Type.MISS; } catch (Exception e) { return false; }
+    private boolean checkOcclusionVisible(Vec3 from, LivingEntity living, Level level) {
+        try {
+            for (Vec3 samplePoint : buildOcclusionSamplePoints(living)) {
+                if (isOcclusionRayClear(from, samplePoint, level)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    private List<Vec3> buildOcclusionSamplePoints(LivingEntity living) {
+        AABB box = living.getBoundingBox();
+        double centerX = (box.minX + box.maxX) * 0.5;
+        double centerZ = (box.minZ + box.maxZ) * 0.5;
+        double height = Math.max(0.1, box.getYsize());
+        List<Vec3> points = new ArrayList<>(3);
+        points.add(living.getEyePosition());
+        points.add(new Vec3(centerX, box.minY + height * 0.55, centerZ));
+        points.add(new Vec3(centerX, box.minY + height * 0.18, centerZ));
+        return points;
+    }
+
+    private boolean isOcclusionRayClear(Vec3 from, Vec3 to, Level level) {
+        net.minecraft.world.phys.BlockHitResult hitResult = level.clip(new ClipContext(
+                from,
+                to,
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
+                Minecraft.getInstance().player
+        ));
+        return hitResult.getType() == HitResult.Type.MISS;
     }
 }

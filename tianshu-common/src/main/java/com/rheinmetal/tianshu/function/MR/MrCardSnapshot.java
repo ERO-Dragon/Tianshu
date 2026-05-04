@@ -9,9 +9,11 @@ public final class MrCardSnapshot {
     public float connectorX;
     public float connectorY;
     public float connectorEdgeRatio;
+    public int connectorEdge;
     public boolean connectorOnTopEdge;
     public float connectorDirectionX;
     public float connectorDirectionY;
+    public boolean orthogonalHorizontalFirst;
     public float cardX;
     public float cardY;
 
@@ -21,13 +23,14 @@ public final class MrCardSnapshot {
 
     public float alpha;
     public float distanceFadeAlpha;
+    public float environmentAlphaFactor;
 
     public float appearProgress;
     public float disappearProgress;
 
     public boolean isAlive;
     public boolean isHostile;
-    public boolean isLineOfSight;
+    public boolean isOcclusionVisible;
     public boolean isFocused;
     public boolean isBackground;
     public boolean hasMainHandItem;
@@ -45,6 +48,10 @@ public final class MrCardSnapshot {
     public float distance;
     public float attackDamage;
     public float armorValue;
+    public double relativeX;
+    public double relativeY;
+    public double relativeZ;
+    public float eyeHeight;
 
     public int accentColor;
 
@@ -65,6 +72,8 @@ public final class MrCardSnapshot {
     public String focusedDetailText;
     public int focusedDetailVisibleChars;
     public boolean focusedDetailOutputFinished;
+    public float focusProgress;
+    public boolean focusProgressActive;
 
     public float contentStartX;
     public float contentStartY;
@@ -97,9 +106,11 @@ public final class MrCardSnapshot {
         s.connectorX = this.connectorX;
         s.connectorY = this.connectorY;
         s.connectorEdgeRatio = this.connectorEdgeRatio;
+        s.connectorEdge = this.connectorEdge;
         s.connectorOnTopEdge = this.connectorOnTopEdge;
         s.connectorDirectionX = this.connectorDirectionX;
         s.connectorDirectionY = this.connectorDirectionY;
+        s.orthogonalHorizontalFirst = this.orthogonalHorizontalFirst;
         s.cardX = this.cardX;
         s.cardY = this.cardY;
         s.cardWidth = this.cardWidth;
@@ -107,11 +118,12 @@ public final class MrCardSnapshot {
         s.scale = this.scale;
         s.alpha = this.alpha;
         s.distanceFadeAlpha = this.distanceFadeAlpha;
+        s.environmentAlphaFactor = this.environmentAlphaFactor;
         s.appearProgress = this.appearProgress;
         s.disappearProgress = this.disappearProgress;
         s.isAlive = this.isAlive;
         s.isHostile = this.isHostile;
-        s.isLineOfSight = this.isLineOfSight;
+        s.isOcclusionVisible = this.isOcclusionVisible;
         s.isFocused = this.isFocused;
         s.isBackground = this.isBackground;
         s.hasMainHandItem = this.hasMainHandItem;
@@ -127,6 +139,10 @@ public final class MrCardSnapshot {
         s.distance = this.distance;
         s.attackDamage = this.attackDamage;
         s.armorValue = this.armorValue;
+        s.relativeX = this.relativeX;
+        s.relativeY = this.relativeY;
+        s.relativeZ = this.relativeZ;
+        s.eyeHeight = this.eyeHeight;
         s.accentColor = this.accentColor;
         s.accentR = this.accentR;
         s.accentG = this.accentG;
@@ -144,6 +160,8 @@ public final class MrCardSnapshot {
         s.focusedDetailText = this.focusedDetailText;
         s.focusedDetailVisibleChars = this.focusedDetailVisibleChars;
         s.focusedDetailOutputFinished = this.focusedDetailOutputFinished;
+        s.focusProgress = this.focusProgress;
+        s.focusProgressActive = this.focusProgressActive;
         s.contentStartX = this.contentStartX;
         s.contentStartY = this.contentStartY;
         s.nameIconX = this.nameIconX;

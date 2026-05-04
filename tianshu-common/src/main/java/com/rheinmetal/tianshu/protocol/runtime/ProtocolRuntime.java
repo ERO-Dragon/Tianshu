@@ -1,0 +1,234 @@
+package com.rheinmetal.tianshu.protocol.runtime;
+
+import com.rheinmetal.tianshu.protocol.CancellationScope;
+import com.rheinmetal.tianshu.protocol.DeadLetterPolicy;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
+import com.rheinmetal.tianshu.protocol.FailurePolicy;
+import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.protocol.TargetMode;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.broker.BrokerRegistry;
+import com.rheinmetal.tianshu.protocol.broker.BrokerSubmitResult;
+import com.rheinmetal.tianshu.protocol.broker.ProtocolBroker;
+import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
+import com.rheinmetal.tianshu.protocol.registry.DirectRouteRegistry;
+import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
+import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.ModuleRegistry;
+import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.TopicRegistry;
+import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionRegistry;
+import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
+
+import java.util.List;
+import java.util.function.Consumer;
+
+public final class ProtocolRuntime {
+    private final ModuleRegistry moduleRegistry = new ModuleRegistry();
+    private final CapabilityRegistry capabilityRegistry = new CapabilityRegistry();
+    private final DirectRouteRegistry directRouteRegistry = new DirectRouteRegistry();
+    private final TopicRegistry topicRegistry = new TopicRegistry();
+    private final TopicSubscriptionRegistry topicSubscriptionRegistry = new TopicSubscriptionRegistry();
+    private final EnvelopeLifecycleStore lifecycleStore = new EnvelopeLifecycleStore();
+    private final CancellationRegistry cancellationRegistry = new CancellationRegistry(lifecycleStore);
+    private final DeadLetterQueue deadLetterQueue = new DeadLetterQueue(512, lifecycleStore);
+    private final StormGuard stormGuard = new StormGuard(200, 32);
+    private final BrokerRegistry brokerRegistry;
+    private final ProtocolContext context;
+
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor) {
+        this.brokerRegistry = new BrokerRegistry(mainThreadExecutor);
+        this.context = new RuntimeContext();
+    }
+
+    public void registerModule(ModuleDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
+        moduleRegistry.register(descriptor);
+        capabilityRegistry.register(descriptor, handler);
+    }
+
+    public void registerTopic(TopicDescriptor descriptor) {
+        topicRegistry.register(descriptor);
+    }
+
+    public void registerDirectRoute(String routeId, ModuleDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor capabilityDescriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
+        moduleRegistry.register(descriptor);
+        directRouteRegistry.register(routeId, descriptor, capabilityDescriptor, handler);
+    }
+
+    public void subscribeTopic(ModuleDescriptor moduleDescriptor, TopicSubscriptionDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
+        moduleRegistry.register(moduleDescriptor);
+        topicSubscriptionRegistry.subscribe(moduleDescriptor, descriptor, handler);
+    }
+
+    public void submit(TianshuEnvelope envelope) {
+        long now = System.currentTimeMillis();
+        if (envelope.header().isExpired(now)) {
+            lifecycleStore.accept(envelope);
+            deadLetterQueue.add(envelope, "ENVELOPE_EXPIRED", "Envelope expired before dispatch", DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        lifecycleStore.accept(envelope);
+        int depth = traceDepth(envelope);
+        int topicLimit = topicRegistry.find(envelope.header().target()).map(TopicDescriptor::stormLimitPerSecond).orElse(0);
+        GuardResult guardResult = stormGuard.check(envelope, depth, topicLimit);
+        if (!guardResult.accepted()) {
+            deadLetterQueue.add(envelope, guardResult.code(), guardResult.message(), DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        List<HandlerRegistration> registrations = resolveHandlers(envelope);
+        if (registrations.isEmpty()) {
+            deadLetterQueue.add(envelope, "TARGET_NOT_FOUND", "No registered handler for target", DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        boolean childDelivery = registrations.size() > 1 || envelope.header().targetMode() == TargetMode.TOPIC;
+        for (HandlerRegistration registration : registrations) {
+            TianshuEnvelope deliveryEnvelope = createDeliveryEnvelope(envelope, childDelivery);
+            if (deliveryEnvelope != envelope) {
+                lifecycleStore.accept(deliveryEnvelope);
+            }
+            dispatchToRegistration(deliveryEnvelope, registration);
+        }
+        if (childDelivery) {
+            lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "ROUTED", "Envelope routed to " + registrations.size() + " handler(s)");
+        }
+    }
+
+    private TianshuEnvelope createDeliveryEnvelope(TianshuEnvelope sourceEnvelope, boolean forceChildDelivery) {
+        if (!forceChildDelivery) {
+            return sourceEnvelope;
+        }
+        return EnvelopeBuilder.childOf(sourceEnvelope)
+            .sourceId(sourceEnvelope.header().sourceId())
+            .targetMode(sourceEnvelope.header().targetMode())
+            .target(sourceEnvelope.header().target())
+            .deliveryPolicy(sourceEnvelope.header().deliveryPolicy())
+            .packetType(sourceEnvelope.header().packetType())
+            .payloadType(sourceEnvelope.header().payloadType())
+            .ackPolicy(sourceEnvelope.header().ackPolicy())
+            .priority(sourceEnvelope.header().priority())
+            .threadPolicy(sourceEnvelope.header().threadPolicy())
+            .deadline(sourceEnvelope.header().deadline())
+            .expireAt(sourceEnvelope.header().expireAt())
+            .cancellationScope(sourceEnvelope.header().cancellationScope())
+            .failurePolicy(sourceEnvelope.header().failurePolicy())
+            .payload(sourceEnvelope.payload())
+            .build();
+    }
+
+    private void dispatchToRegistration(TianshuEnvelope envelope, HandlerRegistration registration) {
+        ValidationResult validation = capabilityRegistry.validate(envelope, registration);
+        if (!validation.accepted()) {
+            deadLetterQueue.add(envelope, validation.code(), validation.message(), DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        ProtocolBroker broker = brokerRegistry.brokerFor(envelope.header().target(), registration.capabilityDescriptor().requiredBrokerType(), registration.moduleDescriptor().queueCapacity(), registration.moduleDescriptor().maxConcurrency());
+        BrokerSubmitResult result = broker.submit(envelope, registration, this);
+        if (result.rejected()) {
+            deadLetterQueue.add(envelope, result.code(), result.message(), DeadLetterPolicy.LOG_ONLY);
+        }
+    }
+
+    private List<HandlerRegistration> resolveHandlers(TianshuEnvelope envelope) {
+        if (envelope.header().targetMode() == TargetMode.DIRECT) {
+            return directRouteRegistry.findDirect(envelope.header().target());
+        }
+        if (envelope.header().targetMode() == TargetMode.CAPABILITY) {
+            return capabilityRegistry.findCapability(envelope.header().target());
+        }
+        if (envelope.header().targetMode() == TargetMode.TOPIC) {
+            if (topicRegistry.find(envelope.header().target()).isEmpty()) return List.of();
+            return topicSubscriptionRegistry.findTopic(envelope.header().target());
+        }
+        return List.of();
+    }
+
+    public void handleFailure(TianshuEnvelope envelope, String reasonCode, String message, Throwable throwable) {
+        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.FAILED, reasonCode, message == null ? "" : message);
+        if (envelope.header().failurePolicy() == FailurePolicy.PROPAGATE_CANCEL) {
+            applyCancellation(envelope, reasonCode, message == null ? "" : message);
+        }
+    }
+
+    public void cancel(TianshuEnvelope envelope, String reasonCode, String message) {
+        applyCancellation(envelope, reasonCode, message);
+    }
+
+    private void applyCancellation(TianshuEnvelope envelope, String reasonCode, String message) {
+        CancellationScope scope = envelope.header().cancellationScope();
+        if (scope == CancellationScope.SELF_ONLY) {
+            cancellationRegistry.cancelSelf(envelope.envelopeId(), reasonCode, message);
+            brokerRegistry.cancel(envelope.envelopeId(), reasonCode, message);
+        } else if (scope == CancellationScope.CHILDREN) {
+            cancellationRegistry.cancelChildren(envelope.envelopeId(), reasonCode, message);
+            brokerRegistry.cancel(envelope.envelopeId(), reasonCode, message);
+            for (TianshuEnvelope child : lifecycleStore.childrenOf(envelope.envelopeId())) {
+                brokerRegistry.cancel(child.envelopeId(), reasonCode, message);
+            }
+        } else if (scope == CancellationScope.TRACE) {
+            cancellationRegistry.cancelTrace(envelope.traceId(), reasonCode, message);
+            for (TianshuEnvelope traceEnvelope : lifecycleStore.envelopesByTrace(envelope.traceId())) {
+                brokerRegistry.cancel(traceEnvelope.envelopeId(), reasonCode, message);
+            }
+        } else if (scope == CancellationScope.RESOURCE) {
+            cancellationRegistry.cancelSelf(envelope.envelopeId(), reasonCode, message);
+            brokerRegistry.cancel(envelope.envelopeId(), reasonCode, message);
+        }
+    }
+
+    private int traceDepth(TianshuEnvelope envelope) {
+        int depth = 0;
+        String parentId = envelope.parentId();
+        while (parentId != null) {
+            depth++;
+            parentId = lifecycleStore.findEnvelope(parentId).map(TianshuEnvelope::parentId).orElse(null);
+        }
+        return depth;
+    }
+
+    public EnvelopeLifecycleStore lifecycle() { return lifecycleStore; }
+    public CancellationRegistry cancellation() { return cancellationRegistry; }
+    public DeadLetterQueue deadLetters() { return deadLetterQueue; }
+    public StormGuard stormGuard() { return stormGuard; }
+    public BrokerRegistry brokers() { return brokerRegistry; }
+    public ModuleRegistry modules() { return moduleRegistry; }
+    public CapabilityRegistry capabilities() { return capabilityRegistry; }
+    public DirectRouteRegistry directRoutes() { return directRouteRegistry; }
+    public TopicRegistry topics() { return topicRegistry; }
+    public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
+    public ProtocolContext context() { return context; }
+
+    private final class RuntimeContext implements ProtocolContext {
+
+        @Override
+        public void submit(TianshuEnvelope envelope) {
+            ProtocolRuntime.this.submit(envelope);
+        }
+
+        @Override
+        public void complete(String envelopeId) {
+            lifecycleStore.transition(envelopeId, EnvelopeStatus.COMPLETED, "COMPLETED", "");
+        }
+
+        @Override
+        public void fail(String envelopeId, String reasonCode, String message, Throwable throwable) {
+            lifecycleStore.findEnvelope(envelopeId).ifPresent(envelope -> handleFailure(envelope, reasonCode, message, throwable));
+        }
+
+        @Override
+        public void cancel(String envelopeId, String reasonCode, String message) {
+            lifecycleStore.findEnvelope(envelopeId).ifPresent(envelope -> ProtocolRuntime.this.cancel(envelope, reasonCode, message));
+        }
+
+        @Override
+        public boolean isCancelled(String envelopeId) {
+            return cancellationRegistry.isCancelled(envelopeId);
+        }
+
+        @Override
+        public void onCancel(String envelopeId, Consumer<TianshuEnvelope> callback) {
+            cancellationRegistry.onCancel(envelopeId, callback);
+        }
+    }
+}

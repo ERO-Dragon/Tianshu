@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.craftinggraph;
 
+import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphConstants;
 import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphEngine;
 import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphInteractionMode;
 import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphSaveData;
@@ -13,6 +14,7 @@ import com.rheinmetal.tianshu.function.CraftingGraph.SlotHitResult;
 import com.rheinmetal.tianshu.provider.IInventoryDataProvider;
 import com.rheinmetal.tianshu.provider.IRecipeDataProvider;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
@@ -37,13 +39,24 @@ public final class CraftingGraphController {
     private boolean currentTreeFavorited;
     private boolean previousDirty;
     private boolean searchOpen;
+    private boolean graphKeyboardFocused;
     private String searchQuery = "";
     private List<SearchResult> searchResults = new ArrayList<>();
     private int searchSelection;
     private double lastMouseX;
     private double lastMouseY;
     private boolean interactionKeyDownState;
+    private long interactionKeyDownAtMillis;
+    private boolean interactionKeyLongPress;
+    private boolean gameTemporaryEdit;
+    private boolean gameEditScreenRequested;
+    private boolean gameCursorReleased;
+    private boolean middleMouseDownState;
     private boolean middleDown;
+    private boolean rightMouseDown;
+    private double lastPolledMouseX;
+    private double lastPolledMouseY;
+    private boolean ignoreInteractionKeyUntilReleased;
     private BooleanSupplier interactionKeyDown = () -> GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(), GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS;
     private IntPredicate interactionKeyMatches = keyCode -> keyCode == GLFW.GLFW_KEY_TAB;
 
@@ -57,15 +70,67 @@ public final class CraftingGraphController {
         Minecraft mc = Minecraft.getInstance();
         long window = mc.getWindow().getWindow();
         boolean currentInteractionKey = interactionKeyDown.getAsBoolean();
-        boolean shiftDown = isShiftDown(window);
-        if (currentInteractionKey != interactionKeyDownState) {
-            interactionKeyDownState = currentInteractionKey;
-            engine.setHeld(interactionKeyDownState || shiftDown);
-        } else {
-            engine.setHeld(interactionKeyDownState || shiftDown);
+        boolean containerScreen = mc.screen instanceof AbstractContainerScreen<?>;
+        boolean anyScreen = mc.screen != null;
+        boolean outerGame = mc.screen == null;
+        boolean currentMiddleMouse = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_MIDDLE) == GLFW.GLFW_PRESS;
+        long now = System.currentTimeMillis();
+
+        if (currentInteractionKey && !interactionKeyDownState) {
+            interactionKeyDownAtMillis = now;
+            interactionKeyLongPress = false;
         }
-        if (engine.shouldLockByMiddleHold(System.currentTimeMillis())) {
-            engine.toggleLocked(true);
+        if (outerGame && currentInteractionKey && currentMiddleMouse && !middleMouseDownState) {
+            enterGameLockedEdit();
+        } else if (outerGame && currentInteractionKey && !interactionKeyLongPress && now - interactionKeyDownAtMillis >= CraftingGraphConstants.INTERACTION_LONG_PRESS_MILLIS) {
+            interactionKeyLongPress = true;
+            gameTemporaryEdit = true;
+            gameEditScreenRequested = true;
+            engine.setExpanded(true);
+            engine.setHeld(true);
+            ensureGameCursorReleased();
+        }
+        middleMouseDownState = currentMiddleMouse;
+
+        if (!currentInteractionKey && interactionKeyDownState) {
+            if (ignoreInteractionKeyUntilReleased) {
+                ignoreInteractionKeyUntilReleased = false;
+            } else if (!interactionKeyLongPress) {
+                if (engine.getMode() == CraftingGraphInteractionMode.LOCKED) {
+                    exitGameEdit();
+                } else {
+                    engine.toggleExpanded();
+                }
+            } else if (gameTemporaryEdit && engine.getMode() != CraftingGraphInteractionMode.LOCKED) {
+                exitGameEdit();
+            }
+            interactionKeyDownAtMillis = 0L;
+            interactionKeyLongPress = false;
+        }
+        interactionKeyDownState = currentInteractionKey;
+
+        if (anyScreen && (gameTemporaryEdit || engine.getMode() == CraftingGraphInteractionMode.LOCKED)) {
+            exitGameEdit();
+        }
+
+        if (containerScreen) {
+            gameTemporaryEdit = false;
+            gameEditScreenRequested = false;
+            ensureGameCursorGrabbed();
+            if (engine.getMode() != CraftingGraphInteractionMode.LOCKED) engine.setHeld(engine.isExpanded());
+        } else if (outerGame && (gameEditScreenRequested || gameTemporaryEdit)) {
+            engine.setHeld(true);
+        } else if (!engine.isExpanded()) {
+            ensureGameCursorGrabbed();
+            engine.setHeld(false);
+        }
+        if (engine.getMode() == CraftingGraphInteractionMode.LOCKED && outerGame) {
+            engine.setExpanded(true);
+            ensureGameCursorReleased();
+        } else if (gameTemporaryEdit && outerGame) {
+            ensureGameCursorReleased();
+        } else if (engine.getMode() != CraftingGraphInteractionMode.LOCKED) {
+            ensureGameCursorGrabbed();
         }
         checkRecoveryPrompt();
         updateTopPanelProgress();
@@ -91,6 +156,36 @@ public final class CraftingGraphController {
         engine.setCustomAlpha(alphaMultiplier);
     }
 
+    public void showRecipe(String itemId, String displayName) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return;
+        String effectiveDisplayName = displayName == null || displayName.isBlank() ? itemId : displayName;
+        engine.createSingleRootGraph(itemId, effectiveDisplayName, RecipePanelNodeType.SOURCE, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+        engine.setExpanded(true);
+        markTreeChanged();
+        saveHistory();
+    }
+
+    public void closeGraph() {
+        engine.setExpanded(false);
+        exitGameEdit();
+    }
+
+    public boolean isExpanded() {
+        return engine.isExpanded();
+    }
+
+    public void suspendGraph() {
+        engine.setExpanded(false);
+        if (isGameEditActive()) {
+            exitGameEdit();
+        }
+    }
+
+    public void resumeGraph() {
+        engine.setExpanded(true);
+    }
+
     public void setInteractionKey(BooleanSupplier interactionKeyDown, IntPredicate interactionKeyMatches) {
         if (interactionKeyDown != null) this.interactionKeyDown = interactionKeyDown;
         if (interactionKeyMatches != null) this.interactionKeyMatches = interactionKeyMatches;
@@ -102,7 +197,9 @@ public final class CraftingGraphController {
 
     private void scheduleCrashRecoverySave() {
         if (storage == null || !engine.isDirty()) return;
-        if (storage.scheduleCrashRecoverySave(engine.createSaveData(), System.currentTimeMillis())) {
+        long now = System.currentTimeMillis();
+        if (!storage.shouldScheduleCrashRecoverySave(now)) return;
+        if (storage.scheduleCrashRecoverySave(engine.createSaveData(), now)) {
             engine.markClean();
         }
     }
@@ -115,7 +212,7 @@ public final class CraftingGraphController {
             if (data != null && data.nodes != null && !data.nodes.isEmpty()) {
                 pendingRecovery = data;
                 recoveryPromptVisible = true;
-                engine.setHeld(true);
+                engine.setExpanded(true);
             }
         } catch (Exception ignored) {
         }
@@ -221,14 +318,34 @@ public final class CraftingGraphController {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!engine.isInteractive() || !renderer.containsScreenPoint(mouseX, mouseY)) return false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof AbstractContainerScreen<?> && interactionKeyDown.getAsBoolean()
+                && (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)
+                && createRootFromHoveredContainerItem(button)) {
+            return true;
+        }
+        if (!engine.isInteractive()) return false;
+        boolean gameEdit = isGameEditActive();
         lastMouseX = mouseX;
         lastMouseY = mouseY;
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
             middleDown = true;
             engine.beginMiddlePress(System.currentTimeMillis());
+            enterGameLockedEdit();
             return true;
+        }
+
+        if (!renderer.containsScreenPoint(mouseX, mouseY)) {
+            graphKeyboardFocused = false;
+            closeSearch();
+            return gameEdit;
+        }
+        graphKeyboardFocused = true;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            rightMouseDown = true;
+            lastPolledMouseX = mouseX;
+            lastPolledMouseY = mouseY;
         }
 
         if (recoveryPromptVisible && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -308,7 +425,6 @@ public final class CraftingGraphController {
                 if (!hovered.isEmpty()) {
                     String itemId = hovered.getItemHolder().getRegisteredName();
                     String displayName = hovered.getHoverName().getString();
-                    Minecraft mc = Minecraft.getInstance();
                     RecipePanelNodeType nodeType = button == GLFW.GLFW_MOUSE_BUTTON_RIGHT ? RecipePanelNodeType.USAGE : RecipePanelNodeType.SOURCE;
                     engine.createRoot(itemId, displayName, nodeType, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
                     markTreeChanged();
@@ -327,13 +443,16 @@ public final class CraftingGraphController {
                 return true;
             }
             SlotHitResult slot = engine.hitSlot(worldX, worldY);
-            if (slot != null && slot.getSlot().getItem() != null) {
+            if (slot != null && slot.getSlot().getItem() != null && (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
                 String itemId = slot.getSlot().getItem().getItemId();
                 String displayName = slot.getSlot().getItem().getDisplayName();
                 if (itemId == null || itemId.isBlank() || itemId.startsWith("#")) return true;
                 GraphExpansionDirection direction = button == GLFW.GLFW_MOUSE_BUTTON_RIGHT ? GraphExpansionDirection.USAGE : GraphExpansionDirection.SOURCE;
-                engine.expandFromSlot(slot.getNodeUuid(), slot.getSlot(), itemId, displayName, direction, System.currentTimeMillis());
-                markTreeChanged();
+                RecipePanelNode expanded = engine.expandFromSlot(slot.getNodeUuid(), slot.getSlot(), itemId, displayName, direction, System.currentTimeMillis());
+                if (expanded != null) {
+                    engine.focusNodeByUuid(expanded.getUuid(), mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight(), System.currentTimeMillis());
+                    markTreeChanged();
+                }
                 return true;
             }
             RecipePanelNode node = engine.hitNode(worldX, worldY);
@@ -360,7 +479,11 @@ public final class CraftingGraphController {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (!renderer.containsScreenPoint(mouseX, mouseY) && button != GLFW.GLFW_MOUSE_BUTTON_MIDDLE) return false;
+        boolean gameEdit = isGameEditActive();
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            rightMouseDown = false;
+        }
+        if (!renderer.containsScreenPoint(mouseX, mouseY) && button != GLFW.GLFW_MOUSE_BUTTON_MIDDLE && button != GLFW.GLFW_MOUSE_BUTTON_RIGHT) return gameEdit;
         if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && middleDown) {
             middleDown = false;
             engine.endMiddlePress();
@@ -370,8 +493,9 @@ public final class CraftingGraphController {
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (!engine.isInteractive() || (!renderer.containsScreenPoint(mouseX, mouseY) && !middleDown)) return false;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE || middleDown) {
+        if (!engine.isInteractive()) return false;
+        if (!renderer.containsScreenPoint(mouseX, mouseY)) return isGameEditActive();
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
             engine.getCamera().pan((float) dragX, (float) dragY);
             lastMouseX = mouseX;
             lastMouseY = mouseY;
@@ -381,7 +505,9 @@ public final class CraftingGraphController {
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
-        if (!engine.isInteractive() || !renderer.containsScreenPoint(mouseX, mouseY)) return false;
+        if (!engine.isInteractive()) return false;
+        boolean gameEdit = isGameEditActive();
+        if (!renderer.containsScreenPoint(mouseX, mouseY)) return gameEdit;
         if (renderer.containsTopPanelList(mouseX, mouseY)) {
             scrollTopPanel(scrollDelta);
             return true;
@@ -395,6 +521,13 @@ public final class CraftingGraphController {
 
     public boolean keyPressed(int keyCode) {
         long window = Minecraft.getInstance().getWindow().getWindow();
+        if (interactionKeyMatches.test(keyCode) && engine.getMode() == CraftingGraphInteractionMode.LOCKED) {
+            if (ignoreInteractionKeyUntilReleased) return true;
+            exitGameEdit();
+            return true;
+        }
+        if (interactionKeyMatches.test(keyCode)) return engine.isInteractive();
+        if (!graphKeyboardFocused) return false;
         if (keyCode == GLFW.GLFW_KEY_F && isControlDown(window)) {
             openSearch();
             return true;
@@ -427,8 +560,8 @@ public final class CraftingGraphController {
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && engine.getMode() == CraftingGraphInteractionMode.LOCKED) {
-            engine.toggleLocked(false);
-            return true;
+            exitGameEdit();
+            return false;
         }
         if (keyCode == GLFW.GLFW_KEY_Z && isControlDown(window) && engine.canUndoDelete()) {
             boolean undone = engine.undoDeleteBranch();
@@ -438,8 +571,114 @@ public final class CraftingGraphController {
         return engine.isInteractive() && interactionKeyMatches.test(keyCode);
     }
 
+    public boolean shouldOpenGameInteractionScreen() {
+        return false;
+    }
+
+    public boolean shouldCloseGameInteractionScreen() {
+        return false;
+    }
+
+    public void enterGameLockedEdit() {
+        boolean keyAlreadyDown = interactionKeyDown.getAsBoolean();
+        gameTemporaryEdit = false;
+        gameEditScreenRequested = true;
+        ignoreInteractionKeyUntilReleased = keyAlreadyDown;
+        engine.setExpanded(true);
+        engine.setHeld(true);
+        engine.toggleLocked(true);
+        ensureGameCursorReleased();
+    }
+
+    public void exitGameEdit() {
+        gameTemporaryEdit = false;
+        gameEditScreenRequested = false;
+        ignoreInteractionKeyUntilReleased = false;
+        middleDown = false;
+        engine.endMiddlePress();
+        engine.toggleLocked(false);
+        graphKeyboardFocused = false;
+        closeSearch();
+        ensureGameCursorGrabbed();
+    }
+
+    public boolean isGameEditLocked() {
+        return engine.getMode() == CraftingGraphInteractionMode.LOCKED;
+    }
+
+    public boolean isGameEditActive() {
+        return gameTemporaryEdit || engine.getMode() == CraftingGraphInteractionMode.LOCKED;
+    }
+
+    public void updateRenderFrameMouseDrag() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || !engine.isInteractive()) {
+            rightMouseDown = false;
+            return;
+        }
+        updatePolledMouseDrag(mc.getWindow().getWindow());
+    }
+
+    private void updatePolledMouseDrag(long window) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || !engine.isInteractive()) {
+            rightMouseDown = false;
+            return;
+        }
+
+        double mouseX = mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / mc.getWindow().getScreenWidth();
+        double mouseY = mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight() / mc.getWindow().getScreenHeight();
+        boolean rightDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
+
+        if (!rightDown) {
+            rightMouseDown = false;
+            lastPolledMouseX = mouseX;
+            lastPolledMouseY = mouseY;
+            return;
+        }
+
+        if (!rightMouseDown) {
+            rightMouseDown = true;
+            lastPolledMouseX = mouseX;
+            lastPolledMouseY = mouseY;
+            return;
+        }
+
+        if (renderer.containsScreenPoint(mouseX, mouseY)) {
+            double dx = mouseX - lastPolledMouseX;
+            double dy = mouseY - lastPolledMouseY;
+            if (dx != 0.0 || dy != 0.0) {
+                engine.getCamera().pan((float) dx, (float) dy);
+            }
+        }
+        lastPolledMouseX = mouseX;
+        lastPolledMouseY = mouseY;
+    }
+
+    public void onExternalScreenOpened(Screen screen) {
+        if (screen != null) {
+            exitGameEdit();
+        }
+    }
+
+    private void ensureGameCursorReleased() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen == null && !gameCursorReleased) {
+            mc.mouseHandler.releaseMouse();
+            gameCursorReleased = true;
+        }
+    }
+
+    private void ensureGameCursorGrabbed() {
+        Minecraft mc = Minecraft.getInstance();
+        if (gameCursorReleased && mc.screen == null) {
+            mc.mouseHandler.grabMouse();
+        }
+        gameCursorReleased = false;
+    }
+
     public boolean charTyped(char codePoint) {
-        if (!searchOpen) return false;
+        if (!graphKeyboardFocused || !searchOpen) return false;
         if (Character.isISOControl(codePoint)) return true;
         searchQuery += codePoint;
         refreshSearchResults();
@@ -447,7 +686,9 @@ public final class CraftingGraphController {
     }
 
     private void openSearch() {
+        graphKeyboardFocused = true;
         searchOpen = true;
+        engine.setExpanded(true);
         engine.setHeld(true);
         refreshSearchResults();
     }
@@ -547,6 +788,27 @@ public final class CraftingGraphController {
     private boolean isControlDown(long window) {
         return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
                 || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+    }
+
+    private boolean createRootFromHoveredContainerItem(int button) {
+        ItemStack hovered = getHoveredItemStack();
+        if (hovered.isEmpty()) return false;
+        String itemId = hovered.getItemHolder().getRegisteredName();
+        if (itemId == null || itemId.isBlank()) return false;
+        String displayName = hovered.getHoverName().getString();
+        Minecraft mc = Minecraft.getInstance();
+        RecipePanelNodeType nodeType = button == GLFW.GLFW_MOUSE_BUTTON_RIGHT ? RecipePanelNodeType.USAGE : RecipePanelNodeType.SOURCE;
+        saveHistory();
+        engine.createSingleRootGraph(itemId, displayName, nodeType, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+        engine.setExpanded(true);
+        engine.setHeld(true);
+        engine.toggleLocked(true);
+        gameTemporaryEdit = false;
+        gameEditScreenRequested = false;
+        ignoreInteractionKeyUntilReleased = interactionKeyDown.getAsBoolean();
+        graphKeyboardFocused = true;
+        markTreeChanged();
+        return true;
     }
 
     private ItemStack getHoveredItemStack() {

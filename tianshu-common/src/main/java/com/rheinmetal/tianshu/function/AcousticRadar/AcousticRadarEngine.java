@@ -259,7 +259,7 @@ public class AcousticRadarEngine {
             if (isHighPrecisionMode) {
                 isThreat = RadarLockState.isLockedByServer(UUID.fromString(entity.getUuid()));
             } else {
-                isThreat = entity.isLineOfSight();
+                isThreat = entity.isOcclusionVisible();
             }
             if (isThreat) continue;
 
@@ -291,7 +291,7 @@ public class AcousticRadarEngine {
             if (isHighPrecisionMode) {
                 isLocked = RadarLockState.isLockedByServer(UUID.fromString(entity.getUuid()));
             } else {
-                isLocked = entity.isLineOfSight();
+                isLocked = entity.isOcclusionVisible();
             }
             if (isLocked) {
                 currentAllThreatUuids.add(entity.getUuid());
@@ -450,7 +450,7 @@ public class AcousticRadarEngine {
     private String buildInsightThreatListContent(List<NearbyEntityData> hostilesInRadar) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (NearbyEntityData entity : hostilesInRadar) {
-            if (entity.isLineOfSight()) {
+            if (entity.isOcclusionVisible()) {
                 String type = extractEntityType(entity);
                 counts.merge(type, 1, Integer::sum);
             }

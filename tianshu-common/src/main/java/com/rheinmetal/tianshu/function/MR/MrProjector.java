@@ -39,7 +39,7 @@ public final class MrProjector {
         float ndcX = cx / cw;
         float ndcY = cy / cw;
 
-        if (ndcX < -3.0f || ndcX > 3.0f || ndcY < -3.0f || ndcY > 3.0f) return null;
+        if (ndcX < -1.08f || ndcX > 1.08f || ndcY < -1.08f || ndcY > 1.08f) return null;
 
         float screenX = (ndcX * 0.5f + 0.5f) * screenWidth;
         float screenY = (1.0f - (ndcY * 0.5f + 0.5f)) * screenHeight;

@@ -4,6 +4,8 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
 import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphController;
+import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphInteractionScreen;
+import com.rheinmetal.tianshu.client.geminicard.GeminiCardTooltipAdapter;
 import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphStorage;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
@@ -16,6 +18,7 @@ import com.rheinmetal.tianshu.function.AcousticRadar.RadarOutput;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarIndicator;
 import com.rheinmetal.tianshu.function.MR.MrConstants;
 import com.rheinmetal.tianshu.function.MR.MrEngine;
+import com.rheinmetal.tianshu.function.MR.MrTuningProvider;
 import com.rheinmetal.tianshu.core.FeatureManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
@@ -24,6 +27,22 @@ import com.rheinmetal.tianshu.gui.TianshuGUI;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
 import com.rheinmetal.tianshu.platform.provider.*;
+import com.rheinmetal.tianshu.protocol.BrokerType;
+import com.rheinmetal.tianshu.protocol.CancellationScope;
+import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.FailurePolicy;
+import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.protocol.ThreadPolicy;
+import com.rheinmetal.tianshu.protocol.payload.DangerModePayload;
+import com.rheinmetal.tianshu.protocol.payload.GraphRequestPayload;
+import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.provider.*;
 
 import net.minecraft.client.DeltaTracker;
@@ -34,9 +53,12 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
@@ -45,7 +67,12 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 
 import org.lwjgl.glfw.GLFW;
@@ -93,6 +120,8 @@ public class TianshuClient {
 
     private static CraftingGraphController craftingGraphController;
     private static CraftingGraphStorage craftingGraphStorage;
+    private static long lastCraftingGraphDebugMillis = 0L;
+    private static boolean radarDangerModeActive = false;
 
     // 二级雷达：已播报过的指示器（防止重复刷屏）
     private static final Set<String> announcedIndicators = new java.util.HashSet<>();
@@ -145,13 +174,9 @@ public class TianshuClient {
                 audioEventProvider
         );
 
-        craftingGraphStorage = new CraftingGraphStorage(craftingGraphStorageRoot());
-        craftingGraphController = new CraftingGraphController(recipeProvider, inventoryProvider, craftingGraphStorage);
-        craftingGraphController.setInteractionKey(
-                TianshuClient::isCraftingGraphInteractionKeyDown,
-                TianshuClient::isCraftingGraphInteractionKey
-        );
-        craftingGraphController.setAlphaMultiplier(ClientConfig.CRAFTING_GRAPH_ALPHA.get().floatValue());
+        ensureCraftingGraphController("init");
+        registerGraphProtocolAdapters();
+        GeminiCardTooltipAdapter.configureProtocol(coreManager.getProtocolRuntime());
 
         ClientConfig.syncToFeatureManager();
 
@@ -161,8 +186,12 @@ public class TianshuClient {
         NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseReleasedPre);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseDraggedPre);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseScrolledPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onGameMouseButtonPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onGameMouseScrolled);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onGameKeyInput);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onKeyPressedPre);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onCharTypedPre);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenRenderPost);
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
@@ -223,6 +252,7 @@ public class TianshuClient {
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
+        GeminiCardTooltipAdapter.tickLifecycle();
         if (minecraft.player == null) return;
 
         if (!config.isAiEnabled()) {
@@ -232,6 +262,7 @@ public class TianshuClient {
                 coreManager.getEventBus().publishEvent(new StopListeningEvent());
                 lastTriggerMode = null;
             }
+            tickCraftingGraph();
             return;
         }
 
@@ -315,6 +346,9 @@ public class TianshuClient {
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
         Screen screen = event.getScreen();
+        if (ensureCraftingGraphController("screenInit")) {
+            craftingGraphController.onExternalScreenOpened(screen);
+        }
         if (screen instanceof PauseScreen) {
             int screenWidth = screen.width;
             int buttonWidth = 200;
@@ -433,12 +467,12 @@ public class TianshuClient {
                     new AlertSpeaker() {
                         @Override
                         public void speakAlert(String text) {
-                            coreManager.speakAlert(text);
+                            coreManager.submitTtsAlert(text, false);
                         }
 
                         @Override
                         public void speakAlertWithInterrupt(String text) {
-                            coreManager.speakAlertWithInterrupt(text);
+                            coreManager.submitTtsAlert(text, true);
                         }
                     },
                     new DefaultAlertTextProvider(),
@@ -472,6 +506,7 @@ public class TianshuClient {
             RadarOutput output = acousticRadarEngine.tickSync(playerPos);
             if (output == null || output.getIndicators().isEmpty()) {
                 announcedIndicators.clear();
+                publishRadarDangerMode(false, Priority.NORMAL, "雷达目标清空");
                 return;
             }
 
@@ -508,12 +543,27 @@ public class TianshuClient {
         else return "后方";
     }
 
+    private static void publishRadarDangerMode(boolean active, Priority level, String reason) {
+        if (coreManager == null || radarDangerModeActive == active) return;
+        radarDangerModeActive = active;
+        coreManager.getProtocolRuntime().submit(EnvelopeBuilder.create()
+                .sourceId("acoustic_radar")
+                .targetMode(com.rheinmetal.tianshu.protocol.TargetMode.TOPIC)
+                .target(ProtocolTopics.SYSTEM_DANGER_MODE_CHANGED)
+                .packetType(PacketType.EVENT)
+                .payloadType(PayloadType.SYSTEM_STATE)
+                .priority(active ? Priority.CRITICAL : Priority.NORMAL)
+                .payload(new DangerModePayload(active, level, "acoustic_radar", reason, System.currentTimeMillis()))
+                .build());
+    }
+
     public static void shutdownClient() {
         LOGGER.info("关闭天枢客户端资源");
         coreManager.destroy();
         if (craftingGraphController != null) {
             craftingGraphController.shutdown();
             craftingGraphController = null;
+            debugCraftingGraph("shutdown controller=null");
         }
         craftingGraphStorage = null;
         if (acousticRadarEngine != null) {
@@ -540,29 +590,58 @@ public class TianshuClient {
     }
 
     private static void tickMrSystem(Minecraft minecraft) {
-        if (!FeatureManager.isTacticalMrEnabled() || !mrUserEnabled) {
-            if (!FeatureManager.isTacticalMrEnabled()) {
-                mrUserEnabled = false;
-            }
-            if (mrEngine != null) {
-                mrEngine.stop();
-                mrEngine = null;
-                mrRenderer = null;
-                environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
-                LOGGER.info("[MR] 全息战术系统已关闭，释放引擎实例");
-            }
-            return;
+        boolean mrClosingRequested = !FeatureManager.isTacticalMrEnabled() || !mrUserEnabled;
+        if (!FeatureManager.isTacticalMrEnabled()) {
+            mrUserEnabled = false;
+        }
+        if (mrEngine != null && mrEngine.isClosing() && !mrClosingRequested) {
+            mrEngine.stop();
+            mrEngine = null;
+            mrRenderer = null;
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+            LOGGER.info("[MR] 检测到重新开启请求，已中止关闭动画并重建引擎");
+        }
+        if (mrClosingRequested && mrEngine != null && !mrEngine.isClosing()) {
+            mrEngine.beginClosing();
+            LOGGER.info("[MR] 全息战术系统开始关闭动画");
         }
 
         if (minecraft.player == null || minecraft.level == null) return;
 
         if (mrEngine == null) {
-            mrEngine = new MrEngine(environmentProvider, renderContextProvider);
+            if (mrClosingRequested) return;
+            mrEngine = new MrEngine(environmentProvider, renderContextProvider, playerStateProvider, createMrTuningProvider());
             mrRenderer = new MrRenderer(mrEngine);
             mrEngine.start();
             mrTickCounter = 0;
             environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
             LOGGER.info("[MR] 全息战术系统已启动");
+        }
+
+        if (mrClosingRequested || mrEngine.isClosing()) {
+            try {
+                var player = minecraft.player;
+                com.rheinmetal.tianshu.snapshot.PositionData playerPos =
+                        new com.rheinmetal.tianshu.snapshot.PositionData(
+                                player.getX(), player.getY(), player.getZ(),
+                                player.getYRot(), player.getXRot(),
+                                player.level().dimension().location().toString(),
+                                player.getUUID().toString()
+                        );
+                float mrDeltaTime = MrConstants.TICK_DURATION * MrConstants.TICK_INTERVAL;
+                mrEngine.tick(playerPos, mrDeltaTime);
+            } catch (Exception e) {
+                LOGGER.warn("[MR] 关闭动画 tick 异常: {}", e.getMessage());
+            }
+
+            if (mrEngine.isCloseAnimationFinished()) {
+                mrEngine.stop();
+                mrEngine = null;
+                mrRenderer = null;
+                environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+                LOGGER.info("[MR] 全息战术系统关闭完成");
+            }
+            return;
         }
 
         mrTickCounter++;
@@ -594,6 +673,50 @@ public class TianshuClient {
         }
     }
 
+    private static MrTuningProvider createMrTuningProvider() {
+        return new MrTuningProvider() {
+            @Override
+            public float getMinCardScale() {
+                return ClientConfig.TACTICAL_MR_CARD_MIN_SCALE.get().floatValue();
+            }
+
+            @Override
+            public float getMaxCardScale() {
+                return ClientConfig.TACTICAL_MR_CARD_MAX_SCALE.get().floatValue();
+            }
+
+            @Override
+            public float getSegmentLength() {
+                return ClientConfig.TACTICAL_MR_SEGMENT_LENGTH.get().floatValue();
+            }
+
+            @Override
+            public float getCardDamping() {
+                return ClientConfig.TACTICAL_MR_CARD_DAMPING.get().floatValue();
+            }
+
+            @Override
+            public float getCardMinDamping() {
+                return ClientConfig.TACTICAL_MR_CARD_MIN_DAMPING.get().floatValue();
+            }
+
+            @Override
+            public float getCardMaxDamping() {
+                return ClientConfig.TACTICAL_MR_CARD_MAX_DAMPING.get().floatValue();
+            }
+
+            @Override
+            public float getDayAlphaFactor() {
+                return ClientConfig.TACTICAL_MR_DAY_ALPHA.get().floatValue();
+            }
+
+            @Override
+            public float getNightAlphaFactor() {
+                return ClientConfig.TACTICAL_MR_NIGHT_ALPHA.get().floatValue();
+            }
+        };
+    }
+
     private static Path craftingGraphStorageRoot() {
         return Minecraft.getInstance().gameDirectory.toPath()
                 .resolve("config")
@@ -602,8 +725,89 @@ public class TianshuClient {
                 .resolve("crafting_graph");
     }
 
+    private static void registerGraphProtocolAdapters() {
+        if (coreManager == null) return;
+        CapabilityDescriptor showRecipeDescriptor = new CapabilityDescriptor(
+                ProtocolCapabilities.GRAPH_SHOW_RECIPE,
+                PayloadType.GRAPH_REQUEST,
+                GraphRequestPayload.class,
+                BrokerType.MAIN_THREAD,
+                EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
+                Priority.LOW
+        );
+        ModuleDescriptor showRecipeModule = new ModuleDescriptor("neoforge.graph.showRecipe", List.of(showRecipeDescriptor), ThreadPolicy.MUST_MAIN, CancellationScope.SELF_ONLY, FailurePolicy.REPORT_ONLY, DeliveryPolicy.WAIT_IN_QUEUE, true, false, 1, 32);
+        coreManager.getProtocolRuntime().registerModule(showRecipeModule, (envelope, context) -> {
+            GraphRequestPayload payload = (GraphRequestPayload) envelope.payload();
+            if (!ensureCraftingGraphController("protocolShowRecipe")) return;
+            craftingGraphController.showRecipe(payload.itemId(), payload.displayName());
+        });
+
+        TopicSubscriptionDescriptor dangerDescriptor = new TopicSubscriptionDescriptor(
+                ProtocolTopics.SYSTEM_DANGER_MODE_CHANGED,
+                PayloadType.SYSTEM_STATE,
+                DangerModePayload.class,
+                BrokerType.MAIN_THREAD,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                com.rheinmetal.tianshu.protocol.CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+        );
+        ModuleDescriptor dangerModule = new ModuleDescriptor("neoforge.graph.dangerMode", List.of(), ThreadPolicy.MUST_MAIN, CancellationScope.SELF_ONLY, FailurePolicy.REPORT_ONLY, DeliveryPolicy.WAIT_IN_QUEUE, true, false, 1, 32);
+        coreManager.getProtocolRuntime().subscribeTopic(dangerModule, dangerDescriptor, (envelope, context) -> {
+            DangerModePayload payload = (DangerModePayload) envelope.payload();
+            if (payload.active() && payload.level().atLeast(Priority.CRITICAL)) {
+                if (ensureCraftingGraphController("protocolDangerSuspend")) {
+                    craftingGraphController.suspendGraph();
+                }
+            }
+        });
+    }
+
+    private static boolean ensureCraftingGraphController(String reason) {
+        if (craftingGraphController != null) return true;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            debugCraftingGraphThrottled("ensure skipped reason=" + reason + " minecraft=null");
+            return false;
+        }
+        if (recipeProvider == null || inventoryProvider == null) {
+            debugCraftingGraphThrottled("ensure skipped reason=" + reason + " recipeProvider=" + (recipeProvider != null) + " inventoryProvider=" + (inventoryProvider != null));
+            return false;
+        }
+        if (craftingGraphStorage == null) {
+            craftingGraphStorage = new CraftingGraphStorage(craftingGraphStorageRoot());
+        }
+        craftingGraphController = new CraftingGraphController(recipeProvider, inventoryProvider, craftingGraphStorage);
+        craftingGraphController.setInteractionKey(
+                TianshuClient::isCraftingGraphInteractionKeyDown,
+                TianshuClient::isCraftingGraphInteractionKey
+        );
+        craftingGraphController.setAlphaMultiplier(ClientConfig.CRAFTING_GRAPH_ALPHA.get().floatValue());
+        debugCraftingGraph("ensure controller=true reason=" + reason + " storageRoot=" + craftingGraphStorageRoot());
+        return true;
+    }
+
+    private static void debugCraftingGraph(String message) {
+        try {
+            Path logPath = Paths.get("logs", "crafting_graph_debug.txt");
+            String line = "[" + System.currentTimeMillis() + "] " + message + "\n";
+            Files.write(logPath, line.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void debugCraftingGraphThrottled(String message) {
+        long now = System.currentTimeMillis();
+        if (now - lastCraftingGraphDebugMillis < 1000L) return;
+        lastCraftingGraphDebugMillis = now;
+        debugCraftingGraph(message);
+    }
+
     private static boolean isCraftingGraphInteractionKeyDown() {
-        return CRAFTING_GRAPH_INTERACTION_KEY != null && CRAFTING_GRAPH_INTERACTION_KEY.isDown();
+        if (!isCraftingGraphInputAllowedScreen()) return false;
+        if (CRAFTING_GRAPH_INTERACTION_KEY == null) return false;
+        InputConstants.Key key = CRAFTING_GRAPH_INTERACTION_KEY.getKey();
+        if (key.getType() != InputConstants.Type.KEYSYM) return CRAFTING_GRAPH_INTERACTION_KEY.isDown();
+        return GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(), key.getValue()) == GLFW.GLFW_PRESS;
     }
 
     private static boolean isCraftingGraphInteractionKey(int keyCode) {
@@ -612,62 +816,119 @@ public class TianshuClient {
 
     private static boolean isCraftingGraphEnabled() {
         ClientConfig.syncToFeatureManager();
-        return FeatureManager.isRecipePanelEnabled();
+        boolean enabled = FeatureManager.isRecipePanelEnabled();
+        if (!enabled) {
+            debugCraftingGraphThrottled("disabled ai=" + ClientConfig.AI_ENABLED.get() + " recipePanel=" + ClientConfig.RECIPE_PANEL_ENABLED.get());
+        }
+        return enabled;
+    }
+
+    private static boolean isCraftingGraphAllowedScreen() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.level == null) return false;
+        Screen screen = minecraft.screen;
+        return screen == null || screen instanceof AbstractContainerScreen<?>;
+    }
+
+    private static boolean isCraftingGraphInputAllowedScreen() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || minecraft.level == null) return false;
+        Screen screen = minecraft.screen;
+        if (screen instanceof ChatScreen || screen instanceof PauseScreen) return false;
+        return screen == null || screen instanceof CraftingGraphInteractionScreen || screen instanceof AbstractContainerScreen<?>;
     }
 
     private static void tickCraftingGraph() {
-        if (!isCraftingGraphEnabled()) return;
-        if (craftingGraphController != null) {
+        if (!isCraftingGraphEnabled() || !isCraftingGraphAllowedScreen()) return;
+        if (ensureCraftingGraphController("tick")) {
             craftingGraphController.tick();
         }
     }
 
     public static void renderCraftingGraph(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
-        if (!isCraftingGraphEnabled()) return;
-        if (craftingGraphController != null) {
-            craftingGraphController.getRenderer().render(guiGraphics, deltaTracker.getGameTimeDeltaPartialTick(false));
+        renderCraftingGraph(guiGraphics, deltaTracker.getGameTimeDeltaPartialTick(false));
+    }
+
+    private static void onScreenRenderPost(ScreenEvent.Render.Post event) {
+        if (event.getScreen() instanceof CraftingGraphInteractionScreen) return;
+        renderCraftingGraph(event.getGuiGraphics(), event.getPartialTick());
+    }
+
+    private static void renderCraftingGraph(GuiGraphics guiGraphics, float partialTick) {
+        if (!isCraftingGraphEnabled() || !isCraftingGraphAllowedScreen()) return;
+        if (ensureCraftingGraphController("render")) {
+            craftingGraphController.updateRenderFrameMouseDrag();
+            craftingGraphController.getRenderer().render(guiGraphics, partialTick);
         }
     }
 
     private static void onMouseClickedPre(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (isCraftingGraphEnabled() && craftingGraphController != null
+        if (isCraftingGraphEnabled() && isCraftingGraphInputAllowedScreen() && ensureCraftingGraphController("mouseClicked")
                 && craftingGraphController.mouseClicked(event.getMouseX(), event.getMouseY(), event.getButton())) {
             event.setCanceled(true);
         }
     }
 
     private static void onMouseReleasedPre(ScreenEvent.MouseButtonReleased.Pre event) {
-        if (isCraftingGraphEnabled() && craftingGraphController != null
+        if (isCraftingGraphEnabled() && isCraftingGraphInputAllowedScreen() && ensureCraftingGraphController("mouseReleased")
                 && craftingGraphController.mouseReleased(event.getMouseX(), event.getMouseY(), event.getButton())) {
             event.setCanceled(true);
         }
     }
 
     private static void onMouseDraggedPre(ScreenEvent.MouseDragged.Pre event) {
-        if (isCraftingGraphEnabled() && craftingGraphController != null
+        if (isCraftingGraphEnabled() && isCraftingGraphInputAllowedScreen() && ensureCraftingGraphController("mouseDragged")
                 && craftingGraphController.mouseDragged(event.getMouseX(), event.getMouseY(), event.getMouseButton(), event.getDragX(), event.getDragY())) {
             event.setCanceled(true);
         }
     }
 
     private static void onMouseScrolledPre(ScreenEvent.MouseScrolled.Pre event) {
-        if (isCraftingGraphEnabled() && craftingGraphController != null
+        if (isCraftingGraphEnabled() && isCraftingGraphInputAllowedScreen() && ensureCraftingGraphController("mouseScrolled")
                 && craftingGraphController.mouseScrolled(event.getMouseX(), event.getMouseY(), event.getScrollDeltaY())) {
             event.setCanceled(true);
         }
     }
 
     private static void onKeyPressedPre(ScreenEvent.KeyPressed.Pre event) {
-        if (isCraftingGraphEnabled() && craftingGraphController != null
+        if (isCraftingGraphEnabled() && isCraftingGraphInputAllowedScreen() && ensureCraftingGraphController("keyPressed")
                 && craftingGraphController.keyPressed(event.getKeyCode())) {
             event.setCanceled(true);
         }
     }
 
     private static void onCharTypedPre(ScreenEvent.CharacterTyped.Pre event) {
-        if (isCraftingGraphEnabled() && craftingGraphController != null
+        if (isCraftingGraphEnabled() && isCraftingGraphInputAllowedScreen() && ensureCraftingGraphController("charTyped")
                 && craftingGraphController.charTyped(event.getCodePoint())) {
             event.setCanceled(true);
+        }
+    }
+
+    private static void onGameMouseButtonPre(InputEvent.MouseButton.Pre event) {
+        if (!isCraftingGraphEnabled() || !isCraftingGraphInputAllowedScreen() || !ensureCraftingGraphController("gameMouseButton")) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        double mouseX = minecraft.mouseHandler.xpos() * minecraft.getWindow().getGuiScaledWidth() / minecraft.getWindow().getScreenWidth();
+        double mouseY = minecraft.mouseHandler.ypos() * minecraft.getWindow().getGuiScaledHeight() / minecraft.getWindow().getScreenHeight();
+        boolean handled = event.getAction() == 1
+                ? craftingGraphController.mouseClicked(mouseX, mouseY, event.getButton())
+                : event.getAction() == 0 && craftingGraphController.mouseReleased(mouseX, mouseY, event.getButton());
+        if (handled) event.setCanceled(true);
+    }
+
+    private static void onGameMouseScrolled(InputEvent.MouseScrollingEvent event) {
+        if (!isCraftingGraphEnabled() || !isCraftingGraphInputAllowedScreen() || !ensureCraftingGraphController("gameMouseScrolled")) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        double mouseX = minecraft.mouseHandler.xpos() * minecraft.getWindow().getGuiScaledWidth() / minecraft.getWindow().getScreenWidth();
+        double mouseY = minecraft.mouseHandler.ypos() * minecraft.getWindow().getGuiScaledHeight() / minecraft.getWindow().getScreenHeight();
+        if (craftingGraphController.mouseScrolled(mouseX, mouseY, event.getScrollDeltaY())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onGameKeyInput(InputEvent.Key event) {
+        if (!isCraftingGraphEnabled() || !isCraftingGraphInputAllowedScreen() || !ensureCraftingGraphController("gameKey")) return;
+        if (event.getAction() == 1 && event.getKey() == GLFW.GLFW_KEY_ESCAPE && craftingGraphController.isGameEditLocked()) {
+            craftingGraphController.exitGameEdit();
         }
     }
 }

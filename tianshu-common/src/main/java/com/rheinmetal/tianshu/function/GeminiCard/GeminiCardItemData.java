@@ -6,6 +6,7 @@ public record GeminiCardItemData(
         String semanticKey,
         String itemId,
         GeminiCardItemKind kind,
+        String comparisonKey,
         boolean empty,
         boolean damageable,
         int maxDamage,
