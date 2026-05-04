@@ -27,22 +27,6 @@ import com.rheinmetal.tianshu.gui.TianshuGUI;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
 import com.rheinmetal.tianshu.platform.provider.*;
-import com.rheinmetal.tianshu.protocol.BrokerType;
-import com.rheinmetal.tianshu.protocol.CancellationScope;
-import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
-import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
-import com.rheinmetal.tianshu.protocol.FailurePolicy;
-import com.rheinmetal.tianshu.protocol.PacketType;
-import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.ThreadPolicy;
-import com.rheinmetal.tianshu.protocol.payload.DangerModePayload;
-import com.rheinmetal.tianshu.protocol.payload.GraphRequestPayload;
-import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
-import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
-import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.provider.*;
 
 import net.minecraft.client.DeltaTracker;
@@ -71,8 +55,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.EnumSet;
-import java.util.List;
 import java.util.Set;
 
 import org.lwjgl.glfw.GLFW;
@@ -121,7 +103,6 @@ public class TianshuClient {
     private static CraftingGraphController craftingGraphController;
     private static CraftingGraphStorage craftingGraphStorage;
     private static long lastCraftingGraphDebugMillis = 0L;
-    private static boolean radarDangerModeActive = false;
 
     // 二级雷达：已播报过的指示器（防止重复刷屏）
     private static final Set<String> announcedIndicators = new java.util.HashSet<>();
@@ -175,8 +156,6 @@ public class TianshuClient {
         );
 
         ensureCraftingGraphController("init");
-        registerGraphProtocolAdapters();
-        GeminiCardTooltipAdapter.configureProtocol(coreManager.getProtocolRuntime());
 
         ClientConfig.syncToFeatureManager();
 
@@ -252,7 +231,7 @@ public class TianshuClient {
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
-        GeminiCardTooltipAdapter.tickLifecycle();
+        GeminiCardTooltipAdapter.tickSessionExpiry();
         if (minecraft.player == null) return;
 
         if (!config.isAiEnabled()) {
@@ -467,12 +446,12 @@ public class TianshuClient {
                     new AlertSpeaker() {
                         @Override
                         public void speakAlert(String text) {
-                            coreManager.submitTtsAlert(text, false);
+                            coreManager.speakAlert(text);
                         }
 
                         @Override
                         public void speakAlertWithInterrupt(String text) {
-                            coreManager.submitTtsAlert(text, true);
+                            coreManager.speakAlertWithInterrupt(text);
                         }
                     },
                     new DefaultAlertTextProvider(),
@@ -506,7 +485,6 @@ public class TianshuClient {
             RadarOutput output = acousticRadarEngine.tickSync(playerPos);
             if (output == null || output.getIndicators().isEmpty()) {
                 announcedIndicators.clear();
-                publishRadarDangerMode(false, Priority.NORMAL, "雷达目标清空");
                 return;
             }
 
@@ -541,20 +519,6 @@ public class TianshuClient {
         else if (abs < 112.5) return relativeAngle > 0 ? "右方" : "左方";
         else if (abs <157.5) return relativeAngle > 0 ? "右后方" : "左后方";
         else return "后方";
-    }
-
-    private static void publishRadarDangerMode(boolean active, Priority level, String reason) {
-        if (coreManager == null || radarDangerModeActive == active) return;
-        radarDangerModeActive = active;
-        coreManager.getProtocolRuntime().submit(EnvelopeBuilder.create()
-                .sourceId("acoustic_radar")
-                .targetMode(com.rheinmetal.tianshu.protocol.TargetMode.TOPIC)
-                .target(ProtocolTopics.SYSTEM_DANGER_MODE_CHANGED)
-                .packetType(PacketType.EVENT)
-                .payloadType(PayloadType.SYSTEM_STATE)
-                .priority(active ? Priority.CRITICAL : Priority.NORMAL)
-                .payload(new DangerModePayload(active, level, "acoustic_radar", reason, System.currentTimeMillis()))
-                .build());
     }
 
     public static void shutdownClient() {
@@ -723,43 +687,6 @@ public class TianshuClient {
                 .resolve("TianshuAIAssistant")
                 .resolve("cache")
                 .resolve("crafting_graph");
-    }
-
-    private static void registerGraphProtocolAdapters() {
-        if (coreManager == null) return;
-        CapabilityDescriptor showRecipeDescriptor = new CapabilityDescriptor(
-                ProtocolCapabilities.GRAPH_SHOW_RECIPE,
-                PayloadType.GRAPH_REQUEST,
-                GraphRequestPayload.class,
-                BrokerType.MAIN_THREAD,
-                EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
-                Priority.LOW
-        );
-        ModuleDescriptor showRecipeModule = new ModuleDescriptor("neoforge.graph.showRecipe", List.of(showRecipeDescriptor), ThreadPolicy.MUST_MAIN, CancellationScope.SELF_ONLY, FailurePolicy.REPORT_ONLY, DeliveryPolicy.WAIT_IN_QUEUE, true, false, 1, 32);
-        coreManager.getProtocolRuntime().registerModule(showRecipeModule, (envelope, context) -> {
-            GraphRequestPayload payload = (GraphRequestPayload) envelope.payload();
-            if (!ensureCraftingGraphController("protocolShowRecipe")) return;
-            craftingGraphController.showRecipe(payload.itemId(), payload.displayName());
-        });
-
-        TopicSubscriptionDescriptor dangerDescriptor = new TopicSubscriptionDescriptor(
-                ProtocolTopics.SYSTEM_DANGER_MODE_CHANGED,
-                PayloadType.SYSTEM_STATE,
-                DangerModePayload.class,
-                BrokerType.MAIN_THREAD,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                com.rheinmetal.tianshu.protocol.CompletionPolicy.AUTO_COMPLETE_ON_RETURN
-        );
-        ModuleDescriptor dangerModule = new ModuleDescriptor("neoforge.graph.dangerMode", List.of(), ThreadPolicy.MUST_MAIN, CancellationScope.SELF_ONLY, FailurePolicy.REPORT_ONLY, DeliveryPolicy.WAIT_IN_QUEUE, true, false, 1, 32);
-        coreManager.getProtocolRuntime().subscribeTopic(dangerModule, dangerDescriptor, (envelope, context) -> {
-            DangerModePayload payload = (DangerModePayload) envelope.payload();
-            if (payload.active() && payload.level().atLeast(Priority.CRITICAL)) {
-                if (ensureCraftingGraphController("protocolDangerSuspend")) {
-                    craftingGraphController.suspendGraph();
-                }
-            }
-        });
     }
 
     private static boolean ensureCraftingGraphController(String reason) {

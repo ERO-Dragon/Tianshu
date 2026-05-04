@@ -3,14 +3,11 @@ package com.rheinmetal.tianshu.client.geminicard;
 import com.rheinmetal.tianshu.core.FeatureManager;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardComparisonData;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardContext;
-import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardHoverPayload;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardItemData;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardItemKind;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardLine;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardLineTone;
 import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardMechanismKey;
-import com.rheinmetal.tianshu.function.GeminiCard.GeminiCardProtocolAdapter;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -67,18 +64,10 @@ public final class GeminiCardTooltipAdapter {
             ItemTags.MINING_LOOT_ENCHANTABLE
     );
     private static final com.rheinmetal.tianshu.function.GeminiCard.GeminiCardEngine CORE = new com.rheinmetal.tianshu.function.GeminiCard.GeminiCardEngine();
-    private static final long HOVER_STABLE_TRIGGER_MS = 2_000L;
-    private static GeminiCardProtocolAdapter protocolAdapter;
     private static long lastTooltipFrameMs = 0L;
-    private static long activeSemanticSinceMs = 0L;
     private static String lastTooltipSemanticKey = "";
-    private static String lastPublishedStableSemanticKey = "";
 
     private GeminiCardTooltipAdapter() {
-    }
-
-    public static void configureProtocol(ProtocolRuntime runtime) {
-        protocolAdapter = runtime == null ? null : new GeminiCardProtocolAdapter(runtime);
     }
 
     public static void appendTooltipLines(ItemStack hoveredStack, List<FormattedText> tooltipLines, Player player) {
@@ -101,16 +90,11 @@ public final class GeminiCardTooltipAdapter {
         GeminiCardContext context = buildContext(hoveredStack, player);
         String semanticKey = context.hoveredItem().semanticKey();
         long now = System.currentTimeMillis();
-        if (!Objects.equals(lastTooltipSemanticKey, semanticKey)) {
-            activeSemanticSinceMs = now;
-            lastPublishedStableSemanticKey = "";
-        }
         if (Objects.equals(lastTooltipSemanticKey, semanticKey) && now - lastTooltipFrameMs <= 2L) {
             return;
         }
         lastTooltipFrameMs = now;
         lastTooltipSemanticKey = semanticKey;
-        publishHoverStableIfReady(context, now);
         List<GeminiCardLine> lines = CORE.buildLines(context);
         Set<String> appendedTexts = new HashSet<>();
         int appended = 0;
@@ -132,35 +116,15 @@ public final class GeminiCardTooltipAdapter {
 
     public static void killActiveSession() {
         lastTooltipFrameMs = 0L;
-        activeSemanticSinceMs = 0L;
         lastTooltipSemanticKey = "";
-        lastPublishedStableSemanticKey = "";
         CORE.killActiveSession();
-        GeminiCardProtocolAdapter adapter = protocolAdapter;
-        if (adapter != null) {
-            adapter.publishHoverCleared();
-        }
     }
 
-    public static void tickLifecycle() {
+    public static void tickSessionExpiry() {
         long now = System.currentTimeMillis();
         if (lastTooltipFrameMs > 0L && now - lastTooltipFrameMs > 100L) {
             killActiveSession();
         }
-    }
-
-    private static void publishHoverStableIfReady(GeminiCardContext context, long now) {
-        GeminiCardProtocolAdapter adapter = protocolAdapter;
-        if (adapter == null || context == null || context.hoveredItem() == null || context.hoveredItem().empty()) {
-            return;
-        }
-        String semanticKey = context.hoveredItem().semanticKey();
-        long stableForMs = now - activeSemanticSinceMs;
-        if (stableForMs < HOVER_STABLE_TRIGGER_MS || Objects.equals(lastPublishedStableSemanticKey, semanticKey)) {
-            return;
-        }
-        adapter.publishHoverStable(new GeminiCardHoverPayload(context.hoveredItem(), context.comparison(), stableForMs));
-        lastPublishedStableSemanticKey = semanticKey;
     }
 
     private static GeminiCardContext buildContext(ItemStack hoveredStack, Player player) {
