@@ -249,9 +249,7 @@ public class AsrModelDownloader {
         List<ModelFileGroup> candidates = grouped.entrySet().stream()
                 .map(entry -> buildModelGroup(entry.getKey(), entry.getValue()))
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparingInt(ModelFileGroup::score).reversed()
-                        .thenComparingInt(group -> group.groupPath().length())
-                        .thenComparing(ModelFileGroup::groupPath))
+                .sorted(this::compareModelGroups)
                 .toList();
 
         if (candidates.isEmpty()) {
@@ -278,6 +276,14 @@ public class AsrModelDownloader {
         return new ModelFileGroup(groupPath, encoder, decoder, joiner, score);
     }
 
+    private int compareModelGroups(ModelFileGroup left, ModelFileGroup right) {
+        int scoreCompare = Integer.compare(right.score(), left.score());
+        if (scoreCompare != 0) return scoreCompare;
+        int lengthCompare = Integer.compare(left.groupPath().length(), right.groupPath().length());
+        if (lengthCompare != 0) return lengthCompare;
+        return left.groupPath().compareTo(right.groupPath());
+    }
+
     private SourceFile bestInGroup(List<SourceFile> files, String role, String standardName) {
         return files.stream()
                 .filter(file -> matchesRole(file, role, standardName))
@@ -298,8 +304,8 @@ public class AsrModelDownloader {
     }
 
     private String resolveRole(AsrModelInfo info, List<SourceFile> files, String role, String standardName, boolean required) throws IOException {
-        String explicit = info.getSourceFile(role);
-        if (explicit == null) explicit = info.getSourceFile(standardName);
+        String roleSource = info.getSourceFile(role);
+        String explicit = roleSource != null ? roleSource : info.getSourceFile(standardName);
         if (explicit != null) {
             SourceFile matched = files.stream()
                     .filter(file -> samePath(file.path(), explicit) || file.fileName().equalsIgnoreCase(explicit))
