@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.model;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class AsrModelInfo {
 
@@ -24,6 +25,13 @@ public class AsrModelInfo {
     public static final String TYPE_FUNASR_NANO = "FUNASR_NANO";
     public static final String TYPE_OTHER = "OTHER";
 
+    public static final String STANDARD_ENCODER = "encoder.onnx";
+    public static final String STANDARD_DECODER = "decoder.onnx";
+    public static final String STANDARD_JOINER = "joiner.onnx";
+    public static final String STANDARD_TOKENS = "tokens.txt";
+    public static final String STANDARD_BPE_MODEL = "bpe.model";
+    public static final String STANDARD_BPE_VOCAB = "bpe.vocab";
+
     public String author;
     public String name;
     public String id;
@@ -31,6 +39,7 @@ public class AsrModelInfo {
     public List<String> lang;
     public List<String> modelFiles;
     public List<String> lexiconFiles;
+    public Map<String, String> sourceFiles;
     public boolean pinned;
     public boolean isStreaming;
     public String modelType;
@@ -88,11 +97,29 @@ public class AsrModelInfo {
         return downloadUrl != null && !downloadUrl.isBlank();
     }
 
+    public List<String> getModelFiles() {
+        if (modelFiles != null && !modelFiles.isEmpty()) return Collections.unmodifiableList(modelFiles);
+        if (isTransducer()) return List.of(STANDARD_ENCODER, STANDARD_DECODER, STANDARD_JOINER);
+        return Collections.emptyList();
+    }
+
+    public List<String> getLexiconFiles() {
+        if (lexiconFiles != null && !lexiconFiles.isEmpty()) return Collections.unmodifiableList(lexiconFiles);
+        if (isTransducer()) return List.of(STANDARD_TOKENS);
+        return Collections.emptyList();
+    }
+
     public List<String> getAllRequiredFiles() {
         List<String> all = new ArrayList<>();
-        if (modelFiles != null) all.addAll(modelFiles);
-        if (lexiconFiles != null) all.addAll(lexiconFiles);
+        all.addAll(getModelFiles());
+        all.addAll(getLexiconFiles());
         return Collections.unmodifiableList(all);
+    }
+
+    public String getSourceFile(String role) {
+        if (sourceFiles == null || role == null) return null;
+        String value = sourceFiles.get(role);
+        return value != null && !value.isBlank() ? value : null;
     }
 
     public List<String> getLang() {

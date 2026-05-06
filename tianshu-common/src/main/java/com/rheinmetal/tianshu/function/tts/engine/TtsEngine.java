@@ -12,7 +12,11 @@ import com.rheinmetal.tianshu.utils.PathUtils;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 public class TtsEngine {
@@ -28,6 +32,7 @@ public class TtsEngine {
     private float speed = 1.0f;
     private int speakerId = 0;
     private Path voiceSamplePath;
+    private CachedMossVoice cachedMossVoice;
     private String modelDirPath;
 
     public TtsEngine(IGameEnvironment env, ITianshuConfig config) {
@@ -44,7 +49,11 @@ public class TtsEngine {
     }
 
     public void setVoiceSamplePath(Path voiceSamplePath) {
-        this.voiceSamplePath = voiceSamplePath;
+        Path normalizedPath = voiceSamplePath == null ? null : voiceSamplePath.toAbsolutePath().normalize();
+        if (!Objects.equals(this.voiceSamplePath, normalizedPath)) {
+            this.voiceSamplePath = normalizedPath;
+            this.cachedMossVoice = null;
+        }
     }
 
     public void interrupt() {
@@ -628,13 +637,9 @@ public class TtsEngine {
                 env.info("MOSS-TTS synthesis interrupted before synthesis: " + text);
                 return;
             }
-            List<List<Integer>> promptAudioCodes = null;
-            if (voiceSamplePath != null && Files.exists(voiceSamplePath)) {
-                env.info("MOSS-TTS using prompt audio: " + voiceSamplePath);
-                promptAudioCodes = mossTtsService.encodePromptAudioCodes(voiceSamplePath);
-            }
+            List<List<Integer>> promptAudioCodes = resolveMossPromptAudioCodes();
             if (interrupted) {
-                env.info("MOSS-TTS synthesis interrupted after prompt encoding: " + text);
+                env.info("MOSS-TTS synthesis interrupted after prompt preparation: " + text);
                 return;
             }
 
@@ -655,6 +660,34 @@ public class TtsEngine {
         } catch (Exception e) {
             env.error("MOSS-TTS synthesis failed: " + text, e);
         }
+    }
+
+    private List<List<Integer>> resolveMossPromptAudioCodes() throws Exception {
+        MossVoiceSource source = MossVoiceSource.fromPath(voiceSamplePath);
+        if (source == null) {
+            cachedMossVoice = null;
+            return null;
+        }
+        CachedMossVoice cached = cachedMossVoice;
+        if (cached != null && cached.matches(source)) {
+            return cached.promptAudioCodes();
+        }
+        env.info("MOSS-TTS encoding selected voice sample: " + source.path());
+        List<List<Integer>> promptAudioCodes = mossTtsService.encodePromptAudioCodes(source.path());
+        cachedMossVoice = new CachedMossVoice(source, deepImmutableCopy(promptAudioCodes));
+        env.info("MOSS-TTS selected voice cached, frames=" + cachedMossVoice.promptAudioCodes().size());
+        return cachedMossVoice.promptAudioCodes();
+    }
+
+    private List<List<Integer>> deepImmutableCopy(List<List<Integer>> codes) {
+        if (codes == null || codes.isEmpty()) {
+            return List.of();
+        }
+        List<List<Integer>> copy = new ArrayList<>(codes.size());
+        for (List<Integer> frame : codes) {
+            copy.add(Collections.unmodifiableList(new ArrayList<>(frame)));
+        }
+        return Collections.unmodifiableList(copy);
     }
 
     private void synthesizeZipVoice(String text, Consumer<byte[]> onAudioChunk) {
@@ -692,7 +725,7 @@ public class TtsEngine {
         byte[] pcm = new byte[samples.length * 2];
         for (int i = 0; i < samples.length; i++) {
             float clamped = Math.max(-1.0f, Math.min(1.0f, samples[i]));
-            short val = (short) (clamped * 32767.0f);
+            short val = (short) Math.round(clamped * 32767.0f);
             pcm[2 * i] = (byte) (val & 0xFF);
             pcm[2 * i + 1] = (byte) ((val >> 8) & 0xFF);
         }
@@ -700,9 +733,39 @@ public class TtsEngine {
     }
 
     private byte[] floatSamplesToPcm16(float[][] channels) {
-        if (channels == null || channels.length == 0 || channels[0].length == 0) return new byte[0];
-        float[] mono = channels[0];
+        float[] mono = downmixToMono(channels);
         return floatSamplesToPcm16(mono);
+    }
+
+    private float[] downmixToMono(float[][] channels) {
+        if (channels == null || channels.length == 0 || channels[0].length == 0) {
+            return new float[0];
+        }
+        if (channels.length == 1) {
+            return channels[0];
+        }
+        int length = Integer.MAX_VALUE;
+        int channelCount = 0;
+        for (float[] channel : channels) {
+            if (channel != null && channel.length > 0) {
+                length = Math.min(length, channel.length);
+                channelCount++;
+            }
+        }
+        if (channelCount == 0 || length == Integer.MAX_VALUE) {
+            return new float[0];
+        }
+        float[] mono = new float[length];
+        for (int i = 0; i < length; i++) {
+            float sum = 0.0f;
+            for (float[] channel : channels) {
+                if (channel != null && channel.length > i) {
+                    sum += channel[i];
+                }
+            }
+            mono[i] = sum / channelCount;
+        }
+        return mono;
     }
 
     public boolean isMossEngine() {
@@ -718,6 +781,7 @@ public class TtsEngine {
     }
 
     public void shutdown() {
+        cachedMossVoice = null;
         if (mossTtsService != null) {
             try {
                 mossTtsService.close();
@@ -751,5 +815,25 @@ public class TtsEngine {
     private String findRequiredFile(File dir, String keyword, String extension) {
         File found = findFile(dir, keyword, extension);
         return found != null ? found.getAbsolutePath() : null;
+    }
+
+    private record MossVoiceSource(Path path, long lastModifiedMillis, long size) {
+        private static MossVoiceSource fromPath(Path path) throws Exception {
+            if (path == null) {
+                return null;
+            }
+            Path normalizedPath = path.toAbsolutePath().normalize();
+            if (!Files.isRegularFile(normalizedPath)) {
+                return null;
+            }
+            BasicFileAttributes attributes = Files.readAttributes(normalizedPath, BasicFileAttributes.class);
+            return new MossVoiceSource(normalizedPath, attributes.lastModifiedTime().toMillis(), attributes.size());
+        }
+    }
+
+    private record CachedMossVoice(MossVoiceSource source, List<List<Integer>> promptAudioCodes) {
+        private boolean matches(MossVoiceSource other) {
+            return source.equals(other);
+        }
     }
 }

@@ -66,7 +66,7 @@ public class AsrEngine {
             String tokensPath = null;
             String singleModelPath = null;
 
-            for (String fileName : modelInfo.modelFiles) {
+            for (String fileName : modelInfo.getModelFiles()) {
                 String lower = fileName.toLowerCase();
                 Path resolved = modelDir.resolve(fileName);
                 if (lower.contains("encoder")) encoderPath = resolved.toAbsolutePath().toString();
@@ -77,12 +77,10 @@ public class AsrEngine {
                 }
             }
 
-            if (modelInfo.lexiconFiles != null) {
-                for (String fileName : modelInfo.lexiconFiles) {
-                    String lower = fileName.toLowerCase();
-                    Path resolved = modelDir.resolve(fileName);
-                    if (lower.contains("tokens")) tokensPath = resolved.toAbsolutePath().toString();
-                }
+            for (String fileName : modelInfo.getLexiconFiles()) {
+                String lower = fileName.toLowerCase();
+                Path resolved = modelDir.resolve(fileName);
+                if (lower.contains("tokens")) tokensPath = resolved.toAbsolutePath().toString();
             }
 
             env.info("ASR model files:");
@@ -96,8 +94,8 @@ public class AsrEngine {
 
             switch (modelInfo.getModelType()) {
                 case AsrModelInfo.TYPE_TRANSDUCER -> {
-                    if (encoderPath == null || decoderPath == null || tokensPath == null) {
-                        env.error("TRANSDUCER model is missing required files (encoder/decoder/tokens)", null);
+                    if (encoderPath == null || decoderPath == null || joinerPath == null || tokensPath == null) {
+                        env.error("TRANSDUCER model is missing required files (encoder/decoder/joiner/tokens)", null);
                         return false;
                     }
                     isTransducer = true;
@@ -155,13 +153,11 @@ public class AsrEngine {
     }
 
     private void initOnlineTransducer(String encoderPath, String decoderPath, String joinerPath, String tokensPath, AsrModelInfo modelInfo, Path modelDir) {
-        OnlineTransducerModelConfig.Builder transBuilder = OnlineTransducerModelConfig.builder()
+        OnlineTransducerModelConfig transducer = OnlineTransducerModelConfig.builder()
                 .setEncoder(encoderPath)
-                .setDecoder(decoderPath);
-        if (joinerPath != null) {
-            transBuilder.setJoiner(joinerPath);
-        }
-        OnlineTransducerModelConfig transducer = transBuilder.build();
+                .setDecoder(decoderPath)
+                .setJoiner(joinerPath)
+                .build();
 
         OnlineModelConfig modelConfig = OnlineModelConfig.builder()
                 .setTransducer(transducer)

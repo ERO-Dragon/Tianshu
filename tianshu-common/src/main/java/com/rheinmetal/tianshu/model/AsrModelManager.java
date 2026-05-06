@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 
 public class AsrModelManager {
 
-    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/asr_catalog.json";
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/sherpa_onnx_asr_hotword_models.json";
     private static final Gson GSON = new Gson();
     private static List<AsrModelInfo> cachedCatalog = null;
 

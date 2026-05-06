@@ -52,6 +52,8 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 
 public class TianshuCoreManager {
 
+    private static final String DEFAULT_GITHUB_PROXY_URL = "https://gh-proxy.org/";
+
     public interface DownloadProgressCallback {
         void onProgress(String label, int percent);
         void onComplete();
@@ -660,7 +662,7 @@ public class TianshuCoreManager {
                 AsrModelInfo asrModel = AsrModelManager.getDefaultModel(tier);
                 if (asrModel != null) {
                     Path asrDir = config.getAsrBasePath().resolve(asrModel.name);
-                    asrModelDownloader.downloadSync(asrModel, asrDir, null, new AsrModelDownloader.DownloadProgressCallback() {
+                    asrModelDownloader.downloadSync(asrModel, asrDir, DEFAULT_GITHUB_PROXY_URL, new AsrModelDownloader.DownloadProgressCallback() {
                         @Override public void onProgress(String label, int percent) { callback.onProgress("ASR:", percent); }
                         @Override public void onComplete() {}
                         @Override public void onError(String message) { throw new RuntimeException("ASR 下载失败: " + message); }

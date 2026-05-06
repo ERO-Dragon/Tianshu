@@ -15,6 +15,7 @@ import com.sentencepiece.SentencePieceProcessor;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -64,6 +65,7 @@ public class MossTtsService implements AutoCloseable {
             downloadModels();
         }
         loadManifestAndMeta();
+        applyStableLowLatencyGenerationProfile();
         initOrtEnvironment();
         initTokenizer();
         initSessions();
@@ -90,6 +92,56 @@ public class MossTtsService implements AutoCloseable {
 
         ttsMeta = GSON.fromJson(Files.readString(ttsMetaPath), JsonObject.class);
         codecMeta = GSON.fromJson(Files.readString(codecMetaPath), JsonObject.class);
+    }
+
+    private JsonObject getGenerationDefaults() {
+        JsonObject generationDefaults = getOrCreateObject(manifest, "generation_defaults");
+        ensureNumber(generationDefaults, "max_new_frames", 1600);
+        ensureBoolean(generationDefaults, "do_sample", false);
+        ensureString(generationDefaults, "sample_mode", "greedy");
+        ensureNumber(generationDefaults, "text_temperature", 1.0f);
+        ensureNumber(generationDefaults, "text_top_k", 2);
+        ensureNumber(generationDefaults, "text_top_p", 1.0f);
+        ensureNumber(generationDefaults, "audio_temperature", 1.0f);
+        ensureNumber(generationDefaults, "audio_top_k", 50);
+        ensureNumber(generationDefaults, "audio_top_p", 1.0f);
+        ensureNumber(generationDefaults, "audio_repetition_penalty", 1.0f);
+        return generationDefaults;
+    }
+
+    private void applyStableLowLatencyGenerationProfile() {
+        JsonObject generationDefaults = getGenerationDefaults();
+        generationDefaults.addProperty("do_sample", false);
+        generationDefaults.addProperty("sample_mode", "greedy");
+        env.info("MOSS-TTS generation profile: stable low-latency greedy mode enabled");
+    }
+
+    private JsonObject getOrCreateObject(JsonObject object, String name) {
+        JsonElement element = object.get(name);
+        if (element != null && element.isJsonObject()) {
+            return element.getAsJsonObject();
+        }
+        JsonObject child = new JsonObject();
+        object.add(name, child);
+        return child;
+    }
+
+    private void ensureBoolean(JsonObject object, String name, boolean value) {
+        if (!object.has(name) || object.get(name).isJsonNull()) {
+            object.addProperty(name, value);
+        }
+    }
+
+    private void ensureString(JsonObject object, String name, String value) {
+        if (!object.has(name) || object.get(name).isJsonNull()) {
+            object.addProperty(name, value);
+        }
+    }
+
+    private void ensureNumber(JsonObject object, String name, Number value) {
+        if (!object.has(name) || object.get(name).isJsonNull()) {
+            object.addProperty(name, value);
+        }
     }
 
     private void initOrtEnvironment() throws OrtException {
@@ -132,10 +184,17 @@ public class MossTtsService implements AutoCloseable {
     private OrtSession createSession(Path modelPath) throws OrtException {
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
         options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-        //限定TTS在4个核上
-        options.setIntraOpNumThreads(4);
+        options.setIntraOpNumThreads(resolveInferenceThreads());
         options.setInterOpNumThreads(1);
         return ortEnvironment.createSession(modelPath.toString(), options);
+    }
+
+    private int resolveInferenceThreads() {
+        int availableProcessors = Runtime.getRuntime().availableProcessors();
+        if (availableProcessors <= 0) {
+            return 2;
+        }
+        return Math.max(2, Math.min(4, availableProcessors));
     }
 
     public int[] encodeText(String text) {
@@ -190,37 +249,44 @@ public class MossTtsService implements AutoCloseable {
     }
 
     private float[][] readWavAsFloatChannels(Path wavPath) throws Exception {
-        try (AudioInputStream ais = AudioSystem.getAudioInputStream(wavPath.toFile())) {
-            AudioFormat format = ais.getFormat();
-            byte[] bytes = ais.readAllBytes();
-            int channels = format.getChannels();
-            int sampleSize = format.getSampleSizeInBits() / 8;
-            boolean bigEndian = format.isBigEndian();
-            int totalSamples = bytes.length / (channels * sampleSize);
+        try (AudioInputStream sourceStream = AudioSystem.getAudioInputStream(wavPath.toFile())) {
+            AudioFormat sourceFormat = sourceStream.getFormat();
+            AudioFormat pcmFormat = new AudioFormat(
+                    AudioFormat.Encoding.PCM_SIGNED,
+                    sourceFormat.getSampleRate(),
+                    16,
+                    Math.max(1, sourceFormat.getChannels()),
+                    Math.max(1, sourceFormat.getChannels()) * 2,
+                    sourceFormat.getSampleRate(),
+                    false
+            );
+            try (AudioInputStream pcmStream = AudioSystem.getAudioInputStream(pcmFormat, sourceStream)) {
+                byte[] bytes = readAllBytes(pcmStream);
+                int channels = pcmFormat.getChannels();
+                int frameSize = pcmFormat.getFrameSize();
+                int totalSamples = frameSize <= 0 ? 0 : bytes.length / frameSize;
 
-            float[][] channelData = new float[channels][totalSamples];
-            for (int i = 0; i < totalSamples; i++) {
-                for (int ch = 0; ch < channels; ch++) {
-                    int offset = (i * channels + ch) * sampleSize;
-                    float sample;
-                    if (sampleSize == 2) {
-                        short s;
-                        if (bigEndian) {
-                            s = (short) ((bytes[offset] << 8) | (bytes[offset + 1] & 0xFF));
-                        } else {
-                            s = (short) ((bytes[offset + 1] << 8) | (bytes[offset] & 0xFF));
-                        }
-                        sample = s / 32768.0f;
-                    } else if (sampleSize == 1) {
-                        sample = ((bytes[offset] & 0xFF) - 128) / 128.0f;
-                    } else {
-                        sample = 0.0f;
+                float[][] channelData = new float[channels][totalSamples];
+                for (int i = 0; i < totalSamples; i++) {
+                    for (int ch = 0; ch < channels; ch++) {
+                        int offset = i * frameSize + ch * 2;
+                        short sample = (short) ((bytes[offset + 1] << 8) | (bytes[offset] & 0xFF));
+                        channelData[ch][i] = Math.max(-1.0f, Math.min(1.0f, sample / 32768.0f));
                     }
-                    channelData[ch][i] = Math.max(-1.0f, Math.min(1.0f, sample));
                 }
+                return channelData;
             }
-            return channelData;
         }
+    }
+
+    private byte[] readAllBytes(AudioInputStream stream) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = stream.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     private float readWavSampleRate(Path wavPath) throws Exception {
@@ -316,7 +382,7 @@ public class MossTtsService implements AutoCloseable {
     }
 
     public List<List<Integer>> generateAudioFrames(RequestRows requestRows) throws Exception {
-        JsonObject generationDefaults = manifest.getAsJsonObject("generation_defaults");
+        JsonObject generationDefaults = getGenerationDefaults();
         JsonObject ttsConfig = manifest.getAsJsonObject("tts_config");
         JsonObject ttsOnnx = ttsMeta.getAsJsonObject("onnx");
 
@@ -419,7 +485,7 @@ public class MossTtsService implements AutoCloseable {
             List<List<Integer>> previousTokensByChannel,
             List<Set<Integer>> previousTokenSetsByChannel
     ) throws Exception {
-        JsonObject generationDefaults = manifest.getAsJsonObject("generation_defaults");
+        JsonObject generationDefaults = getGenerationDefaults();
         JsonObject ttsConfig = manifest.getAsJsonObject("tts_config");
 
         Map<String, OnnxTensor> localPast = createEmptyLocalCachedPast();
@@ -477,7 +543,7 @@ public class MossTtsService implements AutoCloseable {
             List<List<Integer>> previousTokensByChannel,
             List<Set<Integer>> previousTokenSetsByChannel
     ) throws Exception {
-        JsonObject generationDefaults = manifest.getAsJsonObject("generation_defaults");
+        JsonObject generationDefaults = getGenerationDefaults();
         JsonObject ttsConfig = manifest.getAsJsonObject("tts_config");
 
         LocalDecoderResult initial = runLocalDecoder(globalHidden, 0, List.of());

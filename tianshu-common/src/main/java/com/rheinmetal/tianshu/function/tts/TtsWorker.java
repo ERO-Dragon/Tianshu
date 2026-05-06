@@ -6,8 +6,10 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.TtsPlaybackEndEvent;
 import com.rheinmetal.tianshu.function.tts.engine.TtsEngine;
+import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -153,6 +155,33 @@ public class TtsWorker {
         }
     }
 
+    private void applyCurrentTtsSettings(Path modelPath, TtsModelInfo info) {
+        if (modelPath == null) {
+            ttsEngine.setVoiceSamplePath(null);
+            return;
+        }
+        ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(modelPath);
+        ttsEngine.setSpeed((float) settings.speed);
+        ttsEngine.setSpeakerId(settings.speakerId);
+        ttsEngine.setVoiceSamplePath(resolveSelectedVoiceSample(settings, info));
+    }
+
+    private Path resolveSelectedVoiceSample(ModelSettings.TtsSettings settings, TtsModelInfo info) {
+        if (info == null || !info.supportsVoiceClone()) {
+            return null;
+        }
+        String selectedVoiceSample = settings.selectedVoiceSample;
+        if (selectedVoiceSample == null || selectedVoiceSample.isBlank()) {
+            return null;
+        }
+        Path voicePath = config.getVoiceLibraryPath().resolve(selectedVoiceSample).normalize();
+        if (!Files.isRegularFile(voicePath)) {
+            env.warn("选择的参考音色不存在，使用默认音色: " + selectedVoiceSample);
+            return null;
+        }
+        return voicePath;
+    }
+
     private String cleanForTts(String rawText) {
         if (rawText == null || rawText.isBlank()) return "";
         String cleaned = rawText.replaceAll("<(?:think|reasoning|reflection)[^>]*>[\\s\\S]*?</(?:think|reasoning|reflection)>", "");
@@ -177,6 +206,9 @@ public class TtsWorker {
             env.warn("TTS 引擎未就绪，跳过合成: " + text);
             return;
         }
+        Path modelPath = resolveActiveModelPath();
+        TtsModelInfo info = resolveCurrentTtsModelInfo(modelPath);
+        applyCurrentTtsSettings(modelPath, info);
 
         if (!synthesizing) {
             audioManager.startTtsPlayback(ttsEngine.getSampleRate());
