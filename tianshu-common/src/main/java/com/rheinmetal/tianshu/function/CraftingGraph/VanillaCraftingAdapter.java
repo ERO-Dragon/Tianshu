@@ -31,7 +31,7 @@ public final class VanillaCraftingAdapter implements RecipeAdapter {
             slots.add(new SlotViewData(ingredients.get(i), SlotViewType.INPUT, startX + col * step, startY + row * step));
         }
 
-        slots.add(new SlotViewData(recipe.getResult(), SlotViewType.OUTPUT, 112.0f, 38.0f));
-        return new UniversalRecipeViewModel(recipe.getRecipeId(), recipe.getRecipeType(), slots, 146.0f, 82.0f);
+        slots.add(new SlotViewData(recipe.getResult(), SlotViewType.OUTPUT, 104.0f, 38.0f));
+        return new UniversalRecipeViewModel(recipe.getRecipeId(), recipe.getRecipeType(), slots, 138.0f, 82.0f);
     }
 }

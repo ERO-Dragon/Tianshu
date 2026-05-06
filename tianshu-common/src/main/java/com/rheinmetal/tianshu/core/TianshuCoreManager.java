@@ -6,12 +6,19 @@ import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.constant.ModelPresets;
 import com.rheinmetal.tianshu.constant.VramTier;
-import com.rheinmetal.tianshu.core.Engine.AsrEngine;
-import com.rheinmetal.tianshu.core.Engine.TtsEngine;
+import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
+import com.rheinmetal.tianshu.function.tts.engine.TtsEngine;
 import com.rheinmetal.tianshu.event.InterruptEvent;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.event.TtsPlaybackEndEvent;
+import com.rheinmetal.tianshu.function.ir.IrCommandParser;
+import com.rheinmetal.tianshu.function.ir.IrModule;
+import com.rheinmetal.tianshu.function.llm.LlmModule;
+import com.rheinmetal.tianshu.function.tts.TtsModule;
+import com.rheinmetal.tianshu.function.ui.UiProtocolBridge;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
@@ -20,9 +27,9 @@ import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.utils.PathUtils;
-import com.rheinmetal.tianshu.worker.AsrWorker;
-import com.rheinmetal.tianshu.worker.LlmWorker;
-import com.rheinmetal.tianshu.worker.TtsWorker;
+import com.rheinmetal.tianshu.function.asr.AsrWorker;
+import com.rheinmetal.tianshu.function.llm.LlmEngineProvider;
+import com.rheinmetal.tianshu.function.tts.TtsWorker;
 
 import java.io.File;
 import java.io.IOException;
@@ -124,6 +131,7 @@ public class TianshuCoreManager {
     private final INativeLibBridge nativeLibBridge;
     private final IAudioBridge audioBridge;
     private final TianshuEventBus eventBus;
+    private final ProtocolRuntime protocolRuntime;
     private final State state;
     private final EnvSetupManager envSetupManager;
     private final ProcessManager processManager;
@@ -133,8 +141,13 @@ public class TianshuCoreManager {
 
     private AsrEngine asrEngine;
     private AsrWorker asrWorker;
-    private LlmWorker llmWorker;
+    private LlmEngineProvider llmEngineProvider;
     private TtsWorker ttsWorker;
+    private IrCommandParser irCommandParser = IrCommandParser.unavailable();
+    private IrModule irModule;
+    private LlmModule llmModule;
+    private TtsModule ttsModule;
+    private UiProtocolBridge uiProtocolBridge;
 
     private volatile boolean previewRunning = false;
     private volatile Thread previewThread = null;
@@ -150,6 +163,7 @@ public class TianshuCoreManager {
         this.nativeLibBridge = nativeLibBridge;
         this.audioBridge = audioBridge;
         this.eventBus = new TianshuEventBus(env);
+        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread);
         this.state = new State();
         this.envSetupManager = new EnvSetupManager(env, nativeLibBridge);
         this.processManager = new ProcessManager(env, config, nativeLibBridge, () -> {
@@ -169,16 +183,20 @@ public class TianshuCoreManager {
         return eventBus;
     }
 
+    public ProtocolRuntime getProtocolRuntime() {
+        return protocolRuntime;
+    }
+
+    public void setIrCommandParser(IrCommandParser irCommandParser) {
+        this.irCommandParser = irCommandParser == null ? IrCommandParser.unavailable() : irCommandParser;
+    }
+
     public IAudioBridge getAudioBridge() {
         return audioBridge;
     }
 
     public TianshuThreadPool getThreadPool() {
         return threadPool;
-    }
-
-    public TtsWorker getTtsWorker() {
-        return ttsWorker;
     }
 
     public EnvSetupManager getEnvSetupManager() {
@@ -342,12 +360,12 @@ public class TianshuCoreManager {
             state.setLlmReady(false);
 
             asrWorker = new AsrWorker(audioBridge, this, env, config);
-            llmWorker = new LlmWorker(this, env, config);
+            llmEngineProvider = new LlmEngineProvider(env, config);
             ttsWorker = new TtsWorker(audioBridge, this, env, config);
 
-            threadPool.getAsrWorker().execute(asrWorker);
-            threadPool.getLlmWorker().execute(llmWorker);
-            threadPool.getTtsWorker().execute(ttsWorker);
+            registerProtocolModules();
+
+            threadPool.getVoiceExecutor().execute(asrWorker);
 
             ttsWorker.initEngine();
             if (ttsWorker.isEngineInitialized()) {
@@ -364,6 +382,18 @@ public class TianshuCoreManager {
             initialized = false;
             state.setPhase(EnginePhase.IDLE);
         }
+    }
+
+    private void registerProtocolModules() {
+        irModule = new IrModule(protocolRuntime, irCommandParser);
+        llmModule = new LlmModule(llmEngineProvider.getLlmEngine(), protocolRuntime);
+        ttsModule = new TtsModule(ttsWorker, protocolRuntime);
+        uiProtocolBridge = new UiProtocolBridge(protocolRuntime, eventBus);
+        irModule.register();
+        llmModule.register();
+        ttsModule.register();
+        uiProtocolBridge.register();
+        env.info("协议模块注册完成：module.ir/module.llm/module.tts/module.ui");
     }
 
     public void restartEngineAsync(boolean llmChanged, Runnable onComplete) {
@@ -434,7 +464,7 @@ public class TianshuCoreManager {
 
     public void speakAlert(String text) {
         if (ttsWorker == null || !ttsWorker.isEngineInitialized()) return;
-        threadPool.getToolWorker().execute(() -> {
+        threadPool.getToolExecutor().execute(() -> {
             try {
                 env.info("[战术雷达] TTS排队播报: " + text);
                 audioBridge.setOnPlaybackFinished(() ->
@@ -452,7 +482,7 @@ public class TianshuCoreManager {
     public void speakAlertWithInterrupt(String text) {
         if (ttsWorker == null || !ttsWorker.isEngineInitialized()) return;
         interruptOngoingProcessing();
-        threadPool.getToolWorker().execute(() -> {
+        threadPool.getToolExecutor().execute(() -> {
             try {
                 env.info("[战术雷达] TTS打断播报: " + text);
                 audioBridge.setOnPlaybackFinished(() ->
@@ -824,7 +854,7 @@ public class TianshuCoreManager {
         eventBus.publishEvent(new InterruptEvent(stoppedSession));
 
         if (asrWorker != null) asrWorker.stop();
-        if (llmWorker != null) llmWorker.stop();
+        if (llmEngineProvider != null) llmEngineProvider.stop();
         if (ttsWorker != null) ttsWorker.stop();
 
         processManager.stopServices();

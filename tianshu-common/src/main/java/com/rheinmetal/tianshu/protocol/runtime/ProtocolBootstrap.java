@@ -16,8 +16,7 @@ public final class ProtocolBootstrap {
     }
 
     private static void registerTopics(ProtocolRuntime runtime) {
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.ASR_FINAL_TEXT, PayloadType.ASR_TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_STREAM, PayloadType.LLM_TEXT_CHUNK, DeliveryPolicy.WAIT_IN_QUEUE, 200));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_STREAM, PayloadType.LLM_TEXT_CHUNK, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.UI_STATUS, PayloadType.TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 60));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DEBUG_TRACE, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 30));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.HOVER_STATE, PayloadType.SNAPSHOT, DeliveryPolicy.LATEST_ONLY, 20));
@@ -27,6 +26,11 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.ALERT_CLEARED, PayloadType.ALERT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.SYSTEM_DANGER_MODE_CHANGED, PayloadType.SYSTEM_STATE, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_ASR_FINAL_TEXT, PayloadType.ASR_TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.IR_COMMAND_EXECUTED, PayloadType.IR_RESULT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_INTENT_CLASSIFY_RESULT, PayloadType.LLM_INTENT_CLASSIFY, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_COMMAND_REPAIR_RESULT, PayloadType.LLM_COMMAND_REPAIR, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.TTS_PLAYBACK, PayloadType.STATUS, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_KEY_ACTION, PayloadType.INPUT_ACTION, DeliveryPolicy.WAIT_IN_QUEUE, 60));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_CHAT_TEXT, PayloadType.TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_HOVER_ITEM, PayloadType.SNAPSHOT, DeliveryPolicy.LATEST_ONLY, 20));

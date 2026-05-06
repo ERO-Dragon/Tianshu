@@ -300,14 +300,14 @@ public final class CraftingGraphEngine {
         RecipeTreeData tree = direction == GraphExpansionDirection.USAGE ? recipeProvider.getUsageTree(itemId) : recipeProvider.getRecipeTree(itemId);
         if (tree.getRecipes().isEmpty()) return null;
 
-        GraphAnchorData parentAnchor = anchorForQueriedObject(parent, slot);
-        RecipePanelNode existingChild = findExistingChild(parentUuid, itemId, direction, parentAnchor);
-        if (existingChild != null) {
-            existingChild.highlight(nowMillis, 1000L);
-            return existingChild;
-        }
-
+        GraphAnchorData parentAnchor = anchorForQueriedObject(parent, slot, direction);
         if (direction == GraphExpansionDirection.SOURCE) {
+            RecipePanelNode existingChild = findExistingChild(parentUuid, itemId, direction, parentAnchor);
+            if (existingChild != null) {
+                existingChild.highlight(nowMillis, 1000L);
+                return existingChild;
+            }
+
             RecipePanelNode ancestor = findAncestor(parentUuid, itemId, RecipePanelNodeType.SOURCE);
             if (ancestor != null) {
                 ancestor.highlight(nowMillis, 1000L);
@@ -318,13 +318,9 @@ public final class CraftingGraphEngine {
         long siblingCount = edges.stream()
                 .filter(edge -> edge.getDirection() == direction && parentUuid.equals(parentNodeUuid(edge)))
                 .count();
-        int col = (int) (siblingCount % CraftingGraphConstants.MAX_NODES_PER_ROW);
         int row = (int) (siblingCount / CraftingGraphConstants.MAX_NODES_PER_ROW);
-        float rowWidth = CraftingGraphConstants.MAX_NODES_PER_ROW * CraftingGraphConstants.NODE_WIDTH
-                + (CraftingGraphConstants.MAX_NODES_PER_ROW - 1) * CraftingGraphConstants.NODE_GAP_X;
-        float horizontalOffset = col * (CraftingGraphConstants.NODE_WIDTH + CraftingGraphConstants.NODE_GAP_X) - rowWidth * 0.5f + CraftingGraphConstants.NODE_WIDTH * 0.5f;
-        float x = parent.getX() + horizontalOffset;
         float verticalStep = CraftingGraphConstants.NODE_HEIGHT + CraftingGraphConstants.NODE_GAP_Y;
+        float x = parent.getX();
         float y = direction == GraphExpansionDirection.USAGE
                 ? parent.getY() - verticalStep - row * verticalStep
                 : parent.getY() + verticalStep + row * verticalStep;
@@ -341,34 +337,207 @@ public final class CraftingGraphEngine {
         } else {
             edges.add(new RecipeGraphEdge(parentUuid, uuid, itemId, direction, parentAnchor, childAnchor));
         }
+        relayoutChildren(parentUuid, direction);
+        resolveLayoutCollisions(node.getUuid());
         lockAnchorSide(parent, parentAnchor);
         dirty = true;
         return node;
     }
 
-    private GraphAnchorData anchorForQueriedObject(RecipePanelNode node, SlotViewData slot) {
-        if (node == null || slot == null) return anchorForNodeSide(node, 0.0f);
-        if (isSubjectSlot(node, slot)) return anchorForNodeSide(node, node.getNodeType() == RecipePanelNodeType.USAGE ? -1.0f : 1.0f);
-        return GraphAnchorData.slotCenter(node, slot, 0.0f, slot.getType() == SlotViewType.OUTPUT ? -4.0f : 4.0f);
+    private GraphAnchorData anchorForQueriedObject(RecipePanelNode node, SlotViewData slot, GraphExpansionDirection direction) {
+        if (node == null) return null;
+        SlotViewData anchorSlot = slot != null ? slot : bestSubjectAnchorSlot(node, direction);
+        if (anchorSlot != null) return GraphAnchorData.slotCenter(node, anchorSlot, slotRowPadOffset(anchorSlot), slotTypePadOffset(anchorSlot));
+        return anchorForNodeSide(node, direction == GraphExpansionDirection.USAGE ? -1.0f : 1.0f);
     }
 
     private GraphAnchorData anchorForChildNode(RecipePanelNode node, GraphExpansionDirection direction) {
+        SlotViewData anchorSlot = bestSubjectAnchorSlot(node, direction == GraphExpansionDirection.USAGE ? GraphExpansionDirection.SOURCE : GraphExpansionDirection.USAGE);
+        if (anchorSlot != null) return GraphAnchorData.slotCenter(node, anchorSlot, slotRowPadOffset(anchorSlot), slotTypePadOffset(anchorSlot));
         return anchorForNodeSide(node, direction == GraphExpansionDirection.USAGE ? 1.0f : -1.0f);
     }
 
+    private SlotViewData bestSubjectAnchorSlot(RecipePanelNode node, GraphExpansionDirection direction) {
+        UniversalRecipeViewModel model = getViewModel(node);
+        SlotViewData fallback = null;
+        for (SlotViewData slot : model.getSlots()) {
+            if (slot == null || slot.getItem() == null) continue;
+            if (isSubjectSlot(node, slot)) return slot;
+            if (fallback == null && direction == GraphExpansionDirection.SOURCE && slot.getType() == SlotViewType.OUTPUT) fallback = slot;
+            if (fallback == null && direction == GraphExpansionDirection.USAGE && slot.getType() != SlotViewType.OUTPUT) fallback = slot;
+        }
+        return fallback;
+    }
+
     private GraphAnchorData anchorForNodeSide(RecipePanelNode node, float verticalSide) {
+        SlotViewData slot = bestSubjectAnchorSlot(node, verticalSide > 0.0f ? GraphExpansionDirection.SOURCE : GraphExpansionDirection.USAGE);
+        if (slot != null) return GraphAnchorData.slotCenter(node, slot, slotRowPadOffset(slot), slotTypePadOffset(slot));
         if (node == null) return null;
-        float y = node.getY() + CraftingGraphConstants.NODE_HEIGHT * 0.5f;
-        if (verticalSide < 0.0f) y = node.getY();
-        if (verticalSide > 0.0f) y = node.getY() + CraftingGraphConstants.NODE_HEIGHT;
-        return new GraphAnchorData(
-                GraphAnchorKind.NODE_CENTER,
-                null,
-                node.getX() + CraftingGraphConstants.NODE_WIDTH * 0.5f,
-                y,
-                0.0f,
-                0.0f
-        );
+        float slotX = CraftingGraphConstants.NODE_WIDTH * 0.5f - 9.0f;
+        float slotY = verticalSide > 0.0f ? CraftingGraphConstants.NODE_HEIGHT - 24.0f : 22.0f;
+        SlotViewType slotType = verticalSide > 0.0f ? SlotViewType.OUTPUT : SlotViewType.INPUT;
+        return GraphAnchorData.slotCenter(node, new SlotViewData(null, slotType, slotX, slotY), 0.0f, slotTypePadOffset(slotType));
+    }
+
+    private float slotTypePadOffset(SlotViewData slot) {
+        return slotTypePadOffset(slot != null ? slot.getType() : null);
+    }
+
+    private float slotTypePadOffset(SlotViewType slotType) {
+        if (slotType == SlotViewType.OUTPUT) return 16.0f / 3.0f;
+        return -16.0f / 3.0f;
+    }
+
+    private float slotRowPadOffset(SlotViewData slot) {
+        if (slot == null) return 0.0f;
+        return switch (slotRowIndex(slot)) {
+            case 0 -> -6.0f;
+            case 1 -> 0.0f;
+            default -> 6.0f;
+        };
+    }
+
+    private int slotRowIndex(SlotViewData slot) {
+        if (slot == null) return 1;
+        float normalizedY = Math.max(0.0f, slot.getY());
+        return Math.floorMod((int) Math.floor((normalizedY + 2.0f) / 20.0f), 3);
+    }
+
+    private void relayoutChildren(UUID parentUuid, GraphExpansionDirection direction) {
+        RecipePanelNode parent = nodes.get(parentUuid);
+        if (parent == null) return;
+        List<RecipePanelNode> children = new ArrayList<>();
+        for (RecipeGraphEdge edge : edges) {
+            if (edge.getDirection() != direction || !parentUuid.equals(parentNodeUuid(edge))) continue;
+            RecipePanelNode child = nodes.get(childNodeUuid(edge));
+            if (child != null) children.add(child);
+        }
+        if (children.isEmpty()) return;
+        int maxPerRow = Math.max(1, CraftingGraphConstants.MAX_NODES_PER_ROW);
+        float stepX = CraftingGraphConstants.NODE_WIDTH + CraftingGraphConstants.NODE_GAP_X;
+        float stepY = CraftingGraphConstants.NODE_HEIGHT + CraftingGraphConstants.NODE_GAP_Y;
+        float parentCenterX = parent.getX() + CraftingGraphConstants.NODE_WIDTH * 0.5f;
+        for (int rowStart = 0; rowStart < children.size(); rowStart += maxPerRow) {
+            int row = rowStart / maxPerRow;
+            int rowCount = Math.min(maxPerRow, children.size() - rowStart);
+            float rowWidth = rowCount * CraftingGraphConstants.NODE_WIDTH + (rowCount - 1) * CraftingGraphConstants.NODE_GAP_X;
+            float startX = parentCenterX - rowWidth * 0.5f;
+            float y = direction == GraphExpansionDirection.USAGE
+                    ? parent.getY() - stepY - row * stepY
+                    : parent.getY() + stepY + row * stepY;
+            for (int col = 0; col < rowCount; col++) {
+                RecipePanelNode child = children.get(rowStart + col);
+                float x = startX + col * stepX;
+                moveBranch(child.getUuid(), x - child.getX(), y - child.getY());
+            }
+        }
+    }
+
+    private void resolveLayoutCollisions(UUID changedUuid) {
+        for (int i = 0; i < 8; i++) {
+            boolean changed = resolveRowCollisions();
+            UUID parentUuid = parentUuidOf(changedUuid);
+            while (parentUuid != null) {
+                relayoutChildren(parentUuid, GraphExpansionDirection.USAGE);
+                relayoutChildren(parentUuid, GraphExpansionDirection.SOURCE);
+                parentUuid = parentUuidOf(parentUuid);
+            }
+            changed |= resolveRowCollisions();
+            if (!changed) return;
+        }
+    }
+
+    private boolean resolveRowCollisions() {
+        List<RecipePanelNode> ordered = new ArrayList<>(nodeOrder);
+        ordered.sort(Comparator.comparingDouble(this::layoutRow).thenComparingDouble(RecipePanelNode::getX));
+        boolean changed = false;
+        int start = 0;
+        while (start < ordered.size()) {
+            int row = layoutRow(ordered.get(start));
+            int end = start + 1;
+            while (end < ordered.size() && layoutRow(ordered.get(end)) == row) end++;
+            changed |= resolveSingleRowCollisions(ordered.subList(start, end));
+            start = end;
+        }
+        return changed;
+    }
+
+    private boolean resolveSingleRowCollisions(List<RecipePanelNode> rowNodes) {
+        if (rowNodes.size() < 2) return false;
+        float minGap = CraftingGraphConstants.NODE_GAP_X;
+        float previousRight = Float.NEGATIVE_INFINITY;
+        RecipePanelNode previousRightNode = null;
+        boolean changed = false;
+        for (RecipePanelNode node : rowNodes) {
+            float requiredX = previousRight + minGap;
+            if (node.getX() < requiredX && previousRightNode != null) {
+                moveBranch(layoutShiftRoot(node, previousRightNode).getUuid(), requiredX - node.getX(), 0.0f);
+                changed = true;
+            }
+            float nodeRight = node.getX() + CraftingGraphConstants.NODE_WIDTH;
+            if (nodeRight > previousRight) {
+                previousRight = nodeRight;
+                previousRightNode = node;
+            }
+        }
+        return changed;
+    }
+
+    private RecipePanelNode layoutShiftRoot(RecipePanelNode node, RecipePanelNode blocker) {
+        if (node == null) return blocker;
+        if (blocker != null && isAncestor(blocker.getUuid(), node.getUuid())) {
+            RecipePanelNode pathChild = childOnPath(blocker.getUuid(), node.getUuid());
+            if (pathChild != null) return pathChild;
+        }
+        return node;
+    }
+
+    private boolean isAncestor(UUID ancestorUuid, UUID nodeUuid) {
+        UUID current = parentUuidOf(nodeUuid);
+        while (current != null) {
+            if (current.equals(ancestorUuid)) return true;
+            current = parentUuidOf(current);
+        }
+        return false;
+    }
+
+    private RecipePanelNode childOnPath(UUID ancestorUuid, UUID nodeUuid) {
+        RecipePanelNode node = nodes.get(nodeUuid);
+        RecipePanelNode child = node;
+        while (node != null && node.getParentUuid() != null) {
+            if (node.getParentUuid().equals(ancestorUuid)) return child;
+            child = node;
+            node = nodes.get(node.getParentUuid());
+        }
+        return null;
+    }
+
+    private int layoutRow(RecipePanelNode node) {
+        float stepY = CraftingGraphConstants.NODE_HEIGHT + CraftingGraphConstants.NODE_GAP_Y;
+        return Math.round(node.getY() / stepY);
+    }
+
+    private UUID parentUuidOf(UUID uuid) {
+        RecipePanelNode node = nodes.get(uuid);
+        return node != null ? node.getParentUuid() : null;
+    }
+
+    private void moveBranch(UUID rootUuid, float dx, float dy) {
+        if (Math.abs(dx) < 0.001f && Math.abs(dy) < 0.001f) return;
+        Set<UUID> branch = collectBranchUuids(rootUuid);
+        for (UUID uuid : branch) {
+            RecipePanelNode node = nodes.get(uuid);
+            if (node != null) node.setPosition(node.getX() + dx, node.getY() + dy);
+        }
+        for (int i = 0; i < edges.size(); i++) {
+            RecipeGraphEdge edge = edges.get(i);
+            boolean moveFrom = branch.contains(edge.getFromNode());
+            boolean moveTo = branch.contains(edge.getToNode());
+            if (!moveFrom && !moveTo) continue;
+            GraphAnchorData fromAnchor = moveFrom ? edge.getFromAnchor().moved(dx, dy) : edge.getFromAnchor();
+            GraphAnchorData toAnchor = moveTo ? edge.getToAnchor().moved(dx, dy) : edge.getToAnchor();
+            edges.set(i, new RecipeGraphEdge(edge.getFromNode(), edge.getToNode(), edge.getItemId(), edge.getDirection(), fromAnchor, toAnchor));
+        }
     }
 
     private RecipePanelNode findExistingChild(UUID parentUuid, String itemId, GraphExpansionDirection direction, GraphAnchorData parentAnchor) {
@@ -411,7 +580,7 @@ public final class CraftingGraphEngine {
     }
 
     private void lockAnchorSide(RecipePanelNode node, GraphAnchorData anchor) {
-        if (node == null || anchor == null || anchor.getKind() == GraphAnchorKind.NODE_CENTER) return;
+        if (node == null || anchor == null) return;
         SlotViewType anchorSlotType = anchor.getSlotType();
         if (anchorSlotType == SlotViewType.OUTPUT) {
             node.setOutputAnchorsLocked(true);
@@ -442,21 +611,21 @@ public final class CraftingGraphEngine {
     }
 
     public boolean hitPreviousRecipe(RecipePanelNode node, float worldX, float worldY) {
-        if (node == null || !node.canSwitchRecipe() || node.getRecipes().size() <= 1) return false;
+        if (node == null || !node.canSwitchRecipe() || !node.hasMultipleRecipesInSelectedCategory()) return false;
         float x = node.getX() + CraftingGraphConstants.NODE_WIDTH - 42.0f;
         float y = node.getY() + CraftingGraphConstants.NODE_HEIGHT - 17.0f;
         return worldX >= x - 3.0f && worldX <= x + 12.0f && worldY >= y - 3.0f && worldY <= y + 10.0f;
     }
 
     public boolean hitNextRecipe(RecipePanelNode node, float worldX, float worldY) {
-        if (node == null || !node.canSwitchRecipe() || node.getRecipes().size() <= 1) return false;
+        if (node == null || !node.canSwitchRecipe() || !node.hasMultipleRecipesInSelectedCategory()) return false;
         float x = node.getX() + CraftingGraphConstants.NODE_WIDTH - 22.0f;
         float y = node.getY() + CraftingGraphConstants.NODE_HEIGHT - 17.0f;
         return worldX >= x - 3.0f && worldX <= x + 12.0f && worldY >= y - 3.0f && worldY <= y + 10.0f;
     }
 
     public boolean hitRecipePickerButton(RecipePanelNode node, float worldX, float worldY) {
-        if (node == null || node.getRecipes().size() <= 1) return false;
+        if (node == null || !node.canSwitchRecipe() || node.filteredRecipeIndices().size() <= 1) return false;
         float x = recipePickerButtonX(node);
         float y = recipePickerButtonY(node);
         return worldX >= x && worldX <= x + 14.0f && worldY >= y && worldY <= y + 12.0f;
@@ -464,19 +633,21 @@ public final class CraftingGraphEngine {
 
     public int hitRecipePickerEntry(RecipePanelNode node, float worldX, float worldY) {
         if (node == null || !node.isRecipePickerOpen()) return -1;
-        float pickerX = recipePickerX(node);
-        float pickerY = recipePickerY(node);
-        float pickerHeight = recipePickerHeight(node);
-        if (worldX < pickerX || worldX > pickerX + CraftingGraphConstants.RECIPE_PICKER_WIDTH || worldY < pickerY || worldY > pickerY + pickerHeight) return -1;
-        int columns = recipePickerColumns();
-        float contentX = worldX - pickerX - CraftingGraphConstants.RECIPE_PICKER_PADDING;
-        float contentY = worldY - pickerY - CraftingGraphConstants.RECIPE_PICKER_PADDING + node.getRecipePickerScroll();
+        PickerGrid grid = recipePickerGrid(node);
+        if (worldX < grid.x || worldX > grid.x + grid.w || worldY < grid.y || worldY > grid.y + grid.h) return -1;
+        if (worldX < grid.contentLeft || worldX > grid.contentRight || worldY < grid.contentTop || worldY > grid.contentBottom) return -1;
+        float contentX = worldX - grid.contentLeft;
+        float contentY = worldY - grid.contentTop + node.getRecipePickerScroll();
         if (contentX < 0.0f || contentY < 0.0f) return -1;
         int col = (int) (contentX / CraftingGraphConstants.RECIPE_PICKER_CELL);
         int row = (int) (contentY / CraftingGraphConstants.RECIPE_PICKER_CELL);
-        if (col < 0 || col >= columns) return -1;
-        int index = row * columns + col;
-        return index >= 0 && index < node.getRecipes().size() ? index : -1;
+        if (col < 0 || col >= grid.columns) return -1;
+        float cellX = grid.contentLeft + col * CraftingGraphConstants.RECIPE_PICKER_CELL;
+        float cellY = grid.contentTop + row * CraftingGraphConstants.RECIPE_PICKER_CELL - node.getRecipePickerScroll();
+        if (worldX < cellX || worldX > cellX + 20.0f || worldY < cellY || worldY > cellY + 20.0f) return -1;
+        List<Integer> indices = node.filteredRecipeIndices();
+        int visibleIndex = row * grid.columns + col;
+        return visibleIndex >= 0 && visibleIndex < indices.size() ? indices.get(visibleIndex) : -1;
     }
 
     public boolean scrollRecipePicker(float worldX, float worldY, double scrollDelta) {
@@ -517,10 +688,36 @@ public final class CraftingGraphEngine {
     public void selectRecipeFromPicker(RecipePanelNode node, int index) {
         if (node == null || !node.canSwitchRecipe()) return;
         node.setSelectedRecipeIndex(index);
+        node.setRecipePickerOpen(false);
+    }
+
+    public boolean hitRecipeCategory(RecipePanelNode node, float worldX, float worldY) {
+        int index = hitRecipeCategoryIndex(node, worldX, worldY);
+        if (index < 0) return false;
+        List<String> categories = node.recipeCategories();
+        if (index >= categories.size()) return true;
+        node.selectRecipeCategory(categories.get(index));
+        node.setRecipePickerOpen(false);
+        return true;
+    }
+
+    private int hitRecipeCategoryIndex(RecipePanelNode node, float worldX, float worldY) {
+        if (node == null || !node.canSwitchRecipe()) return -1;
+        List<String> categories = node.recipeCategories();
+        if (categories.isEmpty()) return -1;
+        float listX = node.getX() + 7.0f;
+        float listY = node.getY() + 21.0f;
+        float listW = CraftingGraphConstants.NODE_CATEGORY_WIDTH;
+        float listH = CraftingGraphConstants.NODE_HEIGHT - 42.0f;
+        if (worldX < listX || worldX > listX + listW || worldY < listY || worldY > listY + listH) return -1;
+        int max = Math.min(categories.size(), Math.max(1, (int) ((listH - 24.0f) / 18.0f)));
+        int index = (int) ((worldY - (listY + 12.0f)) / 18.0f);
+        if (index < 0 || index >= max) return -1;
+        return index;
     }
 
     public float recipePickerButtonX(RecipePanelNode node) {
-        return node.getX() + 8.0f;
+        return node.getX() + CraftingGraphConstants.NODE_CATEGORY_WIDTH + 10.0f;
     }
 
     public float recipePickerButtonY(RecipePanelNode node) {
@@ -528,27 +725,45 @@ public final class CraftingGraphEngine {
     }
 
     public float recipePickerX(RecipePanelNode node) {
-        return node.getX() + 28.0f;
+        return node.getX() + CraftingGraphConstants.NODE_CATEGORY_WIDTH + 10.0f;
     }
 
     public float recipePickerY(RecipePanelNode node) {
-        return node.getY() + 20.0f;
+        return node.getY() + CraftingGraphConstants.NODE_CONTENT_Y - 2.0f;
     }
 
     public float recipePickerHeight(RecipePanelNode node) {
-        int rows = (int) Math.ceil(node.getRecipes().size() / (float) recipePickerColumns());
+        int rows = (int) Math.ceil(node.filteredRecipeIndices().size() / (float) recipePickerColumns());
         float contentHeight = rows * CraftingGraphConstants.RECIPE_PICKER_CELL + CraftingGraphConstants.RECIPE_PICKER_PADDING * 2.0f;
         return Math.min(CraftingGraphConstants.RECIPE_PICKER_MAX_HEIGHT, contentHeight);
     }
 
     public float maxRecipePickerScroll(RecipePanelNode node) {
-        int rows = (int) Math.ceil(node.getRecipes().size() / (float) recipePickerColumns());
+        int rows = (int) Math.ceil(node.filteredRecipeIndices().size() / (float) recipePickerColumns());
         float contentHeight = rows * CraftingGraphConstants.RECIPE_PICKER_CELL + CraftingGraphConstants.RECIPE_PICKER_PADDING * 2.0f;
         return Math.max(0.0f, contentHeight - recipePickerHeight(node));
     }
 
     public int recipePickerColumns() {
-        return Math.max(1, (int) ((CraftingGraphConstants.RECIPE_PICKER_WIDTH - CraftingGraphConstants.RECIPE_PICKER_PADDING * 2.0f) / CraftingGraphConstants.RECIPE_PICKER_CELL));
+        return recipePickerGrid(null).columns;
+    }
+
+    private PickerGrid recipePickerGrid(RecipePanelNode node) {
+        float x = node != null ? recipePickerX(node) : 0.0f;
+        float y = node != null ? recipePickerY(node) : 0.0f;
+        float w = CraftingGraphConstants.RECIPE_PICKER_WIDTH;
+        float h = node != null ? recipePickerHeight(node) : CraftingGraphConstants.RECIPE_PICKER_MAX_HEIGHT;
+        float pad = CraftingGraphConstants.RECIPE_PICKER_PADDING;
+        boolean scrollable = node != null && maxRecipePickerScroll(node) > 0.0f;
+        float contentLeft = x + pad;
+        float contentTop = y + pad;
+        float contentRight = x + w - pad - (scrollable ? 7.0f : 0.0f);
+        float contentBottom = y + h - pad;
+        int columns = Math.max(1, (int) ((contentRight - contentLeft) / CraftingGraphConstants.RECIPE_PICKER_CELL));
+        return new PickerGrid(x, y, w, h, contentLeft, contentTop, contentRight, contentBottom, columns);
+    }
+
+    private record PickerGrid(float x, float y, float w, float h, float contentLeft, float contentTop, float contentRight, float contentBottom, int columns) {
     }
 
     public EdgeHitResult hitEdge(float worldX, float worldY) {
@@ -603,8 +818,8 @@ public final class CraftingGraphEngine {
         for (int i = nodeOrder.size() - 1; i >= 0; i--) {
             RecipePanelNode node = nodeOrder.get(i);
             UniversalRecipeViewModel model = getViewModel(node);
-            float originX = node.getX() + 10.0f;
-            float originY = node.getY() + 24.0f;
+            float originX = node.getX() + CraftingGraphConstants.NODE_CONTENT_X;
+            float originY = node.getY() + CraftingGraphConstants.NODE_CONTENT_Y;
             for (SlotViewData slot : model.getSlots()) {
                 float slotX = originX + slot.getX();
                 float slotY = originY + slot.getY();

@@ -20,6 +20,11 @@ public class MrStateMachine {
         focusedEntityUuid = entityUuid;
     }
 
+    public void forceFocusing(String entityUuid) {
+        state = State.FOCUSING;
+        focusedEntityUuid = entityUuid;
+    }
+
     public void transitionToSilent() {
         state = State.SILENT;
         focusedEntityUuid = null;

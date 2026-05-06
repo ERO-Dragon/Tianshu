@@ -113,7 +113,9 @@ public class MrRenderer {
             targetByUuid.put(realtimeTarget.entityUuid, realtimeTarget);
             MrCardSnapshot display = displaySnapshots.get(realtimeTarget.entityUuid);
             if (display == null) {
-                displaySnapshots.put(realtimeTarget.entityUuid, realtimeTarget.copy());
+                display = realtimeTarget.copy();
+                initializeDisplaySnapshot(display, realtimeTarget);
+                displaySnapshots.put(realtimeTarget.entityUuid, display);
             } else if (realtimeTarget.disappearProgress < 1.0f || display.disappearProgress < 1.0f) {
                 smoothSnapshot(display, realtimeTarget, 1.0f);
             } else {
@@ -121,6 +123,16 @@ public class MrRenderer {
             }
         }
         displaySnapshots.keySet().removeIf(uuid -> !targetByUuid.containsKey(uuid));
+    }
+
+    private void initializeDisplaySnapshot(MrCardSnapshot display, MrCardSnapshot target) {
+        if (target.appearProgress <= 0.08f && target.disappearProgress >= 0.95f) {
+            display.alpha = 0.0f;
+            display.appearProgress = 0.0f;
+            display.contentScale = Math.max(0.05f, target.contentScale * 0.72f);
+            display.lineScale = Math.max(0.05f, target.lineScale * 0.72f);
+            display.scale = Math.max(0.05f, target.scale * 0.9f);
+        }
     }
 
     private void refreshVisibleEntityCache(Minecraft mc, List<MrCardSnapshot> targetSnapshots) {
@@ -238,17 +250,21 @@ public class MrRenderer {
         double baseX;
         double baseY;
         double baseZ;
-        if (liveEntity != null) {
+        if (liveEntity != null && !target.fixedWorldAnchor) {
             baseX = liveEntity.getX();
             baseY = liveEntity.getY();
             baseZ = liveEntity.getZ();
+        } else if (target.hasWorldAnchor) {
+            baseX = target.worldX;
+            baseY = target.worldY;
+            baseZ = target.worldZ;
         } else {
             baseX = mc.player.getX() + target.relativeX;
             baseY = mc.player.getY() + target.relativeY;
             baseZ = mc.player.getZ() + target.relativeZ;
         }
-        double eyeHeight = liveEntity != null ? liveEntity.getEyeHeight() : target.eyeHeight;
-        double headOffset = Math.min(0.18, Math.max(0.04, eyeHeight * 0.08));
+        double eyeHeight = liveEntity != null && !target.fixedWorldAnchor ? liveEntity.getEyeHeight() : target.eyeHeight;
+        double headOffset = target.fixedWorldAnchor ? 0.0 : Math.min(0.18, Math.max(0.04, eyeHeight * 0.08));
         double relX = baseX - projectionCameraX;
         double relY = baseY + eyeHeight + headOffset - projectionCameraY;
         double relZ = baseZ - projectionCameraZ;
@@ -258,7 +274,7 @@ public class MrRenderer {
         double viewY = relX * projectionUpX + relY * projectionUpY + relZ * projectionUpZ;
         double ndcX = right / (forward * projectionHorizontalTan);
         double ndcY = viewY / (forward * projectionVerticalTan);
-        if (ndcX < -1.08 || ndcX > 1.08 || ndcY < -1.08 || ndcY > 1.08) return null;
+        if (ndcX < -2.2 || ndcX > 2.2 || ndcY < -2.2 || ndcY > 2.2) return null;
         projectedAnchor[0] = (float) ((ndcX * 0.5 + 0.5) * projectionScreenW);
         projectedAnchor[1] = (float) ((0.5 - ndcY * 0.5) * projectionScreenH);
         return projectedAnchor;
@@ -282,6 +298,8 @@ public class MrRenderer {
         display.cardWidth = lerp(display.cardWidth, target.cardWidth, factor);
         display.cardHeight = lerp(display.cardHeight, target.cardHeight, factor);
         display.scale = lerp(display.scale, target.scale, factor);
+        display.contentScale = lerp(display.contentScale, target.contentScale, factor);
+        display.lineScale = lerp(display.lineScale, target.lineScale, factor);
         display.alpha = lerp(display.alpha, target.alpha, factor);
         display.distanceFadeAlpha = target.distanceFadeAlpha;
         display.environmentAlphaFactor = target.environmentAlphaFactor;
@@ -296,6 +314,8 @@ public class MrRenderer {
         display.isOcclusionVisible = target.isOcclusionVisible;
         display.isFocused = target.isFocused;
         display.isBackground = target.isBackground;
+        display.isManualFocus = target.isManualFocus;
+        display.isBlockTarget = target.isBlockTarget;
         display.hasMainHandItem = target.hasMainHandItem;
         display.displayName = target.displayName;
         display.entityId = target.entityId;
@@ -325,6 +345,19 @@ public class MrRenderer {
         display.focusedDetailText = target.focusedDetailText;
         display.focusedDetailVisibleChars = target.focusedDetailVisibleChars;
         display.focusedDetailOutputFinished = target.focusedDetailOutputFinished;
+        display.focusProgress = target.focusProgress;
+        display.focusProgressActive = target.focusProgressActive;
+        display.focusExitProgress = target.focusExitProgress;
+        display.focusExitProgressActive = target.focusExitProgressActive;
+        display.relativeX = target.relativeX;
+        display.relativeY = target.relativeY;
+        display.relativeZ = target.relativeZ;
+        display.worldX = target.worldX;
+        display.worldY = target.worldY;
+        display.worldZ = target.worldZ;
+        display.hasWorldAnchor = target.hasWorldAnchor;
+        display.fixedWorldAnchor = target.fixedWorldAnchor;
+        display.eyeHeight = target.eyeHeight;
         display.contentStartX = target.contentStartX;
         display.contentStartY = target.contentStartY;
         display.nameIconX = target.nameIconX;
@@ -417,7 +450,7 @@ public class MrRenderer {
         drawTetherLine(batch, s, r, gr, b, ap);
 
         if (contentVisible) {
-            float boxProgress = Math.min(1.0f, (ap - 0.5f) / 0.5f);
+            float boxProgress = Math.min(1.0f, (ap - 0.35f) / 0.65f);
             drawCardBackground(batch, s, boxProgress, r, gr, b);
             drawCardContentGeometry(batch, s, boxProgress);
         }
@@ -427,8 +460,8 @@ public class MrRenderer {
         if (s.alpha <= 0.08f) return;
         float progress = s.disappearProgress < 1.0f ? s.disappearProgress : s.appearProgress;
         if (progress < 0.98f) return;
-        float contentScale = Math.max(0.1f, s.scale);
-        float iconScale = Math.max(0.1f, s.scale * 0.75f);
+        float contentScale = getContentScale(s);
+        float iconScale = Math.max(0.1f, contentScale * 0.75f);
         int iconColor = contentColor(s, 0xFFFFFFFF);
 
         ItemStack distanceStack = resolveItemStack(s.distanceIconItemId);
@@ -451,12 +484,12 @@ public class MrRenderer {
         if (s.alpha <= 0.01f) return;
         float progress = s.disappearProgress < 1.0f ? s.disappearProgress : s.appearProgress;
         if (progress <= 0.5f) return;
-        float boxProgress = Math.min(1.0f, (progress - 0.5f) / 0.5f);
+        float boxProgress = Math.min(1.0f, (progress - 0.35f) / 0.65f);
         drawCompressedCardContent(g, s, font, mc, boxProgress);
     }
 
     private void drawDisappearCardGeometry(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float dp) {
-        int outerWidth = Math.max(1, computeOuterLineWidth(s.cardHeight) - 1);
+        int outerWidth = Math.max(1, computeOuterLineWidth(getLineHeightBasis(s)) - 1);
         int innerWidth = 1;
 
         int alphaOuter = clampAlpha(s.distanceFadeAlpha * s.environmentAlphaFactor * 0.25f);
@@ -516,10 +549,10 @@ public class MrRenderer {
         int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
         int ax = (int) s.anchorX;
         int ay = (int) s.anchorY;
-        int outerRadius = computeOriginOuterRadius(s.scale);
-        int innerRadius = computeOriginInnerRadius(s.scale);
+        int outerRadius = computeOriginOuterRadius(getLineScale(s));
+        int innerRadius = computeOriginInnerRadius(getLineScale(s));
         drawRectOutline(batch, ax - outerRadius, ay - outerRadius, ax + outerRadius, ay + outerRadius,
-                computeOriginLineWidth(s.scale), colorOuter);
+                computeOriginLineWidth(getLineScale(s)), colorOuter);
         drawRectOutline(batch, ax - innerRadius, ay - innerRadius, ax + innerRadius, ay + innerRadius,
                 1, colorInner);
     }
@@ -531,7 +564,7 @@ public class MrRenderer {
 
         int colorOuter = (alphaOuter << 24) | (r << 16) | (gr << 8) | b;
         int colorInner = (alphaInner << 24) | (r << 16) | (gr << 8) | b;
-        int outerWidth = Math.max(1, computeOuterLineWidth(s.cardHeight) - 1);
+        int outerWidth = Math.max(1, computeOuterLineWidth(getLineHeightBasis(s)) - 1);
         int innerWidth = 1;
 
         int ax = (int) s.anchorX;
@@ -571,16 +604,19 @@ public class MrRenderer {
     }
 
     private void drawFocusProgressTether(GuiGeometryBatch batch, MrCardSnapshot s, int r, int gr, int b, float ap) {
-        if (!s.focusProgressActive || s.focusProgress <= 0.0f || ap <= 0.5f) return;
+        boolean focusedProgressVisible = s.isFocused && (s.focusProgressActive || s.focusExitProgressActive);
+        if ((!focusedProgressVisible && !s.focusProgressActive && !s.focusExitProgressActive) || ap <= 0.35f) return;
 
-        float progress = Math.max(0.0f, Math.min(1.0f, s.focusProgress));
+        float enterProgress = Math.max(0.0f, Math.min(1.0f, s.focusProgress));
+        float exitProgress = Math.max(0.0f, Math.min(1.0f, s.focusExitProgress));
+        float progress = s.focusExitProgressActive ? 1.0f - exitProgress : Math.max(enterProgress, s.isFocused ? 1.0f : 0.0f);
         float lineAlphaBase = Math.max(s.alpha, s.distanceFadeAlpha);
-        int alphaTrack = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.22f);
-        int alphaProgress = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.72f);
+        int alphaTrack = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.32f);
+        int alphaProgress = clampAlpha(lineAlphaBase * s.environmentAlphaFactor * 0.9f);
         int trackColor = (alphaTrack << 24) | (r << 16) | (gr << 8) | b;
         int progressColor = (alphaProgress << 24) | (r << 16) | (gr << 8) | b;
-        int trackWidth = Math.max(3, computeOuterLineWidth(s.cardHeight) + 3);
-        int progressWidth = Math.max(2, computeOuterLineWidth(s.cardHeight) + 1);
+        int trackWidth = Math.max(4, computeOuterLineWidth(getLineHeightBasis(s)) + 4);
+        int progressWidth = Math.max(3, computeOuterLineWidth(getLineHeightBasis(s)) + 2);
 
         int ax = (int) s.anchorX;
         int ay = (int) s.anchorY;
@@ -651,7 +687,7 @@ public class MrRenderer {
         int bottom = (int) (y + h);
         batch.fill(left, top, right, bottom, bgColor);
         if (boxProgress > 0.8f) {
-            int borderWidth = computeCardBorderWidth(s.scale);
+            int borderWidth = computeCardBorderWidth(getLineScale(s));
             drawInsetRectOutline(batch, left, top, right, bottom, borderWidth, borderColor);
         }
     }
@@ -671,7 +707,7 @@ public class MrRenderer {
             int barY = (int) (s.cardY + s.contentNameEndY);
             int barW = (int) s.healthBarFullWidth;
             int barFillW = (int) s.healthBarFillWidth;
-            int barH = Math.max(1, (int) (MrConstants.CONTENT_BAR_HEIGHT * s.scale));
+            int barH = Math.max(1, (int) (MrConstants.CONTENT_BAR_HEIGHT * getContentScale(s)));
             batch.fill(barX, barY, barX + barW, barY + barH, s.healthBarBgColor);
             batch.fill(barX, barY, barX + barFillW, barY + barH, s.healthBarColor);
         }
@@ -713,8 +749,8 @@ public class MrRenderer {
     }
 
     private void drawScaledCardContent(GuiGraphics g, MrCardSnapshot s, Font font, Minecraft mc) {
-        float contentScale = Math.max(0.1f, s.scale);
-        float statsScale = Math.max(0.1f, s.scale * 0.9f);
+        float contentScale = getContentScale(s);
+        float statsScale = Math.max(0.1f, contentScale * 0.9f);
         if (s.displayName != null) {
             drawScaledText(g, font, s.displayName, s.cardX + s.contentStartX, s.cardY + s.nameTextY, s.accentTextColor, true, contentScale);
         }
@@ -741,13 +777,13 @@ public class MrRenderer {
     private void drawFocusedDetailText(GuiGraphics g, MrCardSnapshot s, Font font) {
         int visibleChars = Math.max(0, Math.min(s.focusedDetailVisibleChars, s.focusedDetailText.length()));
         String visibleText = s.focusedDetailText.substring(0, visibleChars);
-        List<String> wrappedLines = wrapText(font, visibleText, Math.max(1, (int) ((s.cardWidth - s.contentStartX * 2.0f) / Math.max(0.1f, s.scale))));
+        float contentScale = getContentScale(s);
+        List<String> wrappedLines = wrapText(font, visibleText, Math.max(1, (int) ((s.cardWidth - s.contentStartX * 2.0f) / contentScale)));
         float x = s.cardX + s.contentStartX;
-        float y = s.cardY + s.contentStatsY + MrConstants.FONT_LINE_HEIGHT * s.scale + 8.0f * s.scale;
-        float contentScale = Math.max(0.1f, s.scale);
+        float y = s.cardY + s.contentStatsY + MrConstants.FONT_LINE_HEIGHT * contentScale + 8.0f * contentScale;
         for (String line : wrappedLines) {
             drawScaledText(g, font, line, x, y, s.textAlphaColor, false, contentScale);
-            y += Math.max(1.0f, MrConstants.FONT_LINE_HEIGHT * s.scale);
+            y += Math.max(1.0f, MrConstants.FONT_LINE_HEIGHT * contentScale);
         }
     }
 
@@ -805,6 +841,18 @@ public class MrRenderer {
         float scaled = height * MrConstants.NEON_OUTER_WIDTH_HEIGHT_RATIO;
         float clamped = Math.max(MrConstants.NEON_OUTER_WIDTH_MIN, Math.min(MrConstants.NEON_OUTER_WIDTH_MAX, scaled));
         return Math.max(1, Math.round(clamped));
+    }
+
+    private float getContentScale(MrCardSnapshot s) {
+        return Math.max(0.1f, s.contentScale > 0.0f ? s.contentScale : s.scale);
+    }
+
+    private float getLineScale(MrCardSnapshot s) {
+        return Math.max(0.1f, s.lineScale > 0.0f ? s.lineScale : getContentScale(s));
+    }
+
+    private float getLineHeightBasis(MrCardSnapshot s) {
+        return s.scale > 0.0f ? s.cardHeight * getLineScale(s) / s.scale : s.cardHeight;
     }
 
     private int computeInnerLineWidth(float height) {

@@ -8,33 +8,33 @@ import java.util.concurrent.Executors;
 public class TianshuThreadPool {
 
     private final IGameEnvironment env;
-    private final ExecutorService asrWorker;
-    private final ExecutorService llmWorker;
-    private final ExecutorService ttsWorker;
-    private final ExecutorService toolWorker;
+    private final ExecutorService voiceExecutor;
+    private final ExecutorService protocolExecutor;
+    private final ExecutorService audioExecutor;
+    private final ExecutorService toolExecutor;
 
     public TianshuThreadPool(IGameEnvironment env) {
         this.env = env;
 
-        this.asrWorker = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "Tianshu-ASR-Worker");
+        this.voiceExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "Tianshu-Voice-Executor");
             t.setDaemon(true);
             return t;
         });
 
-        this.llmWorker = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "Tianshu-LLM-Worker");
+        this.protocolExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "Tianshu-Protocol-Executor");
             t.setDaemon(true);
             return t;
         });
 
-        this.ttsWorker = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "Tianshu-TTS-Worker");
+        this.audioExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "Tianshu-Audio-Executor");
             t.setDaemon(true);
             return t;
         });
 
-        this.toolWorker = Executors.newCachedThreadPool(r -> {
+        this.toolExecutor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "Tianshu-Tool-Worker");
             t.setDaemon(true);
             return t;
@@ -43,27 +43,27 @@ public class TianshuThreadPool {
         env.info("天枢线程池初始化完成");
     }
 
-    public ExecutorService getAsrWorker() {
-        return asrWorker;
+    public ExecutorService getVoiceExecutor() {
+        return voiceExecutor;
     }
 
-    public ExecutorService getLlmWorker() {
-        return llmWorker;
+    public ExecutorService getProtocolExecutor() {
+        return protocolExecutor;
     }
 
-    public ExecutorService getTtsWorker() {
-        return ttsWorker;
+    public ExecutorService getAudioExecutor() {
+        return audioExecutor;
     }
 
-    public ExecutorService getToolWorker() {
-        return toolWorker;
+    public ExecutorService getToolExecutor() {
+        return toolExecutor;
     }
 
     public void shutdown() {
         env.info("关闭天枢线程池");
-        asrWorker.shutdown();
-        llmWorker.shutdown();
-        ttsWorker.shutdown();
-        toolWorker.shutdown();
+        voiceExecutor.shutdown();
+        protocolExecutor.shutdown();
+        audioExecutor.shutdown();
+        toolExecutor.shutdown();
     }
 }

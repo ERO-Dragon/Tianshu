@@ -78,6 +78,10 @@ public class GuiGeometryBatch {
     }
 
     public void flush(GuiGraphics g) {
+        flush(g, 0.0f);
+    }
+
+    public void flush(GuiGraphics g, float z) {
         if (rectCount == 0) return;
         Matrix4f matrix = g.pose().last().pose();
         VertexConsumer consumer = g.bufferSource().getBuffer(RenderType.gui());
@@ -88,10 +92,10 @@ public class GuiGeometryBatch {
             int right = rectData[index + 2];
             int bottom = rectData[index + 3];
             int color = rectData[index + 4];
-            consumer.addVertex(matrix, left, top, 0.0f).setColor(color);
-            consumer.addVertex(matrix, left, bottom, 0.0f).setColor(color);
-            consumer.addVertex(matrix, right, bottom, 0.0f).setColor(color);
-            consumer.addVertex(matrix, right, top, 0.0f).setColor(color);
+            consumer.addVertex(matrix, left, top, z).setColor(color);
+            consumer.addVertex(matrix, left, bottom, z).setColor(color);
+            consumer.addVertex(matrix, right, bottom, z).setColor(color);
+            consumer.addVertex(matrix, right, top, z).setColor(color);
         }
         g.flush();
         rectCount = 0;

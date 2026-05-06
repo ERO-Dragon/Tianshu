@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.client.ir;
 
-import com.rheinmetal.tianshu.ir.IRBaseUtils;
-import com.rheinmetal.tianshu.ir.ItemContextProvider;
+import com.rheinmetal.tianshu.function.ir.core.IRBaseUtils;
+import com.rheinmetal.tianshu.function.ir.core.ItemContextProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;

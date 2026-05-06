@@ -29,8 +29,6 @@ public final class CraftingGraphController {
     private final CraftingGraphEngine engine;
     private final CraftingGraphRenderer renderer;
     private final CraftingGraphStorage storage;
-    private CraftingGraphSaveData pendingRecovery;
-    private boolean recoveryPromptVisible;
     private boolean recoveryChecked;
     private String activeTopPanel;
     private float topPanelProgress;
@@ -57,6 +55,9 @@ public final class CraftingGraphController {
     private double lastPolledMouseX;
     private double lastPolledMouseY;
     private boolean ignoreInteractionKeyUntilReleased;
+    private boolean gameExpandedState;
+    private boolean containerExpandedState = true;
+    private boolean inContainerGraphContext;
     private BooleanSupplier interactionKeyDown = () -> GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(), GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS;
     private IntPredicate interactionKeyMatches = keyCode -> keyCode == GLFW.GLFW_KEY_TAB;
 
@@ -114,25 +115,15 @@ public final class CraftingGraphController {
         }
 
         if (containerScreen) {
-            gameTemporaryEdit = false;
-            gameEditScreenRequested = false;
-            ensureGameCursorGrabbed();
-            if (engine.getMode() != CraftingGraphInteractionMode.LOCKED) engine.setHeld(engine.isExpanded());
-        } else if (outerGame && (gameEditScreenRequested || gameTemporaryEdit)) {
-            engine.setHeld(true);
-        } else if (!engine.isExpanded()) {
-            ensureGameCursorGrabbed();
-            engine.setHeld(false);
+            enterContainerGraphContext();
+        } else {
+            leaveContainerGraphContext(outerGame);
         }
-        if (engine.getMode() == CraftingGraphInteractionMode.LOCKED && outerGame) {
-            engine.setExpanded(true);
-            ensureGameCursorReleased();
-        } else if (gameTemporaryEdit && outerGame) {
-            ensureGameCursorReleased();
-        } else if (engine.getMode() != CraftingGraphInteractionMode.LOCKED) {
-            ensureGameCursorGrabbed();
+
+        if (outerGame) {
+            updateOuterGameGraphContext();
         }
-        checkRecoveryPrompt();
+        checkCrashRecovery();
         updateTopPanelProgress();
         updateFavoriteState();
         engine.tick();
@@ -140,7 +131,6 @@ public final class CraftingGraphController {
     }
 
     public CraftingGraphRenderer getRenderer() {
-        renderer.setRecoveryPromptVisible(recoveryPromptVisible);
         renderer.setTopPanel(activeTopPanel, topPanelProgress);
         renderer.setTopPanelEntries(topPanelEntries, topPanelScroll);
         renderer.setCurrentTreeFavorited(currentTreeFavorited);
@@ -183,7 +173,7 @@ public final class CraftingGraphController {
     }
 
     public void resumeGraph() {
-        engine.setExpanded(true);
+        recoveryChecked = false;
     }
 
     public void setInteractionKey(BooleanSupplier interactionKeyDown, IntPredicate interactionKeyMatches) {
@@ -195,6 +185,46 @@ public final class CraftingGraphController {
         if (storage != null) storage.shutdown();
     }
 
+    private void enterContainerGraphContext() {
+        if (!inContainerGraphContext) {
+            gameExpandedState = engine.isExpanded();
+            engine.setExpanded(containerExpandedState);
+            inContainerGraphContext = true;
+        }
+        gameTemporaryEdit = false;
+        gameEditScreenRequested = false;
+        ensureGameCursorGrabbed();
+        if (engine.getMode() != CraftingGraphInteractionMode.LOCKED) engine.setHeld(engine.isExpanded());
+    }
+
+    private void leaveContainerGraphContext(boolean outerGame) {
+        if (inContainerGraphContext) {
+            containerExpandedState = engine.isExpanded();
+            engine.setExpanded(gameExpandedState);
+            inContainerGraphContext = false;
+        }
+        if (!outerGame && engine.getMode() != CraftingGraphInteractionMode.LOCKED) {
+            engine.setHeld(false);
+        }
+    }
+
+    private void updateOuterGameGraphContext() {
+        if (gameEditScreenRequested || gameTemporaryEdit) {
+            engine.setHeld(true);
+        } else if (!engine.isExpanded()) {
+            ensureGameCursorGrabbed();
+            engine.setHeld(false);
+        }
+        if (engine.getMode() == CraftingGraphInteractionMode.LOCKED) {
+            engine.setExpanded(true);
+            ensureGameCursorReleased();
+        } else if (gameTemporaryEdit) {
+            ensureGameCursorReleased();
+        } else {
+            ensureGameCursorGrabbed();
+        }
+    }
+
     private void scheduleCrashRecoverySave() {
         if (storage == null || !engine.isDirty()) return;
         long now = System.currentTimeMillis();
@@ -204,15 +234,16 @@ public final class CraftingGraphController {
         }
     }
 
-    private void checkRecoveryPrompt() {
+    private void checkCrashRecovery() {
         if (recoveryChecked || storage == null || !engine.isEmpty()) return;
         recoveryChecked = true;
         try {
             CraftingGraphSaveData data = storage.loadCrashRecovery();
             if (data != null && data.nodes != null && !data.nodes.isEmpty()) {
-                pendingRecovery = data;
-                recoveryPromptVisible = true;
-                engine.setExpanded(true);
+                engine.restoreSaveData(data);
+                engine.setExpanded(false);
+                engine.setHeld(false);
+                engine.markClean();
             }
         } catch (Exception ignored) {
         }
@@ -265,23 +296,6 @@ public final class CraftingGraphController {
         if (currentTreeFavorited && !previousDirty && dirty) currentTreeFavorited = false;
         if (engine.isEmpty()) currentTreeFavorited = false;
         previousDirty = dirty;
-    }
-
-    private void acceptRecovery() {
-        if (pendingRecovery == null) return;
-        engine.restoreSaveData(pendingRecovery);
-        engine.markDirty();
-        pendingRecovery = null;
-        recoveryPromptVisible = false;
-    }
-
-    private void dismissRecovery() {
-        pendingRecovery = null;
-        recoveryPromptVisible = false;
-        try {
-            if (storage != null) storage.deleteCrashRecovery();
-        } catch (Exception ignored) {
-        }
     }
 
     private void saveFavorite() {
@@ -346,18 +360,6 @@ public final class CraftingGraphController {
             rightMouseDown = true;
             lastPolledMouseX = mouseX;
             lastPolledMouseY = mouseY;
-        }
-
-        if (recoveryPromptVisible && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            if (renderer.hitRecoveryAcceptButton(mouseX, mouseY)) {
-                acceptRecovery();
-                return true;
-            }
-            if (renderer.hitRecoveryDismissButton(mouseX, mouseY)) {
-                dismissRecovery();
-                return true;
-            }
-            return true;
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
@@ -435,11 +437,18 @@ public final class CraftingGraphController {
 
             RecipePanelNode pickerNode = engine.hitOpenRecipePicker(worldX, worldY);
             if (pickerNode != null) {
+                if (!pickerNode.canSwitchRecipe()) return true;
                 int recipeIndex = engine.hitRecipePickerEntry(pickerNode, worldX, worldY);
                 if (recipeIndex >= 0) {
                     engine.selectRecipeFromPicker(pickerNode, recipeIndex);
                     markTreeChanged();
                 }
+                return true;
+            }
+            RecipePanelNode categoryNode = engine.hitNode(worldX, worldY);
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && categoryNode != null && !categoryNode.canSwitchRecipe()) return true;
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && categoryNode != null && engine.hitRecipeCategory(categoryNode, worldX, worldY)) {
+                markTreeChanged();
                 return true;
             }
             SlotHitResult slot = engine.hitSlot(worldX, worldY);
@@ -450,7 +459,6 @@ public final class CraftingGraphController {
                 GraphExpansionDirection direction = button == GLFW.GLFW_MOUSE_BUTTON_RIGHT ? GraphExpansionDirection.USAGE : GraphExpansionDirection.SOURCE;
                 RecipePanelNode expanded = engine.expandFromSlot(slot.getNodeUuid(), slot.getSlot(), itemId, displayName, direction, System.currentTimeMillis());
                 if (expanded != null) {
-                    engine.focusNodeByUuid(expanded.getUuid(), mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight(), System.currentTimeMillis());
                     markTreeChanged();
                 }
                 return true;
@@ -458,7 +466,7 @@ public final class CraftingGraphController {
             RecipePanelNode node = engine.hitNode(worldX, worldY);
             if (node != null) {
                 if (engine.hitRecipePickerButton(node, worldX, worldY)) {
-                    engine.toggleRecipePicker(node);
+                    if (node.canSwitchRecipe()) engine.toggleRecipePicker(node);
                     return true;
                 }
                 if (engine.hitPreviousRecipe(node, worldX, worldY)) {
@@ -802,10 +810,9 @@ public final class CraftingGraphController {
         engine.createSingleRootGraph(itemId, displayName, nodeType, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
         engine.setExpanded(true);
         engine.setHeld(true);
-        engine.toggleLocked(true);
         gameTemporaryEdit = false;
         gameEditScreenRequested = false;
-        ignoreInteractionKeyUntilReleased = interactionKeyDown.getAsBoolean();
+        ignoreInteractionKeyUntilReleased = true;
         graphKeyboardFocused = true;
         markTreeChanged();
         return true;

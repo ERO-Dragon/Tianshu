@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.EnvSetupManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.core.Engine.AsrEngine;
+import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.ModelManager;

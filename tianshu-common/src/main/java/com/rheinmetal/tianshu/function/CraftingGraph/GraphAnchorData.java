@@ -37,11 +37,15 @@ public final class GraphAnchorData {
         return new GraphAnchorData(
                 GraphAnchorKind.SLOT_CENTER,
                 slot != null ? slot.getType() : null,
-                node.getX() + 10.0f + slot.getX() + 8.0f,
-                node.getY() + 24.0f + slot.getY() + 8.0f,
+                node.getX() + CraftingGraphConstants.NODE_CONTENT_X + slot.getX() + 8.0f,
+                node.getY() + CraftingGraphConstants.NODE_CONTENT_Y + slot.getY() + 8.0f,
                 offsetX,
                 offsetY
         );
+    }
+
+    public GraphAnchorData moved(float dx, float dy) {
+        return new GraphAnchorData(kind, slotType, x + dx, y + dy, offsetX, offsetY);
     }
 
     public GraphAnchorKind getKind() { return kind; }

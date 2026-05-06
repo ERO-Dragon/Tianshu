@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.client.ir;
 
 import com.mojang.logging.LogUtils;
-import com.rheinmetal.tianshu.ir.IntentKeywordLoader;
+import com.rheinmetal.tianshu.function.ir.core.IntentKeywordLoader;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;

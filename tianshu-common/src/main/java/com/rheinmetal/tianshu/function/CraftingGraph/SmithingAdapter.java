@@ -23,7 +23,7 @@ public final class SmithingAdapter implements RecipeAdapter {
         for (int i = 0; i < ingredients.size() && i < 3; i++) {
             slots.add(new SlotViewData(ingredients.get(i), SlotViewType.INPUT, startX + i * step, 30.0f));
         }
-        slots.add(new SlotViewData(recipe.getResult(), SlotViewType.OUTPUT, 112.0f, 30.0f));
-        return new UniversalRecipeViewModel(recipe.getRecipeId(), recipe.getRecipeType(), slots, 146.0f, 72.0f);
+        slots.add(new SlotViewData(recipe.getResult(), SlotViewType.OUTPUT, 104.0f, 30.0f));
+        return new UniversalRecipeViewModel(recipe.getRecipeId(), recipe.getRecipeType(), slots, 138.0f, 72.0f);
     }
 }

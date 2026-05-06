@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.client.ir;
 
-import com.rheinmetal.tianshu.ir.IRSnapshot;
+import com.rheinmetal.tianshu.function.ir.core.IRSnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.locale.Language;
 

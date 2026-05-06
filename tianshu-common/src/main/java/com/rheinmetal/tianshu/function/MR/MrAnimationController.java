@@ -20,6 +20,14 @@ public class MrAnimationController {
         this.staggerReady = false;
     }
 
+    public void restartAppear() {
+        state = STATE_APPEARING;
+        appearProgress = 0.0f;
+        disappearProgress = 1.0f;
+        staggerTimer = 0.0f;
+        staggerReady = true;
+    }
+
     public void triggerDisappear() {
         if (state == STATE_DEAD || state == STATE_DISAPPEARING) return;
         state = STATE_DISAPPEARING;

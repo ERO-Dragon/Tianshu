@@ -30,7 +30,7 @@ public final class FallbackLinearAdapter implements RecipeAdapter {
             slots.add(new SlotViewData(ingredients.get(i), SlotViewType.INPUT, inputX + col * step, inputY + row * step));
         }
 
-        slots.add(new SlotViewData(recipe.getResult(), SlotViewType.OUTPUT, 116.0f, 38.0f));
-        return new UniversalRecipeViewModel(recipe.getRecipeId(), recipe.getRecipeType(), slots, 150.0f, 82.0f);
+        slots.add(new SlotViewData(recipe.getResult(), SlotViewType.OUTPUT, 108.0f, 38.0f));
+        return new UniversalRecipeViewModel(recipe.getRecipeId(), recipe.getRecipeType(), slots, 142.0f, 82.0f);
     }
 }

@@ -2,11 +2,13 @@ package com.rheinmetal.tianshu.platform.provider;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
+import com.rheinmetal.tianshu.function.MR.MrConstants;
 import com.rheinmetal.tianshu.snapshot.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -14,9 +16,13 @@ import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -306,7 +312,236 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         if (mc.crosshairPickEntity != null) {
             return mc.crosshairPickEntity.getUUID().toString();
         }
+        Entity entity = resolveManualFocusEntity(mc, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        return entity != null ? entity.getUUID().toString() : null;
+    }
+
+    @Override
+    public String getCrosshairTargetKey() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return null;
+        Entity entity = resolveManualFocusEntity(mc, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        if (entity != null) return entity.getUUID().toString();
+        BlockHitResult blockHit = resolveManualFocusBlock(mc, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        if (blockHit == null || blockHit.getType() == HitResult.Type.MISS) return null;
+        BlockPos pos = blockHit.getBlockPos();
+        BlockState blockState = mc.level.getBlockState(pos);
+        if (blockState.isAir()) return null;
+        return "block:" + mc.level.dimension().location() + ":" + pos.getX() + ":" + pos.getY() + ":" + pos.getZ();
+    }
+
+    @Override
+    public MrManualFocusTargetData getManualFocusTarget(double range) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return null;
+        double focusRange = Math.max(4.0, range);
+        BlockHitResult blockHit = resolveManualFocusBlock(mc, focusRange);
+        Entity entity = resolveManualFocusEntity(mc, focusRange, blockHit);
+        if (entity instanceof LivingEntity living) {
+            return buildManualFocusEntityTarget(mc, living);
+        }
+        if (blockHit != null && blockHit.getType() != HitResult.Type.MISS) {
+            return buildManualFocusBlockTarget(mc, blockHit);
+        }
         return null;
+    }
+
+    @Override
+    public MrManualFocusTargetData refreshManualFocusTarget(MrManualFocusTargetData currentTarget, double range) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null || currentTarget == null) return currentTarget;
+        if (currentTarget.getType() == MrManualFocusTargetData.TargetType.BLOCK) {
+            BlockHitResult blockHit = resolveBlockHitForFocusedBlock(mc, currentTarget, Math.max(4.0, range));
+            if (blockHit != null && blockHit.getType() != HitResult.Type.MISS) {
+                MrManualFocusTargetData refreshed = buildManualFocusBlockTarget(mc, blockHit);
+                if (refreshed != null && currentTarget.getUuid().equals(refreshed.getUuid())) return refreshed;
+            }
+            return rebuildBlockTargetFromStoredAnchor(mc, currentTarget);
+        }
+        Entity entity = resolveEntityByUuid(mc, currentTarget.getUuid());
+        if (entity instanceof LivingEntity living) return buildManualFocusEntityTarget(mc, living);
+        return currentTarget;
+    }
+
+    private Entity resolveEntityByUuid(Minecraft mc, String uuid) {
+        if (mc.level == null || uuid == null || uuid.isEmpty()) return null;
+        for (Entity entity : mc.level.entitiesForRendering()) {
+            if (uuid.equals(entity.getUUID().toString())) return entity;
+        }
+        double range = Math.max(4.0, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        AABB searchBox = mc.player.getBoundingBox().inflate(range);
+        for (Entity entity : mc.level.getEntities((Entity) null, searchBox, e -> e instanceof LivingEntity)) {
+            if (uuid.equals(entity.getUUID().toString())) return entity;
+        }
+        return null;
+    }
+
+    private Entity resolveManualFocusEntity(Minecraft mc, double range) {
+        return resolveManualFocusEntity(mc, range, null);
+    }
+
+    private Entity resolveManualFocusEntity(Minecraft mc, double range, BlockHitResult blockHitLimit) {
+        if (mc.player == null || mc.level == null) return null;
+        if (mc.hitResult instanceof EntityHitResult entityHit) return entityHit.getEntity();
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 look = mc.player.getLookAngle();
+        double maxEntityDistance = range;
+        if (blockHitLimit != null && blockHitLimit.getType() != HitResult.Type.MISS) {
+            maxEntityDistance = Math.max(0.0, eye.distanceTo(blockHitLimit.getLocation()) - 0.08);
+        }
+        AABB searchBox = mc.player.getBoundingBox().expandTowards(look.scale(maxEntityDistance)).inflate(0.35);
+        Entity bestEntity = null;
+        double bestDistance = maxEntityDistance * maxEntityDistance;
+        double bestAimError = 0.018;
+        for (Entity entity : mc.level.getEntities((Entity) null, searchBox, e -> e != mc.player && !(e instanceof Player) && e instanceof LivingEntity)) {
+            AABB box = entity.getBoundingBox().inflate(0.12);
+            Optional<Vec3> hit = box.clip(eye, eye.add(look.x * maxEntityDistance, look.y * maxEntityDistance, look.z * maxEntityDistance));
+            if (hit.isEmpty()) continue;
+            double distance = eye.distanceToSqr(hit.get());
+            Vec3 toHit = hit.get().subtract(eye);
+            double length = toHit.length();
+            if (length <= 0.001) continue;
+            Vec3 normalized = toHit.scale(1.0 / length);
+            double aimError = 1.0 - normalized.dot(look);
+            if (aimError > bestAimError) continue;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestEntity = entity;
+                bestAimError = Math.max(0.004, aimError + 0.002);
+            }
+        }
+        return bestEntity;
+    }
+
+    private BlockHitResult resolveManualFocusBlock(Minecraft mc, double range) {
+        if (mc.hitResult instanceof BlockHitResult blockHit && blockHit.getType() != HitResult.Type.MISS) return blockHit;
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 look = mc.player.getLookAngle();
+        Vec3 end = eye.add(look.x * range, look.y * range, look.z * range);
+        return mc.level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
+    }
+
+    private BlockHitResult resolveBlockHitForFocusedBlock(Minecraft mc, MrManualFocusTargetData target, double range) {
+        BlockPos focusedPos = parseBlockTargetPos(target);
+        if (focusedPos == null) return null;
+        BlockHitResult directHit = resolveManualFocusBlock(mc, range);
+        if (directHit != null && directHit.getType() != HitResult.Type.MISS && focusedPos.equals(directHit.getBlockPos())) return directHit;
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 anchor = new Vec3(target.getWorldX(), target.getWorldY(), target.getWorldZ());
+        Vec3 direction = anchor.subtract(eye);
+        double length = direction.length();
+        if (length <= 0.001) return null;
+        Vec3 end = eye.add(direction.scale(Math.min(range, length + 0.25) / length));
+        BlockHitResult anchoredHit = mc.level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
+        if (anchoredHit != null && anchoredHit.getType() != HitResult.Type.MISS && focusedPos.equals(anchoredHit.getBlockPos())) return anchoredHit;
+        return null;
+    }
+
+    private MrManualFocusTargetData rebuildBlockTargetFromStoredAnchor(Minecraft mc, MrManualFocusTargetData target) {
+        BlockPos pos = parseBlockTargetPos(target);
+        if (pos == null) return target;
+        BlockState blockState = mc.level.getBlockState(pos);
+        if (blockState.isAir()) return target;
+        String blockId = blockState.getBlockHolder().getRegisteredName();
+        String displayName = LocalizationHelper.safeGetDisplayName(blockState.getBlock().getName().getString());
+        Vec3 playerPos = mc.player.position();
+        double relX = target.getWorldX() - playerPos.x;
+        double relY = target.getWorldY() - playerPos.y;
+        double relZ = target.getWorldZ() - playerPos.z;
+        double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
+        String detail = buildBlockDetailText(mc, pos, blockState, blockId, displayName, distance);
+        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.BLOCK, target.getUuid(), blockId, displayName, relX, relY, relZ, target.getWorldX(), target.getWorldY(), target.getWorldZ(), distance, 0.0f, 0.0f, 0.0f, 0.0f, null, false, true, 1.0f, 0.0f, detail);
+    }
+
+    private BlockPos parseBlockTargetPos(MrManualFocusTargetData target) {
+        if (target == null || target.getUuid() == null || !target.getUuid().startsWith("block:")) return null;
+        String[] parts = target.getUuid().split(":");
+        if (parts.length < 6) return null;
+        try {
+            int x = Integer.parseInt(parts[parts.length - 3]);
+            int y = Integer.parseInt(parts[parts.length - 2]);
+            int z = Integer.parseInt(parts[parts.length - 1]);
+            return new BlockPos(x, y, z);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private MrManualFocusTargetData buildManualFocusEntityTarget(Minecraft mc, LivingEntity living) {
+        Player player = mc.player;
+        Vec3 playerPos = player.position();
+        double worldX = living.getX();
+        double worldY = living.getY() + living.getEyeHeight() * 0.8;
+        double worldZ = living.getZ();
+        double relX = worldX - playerPos.x;
+        double relY = worldY - playerPos.y;
+        double relZ = worldZ - playerPos.z;
+        double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
+        String entityId = living.getType().toString();
+        String uuid = living.getUUID().toString();
+        String mainHandItemId = null;
+        net.minecraft.world.item.ItemStack mainHand = living.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
+        if (!mainHand.isEmpty()) {
+            mainHandItemId = BuiltInRegistries.ITEM.getKey(mainHand.getItem()).toString();
+        }
+        float attackDamage = 0f;
+        var attackAttr = living.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+        if (attackAttr != null) attackDamage = (float) attackAttr.getValue();
+        float armorValue = 0f;
+        var armorAttr = living.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
+        if (armorAttr != null) armorValue = (float) armorAttr.getValue();
+        String detailText = "ENTITY " + living.getName().getString()
+                + "\nID " + entityId
+                + "\nUUID " + shortUuid(uuid)
+                + "\nHP " + String.format("%.1f/%.1f", living.getHealth(), living.getMaxHealth())
+                + "  DIST " + String.format("%.1fm", distance)
+                + "\nATK " + String.format("%.1f", attackDamage)
+                + "  ARM " + String.format("%.1f", armorValue)
+                + "  TYPE " + (living instanceof Enemy ? "HOSTILE" : "NEUTRAL")
+                + "\nPOS " + String.format("%.1f %.1f %.1f", relX, relY, relZ);
+        if (mainHandItemId != null && !mainHandItemId.isEmpty()) {
+            detailText += "\nMAIN " + mainHandItemId;
+        }
+        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.ENTITY, uuid, entityId, living.getName().getString(), relX, relY, relZ, worldX, worldY, worldZ, distance, living.getHealth(), living.getMaxHealth(), attackDamage, armorValue, mainHandItemId, living instanceof Enemy, true, living.getBbHeight(), living.getEyeHeight(), detailText);
+    }
+
+    private String buildBlockDetailText(Minecraft mc, BlockPos pos, BlockState blockState, String blockId, String displayName, double distance) {
+        StringBuilder detail = new StringBuilder();
+        detail.append("BLOCK ").append(displayName);
+        detail.append("\nID ").append(blockId);
+        detail.append("\nPOS ").append(pos.getX()).append(" ").append(pos.getY()).append(" ").append(pos.getZ());
+        detail.append("  DIST ").append(String.format("%.1fm", distance));
+        for (Property<?> property : blockState.getProperties()) {
+            Comparable<?> value = blockState.getValue(property);
+            detail.append("\nSTATE ").append(property.getName()).append("=").append(value);
+        }
+        BlockEntity blockEntity = mc.level.getBlockEntity(pos);
+        if (blockEntity != null) {
+            detail.append("\nBLOCK_ENTITY YES");
+        }
+        return detail.toString();
+    }
+
+    private MrManualFocusTargetData buildManualFocusBlockTarget(Minecraft mc, BlockHitResult blockHit) {
+        BlockPos pos = blockHit.getBlockPos();
+        BlockState blockState = mc.level.getBlockState(pos);
+        if (blockState.isAir()) return null;
+        String blockId = blockState.getBlockHolder().getRegisteredName();
+        String displayName = LocalizationHelper.safeGetDisplayName(blockState.getBlock().getName().getString());
+        Vec3 hitLocation = blockHit.getLocation();
+        Vec3 playerPos = mc.player.position();
+        double relX = hitLocation.x - playerPos.x;
+        double relY = hitLocation.y - playerPos.y;
+        double relZ = hitLocation.z - playerPos.z;
+        double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
+        String uuid = "block:" + mc.level.dimension().location() + ":" + pos.getX() + ":" + pos.getY() + ":" + pos.getZ();
+        String detail = buildBlockDetailText(mc, pos, blockState, blockId, displayName, distance);
+        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.BLOCK, uuid, blockId, displayName, relX, relY, relZ, hitLocation.x, hitLocation.y, hitLocation.z, distance, 0.0f, 0.0f, 0.0f, 0.0f, null, false, true, 1.0f, 0.0f, detail);
+    }
+
+    private String shortUuid(String uuid) {
+        if (uuid == null || uuid.isEmpty()) return "unknown";
+        return uuid.length() <= 8 ? uuid : uuid.substring(0, 8);
     }
 
     private boolean isHighValueBlock(String blockId) {

@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
 import com.rheinmetal.tianshu.provider.IPlayerStateProvider;
 import com.rheinmetal.tianshu.provider.IRenderContextProvider;
 import com.rheinmetal.tianshu.snapshot.MatrixSnapshot;
+import com.rheinmetal.tianshu.snapshot.MrManualFocusTargetData;
 import com.rheinmetal.tianshu.snapshot.NearbyEntityData;
 import com.rheinmetal.tianshu.snapshot.PositionData;
 import com.rheinmetal.tianshu.snapshot.WorldEnvironmentData;
@@ -45,6 +46,11 @@ public class MrEngine {
     private float focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
     private int debugTickCounter = 0;
     private String lastGazeUuid = null;
+    private MrManualFocusTargetData manualFocusPreviewTarget = null;
+    private float manualFocusPreviewProgress = 0.0f;
+    private boolean scanningCardsEnabled = true;
+    private boolean focusInteractionEnabled = true;
+    private MrManualFocusTargetData manualFocusTarget = null;
 
     private volatile boolean running = false;
     private volatile boolean closing = false;
@@ -241,6 +247,7 @@ public class MrEngine {
         boolean hasLastSeenAnchor = false;
         boolean wasOcclusionVisible = true;
         String focusedDetailText = "";
+        String fixedDetailText = null;
         float focusedDetailVisibleChars = 0.0f;
         boolean focusedDetailOutputFinished = false;
         float layoutOffsetX = 0.0f;
@@ -330,10 +337,120 @@ public class MrEngine {
         gazeTimer = 0.0f;
         focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
         lastGazeUuid = null;
+        manualFocusPreviewTarget = null;
+        manualFocusPreviewProgress = 0.0f;
+        focusInteractionEnabled = true;
+        scanningCardsEnabled = true;
+        manualFocusTarget = null;
         initialStaggerDone = false;
         initialStaggerIndex = 0;
         debugTickCounter = 0;
         debugLog("start state=" + stateMachine.getState() + " running=" + running + " range=" + MrConstants.MR_RANGE);
+    }
+
+    public void setScanningCardsEnabled(boolean enabled) {
+        scanningCardsEnabled = enabled;
+        if (enabled && running && !closing && !stateMachine.isFocusing()) {
+            stateMachine.transitionToScanning();
+        }
+    }
+
+    public boolean isScanningCardsEnabled() {
+        return scanningCardsEnabled;
+    }
+
+    public void setFocusInteractionEnabled(boolean enabled) {
+        if (focusInteractionEnabled == enabled) return;
+        focusInteractionEnabled = enabled;
+        clearManualFocusPreview();
+        resetGazeTimers();
+        if (!enabled && stateMachine.isFocusing()) {
+            manualFocusTarget = null;
+            focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+            if (running && !closing) {
+                stateMachine.transitionToScanning();
+            }
+        }
+    }
+
+    public boolean isFocusInteractionEnabled() {
+        return focusInteractionEnabled;
+    }
+
+    public void startManualFocus(MrManualFocusTargetData target, boolean includeBackgroundCards) {
+        if (!focusInteractionEnabled) return;
+        if (target == null || target.getUuid() == null || target.getUuid().isEmpty()) return;
+        clearManualFocusPreview();
+        closing = false;
+        running = true;
+        scanningCardsEnabled = includeBackgroundCards;
+        manualFocusTarget = target;
+        stateMachine.forceFocusing(target.getUuid());
+        focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+        aimWarmupTimer = 0.0f;
+        gazeTimer = 0.0f;
+        lastGazeUuid = null;
+        TrackedCard tracked = activeCards.get(target.getUuid());
+        boolean created = false;
+        if (tracked == null) {
+            tracked = new TrackedCard(target.getUuid());
+            activeCards.put(target.getUuid(), tracked);
+            created = true;
+        }
+        updateFixedFocusedDetailText(tracked, target.getDetailText(), 0.0f);
+        if (created || tracked.animation.isFullyDead()) {
+            tracked.animation.restartAppear();
+            tracked.layout.reset();
+            tracked.visualScaleFactor = 1.0f;
+            tracked.visualAlphaFactor = 1.0f;
+            tracked.focusedDetailVisibleChars = 0.0f;
+            tracked.focusedDetailOutputFinished = false;
+        } else {
+            tracked.animation.recoverAppear();
+        }
+        debugLog("manualFocus target=" + target.getUuid() + " background=" + includeBackgroundCards);
+    }
+
+    public void clearManualFocusTarget() {
+        manualFocusTarget = null;
+    }
+
+    public void previewManualFocusProgress(MrManualFocusTargetData target, boolean includeBackgroundCards, float progress) {
+        if (!focusInteractionEnabled) {
+            clearManualFocusPreview();
+            return;
+        }
+        if (target == null || target.getUuid() == null || target.getUuid().isEmpty()) {
+            clearManualFocusPreview();
+            return;
+        }
+        closing = false;
+        running = true;
+        scanningCardsEnabled = includeBackgroundCards;
+        manualFocusPreviewTarget = target;
+        manualFocusPreviewProgress = Math.max(0.0f, Math.min(1.0f, progress));
+        manualFocusTarget = null;
+        if (includeBackgroundCards && !stateMachine.isFocusing()) {
+            stateMachine.transitionToScanning();
+        }
+    }
+
+    public void clearManualFocusPreview() {
+        manualFocusPreviewTarget = null;
+        manualFocusPreviewProgress = 0.0f;
+    }
+
+    public void cancelManualFocus() {
+        manualFocusTarget = null;
+        beginClosing();
+    }
+
+    public boolean hasManualFocusTarget() {
+        return manualFocusTarget != null;
+    }
+
+    public boolean hasManualFocusPreview() {
+        return manualFocusPreviewTarget != null && manualFocusPreviewProgress > 0.0f;
     }
 
     public void stop() {
@@ -347,6 +464,11 @@ public class MrEngine {
         gazeTimer = 0.0f;
         focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
         lastGazeUuid = null;
+        manualFocusPreviewTarget = null;
+        manualFocusPreviewProgress = 0.0f;
+        focusInteractionEnabled = true;
+        scanningCardsEnabled = true;
+        manualFocusTarget = null;
         initialStaggerDone = false;
         initialStaggerIndex = 0;
         debugTickCounter = 0;
@@ -361,6 +483,8 @@ public class MrEngine {
         gazeTimer = 0.0f;
         focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
         lastGazeUuid = null;
+        manualFocusPreviewTarget = null;
+        manualFocusPreviewProgress = 0.0f;
         for (TrackedCard tracked : activeCards.values()) {
             tracked.animation.triggerDisappear();
         }
@@ -386,7 +510,7 @@ public class MrEngine {
         }
 
         tickEntities.clear();
-        if (!closing) {
+        if (!closing && scanningCardsEnabled) {
             tickEntities.addAll(environmentProvider.getNearbyEntities(MrConstants.MR_RANGE));
         }
         List<NearbyEntityData> entities = tickEntities;
@@ -419,7 +543,9 @@ public class MrEngine {
 
         currentUuids.clear();
         frameSnapshots.clear();
-        Set<String> selectedUuids = selectVisibleCardUuids(entities, playerPos, projData, mvData, matrixProjectionAvailable, screenW, screenH);
+        Set<String> selectedUuids = scanningCardsEnabled
+                ? selectVisibleCardUuids(entities, playerPos, projData, mvData, matrixProjectionAvailable, screenW, screenH)
+                : Collections.emptySet();
         buildVisibleEntityScreenRects(entities, playerPos, projData, mvData, matrixProjectionAvailable, selectedUuids, screenW, screenH, entityScreenRects);
         suppressUnselectedCards(selectedUuids);
         for (TrackedCard tracked : activeCards.values()) {
@@ -443,16 +569,24 @@ public class MrEngine {
             double entityWorldZ = playerPos.getZ() + entity.getRelativeZ();
 
             float[] screenPos = null;
-            if (matrixProjectionAvailable && entityInView) {
-                screenPos = MrProjector.project(
-                        entityWorldX, entityWorldY, entityWorldZ,
-                        mvData, projData,
-                        screenW, screenH
-                );
+            if (matrixProjectionAvailable) {
+                if (tracked != null && !entityInView) {
+                    screenPos = MrProjector.projectUnclamped(
+                            entityWorldX, entityWorldY, entityWorldZ,
+                            mvData, projData,
+                            screenW, screenH
+                    );
+                } else {
+                    screenPos = MrProjector.project(
+                            entityWorldX, entityWorldY, entityWorldZ,
+                            mvData, projData,
+                            screenW, screenH
+                    );
+                }
             }
 
-            if (screenPos == null && entityInView) {
-                screenPos = projectFromPlayerView(playerPos, entity, screenW, screenH);
+            if (screenPos == null) {
+                screenPos = projectFromPlayerView(playerPos, entity, screenW, screenH, tracked != null);
             }
 
             if (screenPos == null) {
@@ -485,14 +619,14 @@ public class MrEngine {
             tracked.suppressingForLimit = false;
             tracked.projectionMissTicks = 0;
 
-            if (entityAlive && occlusionVisible && !closing) {
+            if (entityAlive && occlusionVisible && !closing && entityInView) {
                 tracked.occlusionMissTicks = 0;
                 tracked.wasOcclusionVisible = true;
                 tracked.lastSeenAnchorX = anchorX;
                 tracked.lastSeenAnchorY = anchorY;
                 tracked.hasLastSeenAnchor = true;
                 tracked.animation.recoverAppear();
-            } else if (entityAlive && !closing) {
+            } else if (entityAlive && !closing && entityInView) {
                 occlusionMissingCount++;
                 tracked.occlusionMissTicks++;
                 if (tracked.occlusionMissTicks <= OCCLUSION_MISS_GRACE_TICKS) {
@@ -519,9 +653,16 @@ public class MrEngine {
                     tracked.lastSeenAnchorY = anchorY;
                     tracked.hasLastSeenAnchor = true;
                 }
-                anchorX = tracked.lastSeenAnchorX;
-                anchorY = tracked.lastSeenAnchorY;
-                tracked.animation.triggerDisappear();
+                tracked.occlusionMissTicks = 0;
+                tracked.wasOcclusionVisible = false;
+                tracked.lastSeenAnchorX = anchorX;
+                tracked.lastSeenAnchorY = anchorY;
+                tracked.hasLastSeenAnchor = true;
+                if (entityAlive) {
+                    tracked.animation.recoverAppear();
+                } else {
+                    tracked.animation.triggerDisappear();
+                }
             }
 
             if (tracked.animation.isFullyDead()) {
@@ -544,8 +685,8 @@ public class MrEngine {
             float dist = (float) entity.getDistance();
             float baseCardW = computeBaseCardWidth(screenW);
             float baseCardH = computeBaseCardHeight(screenH);
-            float scale = (float) (MrConstants.BASE_DISTANCE / Math.max(dist, 1.0));
-            scale = Math.max(getMinCardScale(), Math.min(getMaxCardScale(), scale));
+            float contentScale = (float) (MrConstants.BASE_DISTANCE / Math.max(dist, 1.0));
+            contentScale = Math.max(getMinCardScale(), Math.min(getMaxCardScale(), contentScale));
 
             boolean isFocused = stateMachine.isFocusing()
                     && uuid.equals(stateMachine.getFocusedEntityUuid());
@@ -556,9 +697,10 @@ public class MrEngine {
             float targetVisualAlphaFactor = isBackground ? MrConstants.BACKGROUND_ALPHA_FACTOR : 1.0f;
             tracked.visualScaleFactor = smoothApproach(tracked.visualScaleFactor, targetVisualScaleFactor, deltaTime);
             tracked.visualAlphaFactor = smoothApproach(tracked.visualAlphaFactor, targetVisualAlphaFactor, deltaTime);
-            scale *= tracked.visualScaleFactor;
-            scale = clampFocusedScale(scale, baseCardW, baseCardH, screenW, screenH);
-            float cardW = baseCardW * scale;
+            float boardScale = contentScale * tracked.visualScaleFactor;
+            boardScale = clampFocusedScale(boardScale, baseCardW, baseCardH, screenW, screenH);
+            float visualContentScale = isBackground ? contentScale * tracked.visualScaleFactor : contentScale;
+            float cardW = baseCardW * boardScale;
             boolean hasMainHand = entity.getMainHandItemId() != null && !entity.getMainHandItemId().isEmpty();
             boolean isFocusedThisFrame = isFocused;
             if (isFocusedThisFrame) {
@@ -566,16 +708,17 @@ public class MrEngine {
             } else if (!isBackground) {
                 resetFocusedDetailText(tracked);
             }
-            float cardH = computeCardHeight(baseCardH, scale, cardW, isFocusedThisFrame, tracked.focusedDetailText);
+            float visibleDetailChars = isFocusedThisFrame ? tracked.focusedDetailVisibleChars : 0.0f;
+            float cardH = computeCardHeight(baseCardH, boardScale, visualContentScale, cardW, isFocusedThisFrame, tracked.focusedDetailText, visibleDetailChars);
 
-            TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, scale, cardW, cardH, screenW, screenH, tracked);
+            TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, boardScale, cardW, cardH, screenW, screenH, tracked);
             float targetCardX = targetGeometry.cardX;
             float targetCardY = targetGeometry.cardY;
 
             MrWhipLayout.LayoutResult layoutResult = tracked.layout.compute(
                     anchorX, anchorY,
                     targetCardX, targetCardY,
-                    scale, cardW, cardH,
+                    boardScale, cardW, cardH,
                     screenW, screenH, deltaTime, getSegmentLength(),
                     getCardDamping(), getCardMinDamping(), getCardMaxDamping()
             );
@@ -601,7 +744,9 @@ public class MrEngine {
             snap.connectorDirectionX = targetGeometry.connectorDirectionX;
             snap.connectorDirectionY = targetGeometry.connectorDirectionY;
             syncConnectorAfterCardMove(snap);
-            snap.scale = scale;
+            snap.scale = boardScale;
+            snap.contentScale = visualContentScale;
+            snap.lineScale = visualContentScale;
             snap.alpha = Math.max(0.0f, Math.min(1.0f, alpha));
             snap.distanceFadeAlpha = distanceAlpha;
             snap.environmentAlphaFactor = environmentAlphaFactor;
@@ -612,6 +757,8 @@ public class MrEngine {
             snap.isOcclusionVisible = occlusionVisible;
             snap.isFocused = isFocused;
             snap.isBackground = isBackground;
+            snap.isManualFocus = false;
+            snap.isBlockTarget = false;
             snap.hasMainHandItem = hasMainHand;
             snap.displayName = entity.getDisplayName();
             snap.entityId = entity.getEntityId();
@@ -636,13 +783,20 @@ public class MrEngine {
             frameSnapshots.add(snap);
         }
 
+        if (!closing && manualFocusTarget != null) {
+            manualFocusTarget = refreshManualFocusTarget(manualFocusTarget);
+            if (manualFocusTarget != null) {
+                buildManualFocusSnapshot(manualFocusTarget, playerPos, deltaTime, projData, mvData, matrixProjectionAvailable, screenW, screenH, environmentAlphaFactor);
+            }
+        }
+
         if (shouldLogDebug) {
             debugLog("tick=" + debugTickCounter + " active=true state=" + stateMachine.getState() + " entities=" + entities.size() + " projected=" + frameSnapshots.size() + " projection_failed=" + projectionFailedCount + " projection_grace=" + projectionGraceCount + " occlusion_missing=" + occlusionMissingCount + " occlusion_grace=" + occlusionGraceCount + " disappearing=" + disappearingCount + " tracked=" + activeCards.size() + " screen=" + screenW + "x" + screenH);
         }
 
-        if (stateMachine.isScanning() && !closing) {
+        if (stateMachine.isScanning() && focusInteractionEnabled && !closing) {
             scanningTimer += deltaTime;
-            if (scanningTimer >= MrConstants.SCANNING_WARMUP && !frameSnapshots.isEmpty()) {
+            if (scanningTimer >= MrConstants.SCANNING_WARMUP) {
                 String crosshairUuid = environmentProvider.getCrosshairTargetEntityUuid();
 
                 boolean foundInFrame = false;
@@ -660,14 +814,10 @@ public class MrEngine {
                     if (gazeTimer >= MrConstants.GAZE_FOCUS_DURATION) {
                         stateMachine.transitionToFocusing(crosshairUuid);
                         focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
-                        aimWarmupTimer = 0.0f;
-                        gazeTimer = 0.0f;
-                        lastGazeUuid = null;
+                        resetGazeTimers();
                     }
                 } else {
-                    lastGazeUuid = null;
-                    aimWarmupTimer = 0.0f;
-                    gazeTimer = Math.max(0.0f, gazeTimer - deltaTime);
+                    decayGazeTimers(deltaTime);
                 }
             }
         }
@@ -679,6 +829,7 @@ public class MrEngine {
         if (stateMachine.isFocusing() && !closing) {
             String focusedUuid = stateMachine.getFocusedEntityUuid();
             boolean focusedVisible = false;
+            boolean gazeHeldOnFocusedTarget = isCrosshairHoldingFocusedTarget(focusedUuid);
             for (MrCardSnapshot snap : frameSnapshots) {
                 if (snap.entityUuid.equals(focusedUuid)) {
                     focusedVisible = true;
@@ -687,17 +838,39 @@ public class MrEngine {
             }
 
             if (!focusedVisible) {
-                transitionFocusBackToScanning();
-            } else {
-                String crosshairUuid = environmentProvider.getCrosshairTargetEntityUuid();
-                if (focusedUuid.equals(crosshairUuid)) {
-                    focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+                if (manualFocusTarget != null) {
+                    if (isFocusedDetailOutputFinishedFromTracked(focusedUuid) && !gazeHeldOnFocusedTarget) {
+                        focusExitCountdown -= deltaTime;
+                        if (focusExitCountdown <= 0.0f) {
+                            beginManualFocusDisappear();
+                        }
+                    } else {
+                        focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+                    }
+                } else {
+                    transitionFocusBackToScanning();
+                }
+            } else if (manualFocusTarget != null) {
+                if (isFocusedDetailOutputFinished(frameSnapshots, focusedUuid) && !gazeHeldOnFocusedTarget) {
+                    focusExitCountdown -= deltaTime;
                     aimWarmupTimer = 0.0f;
                     gazeTimer = 0.0f;
                     lastGazeUuid = null;
-                } else if (crosshairUuid != null && hasSnapshot(frameSnapshots, crosshairUuid)) {
-                    transitionFocusBackToScanningForGazeSwitch(crosshairUuid);
-                } else if (isFocusedDetailOutputFinished(frameSnapshots, focusedUuid)) {
+                    if (focusExitCountdown <= 0.0f) {
+                        beginManualFocusDisappear();
+                    }
+                } else {
+                    focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+                }
+
+                if (stateMachine.isFocusing()) {
+                    for (MrCardSnapshot snap : frameSnapshots) {
+                        snap.isFocused = snap.entityUuid.equals(focusedUuid);
+                        snap.isBackground = !snap.isFocused;
+                    }
+                }
+            } else {
+                if (isFocusedDetailOutputFinished(frameSnapshots, focusedUuid) && !gazeHeldOnFocusedTarget) {
                     focusExitCountdown -= deltaTime;
                     aimWarmupTimer = 0.0f;
                     gazeTimer = 0.0f;
@@ -705,6 +878,8 @@ public class MrEngine {
                     if (focusExitCountdown <= 0.0f) {
                         transitionFocusBackToScanning();
                     }
+                } else {
+                    focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
                 }
 
                 if (stateMachine.isFocusing()) {
@@ -732,8 +907,8 @@ public class MrEngine {
                     it.remove();
                 } else if (tracked.lastSnapshot != null) {
                     MrCardSnapshot fadingSnapshot = tracked.lastSnapshot.copy();
-                    float anchorX = tracked.hasLastSeenAnchor ? tracked.lastSeenAnchorX : fadingSnapshot.anchorX;
-                    float anchorY = tracked.hasLastSeenAnchor ? tracked.lastSeenAnchorY : fadingSnapshot.anchorY;
+                    float anchorX = fadingSnapshot.anchorX;
+                    float anchorY = fadingSnapshot.anchorY;
                     TargetGeometry targetGeometry = computeTargetGeometry(
                             anchorX, anchorY,
                             fadingSnapshot.scale,
@@ -813,6 +988,10 @@ public class MrEngine {
     }
 
     private float[] projectFromPlayerView(PositionData playerPos, NearbyEntityData entity, int screenW, int screenH) {
+        return projectFromPlayerView(playerPos, entity, screenW, screenH, false);
+    }
+
+    private float[] projectFromPlayerView(PositionData playerPos, NearbyEntityData entity, int screenW, int screenH, boolean allowOffscreen) {
         float currentFov = 70.0f;
         if (playerStateProvider != null) {
             try {
@@ -831,7 +1010,11 @@ public class MrEngine {
         double targetPitchRad = Math.atan2(targetHeightFromEye, horizontalDistance);
         double relativePitchRad = targetPitchRad + Math.toRadians(playerPos.getPitch());
         double ndcY = Math.tan(relativePitchRad) / Math.tan(verticalFov * 0.5);
-        if (ndcX < -1.08 || ndcX > 1.08 || ndcY < -1.08 || ndcY > 1.08) return null;
+        if (!allowOffscreen && (ndcX < -1.08 || ndcX > 1.08 || ndcY < -1.08 || ndcY > 1.08)) return null;
+        if (allowOffscreen) {
+            ndcX = Math.max(-1.8, Math.min(1.8, ndcX));
+            ndcY = Math.max(-1.8, Math.min(1.8, ndcY));
+        }
         float screenX = (float) ((ndcX * 0.5 + 0.5) * screenW);
         float screenY = (float) ((0.5 - ndcY * 0.5) * screenH);
         return new float[]{screenX, screenY};
@@ -839,17 +1022,32 @@ public class MrEngine {
 
     private Set<String> selectVisibleCardUuids(List<NearbyEntityData> entities, PositionData playerPos, float[] projData, float[] mvData, boolean matrixProjectionAvailable, int screenW, int screenH) {
         Set<String> selected = new HashSet<>();
+        String crosshairUuid = closing ? null : environmentProvider.getCrosshairTargetEntityUuid();
+        if (crosshairUuid != null && !crosshairUuid.isEmpty()) {
+            for (NearbyEntityData entity : entities) {
+                String uuid = entity.getUuid();
+                if (!crosshairUuid.equals(uuid)) continue;
+                if (isSelectableCardEntity(entity, playerPos, projData, mvData, matrixProjectionAvailable, screenW, screenH)) {
+                    selected.add(uuid);
+                }
+                break;
+            }
+        }
         for (NearbyEntityData entity : entities) {
             if (selected.size() >= MrConstants.MAX_CARDS) break;
             String uuid = entity.getUuid();
-            if (uuid == null || uuid.isEmpty()) continue;
-            if (entity.getHealth() <= 0.0f || !entity.isOcclusionVisible()) continue;
-            if (!isEntityInsideCurrentFov(playerPos, entity, screenW, screenH)) continue;
-            float[] screenPos = projectEntityAnchor(playerPos, entity, projData, mvData, matrixProjectionAvailable, screenW, screenH);
-            if (screenPos == null) continue;
+            if (uuid == null || uuid.isEmpty() || selected.contains(uuid)) continue;
+            if (!isSelectableCardEntity(entity, playerPos, projData, mvData, matrixProjectionAvailable, screenW, screenH)) continue;
             selected.add(uuid);
         }
         return selected;
+    }
+
+    private boolean isSelectableCardEntity(NearbyEntityData entity, PositionData playerPos, float[] projData, float[] mvData, boolean matrixProjectionAvailable, int screenW, int screenH) {
+        if (entity == null || entity.getUuid() == null || entity.getUuid().isEmpty()) return false;
+        if (entity.getHealth() <= 0.0f || !entity.isOcclusionVisible()) return false;
+        if (!isEntityInsideCurrentFov(playerPos, entity, screenW, screenH)) return false;
+        return projectEntityAnchor(playerPos, entity, projData, mvData, matrixProjectionAvailable, screenW, screenH) != null;
     }
 
     private void suppressUnselectedCards(Set<String> selectedUuids) {
@@ -858,6 +1056,7 @@ public class MrEngine {
             boolean selected = selectedUuids.contains(entry.getKey());
             tracked.suppressingForLimit = !selected;
             if (!selected) {
+                if (manualFocusTarget != null && entry.getKey().equals(manualFocusTarget.getUuid())) continue;
                 tracked.animation.triggerDisappear();
             }
         }
@@ -1178,16 +1377,198 @@ public class MrEngine {
         return false;
     }
 
+    private boolean isFocusedDetailOutputFinishedFromTracked(String focusedUuid) {
+        TrackedCard tracked = activeCards.get(focusedUuid);
+        return tracked != null && tracked.focusedDetailOutputFinished;
+    }
+
+    private MrManualFocusTargetData refreshManualFocusTarget(MrManualFocusTargetData target) {
+        if (target == null || environmentProvider == null) return target;
+        MrManualFocusTargetData refreshed = environmentProvider.refreshManualFocusTarget(target, MrConstants.MR_RANGE);
+        if (refreshed == null || refreshed.getUuid() == null || !refreshed.getUuid().equals(target.getUuid())) return target;
+        return refreshed;
+    }
+
+    private void buildManualFocusSnapshot(MrManualFocusTargetData target, PositionData playerPos, float deltaTime, float[] projData, float[] mvData, boolean matrixProjectionAvailable, int screenW, int screenH, float environmentAlphaFactor) {
+        String uuid = target.getUuid();
+        TrackedCard tracked = activeCards.get(uuid);
+        double worldX = target.getWorldX();
+        double worldY = target.getWorldY();
+        double worldZ = target.getWorldZ();
+        float[] screenPos = null;
+        if (matrixProjectionAvailable) {
+            screenPos = MrProjector.projectUnclamped(worldX, worldY, worldZ, mvData, projData, screenW, screenH);
+        }
+        if (screenPos == null) {
+            screenPos = projectManualFocusFromPlayerView(playerPos, target, screenW, screenH, true);
+        }
+        if (screenPos == null) return;
+
+        float anchorX = screenPos[0];
+        float anchorY = screenPos[1];
+        if (tracked == null) {
+            tracked = new TrackedCard(uuid);
+            activeCards.put(uuid, tracked);
+        }
+        currentUuids.add(uuid);
+        tracked.suppressingForLimit = false;
+        tracked.projectionMissTicks = 0;
+        tracked.occlusionMissTicks = 0;
+        tracked.wasOcclusionVisible = true;
+        tracked.lastSeenAnchorX = anchorX;
+        tracked.lastSeenAnchorY = anchorY;
+        tracked.hasLastSeenAnchor = true;
+        tracked.animation.recoverAppear();
+        tracked.animation.tick(deltaTime);
+        tracked.animationTickedThisFrame = true;
+        updateFixedFocusedDetailText(tracked, target.getDetailText(), deltaTime);
+
+        float dist = (float) Math.max(1.0, target.getDistance());
+        float baseCardW = computeBaseCardWidth(screenW);
+        float baseCardH = computeBaseCardHeight(screenH);
+        float contentScale = (float) (MrConstants.BASE_DISTANCE / dist);
+        contentScale = Math.max(getMinCardScale(), Math.min(getMaxCardScale(), contentScale));
+        tracked.visualScaleFactor = smoothApproach(tracked.visualScaleFactor, MrConstants.FOCUS_SCALE, deltaTime);
+        tracked.visualAlphaFactor = smoothApproach(tracked.visualAlphaFactor, 1.0f, deltaTime);
+        float boardScale = clampFocusedScale(contentScale * tracked.visualScaleFactor, baseCardW, baseCardH, screenW, screenH);
+        float cardW = baseCardW * boardScale;
+        float cardH = computeCardHeight(baseCardH, boardScale, contentScale, cardW, true, tracked.focusedDetailText, tracked.focusedDetailVisibleChars);
+
+        TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, boardScale, cardW, cardH, screenW, screenH, tracked);
+        MrWhipLayout.LayoutResult layoutResult = tracked.layout.compute(
+                anchorX, anchorY,
+                targetGeometry.cardX, targetGeometry.cardY,
+                boardScale, cardW, cardH,
+                screenW, screenH, deltaTime, getSegmentLength(),
+                getCardDamping(), getCardMinDamping(), getCardMaxDamping()
+        );
+
+        MrCardSnapshot snap = new MrCardSnapshot();
+        snap.anchorX = anchorX;
+        snap.anchorY = anchorY;
+        snap.jointX = layoutResult.jointX;
+        snap.jointY = layoutResult.jointY;
+        snap.cardX = layoutResult.cardX;
+        snap.cardY = layoutResult.cardY;
+        snap.cardWidth = cardW;
+        snap.cardHeight = cardH;
+        snap.connectorEdgeRatio = targetGeometry.connectorEdgeRatio;
+        snap.connectorEdge = targetGeometry.connectorEdge;
+        snap.connectorOnTopEdge = targetGeometry.connectorOnTopEdge;
+        snap.connectorDirectionX = targetGeometry.connectorDirectionX;
+        snap.connectorDirectionY = targetGeometry.connectorDirectionY;
+        syncConnectorAfterCardMove(snap);
+        snap.scale = boardScale;
+        snap.contentScale = contentScale;
+        snap.lineScale = contentScale;
+        snap.alpha = Math.max(0.0f, Math.min(1.0f, MrConstants.BASE_ALPHA * tracked.animation.getAnimationAlpha() * tracked.visualAlphaFactor));
+        snap.distanceFadeAlpha = MrConstants.BASE_ALPHA;
+        snap.environmentAlphaFactor = environmentAlphaFactor;
+        snap.appearProgress = tracked.animation.getAppearProgress();
+        snap.disappearProgress = tracked.animation.getDisappearProgress();
+        snap.isAlive = true;
+        snap.isHostile = target.isHostile();
+        snap.isOcclusionVisible = target.isOcclusionVisible();
+        snap.isFocused = manualFocusTarget != null && uuid.equals(manualFocusTarget.getUuid());
+        snap.isBackground = false;
+        snap.isManualFocus = true;
+        snap.isBlockTarget = target.getType() == MrManualFocusTargetData.TargetType.BLOCK;
+        snap.hasMainHandItem = target.getMainHandItemId() != null && !target.getMainHandItemId().isEmpty();
+        snap.displayName = safeText(target.getDisplayName(), safeText(target.getRegistryId(), snap.isBlockTarget ? "Block Target" : "Manual Target"));
+        snap.entityId = safeText(target.getRegistryId(), snap.isBlockTarget ? "minecraft:block" : "minecraft:entity");
+        snap.mainHandItemId = target.getMainHandItemId();
+        snap.entityUuid = uuid;
+        snap.health = target.getHealth();
+        snap.maxHealth = target.getMaxHealth();
+        snap.distance = dist;
+        snap.attackDamage = target.getAttackDamage();
+        snap.armorValue = target.getArmorValue();
+        snap.relativeX = target.getRelativeX();
+        snap.relativeY = target.getRelativeY();
+        snap.relativeZ = target.getRelativeZ();
+        snap.worldX = target.getWorldX();
+        snap.worldY = target.getWorldY();
+        snap.worldZ = target.getWorldZ();
+        snap.hasWorldAnchor = true;
+        snap.fixedWorldAnchor = target.getType() == MrManualFocusTargetData.TargetType.BLOCK;
+        snap.eyeHeight = target.getEyeHeight();
+        snap.focusedDetailText = tracked.focusedDetailText;
+        snap.focusedDetailVisibleChars = Math.round(tracked.focusedDetailVisibleChars);
+        snap.focusedDetailOutputFinished = tracked.focusedDetailOutputFinished;
+        applyFocusProgress(snap);
+        precomputeVisuals(snap);
+        tracked.lastSnapshot = snap;
+        frameSnapshots.add(snap);
+    }
+
+    private float[] projectManualFocusFromPlayerView(PositionData playerPos, MrManualFocusTargetData target, int screenW, int screenH, boolean allowOffscreen) {
+        float currentFov = 70.0f;
+        if (playerStateProvider != null) {
+            try {
+                currentFov = playerStateProvider.getCurrentDynamicFov();
+            } catch (Exception ignored) {
+            }
+        }
+        if (currentFov <= 10.0f || currentFov > 180.0f) currentFov = 70.0f;
+        double verticalFov = Math.toRadians(currentFov);
+        double horizontalFov = 2.0 * Math.atan(Math.tan(verticalFov * 0.5) * ((double) screenW / Math.max(1, screenH)));
+        double relX = target.getWorldX() - playerPos.getX();
+        double relY = target.getWorldY() - playerPos.getY();
+        double relZ = target.getWorldZ() - playerPos.getZ();
+        double horizontalDistance = Math.max(0.1, Math.sqrt(relX * relX + relZ * relZ));
+        double targetYawRad = Math.atan2(relZ, relX) - Math.PI * 0.5;
+        double relativeYawRad = wrapRadians(targetYawRad - Math.toRadians(playerPos.getYaw()));
+        double ndcX = Math.tan(relativeYawRad) / Math.tan(horizontalFov * 0.5);
+        double targetPitchRad = Math.atan2(relY - 1.62, horizontalDistance);
+        double relativePitchRad = targetPitchRad + Math.toRadians(playerPos.getPitch());
+        double ndcY = Math.tan(relativePitchRad) / Math.tan(verticalFov * 0.5);
+        if (!allowOffscreen && (ndcX < -1.08 || ndcX > 1.08 || ndcY < -1.08 || ndcY > 1.08)) return null;
+        if (allowOffscreen) {
+            ndcX = Math.max(-2.2, Math.min(2.2, ndcX));
+            ndcY = Math.max(-2.2, Math.min(2.2, ndcY));
+        }
+        float screenX = (float) ((ndcX * 0.5 + 0.5) * screenW);
+        float screenY = (float) ((0.5 - ndcY * 0.5) * screenH);
+        return new float[]{screenX, screenY};
+    }
+
+    private double wrapRadians(double value) {
+        while (value <= -Math.PI) value += Math.PI * 2.0;
+        while (value > Math.PI) value -= Math.PI * 2.0;
+        return value;
+    }
+
     private void applyFocusProgress(MrCardSnapshot snap) {
+        snap.focusExitProgress = computeFocusExitProgress(snap);
+        snap.focusExitProgressActive = snap.isFocused
+                && stateMachine.isFocusing()
+                && !closing
+                && snap.focusedDetailOutputFinished;
+        if (stateMachine.isFocusing() && snap.isFocused && !closing) {
+            snap.focusProgress = 1.0f;
+            snap.focusProgressActive = !snap.focusExitProgressActive;
+            return;
+        }
+        if (manualFocusPreviewTarget != null && snap.entityUuid != null && snap.entityUuid.equals(manualFocusPreviewTarget.getUuid())) {
+            snap.focusProgress = Math.max(0.0f, Math.min(1.0f, manualFocusPreviewProgress));
+            snap.focusProgressActive = snap.focusProgress > 0.0f;
+            snap.focusExitProgressActive = false;
+            return;
+        }
         if (!stateMachine.isScanning() || closing || snap.entityUuid == null || !snap.entityUuid.equals(lastGazeUuid)) {
             snap.focusProgress = 0.0f;
             snap.focusProgressActive = false;
             return;
         }
-        float total = MrConstants.FOCUS_AIM_WARMUP_SECONDS + MrConstants.GAZE_FOCUS_DURATION;
-        float progress = total > 0.0f ? (aimWarmupTimer + gazeTimer) / total : 1.0f;
+        float progress = MrConstants.GAZE_FOCUS_DURATION > 0.0f ? gazeTimer / MrConstants.GAZE_FOCUS_DURATION : 1.0f;
         snap.focusProgress = Math.max(0.0f, Math.min(1.0f, progress));
         snap.focusProgressActive = snap.focusProgress > 0.0f;
+    }
+
+    private float computeFocusExitProgress(MrCardSnapshot snap) {
+        if (!stateMachine.isFocusing() || closing || !snap.isFocused || !snap.focusedDetailOutputFinished) return 0.0f;
+        if (MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS <= 0.0f) return 1.0f;
+        return Math.max(0.0f, Math.min(1.0f, 1.0f - focusExitCountdown / MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS));
     }
 
     private void updateFocusedDetailText(TrackedCard tracked, NearbyEntityData entity, float deltaTime) {
@@ -1208,8 +1589,26 @@ public class MrEngine {
 
     private void resetFocusedDetailText(TrackedCard tracked) {
         tracked.focusedDetailText = "";
+        tracked.fixedDetailText = null;
         tracked.focusedDetailVisibleChars = 0.0f;
         tracked.focusedDetailOutputFinished = false;
+    }
+
+    private void updateFixedFocusedDetailText(TrackedCard tracked, String detailText, float deltaTime) {
+        String safeDetailText = detailText != null && !detailText.isEmpty() ? detailText : "NO DETAIL";
+        if (!safeDetailText.equals(tracked.focusedDetailText)) {
+            tracked.fixedDetailText = safeDetailText;
+            tracked.focusedDetailText = safeDetailText;
+            tracked.focusedDetailVisibleChars = Math.min(tracked.focusedDetailVisibleChars, tracked.focusedDetailText.length());
+            tracked.focusedDetailOutputFinished = tracked.focusedDetailText.isEmpty() || tracked.focusedDetailVisibleChars >= tracked.focusedDetailText.length();
+        }
+        if (!tracked.focusedDetailOutputFinished) {
+            tracked.focusedDetailVisibleChars += deltaTime * MrConstants.FOCUS_TEXT_CHARS_PER_SECOND;
+            if (tracked.focusedDetailVisibleChars >= tracked.focusedDetailText.length()) {
+                tracked.focusedDetailVisibleChars = tracked.focusedDetailText.length();
+                tracked.focusedDetailOutputFinished = true;
+            }
+        }
     }
 
     private String buildFocusedDetailText(NearbyEntityData entity) {
@@ -1247,8 +1646,20 @@ public class MrEngine {
         return uuid.length() <= 8 ? uuid : uuid.substring(0, 8);
     }
 
+    private boolean isCrosshairHoldingFocusedTarget(String focusedUuid) {
+        if (focusedUuid == null || focusedUuid.isEmpty() || environmentProvider == null) return false;
+        String crosshairTarget = environmentProvider.getCrosshairTargetKey();
+        return focusedUuid.equals(crosshairTarget);
+    }
+
     private void transitionFocusBackToScanning() {
-        stateMachine.transitionToScanning();
+        if (!scanningCardsEnabled) {
+            beginManualFocusDisappear();
+            return;
+        } else {
+            stateMachine.transitionToScanning();
+        }
+        manualFocusTarget = null;
         scanningTimer = MrConstants.SCANNING_WARMUP;
         focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
         aimWarmupTimer = 0.0f;
@@ -1256,7 +1667,23 @@ public class MrEngine {
         lastGazeUuid = null;
     }
 
+    private void beginManualFocusDisappear() {
+        if (manualFocusTarget == null) return;
+        TrackedCard tracked = activeCards.get(manualFocusTarget.getUuid());
+        if (tracked != null) {
+            tracked.animation.triggerDisappear();
+            tracked.suppressingForLimit = false;
+        }
+        manualFocusTarget = null;
+        stateMachine.transitionToSilent();
+        focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+        aimWarmupTimer = 0.0f;
+        gazeTimer = 0.0f;
+        lastGazeUuid = null;
+    }
+
     private void transitionFocusBackToScanningForGazeSwitch(String nextUuid) {
+        manualFocusTarget = null;
         stateMachine.transitionToScanning();
         scanningTimer = MrConstants.SCANNING_WARMUP;
         focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
@@ -1266,16 +1693,36 @@ public class MrEngine {
     }
 
     private void updateGazeTimers(String crosshairUuid, float deltaTime) {
+        if (crosshairUuid == null || crosshairUuid.isEmpty()) {
+            decayGazeTimers(deltaTime);
+            return;
+        }
         if (crosshairUuid.equals(lastGazeUuid)) {
-            aimWarmupTimer += deltaTime;
+            aimWarmupTimer = Math.min(MrConstants.FOCUS_AIM_WARMUP_SECONDS, aimWarmupTimer + deltaTime);
             if (aimWarmupTimer >= MrConstants.FOCUS_AIM_WARMUP_SECONDS) {
                 gazeTimer += deltaTime;
             }
+        } else if (gazeTimer > 0.0f) {
+            decayGazeTimers(deltaTime);
         } else {
             lastGazeUuid = crosshairUuid;
             aimWarmupTimer = 0.0f;
             gazeTimer = 0.0f;
         }
+    }
+
+    private void decayGazeTimers(float deltaTime) {
+        if (gazeTimer > 0.0f) {
+            gazeTimer = Math.max(0.0f, gazeTimer - deltaTime);
+            if (gazeTimer > 0.0f) return;
+        }
+        resetGazeTimers();
+    }
+
+    private void resetGazeTimers() {
+        aimWarmupTimer = 0.0f;
+        gazeTimer = 0.0f;
+        lastGazeUuid = null;
     }
 
     private float computeBaseCardWidth(int screenW) {
@@ -1295,17 +1742,21 @@ public class MrEngine {
         return Math.min(scale, Math.min(maxByWidth, maxByArea));
     }
 
-    private float computeCardHeight(float baseCardH, float scale, float cardW, boolean isFocused, String focusedDetailText) {
-        float baseHeight = baseCardH * scale;
-        if (!isFocused || focusedDetailText == null || focusedDetailText.isEmpty()) return baseHeight;
-        int lines = estimateWrappedLineCount(focusedDetailText, cardW);
-        float detailTop = MrConstants.CONTENT_PADDING_Y + MrConstants.FONT_LINE_HEIGHT + 2.0f + MrConstants.CONTENT_BAR_SPACING + MrConstants.FONT_LINE_HEIGHT + 8.0f;
-        float requiredHeight = detailTop + lines * MrConstants.FONT_LINE_HEIGHT + MrConstants.CONTENT_PADDING_Y;
+    private float computeCardHeight(float baseCardH, float boardScale, float contentScale, float cardW, boolean isFocused, String focusedDetailText, float visibleChars) {
+        float baseHeight = baseCardH * boardScale;
+        if (!isFocused || focusedDetailText == null || focusedDetailText.isEmpty() || visibleChars <= 0.0f) return baseHeight;
+        int charCount = Math.max(0, Math.min((int) Math.ceil(visibleChars), focusedDetailText.length()));
+        String visibleText = focusedDetailText.substring(0, charCount);
+        int lines = estimateWrappedLineCount(visibleText, cardW, contentScale);
+        float detailTop = (MrConstants.CONTENT_PADDING_Y + MrConstants.FONT_LINE_HEIGHT + 2.0f + MrConstants.CONTENT_BAR_SPACING + MrConstants.FONT_LINE_HEIGHT + 8.0f) * contentScale;
+        float bottomPadding = (MrConstants.CONTENT_PADDING_Y + 6.0f) * contentScale;
+        float requiredHeight = detailTop + lines * MrConstants.FONT_LINE_HEIGHT * contentScale + bottomPadding;
         return Math.max(baseHeight, requiredHeight);
     }
 
-    private int estimateWrappedLineCount(String text, float cardW) {
-        float availableWidth = Math.max(1.0f, cardW - MrConstants.CONTENT_PADDING_X * 2.0f);
+    private int estimateWrappedLineCount(String text, float cardW, float contentScale) {
+        float safeScale = Math.max(0.1f, contentScale);
+        float availableWidth = Math.max(1.0f, (cardW - MrConstants.CONTENT_PADDING_X * safeScale * 2.0f) / safeScale);
         float averageCharWidth = 6.0f;
         int maxCharsPerLine = Math.max(1, (int) (availableWidth / averageCharWidth));
         int lines = 0;
@@ -1343,8 +1794,11 @@ public class MrEngine {
         float targetCenterY = anchorY + defaultQuadrantY * (segmentLength * 1.25f + cardH * 0.35f);
         float cardX = targetCenterX - cardW * 0.5f;
         float cardY = targetCenterY - cardH * 0.5f;
-        cardX = Math.max(4.0f, Math.min(screenW - cardW - 4.0f, cardX));
-        cardY = Math.max(4.0f, Math.min(screenH - cardH - 4.0f, cardY));
+        boolean anchorNearScreen = anchorX >= -cardW && anchorX <= screenW + cardW && anchorY >= -cardH && anchorY <= screenH + cardH;
+        if (anchorNearScreen) {
+            cardX = Math.max(4.0f, Math.min(screenW - cardW - 4.0f, cardX));
+            cardY = Math.max(4.0f, Math.min(screenH - cardH - 4.0f, cardY));
+        }
 
         float leftDistance = Math.abs(anchorX - cardX);
         float rightDistance = Math.abs(anchorX - (cardX + cardW));
@@ -1588,8 +2042,9 @@ public class MrEngine {
         int accentG = (baseColor >> 8) & 0xFF;
         int accentB = baseColor & 0xFF;
 
+        float contentScale = Math.max(0.1f, snap.contentScale > 0.0f ? snap.contentScale : snap.scale);
         int contentAlphaInt = (int) (Math.max(0.0f, Math.min(1.0f, snap.alpha * snap.environmentAlphaFactor)) * 255.0f) & 0xFF;
-        float barFullWidth = Math.max(0.0f, snap.cardWidth - MrConstants.CONTENT_BAR_MARGIN * snap.scale);
+        float barFullWidth = Math.max(0.0f, snap.cardWidth - MrConstants.CONTENT_BAR_MARGIN * contentScale);
         int healthColor;
         if (healthRatio > 0.6f) {
             healthColor = (contentAlphaInt << 24) | 0x33DD66;
@@ -1611,28 +2066,36 @@ public class MrEngine {
         snap.healthBarFillWidth = barFullWidth * healthRatio;
         snap.glitchOffset = 0;
         snap.distanceText = String.format("%.1fm", snap.distance);
-        snap.attackText = snap.attackDamage > 0.0f ? String.format("%.0f", snap.attackDamage) : null;
-        snap.armorText = snap.armorValue > 0.0f ? String.format("%.0f", snap.armorValue) : null;
-        snap.distanceIconItemId = "minecraft:compass";
-        snap.attackIconItemId = snap.attackText != null ? "minecraft:iron_sword" : null;
-        snap.armorIconItemId = snap.armorText != null ? "minecraft:iron_chestplate" : null;
-        snap.contentStartX = snap.cardWidth > 0.0f ? MrConstants.CONTENT_PADDING_X * snap.scale : 0.0f;
-        snap.contentStartY = snap.cardHeight > 0.0f ? MrConstants.CONTENT_PADDING_Y * snap.scale : 0.0f;
-        float iconSize = MrConstants.STATS_ICON_SIZE * snap.scale;
-        float iconTextGap = Math.max(1.0f, MrConstants.STATS_ICON_TEXT_GAP * 0.45f * snap.scale);
-        float groupGap = Math.max(1.0f, MrConstants.STATS_GROUP_GAP * 0.2f * snap.scale);
-        float statTextWidth = 5.0f * snap.scale;
-        float fontLineHeight = MrConstants.FONT_LINE_HEIGHT * snap.scale;
+        if (snap.isBlockTarget) {
+            snap.attackText = snap.entityId != null && !snap.entityId.isEmpty() ? "BLOCK" : null;
+            snap.armorText = null;
+            snap.distanceIconItemId = "minecraft:compass";
+            snap.attackIconItemId = snap.entityId != null && !snap.entityId.isEmpty() ? snap.entityId : "minecraft:stone";
+            snap.armorIconItemId = null;
+        } else {
+            snap.attackText = snap.attackDamage > 0.0f ? String.format("%.0f", snap.attackDamage) : null;
+            snap.armorText = snap.armorValue > 0.0f ? String.format("%.0f", snap.armorValue) : null;
+            snap.distanceIconItemId = "minecraft:compass";
+            snap.attackIconItemId = snap.attackText != null ? "minecraft:iron_sword" : null;
+            snap.armorIconItemId = snap.armorText != null ? "minecraft:iron_chestplate" : null;
+        }
+        snap.contentStartX = snap.cardWidth > 0.0f ? MrConstants.CONTENT_PADDING_X * contentScale : 0.0f;
+        snap.contentStartY = snap.cardHeight > 0.0f ? MrConstants.CONTENT_PADDING_Y * contentScale : 0.0f;
+        float iconSize = MrConstants.STATS_ICON_SIZE * contentScale;
+        float iconTextGap = Math.max(1.0f, MrConstants.STATS_ICON_TEXT_GAP * 0.45f * contentScale);
+        float groupGap = Math.max(1.0f, MrConstants.STATS_GROUP_GAP * 0.2f * contentScale);
+        float statTextWidth = 5.0f * contentScale;
+        float fontLineHeight = MrConstants.FONT_LINE_HEIGHT * contentScale;
         snap.nameIconX = snap.contentStartX;
-        snap.nameIconY = snap.contentStartY - 2.0f * snap.scale;
+        snap.nameIconY = snap.contentStartY - 2.0f * contentScale;
         snap.nameTextX = snap.contentStartX;
         snap.nameTextY = snap.contentStartY;
-        snap.contentNameEndY = snap.contentStartY + fontLineHeight + 2.0f * snap.scale;
-        snap.contentBarEndY = snap.contentNameEndY + MrConstants.CONTENT_BAR_SPACING * snap.scale;
-        snap.contentStatsY = snap.contentBarEndY + 2.0f * snap.scale;
+        snap.contentNameEndY = snap.contentStartY + fontLineHeight + 2.0f * contentScale;
+        snap.contentBarEndY = snap.contentNameEndY + MrConstants.CONTENT_BAR_SPACING * contentScale;
+        snap.contentStatsY = snap.contentBarEndY + 2.0f * contentScale;
 
         float cursorX = snap.contentStartX;
-        float iconY = snap.contentStatsY - 3.0f * snap.scale;
+        float iconY = snap.contentStatsY - 3.0f * contentScale;
         snap.distanceIconX = cursorX;
         snap.distanceIconY = iconY;
         snap.distanceTextX = snap.distanceIconX + iconSize + iconTextGap;

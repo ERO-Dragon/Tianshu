@@ -9,8 +9,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class TianshuEventBus {
 
     private final BlockingQueue<TianshuEvent> asrQueue;
-    private final BlockingQueue<TianshuEvent> llmQueue;
-    private final BlockingQueue<TianshuEvent> ttsQueue;
     private final BlockingQueue<TianshuEvent> uiQueue;
     private final IGameEnvironment env;
     private final AtomicLong sessionSeq = new AtomicLong(1);
@@ -19,8 +17,6 @@ public class TianshuEventBus {
     public TianshuEventBus(IGameEnvironment env) {
         this.env = env;
         this.asrQueue = new LinkedBlockingQueue<>();
-        this.llmQueue = new LinkedBlockingQueue<>();
-        this.ttsQueue = new LinkedBlockingQueue<>();
         this.uiQueue = new LinkedBlockingQueue<>();
         this.activeSessionId = sessionSeq.get();
         env.info("天枢事件总线初始化完成");
@@ -45,8 +41,6 @@ public class TianshuEventBus {
         try {
             if (event instanceof InterruptEvent) {
                 asrQueue.put(event);
-                llmQueue.put(event);
-                ttsQueue.put(event);
                 uiQueue.put(event);
                 return;
             }
@@ -58,14 +52,11 @@ public class TianshuEventBus {
 
             if (event instanceof AsrPartialTextEvent) {
                 uiQueue.put(event);
-            } else if (event instanceof AsrFinalTextEvent) {
-                llmQueue.put(event);
+            } else if (event instanceof UiAsrTextEvent) {
                 uiQueue.put(event);
-            } else if (event instanceof LlmChunkEvent) {
-                ttsQueue.put(event);
+            } else if (event instanceof UiLlmTextEvent) {
                 uiQueue.put(event);
-            } else if (event instanceof LlmEndEvent) {
-                ttsQueue.put(event);
+            } else if (event instanceof UiLlmEndEvent) {
                 uiQueue.put(event);
             } else if (event instanceof TtsAudioEvent) {
             } else if (event instanceof TtsPlaybackEndEvent) {
@@ -87,37 +78,18 @@ public class TianshuEventBus {
         return asrQueue;
     }
 
-    public BlockingQueue<TianshuEvent> getLlmQueue() {
-        return llmQueue;
-    }
-
-    public BlockingQueue<TianshuEvent> getTtsQueue() {
-        return ttsQueue;
-    }
-
     public BlockingQueue<TianshuEvent> getUiQueue() {
         return uiQueue;
     }
 
     public void clearAllQueues() {
         asrQueue.clear();
-        llmQueue.clear();
-        ttsQueue.clear();
         uiQueue.clear();
     }
 
     public long interruptLlmAndTts() {
         long nextSession = beginNewSession();
-        llmQueue.clear();
-        ttsQueue.clear();
         uiQueue.offer(new InterruptEvent(nextSession));
-        try {
-            llmQueue.put(new InterruptEvent(nextSession));
-            ttsQueue.put(new InterruptEvent(nextSession));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            env.error("发送打断事件失败", e);
-        }
         return nextSession;
     }
 }

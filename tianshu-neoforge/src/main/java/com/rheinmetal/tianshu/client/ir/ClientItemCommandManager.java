@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.client.ir;
 
 import com.mojang.logging.LogUtils;
-import com.rheinmetal.tianshu.ir.IRCommandService;
-import com.rheinmetal.tianshu.ir.IRParseResult;
-import com.rheinmetal.tianshu.ir.IRSnapshot;
-import com.rheinmetal.tianshu.ir.ParseUnit;
+import com.rheinmetal.tianshu.function.ir.core.IRCommandService;
+import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
+import com.rheinmetal.tianshu.function.ir.core.IRSnapshot;
+import com.rheinmetal.tianshu.function.ir.core.ParseUnit;
 import org.slf4j.Logger;
 
 import java.io.IOException;

@@ -22,10 +22,12 @@ import com.rheinmetal.tianshu.function.MR.MrTuningProvider;
 import com.rheinmetal.tianshu.core.FeatureManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
-import com.rheinmetal.tianshu.ir.IRParseResult;
+import com.rheinmetal.tianshu.function.ir.IrCommandParser;
+import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
 import com.rheinmetal.tianshu.gui.TianshuGUI;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
+import com.rheinmetal.tianshu.snapshot.MrManualFocusTargetData;
 import com.rheinmetal.tianshu.platform.provider.*;
 import com.rheinmetal.tianshu.provider.*;
 
@@ -67,6 +69,16 @@ public class TianshuClient {
     public static KeyMapping VOICE_KEY;
     public static KeyMapping CRAFTING_GRAPH_INTERACTION_KEY;
     public static KeyMapping MR_TOGGLE_KEY;
+
+    private static final float MR_ALT_SHORT_PRESS_SECONDS = 0.16f;
+    private static final float MR_ALT_FOCUS_SECONDS = 2.0f;
+    private static final float MR_ALT_FOCUS_DECAY_SECONDS = 2.0f;
+    private static long mrAltPressStartedNanos = 0L;
+    private static long mrAltLastNanos = 0L;
+    private static boolean mrAltWasDown = false;
+    private static boolean mrAltFocusTriggered = false;
+    private static float mrAltFocusChargeSeconds = 0.0f;
+    private static MrManualFocusTargetData mrAltFocusTarget = null;
 
     private static boolean wasAlwaysKeyTriggered = false;
     private static boolean isVoiceKeyPressed = false;
@@ -120,6 +132,20 @@ public class TianshuClient {
     public static IAudioEventProvider getAudioEventProvider() { return audioEventProvider; }
     public static WorldStateProvider getWorldStateProvider() { return worldStateProvider; }
 
+    private static IrCommandParser createClientIrCommandParser() {
+        return new IrCommandParser() {
+            @Override
+            public IRParseResult parse(String text, boolean fastIr) {
+                return ClientItemCommandManager.parsePlayerCommand(text, fastIr);
+            }
+
+            @Override
+            public String formatPreview(IRParseResult result) {
+                return ClientItemCommandManager.formatPreview(result);
+            }
+        };
+    }
+
     public static void init() {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
@@ -132,6 +158,7 @@ public class TianshuClient {
         audioManager.ensureHardwareRunning();
 
         coreManager = new TianshuCoreManager(env, config, nativeLibBridge, audioManager);
+        coreManager.setIrCommandParser(createClientIrCommandParser());
 
         targetScanner = new NeoForgeTargetScanner();
         inventoryProvider = new NeoForgeInventoryProvider();
@@ -246,23 +273,154 @@ public class TianshuClient {
         }
 
         handleVoiceKey();
-        handleMrToggleKey();
+        handleMrAltKey(minecraft);
         tickAcousticRadar(minecraft);
         tickMrSystem(minecraft);
         tickCraftingGraph();
     }
 
-    private static void handleMrToggleKey() {
-        if (MR_TOGGLE_KEY == null) return;
-        while (MR_TOGGLE_KEY.consumeClick()) {
-            if (!FeatureManager.isTacticalMrEnabled()) {
-                mrUserEnabled = false;
-                LOGGER.info("[MR] 总控关闭，忽略用户开关请求");
-                continue;
-            }
-            mrUserEnabled = !mrUserEnabled;
-            LOGGER.info("[MR] 用户{}全息战术系统", mrUserEnabled ? "开启" : "关闭");
+    private static void handleMrAltKey(Minecraft minecraft) {
+        if (MR_TOGGLE_KEY == null || !FeatureManager.isTacticalMrEnabled()) {
+            resetMrAltInputState(true);
+            if (!FeatureManager.isTacticalMrEnabled()) mrUserEnabled = false;
+            return;
         }
+
+        boolean focusInputAllowed = isMrFocusInputAllowed(minecraft);
+
+        long now = System.nanoTime();
+        if (mrAltLastNanos == 0L) mrAltLastNanos = now;
+        float deltaSeconds = Math.max(0.0f, Math.min(0.25f, (now - mrAltLastNanos) / 1_000_000_000.0f));
+        mrAltLastNanos = now;
+
+        boolean altDown = MR_TOGGLE_KEY.isDown();
+        if (altDown && !mrAltWasDown) {
+            mrAltPressStartedNanos = now;
+            mrAltFocusTriggered = false;
+        }
+
+        if (altDown) {
+            float heldSeconds = (now - mrAltPressStartedNanos) / 1_000_000_000.0f;
+            if (focusInputAllowed && heldSeconds >= MR_ALT_SHORT_PRESS_SECONDS) {
+                tickMrAltFocusCharge(minecraft, heldSeconds);
+            } else if (!focusInputAllowed) {
+                clearMrAltFocusCharge();
+            }
+        } else {
+            if (mrAltWasDown) {
+                float heldSeconds = (now - mrAltPressStartedNanos) / 1_000_000_000.0f;
+                if (heldSeconds < MR_ALT_SHORT_PRESS_SECONDS && mrAltFocusChargeSeconds <= 0.0f && !mrAltFocusTriggered) {
+                    toggleMrUserEnabled();
+                }
+            }
+            decayMrAltFocusCharge(deltaSeconds);
+        }
+
+        mrAltWasDown = altDown;
+    }
+
+    private static void tickMrAltFocusCharge(Minecraft minecraft, float heldSeconds) {
+        if (mrAltFocusTriggered) return;
+        if (mrAltFocusTarget == null || mrAltFocusChargeSeconds <= 0.0f) {
+            mrAltFocusTarget = environmentProvider.getManualFocusTarget(MrConstants.MR_RANGE);
+        }
+        if (mrAltFocusTarget == null) return;
+
+        ensureMrEngineForManualFocus(mrUserEnabled);
+        if (mrEngine == null) return;
+
+        mrAltFocusChargeSeconds = Math.min(MR_ALT_FOCUS_SECONDS, Math.max(mrAltFocusChargeSeconds, heldSeconds));
+        mrEngine.previewManualFocusProgress(mrAltFocusTarget, mrUserEnabled, mrAltFocusChargeSeconds / MR_ALT_FOCUS_SECONDS);
+        environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+
+        if (mrAltFocusChargeSeconds >= MR_ALT_FOCUS_SECONDS) {
+            mrAltFocusTriggered = true;
+            mrAltFocusChargeSeconds = 0.0f;
+            mrEngine.startManualFocus(mrAltFocusTarget, mrUserEnabled);
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+            LOGGER.info("[MR] Alt 长按聚焦目标 {}", mrAltFocusTarget.getUuid());
+            mrAltFocusTarget = null;
+        }
+    }
+
+    private static void decayMrAltFocusCharge(float deltaSeconds) {
+        if (mrAltFocusChargeSeconds <= 0.0f) {
+            if (mrEngine != null) mrEngine.clearManualFocusPreview();
+            mrAltFocusTarget = null;
+            return;
+        }
+        float decaySpeed = MR_ALT_FOCUS_DECAY_SECONDS > 0.0f ? MR_ALT_FOCUS_SECONDS / MR_ALT_FOCUS_DECAY_SECONDS : MR_ALT_FOCUS_SECONDS;
+        mrAltFocusChargeSeconds = Math.max(0.0f, mrAltFocusChargeSeconds - deltaSeconds * decaySpeed);
+        if (mrAltFocusTarget != null) {
+            ensureMrEngineForManualFocus(mrUserEnabled);
+            if (mrEngine != null) {
+                mrEngine.previewManualFocusProgress(mrAltFocusTarget, mrUserEnabled, mrAltFocusChargeSeconds / MR_ALT_FOCUS_SECONDS);
+                environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+            }
+        }
+        if (mrAltFocusChargeSeconds <= 0.0f) {
+            if (mrEngine != null) mrEngine.clearManualFocusPreview();
+            mrAltFocusTarget = null;
+        }
+    }
+
+    private static void toggleMrUserEnabled() {
+        if (!FeatureManager.isTacticalMrEnabled()) {
+            mrUserEnabled = false;
+            LOGGER.info("[MR] 总控关闭，忽略用户开关请求");
+            return;
+        }
+        if (!mrUserEnabled && mrEngine != null && mrEngine.hasManualFocusTarget()) {
+            mrEngine.cancelManualFocus();
+            environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
+            LOGGER.info("[MR] 手动聚焦面板开始关闭");
+            return;
+        }
+        boolean nextEnabled = !mrUserEnabled;
+        if (!nextEnabled && mrEngine != null && mrEngine.hasManualFocusTarget()) {
+            mrEngine.clearManualFocusTarget();
+        }
+        mrUserEnabled = nextEnabled;
+        LOGGER.info("[MR] 用户{}全息战术系统", mrUserEnabled ? "开启" : "关闭");
+    }
+
+    private static void resetMrAltInputState(boolean clearCharge) {
+        mrAltPressStartedNanos = 0L;
+        mrAltLastNanos = 0L;
+        mrAltWasDown = false;
+        mrAltFocusTriggered = false;
+        if (clearCharge) {
+            mrAltFocusChargeSeconds = 0.0f;
+            mrAltFocusTarget = null;
+            if (mrEngine != null) mrEngine.clearManualFocusPreview();
+        }
+    }
+
+    private static void clearMrAltFocusCharge() {
+        mrAltFocusChargeSeconds = 0.0f;
+        mrAltFocusTarget = null;
+        if (mrEngine != null) mrEngine.clearManualFocusPreview();
+    }
+
+    private static boolean isMrFocusInputAllowed(Minecraft minecraft) {
+        return minecraft != null && minecraft.screen == null;
+    }
+
+    private static void ensureMrEngineForManualFocus(boolean includeBackgroundCards) {
+        if (mrEngine != null) {
+            if (mrEngine.isClosing()) {
+                mrEngine.stop();
+                mrEngine = null;
+                mrRenderer = null;
+            } else {
+                mrEngine.setScanningCardsEnabled(includeBackgroundCards);
+                return;
+            }
+        }
+        mrEngine = new MrEngine(environmentProvider, renderContextProvider, playerStateProvider, createMrTuningProvider());
+        mrRenderer = new MrRenderer(mrEngine);
+        mrEngine.setScanningCardsEnabled(includeBackgroundCards);
+        mrTickCounter = 0;
     }
 
     private static void handleVoiceKey() {
@@ -379,33 +537,17 @@ public class TianshuClient {
 
         while (!eventBus.getUiQueue().isEmpty()) {
             TianshuEvent e = eventBus.getUiQueue().poll();
-            if (e instanceof AsrFinalTextEvent asrEvent) {
+            if (e instanceof UiAsrTextEvent asrEvent) {
                 String asrText = asrEvent.getText();
                 LOGGER.info("[IR-ASR] ASR 识别文本: {}", asrText);
                 if (Minecraft.getInstance().player != null) {
                     Minecraft.getInstance().player.displayClientMessage(
                         Component.literal("\u00a7a[ASR] \u00a7f" + asrText), false
                     );
-
-                    // 解析 ASR 识别文本
-                    IRParseResult parseResult = ClientItemCommandManager.parsePlayerCommand(asrText, true);
-                    String preview = ClientItemCommandManager.formatPreview(parseResult);
-                    LOGGER.info("[IR-ASR] IR 解析结果: ready={}, units={}, preview={}", parseResult.isReady(), parseResult.hasUnits(), preview);
-                    if (parseResult.hasUnits()) {
-                        for (int i = 0; i < parseResult.getUnits().size(); i++) {
-                            var unit = parseResult.getUnits().get(i);
-                            LOGGER.info("[IR-ASR]   [{}] intent={}, target={}, negated={}", i, unit.intent, unit.targetRealItemId, unit.isNegated);
-                        }
-                    }
-                    if (!preview.isEmpty()) {
-                        Minecraft.getInstance().player.displayClientMessage(
-                                Component.literal("\u00a76[IR] \u00a7f" + preview), false
-                        );
-                    }
                 }
-            } else if (e instanceof LlmChunkEvent chunk) {
+            } else if (e instanceof UiLlmTextEvent chunk) {
                 currentLlmReply.append(chunk.getText());
-            } else if (e instanceof LlmEndEvent) {
+            } else if (e instanceof UiLlmEndEvent) {
                 if (!currentLlmReply.isEmpty() && Minecraft.getInstance().player != null) {
                     Minecraft.getInstance().player.displayClientMessage(
                             Component.literal("\u00a7b[天枢] \u00a7f" + currentLlmReply.toString()), false
@@ -547,14 +689,17 @@ public class TianshuClient {
 
     private static double computeRequiredEnvironmentScanRadius() {
         double radarRadius = acousticRadarEngine != null ? acousticRadarEngine.getRadarRange() : 0.0;
-        double mrRadius = (mrEngine != null && mrEngine.isRunning() && FeatureManager.isTacticalMrEnabled() && mrUserEnabled)
+        double mrRadius = (mrEngine != null && mrEngine.isRunning() && FeatureManager.isTacticalMrEnabled())
                 ? mrEngine.getRequiredRadius()
                 : 0.0;
         return Math.max(radarRadius, mrRadius);
     }
 
     private static void tickMrSystem(Minecraft minecraft) {
-        boolean mrClosingRequested = !FeatureManager.isTacticalMrEnabled() || !mrUserEnabled;
+        boolean focusInteractionAllowed = isMrFocusInputAllowed(minecraft);
+        boolean mrActiveRequested = FeatureManager.isTacticalMrEnabled()
+                && (mrUserEnabled || (mrEngine != null && ((mrEngine.hasManualFocusTarget() || mrEngine.hasManualFocusPreview()) && !mrEngine.isClosing())));
+        boolean mrClosingRequested = !mrActiveRequested;
         if (!FeatureManager.isTacticalMrEnabled()) {
             mrUserEnabled = false;
         }
@@ -576,7 +721,9 @@ public class TianshuClient {
             if (mrClosingRequested) return;
             mrEngine = new MrEngine(environmentProvider, renderContextProvider, playerStateProvider, createMrTuningProvider());
             mrRenderer = new MrRenderer(mrEngine);
+            mrEngine.setFocusInteractionEnabled(focusInteractionAllowed);
             mrEngine.start();
+            mrEngine.setScanningCardsEnabled(mrUserEnabled);
             mrTickCounter = 0;
             environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());
             LOGGER.info("[MR] 全息战术系统已启动");
@@ -611,6 +758,8 @@ public class TianshuClient {
         mrTickCounter++;
         if (mrTickCounter < MrConstants.TICK_INTERVAL) return;
         mrTickCounter = 0;
+
+        mrEngine.setFocusInteractionEnabled(focusInteractionAllowed);
 
         try {
             environmentProvider.setActiveScanRadius(computeRequiredEnvironmentScanRadius());

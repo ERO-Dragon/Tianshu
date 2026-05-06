@@ -21,4 +21,12 @@ public interface IEnvironmentAwarenessProvider {
     void setActiveScanRadius(double radius);
 
     String getCrosshairTargetEntityUuid();
+
+    String getCrosshairTargetKey();
+
+    MrManualFocusTargetData getManualFocusTarget(double range);
+
+    default MrManualFocusTargetData refreshManualFocusTarget(MrManualFocusTargetData currentTarget, double range) {
+        return currentTarget;
+    }
 }

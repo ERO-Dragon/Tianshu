@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.protocol;
 
 public final class ProtocolTopics {
-    public static final String ASR_FINAL_TEXT = "ASR_FINAL_TEXT";
     public static final String LLM_STREAM = "LLM_STREAM";
     public static final String UI_STATUS = "UI_STATUS";
     public static final String DEBUG_TRACE = "DEBUG_TRACE";
@@ -14,6 +13,11 @@ public final class ProtocolTopics {
     public static final String INPUT_ASR_FINAL_TEXT = "INPUT.ASR_FINAL_TEXT";
     public static final String INPUT_KEY_ACTION = "INPUT.KEY_ACTION";
     public static final String INPUT_CHAT_TEXT = "INPUT.CHAT_TEXT";
+    public static final String IR_RESULT = "IR.RESULT";
+    public static final String IR_COMMAND_EXECUTED = "IR.COMMAND_EXECUTED";
+    public static final String LLM_INTENT_CLASSIFY_RESULT = "LLM.INTENT_CLASSIFY_RESULT";
+    public static final String LLM_COMMAND_REPAIR_RESULT = "LLM.COMMAND_REPAIR_RESULT";
+    public static final String TTS_PLAYBACK = "TTS.PLAYBACK";
     public static final String INPUT_HOVER_ITEM = "INPUT.HOVER_ITEM";
     public static final String ITEM_HOVER_STABLE = "ITEM.HOVER_STABLE";
     public static final String ITEM_HOVER_CLEARED = "ITEM.HOVER_CLEARED";

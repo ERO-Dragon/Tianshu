@@ -20,6 +20,8 @@ public final class MrCardSnapshot {
     public float cardWidth;
     public float cardHeight;
     public float scale;
+    public float contentScale;
+    public float lineScale;
 
     public float alpha;
     public float distanceFadeAlpha;
@@ -33,6 +35,8 @@ public final class MrCardSnapshot {
     public boolean isOcclusionVisible;
     public boolean isFocused;
     public boolean isBackground;
+    public boolean isManualFocus;
+    public boolean isBlockTarget;
     public boolean hasMainHandItem;
 
     public String displayName;
@@ -51,6 +55,11 @@ public final class MrCardSnapshot {
     public double relativeX;
     public double relativeY;
     public double relativeZ;
+    public double worldX;
+    public double worldY;
+    public double worldZ;
+    public boolean hasWorldAnchor;
+    public boolean fixedWorldAnchor;
     public float eyeHeight;
 
     public int accentColor;
@@ -74,6 +83,8 @@ public final class MrCardSnapshot {
     public boolean focusedDetailOutputFinished;
     public float focusProgress;
     public boolean focusProgressActive;
+    public float focusExitProgress;
+    public boolean focusExitProgressActive;
 
     public float contentStartX;
     public float contentStartY;
@@ -116,6 +127,8 @@ public final class MrCardSnapshot {
         s.cardWidth = this.cardWidth;
         s.cardHeight = this.cardHeight;
         s.scale = this.scale;
+        s.contentScale = this.contentScale;
+        s.lineScale = this.lineScale;
         s.alpha = this.alpha;
         s.distanceFadeAlpha = this.distanceFadeAlpha;
         s.environmentAlphaFactor = this.environmentAlphaFactor;
@@ -126,6 +139,8 @@ public final class MrCardSnapshot {
         s.isOcclusionVisible = this.isOcclusionVisible;
         s.isFocused = this.isFocused;
         s.isBackground = this.isBackground;
+        s.isManualFocus = this.isManualFocus;
+        s.isBlockTarget = this.isBlockTarget;
         s.hasMainHandItem = this.hasMainHandItem;
         s.displayName = this.displayName;
         s.entityId = this.entityId;
@@ -142,6 +157,11 @@ public final class MrCardSnapshot {
         s.relativeX = this.relativeX;
         s.relativeY = this.relativeY;
         s.relativeZ = this.relativeZ;
+        s.worldX = this.worldX;
+        s.worldY = this.worldY;
+        s.worldZ = this.worldZ;
+        s.hasWorldAnchor = this.hasWorldAnchor;
+        s.fixedWorldAnchor = this.fixedWorldAnchor;
         s.eyeHeight = this.eyeHeight;
         s.accentColor = this.accentColor;
         s.accentR = this.accentR;
@@ -162,6 +182,8 @@ public final class MrCardSnapshot {
         s.focusedDetailOutputFinished = this.focusedDetailOutputFinished;
         s.focusProgress = this.focusProgress;
         s.focusProgressActive = this.focusProgressActive;
+        s.focusExitProgress = this.focusExitProgress;
+        s.focusExitProgressActive = this.focusExitProgressActive;
         s.contentStartX = this.contentStartX;
         s.contentStartY = this.contentStartY;
         s.nameIconX = this.nameIconX;
