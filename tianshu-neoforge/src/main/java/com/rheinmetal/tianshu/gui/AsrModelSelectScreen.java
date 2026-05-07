@@ -342,7 +342,7 @@ public class AsrModelSelectScreen extends Screen {
     }
 
     private boolean isModelDownloaded(AsrModelInfo info) {
-        Path baseDir = config.getAsrBasePath();
+        Path baseDir = config.getAsrBasePath().resolve("model");
         return AsrModelManager.isModelDownloaded(info, baseDir);
     }
 

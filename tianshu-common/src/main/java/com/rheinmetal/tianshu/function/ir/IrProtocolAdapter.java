@@ -18,6 +18,7 @@ import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
+import com.rheinmetal.tianshu.protocol.payload.VoiceTriggerPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -93,6 +94,10 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope requestLlmChat(TianshuEnvelope parent, LlmPromptPayload payload) {
         return requestCapability(parent, ProtocolCapabilities.LLM_CHAT, PayloadType.LLM_PROMPT, payload);
+    }
+
+    public TianshuEnvelope dispatchVoiceTrigger(TianshuEnvelope parent, String moduleId, VoiceTriggerPayload payload) {
+        return commandCapability(parent, moduleId, PayloadType.VOICE_TRIGGER, payload);
     }
 
     public TianshuEnvelope requestIntentClassify(TianshuEnvelope parent, LlmIntentClassifyPayload payload) {

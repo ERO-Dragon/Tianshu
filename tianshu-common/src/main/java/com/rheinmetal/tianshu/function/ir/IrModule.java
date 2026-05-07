@@ -1,34 +1,34 @@
 package com.rheinmetal.tianshu.function.ir;
 
+import com.rheinmetal.tianshu.function.ir.core.IRBaseUtils;
 import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
 import com.rheinmetal.tianshu.function.ir.core.ParseUnit;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrParsePayload;
-import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
+import com.rheinmetal.tianshu.protocol.payload.VoiceTriggerPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class IrModule {
     private final IrProtocolAdapter adapter;
     private final IrCommandParser commandParser;
+    private final ProtocolRuntime runtime;
 
     public IrModule(ProtocolRuntime runtime, IrCommandParser commandParser) {
+        this.runtime = runtime;
         this.adapter = new IrProtocolAdapter(runtime);
         this.commandParser = commandParser == null ? IrCommandParser.unavailable() : commandParser;
     }
 
     public void register() {
         adapter.subscribeAsrFinalText(this::handleAsrFinalText);
-        adapter.subscribeIntentClassifyResult(this::handleIntentClassifyResult);
-        adapter.subscribeCommandRepairResult(this::handleCommandRepairResult);
         adapter.registerParseCapability(this::handleParseRequest);
     }
 
@@ -48,68 +48,18 @@ public final class IrModule {
         parseAndRoute(envelope, context, payload);
     }
 
-    private void handleIntentClassifyResult(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof LlmIntentClassifyResultPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "LLM intent classify result payload is invalid", null);
-            return;
-        }
-        String text = routeText(payload.normalizedText(), payload.originalText());
-        if (!payload.commandLike() || payload.commandProbability() < 0.5D) {
-            adapter.publishResult(new IrResultPayload(false, text, payload.guessedIntentType(), "", payload.commandProbability(), false, payload.reason(), payload.turnId(), payload.sessionId()));
-            routeToChat(envelope, context, text);
-            return;
-        }
-        context.submit(adapter.requestCommandRepair(envelope, new LlmCommandRepairPayload(payload.originalText(), text, payload.guessedIntentType(), "", "", payload.turnId(), payload.sessionId())));
-    }
-
-    private void handleCommandRepairResult(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof LlmCommandRepairResultPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "LLM command repair result payload is invalid", null);
-            return;
-        }
-        String repairedText = routeText(payload.repairedText(), payload.normalizedText());
-        if (payload.repairDepth() > 1 || repairedText.isBlank()) {
-            adapter.publishResult(new IrResultPayload(false, payload.normalizedText(), "", "", 0.0D, true, payload.reason(), payload.turnId(), payload.sessionId()));
-            routeToChat(envelope, context, routeText(payload.normalizedText(), payload.originalText()));
-            return;
-        }
-        parseAndRoute(envelope, context, new IrParsePayload(repairedText, payload.originalText(), payload.turnId(), payload.sessionId(), "llm_repair", payload.repairDepth(), false));
-    }
-
     private void parseAndRoute(TianshuEnvelope envelope, ProtocolContext context, IrParsePayload payload) {
         String normalizedText = payload.text().trim();
         if (normalizedText.isEmpty()) {
-            adapter.publishResult(new IrResultPayload(false, "", "", "", 0.0D, payload.repairDepth() > 0, "EMPTY_TEXT", payload.turnId(), payload.sessionId()));
             return;
         }
 
         IRParseResult parseResult = commandParser.parse(normalizedText, true);
-        if (parseResult != null && parseResult.hasUnits()) {
-            List<ParseUnit> units = parseResult.getUnits();
-            ParseUnit firstUnit = units.get(0);
-            String preview = commandParser.formatPreview(parseResult);
-            adapter.publishResult(new IrResultPayload(true, parseResult.getHealedRawText(), firstUnit.intent.name(), firstUnit.targetRealItemId, 1.0D, payload.repairDepth() > 0, preview, payload.turnId(), payload.sessionId()));
-            return;
-        }
-
-        String reason = parseResult == null ? "IR_UNAVAILABLE" : parseResult.isReady() ? "LOCAL_PARSE_MISSED" : "IR_NOT_READY";
-        String routedText = parseResult != null && parseResult.getHealedRawText() != null && !parseResult.getHealedRawText().isBlank()
-                ? parseResult.getHealedRawText().trim()
-                : normalizedText;
-        adapter.publishResult(new IrResultPayload(false, routedText, "", "", 0.0D, payload.repairDepth() > 0, reason, payload.turnId(), payload.sessionId()));
-        if (!payload.llmAllowed()) {
+        String routedText = routeText(parseResult == null ? "" : parseResult.getHealedRawText(), normalizedText);
+        boolean dispatched = dispatchVoiceTriggers(envelope, routedText, parseResult);
+        if (!dispatched) {
             routeToChat(envelope, context, routedText);
-            return;
         }
-        if (payload.repairDepth() > 0) {
-            routeToChat(envelope, context, routedText);
-            return;
-        }
-        if (parseResult == null || !parseResult.shouldRequestLlmReview()) {
-            routeToChat(envelope, context, routedText);
-            return;
-        }
-        context.submit(adapter.requestIntentClassify(envelope, new LlmIntentClassifyPayload(payload.rawText(), routedText, parseResult.getCandidateIntentType(), parseResult.getBestScore(), parseResult.getEntityRatio(), "", parseResult.getBestCandidateText(), payload.turnId(), payload.sessionId())));
     }
 
     private void routeToChat(TianshuEnvelope envelope, ProtocolContext context, String text) {
@@ -117,6 +67,84 @@ public final class IrModule {
             return;
         }
         context.submit(adapter.requestLlmChat(envelope, new LlmPromptPayload(text.trim(), "")));
+    }
+
+    private boolean dispatchVoiceTriggers(TianshuEnvelope envelope, String text, IRParseResult parseResult) {
+        List<VoiceTriggerMatch> matches = matchVoiceTriggersWithIrTokens(text);
+        if (matches.isEmpty()) {
+            return false;
+        }
+        String sourceText = text.trim();
+        List<String> itemNames = matchedItemNames(parseResult);
+        List<String> itemIds = matchedItemIds(parseResult);
+        for (VoiceTriggerMatch match : matches) {
+            adapter.dispatchVoiceTrigger(envelope, match.moduleId(), new VoiceTriggerPayload(sourceText, match.moduleId(), match.matchedHotwords(), match.matchedExtraWords(), itemNames, itemIds, match.confidence()));
+        }
+        return true;
+    }
+
+    private List<VoiceTriggerMatch> matchVoiceTriggersWithIrTokens(String text) {
+        String tokenText = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(text));
+        if (tokenText.isBlank()) {
+            return List.of();
+        }
+        List<VoiceTriggerMatch> matches = new ArrayList<>();
+        for (VoiceTriggerRegistration registration : runtime.voiceTriggers().registrations()) {
+            List<String> matchedHotwords = collectTokenMatches(tokenText, registration.hotwords());
+            List<String> matchedExtraWords = collectTokenMatches(tokenText, registration.extraWords());
+            if (matchedHotwords.isEmpty() && matchedExtraWords.isEmpty()) {
+                continue;
+            }
+            matches.add(new VoiceTriggerMatch(registration.moduleId(), matchedHotwords, matchedExtraWords, voiceTriggerConfidence(registration, matchedHotwords, matchedExtraWords)));
+        }
+        return matches;
+    }
+
+    private List<String> collectTokenMatches(String tokenText, List<String> words) {
+        if (words == null || words.isEmpty()) {
+            return List.of();
+        }
+        List<String> matches = new ArrayList<>();
+        for (String word : words) {
+            String wordTokenText = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(word));
+            if (!wordTokenText.isBlank() && tokenText.contains(wordTokenText)) {
+                matches.add(word);
+            }
+        }
+        return matches;
+    }
+
+    private double voiceTriggerConfidence(VoiceTriggerRegistration registration, List<String> matchedHotwords, List<String> matchedExtraWords) {
+        int total = Math.max(1, registration.hotwords().size() + registration.extraWords().size());
+        double score = matchedHotwords.size() * 2.0D + matchedExtraWords.size();
+        return Math.min(1.0D, score / Math.max(2.0D, total));
+    }
+
+    private List<String> matchedItemNames(IRParseResult parseResult) {
+        if (parseResult == null) {
+            return List.of();
+        }
+        List<String> itemNames = new ArrayList<>();
+        if (parseResult.getBestCandidateText() != null && !parseResult.getBestCandidateText().isBlank()) {
+            itemNames.add(parseResult.getBestCandidateText().trim());
+        }
+        return itemNames;
+    }
+
+    private List<String> matchedItemIds(IRParseResult parseResult) {
+        if (parseResult == null) {
+            return List.of();
+        }
+        List<String> itemIds = new ArrayList<>();
+        if (parseResult.getBestCandidateRealItemId() != null && !parseResult.getBestCandidateRealItemId().isBlank()) {
+            itemIds.add(parseResult.getBestCandidateRealItemId().trim());
+        }
+        for (ParseUnit unit : parseResult.getUnits()) {
+            if (unit.targetRealItemId != null && !unit.targetRealItemId.isBlank()) {
+                itemIds.add(unit.targetRealItemId.trim());
+            }
+        }
+        return itemIds;
     }
 
     private String routeText(String preferred, String fallback) {

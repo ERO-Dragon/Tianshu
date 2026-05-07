@@ -88,9 +88,9 @@ public class ModelManager {
     }
 
     public boolean checkPresetModelsExist(com.rheinmetal.tianshu.constant.VramTier tier) {
-        Path asrDir = config.getAsrBasePath().resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetAsrName(tier));
-        Path llmDir = config.getLlmBasePath().resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetLlmName(tier));
-        Path ttsDir = config.getTtsBasePath().resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetTtsName(tier));
+        Path asrDir = config.getAsrBasePath().resolve("model").resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetAsrName(tier));
+        Path llmDir = config.getLlmBasePath().resolve("model").resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetLlmName(tier));
+        Path ttsDir = config.getTtsBasePath().resolve("model").resolve(com.rheinmetal.tianshu.constant.ModelPresets.getPresetTtsName(tier));
         return checkAsrModelExists(asrDir) && checkLlmModelExists(llmDir) && checkTtsModelExists(ttsDir);
     }
 
@@ -137,7 +137,7 @@ public class ModelManager {
             return null;
         }
         String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
-        return config.getTtsBasePath().resolve(modelDirName);
+        return config.getTtsBasePath().resolve("model").resolve(modelDirName);
     }
 
     private TtsModelInfo resolveTtsModelInfoByPath(Path dir) {

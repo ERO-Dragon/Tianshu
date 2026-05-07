@@ -74,7 +74,7 @@ final class IRCacheStore {
 
     private Path cacheDirectory() {
         Path gameDir = Minecraft.getInstance().gameDirectory.toPath();
-        return gameDir.resolve("config").resolve(CACHE_DIR_NAME).resolve(CACHE_SUB_DIR_NAME);
+        return gameDir.resolve("config").resolve(CACHE_DIR_NAME).resolve("module").resolve("ir").resolve("cache");
     }
 
     private String currentLanguageCode() {

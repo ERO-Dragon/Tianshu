@@ -44,7 +44,7 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
 
     public Path getLlmServerDir() {
         if (llmServerDir == null) {
-            llmServerDir = getRootDir().resolve("LLMServer");
+            llmServerDir = getRootDir().resolve("module").resolve("llm").resolve("server");
         }
         return llmServerDir;
     }
@@ -57,12 +57,17 @@ public class NeoForgeNativeLibBridge implements INativeLibBridge {
     public void ensureDirectories() {
         try {
             Files.createDirectories(getNativesDir());
+            Files.createDirectories(getRootDir().resolve("module").resolve("asr").resolve("model"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("asr").resolve("hotwords"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("asr").resolve("cache"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("llm").resolve("model"));
             Files.createDirectories(getLlmServerDir());
-            Files.createDirectories(getRootDir().resolve("cache"));
-            Files.createDirectories(getRootDir().resolve("models").resolve("asr"));
-            Files.createDirectories(getRootDir().resolve("models").resolve("llm"));
-            Files.createDirectories(getRootDir().resolve("models").resolve("tts"));
-            Files.createDirectories(getRootDir().resolve("voices"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("llm").resolve("cache"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("tts").resolve("model"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("tts").resolve("voices"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("tts").resolve("cache"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("ir").resolve("cache"));
+            Files.createDirectories(getRootDir().resolve("module").resolve("recipe").resolve("cache"));
         } catch (IOException e) {
             LOGGER.error("创建目录结构失败", e);
         }

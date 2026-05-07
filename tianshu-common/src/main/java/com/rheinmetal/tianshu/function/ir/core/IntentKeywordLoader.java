@@ -17,7 +17,7 @@ import java.util.Set;
 public final class IntentKeywordLoader {
 
     private static final Set<String> META_KEYS = Set.of(
-        "PRIORITY_SPLITTERS", "PARALLEL_SPLITTERS", "NEGATIONS", "FILLER_WORDS"
+        "PRIORITY_SPLITTERS", "PARALLEL_SPLITTERS", "NEGATIONS", "FILLER_WORDS", "ENTITY_BOUNDARY_WORDS"
     );
     private static final Gson GSON = new Gson();
     private static volatile Map<String, String[]> cachedKeywords;
@@ -26,9 +26,7 @@ public final class IntentKeywordLoader {
     }
 
     public static void reload(InputStream inputStream) {
-        Map<String, String[]> loaded = parseJson(inputStream);
-        registerIntentsFromKeywords(loaded);
-        cachedKeywords = loaded;
+        cachedKeywords = parseJson(inputStream);
     }
 
     public static Map<String, String[]> load() {
@@ -56,25 +54,19 @@ public final class IntentKeywordLoader {
         return getKeywords(intent.name());
     }
 
-    public static Set<Intent> getDetectableIntents() {
-        Set<Intent> intents = new LinkedHashSet<>();
-        for (String name : Intent.registeredNames()) {
-            if (!name.equals("UNKNOWN")) {
-                Intent intent = Intent.valueOf(name);
-                if (getKeywords(intent).length > 0) {
-                    intents.add(intent);
-                }
+    public static String[] getEntityBoundaryWords() {
+        LinkedHashSet<String> words = new LinkedHashSet<>();
+        for (Map.Entry<String, String[]> entry : load().entrySet()) {
+            if (!META_KEYS.contains(entry.getKey())) {
+                Collections.addAll(words, entry.getValue());
             }
         }
-        return intents;
+        Collections.addAll(words, getKeywords("ENTITY_BOUNDARY_WORDS"));
+        return words.toArray(new String[0]);
     }
 
-    private static void registerIntentsFromKeywords(Map<String, String[]> keywords) {
-        for (String key : keywords.keySet()) {
-            if (!META_KEYS.contains(key)) {
-                Intent.register(key);
-            }
-        }
+    public static Set<Intent> getDetectableIntents() {
+        return Collections.emptySet();
     }
 
     private static Map<String, String[]> parseJson(InputStream inputStream) {

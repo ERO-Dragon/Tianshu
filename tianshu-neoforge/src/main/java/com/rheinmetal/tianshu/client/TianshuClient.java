@@ -834,6 +834,8 @@ public class TianshuClient {
         return Minecraft.getInstance().gameDirectory.toPath()
                 .resolve("config")
                 .resolve("TianshuAIAssistant")
+                .resolve("module")
+                .resolve("recipe")
                 .resolve("cache")
                 .resolve("crafting_graph");
     }

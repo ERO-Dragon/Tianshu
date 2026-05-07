@@ -40,14 +40,20 @@ public class AsrEngine {
     private boolean isTransducer = false;
     private boolean isOffline = false;
     private String modelDirPath;
+    private Path hotwordsFilePath;
 
     public AsrEngine(IGameEnvironment env) {
         this.env = env;
     }
 
     public boolean initialize(AsrModelInfo modelInfo, Path modelDir) throws ModelFilesMissingException {
+        return initialize(modelInfo, modelDir, null);
+    }
+
+    public boolean initialize(AsrModelInfo modelInfo, Path modelDir, Path hotwordsFile) throws ModelFilesMissingException {
         env.info("Initializing ASR engine, model=" + modelInfo.name + ", modelDir=" + modelDir);
         this.modelDirPath = modelDir.toAbsolutePath().toString();
+        this.hotwordsFilePath = hotwordsFile == null ? null : hotwordsFile.toAbsolutePath().normalize();
 
         List<String> missing = new ArrayList<>();
         for (String file : modelInfo.getAllRequiredFiles()) {
@@ -152,6 +158,30 @@ public class AsrEngine {
         return true;
     }
 
+    private Path resolveActiveHotwordsFile() {
+        return hotwordsFilePath;
+    }
+
+    private void configureHotwords(OnlineRecognizerConfig.Builder configBuilder, AsrModelInfo modelInfo, Path modelDir) {
+        if (!modelInfo.supportHotwords) {
+            configBuilder.setDecodingMethod("greedy_search");
+            env.info("Model does not support hotwords, using greedy_search");
+            return;
+        }
+        Path hotwordsFile = resolveActiveHotwordsFile();
+        if (hotwordsFile != null && Files.exists(hotwordsFile)) {
+            env.info("Detected hotwords file: " + hotwordsFile);
+            configBuilder.setDecodingMethod("modified_beam_search")
+                    .setHotwordsFile(hotwordsFile.toAbsolutePath().toString());
+            ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(modelDir);
+            configBuilder.setHotwordsScore((float) settings.hotwordsScore);
+            env.info("Hotwords enabled, decodingMethod=modified_beam_search, score=" + settings.hotwordsScore);
+            return;
+        }
+        configBuilder.setDecodingMethod("greedy_search");
+        env.info("Model supports hotwords but hotwords file was not found, using greedy_search");
+    }
+
     private void initOnlineTransducer(String encoderPath, String decoderPath, String joinerPath, String tokensPath, AsrModelInfo modelInfo, Path modelDir) {
         OnlineTransducerModelConfig transducer = OnlineTransducerModelConfig.builder()
                 .setEncoder(encoderPath)
@@ -167,23 +197,7 @@ public class AsrEngine {
                 .build();
 
         OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder();
-        if (modelInfo.supportHotwords) {
-            Path hotwordsFile = modelDir.resolve("hotwords.txt");
-            if (Files.exists(hotwordsFile)) {
-                env.info("Detected hotwords file: " + hotwordsFile);
-                configBuilder.setDecodingMethod("modified_beam_search")
-                        .setHotwordsFile(hotwordsFile.toAbsolutePath().toString());
-                ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(modelDir);
-                configBuilder.setHotwordsScore((float) settings.hotwordsScore);
-                env.info("Hotwords enabled, decodingMethod=modified_beam_search, score=" + settings.hotwordsScore);
-            } else {
-                configBuilder.setDecodingMethod("greedy_search");
-                env.info("Model supports hotwords but hotwords.txt was not found, using greedy_search");
-            }
-        } else {
-            configBuilder.setDecodingMethod("greedy_search");
-            env.info("Model does not support hotwords, using greedy_search");
-        }
+        configureHotwords(configBuilder, modelInfo, modelDir);
         configBuilder.setOnlineModelConfig(modelConfig);
         onlineRecognizer = new OnlineRecognizer(configBuilder.build());
     }

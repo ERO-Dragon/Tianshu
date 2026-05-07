@@ -21,6 +21,7 @@ import com.rheinmetal.tianshu.protocol.registry.TopicRegistry;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionRegistry;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -35,6 +36,7 @@ public final class ProtocolRuntime {
     private final CancellationRegistry cancellationRegistry = new CancellationRegistry(lifecycleStore);
     private final DeadLetterQueue deadLetterQueue = new DeadLetterQueue(512, lifecycleStore);
     private final StormGuard stormGuard = new StormGuard(200, 32);
+    private final VoiceTriggerRegistry voiceTriggerRegistry = new VoiceTriggerRegistry();
     private final BrokerRegistry brokerRegistry;
     private final ProtocolContext context;
 
@@ -197,6 +199,7 @@ public final class ProtocolRuntime {
     public DirectRouteRegistry directRoutes() { return directRouteRegistry; }
     public TopicRegistry topics() { return topicRegistry; }
     public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
+    public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
     public ProtocolContext context() { return context; }
 
     private final class RuntimeContext implements ProtocolContext {

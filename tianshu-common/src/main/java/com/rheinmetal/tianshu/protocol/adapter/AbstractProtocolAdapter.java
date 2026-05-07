@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -48,6 +49,10 @@ public abstract class AbstractProtocolAdapter {
 
     protected final AdapterDefaults defaults() {
         return defaults;
+    }
+
+    protected final void registerVoiceTrigger(List<String> hotwords, List<String> extraWords) {
+        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, hotwords, extraWords));
     }
 
     protected final void registerCapability(String capabilityId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {

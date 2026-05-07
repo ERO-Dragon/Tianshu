@@ -419,14 +419,14 @@ public class TianshuGUI extends Screen {
             return null;
         }
         return switch (type) {
-            case "ASR" -> config.getAsrBasePath().resolve(modelName);
-            case "LLM" -> config.getLlmBasePath().resolve(modelName);
+            case "ASR" -> config.getAsrModelPath();
+            case "LLM" -> config.getLlmModelPath();
             case "TTS" -> {
                 Path currentTtsDir = coreManager.resolveCurrentTtsModelDir();
                 if (currentTtsDir != null) {
                     yield currentTtsDir;
                 }
-                yield config.getTtsBasePath().resolve(modelName);
+                yield config.getTtsModelPath();
             }
             default -> null;
         };

@@ -25,6 +25,8 @@ public enum PayloadType {
     HEARTBEAT,
     PROGRESS,
     CANCEL,
+    VOICE_TRIGGER_REGISTRY,
+    VOICE_TRIGGER,
     SNAPSHOT,
     CUSTOM
 }

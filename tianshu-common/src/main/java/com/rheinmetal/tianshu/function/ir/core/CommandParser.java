@@ -19,7 +19,7 @@ public final class CommandParser {
     private final String[] parallelSplitters;
     private final String[] negations;
     private final String[] fillerWords;
-    private final Intent[] detectableIntents;
+    private final String[] entityBoundaryWords;
 
     public static double PRIMARY_WEIGHT = 1.0;
     public static double FALLBACK_WEIGHT = 0.85;
@@ -49,7 +49,7 @@ public final class CommandParser {
         this.parallelSplitters = keywords.getOrDefault("PARALLEL_SPLITTERS", new String[0]);
         this.negations = keywords.getOrDefault("NEGATIONS", new String[0]);
         this.fillerWords = keywords.getOrDefault("FILLER_WORDS", new String[0]);
-        this.detectableIntents = IntentKeywordLoader.getDetectableIntents().toArray(new Intent[0]);
+        this.entityBoundaryWords = IntentKeywordLoader.getEntityBoundaryWords();
     }
 
     public IRParseResult parse(String rawText, Set<Integer> contextInternalIds, boolean isFastIR) {
@@ -89,8 +89,7 @@ public final class CommandParser {
                     double threshold = FINALIR_FIXED_THRESHOLD;
                     if (best.score >= threshold) {
                         String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
-                        Intent detectedIntent = detectIntent(rawText);
-                        results.add(new ParseUnit(detectedIntent, targetRealItemId, false));
+                        results.add(new ParseUnit(Intent.UNKNOWN, targetRealItemId, false));
                     }
                 }
             }
@@ -142,12 +141,11 @@ public final class CommandParser {
             ScoredCandidate best = ranked[0];
             String targetText = IRBaseUtils.localizedNameArray[best.internalId];
             String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
-            Intent detectedIntent = detectIntent(rawText);
             double threshold = computeInterceptThreshold(rawText, best);
             double entityRatio = computeEntityRatio(rawText, best);
-            reviewHint = new ReviewHint(targetText, targetRealItemId, best.score, entityRatio, threshold, detectedIntent.name());
+            reviewHint = new ReviewHint(targetText, targetRealItemId, best.score, entityRatio, threshold, Intent.UNKNOWN.name());
             if (best.score >= threshold) {
-                interceptedUnit = new ParseUnit(detectedIntent, targetRealItemId, false);
+                interceptedUnit = new ParseUnit(Intent.UNKNOWN, targetRealItemId, false);
             }
         }
 
@@ -319,7 +317,6 @@ public final class CommandParser {
                 continue;
             }
             boolean parentNeg = containsAny(normalizedPart, negations);
-            Intent parentIntent = detectIntent(normalizedPart);
             List<String> secondaryParts = splitByKeywords(normalizedPart, parallelSplitters);
             for (String subPart : secondaryParts) {
                 String normalized = normalizeChunk(subPart);
@@ -328,11 +325,9 @@ public final class CommandParser {
                 }
                 boolean localNeg = containsAny(normalized, negations);
                 boolean neg = localNeg || parentNeg;
-                Intent localIntent = detectIntent(normalized);
-                Intent intent = localIntent == Intent.UNKNOWN ? parentIntent : localIntent;
-                String entityChunk = extractEntityChunk(normalized, intent);
+                String entityChunk = extractEntityChunk(normalized);
                 if (!entityChunk.isEmpty()) {
-                    subQueries.add(new SubQuery(entityChunk, neg, intent));
+                    subQueries.add(new SubQuery(entityChunk, neg, Intent.UNKNOWN));
                 }
             }
         }
@@ -372,28 +367,10 @@ public final class CommandParser {
         return result.replace('，', ' ').replace(',', ' ').trim();
     }
 
-    private Intent detectIntent(String text) {
-        Intent bestIntent = Intent.UNKNOWN;
-        int bestLength = 0;
-
-        for (Intent intent : detectableIntents) {
-            for (String keyword : IntentKeywordLoader.getKeywords(intent)) {
-                if (text.contains(keyword) && keyword.length() > bestLength) {
-                    bestLength = keyword.length();
-                    bestIntent = intent;
-                }
-            }
-        }
-
-        return bestIntent;
-    }
-
-    private String extractEntityChunk(String text, Intent currentIntent) {
+    private String extractEntityChunk(String text) {
         String result = text;
         result = stripKeywords(result, negations);
-        if (currentIntent != Intent.UNKNOWN) {
-            result = stripBoundaryKeywords(result, IntentKeywordLoader.getKeywords(currentIntent));
-        }
+        result = stripBoundaryKeywords(result, entityBoundaryWords);
         result = stripKeywords(result, fillerWords);
         return result.trim();
     }

@@ -39,12 +39,15 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -53,6 +56,8 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 public class TianshuCoreManager {
 
     private static final String DEFAULT_GITHUB_PROXY_URL = "https://gh-proxy.org/";
+    private static final String ASR_HOTWORDS_FILE_NAME = "hotwords.txt";
+    private static final String ASR_SHARED_HOTWORDS_DIR = "hotwords";
 
     public interface DownloadProgressCallback {
         void onProgress(String label, int percent);
@@ -175,6 +180,7 @@ public class TianshuCoreManager {
         this.threadPool = new TianshuThreadPool(env);
         this.modelManager = new ModelManager(config);
         this.asrModelDownloader = new AsrModelDownloader(env);
+        this.protocolRuntime.voiceTriggers().setChangeListener(this::handleVoiceTriggerRegistryChanged);
     }
 
     public State getState() {
@@ -308,17 +314,15 @@ public class TianshuCoreManager {
             asrEngine = new AsrEngine(env);
 
             if (modelInfo != null) {
-                Path modelDir = originalModelPath.resolve(modelInfo.name);
-                if (!Files.isDirectory(modelDir)) {
-                    modelDir = originalModelPath;
-                }
+                Path modelDir = originalModelPath;
+                syncAsrHotwordsFile(modelDir, modelInfo);
                 File safeDir = PathUtils.getSafeModelDir(modelDir.toFile());
                 if (safeDir == null) {
                     env.error("获取安全模型目录失败", null);
                     return;
                 }
                 try {
-                    if (!asrEngine.initialize(modelInfo, safeDir.toPath())) {
+                    if (!asrEngine.initialize(modelInfo, safeDir.toPath(), resolveSharedAsrHotwordsFile(modelInfo))) {
                         env.error("ASR 引擎初始化失败，模型类型可能尚未适配", null);
                         env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 引擎初始化失败，该模型类型尚未适配"));
                         return;
@@ -329,6 +333,7 @@ public class TianshuCoreManager {
                     return;
                 }
             } else {
+                syncAsrHotwordsFile(originalModelPath, null);
                 File safeDir = PathUtils.getSafeModelDir(originalModelPath.toFile());
                 if (safeDir == null) {
                     env.error("获取安全模型目录失败", null);
@@ -396,6 +401,107 @@ public class TianshuCoreManager {
         ttsModule.register();
         uiProtocolBridge.register();
         env.info("协议模块注册完成：module.ir/module.llm/module.tts/module.ui");
+    }
+
+    private void handleVoiceTriggerRegistryChanged() {
+        try {
+            Path modelDir = resolveCurrentAsrModelDirForHotwords();
+            if (modelDir == null || !Files.isDirectory(modelDir)) {
+                return;
+            }
+            syncAsrHotwordsFile(modelDir, resolveCurrentAsrModelInfo());
+            if (state.isAsrReady()) {
+                env.info("语音触发热词已更新，重新加载 ASR 引擎");
+                state.setAsrReady(false);
+                if (asrEngine != null) {
+                    asrEngine.shutdown();
+                    asrEngine = null;
+                }
+                tryInitEngine();
+            }
+        } catch (Exception e) {
+            env.error("同步 ASR 热词失败", e);
+        }
+    }
+
+    private Path resolveCurrentAsrModelDirForHotwords() {
+        Path originalModelPath = config.getAsrModelPath();
+        if (originalModelPath == null || !Files.isDirectory(originalModelPath)) {
+            return null;
+        }
+        AsrModelInfo modelInfo = resolveCurrentAsrModelInfo();
+        if (modelInfo == null) {
+            return originalModelPath;
+        }
+        return originalModelPath;
+    }
+
+    private void syncAsrHotwordsFile(Path modelDir, AsrModelInfo modelInfo) {
+        if (modelDir == null) {
+            return;
+        }
+        try {
+            Set<String> words = new LinkedHashSet<>();
+            addHotwords(words, loadSharedAsrHotwords(modelInfo));
+            addHotwords(words, protocolRuntime.voiceTriggers().asrHotwords());
+            Path hotwordsFile = resolveSharedAsrHotwordsFile(modelInfo);
+            if (words.isEmpty()) {
+                Files.deleteIfExists(hotwordsFile);
+                return;
+            }
+            Files.createDirectories(hotwordsFile.getParent());
+            Files.write(hotwordsFile, words, StandardCharsets.UTF_8);
+            env.info("ASR 共享热词文件已同步: " + hotwordsFile + ", count=" + words.size());
+        } catch (IOException e) {
+            env.error("写入 ASR 热词文件失败", e);
+        }
+    }
+
+    private List<String> loadSharedAsrHotwords(AsrModelInfo modelInfo) {
+        Path sharedHotwordsFile = resolveSharedAsrHotwordsFile(modelInfo);
+        if (!Files.isRegularFile(sharedHotwordsFile)) {
+            return Collections.emptyList();
+        }
+        try {
+            return Files.readAllLines(sharedHotwordsFile, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            env.error("读取 ASR 共享热词文件失败", e);
+            return Collections.emptyList();
+        }
+    }
+
+    private Path resolveSharedAsrHotwordsFile(AsrModelInfo modelInfo) {
+        return config.getAsrBasePath().resolve(ASR_SHARED_HOTWORDS_DIR).resolve(resolveAsrHotwordLanguage(modelInfo)).resolve(ASR_HOTWORDS_FILE_NAME);
+    }
+
+    private static String resolveAsrHotwordLanguage(AsrModelInfo modelInfo) {
+        if (modelInfo == null) {
+            return "zh";
+        }
+        for (String lang : modelInfo.getLang()) {
+            if (lang == null) {
+                continue;
+            }
+            String normalized = lang.trim().toLowerCase();
+            if (normalized.startsWith("en")) {
+                return "en";
+            }
+            if (normalized.startsWith("zh") || normalized.startsWith("cmn") || normalized.startsWith("cn")) {
+                return "zh";
+            }
+        }
+        return "zh";
+    }
+
+    private static void addHotwords(Set<String> target, List<String> words) {
+        if (words == null || words.isEmpty()) {
+            return;
+        }
+        for (String word : words) {
+            if (word != null && !word.isBlank()) {
+                target.add(word.trim());
+            }
+        }
     }
 
     public void restartEngineAsync(boolean llmChanged, Runnable onComplete) {
@@ -512,13 +618,13 @@ public class TianshuCoreManager {
 
     public Path resolveAsrModelDir(AsrModelInfo info) {
         if (info == null || info.name == null) return null;
-        return config.getAsrBasePath().resolve(info.name);
+        return config.getAsrBasePath().resolve("model").resolve(info.name);
     }
 
     public boolean hasAsrModelContent(AsrModelInfo info) {
         Path modelDir = resolveAsrModelDir(info);
         if (modelDir == null || !Files.exists(modelDir)) return false;
-        return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath());
+        return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"));
     }
 
     public void deleteAsrModel(AsrModelInfo info) {
@@ -661,7 +767,7 @@ public class TianshuCoreManager {
                 callback.onProgress("ASR:", 5);
                 AsrModelInfo asrModel = AsrModelManager.getDefaultModel(tier);
                 if (asrModel != null) {
-                    Path asrDir = config.getAsrBasePath().resolve(asrModel.name);
+                    Path asrDir = config.getAsrBasePath().resolve("model").resolve(asrModel.name);
                     asrModelDownloader.downloadSync(asrModel, asrDir, DEFAULT_GITHUB_PROXY_URL, new AsrModelDownloader.DownloadProgressCallback() {
                         @Override public void onProgress(String label, int percent) { callback.onProgress("ASR:", percent); }
                         @Override public void onComplete() {}
@@ -669,7 +775,7 @@ public class TianshuCoreManager {
                     });
                 } else {
                     HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-                    Path asrDir = config.getAsrBasePath().resolve(ModelPresets.getPresetAsrName(tier));
+                    Path asrDir = config.getAsrBasePath().resolve("model").resolve(ModelPresets.getPresetAsrName(tier));
                     downloader.downloadModelFiles(ModelPresets.getPresetAsrName(tier).equals("ParaformerOnnx")
                             ? "csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14"
                             : "csukuangfj/sherpa-onnx-zipformer-multi-zh-hans-2023-10-24",
@@ -679,7 +785,7 @@ public class TianshuCoreManager {
 
                 callback.onProgress("LLM:", 5);
                 HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-                Path llmDir = config.getLlmBasePath().resolve(ModelPresets.getPresetLlmName(tier));
+                Path llmDir = config.getLlmBasePath().resolve("model").resolve(ModelPresets.getPresetLlmName(tier));
                 downloader.downloadModelFiles(ModelPresets.getPresetTtsModelId(tier).startsWith("OpenMOSS")
                         ? "csukuangfj/sherpa-onnx-vits-zh-hf-keqing"
                         : ModelPresets.getPresetTtsModelId(tier),
@@ -688,7 +794,7 @@ public class TianshuCoreManager {
 
                 callback.onProgress("TTS:", 5);
                 String ttsName = ModelPresets.getPresetTtsName(tier);
-                Path ttsDir = config.getTtsBasePath().resolve(ttsName);
+                Path ttsDir = config.getTtsBasePath().resolve("model").resolve(ttsName);
                 if (ttsName.contains("MOSS")) {
                     downloader.downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", ttsDir, "main", true, 3);
                     downloader.downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", ttsDir, "main", true, 3);
@@ -900,7 +1006,7 @@ public class TianshuCoreManager {
             return null;
         }
         String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
-        return config.getTtsBasePath().resolve(modelDirName);
+        return config.getTtsBasePath().resolve("model").resolve(modelDirName);
     }
 
     private void downloadSherpaModel(TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {

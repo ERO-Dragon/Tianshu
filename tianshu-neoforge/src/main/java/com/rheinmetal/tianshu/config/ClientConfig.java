@@ -201,27 +201,27 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     @Override
     public Path getRootPath() {
-        return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), ModelPresets.DEFAULT_ROOT_DIR_NAME);
+        return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), ModelPresets.DEFAULT_ROOT_DIR_NAME).resolve("module");
     }
 
     @Override
     public Path getAsrBasePath() {
-        return getRootPath().resolve("models/asr");
+        return getRootPath().resolve("asr");
     }
 
     @Override
     public Path getLlmBasePath() {
-        return getRootPath().resolve("models/llm");
+        return getRootPath().resolve("llm");
     }
 
     @Override
     public Path getTtsBasePath() {
-        return getRootPath().resolve("models/tts");
+        return getRootPath().resolve("tts");
     }
 
     @Override
     public Path getVoiceLibraryPath() {
-        return getRootPath().resolve("voices");
+        return getTtsBasePath().resolve("voices");
     }
 
     @Override
@@ -234,7 +234,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 ModelPresets.getPresetAsrName(VramTier.DELUXE),
                 getCustomAsrName()
         );
-        return getAsrBasePath().resolve(name);
+        return getAsrBasePath().resolve("model").resolve(name);
     }
 
     @Override
@@ -247,7 +247,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 ModelPresets.getPresetLlmName(VramTier.DELUXE),
                 getCustomLlmName()
         );
-        return getLlmBasePath().resolve(name);
+        return getLlmBasePath().resolve("model").resolve(name);
     }
 
     @Override
@@ -260,7 +260,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 ModelPresets.getPresetTtsName(VramTier.DELUXE),
                 getCustomTtsName()
         );
-        return getTtsBasePath().resolve(name);
+        return getTtsBasePath().resolve("model").resolve(name);
     }
 
     @Override
@@ -273,12 +273,12 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 ModelPresets.getPresetLlmName(VramTier.DELUXE),
                 getCustomLlmName()
         );
-        Path modelDir = getLlmBasePath().resolve(modelName);
+        Path modelDir = getLlmBasePath().resolve("model").resolve(modelName);
 
         if (tier == VramTier.CUSTOM) {
             String customName = getCustomLlmName();
             if (customName != null && customName.trim().toLowerCase().endsWith(".gguf")) {
-                return getLlmBasePath().resolve(customName.trim());
+                return getLlmBasePath().resolve("model").resolve(customName.trim());
             }
             if (Files.isDirectory(modelDir)) {
                 Path preferred = modelDir.resolve("model.gguf");
