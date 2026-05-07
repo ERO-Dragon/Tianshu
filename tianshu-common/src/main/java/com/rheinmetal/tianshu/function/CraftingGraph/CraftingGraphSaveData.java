@@ -25,6 +25,8 @@ public final class CraftingGraphSaveData {
         public String toNode;
         public String itemId;
         public GraphExpansionDirection direction;
+        public float parentSlotX = Float.NaN;
+        public float parentSlotY = Float.NaN;
         public AnchorRecord fromAnchor;
         public AnchorRecord toAnchor;
     }

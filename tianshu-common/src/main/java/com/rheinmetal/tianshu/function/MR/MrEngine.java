@@ -1612,6 +1612,9 @@ public class MrEngine {
     }
 
     private String buildFocusedDetailText(NearbyEntityData entity) {
+        if (entity.getDetailText() != null && !entity.getDetailText().isEmpty()) {
+            return entity.getDetailText();
+        }
         StringBuilder builder = new StringBuilder();
         builder.append("ENTITY ").append(safeText(entity.getDisplayName(), entity.getEntityId()));
         builder.append("\nID ").append(safeText(entity.getEntityId(), "unknown"));

@@ -66,12 +66,13 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
                         if (!itemId.equals(resultItemId)) continue;
 
                         List<IngredientData> ingredients = extractIngredients(holder);
+                        CraftingGridData craftingGrid = extractCraftingGrid(holder);
                         IngredientData result = toItemData(resultStack);
 
                         String recipeId = holder.id().toString();
                         String recipeType = type.toString();
 
-                        matched.add(new RecipeData(recipeId, recipeType, result, ingredients));
+                        matched.add(new RecipeData(recipeId, recipeType, result, ingredients, craftingGrid.cells, craftingGrid.width, craftingGrid.height));
                     } catch (Exception e) {
                         LOGGER.warn("解析配方失败 {}: {}", holder.id(), e.getMessage());
                     }
@@ -134,7 +135,8 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
                         if (resultStack.isEmpty()) continue;
 
                         IngredientData result = toItemData(resultStack);
-                        matched.add(new RecipeData(holder.id().toString(), type.toString(), result, ingredients));
+                        CraftingGridData craftingGrid = extractCraftingGrid(holder);
+                        matched.add(new RecipeData(holder.id().toString(), type.toString(), result, ingredients, craftingGrid.cells, craftingGrid.width, craftingGrid.height));
                     } catch (Exception e) {
                         LOGGER.warn("解析用途配方失败 {}: {}", holder.id(), e.getMessage());
                     }
@@ -163,6 +165,25 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
             if (ingredient.getTagItems().contains(itemId)) return true;
         }
         return false;
+    }
+
+    private CraftingGridData extractCraftingGrid(RecipeHolder<?> holder) {
+        if (holder == null || !(holder.value() instanceof ShapedRecipe shapedRecipe)) return CraftingGridData.EMPTY;
+        try {
+            int width = shapedRecipe.getWidth();
+            int height = shapedRecipe.getHeight();
+            NonNullList<Ingredient> gridIngredients = shapedRecipe.pattern.ingredients();
+            if (width <= 0 || height <= 0 || gridIngredients == null || gridIngredients.size() < width * height) return CraftingGridData.EMPTY;
+            List<IngredientData> cells = new ArrayList<>(width * height);
+            for (int i = 0; i < width * height; i++) {
+                Ingredient ingredient = gridIngredients.get(i);
+                cells.add(ingredient == null || ingredient.isEmpty() ? null : resolveIngredient(ingredient));
+            }
+            return new CraftingGridData(cells, width, height);
+        } catch (Exception e) {
+            LOGGER.warn("提取有序合成网格失败 {}: {}", holder.id(), e.getMessage());
+            return CraftingGridData.EMPTY;
+        }
     }
 
     private List<IngredientData> extractIngredients(RecipeHolder<?> holder) {
@@ -301,5 +322,9 @@ public class NeoForgeRecipeProvider implements IRecipeDataProvider {
         } catch (Exception e) {
             output.put(prefix, "[error]");
         }
+    }
+
+    private record CraftingGridData(List<IngredientData> cells, int width, int height) {
+        private static final CraftingGridData EMPTY = new CraftingGridData(Collections.emptyList(), 0, 0);
     }
 }

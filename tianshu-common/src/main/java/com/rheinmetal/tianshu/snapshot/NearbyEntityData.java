@@ -34,6 +34,8 @@ public final class NearbyEntityData {
     public final String mainHandItemId;
     public final float attackDamage;
     public final float armorValue;
+    public final String detailText;
+    public final MrEntityExplanationData entityExplanationData;
 
     public NearbyEntityData(
             String entityId,
@@ -60,6 +62,36 @@ public final class NearbyEntityData {
             float attackDamage,
             float armorValue
     ) {
+        this(entityId, uuid, targetUuid, displayName, relativeX, relativeY, relativeZ, horizontalAngle, distance, hostile, health, maxHealth, motionX, motionY, motionZ, pullingBow, sneaking, occlusionVisible, boundingHeight, eyeHeight, mainHandItemId, attackDamage, armorValue, null, null);
+    }
+
+    public NearbyEntityData(
+            String entityId,
+            String uuid,
+            String targetUuid,
+            String displayName,
+            double relativeX,
+            double relativeY,
+            double relativeZ,
+            double horizontalAngle,
+            double distance,
+            boolean hostile,
+            float health,
+            float maxHealth,
+            double motionX,
+            double motionY,
+            double motionZ,
+            boolean pullingBow,
+            boolean sneaking,
+            boolean occlusionVisible,
+            float boundingHeight,
+            float eyeHeight,
+            String mainHandItemId,
+            float attackDamage,
+            float armorValue,
+            String detailText,
+            MrEntityExplanationData entityExplanationData
+    ) {
         this.entityId = entityId;
         this.uuid = uuid;
         this.targetUuid = targetUuid;
@@ -83,6 +115,8 @@ public final class NearbyEntityData {
         this.mainHandItemId = mainHandItemId;
         this.attackDamage = attackDamage;
         this.armorValue = armorValue;
+        this.detailText = detailText;
+        this.entityExplanationData = entityExplanationData;
     }
 
     public String getEntityId() { return entityId; }
@@ -108,6 +142,8 @@ public final class NearbyEntityData {
     public String getMainHandItemId() { return mainHandItemId; }
     public float getAttackDamage() { return attackDamage; }
     public float getArmorValue() { return armorValue; }
+    public String getDetailText() { return detailText; }
+    public MrEntityExplanationData getEntityExplanationData() { return entityExplanationData; }
 
     @Override
     public boolean equals(Object o) {

@@ -25,8 +25,13 @@ public final class MrManualFocusTargetData {
     private final float boundingHeight;
     private final float eyeHeight;
     private final String detailText;
+    private final MrEntityExplanationData entityExplanationData;
 
     public MrManualFocusTargetData(TargetType type, String uuid, String registryId, String displayName, double relativeX, double relativeY, double relativeZ, double worldX, double worldY, double worldZ, double distance, float health, float maxHealth, float attackDamage, float armorValue, String mainHandItemId, boolean hostile, boolean occlusionVisible, float boundingHeight, float eyeHeight, String detailText) {
+        this(type, uuid, registryId, displayName, relativeX, relativeY, relativeZ, worldX, worldY, worldZ, distance, health, maxHealth, attackDamage, armorValue, mainHandItemId, hostile, occlusionVisible, boundingHeight, eyeHeight, detailText, null);
+    }
+
+    public MrManualFocusTargetData(TargetType type, String uuid, String registryId, String displayName, double relativeX, double relativeY, double relativeZ, double worldX, double worldY, double worldZ, double distance, float health, float maxHealth, float attackDamage, float armorValue, String mainHandItemId, boolean hostile, boolean occlusionVisible, float boundingHeight, float eyeHeight, String detailText, MrEntityExplanationData entityExplanationData) {
         this.type = type;
         this.uuid = uuid;
         this.registryId = registryId;
@@ -48,6 +53,7 @@ public final class MrManualFocusTargetData {
         this.boundingHeight = boundingHeight;
         this.eyeHeight = eyeHeight;
         this.detailText = detailText;
+        this.entityExplanationData = entityExplanationData;
     }
 
     public TargetType getType() { return type; }
@@ -71,4 +77,5 @@ public final class MrManualFocusTargetData {
     public float getBoundingHeight() { return boundingHeight; }
     public float getEyeHeight() { return eyeHeight; }
     public String getDetailText() { return detailText; }
+    public MrEntityExplanationData getEntityExplanationData() { return entityExplanationData; }
 }

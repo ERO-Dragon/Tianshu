@@ -470,12 +470,12 @@ public final class CraftingGraphController {
                     return true;
                 }
                 if (engine.hitPreviousRecipe(node, worldX, worldY)) {
-                    node.previousRecipe();
+                    engine.previousRecipe(node);
                     markTreeChanged();
                     return true;
                 }
                 if (engine.hitNextRecipe(node, worldX, worldY)) {
-                    node.nextRecipe();
+                    engine.nextRecipe(node);
                     markTreeChanged();
                     return true;
                 }

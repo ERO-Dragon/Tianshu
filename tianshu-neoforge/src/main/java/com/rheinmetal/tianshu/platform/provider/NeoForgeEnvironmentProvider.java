@@ -28,6 +28,11 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import org.slf4j.Logger;
@@ -38,6 +43,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int OCCLUSION_SAMPLE_INTERVAL = 5;
+    private static final double FALLBACK_UNARMED_ATTACK_DAMAGE = 1.0;
+    private static final double FALLBACK_UNARMED_ATTACK_SPEED = 4.0;
+    private static final double FULL_DRAW_BOW_DAMAGE = 6.0;
+    private static final int MAX_BENEFICIAL_EFFECTS = 4;
+    private static final int MAX_HARMFUL_EFFECTS = 2;
+    private static final int MAX_POSSIBLE_DROPS = 8;
 
     // 核心：动态扫描半径。初始为 0，实现没有任何系统开启时的绝对 0 损耗
     private volatile double activeScanRadius = 0;
@@ -159,6 +170,9 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                     }
                 }
 
+                MrEntityExplanationData explanationData = buildEntityExplanationData(mc, living);
+                String detailText = explanationData != null ? buildEnemyFocusDetailText(explanationData) : null;
+
                 NearbyEntityData data = new NearbyEntityData(
                         entityId, uuid, targetUuid, displayName,
                         relX, relY, relZ,
@@ -168,7 +182,8 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                         pullingBow, charging,
                         occlusionVisible,
                         living.getBbHeight(), living.getEyeHeight(),
-                        mainHandItemId, attackDamage, armorValue
+                        mainHandItemId, attackDamage, armorValue,
+                        detailText, explanationData
                 );
                 allResult.add(data);
                 if (hostile) {
@@ -351,11 +366,6 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || currentTarget == null) return currentTarget;
         if (currentTarget.getType() == MrManualFocusTargetData.TargetType.BLOCK) {
-            BlockHitResult blockHit = resolveBlockHitForFocusedBlock(mc, currentTarget, Math.max(4.0, range));
-            if (blockHit != null && blockHit.getType() != HitResult.Type.MISS) {
-                MrManualFocusTargetData refreshed = buildManualFocusBlockTarget(mc, blockHit);
-                if (refreshed != null && currentTarget.getUuid().equals(refreshed.getUuid())) return refreshed;
-            }
             return rebuildBlockTargetFromStoredAnchor(mc, currentTarget);
         }
         Entity entity = resolveEntityByUuid(mc, currentTarget.getUuid());
@@ -421,22 +431,6 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return mc.level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
     }
 
-    private BlockHitResult resolveBlockHitForFocusedBlock(Minecraft mc, MrManualFocusTargetData target, double range) {
-        BlockPos focusedPos = parseBlockTargetPos(target);
-        if (focusedPos == null) return null;
-        BlockHitResult directHit = resolveManualFocusBlock(mc, range);
-        if (directHit != null && directHit.getType() != HitResult.Type.MISS && focusedPos.equals(directHit.getBlockPos())) return directHit;
-        Vec3 eye = mc.player.getEyePosition();
-        Vec3 anchor = new Vec3(target.getWorldX(), target.getWorldY(), target.getWorldZ());
-        Vec3 direction = anchor.subtract(eye);
-        double length = direction.length();
-        if (length <= 0.001) return null;
-        Vec3 end = eye.add(direction.scale(Math.min(range, length + 0.25) / length));
-        BlockHitResult anchoredHit = mc.level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
-        if (anchoredHit != null && anchoredHit.getType() != HitResult.Type.MISS && focusedPos.equals(anchoredHit.getBlockPos())) return anchoredHit;
-        return null;
-    }
-
     private MrManualFocusTargetData rebuildBlockTargetFromStoredAnchor(Minecraft mc, MrManualFocusTargetData target) {
         BlockPos pos = parseBlockTargetPos(target);
         if (pos == null) return target;
@@ -490,6 +484,12 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         float armorValue = 0f;
         var armorAttr = living.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
         if (armorAttr != null) armorValue = (float) armorAttr.getValue();
+        MrEntityExplanationData explanationData = buildEntityExplanationData(mc, living);
+        String detailText = explanationData != null ? buildEnemyFocusDetailText(explanationData) : buildBasicEntityDetailText(living, entityId, uuid, distance, attackDamage, armorValue, relX, relY, relZ, mainHandItemId);
+        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.ENTITY, uuid, entityId, living.getName().getString(), relX, relY, relZ, worldX, worldY, worldZ, distance, living.getHealth(), living.getMaxHealth(), attackDamage, armorValue, mainHandItemId, living instanceof Enemy, true, living.getBbHeight(), living.getEyeHeight(), detailText, explanationData);
+    }
+
+    private String buildBasicEntityDetailText(LivingEntity living, String entityId, String uuid, double distance, float attackDamage, float armorValue, double relX, double relY, double relZ, String mainHandItemId) {
         String detailText = "ENTITY " + living.getName().getString()
                 + "\nID " + entityId
                 + "\nUUID " + shortUuid(uuid)
@@ -502,7 +502,373 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         if (mainHandItemId != null && !mainHandItemId.isEmpty()) {
             detailText += "\nMAIN " + mainHandItemId;
         }
-        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.ENTITY, uuid, entityId, living.getName().getString(), relX, relY, relZ, worldX, worldY, worldZ, distance, living.getHealth(), living.getMaxHealth(), attackDamage, armorValue, mainHandItemId, living instanceof Enemy, true, living.getBbHeight(), living.getEyeHeight(), detailText);
+        return detailText;
+    }
+
+    private String buildEnemyFocusDetailText(MrEntityExplanationData data) {
+        StringBuilder detail = new StringBuilder();
+        detail.append("名称 ").append(data.getName());
+        detail.append("\n类型 ").append(data.getTypeLabel());
+        if (data.isInvisible()) detail.append("\n状态 隐身");
+        if (data.getMovementSpeedLabel() != null && !data.getMovementSpeedLabel().isBlank()) {
+            detail.append("\n移动速度 ").append(data.getMovementSpeedLabel());
+        }
+        appendCombatEstimate(detail, "近战测算", data.getMeleeEstimate());
+        appendCombatEstimate(detail, "远程更优", data.getRangedEstimate());
+        appendEffects(detail, "增益效果", data.getBeneficialEffects());
+        appendEffects(detail, "负面效果", data.getHarmfulEffects());
+        if (!data.getPossibleDrops().isEmpty()) {
+            detail.append("\n可能掉落 ").append(String.join("、", data.getPossibleDrops()));
+        }
+        if (data.getFollowRange() != null && data.getFollowRange() > 0.0) {
+            detail.append("\n脱离锁定 约").append(formatOneDecimal(data.getFollowRange())).append("格外");
+        }
+        return detail.toString();
+    }
+
+    private void appendCombatEstimate(StringBuilder detail, String label, MrEntityExplanationData.CombatEstimateData estimate) {
+        if (estimate == null) return;
+        detail.append("\n").append(label).append(" ").append(estimate.getWeaponName()).append("，");
+        if ("bow".equals(estimate.getMode())) {
+            detail.append("满弓约").append(estimate.getHitCount()).append("箭");
+        } else {
+            detail.append("约").append(estimate.getHitCount()).append("次满蓄力攻击");
+        }
+        detail.append("，最快约").append(formatOneDecimal(estimate.getFastestSeconds())).append("秒");
+    }
+
+    private void appendEffects(StringBuilder detail, String label, List<MrEntityExplanationData.EffectData> effects) {
+        if (effects == null || effects.isEmpty()) return;
+        List<String> texts = new ArrayList<>();
+        for (MrEntityExplanationData.EffectData effect : effects) {
+            texts.add(effect.getDisplayName() + toRomanNumeral(effect.getAmplifier() + 1) + " " + effect.getDurationSeconds() + "秒");
+        }
+        detail.append("\n").append(label).append(" ").append(String.join("，", texts));
+    }
+
+    private String toRomanNumeral(int level) {
+        return switch (level) {
+            case 1 -> " I";
+            case 2 -> " II";
+            case 3 -> " III";
+            case 4 -> "";
+            case 5 -> " V";
+            default -> " " + level;
+        };
+    }
+
+    private String formatOneDecimal(double value) {
+        return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    private MrEntityExplanationData buildEntityExplanationData(Minecraft mc, LivingEntity living) {
+        if (!(living instanceof Enemy) || mc.player == null) return null;
+        double movementSpeed = getAttributeValue(living, Attributes.MOVEMENT_SPEED, 0.0);
+        CombatCandidate bestMelee = findBestMeleeCandidate(mc.player, living);
+        MrEntityExplanationData.CombatEstimateData meleeEstimate = bestMelee != null ? bestMelee.toEstimateData("melee") : null;
+        MrEntityExplanationData.CombatEstimateData rangedEstimate = buildRangedEstimateIfBetter(mc.player, living, bestMelee);
+        List<MrEntityExplanationData.EffectData> beneficialEffects = collectEffects(living, true, MAX_BENEFICIAL_EFFECTS);
+        List<MrEntityExplanationData.EffectData> harmfulEffects = collectEffects(living, false, MAX_HARMFUL_EFFECTS);
+        List<String> possibleDrops = collectPossibleDrops(living);
+        Double followRange = getNullableAttributeValue(living, Attributes.FOLLOW_RANGE);
+        return new MrEntityExplanationData(
+                LocalizationHelper.safeGetDisplayName(living.getName().getString()),
+                "敌人",
+                living.isInvisible(),
+                movementSpeed,
+                describeMovementSpeed(movementSpeed),
+                meleeEstimate,
+                rangedEstimate,
+                beneficialEffects,
+                harmfulEffects,
+                possibleDrops,
+                followRange
+        );
+    }
+
+    private CombatCandidate findBestMeleeCandidate(Player player, LivingEntity target) {
+        CombatCandidate best = null;
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = player.getInventory().items.get(slot);
+            if (!isMeleeCandidate(stack)) continue;
+            CombatCandidate candidate = buildMeleeCandidate(player, target, stack);
+            if (candidate == null) continue;
+            if (best == null || candidate.dps > best.dps) best = candidate;
+        }
+        if (best != null) return best;
+        return buildMeleeCandidate(player, target, ItemStack.EMPTY);
+    }
+
+    private boolean isMeleeCandidate(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        if (stack.getItem() instanceof BowItem || stack.getItem() instanceof CrossbowItem) return false;
+        return hasItemAttributeModifier(stack, "attack_damage") || hasItemAttributeModifier(stack, "attack_speed");
+    }
+
+    private CombatCandidate buildMeleeCandidate(Player player, LivingEntity target, ItemStack stack) {
+        double attackDamage = getAttributeValue(player, Attributes.ATTACK_DAMAGE, FALLBACK_UNARMED_ATTACK_DAMAGE) + getItemAttributeModifier(stack, "attack_damage");
+        double attackSpeed = getAttributeValue(player, Attributes.ATTACK_SPEED, FALLBACK_UNARMED_ATTACK_SPEED) + getItemAttributeModifier(stack, "attack_speed");
+        if (attackSpeed <= 0.0) attackSpeed = FALLBACK_UNARMED_ATTACK_SPEED;
+        attackDamage += getStrengthWeaknessBonus(player);
+        attackDamage += getWeaponDamageEnchantmentBonus(stack, target);
+        double effectiveDamage = applyTargetDamageReductions(Math.max(0.0, attackDamage), target);
+        if (effectiveDamage <= 0.0) return null;
+        double health = Math.max(0.0, target.getHealth() + target.getAbsorptionAmount());
+        int hits = Math.max(1, (int) Math.ceil(health / effectiveDamage));
+        double seconds = Math.max(0, hits - 1) / attackSpeed;
+        String weaponName = stack.isEmpty() ? "空手" : LocalizationHelper.safeGetDisplayName(stack.getHoverName().getString());
+        String weaponId = stack.isEmpty() ? "minecraft:empty_hand" : stack.getItemHolder().getRegisteredName();
+        return new CombatCandidate(weaponName, weaponId, hits, seconds, effectiveDamage, attackSpeed, effectiveDamage * attackSpeed);
+    }
+
+    private MrEntityExplanationData.CombatEstimateData buildRangedEstimateIfBetter(Player player, LivingEntity target, CombatCandidate bestMelee) {
+        if (bestMelee == null || !hasArrowForBow(player)) return null;
+        ItemStack bestBow = findBestBow(player);
+        if (bestBow == null || bestBow.isEmpty()) return null;
+        int power = getEnchantmentLevel(bestBow, "power");
+        double rawDamage = FULL_DRAW_BOW_DAMAGE;
+        if (power > 0) rawDamage += 0.5 * power + 0.5;
+        double effectiveDamage = applyTargetDamageReductions(rawDamage, target);
+        if (effectiveDamage <= 0.0) return null;
+        double health = Math.max(0.0, target.getHealth() + target.getAbsorptionAmount());
+        int arrows = Math.max(1, (int) Math.ceil(health / effectiveDamage));
+        double seconds = arrows;
+        if (seconds >= bestMelee.fastestSeconds) return null;
+        String weaponName = LocalizationHelper.safeGetDisplayName(bestBow.getHoverName().getString());
+        String weaponId = bestBow.getItemHolder().getRegisteredName();
+        return new MrEntityExplanationData.CombatEstimateData(weaponName, weaponId, "bow", arrows, seconds, effectiveDamage, 1.0);
+    }
+
+    private ItemStack findBestBow(Player player) {
+        ItemStack bestBow = ItemStack.EMPTY;
+        int bestPower = -1;
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = player.getInventory().items.get(slot);
+            if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BowItem)) continue;
+            int power = getEnchantmentLevel(stack, "power");
+            if (power > bestPower) {
+                bestPower = power;
+                bestBow = stack;
+            }
+        }
+        return bestBow;
+    }
+
+    private boolean hasArrowForBow(Player player) {
+        for (ItemStack stack : player.getInventory().items) {
+            if (stack != null && !stack.isEmpty() && stack.getItem() instanceof net.minecraft.world.item.ArrowItem) return true;
+        }
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = player.getInventory().items.get(slot);
+            if (stack != null && !stack.isEmpty() && stack.getItem() instanceof BowItem && getEnchantmentLevel(stack, "infinity") > 0) return true;
+        }
+        return false;
+    }
+
+    private double applyTargetDamageReductions(double damage, LivingEntity target) {
+        double armor = getAttributeValue(target, Attributes.ARMOR, 0.0);
+        double toughness = getAttributeValue(target, Attributes.ARMOR_TOUGHNESS, 0.0);
+        double armorReduction = Math.min(20.0, Math.max(armor / 5.0, armor - damage / (2.0 + toughness / 4.0))) / 25.0;
+        double result = damage * (1.0 - armorReduction);
+        int resistance = getEffectLevel(target, "resistance");
+        if (resistance > 0) {
+            result *= Math.max(0.0, 1.0 - resistance * 0.2);
+        }
+        int protection = getArmorEnchantmentLevel(target, "protection");
+        if (protection > 0) {
+            result *= Math.max(0.0, 1.0 - Math.min(20, protection) * 0.04);
+        }
+        return Math.max(0.0, result);
+    }
+
+    private List<MrEntityExplanationData.EffectData> collectEffects(LivingEntity living, boolean beneficial, int limit) {
+        List<MrEntityExplanationData.EffectData> effects = new ArrayList<>();
+        for (MobEffectInstance effect : living.getActiveEffects()) {
+            try {
+                if (effect.getEffect().value().isBeneficial() != beneficial) continue;
+                String effectId = effect.getEffect().unwrapKey().map(key -> key.location().toString()).orElse("unknown");
+                String displayName = Component.translatable(effect.getEffect().value().getDescriptionId()).getString();
+                int seconds = Math.max(0, effect.getDuration() / 20);
+                effects.add(new MrEntityExplanationData.EffectData(effectId, LocalizationHelper.safeGetDisplayName(displayName), effect.getAmplifier(), seconds, beneficial));
+            } catch (Exception e) {
+                LOGGER.warn("提取实体药水效果失败: {}", e.getMessage());
+            }
+        }
+        effects.sort(Comparator.comparingInt(MrEntityExplanationData.EffectData::getAmplifier).reversed().thenComparing(Comparator.comparingInt(MrEntityExplanationData.EffectData::getDurationSeconds).reversed()));
+        if (effects.size() <= limit) return effects;
+        return new ArrayList<>(effects.subList(0, limit));
+    }
+
+    private List<String> collectPossibleDrops(LivingEntity living) {
+        LinkedHashSet<String> drops = new LinkedHashSet<>();
+        try {
+            ResourceLocation lootTable = living.getType().getDefaultLootTable().location();
+            addKnownDropHints(lootTable, drops);
+        } catch (Exception ignored) {}
+        return new ArrayList<>(drops);
+    }
+
+    private void addKnownDropHints(ResourceLocation lootTable, Set<String> drops) {
+        String path = lootTable.toString();
+        if (path.endsWith("entities/zombie")) addDrops(drops, "腐肉", "铁锭", "胡萝卜", "马铃薯");
+        else if (path.endsWith("entities/skeleton")) addDrops(drops, "骨头", "箭", "弓");
+        else if (path.endsWith("entities/creeper")) addDrops(drops, "火药", "音乐唱片");
+        else if (path.endsWith("entities/spider")) addDrops(drops, "线", "蜘蛛眼");
+        else if (path.endsWith("entities/enderman")) addDrops(drops, "末影珍珠");
+        else if (path.endsWith("entities/witch")) addDrops(drops, "玻璃瓶", "萤石粉", "红石粉", "火药", "蜘蛛眼", "糖", "木棍");
+        else if (path.endsWith("entities/slime")) addDrops(drops, "黏液球");
+        else if (path.endsWith("entities/blaze")) addDrops(drops, "烈焰棒");
+        else if (path.endsWith("entities/ghast")) addDrops(drops, "恶魂之泪", "火药");
+        else if (path.endsWith("entities/guardian") || path.endsWith("entities/elder_guardian")) addDrops(drops, "海晶碎片", "海晶砂粒", "生鳕鱼");
+        else if (path.endsWith("entities/drowned")) addDrops(drops, "腐肉", "铜锭", "三叉戟", "鹦鹉螺壳");
+        else if (path.endsWith("entities/husk")) addDrops(drops, "腐肉", "铁锭", "胡萝卜", "马铃薯");
+        else if (path.endsWith("entities/stray")) addDrops(drops, "骨头", "箭", "迟缓之箭", "弓");
+        while (drops.size() > MAX_POSSIBLE_DROPS) {
+            Iterator<String> iterator = drops.iterator();
+            String last = null;
+            while (iterator.hasNext()) last = iterator.next();
+            if (last == null) break;
+            drops.remove(last);
+        }
+    }
+
+    private void addDrops(Set<String> drops, String... values) {
+        drops.addAll(Arrays.asList(values));
+    }
+
+    private String describeMovementSpeed(double speed) {
+        if (speed <= 0.0) return null;
+        if (speed < 0.2) return "慢";
+        if (speed < 0.3) return "普通";
+        if (speed < 0.4) return "快";
+        return "很快";
+    }
+
+    private double getStrengthWeaknessBonus(Player player) {
+        double bonus = 0.0;
+        int strength = getEffectLevel(player, "strength");
+        if (strength > 0) bonus += 3.0 * strength;
+        int weakness = getEffectLevel(player, "weakness");
+        if (weakness > 0) bonus -= 4.0 * weakness;
+        return bonus;
+    }
+
+    private int getEffectLevel(LivingEntity living, String effectName) {
+        for (MobEffectInstance effect : living.getActiveEffects()) {
+            String id = effect.getEffect().unwrapKey().map(key -> key.location().toString()).orElse("");
+            if (id.endsWith(effectName)) return effect.getAmplifier() + 1;
+        }
+        return 0;
+    }
+
+    private double getWeaponDamageEnchantmentBonus(ItemStack stack, LivingEntity target) {
+        if (stack == null || stack.isEmpty()) return 0.0;
+        int sharpness = getEnchantmentLevel(stack, "sharpness");
+        double bonus = sharpness > 0 ? 0.5 * sharpness + 0.5 : 0.0;
+        int smite = getEnchantmentLevel(stack, "smite");
+        if (smite > 0 && isUndeadTarget(target)) bonus += 2.5 * smite;
+        int bane = getEnchantmentLevel(stack, "bane_of_arthropods");
+        if (bane > 0 && isArthropodTarget(target)) bonus += 2.5 * bane;
+        return bonus;
+    }
+
+    private boolean isUndeadTarget(LivingEntity target) {
+        String id = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).toString();
+        return id.contains("zombie")
+                || id.contains("skeleton")
+                || id.contains("wither")
+                || id.contains("phantom")
+                || id.contains("drowned")
+                || id.contains("husk")
+                || id.contains("stray")
+                || id.contains("zombified");
+    }
+
+    private boolean isArthropodTarget(LivingEntity target) {
+        String id = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).toString();
+        return id.contains("spider")
+                || id.contains("silverfish")
+                || id.contains("endermite")
+                || id.contains("bee");
+    }
+
+    private int getArmorEnchantmentLevel(LivingEntity living, String enchantmentName) {
+        int level = 0;
+        for (ItemStack stack : living.getArmorSlots()) {
+            level += getEnchantmentLevel(stack, enchantmentName);
+        }
+        return level;
+    }
+
+    private int getEnchantmentLevel(ItemStack stack, String enchantmentName) {
+        if (stack == null || stack.isEmpty()) return 0;
+        try {
+            ItemEnchantments enchantments = stack.get(DataComponents.ENCHANTMENTS);
+            if (enchantments == null) return 0;
+            int level = 0;
+            for (var entry : enchantments.entrySet()) {
+                String id = entry.getKey().unwrapKey().map(key -> key.location().toString()).orElse("");
+                if (id.endsWith(enchantmentName)) level = Math.max(level, entry.getIntValue());
+            }
+            return level;
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private boolean hasItemAttributeModifier(ItemStack stack, String attributeName) {
+        return getItemAttributeModifier(stack, attributeName) != 0.0;
+    }
+
+    private double getItemAttributeModifier(ItemStack stack, String attributeName) {
+        if (stack == null || stack.isEmpty()) return 0.0;
+        try {
+            var modifiers = stack.get(DataComponents.ATTRIBUTE_MODIFIERS);
+            if (modifiers == null) return 0.0;
+            double value = 0.0;
+            for (var modifier : modifiers.modifiers()) {
+                String attrId = modifier.attribute().unwrapKey().map(key -> key.location().toString()).orElse("");
+                if (!attrId.endsWith(attributeName)) continue;
+                value += modifier.modifier().amount();
+            }
+            return value;
+        } catch (Exception ignored) {
+            return 0.0;
+        }
+    }
+
+    private double getAttributeValue(LivingEntity living, Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute, double fallback) {
+        var instance = living.getAttribute(attribute);
+        return instance == null ? fallback : instance.getValue();
+    }
+
+    private Double getNullableAttributeValue(LivingEntity living, Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute) {
+        var instance = living.getAttribute(attribute);
+        return instance == null ? null : instance.getValue();
+    }
+
+    private static final class CombatCandidate {
+        final String weaponName;
+        final String weaponId;
+        final int hitCount;
+        final double fastestSeconds;
+        final double effectiveDamage;
+        final double attackSpeed;
+        final double dps;
+
+        CombatCandidate(String weaponName, String weaponId, int hitCount, double fastestSeconds, double effectiveDamage, double attackSpeed, double dps) {
+            this.weaponName = weaponName;
+            this.weaponId = weaponId;
+            this.hitCount = hitCount;
+            this.fastestSeconds = fastestSeconds;
+            this.effectiveDamage = effectiveDamage;
+            this.attackSpeed = attackSpeed;
+            this.dps = dps;
+        }
+
+        MrEntityExplanationData.CombatEstimateData toEstimateData(String mode) {
+            return new MrEntityExplanationData.CombatEstimateData(weaponName, weaponId, mode, hitCount, fastestSeconds, effectiveDamage, attackSpeed);
+        }
     }
 
     private String buildBlockDetailText(Minecraft mc, BlockPos pos, BlockState blockState, String blockId, String displayName, double distance) {

@@ -9,14 +9,22 @@ public final class RecipeGraphEdge {
     private final UUID toNode;
     private final String itemId;
     private final GraphExpansionDirection direction;
-    private final GraphAnchorData fromAnchor;
-    private final GraphAnchorData toAnchor;
+    private final float parentSlotX;
+    private final float parentSlotY;
+    private GraphAnchorData fromAnchor;
+    private GraphAnchorData toAnchor;
 
     public RecipeGraphEdge(UUID fromNode, UUID toNode, String itemId, GraphExpansionDirection direction, GraphAnchorData fromAnchor, GraphAnchorData toAnchor) {
+        this(fromNode, toNode, itemId, direction, Float.NaN, Float.NaN, fromAnchor, toAnchor);
+    }
+
+    public RecipeGraphEdge(UUID fromNode, UUID toNode, String itemId, GraphExpansionDirection direction, float parentSlotX, float parentSlotY, GraphAnchorData fromAnchor, GraphAnchorData toAnchor) {
         this.fromNode = fromNode;
         this.toNode = toNode;
         this.itemId = itemId;
         this.direction = direction;
+        this.parentSlotX = parentSlotX;
+        this.parentSlotY = parentSlotY;
         this.fromAnchor = fromAnchor;
         this.toAnchor = toAnchor;
     }
@@ -25,8 +33,15 @@ public final class RecipeGraphEdge {
     public UUID getToNode() { return toNode; }
     public String getItemId() { return itemId; }
     public GraphExpansionDirection getDirection() { return direction; }
+    public float getParentSlotX() { return parentSlotX; }
+    public float getParentSlotY() { return parentSlotY; }
+    public boolean hasParentSlotPosition() { return !Float.isNaN(parentSlotX) && !Float.isNaN(parentSlotY); }
     public GraphAnchorData getFromAnchor() { return fromAnchor; }
     public GraphAnchorData getToAnchor() { return toAnchor; }
+    public void setAnchors(GraphAnchorData fromAnchor, GraphAnchorData toAnchor) {
+        this.fromAnchor = fromAnchor;
+        this.toAnchor = toAnchor;
+    }
 
     @Override
     public boolean equals(Object obj) {

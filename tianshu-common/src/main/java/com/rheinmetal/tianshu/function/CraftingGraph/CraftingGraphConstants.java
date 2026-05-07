@@ -22,10 +22,9 @@ public final class CraftingGraphConstants {
     public static final float NODE_HEIGHT = 118.0f;
     public static final float NODE_CATEGORY_WIDTH = 22.0f;
     public static final float NODE_CONTENT_X = 34.0f;
-    public static final float NODE_CONTENT_Y = 24.0f;
+    public static final float NODE_CONTENT_Y = 20.0f;
     public static final float NODE_GAP_X = 48.0f;
     public static final float NODE_GAP_Y = 42.0f;
-    public static final int MAX_NODES_PER_ROW = 5;
 
     public static final float RECIPE_PICKER_WIDTH = 124.0f;
     public static final float RECIPE_PICKER_MAX_HEIGHT = 88.0f;

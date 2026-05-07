@@ -920,7 +920,6 @@ public final class CraftingGraphRenderer {
         String typeText = node.getNodeType() == RecipePanelNodeType.USAGE ? "用途" : "来源";
         g.drawString(font, typeText, x + w - 29, y + 8, muted, false);
         drawRecipeCategoryText(g, font, node, x, y, h, alpha, frame);
-        g.drawString(font, node.getRecipes().size() + " 配方", x + 9, y + h - 14, muted, false);
         drawRecipePagerText(g, font, node, x, y, w, h, alpha);
     }
 
@@ -1103,7 +1102,7 @@ public final class CraftingGraphRenderer {
     }
 
     private void drawRecipePagerGeometry(GuiGeometryBatch batch, RecipePanelNode node, int x, int y, int w, int h, float alpha) {
-        if (node.getRecipes().size() <= 1) return;
+        if (!node.hasMultipleRecipesInSelectedCategory()) return;
         int bg = node.canSwitchRecipe() ? color(alpha * 0.58f, 58, 58, 58) : color(alpha * 0.24f, 24, 24, 24);
         int cy = y + h - 14;
         int leftX = x + w - 42;
@@ -1113,14 +1112,18 @@ public final class CraftingGraphRenderer {
     }
 
     private void drawRecipePagerText(GuiGraphics g, Font font, RecipePanelNode node, int x, int y, int w, int h, float alpha) {
-        if (node.getRecipes().size() <= 1) return;
+        if (!node.hasMultipleRecipesInSelectedCategory()) return;
         int active = node.canSwitchRecipe() ? color(alpha, 238, 252, 255) : color(alpha * 0.45f, 92, 104, 112);
         int cy = y + h - 14;
         int leftX = x + w - 42;
         int rightX = x + w - 22;
         g.drawString(font, "<", leftX, cy, active, false);
         g.drawString(font, ">", rightX, cy, active, false);
-        String index = (node.getSelectedRecipeIndex() + 1) + "/" + node.getRecipes().size();
+        List<Integer> indices = node.filteredRecipeIndices();
+        int selected = Math.max(0, Math.min(node.getSelectedRecipeIndex(), node.getRecipes().size() - 1));
+        int current = indices.indexOf(selected);
+        if (current < 0) current = 0;
+        String index = (current + 1) + "/" + indices.size();
         g.drawString(font, index, x + w - 78, cy, active, false);
     }
 
