@@ -51,115 +51,109 @@ public class LlmEngine {
         env.info("Initializing LLM engine, baseUrl: " + baseUrl);
     }
 
-    public long streamChat(String prompt, Consumer<String> onChunk, Consumer<FinishReason> onFinish, Consumer<String> onError) {
-        return streamChat(List.of(new ChatMessage("user", prompt)), 0.6D, true, false, onChunk, onFinish, onError);
-    }
-
-    public long streamChat(List<ChatMessage> messages, double temperature, boolean stream, boolean thinking, Consumer<String> onChunk, Consumer<FinishReason> onFinish, Consumer<String> onError) {
+    public long beginStreamRequest(Consumer<String> onError) {
         if (baseUrl == null || baseUrl.isEmpty()) {
             env.error("LLM engine is not initialized: baseUrl is empty", null);
             onError.accept("LLM service URL is empty");
-            return activeRequestId.get();
+            return -1L;
         }
 
         long requestId = activeRequestId.incrementAndGet();
         env.info("LLM request started, requestId=" + requestId);
+        return requestId;
+    }
 
-        Thread streamThread = new Thread(() -> {
-            FinishReason finishReason = FinishReason.FAILED;
-            try {
-                JsonObject requestBody = new JsonObject();
-                requestBody.add("messages", toJsonMessages(messages));
-                requestBody.addProperty("temperature", normalizeTemperature(temperature));
-                requestBody.addProperty("stream", stream);
-                requestBody.addProperty("thinking", thinking);
+    public void streamChatBlocking(long requestId, List<ChatMessage> messages, double temperature, boolean stream, boolean thinking, Consumer<String> onChunk, Consumer<FinishReason> onFinish, Consumer<String> onError) {
+        FinishReason finishReason = FinishReason.FAILED;
+        try {
+            JsonObject requestBody = new JsonObject();
+            requestBody.add("messages", toJsonMessages(messages));
+            requestBody.addProperty("temperature", normalizeTemperature(temperature));
+            requestBody.addProperty("stream", stream);
+            requestBody.addProperty("thinking", thinking);
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(baseUrl + "/v1/chat/completions"))
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
-                        .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/v1/chat/completions"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
+                    .build();
 
-                HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() != 200) {
-                    onError.accept("LLM service returned status code: " + response.statusCode());
-                    return;
-                }
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            if (response.statusCode() != 200) {
+                onError.accept("LLM service returned status code: " + response.statusCode());
+                return;
+            }
 
-                currentStream = response.body();
+            currentStream = response.body();
 
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(currentStream, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (requestId != activeRequestId.get()) {
-                            finishReason = FinishReason.CANCELLED;
-                            break;
-                        }
-                        if (!line.startsWith("data: ")) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(currentStream, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (requestId != activeRequestId.get()) {
+                        finishReason = FinishReason.CANCELLED;
+                        break;
+                    }
+                    if (!line.startsWith("data: ")) {
+                        continue;
+                    }
+                    String data = line.substring(6);
+                    if (data.equals("[DONE]")) {
+                        finishReason = FinishReason.COMPLETED;
+                        break;
+                    }
+                    try {
+                        JsonObject chunk = JsonParser.parseString(data).getAsJsonObject();
+                        if (!chunk.has("choices")) {
                             continue;
                         }
-                        String data = line.substring(6);
-                        if (data.equals("[DONE]")) {
-                            finishReason = FinishReason.COMPLETED;
-                            break;
+                        JsonArray choices = chunk.getAsJsonArray("choices");
+                        if (choices == null || choices.isEmpty()) {
+                            continue;
                         }
-                        try {
-                            JsonObject chunk = JsonParser.parseString(data).getAsJsonObject();
-                            if (!chunk.has("choices")) {
-                                continue;
-                            }
-                            JsonArray choices = chunk.getAsJsonArray("choices");
-                            if (choices == null || choices.isEmpty()) {
-                                continue;
-                            }
-                            JsonObject choice = choices.get(0).getAsJsonObject();
-                            if (!choice.has("delta")) {
-                                continue;
-                            }
-                            JsonObject delta = choice.getAsJsonObject("delta");
-                            if (delta.has("content") && !delta.get("content").isJsonNull()) {
-                                String content = delta.get("content").getAsString();
-                                if (!content.isEmpty() && requestId == activeRequestId.get()) {
-                                    onChunk.accept(content);
-                                }
-                            }
-                        } catch (Exception e) {
-                            env.error("Failed to parse LLM stream line: " + line, e);
+                        JsonObject choice = choices.get(0).getAsJsonObject();
+                        if (!choice.has("delta")) {
+                            continue;
                         }
+                        JsonObject delta = choice.getAsJsonObject("delta");
+                        if (delta.has("content") && !delta.get("content").isJsonNull()) {
+                            String content = delta.get("content").getAsString();
+                            if (!content.isEmpty() && requestId == activeRequestId.get()) {
+                                onChunk.accept(content);
+                            }
+                        }
+                    } catch (Exception e) {
+                        env.error("Failed to parse LLM stream line: " + line, e);
                     }
                 }
-            } catch (IOException e) {
-                if (requestId != activeRequestId.get() || isExpectedCancellation(e)) {
-                    finishReason = FinishReason.CANCELLED;
-                } else {
-                    env.error("LLM network request failed", e);
-                    onError.accept("LLM network error: " + e.getMessage());
-                    finishReason = FinishReason.FAILED;
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                if (requestId != activeRequestId.get()) {
-                    finishReason = FinishReason.CANCELLED;
-                } else {
-                    env.error("LLM request interrupted", e);
-                    onError.accept("LLM request interrupted");
-                    finishReason = FinishReason.FAILED;
-                }
-            } finally {
-                if (currentStream != null) {
-                    try {
-                        currentStream.close();
-                    } catch (IOException e) {
-                        env.error("Failed to close LLM stream", e);
-                    }
-                    currentStream = null;
-                }
-                onFinish.accept(finishReason);
             }
-        }, "Tianshu-LLM-Stream-" + requestId);
-        streamThread.setDaemon(true);
-        streamThread.start();
-        return requestId;
+        } catch (IOException e) {
+            if (requestId != activeRequestId.get() || isExpectedCancellation(e)) {
+                finishReason = FinishReason.CANCELLED;
+            } else {
+                env.error("LLM network request failed", e);
+                onError.accept("LLM network error: " + e.getMessage());
+                finishReason = FinishReason.FAILED;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (requestId != activeRequestId.get()) {
+                finishReason = FinishReason.CANCELLED;
+            } else {
+                env.error("LLM request interrupted", e);
+                onError.accept("LLM request interrupted");
+                finishReason = FinishReason.FAILED;
+            }
+        } finally {
+            if (currentStream != null) {
+                try {
+                    currentStream.close();
+                } catch (IOException e) {
+                    env.error("Failed to close LLM stream", e);
+                }
+                currentStream = null;
+            }
+            onFinish.accept(finishReason);
+        }
     }
 
     private JsonArray toJsonMessages(List<ChatMessage> messages) {

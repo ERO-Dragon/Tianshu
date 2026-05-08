@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.ui;
 
+import com.rheinmetal.tianshu.core.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.event.UiAsrTextEvent;
 import com.rheinmetal.tianshu.event.UiLlmEndEvent;
@@ -20,7 +22,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 import java.util.EnumSet;
 
-public final class UiProtocolBridge extends AbstractProtocolAdapter {
+public final class UiProtocolBridge extends AbstractProtocolAdapter implements TianshuManagedModule {
     public static final String MODULE_ID = "module.ui";
     public static final String SOURCE_ID = "module.ui";
 
@@ -29,6 +31,11 @@ public final class UiProtocolBridge extends AbstractProtocolAdapter {
     public UiProtocolBridge(ProtocolRuntime runtime, TianshuEventBus eventBus) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());
         this.eventBus = eventBus;
+    }
+
+    @Override
+    public void register(ModuleRegistrationContext context) {
+        register();
     }
 
     public void register() {

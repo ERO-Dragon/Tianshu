@@ -29,6 +29,23 @@ public final class CapabilityRegistry {
         return capabilityHandlers.getOrDefault(capabilityId, List.of());
     }
 
+    public void unregisterModule(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        String normalizedModuleId = moduleId.trim();
+        capabilityHandlers.entrySet().removeIf(entry -> {
+            List<HandlerRegistration> remaining = entry.getValue().stream()
+                    .filter(registration -> !registration.moduleDescriptor().moduleId().equals(normalizedModuleId))
+                    .toList();
+            if (remaining.isEmpty()) {
+                return true;
+            }
+            entry.setValue(Collections.unmodifiableList(remaining));
+            return false;
+        });
+    }
+
     public ValidationResult validate(TianshuEnvelope envelope, HandlerRegistration registration) {
         CapabilityDescriptor descriptor = registration.capabilityDescriptor();
         if (envelope.header().payloadType() != descriptor.supportedPayloadType()) {

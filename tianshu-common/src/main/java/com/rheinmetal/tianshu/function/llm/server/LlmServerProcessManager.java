@@ -1,8 +1,12 @@
-package com.rheinmetal.tianshu.core;
+package com.rheinmetal.tianshu.function.llm.server;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -15,88 +19,71 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-public class ProcessManager {
-
-    public enum ServiceType {
-        ASR("ASR服务"),
-        LLM("LLM服务"),
-        TTS("TTS服务");
-
-        private final String name;
-
-        ServiceType(String name) {
-            this.name = name;
-        }
-
-        public String getName() {
-            return name;
-        }
-    }
+public class LlmServerProcessManager {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final INativeLibBridge nativeLibBridge;
-    private final Map<ServiceType, Process> processes = new ConcurrentHashMap<>();
-    private final Map<ServiceType, Thread> monitoringThreads = new ConcurrentHashMap<>();
+    private final ProtocolExecutorManager executorManager;
     private final Runnable onLlmReady;
+    private volatile Process llmProcess;
+    private volatile ProtocolTaskHandle monitoringTask;
 
-    public ProcessManager(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, Runnable onLlmReady) {
+    public LlmServerProcessManager(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, ProtocolExecutorManager executorManager, Runnable onLlmReady) {
         this.env = env;
         this.config = config;
         this.nativeLibBridge = nativeLibBridge;
+        this.executorManager = executorManager;
         this.onLlmReady = onLlmReady;
     }
 
     public void stopServices() {
-        env.info("正在停止本地推理服务");
-        for (ServiceType serviceType : ServiceType.values()) {
-            stopService(serviceType);
-        }
-        env.info("本地推理服务停止完成");
+        stopLlmServer();
     }
 
-    public void stopService(ServiceType serviceType) {
-        Process process = processes.get(serviceType);
-        if (process != null) {
-            env.info("停止" + serviceType.getName());
-            Thread monitoringThread = monitoringThreads.get(serviceType);
-            if (monitoringThread != null) {
-                monitoringThread.interrupt();
-                monitoringThreads.remove(serviceType);
-            }
-            process.destroy();
-            try {
-                if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                    env.info(serviceType.getName() + " 拒绝退出，执行强制终止...");
-                    process.destroyForcibly();
-                    process.waitFor(2, TimeUnit.SECONDS);
-                } else {
-                    env.info(serviceType.getName() + "已退出，等待系统回收GPU资源...");
-                    Thread.sleep(2000);
-                }
-            } catch (Exception e) {
-                env.error("停止" + serviceType.getName() + "时发生异常", e);
-            }
-            processes.remove(serviceType);
-            env.info(serviceType.getName() + "已停止");
+    public void stopLlmServer() {
+        Process process = llmProcess;
+        if (process == null) {
+            return;
         }
+        env.info("停止LLM服务");
+        ProtocolTaskHandle task = monitoringTask;
+        if (task != null) {
+            task.cancel("llm service stopping");
+            monitoringTask = null;
+        }
+        process.destroy();
+        try {
+            if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                env.info("LLM服务拒绝退出，执行强制终止...");
+                process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+            } else {
+                env.info("LLM服务已退出，等待系统回收GPU资源...");
+                Thread.sleep(2000);
+            }
+        } catch (Exception e) {
+            env.error("停止LLM服务时发生异常", e);
+        }
+        if (llmProcess == process) {
+            llmProcess = null;
+        }
+        env.info("LLM服务已停止");
     }
 
-    private void startMonitoringThread(ServiceType serviceType, Process process) {
-        Thread thread = new Thread(() -> {
+    private void startMonitoringTask(Process process) {
+        ProtocolTaskHandle task = executorManager.submit(processTaskSpec("llm.monitor"), () -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while (!Thread.currentThread().isInterrupted() && (line = reader.readLine()) != null) {
-                    env.info("[" + serviceType.getName() + "] " + line);
+                    env.info("[LLM服务] " + line);
                 }
             } catch (IOException e) {
                 if (!Thread.currentThread().isInterrupted()) {
-                    env.error("监控" + serviceType.getName() + "时发生错误", e);
+                    env.error("监控LLM服务时发生错误", e);
                 }
             }
             if (process.isAlive()) {
@@ -104,15 +91,15 @@ public class ProcessManager {
             } else {
                 int exitCode = process.exitValue();
                 if (exitCode != 0) {
-                    env.error(serviceType.getName() + "异常退出，退出码: " + exitCode, null);
+                    env.error("LLM服务异常退出，退出码: " + exitCode, null);
                 }
             }
-            processes.remove(serviceType);
-            monitoringThreads.remove(serviceType);
+            if (llmProcess == process) {
+                llmProcess = null;
+            }
+            monitoringTask = null;
         });
-        thread.setDaemon(true);
-        thread.start();
-        monitoringThreads.put(serviceType, thread);
+        monitoringTask = task;
     }
 
     private boolean waitForServiceReady(int port) {
@@ -162,23 +149,37 @@ public class ProcessManager {
         }
     }
 
-    public boolean isServiceRunning(ServiceType serviceType) {
-        Process process = processes.get(serviceType);
+    public boolean isLlmRunning() {
+        Process process = llmProcess;
         return process != null && process.isAlive();
     }
 
     public boolean isLlmHealthy() {
-        if (!isServiceRunning(ServiceType.LLM)) {
+        if (!isLlmRunning()) {
             return false;
         }
         return isLlmServiceReady(config.getLlmPort());
     }
 
-    public Process getServiceProcess(ServiceType serviceType) {
-        return processes.get(serviceType);
+    public Process getLlmProcess() {
+        return llmProcess;
+    }
+
+    private ProtocolTaskSpec processTaskSpec(String key) {
+        return ProtocolTaskSpec.builder()
+                .moduleId("module.llm")
+                .lane(ExecutionLane.LONG)
+                .concurrencyKey("module.llm:process:" + key)
+                .maxConcurrency(1)
+                .queueCapacity(1)
+                .build();
     }
 
     public void startLlmServer() {
+        executorManager.submit(processTaskSpec("llm.start"), this::startLlmServerBlocking);
+    }
+
+    private void startLlmServerBlocking() {
         env.info("启动 JavaLlamaServer (独立 JVM 进程)");
 
         if (!prepareLlmPort()) {
@@ -186,9 +187,9 @@ public class ProcessManager {
             return;
         }
 
-        if (isServiceRunning(ServiceType.LLM)) {
+        if (isLlmRunning()) {
             env.info("检测到上一次 LLM 服务未完全停止，强制清理...");
-            stopService(ServiceType.LLM);
+            stopLlmServer();
         }
         try {
             nativeLibBridge.extractServerJar();
@@ -240,16 +241,16 @@ public class ProcessManager {
             processBuilder.environment().put("PARENT_PID", String.valueOf(currentPid));
 
             Process process = processBuilder.start();
-            processes.put(ServiceType.LLM, process);
+            llmProcess = process;
 
-            startMonitoringThread(ServiceType.LLM, process);
+            startMonitoringTask(process);
 
             if (waitForServiceReady(config.getLlmPort())) {
                 env.info("JavaLlamaServer 启动成功");
                 onLlmReady.run();
             } else {
                 env.error("JavaLlamaServer 启动超时", null);
-                stopService(ServiceType.LLM);
+                stopLlmServer();
             }
         } catch (Exception e) {
             env.error("启动 JavaLlamaServer 失败", e);

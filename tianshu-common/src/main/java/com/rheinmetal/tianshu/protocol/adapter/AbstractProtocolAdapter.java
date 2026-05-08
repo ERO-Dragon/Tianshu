@@ -14,13 +14,17 @@ import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 public abstract class AbstractProtocolAdapter {
     private final String moduleId;
@@ -53,6 +57,24 @@ public abstract class AbstractProtocolAdapter {
 
     protected final void registerVoiceTrigger(List<String> hotwords, List<String> extraWords) {
         runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, hotwords, extraWords));
+    }
+
+    protected final ProtocolTaskHandle submitTask(ExecutionLane lane, Runnable task) {
+        return submitTask(taskSpec(lane).build(), task);
+    }
+
+    protected final ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Runnable task) {
+        return runtime.executors().submit(spec, task);
+    }
+
+    protected final <T> ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Callable<T> task) {
+        return runtime.executors().submit(spec, task);
+    }
+
+    protected final ProtocolTaskSpec.Builder taskSpec(ExecutionLane lane) {
+        return ProtocolTaskSpec.builder()
+                .moduleId(moduleId)
+                .lane(lane);
     }
 
     protected final void registerCapability(String capabilityId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {

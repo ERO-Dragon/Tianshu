@@ -2,13 +2,14 @@ package com.rheinmetal.tianshu.protocol.broker;
 
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 public final class StatelessFastPathBroker implements ProtocolBroker {
     private final BoundedQueueBroker delegate;
 
-    public StatelessFastPathBroker(String brokerId) {
-        this.delegate = new BoundedQueueBroker(brokerId, 1024, Runtime.getRuntime().availableProcessors());
+    public StatelessFastPathBroker(String brokerId, ProtocolExecutorManager executorManager) {
+        this.delegate = new BoundedQueueBroker(brokerId, 1024, Runtime.getRuntime().availableProcessors(), executorManager);
     }
 
     @Override

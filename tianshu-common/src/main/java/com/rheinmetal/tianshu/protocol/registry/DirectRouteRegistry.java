@@ -24,6 +24,14 @@ public final class DirectRouteRegistry {
         return registration == null ? List.of() : List.of(registration);
     }
 
+    public void unregisterModule(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        String normalizedModuleId = moduleId.trim();
+        directRoutes.entrySet().removeIf(entry -> entry.getValue().moduleDescriptor().moduleId().equals(normalizedModuleId));
+    }
+
     public List<String> routeIds() {
         return new ArrayList<>(directRoutes.keySet());
     }

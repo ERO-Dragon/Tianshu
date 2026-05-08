@@ -3,24 +3,29 @@ package com.rheinmetal.tianshu.function.tts;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.core.TianshuCoreManager;
+import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.event.TtsPlaybackEndEvent;
 import com.rheinmetal.tianshu.function.tts.engine.TtsEngine;
+import com.rheinmetal.tianshu.model.ModelManager;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 public class TtsWorker {
     private static final int MAX_BUFFER_LENGTH = 200;
 
     private final IAudioBridge audioManager;
-    private final TianshuCoreManager coreManager;
+    private final TianshuEventBus eventBus;
     private final IGameEnvironment env;
     private final ITianshuConfig config;
+    private final TtsModelService modelService;
+    private final Supplier<ModelManager> modelManagerSupplier;
     private final TtsEngine ttsEngine;
     private boolean running = true;
     private final AtomicInteger currentTurnId = new AtomicInteger(0);
@@ -28,11 +33,13 @@ public class TtsWorker {
     private final StringBuilder textBuffer = new StringBuilder();
     private volatile boolean synthesizing = false;
 
-    public TtsWorker(IAudioBridge audioManager, TianshuCoreManager coreManager, IGameEnvironment env, ITianshuConfig config) {
+    public TtsWorker(IAudioBridge audioManager, TianshuEventBus eventBus, IGameEnvironment env, ITianshuConfig config, TtsModelService modelService, Supplier<ModelManager> modelManagerSupplier) {
         this.audioManager = audioManager;
-        this.coreManager = coreManager;
+        this.eventBus = eventBus;
         this.env = env;
         this.config = config;
+        this.modelService = modelService;
+        this.modelManagerSupplier = modelManagerSupplier;
         this.ttsEngine = new TtsEngine(env, config);
     }
 
@@ -69,16 +76,16 @@ public class TtsWorker {
 
     private boolean isCurrent(int turnId, long sessionId) {
         if (turnId < 0) {
-            return coreManager.getEventBus().isCurrentSession(sessionId);
+            return eventBus.isCurrentSession(sessionId);
         }
-        return turnId >= currentTurnId.get() && sessionId == currentSessionId.get() && coreManager.getEventBus().isCurrentSession(sessionId);
+        return turnId >= currentTurnId.get() && sessionId == currentSessionId.get() && eventBus.isCurrentSession(sessionId);
     }
 
     public void handleProtocolChunk(String text) {
         if (!running || text == null || text.isBlank()) {
             return;
         }
-        long sessionId = coreManager.getEventBus().getActiveSessionId();
+        long sessionId = eventBus.getActiveSessionId();
         currentSessionId.set(sessionId);
         textBuffer.append(text);
         if (isSentenceBoundary(textBuffer.toString()) || textBuffer.length() > MAX_BUFFER_LENGTH) {
@@ -92,14 +99,14 @@ public class TtsWorker {
         if (!running) {
             return;
         }
-        long sessionId = coreManager.getEventBus().getActiveSessionId();
+        long sessionId = eventBus.getActiveSessionId();
         if (textBuffer.length() > 0) {
             String bufferedText = textBuffer.toString();
             textBuffer.setLength(0);
             synthesizeAndPlay(bufferedText, -1, sessionId);
         }
         if (synthesizing) {
-            audioManager.setOnPlaybackFinished(() -> coreManager.getEventBus().publishEvent(new TtsPlaybackEndEvent("llm", sessionId)));
+            audioManager.setOnPlaybackFinished(() -> eventBus.publishEvent(new TtsPlaybackEndEvent("llm", sessionId)));
             audioManager.finishTtsPlayback();
             synthesizing = false;
         }
@@ -108,14 +115,25 @@ public class TtsWorker {
     public void speakProtocolText(String text, boolean interruptCurrent) {
         if (interruptCurrent) {
             interruptSynthesis();
-            currentSessionId.set(coreManager.getEventBus().getActiveSessionId());
+            currentSessionId.set(eventBus.getActiveSessionId());
         }
         handleProtocolChunk(text);
         finishProtocolPlayback();
     }
 
+    public ExecutionLane currentSynthesisLane() {
+        TtsModelInfo info = resolveCurrentTtsModelInfo(resolveActiveModelPath());
+        if (info != null && "moss".equals(info.getEngineType())) {
+            return ExecutionLane.TTS_AUTOREGRESSIVE;
+        }
+        if (ttsEngine.isMossEngine()) {
+            return ExecutionLane.TTS_AUTOREGRESSIVE;
+        }
+        return ExecutionLane.TTS_FAST;
+    }
+
     private Path resolveActiveModelPath() {
-        Path modelPath = coreManager.resolveCurrentTtsModelDir();
+        Path modelPath = modelService.resolveCurrentModelDir();
         return modelPath != null ? modelPath : config.getTtsModelPath();
     }
 
@@ -124,7 +142,7 @@ public class TtsWorker {
             return null;
         }
         String dirName = modelPath.getFileName().toString();
-        for (TtsModelInfo info : coreManager.getModelManager().loadTtsModelCatalog()) {
+        for (TtsModelInfo info : modelManagerSupplier.get().loadTtsModelCatalog()) {
             if (info == null || info.name == null) {
                 continue;
             }

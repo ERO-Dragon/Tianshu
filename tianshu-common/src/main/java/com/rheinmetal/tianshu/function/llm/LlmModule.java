@@ -1,7 +1,11 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.core.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.module.ModuleRuntimeContext;
+import com.rheinmetal.tianshu.core.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.llm.engine.LlmEngine;
 import com.rheinmetal.tianshu.function.llm.engine.LlmEngine.ChatMessage;
+import com.rheinmetal.tianshu.function.llm.server.LlmServerProcessManager;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairResultPayload;
@@ -9,6 +13,7 @@ import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
 import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -19,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class LlmModule {
+public final class LlmModule implements TianshuManagedModule {
     private static final Pattern COMMAND_LIKE_PATTERN = Pattern.compile("\\\"commandLike\\\"\\s*:\\s*(true|false)", Pattern.CASE_INSENSITIVE);
     private static final Pattern COMMAND_PROBABILITY_PATTERN = Pattern.compile("\\\"commandProbability\\\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)", Pattern.CASE_INSENSITIVE);
     private static final Pattern GUESSED_INTENT_PATTERN = Pattern.compile("\\\"guessedIntentType\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"", Pattern.CASE_INSENSITIVE);
@@ -34,11 +39,26 @@ public final class LlmModule {
         this.adapter = new LlmProtocolAdapter(runtime);
     }
 
-    public void register() {
+    @Override
+    public String moduleId() {
+        return "module.llm";
+    }
+
+    @Override
+    public void register(ModuleRegistrationContext context) {
         adapter.registerChatCapability(this::handleNaturalLanguageRequest);
         adapter.registerFeedbackCapability(this::handleNaturalLanguageRequest);
         adapter.registerIntentClassifyCapability(this::handleIntentClassify);
         adapter.registerCommandRepairCapability(this::handleCommandRepair);
+    }
+
+    @Override
+    public void start(ModuleRuntimeContext context) {
+        context.services().require(LlmServerProcessManager.class).startLlmServer();
+    }
+
+    @Override
+    public void stop() {
     }
 
     private void handleNaturalLanguageRequest(TianshuEnvelope envelope, ProtocolContext context) {
@@ -48,7 +68,12 @@ public final class LlmModule {
         }
         LlmSentenceSegmenter segmenter = new LlmSentenceSegmenter();
         AtomicInteger index = new AtomicInteger();
-        llmEngine.streamChat(
+        long requestId = llmEngine.beginStreamRequest(error -> context.fail(envelope.envelopeId(), "LLM_FAILED", error, null));
+        if (requestId <= 0L) {
+            return;
+        }
+        adapter.submitLlmIoTask(envelope.envelopeId(), () -> llmEngine.streamChatBlocking(
+                requestId,
                 buildChatMessages(payload),
                 0.6D,
                 true,
@@ -60,7 +85,7 @@ public final class LlmModule {
                     context.complete(envelope.envelopeId());
                 },
                 error -> context.fail(envelope.envelopeId(), "LLM_FAILED", error, null)
-        );
+        ));
     }
 
     private List<ChatMessage> buildChatMessages(LlmPromptPayload payload) {
@@ -112,12 +137,20 @@ public final class LlmModule {
 
     private void collectChat(String prompt, java.util.function.Consumer<String> onComplete, java.util.function.Consumer<String> onError) {
         StringBuilder builder = new StringBuilder();
-        llmEngine.streamChat(
-                prompt,
+        long requestId = llmEngine.beginStreamRequest(onError);
+        if (requestId <= 0L) {
+            return;
+        }
+        adapter.submitLlmIoTask(null, () -> llmEngine.streamChatBlocking(
+                requestId,
+                List.of(new ChatMessage("user", prompt)),
+                0.6D,
+                true,
+                false,
                 builder::append,
                 finishReason -> onComplete.accept(builder.toString()),
                 onError
-        );
+        ));
     }
 
     private String buildIntentClassifyPrompt(LlmIntentClassifyPayload payload) {

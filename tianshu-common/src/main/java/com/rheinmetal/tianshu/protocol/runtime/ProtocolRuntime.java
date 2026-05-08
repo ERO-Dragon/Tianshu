@@ -37,11 +37,13 @@ public final class ProtocolRuntime {
     private final DeadLetterQueue deadLetterQueue = new DeadLetterQueue(512, lifecycleStore);
     private final StormGuard stormGuard = new StormGuard(200, 32);
     private final VoiceTriggerRegistry voiceTriggerRegistry = new VoiceTriggerRegistry();
+    private final ProtocolExecutorManager executorManager;
     private final BrokerRegistry brokerRegistry;
     private final ProtocolContext context;
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor) {
-        this.brokerRegistry = new BrokerRegistry(mainThreadExecutor);
+        this.executorManager = new ProtocolExecutorManager(mainThreadExecutor);
+        this.brokerRegistry = new BrokerRegistry(mainThreadExecutor, executorManager);
         this.context = new RuntimeContext();
     }
 
@@ -62,6 +64,18 @@ public final class ProtocolRuntime {
     public void subscribeTopic(ModuleDescriptor moduleDescriptor, TopicSubscriptionDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
         moduleRegistry.register(moduleDescriptor);
         topicSubscriptionRegistry.subscribe(moduleDescriptor, descriptor, handler);
+    }
+
+    public void unregisterModule(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        String normalizedModuleId = moduleId.trim();
+        capabilityRegistry.unregisterModule(normalizedModuleId);
+        directRouteRegistry.unregisterModule(normalizedModuleId);
+        topicSubscriptionRegistry.unregisterModule(normalizedModuleId);
+        voiceTriggerRegistry.unregisterModule(normalizedModuleId);
+        moduleRegistry.unregisterModule(normalizedModuleId);
     }
 
     public void submit(TianshuEnvelope envelope) {
@@ -200,6 +214,7 @@ public final class ProtocolRuntime {
     public TopicRegistry topics() { return topicRegistry; }
     public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
     public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
+    public ProtocolExecutorManager executors() { return executorManager; }
     public ProtocolContext context() { return context; }
 
     private final class RuntimeContext implements ProtocolContext {

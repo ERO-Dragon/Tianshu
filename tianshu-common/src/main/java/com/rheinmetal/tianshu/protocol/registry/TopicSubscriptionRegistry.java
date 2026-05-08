@@ -21,6 +21,23 @@ public final class TopicSubscriptionRegistry {
         return subscriptions.getOrDefault(topicId, List.of());
     }
 
+    public void unregisterModule(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        String normalizedModuleId = moduleId.trim();
+        subscriptions.entrySet().removeIf(entry -> {
+            List<HandlerRegistration> remaining = entry.getValue().stream()
+                    .filter(registration -> !registration.moduleDescriptor().moduleId().equals(normalizedModuleId))
+                    .toList();
+            if (remaining.isEmpty()) {
+                return true;
+            }
+            entry.setValue(List.copyOf(remaining));
+            return false;
+        });
+    }
+
     public List<String> topicIds() {
         return new ArrayList<>(subscriptions.keySet());
     }

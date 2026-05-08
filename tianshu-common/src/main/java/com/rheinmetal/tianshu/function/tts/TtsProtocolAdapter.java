@@ -13,7 +13,9 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
 import java.util.EnumSet;
 
@@ -23,6 +25,20 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
 
     public TtsProtocolAdapter(ProtocolRuntime runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withThreadPolicy(ThreadPolicy.IO_BLOCKING).withConcurrency(1, 64));
+    }
+
+    public ProtocolTaskHandle submitTtsTask(String envelopeId, ExecutionLane lane, Runnable task) {
+        String laneName = lane == ExecutionLane.TTS_AUTOREGRESSIVE ? "autoregressive" : "fast";
+        int queueCapacity = lane == ExecutionLane.TTS_AUTOREGRESSIVE ? 1 : 4;
+        return submitTask(
+                taskSpec(lane)
+                        .envelopeId(envelopeId)
+                        .concurrencyKey(MODULE_ID + ":synthesis:" + laneName)
+                        .maxConcurrency(1)
+                        .queueCapacity(queueCapacity)
+                        .build(),
+                task
+        );
     }
 
     public void registerSpeakCapability(EnvelopeHandler handler) {

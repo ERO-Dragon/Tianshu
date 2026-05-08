@@ -20,6 +20,13 @@ public final class ModuleRegistry {
         return Optional.ofNullable(modules.get(moduleId));
     }
 
+    public void unregisterModule(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        modules.remove(moduleId.trim());
+    }
+
     public List<ModuleDescriptor> snapshot() {
         return new ArrayList<>(modules.values());
     }

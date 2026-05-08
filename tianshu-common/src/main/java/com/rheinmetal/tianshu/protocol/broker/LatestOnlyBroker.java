@@ -7,9 +7,11 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 import java.util.List;
 
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+
 public final class LatestOnlyBroker extends AbstractQueueBroker {
-    public LatestOnlyBroker(String brokerId) {
-        super(brokerId, 1, 1);
+    public LatestOnlyBroker(String brokerId, ProtocolExecutorManager executorManager) {
+        super(brokerId, 1, 1, executorManager);
     }
 
     @Override

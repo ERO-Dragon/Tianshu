@@ -4,45 +4,57 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
-import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 public class AsrWorker implements Runnable {
     private static final byte[] POISON_PILL = new byte[0];
 
     private final IAudioBridge audioManager;
-    private final TianshuCoreManager coreManager;
+    private final TianshuEventBus eventBus;
     private final IGameEnvironment env;
     private final ITianshuConfig config;
+    private final Supplier<AsrEngine> engineSupplier;
+    private final BooleanSupplier asrReady;
+    private final BooleanSupplier voiceInputAcceptance;
+    private final LongSupplier interruptProcessing;
     private final BlockingQueue<byte[]> audioQueue;
     private final BlockingQueue<TianshuEvent> asrQueue;
     private boolean running = true;
     private final AtomicInteger turnId = new AtomicInteger(0);
     private final AtomicLong streamingSessionId = new AtomicLong(0L);
     private volatile boolean isStreaming = false;
-    private volatile Thread audioProcessorThread;
+    private volatile ProtocolTaskHandle audioProcessorTask;
     private volatile AsrEngine.StreamingSession streamingEngineSession;
     private final AsrProtocolAdapter protocolAdapter;
 
-    public AsrWorker(IAudioBridge audioManager, TianshuCoreManager coreManager, IGameEnvironment env, ITianshuConfig config) {
+    public AsrWorker(IAudioBridge audioManager, TianshuEventBus eventBus, ProtocolRuntime protocolRuntime, IGameEnvironment env, ITianshuConfig config, Supplier<AsrEngine> engineSupplier, BooleanSupplier asrReady, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this.audioManager = audioManager;
-        this.coreManager = coreManager;
+        this.eventBus = eventBus;
         this.env = env;
         this.config = config;
+        this.engineSupplier = engineSupplier;
+        this.asrReady = asrReady;
+        this.voiceInputAcceptance = voiceInputAcceptance;
+        this.interruptProcessing = interruptProcessing;
         this.audioQueue = new LinkedBlockingQueue<>();
-        this.asrQueue = coreManager.getEventBus().getAsrQueue();
-        this.protocolAdapter = new AsrProtocolAdapter(coreManager.getProtocolRuntime());
+        this.asrQueue = eventBus.getAsrQueue();
+        this.protocolAdapter = new AsrProtocolAdapter(protocolRuntime);
     }
 
     private AsrEngine getAsrEngine() {
-        return coreManager.getAsrEngine();
+        return engineSupplier.get();
     }
 
     @Override
@@ -79,20 +91,20 @@ public class AsrWorker implements Runnable {
     }
 
     private void handleStartListening() {
-        if (!coreManager.canAcceptVoiceInput()) {
+        if (!voiceInputAcceptance.getAsBoolean()) {
             env.warn("ASR 未就绪，跳过录音");
             return;
         }
         isStreaming = false;
         audioManager.stopStreamRecording();
         releaseStreamingEngineSession();
-        long sessionId = coreManager.interruptOngoingProcessing();
+        long sessionId = interruptProcessing.getAsLong();
         env.info("ASR Worker 开始PTT录音，sessionId=" + sessionId);
         audioManager.startRecording();
     }
 
     private void handleStopListening() {
-        if (!coreManager.isAsrReady()) {
+        if (!asrReady.getAsBoolean()) {
             env.warn("ASR 未就绪，跳过录音停止");
             env.executeOnMainThread(() -> env.displayMessageToPlayer("§e[天极] §f天极正在苏醒，请稍候..."));
             return;
@@ -109,7 +121,7 @@ public class AsrWorker implements Runnable {
             String result = getAsrEngine().recognizeComplete(audioData);
             env.info("ASR Worker 完整识别返回，文本长度=" + (result != null ? result.length() : -1));
             if (result != null && !result.isEmpty()) {
-                long sessionId = coreManager.interruptOngoingProcessing();
+                long sessionId = interruptProcessing.getAsLong();
                 int currentTurnId = turnId.incrementAndGet();
                 publishFinalText(result, result, currentTurnId, sessionId, "push_to_talk", false);
                 env.info("ASR 识别完成，turnId: " + currentTurnId + ", sessionId=" + sessionId);
@@ -122,7 +134,7 @@ public class AsrWorker implements Runnable {
     }
 
     private void handleForceFlush() {
-        if (!coreManager.isAsrReady()) {
+        if (!asrReady.getAsBoolean()) {
             env.executeOnMainThread(() -> env.displayMessageToPlayer("§e[天极] §f天极正在苏醒，请稍候..."));
             return;
         }
@@ -133,7 +145,7 @@ public class AsrWorker implements Runnable {
             if (isWakeWordMode()) {
                 String wakeWord = config.getWakeWord();
                 if (result.contains(wakeWord)) {
-                    long sessionId = coreManager.interruptOngoingProcessing();
+                    long sessionId = interruptProcessing.getAsLong();
                     int currentTurnId = turnId.incrementAndGet();
                     int index = result.indexOf(wakeWord) + wakeWord.length();
                     String realCommand = result.substring(index).trim();
@@ -147,7 +159,7 @@ public class AsrWorker implements Runnable {
                     env.info("ASR 强制截断未命中唤醒词: " + wakeWord);
                 }
             } else {
-                long sessionId = coreManager.interruptOngoingProcessing();
+                long sessionId = interruptProcessing.getAsLong();
                 int currentTurnId = turnId.incrementAndGet();
                 publishFinalText(result, result, currentTurnId, sessionId, "force_flush", false);
                 env.info("ASR 强制截断识别完成，turnId: " + currentTurnId + ", sessionId=" + sessionId);
@@ -156,7 +168,7 @@ public class AsrWorker implements Runnable {
     }
 
     private void handleStartStreamRecording() {
-        if (!coreManager.isAsrReady()) {
+        if (!asrReady.getAsBoolean()) {
             env.warn("ASR 未就绪，跳过流式录音启动");
             env.executeOnMainThread(() -> env.displayMessageToPlayer("§e[天极] §f天极正在苏醒，请稍候..."));
             return;
@@ -167,7 +179,7 @@ public class AsrWorker implements Runnable {
 
         env.info("ASR Worker 开始流式录音");
         isStreaming = true;
-        long sessionId = coreManager.getEventBus().getActiveSessionId();
+        long sessionId = eventBus.getActiveSessionId();
         streamingSessionId.set(sessionId);
         streamingEngineSession = getAsrEngine().createStreamingSession();
         if (streamingEngineSession == null) {
@@ -185,9 +197,7 @@ public class AsrWorker implements Runnable {
             }
         });
 
-        audioProcessorThread = new Thread(() -> processStreamingAudio(sessionId), "ASR-Audio-Processor");
-        audioProcessorThread.setDaemon(true);
-        audioProcessorThread.start();
+        audioProcessorTask = protocolAdapter.submitStreamProcessor(() -> processStreamingAudio(sessionId));
     }
 
     private void processStreamingAudio(long sessionId) {
@@ -198,14 +208,14 @@ public class AsrWorker implements Runnable {
                 if (chunk == POISON_PILL) break;
                 String text = getAsrEngine().feedAudio(session, chunk);
                 if (!text.isEmpty()) {
-                    coreManager.getEventBus().publishEvent(new AsrPartialTextEvent(text));
+                    eventBus.publishEvent(new AsrPartialTextEvent(text));
                 }
                 if (getAsrEngine().isEndpoint(session)) {
                     if (isMeaningfulText(text)) {
                         if (isWakeWordMode()) {
                             String wakeWord = config.getWakeWord();
                             if (text.contains(wakeWord)) {
-                                long newSessionId = coreManager.interruptOngoingProcessing();
+                                long newSessionId = interruptProcessing.getAsLong();
                                 int currentTurnId = turnId.incrementAndGet();
                                 int index = text.indexOf(wakeWord) + wakeWord.length();
                                 String realCommand = text.substring(index).trim();
@@ -216,7 +226,7 @@ public class AsrWorker implements Runnable {
                                 env.info("ASR 断句完成，未命中唤醒词: " + wakeWord);
                             }
                         } else {
-                            long newSessionId = coreManager.interruptOngoingProcessing();
+                            long newSessionId = interruptProcessing.getAsLong();
                             int currentTurnId = turnId.incrementAndGet();
                             publishFinalText(text, text, currentTurnId, newSessionId, "stream", false);
                             env.info("ASR 断句完成，turnId: " + currentTurnId + ", sessionId=" + newSessionId);
@@ -239,26 +249,22 @@ public class AsrWorker implements Runnable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (coreManager.isAsrReady()) {
+        if (asrReady.getAsBoolean()) {
             getAsrEngine().reset(streamingEngineSession);
         }
         audioManager.stopStreamRecording();
-        Thread thread = audioProcessorThread;
-        if (thread != null && thread.isAlive()) {
-            try {
-                thread.join(300);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        ProtocolTaskHandle task = audioProcessorTask;
+        if (task != null && !task.isDone()) {
+            task.cancel("ASR stream stopped");
         }
-        audioProcessorThread = null;
+        audioProcessorTask = null;
         releaseStreamingEngineSession();
     }
 
     private void releaseStreamingEngineSession() {
         AsrEngine.StreamingSession session = streamingEngineSession;
         streamingEngineSession = null;
-        if (session != null && coreManager.isAsrReady()) {
+        if (session != null && asrReady.getAsBoolean()) {
             getAsrEngine().releaseStreamingSession(session);
         }
     }
@@ -281,7 +287,7 @@ public class AsrWorker implements Runnable {
         env.info("ASR Worker 收到打断事件，sessionId=" + interruptEvent.getSessionId());
         audioQueue.clear();
         streamingSessionId.set(interruptEvent.getSessionId());
-        if (isStreaming && coreManager.isAsrReady()) {
+        if (isStreaming && asrReady.getAsBoolean()) {
             getAsrEngine().reset(streamingEngineSession);
         }
     }

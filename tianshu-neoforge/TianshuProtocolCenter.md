@@ -407,6 +407,86 @@ Broker 职责：
 
 涉及真实状态变更必须进入 `ServerPacketBroker`。
 
+### 7.4 统一执行通道 ExecutionLane
+
+`ThreadPolicy` 表达 Handler 的线程约束，`ExecutionLane` 表达模块后台任务真正占用哪一类协议中心资源。模块不应该自己创建无限线程池，也不应该为了阻塞任务直接开临时线程；耗时、阻塞、推理、音频等后台任务应通过模块适配器提交给协议中心统一执行器。
+
+当前通道划分如下：
+
+| Lane | 用途 | 约束 |
+|---|---|---|
+| `MAIN` | 必须回到 Minecraft 客户端主线程的任务 | 不创建线程池，只转发到主线程执行器 |
+| `CPU` | 普通短 CPU 任务、Broker Handler 异步分发 | 不放长期阻塞 IO |
+| `IO` | 网络、文件、LLM HTTP stream 等阻塞 IO | 不放长时间推理 |
+| `AUDIO_IO` | 音频播放、音频 feed、音频设备交互 | 不被 TTS 推理阻塞 |
+| `TTS_FAST` | sherpa-onnx 一类较快 TTS 合成 | 单并发、小队列 |
+| `TTS_AUTOREGRESSIVE` | MossTTS 一类自回归重推理 TTS | 单并发、极小队列 |
+| `ASR_STREAM` | ASR 音频流式处理 | 独立于普通 IO |
+| `MODEL_LOAD` | 模型加载、模型切换 | 单并发，避免多模型同时抢内存 |
+| `LONG` | 长驻监控、子进程监控、长期后台任务 | 绝对不和 `IO` 共池 |
+| `SCHEDULED` | 定时清理、延迟任务 | 只做调度，不放重任务 |
+
+红线：
+
+1. `LONG` 与 `IO` 必须隔离，长驻任务不能占住普通 IO。
+2. `MAIN` 不能建池，只能投递到 Minecraft 主线程。
+3. 禁止模块自建无界 `newCachedThreadPool`。
+4. TTS 推理不能占用 `AUDIO_IO`，否则会卡住播放与 feed。
+5. MossTTS 这类自回归后端只在当前启用时走 `TTS_AUTOREGRESSIVE`，不因为项目支持 MossTTS 就长期占用额外资源。
+
+### 7.5 模块后台任务提交
+
+模块通过自己的协议适配器提交后台任务，适配器底层调用协议中心统一执行器。推荐模块适配器暴露语义化方法，而不是让业务代码到处直接选择通道。
+
+示例：
+
+```java
+public ProtocolTaskHandle submitLlmIoTask(String envelopeId, Runnable task) {
+    return submitTask(
+        taskSpec(ExecutionLane.IO)
+            .envelopeId(envelopeId)
+            .concurrencyKey(MODULE_ID + ":stream")
+            .maxConcurrency(1)
+            .queueCapacity(4)
+            .build(),
+        task
+    );
+}
+```
+
+模块侧原则：
+
+- Handler 只负责校验 Payload、建立上下文、提交任务或快速完成。
+- 真正阻塞的网络请求、模型推理、音频处理放进合适的 `ExecutionLane`。
+- 模块适配器负责给任务设置 `moduleId`、`envelopeId`、`concurrencyKey`、并发上限和队列容量。
+- 对外暴露的方法应体现业务语义，例如 `submitLlmIoTask`、`submitTtsSynthesisTask`，不要让普通业务代码直接裸用线程池。
+
+### 7.6 LLM 流式任务约束
+
+LLM 的 HTTP stream 属于阻塞 IO，应走 `ExecutionLane.IO`。流式请求的正确形态是：
+
+1. 在 LLM 引擎中申请 requestId。
+2. 通过 LLM 适配器提交 IO 任务。
+3. 在 IO 通道内执行阻塞 stream 读取。
+4. 将分片通过协议主题或能力继续发布。
+
+LLM 引擎不应该再提供“调用后直接在当前线程阻塞完整 stream”的公共便利入口，避免未来模块误把阻塞请求跑在 Broker Handler 或主线程上。
+
+### 7.7 UI 与渲染边界
+
+协议中心不是帧级 UI 数据总线。模块私有 UI 的高频渲染状态应由模块自己维护，渲染阶段直接读取模块内的线程安全快照，不应每帧构造信封发给 UI 模块。
+
+UI 相关能力只承载低频、跨模块、事件型消息，例如：
+
+- 打开或关闭某个全局面板；
+- 弹出 Toast、提示条或错误提示；
+- 模块阶段性状态变化，例如模型加载成功、ASR 开始或停止、LLM 开始或结束、TTS 播放开始或结束；
+- 用户点击 UI 后产生的命令，例如停止生成、重新加载模型、打开模块设置。
+
+模块自己的高频 UI 状态，例如雷达点位、ASR 波形、播放进度、局部动画状态，不走协议中心逐帧投递。需要跨模块观察时，只能发布节流后的低频事件，或发布“状态已变化”的脏标记，由 UI 在渲染阶段拉取最新快照。
+
+必须回到 Minecraft 主线程执行的 UI 操作，可以通过统一主线程执行器或 `ExecutionLane.MAIN` 转发，但这不改变数据边界：主线程执行器只负责线程切换，不负责把协议中心变成 RenderBus。
+
 ## 8. ServerPacketBroker 安全边界
 
 `ServerPacketBroker` 是高危能力边界。

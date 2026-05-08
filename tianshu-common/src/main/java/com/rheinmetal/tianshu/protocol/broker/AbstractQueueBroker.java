@@ -4,14 +4,15 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -21,18 +22,14 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
     protected final int maxConcurrency;
     protected final PriorityBlockingQueue<BrokerTask> queue = new PriorityBlockingQueue<>();
     protected final Map<String, BrokerTask> running = new ConcurrentHashMap<>();
-    protected final ExecutorService executor;
+    protected final ProtocolExecutorManager executorManager;
     protected final AtomicBoolean draining = new AtomicBoolean(false);
 
-    protected AbstractQueueBroker(String brokerId, int queueCapacity, int maxConcurrency) {
+    protected AbstractQueueBroker(String brokerId, int queueCapacity, int maxConcurrency, ProtocolExecutorManager executorManager) {
         this.brokerId = brokerId;
         this.queueCapacity = Math.max(1, queueCapacity);
         this.maxConcurrency = Math.max(1, maxConcurrency);
-        this.executor = Executors.newFixedThreadPool(this.maxConcurrency, runnable -> {
-            Thread thread = new Thread(runnable, "Tianshu-Protocol-" + brokerId);
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.executorManager = executorManager;
     }
 
     @Override
@@ -63,12 +60,24 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                 if (task == null) break;
                 running.put(task.envelope().envelopeId(), task);
                 task.runtime().lifecycle().transition(task.envelope().envelopeId(), EnvelopeStatus.DISPATCHED, "DISPATCHED", brokerId);
-                executor.submit(() -> runTask(task));
+                executorManager.submit(taskSpec(task), () -> runTask(task));
             }
         } finally {
             draining.set(false);
             if (!queue.isEmpty() && running.size() < maxConcurrency) drain();
         }
+    }
+
+    private ProtocolTaskSpec taskSpec(BrokerTask task) {
+        return ProtocolTaskSpec.builder()
+            .moduleId(task.registration().capabilityDescriptor().capabilityId())
+            .envelopeId(task.envelope().envelopeId())
+            .lane(ExecutionLane.CPU)
+            .priority(task.envelope().header().priority())
+            .maxConcurrency(maxConcurrency)
+            .queueCapacity(queueCapacity)
+            .concurrencyKey(brokerId)
+            .build();
     }
 
     protected void runTask(BrokerTask task) {

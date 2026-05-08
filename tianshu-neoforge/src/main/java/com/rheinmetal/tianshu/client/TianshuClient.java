@@ -3,6 +3,10 @@ package com.rheinmetal.tianshu.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
+import com.rheinmetal.tianshu.client.chatassistant.ChatAssistantClientBridge;
+import com.rheinmetal.tianshu.client.chatassistant.ChatAssistantOverlayRenderer;
+import com.rheinmetal.tianshu.client.junk.JunkCleanerClientController;
+import com.rheinmetal.tianshu.protocol.payload.ChatAssistantInterruptPayload;
 import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphController;
 import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphInteractionScreen;
 import com.rheinmetal.tianshu.client.geminicard.GeminiCardTooltipAdapter;
@@ -50,7 +54,9 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import java.nio.file.Files;
@@ -91,6 +97,8 @@ public class TianshuClient {
     private static NeoForgeNativeLibBridge nativeLibBridge;
     private static AudioManager audioManager;
     private static TianshuCoreManager coreManager;
+    private static ChatAssistantClientBridge chatAssistantClientBridge;
+    private static JunkCleanerClientController junkCleanerClientController;
 
     private static ITargetScannerProvider targetScanner;
     private static IInventoryDataProvider inventoryProvider;
@@ -159,6 +167,9 @@ public class TianshuClient {
 
         coreManager = new TianshuCoreManager(env, config, nativeLibBridge, audioManager);
         coreManager.setIrCommandParser(createClientIrCommandParser());
+        chatAssistantClientBridge = new ChatAssistantClientBridge(coreManager.getProtocolRuntime());
+        chatAssistantClientBridge.register();
+        junkCleanerClientController = new JunkCleanerClientController();
 
         targetScanner = new NeoForgeTargetScanner();
         inventoryProvider = new NeoForgeInventoryProvider();
@@ -198,6 +209,8 @@ public class TianshuClient {
         NeoForge.EVENT_BUS.addListener(TianshuClient::onKeyPressedPre);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onCharTypedPre);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenRenderPost);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onChatReceived);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onLivingDeath);
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
@@ -211,12 +224,14 @@ public class TianshuClient {
                 }
                 isOnnxRuntimeLoaded = true;
             }
-            coreManager.tryInitEngine();
             coreManager.initWorkers();
         });
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> {
             LOGGER.info("检测到客户端退出世界，开始清理...");
+            if (chatAssistantClientBridge != null) {
+                chatAssistantClientBridge.forceInterrupt(ChatAssistantInterruptPayload.Reason.WORLD_LOGOUT, "world_logout");
+            }
             shutdownClient();
             coreManager.destroy();
         });
@@ -255,6 +270,51 @@ public class TianshuClient {
     public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(new ItemCommandReloadListener());
     }
+
+    private static void onChatReceived(ClientChatReceivedEvent event) {
+        if (chatAssistantClientBridge == null || event == null) {
+            return;
+        }
+        Component message = event.getMessage();
+        if (message == null) {
+            return;
+        }
+        String messageText = message.getString();
+        if (messageText == null || messageText.isBlank()) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        String playerName = minecraft.player == null ? "unknown" : minecraft.player.getName().getString();
+        boolean mentionsSelf = !"unknown".equals(playerName) && messageText.contains(playerName);
+        chatAssistantClientBridge.publishIncomingChat(extractChatSender(messageText), messageText, playerName, mentionsSelf);
+    }
+
+    private static void onLivingDeath(LivingDeathEvent event) {
+        if (chatAssistantClientBridge == null || event == null) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || event.getEntity() == null) {
+            return;
+        }
+        if (!event.getEntity().getUUID().equals(minecraft.player.getUUID())) {
+            return;
+        }
+        chatAssistantClientBridge.forceInterrupt(ChatAssistantInterruptPayload.Reason.PLAYER_DEATH, "player_death");
+    }
+
+    private static String extractChatSender(String messageText) {
+        if (messageText == null || messageText.isBlank()) {
+            return "System";
+        }
+        int ltIdx = messageText.indexOf('<');
+        int gtIdx = messageText.indexOf('>');
+        if (ltIdx == 0 && gtIdx > ltIdx) {
+            return messageText.substring(1, gtIdx).trim();
+        }
+        return "System";
+    }
+
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -274,6 +334,9 @@ public class TianshuClient {
 
         handleVoiceKey();
         handleMrAltKey(minecraft);
+        if (chatAssistantClientBridge != null) {
+            chatAssistantClientBridge.tick();
+        }
         tickAcousticRadar(minecraft);
         tickMrSystem(minecraft);
         tickCraftingGraph();
@@ -526,6 +589,34 @@ public class TianshuClient {
                 ResourceLocation.fromNamespaceAndPath("tianshu", "crafting_graph"),
                 TianshuClient::renderCraftingGraph
         );
+        event.registerAbove(
+                ResourceLocation.fromNamespaceAndPath("tianshu", "crafting_graph"),
+                ResourceLocation.fromNamespaceAndPath("tianshu", "chat_assistant"),
+                TianshuClient::renderChatAssistant
+        );
+        event.registerAbove(
+                ResourceLocation.fromNamespaceAndPath("tianshu", "chat_assistant"),
+                ResourceLocation.fromNamespaceAndPath("tianshu", "junk_overlay"),
+                TianshuClient::renderJunkOverlay
+        );
+    }
+
+    public static void renderJunkOverlay(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+        if (junkCleanerClientController == null) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || !(minecraft.screen instanceof AbstractContainerScreen<?> screen)) return;
+        for (var slot : screen.getMenu().slots) {
+            if (!slot.hasItem() || !junkCleanerClientController.isJunk(slot.getItem())) continue;
+            int x = screen.getGuiLeft() + slot.x + 11;
+            int y = screen.getGuiTop() + slot.y + 1;
+            guiGraphics.fill(x, y, x + 5, y + 5, 0x99D34A4A);
+            guiGraphics.fill(x + 1, y + 5, x + 4, y + 7, 0x99D34A4A);
+        }
+    }
+
+    public static void renderChatAssistant(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+        if (chatAssistantClientBridge == null) return;
+        ChatAssistantOverlayRenderer.render(guiGraphics, chatAssistantClientBridge.state());
     }
 
     public static void renderLlmReply(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
@@ -540,6 +631,9 @@ public class TianshuClient {
             if (e instanceof UiAsrTextEvent asrEvent) {
                 String asrText = asrEvent.getText();
                 LOGGER.info("[IR-ASR] ASR 识别文本: {}", asrText);
+                if (junkCleanerClientController != null && junkCleanerClientController.handleAsrText(asrText)) {
+                    continue;
+                }
                 if (Minecraft.getInstance().player != null) {
                     Minecraft.getInstance().player.displayClientMessage(
                         Component.literal("\u00a7a[ASR] \u00a7f" + asrText), false
@@ -680,6 +774,10 @@ public class TianshuClient {
             mrEngine.stop();
             mrEngine = null;
             mrRenderer = null;
+        }
+        if (chatAssistantClientBridge != null) {
+            chatAssistantClientBridge.close();
+            chatAssistantClientBridge = null;
         }
         isVoiceKeyPressed = false;
         lastTriggerMode = null;

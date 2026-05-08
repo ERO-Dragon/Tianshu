@@ -17,7 +17,9 @@ import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
 import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 
 import java.util.EnumSet;
@@ -100,5 +102,17 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishStreamEnd(TianshuEnvelope parent, int index) {
         return submitToTopic(parent, ProtocolTopics.LLM_STREAM, PacketType.STREAM_END, PayloadType.LLM_TEXT_CHUNK, new StreamTextPayload("", index, true));
+    }
+
+    public ProtocolTaskHandle submitLlmIoTask(String envelopeId, Runnable task) {
+        return submitTask(
+                taskSpec(ExecutionLane.IO)
+                        .envelopeId(envelopeId)
+                        .concurrencyKey(MODULE_ID + ":stream")
+                        .maxConcurrency(1)
+                        .queueCapacity(4)
+                        .build(),
+                task
+        );
     }
 }

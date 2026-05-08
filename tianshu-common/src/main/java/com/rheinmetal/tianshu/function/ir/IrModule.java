@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.ir;
 
+import com.rheinmetal.tianshu.core.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.ir.core.IRBaseUtils;
 import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
 import com.rheinmetal.tianshu.function.ir.core.ParseUnit;
@@ -16,7 +18,7 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class IrModule {
+public final class IrModule implements TianshuManagedModule {
     private final IrProtocolAdapter adapter;
     private final IrCommandParser commandParser;
     private final ProtocolRuntime runtime;
@@ -27,7 +29,13 @@ public final class IrModule {
         this.commandParser = commandParser == null ? IrCommandParser.unavailable() : commandParser;
     }
 
-    public void register() {
+    @Override
+    public String moduleId() {
+        return "module.ir";
+    }
+
+    @Override
+    public void register(ModuleRegistrationContext context) {
         adapter.subscribeAsrFinalText(this::handleAsrFinalText);
         adapter.registerParseCapability(this::handleParseRequest);
     }

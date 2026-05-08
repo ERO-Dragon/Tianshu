@@ -192,7 +192,163 @@ adapter.registerShowCapability((envelope, context) -> {
 
 注意：模块只处理自己家里的事。不要在这里直接 import 别的业务模块实现类。
 
-## 8. 收主题：订阅公告栏
+## 8. 模块语音注册：告诉 IR 哪些话和自己有关
+
+模块如果希望被语音触发，需要做两件事：
+
+1. 注册自己的语音触发词。
+2. 登记自己能接收 `VOICE_TRIGGER` 信件。
+
+语音注册不是让 IR 替模块决定具体业务功能。IR 只负责：
+
+- 用 ASR 最终文本进入 IR。
+- 修复 Minecraft 专有名词。
+- 用 IR 的拼音 token 逻辑匹配模块注册的词。
+- 把命中的词集合、Extra 集合、修复后的完整句子、物品候选发给对应模块。
+
+模块收到后，自己判断当前状态下要不要处理、具体执行哪个功能、失败后是否转对话或调用其他模块。
+
+### 8.1 注册 hotwords 和 extraWords
+
+适配器基类提供：
+
+```java
+protected final void registerVoiceTrigger(List<String> hotwords, List<String> extraWords)
+```
+
+含义：
+
+| 参数 | 意义 |
+|---|---|
+| `hotwords` | 这个模块的主要触发词，也会进入 ASR 热词库 |
+| `extraWords` | 额外关联词或流程控制词，也会进入 ASR 热词库 |
+
+示例：
+
+```java
+public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
+    public static final String MODULE_ID = "module.my_module";
+    public static final String SOURCE_ID = "module.my_module";
+
+    public MyModuleProtocolAdapter(ProtocolRuntime runtime) {
+        super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());
+    }
+
+    public void registerVoiceWords() {
+        registerVoiceTrigger(
+            List.of("合成图谱", "星图", "怎么做"),
+            List.of("确认", "取消", "重来")
+        );
+    }
+}
+```
+
+这里的 `hotwords` 和 `extraWords` 都会汇总到 ASR 的共享热词文件里。ASR 热词按语言区分，当前路径形态是：
+
+```text
+config/TianshuAIAssistant/module/asr/hotwords/zh/hotwords.txt
+config/TianshuAIAssistant/module/asr/hotwords/en/hotwords.txt
+```
+
+注意，热词库不放在具体 ASR 模型目录里。ASR 模型目录只放模型。
+
+### 8.2 hotwords 和 extraWords 怎么分
+
+简单规则：
+
+| 类型 | 推荐放什么 |
+|---|---|
+| `hotwords` | 能表明这句话大概率属于本模块的词，例如“合成图谱”“星图”“怎么做” |
+| `extraWords` | 模块流程控制词、辅助关联词、上下文词，例如“确认”“发送”“取消”“重来” |
+
+`extraWords` 不是动态注册词。它可以常驻注册，模块根据自己的状态决定是否处理。
+
+例如通语模块进入对话确认流程时，可以处理“发送”“取消”；不在这个流程时，收到这些 Extra 命中也可以直接丢弃。
+
+### 8.3 登记接收 VOICE_TRIGGER
+
+IR 命中模块词后，会向模块自己的 `MODULE_ID` 投递一封能力信：
+
+```text
+PacketType.COMMAND
+PayloadType.VOICE_TRIGGER
+Payload: VoiceTriggerPayload
+Target capability: 模块的 MODULE_ID
+```
+
+所以模块如果想接收语音触发结果，需要登记一个能力，能力名通常就是自己的 `MODULE_ID`。
+
+示例：
+
+```java
+public void registerVoiceTriggerCapability(EnvelopeHandler handler) {
+    registerCapability(
+        MODULE_ID,
+        PayloadType.VOICE_TRIGGER,
+        VoiceTriggerPayload.class,
+        BrokerType.STATELESS_FAST_PATH,
+        EnumSet.of(PacketType.COMMAND),
+        Priority.LOW,
+        CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+        handler,
+        defaults()
+    );
+}
+```
+
+模块初始化时通常这样做：
+
+```java
+public void register() {
+    adapter.registerVoiceWords();
+    adapter.registerVoiceTriggerCapability(this::handleVoiceTrigger);
+}
+```
+
+### 8.4 VoiceTriggerPayload 里有什么
+
+`VoiceTriggerPayload` 当前字段是：
+
+| 字段 | 含义 |
+|---|---|
+| `sourceText` | IR 修复后的完整文本，不是原始 ASR 文本 |
+| `moduleId` | 被命中的模块 ID |
+| `matchedHotwords` | 本模块命中的 hotwords 集合 |
+| `matchedExtraWords` | 本模块命中的 extraWords 集合 |
+| `matchedItemNames` | IR 修复出的物品候选显示词 |
+| `matchedItemIds` | IR 修复出的真实物品 ID |
+| `confidence` | 简单命中置信度 |
+
+处理示例：
+
+```java
+private void handleVoiceTrigger(TianshuEnvelope envelope, ProtocolContext context) {
+    if (!(envelope.payload() instanceof VoiceTriggerPayload payload)) {
+        context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "voice trigger payload is invalid", null);
+        return;
+    }
+
+    if (payload.matchedHotwords().isEmpty() && payload.matchedExtraWords().isEmpty()) {
+        return;
+    }
+
+    String text = payload.sourceText();
+    List<String> itemIds = payload.matchedItemIds();
+}
+```
+
+### 8.5 模块应该自己判断是否真的执行
+
+IR 命中只代表“这句话可能和这个模块有关”。模块收到后还要自己判断：
+
+- 当前模块状态是否允许处理。
+- 命中的 hotword/extra 是否足够触发功能。
+- 物品候选是否存在或是否需要继续追问。
+- 执行失败后是给出失败反馈，还是转普通对话。
+
+不要把每个具体功能都写回 IR。IR 不应该成为业务大脑。
+
+## 9. 收主题：订阅公告栏
 
 如果模块想收到某个主题的消息，需要订阅主题。
 
@@ -218,11 +374,11 @@ public void subscribeAnalysisReady(EnvelopeHandler handler) {
 
 “ITEM_ANALYSIS_READY 这个公告栏有新信时，如果内容类型和我登记的一样，就给我送一份。”
 
-## 9. 回复、取消、父子信件
+## 10. 回复、取消、父子信件
 
 适配器也支持一些链路相关的发信方式。
 
-### 9.1 基于上一封信派生新信
+### 10.1 基于上一封信派生新信
 
 很多方法都有带 `parent` 的版本：
 
@@ -235,7 +391,7 @@ publishTopic(parent, topicId, payloadType, payload);
 
 好处是协议中心能知道它们属于同一条链路，方便追踪、取消和清理。
 
-### 9.2 回复上一封信
+### 10.2 回复上一封信
 
 ```java
 respondTo(parent, PayloadType.TEXT, new TextPayload("处理完成"));
@@ -243,7 +399,7 @@ respondTo(parent, PayloadType.TEXT, new TextPayload("处理完成"));
 
 这像收信人写回信。适配器会自动把回信寄回上一封信的来源。
 
-### 9.3 取消某封信
+### 10.3 取消某封信
 
 ```java
 cancelEnvelope(targetEnvelope, "USER_CANCELLED", "用户取消了操作");
@@ -251,13 +407,13 @@ cancelEnvelope(targetEnvelope, "USER_CANCELLED", "用户取消了操作");
 
 这像给邮局发一封取消通知，让协议中心按规则取消目标信件。
 
-## 10. 默认寄信习惯 AdapterDefaults
+## 11. 默认寄信习惯 AdapterDefaults
 
 `AdapterDefaults` 是适配器的默认寄信习惯。
 
 常用的有三个：
 
-### 10.1 standard
+### 11.1 standard
 
 ```java
 AdapterDefaults.standard()
@@ -272,7 +428,7 @@ AdapterDefaults.standard()
 - 异步工作线程。
 - 默认 30 秒期望完成，60 秒绝对过期。
 
-### 10.2 mainThreadUi
+### 11.2 mainThreadUi
 
 ```java
 AdapterDefaults.mainThreadUi()
@@ -288,7 +444,7 @@ AdapterDefaults.mainThreadUi()
 
 如果你的处理逻辑需要操作 UI，或读取只能在客户端主线程安全读取的东西，就用这个。
 
-### 10.3 highFrequencyFact
+### 11.3 highFrequencyFact
 
 ```java
 AdapterDefaults.highFrequencyFact()
@@ -304,7 +460,7 @@ AdapterDefaults.highFrequencyFact()
 
 高频消息不要用普通长队列，否则容易把邮局塞满。
 
-## 11. 自定义默认值
+## 12. 自定义默认值
 
 可以在现有默认值上改一点点。
 
@@ -332,7 +488,86 @@ AdapterDefaults shortLife = AdapterDefaults.standard()
 
 适配器会保证 `expireMs` 不早于 `deadlineMs`，避免信封刚写好就因为时间关系非法。
 
-## 12. Payload 内容必须注意什么
+## 13. 模块后台任务：不要自己开线程池
+
+适配器不仅负责写信、收信，也负责把模块内部的阻塞任务交给协议中心统一执行器。模块不要为了方便直接创建无限线程池，也不要在 Handler 里直接跑阻塞网络请求、模型推理或音频处理。
+
+### 13.1 什么时候需要提交后台任务
+
+需要提交后台任务的典型情况：
+
+| 场景 | 推荐通道 |
+|---|---|
+| 普通短 CPU 任务 | `ExecutionLane.CPU` |
+| 网络、文件、LLM HTTP stream | `ExecutionLane.IO` |
+| 音频播放、音频 feed、音频设备交互 | `ExecutionLane.AUDIO_IO` |
+| sherpa-onnx 一类较快 TTS 合成 | `ExecutionLane.TTS_FAST` |
+| MossTTS 一类自回归 TTS 合成 | `ExecutionLane.TTS_AUTOREGRESSIVE` |
+| ASR 音频流处理 | `ExecutionLane.ASR_STREAM` |
+| 模型加载和模型切换 | `ExecutionLane.MODEL_LOAD` |
+| 长驻监控、子进程监控 | `ExecutionLane.LONG` |
+
+主线程任务不要开池，必须走 `ExecutionLane.MAIN` 或 `BrokerType.MAIN_THREAD`，最终由 Minecraft 主线程执行器处理。
+
+### 13.2 在模块适配器里封装提交方法
+
+推荐每个模块适配器暴露语义化提交方法，而不是让模块业务代码到处直接选择线程通道。
+
+示例：
+
+```java
+public ProtocolTaskHandle submitMyIoTask(String envelopeId, Runnable task) {
+    return submitTask(
+        taskSpec(ExecutionLane.IO)
+            .envelopeId(envelopeId)
+            .concurrencyKey(MODULE_ID + ":io")
+            .maxConcurrency(1)
+            .queueCapacity(4)
+            .build(),
+        task
+    );
+}
+```
+
+这样做的好处是：
+
+- 模块任务统一被协议中心限流、排队和观测。
+- 后续要调整并发或队列，不需要到处改业务代码。
+- Handler 可以保持轻量，只做 Payload 校验和任务提交。
+- 不会误把阻塞任务跑到 Broker Handler、主线程或无界线程池里。
+
+### 13.3 LLM 流式调用的正确形态
+
+LLM HTTP stream 属于阻塞 IO。模块内不要直接调用一个会在当前线程读完整 stream 的便利方法，而应该拆成：
+
+1. 引擎申请 requestId。
+2. 适配器提交 `ExecutionLane.IO` 任务。
+3. 任务里执行阻塞 stream 读取。
+4. 分片结果通过主题或能力继续发给下游模块。
+
+示意：
+
+```java
+long requestId = llmEngine.beginStreamRequest(onError);
+if (requestId <= 0L) {
+    return;
+}
+
+adapter.submitLlmIoTask(envelope.envelopeId(), () -> llmEngine.streamChatBlocking(
+    requestId,
+    messages,
+    0.6D,
+    true,
+    false,
+    this::publishChunk,
+    this::finishStream,
+    onError
+));
+```
+
+这里 `streamChatBlocking(...)` 的名字故意保留 Blocking，是为了提醒调用方：这个方法只能放进协议中心分配好的后台通道里，不能在 Handler 或主线程直接调用。
+
+## 14. Payload 内容必须注意什么
 
 Payload 就是信件内容。
 
@@ -357,7 +592,7 @@ Payload 就是信件内容。
 
 协议中心不理解业务内容，但它会检查 Payload 类型和登记信息是否匹配。如果不匹配，会进入死信。
 
-## 13. 写一个模块适配器的推荐套路
+## 15. 写一个模块适配器的推荐套路
 
 推荐每个模块写一个小适配器，不要到处手写信封。
 
@@ -404,7 +639,7 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
 
 模块其他地方只调用这些清晰的小方法，不要到处散落 `EnvelopeBuilder`。
 
-## 14. 什么时候用哪种发信方法
+## 16. 什么时候用哪种发信方法
 
 简单判断：
 
@@ -418,11 +653,11 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
 | 业务关系还没想好，先硬发到指定路线 | `submitDirect` |
 | 特殊信件类型，比如 STREAM_CHUNK、STATUS、ERROR | `submitToCapability` / `submitToTopic` / `submitDirect` |
 
-## 15. 模块开发人员需要知道的 API 和可改参数
+## 17. 模块开发人员需要知道的 API 和可改参数
 
 这一节只列模块开发时常用、必要的东西。协议中心内部怎么排队、怎么记录死信、怎么清理链路，一般不用管。
 
-### 15.1 发信 API 速查
+### 17.1 发信 API 速查
 
 | API | 什么时候用 | 你主要要填什么 |
 |---|---|---|
@@ -439,7 +674,7 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
 
 如果业务还没想清楚，可以先用 `submitDirect` 或 `submitToCapability` 硬发信。后面业务关系稳定后，再慢慢改成能力或主题。
 
-### 15.2 收信登记 API 速查
+### 17.2 收信登记 API 速查
 
 | API | 什么时候用 | 你主要要填什么 |
 |---|---|---|
@@ -449,7 +684,7 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
 
 普通模块优先用 `registerCapability` 和 `subscribeTopic`。`registerDirectRoute` 适合临时硬接入或私有通道。
 
-### 15.3 发信时最常改的参数
+### 17.3 发信时最常改的参数
 
 发信时一般不是直接改信封，而是传一个 `AdapterDefaults`。
 
@@ -479,7 +714,7 @@ AdapterDefaults urgent = AdapterDefaults.standard()
 - 紧急消息：`.withPriority(Priority.CRITICAL)` 或 `.withPriority(Priority.HIGH)`。
 - 短生命周期消息：`.withTiming(...)`。
 
-### 15.4 登记收信时最需要填对的参数
+### 17.4 登记收信时最需要填对的参数
 
 以这个登记为例：
 
@@ -508,7 +743,7 @@ registerCapability(
 | `CompletionPolicy` | 处理完成怎么算结束 | 普通同步处理用 `AUTO_COMPLETE_ON_RETURN`；异步或流式任务用 `MANUAL_COMPLETE` 或 `STREAMING_MANUAL_COMPLETE` |
 | `handler` | 真正处理信的函数 | 只处理自己模块内部逻辑，不直接调用别的业务模块实现类 |
 
-### 15.5 常用取值怎么理解
+### 17.5 常用取值怎么理解
 
 #### PacketType：信件种类
 
@@ -573,7 +808,7 @@ registerCapability(
 | `LATEST_ONLY` | hover、准星、tick 这种只关心最新状态 |
 | `SERVER_PACKET` | 涉及服务端真实状态变化的高危动作 |
 
-### 15.6 一个最小可用写法
+### 17.6 一个最小可用写法
 
 如果你只是想让模块先能发信，可以先这样：
 
@@ -606,29 +841,29 @@ public void registerSomething(EnvelopeHandler handler) {
 
 这就是最小的“写信人 + 收信登记”。业务细节以后可以慢慢换成正式能力名、正式 PayloadType、正式 Broker。
 
-## 16. 常见错误
+## 18. 常见错误
 
-### 16.1 PayloadType 写错
+### 18.1 PayloadType 写错
 
 你发的是 `PayloadType.TEXT`，但收信人登记的是 `PayloadType.TTS_TEXT`，协议中心会拒绝投递。
 
-### 16.2 Payload 类写错
+### 18.2 Payload 类写错
 
 你登记的是 `TextPayload.class`，但实际寄的是别的 Payload，也会被拒绝。
 
-### 16.3 线程策略和 Broker 不配
+### 18.3 线程策略和 Broker 不配
 
 如果登记的是 `BrokerType.MAIN_THREAD`，寄信默认也要适合主线程，通常用 `AdapterDefaults.mainThreadUi()`。
 
-### 16.4 高频消息不加控制
+### 18.4 高频消息不加控制
 
 hover、tick、准星状态不要用普通默认值疯狂发送。应该用 `AdapterDefaults.highFrequencyFact()`。
 
-### 16.5 到处直投
+### 18.5 到处直投
 
 直投可以用来硬跑通，但不要把长期业务都写成固定门牌号。后面业务稳定后，优先改成能力或主题。
 
-## 17. 这次适配器已经补强的地方
+## 19. 这次适配器已经补强的地方
 
 这次适配器侧已经做了这些稳定性和功能性补强：
 
@@ -642,24 +877,25 @@ hover、tick、准星状态不要用普通默认值疯狂发送。应该用 `Ada
 8. `AdapterDefaults` 会保证绝对过期时间不早于期望完成时间，减少非法信封。
 9. 发信入口会检查空的 builder、handler、parent、targetEnvelope，避免空指针问题藏到更深的地方。
 
-## 18. 当前验证情况
+## 20. 当前验证情况
 
-IDE 对这几个文件没有报错：
-
-- `AbstractProtocolAdapter.java`
-- `AdapterDefaults.java`
-- `ModuleRegistry.java`
-
-尝试运行项目自带 Gradle Wrapper 时，环境报错：
-
-`gradle-wrapper.jar 中没有主清单属性`
-
-这说明当前 wrapper jar 没能正常启动，不是 Java 源码编译错误。系统里也没有全局 `gradle` 命令，所以完整 Gradle 编译没有在当前环境完成。
-
-后续如果修复 Gradle Wrapper，建议运行：
+当前已用本机 Gradle 8.11 验证过协议中心相关改动：
 
 ```powershell
-.\gradlew.bat :tianshu-common:compileJava
+:tianshu-common:compileJava
+:tianshu-neoforge:compileJava
 ```
 
-如果要检查整个 NeoForge 模组，再运行项目已有的完整 build 任务。
+结果为 `BUILD SUCCESSFUL`。
+
+如果后续只改协议公共层，优先运行：
+
+```powershell
+:tianshu-common:compileJava
+```
+
+如果改到 NeoForge 客户端接入、模块路径、资源文件或客户端模块初始化，再运行：
+
+```powershell
+:tianshu-common:compileJava :tianshu-neoforge:compileJava
+```

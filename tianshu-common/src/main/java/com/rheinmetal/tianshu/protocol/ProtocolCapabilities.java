@@ -19,6 +19,10 @@ public final class ProtocolCapabilities {
     public static final String GRAPH_CLOSE = "GRAPH.CLOSE";
     public static final String GRAPH_SUSPEND = "GRAPH.SUSPEND";
     public static final String GRAPH_RESUME = "GRAPH.RESUME";
+    public static final String CHAT_ASSISTANT_SEND = "CHAT_ASSISTANT.SEND";
+    public static final String CHAT_ASSISTANT_CLIENT_EVENT = "CHAT_ASSISTANT.CLIENT_EVENT";
+    public static final String CHAT_ASSISTANT_INTERRUPT = "CHAT_ASSISTANT.INTERRUPT";
+    public static final String CHAT_ASSISTANT_INCOMING_CHAT = "CHAT_ASSISTANT.INCOMING_CHAT";
 
     private ProtocolCapabilities() {
     }

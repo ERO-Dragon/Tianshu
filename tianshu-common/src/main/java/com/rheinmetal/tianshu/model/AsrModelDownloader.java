@@ -77,15 +77,11 @@ public class AsrModelDownloader {
     }
 
     public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) {
-        downloadCancelled = false;
-        downloadPaused = false;
-        Thread.ofVirtual().start(() -> {
-            try {
-                doDownload(info, targetDir, githubProxyUrl, callback);
-            } catch (Exception e) {
-                callback.onError(e.getMessage() != null ? e.getMessage() : "下载失败");
-            }
-        });
+        try {
+            downloadSync(info, targetDir, githubProxyUrl, callback);
+        } catch (Exception e) {
+            callback.onError(e.getMessage() != null ? e.getMessage() : "下载失败");
+        }
     }
 
     public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {

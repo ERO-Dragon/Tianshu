@@ -8,6 +8,8 @@ import java.util.concurrent.Executors;
 public class TianshuThreadPool {
 
     private final IGameEnvironment env;
+    private static final int TOOL_THREADS = 4;
+
     private final ExecutorService voiceExecutor;
     private final ExecutorService protocolExecutor;
     private final ExecutorService audioExecutor;
@@ -34,7 +36,7 @@ public class TianshuThreadPool {
             return t;
         });
 
-        this.toolExecutor = Executors.newCachedThreadPool(r -> {
+        this.toolExecutor = Executors.newFixedThreadPool(TOOL_THREADS, r -> {
             Thread t = new Thread(r, "Tianshu-Tool-Worker");
             t.setDaemon(true);
             return t;
