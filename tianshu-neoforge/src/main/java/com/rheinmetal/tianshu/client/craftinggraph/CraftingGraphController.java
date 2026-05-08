@@ -374,6 +374,31 @@ public final class CraftingGraphController {
                 openSearch();
                 return true;
             }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitItemRenderProfilerButton(mouseX, mouseY)) {
+                renderer.toggleItemRenderingForProfiling();
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitTextRenderProfilerButton(mouseX, mouseY)) {
+                renderer.toggleTextRenderingForProfiling();
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitEdgeRenderProfilerButton(mouseX, mouseY)) {
+                renderer.toggleEdgeRenderingForProfiling();
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitGeometryRenderProfilerButton(mouseX, mouseY)) {
+                renderer.toggleGeometryRenderingForProfiling();
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitShellRenderProfilerButton(mouseX, mouseY)) {
+                renderer.toggleShellRenderingForProfiling();
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitFrameRenderProfilerButton(mouseX, mouseY)) {
+                renderer.toggleFrameRenderingForProfiling();
+                return true;
+            }
+
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && renderer.hitFavoriteListToggle(mouseX, mouseY)) {
                 toggleTopPanel("favorites");
                 return true;

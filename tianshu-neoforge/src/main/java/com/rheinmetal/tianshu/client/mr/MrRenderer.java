@@ -1,5 +1,7 @@
-package com.rheinmetal.tianshu.client;
+package com.rheinmetal.tianshu.client.mr;
 
+import com.rheinmetal.tianshu.client.GuiGeometryBatch;
+import com.rheinmetal.tianshu.client.TianshuClient;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.function.MR.MrCardSnapshot;
 import com.rheinmetal.tianshu.function.MR.MrConstants;
@@ -775,42 +777,19 @@ public class MrRenderer {
     }
 
     private void drawFocusedDetailText(GuiGraphics g, MrCardSnapshot s, Font font) {
-        int visibleChars = Math.max(0, Math.min(s.focusedDetailVisibleChars, s.focusedDetailText.length()));
-        String visibleText = s.focusedDetailText.substring(0, visibleChars);
         float contentScale = getContentScale(s);
-        List<String> wrappedLines = wrapText(font, visibleText, Math.max(1, (int) ((s.cardWidth - s.contentStartX * 2.0f) / contentScale)));
+        int maxWidth = Math.max(1, (int) ((s.cardWidth - s.contentStartX * 2.0f) / contentScale));
         float x = s.cardX + s.contentStartX;
         float y = s.cardY + s.contentStatsY + MrConstants.FONT_LINE_HEIGHT * contentScale + 8.0f * contentScale;
-        for (String line : wrappedLines) {
+        float bottom = s.cardY + s.cardHeight - (MrConstants.CONTENT_PADDING_Y + 3.0f) * contentScale;
+        int maxLines = Math.max(0, (int) ((bottom - y) / Math.max(1.0f, MrConstants.FONT_LINE_HEIGHT * contentScale)));
+        FocusedDetailTextLayout.Result layout = FocusedDetailTextLayout.layout(font, s.focusedDetailText, s.focusedDetailVisibleChars, maxWidth, maxLines);
+        g.enableScissor((int) x, (int) y, (int) (s.cardX + s.cardWidth - s.contentStartX), (int) bottom);
+        for (String line : layout.getLines()) {
             drawScaledText(g, font, line, x, y, s.textAlphaColor, false, contentScale);
             y += Math.max(1.0f, MrConstants.FONT_LINE_HEIGHT * contentScale);
         }
-    }
-
-    private List<String> wrapText(Font font, String text, int maxWidth) {
-        List<String> result = new ArrayList<>();
-        String[] explicitLines = text.split("\n", -1);
-        for (String explicitLine : explicitLines) {
-            appendWrappedLine(font, explicitLine, maxWidth, result);
-        }
-        if (result.isEmpty()) result.add("");
-        return result;
-    }
-
-    private void appendWrappedLine(Font font, String line, int maxWidth, List<String> result) {
-        if (line.isEmpty()) {
-            result.add("");
-            return;
-        }
-        int start = 0;
-        while (start < line.length()) {
-            int end = line.length();
-            while (end > start + 1 && font.width(line.substring(start, end)) > maxWidth) {
-                end--;
-            }
-            result.add(line.substring(start, end));
-            start = end;
-        }
+        g.disableScissor();
     }
 
     private Entity resolveLiveEntity(Minecraft mc, String entityUuid) {

@@ -20,6 +20,8 @@ public final class CraftingGraphEngine {
     private final List<RecipePanelNode> nodeOrder = new ArrayList<>();
     private final List<RecipeGraphEdge> edges = new ArrayList<>();
     private final Deque<DeleteBranchCommand> undoStack = new ArrayDeque<>();
+    private final Map<UUID, ViewModelCacheEntry> viewModelCache = new HashMap<>();
+    private final InventoryQueryCache inventoryQueryCache = new InventoryQueryCache();
 
     private CraftingGraphInteractionMode mode = CraftingGraphInteractionMode.PASSIVE;
     private boolean expanded;
@@ -81,7 +83,7 @@ public final class CraftingGraphEngine {
                 x,
                 y
         );
-        node.setSelectedRecipeIndex(inventoryAnalyzer.bestRecipeIndex(node.getRecipes(), inventoryProvider != null ? inventoryProvider.getAllInventoryItemsData() : null));
+        node.setSelectedRecipeIndex(inventoryAnalyzer.bestRecipeIndex(node.getRecipes(), inventoryItems()));
         nodes.put(uuid, node);
         nodeOrder.add(node);
         camera.focusWorldPoint(node.getX() + CraftingGraphConstants.NODE_WIDTH * 0.5f, node.getY() + CraftingGraphConstants.NODE_HEIGHT * 0.5f, drawerW, screenH);
@@ -100,6 +102,7 @@ public final class CraftingGraphEngine {
         nodeOrder.clear();
         edges.clear();
         undoStack.clear();
+        viewModelCache.clear();
         dirty = true;
     }
 
@@ -182,6 +185,7 @@ public final class CraftingGraphEngine {
         nodeOrder.clear();
         edges.clear();
         undoStack.clear();
+        viewModelCache.clear();
         if (data != null) {
             for (CraftingGraphSaveData.NodeRecord record : data.nodes) {
                 UUID uuid = UUID.fromString(record.uuid);
@@ -258,6 +262,7 @@ public final class CraftingGraphEngine {
         edges.removeIf(edge -> deletedUuids.contains(edge.getFromNode()) || deletedUuids.contains(edge.getToNode()));
         for (UUID uuid : deletedUuids) {
             nodes.remove(uuid);
+            viewModelCache.remove(uuid);
         }
         nodeOrder.removeIf(node -> deletedUuids.contains(node.getUuid()));
         recomputeAnchorLocks();
@@ -294,11 +299,11 @@ public final class CraftingGraphEngine {
             GraphAnchorData fromAnchor;
             GraphAnchorData toAnchor;
             if (edge.getDirection() == GraphExpansionDirection.SOURCE) {
-                fromAnchor = anchorForChildNode(from);
-                toAnchor = anchorForQueriedItem(to, edge.getItemId(), edge, GraphExpansionDirection.SOURCE);
+                fromAnchor = sourceEndpointAnchorForSourceChildOutput(from, edge.getItemId());
+                toAnchor = terminalAnchorForQueriedItem(to, edge.getItemId(), edge, GraphExpansionDirection.SOURCE);
             } else {
-                fromAnchor = anchorForQueriedItem(from, edge.getItemId(), edge, GraphExpansionDirection.USAGE);
-                toAnchor = anchorForChildNode(to);
+                fromAnchor = sourceEndpointAnchorForQueriedItem(from, edge.getItemId(), edge, GraphExpansionDirection.USAGE);
+                toAnchor = terminalAnchorForUsageChildInput(to, edge.getItemId());
             }
             if (fromAnchor != null && toAnchor != null) edge.setAnchors(fromAnchor, toAnchor);
         }
@@ -309,10 +314,16 @@ public final class CraftingGraphEngine {
         return edge.getDirection() == GraphExpansionDirection.SOURCE ? edge.getToAnchor() : edge.getFromAnchor();
     }
 
-    private GraphAnchorData anchorForQueriedItem(RecipePanelNode node, String itemId, RecipeGraphEdge edge, GraphExpansionDirection direction) {
+    private GraphAnchorData sourceEndpointAnchorForQueriedItem(RecipePanelNode node, String itemId, RecipeGraphEdge edge, GraphExpansionDirection direction) {
         SlotViewData slot = bestQueriedSlot(node, itemId, edge, direction);
-        if (slot != null) return GraphAnchorData.slotCenter(node, slot, slotRowPadOffset(slot), slotTypePadOffset(slot));
+        if (slot != null) return sourceEndpointAnchor(node, slot);
         return anchorForNodeSide(node, direction == GraphExpansionDirection.USAGE ? -1.0f : 1.0f);
+    }
+
+    private GraphAnchorData terminalAnchorForQueriedItem(RecipePanelNode node, String itemId, RecipeGraphEdge edge, GraphExpansionDirection direction) {
+        SlotViewData slot = bestQueriedSlot(node, itemId, edge, direction);
+        if (slot != null) return terminalEndpointAnchor(node, slot);
+        return anchorForNodeSide(node, 1.0f);
     }
 
     private SlotViewData bestQueriedSlot(RecipePanelNode node, String itemId, RecipeGraphEdge edge, GraphExpansionDirection direction) {
@@ -378,7 +389,9 @@ public final class CraftingGraphEngine {
         RecipeTreeData tree = direction == GraphExpansionDirection.USAGE ? recipeProvider.getUsageTree(itemId) : recipeProvider.getRecipeTree(itemId);
         if (tree.getRecipes().isEmpty()) return null;
 
-        GraphAnchorData parentAnchor = anchorForQueriedObject(parent, slot, direction);
+        GraphAnchorData parentAnchor = direction == GraphExpansionDirection.SOURCE
+                ? terminalAnchorForQueriedObject(parent, slot, direction)
+                : sourceEndpointAnchorForQueriedObject(parent, slot, direction);
         if (direction == GraphExpansionDirection.SOURCE) {
             RecipePanelNode existingChild = findExistingChild(parentUuid, itemId, direction, parentAnchor);
             if (existingChild != null) {
@@ -408,13 +421,16 @@ public final class CraftingGraphEngine {
         selectBestRecipe(node);
         nodes.put(uuid, node);
         nodeOrder.add(node);
-        GraphAnchorData childAnchor = anchorForChildNode(node);
+        GraphAnchorData childAnchor = direction == GraphExpansionDirection.SOURCE
+                ? sourceEndpointAnchorForSourceChildOutput(node, itemId)
+                : sourceEndpointAnchorForUsageChildSubject(node);
         float parentSlotX = slot != null ? slot.getX() : Float.NaN;
         float parentSlotY = slot != null ? slot.getY() : Float.NaN;
         if (direction == GraphExpansionDirection.SOURCE) {
             edges.add(new RecipeGraphEdge(uuid, parentUuid, itemId, direction, parentSlotX, parentSlotY, childAnchor, parentAnchor));
         } else {
-            edges.add(new RecipeGraphEdge(parentUuid, uuid, itemId, direction, parentSlotX, parentSlotY, parentAnchor, childAnchor));
+            GraphAnchorData usageChildAnchor = terminalAnchorForUsageChildInput(node, itemId);
+            edges.add(new RecipeGraphEdge(parentUuid, uuid, itemId, direction, parentSlotX, parentSlotY, parentAnchor, usageChildAnchor));
         }
         relayoutChildren(parentUuid, direction);
         resolveLayoutCollisions(node.getUuid());
@@ -423,19 +439,61 @@ public final class CraftingGraphEngine {
         return node;
     }
 
-    private GraphAnchorData anchorForQueriedObject(RecipePanelNode node, SlotViewData slot, GraphExpansionDirection direction) {
+    private GraphAnchorData sourceEndpointAnchorForQueriedObject(RecipePanelNode node, SlotViewData slot, GraphExpansionDirection direction) {
         if (node == null) return null;
         SlotViewData anchorSlot = slot != null ? slot : bestSubjectAnchorSlot(node, direction);
-        if (anchorSlot != null) return GraphAnchorData.slotCenter(node, anchorSlot, slotRowPadOffset(anchorSlot), slotTypePadOffset(anchorSlot));
-        return anchorForNodeSide(node, direction == GraphExpansionDirection.USAGE ? -1.0f : 1.0f);
+        if (anchorSlot != null) return sourceEndpointAnchor(node, anchorSlot);
+        return anchorForNodeSide(node, -1.0f);
     }
 
-    private GraphAnchorData anchorForChildNode(RecipePanelNode node) {
+    private GraphAnchorData terminalAnchorForQueriedObject(RecipePanelNode node, SlotViewData slot, GraphExpansionDirection direction) {
         if (node == null) return null;
-        if (node.getNodeType() == RecipePanelNodeType.SOURCE) return GraphAnchorData.nodeCenter(node);
-        SlotViewData anchorSlot = bestSubjectAnchorSlot(node, GraphExpansionDirection.USAGE);
-        if (anchorSlot != null) return GraphAnchorData.slotCenter(node, anchorSlot, slotRowPadOffset(anchorSlot), slotTypePadOffset(anchorSlot));
+        SlotViewData anchorSlot = slot != null ? slot : bestSubjectAnchorSlot(node, direction);
+        if (anchorSlot != null) return terminalEndpointAnchor(node, anchorSlot);
+        return anchorForNodeSide(node, 1.0f);
+    }
+
+    private GraphAnchorData sourceEndpointAnchorForSourceChildOutput(RecipePanelNode node, String itemId) {
+        SlotViewData slot = bestOutputSlot(node, itemId);
+        if (slot != null) return sourceEndpointAnchor(node, slot);
         return GraphAnchorData.nodeCenter(node);
+    }
+
+    private GraphAnchorData sourceEndpointAnchorForUsageChildSubject(RecipePanelNode node) {
+        if (node == null) return null;
+        SlotViewData anchorSlot = bestSubjectAnchorSlot(node, GraphExpansionDirection.USAGE);
+        if (anchorSlot != null) return sourceEndpointAnchor(node, anchorSlot);
+        return GraphAnchorData.nodeCenter(node);
+    }
+
+    private GraphAnchorData terminalAnchorForUsageChildInput(RecipePanelNode node, String itemId) {
+        SlotViewData slot = bestUsageInputSlot(node, itemId);
+        if (slot != null) return terminalEndpointAnchor(node, slot);
+        return anchorForNodeSide(node, 1.0f);
+    }
+
+    private SlotViewData bestOutputSlot(RecipePanelNode node, String itemId) {
+        if (node == null) return null;
+        UniversalRecipeViewModel model = getViewModel(node);
+        SlotViewData fallback = null;
+        for (SlotViewData slot : model.getSlots()) {
+            if (slot == null || slot.getItem() == null || slot.getType() != SlotViewType.OUTPUT) continue;
+            if (itemId != null && !itemId.isBlank() && matchesItemId(slot.getItem(), itemId)) return slot;
+            if (fallback == null) fallback = slot;
+        }
+        return fallback;
+    }
+
+    private SlotViewData bestUsageInputSlot(RecipePanelNode node, String itemId) {
+        if (node == null || itemId == null || itemId.isBlank()) return null;
+        UniversalRecipeViewModel model = getViewModel(node);
+        SlotViewData fallback = null;
+        for (SlotViewData slot : model.getSlots()) {
+            if (slot == null || slot.getItem() == null || slot.getType() == SlotViewType.OUTPUT) continue;
+            if (matchesItemId(slot.getItem(), itemId)) return slot;
+            if (fallback == null) fallback = slot;
+        }
+        return fallback;
     }
 
     private SlotViewData bestSubjectAnchorSlot(RecipePanelNode node, GraphExpansionDirection direction) {
@@ -452,27 +510,33 @@ public final class CraftingGraphEngine {
 
     private GraphAnchorData anchorForNodeSide(RecipePanelNode node, float verticalSide) {
         SlotViewData slot = bestSubjectAnchorSlot(node, verticalSide > 0.0f ? GraphExpansionDirection.SOURCE : GraphExpansionDirection.USAGE);
-        if (slot != null) return GraphAnchorData.slotCenter(node, slot, slotRowPadOffset(slot), slotTypePadOffset(slot));
-        return anchorForNodeSlotSide(node, verticalSide > 0.0f ? SlotViewType.OUTPUT : SlotViewType.INPUT);
+        if (slot != null) return GraphAnchorData.slotCenter(node, slot, slotRowPadOffset(slot), verticalSide > 0.0f ? terminalYOffset() : sourceYOffset());
+        return anchorForNodeSlotSide(node, verticalSide > 0.0f ? SlotViewType.OUTPUT : SlotViewType.INPUT, verticalSide > 0.0f);
     }
 
-    private GraphAnchorData anchorForNodeSlotSide(RecipePanelNode node, SlotViewType slotType) {
+    private GraphAnchorData anchorForNodeSlotSide(RecipePanelNode node, SlotViewType slotType, boolean terminal) {
         if (node == null) return null;
         boolean output = slotType == SlotViewType.OUTPUT;
         float slotX = CraftingGraphConstants.NODE_WIDTH * 0.5f - 9.0f;
         float slotY = output ? CraftingGraphConstants.NODE_HEIGHT - 24.0f : 22.0f;
         SlotViewType resolvedType = output ? SlotViewType.OUTPUT : SlotViewType.INPUT;
-        return GraphAnchorData.slotCenter(node, new SlotViewData(null, resolvedType, slotX, slotY), 0.0f, slotTypePadOffset(resolvedType));
+        return GraphAnchorData.slotCenter(node, new SlotViewData(null, resolvedType, slotX, slotY), 0.0f, terminal ? terminalYOffset() : sourceYOffset());
     }
 
-    private float slotTypePadOffset(SlotViewData slot) {
-        return slotTypePadOffset(slot != null ? slot.getType() : null);
+    private GraphAnchorData sourceEndpointAnchor(RecipePanelNode node, SlotViewData slot) {
+        return GraphAnchorData.slotCenter(node, slot, slotRowPadOffset(slot), sourceYOffset());
     }
 
-    private float slotTypePadOffset(SlotViewType slotType) {
-        float inputOffset = -7.0f;
-        if (slotType == SlotViewType.OUTPUT) return 7.0f;
-        return inputOffset;
+    private GraphAnchorData terminalEndpointAnchor(RecipePanelNode node, SlotViewData slot) {
+        return GraphAnchorData.slotCenter(node, slot, slotRowPadOffset(slot), terminalYOffset());
+    }
+
+    private float sourceYOffset() {
+        return -7.0f;
+    }
+
+    private float terminalYOffset() {
+        return 7.0f;
     }
 
     private float slotRowPadOffset(SlotViewData slot) {
@@ -647,9 +711,12 @@ public final class CraftingGraphEngine {
 
     private boolean matchesItemId(IngredientData item, String subjectItemId) {
         if (item == null || subjectItemId == null || subjectItemId.isBlank()) return false;
+        String normalizedSubject = normalizedItemId(subjectItemId);
         String itemId = normalizedItemId(item.getItemId());
-        if (subjectItemId.equals(itemId)) return true;
-        return item.getTagItems().contains(subjectItemId);
+        if (normalizedSubject.equals(itemId)) return true;
+        if (item.getTagItems().contains(normalizedSubject) || item.getTagItems().contains(subjectItemId)) return true;
+        String tagId = normalizedItemId(item.getTagId());
+        return tagId != null && !tagId.isBlank() && normalizedSubject.equals(tagId);
     }
 
     private boolean shouldHighlightCurrentSubject(RecipePanelNode parent, SlotViewData slot, GraphExpansionDirection direction) {
@@ -773,6 +840,7 @@ public final class CraftingGraphEngine {
 
     private void afterNodeRecipeChanged(RecipePanelNode node) {
         if (node == null) return;
+        invalidateViewModel(node);
         recomputeAnchorLocks();
         dirty = true;
     }
@@ -855,6 +923,33 @@ public final class CraftingGraphEngine {
     private record PickerGrid(float x, float y, float w, float h, float contentLeft, float contentTop, float contentRight, float contentBottom, int columns) {
     }
 
+    private record ViewModelCacheEntry(RecipeData recipe, UniversalRecipeViewModel model) {
+    }
+
+    private final class InventoryQueryCache {
+        private List<ItemSnapshot> items;
+        private final Map<String, Integer> counts = new HashMap<>();
+
+        private List<ItemSnapshot> items() {
+            List<ItemSnapshot> currentItems = inventoryProvider != null ? inventoryProvider.getAllInventoryItemsData() : Collections.emptyList();
+            if (currentItems == null) currentItems = Collections.emptyList();
+            if (items == currentItems) return items;
+            items = currentItems;
+            counts.clear();
+            for (ItemSnapshot item : items) {
+                if (item == null || item.getItemId() == null || item.getItemId().isBlank()) continue;
+                counts.merge(item.getItemId(), Math.max(0, item.getCount()), Integer::sum);
+            }
+            return items;
+        }
+
+        private int count(String itemId) {
+            if (itemId == null || itemId.isBlank()) return 0;
+            items();
+            return counts.getOrDefault(itemId, 0);
+        }
+    }
+
     public EdgeHitResult hitEdge(float worldX, float worldY) {
         EdgeHitResult best = null;
         float bestDistance = Float.MAX_VALUE;
@@ -921,7 +1016,17 @@ public final class CraftingGraphEngine {
     }
 
     public UniversalRecipeViewModel getViewModel(RecipePanelNode node) {
-        return adapterRegistry.adapt(node != null ? node.getSelectedRecipe() : null);
+        if (node == null) return adapterRegistry.adapt(null);
+        RecipeData selectedRecipe = node.getSelectedRecipe();
+        ViewModelCacheEntry cached = viewModelCache.get(node.getUuid());
+        if (cached != null && cached.recipe == selectedRecipe) return cached.model;
+        UniversalRecipeViewModel model = adapterRegistry.adapt(selectedRecipe);
+        viewModelCache.put(node.getUuid(), new ViewModelCacheEntry(selectedRecipe, model));
+        return model;
+    }
+
+    private void invalidateViewModel(RecipePanelNode node) {
+        if (node != null) viewModelCache.remove(node.getUuid());
     }
 
     public boolean isIngredientSatisfied(IngredientData ingredient) {
@@ -929,12 +1034,12 @@ public final class CraftingGraphEngine {
     }
 
     public int getAvailableCount(IngredientData ingredient) {
-        if (inventoryProvider == null || ingredient == null) return 0;
-        List<ItemSnapshot> items = inventoryProvider.getAllInventoryItemsData();
-        if (items == null || items.isEmpty()) return 0;
+        if (ingredient == null) return 0;
+        String itemId = normalizedItemId(ingredient.getItemId());
+        if (itemId != null && !itemId.isBlank() && !itemId.startsWith("#")) return inventoryQueryCache.count(itemId);
         int count = 0;
-        for (ItemSnapshot item : items) {
-            if (matchesIngredient(ingredient, item)) count += Math.max(0, item.getCount());
+        for (String tagItem : ingredient.getTagItems()) {
+            count += inventoryQueryCache.count(tagItem);
         }
         return count;
     }
@@ -944,23 +1049,31 @@ public final class CraftingGraphEngine {
     }
 
     public String getBestAvailableItemId(IngredientData ingredient) {
-        if (inventoryProvider == null || ingredient == null) return null;
-        List<ItemSnapshot> items = inventoryProvider.getAllInventoryItemsData();
-        if (items == null || items.isEmpty()) return null;
+        if (ingredient == null) return null;
         String bestItemId = null;
         int bestCount = 0;
-        for (ItemSnapshot item : items) {
-            if (matchesIngredient(ingredient, item) && item.getCount() > bestCount) {
-                bestItemId = item.getItemId();
-                bestCount = item.getCount();
+        String itemId = normalizedItemId(ingredient.getItemId());
+        if (itemId != null && !itemId.isBlank() && !itemId.startsWith("#")) {
+            bestCount = inventoryQueryCache.count(itemId);
+            bestItemId = bestCount > 0 ? itemId : null;
+        }
+        for (String tagItem : ingredient.getTagItems()) {
+            int count = inventoryQueryCache.count(tagItem);
+            if (count > bestCount) {
+                bestItemId = tagItem;
+                bestCount = count;
             }
         }
         return bestItemId;
     }
 
+    private List<ItemSnapshot> inventoryItems() {
+        return inventoryQueryCache.items();
+    }
+
     private void selectBestRecipe(RecipePanelNode node) {
         if (node == null || node.getRecipes().size() <= 1) return;
-        node.setSelectedRecipeIndex(inventoryAnalyzer.bestRecipeIndex(node.getRecipes(), inventoryProvider != null ? inventoryProvider.getAllInventoryItemsData() : null));
+        node.setSelectedRecipeIndex(inventoryAnalyzer.bestRecipeIndex(node.getRecipes(), inventoryItems()));
     }
 
     private int scoreRecipe(RecipeData recipe) {

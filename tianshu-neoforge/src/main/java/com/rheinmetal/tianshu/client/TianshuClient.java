@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.client.geminicard.GeminiCardTooltipAdapter;
 import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphStorage;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
+import com.rheinmetal.tianshu.client.mr.MrRenderer;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.AcousticRadar.AcousticRadarEngine;
@@ -325,6 +326,13 @@ public class TianshuClient {
             mrAltFocusTarget = environmentProvider.getManualFocusTarget(MrConstants.MR_RANGE);
         }
         if (mrAltFocusTarget == null) return;
+
+        if (mrEngine != null && mrEngine.isFocusedOn(mrAltFocusTarget.getUuid())) {
+            mrAltFocusTriggered = true;
+            mrAltFocusChargeSeconds = 0.0f;
+            mrAltFocusTarget = null;
+            return;
+        }
 
         ensureMrEngineForManualFocus(mrUserEnabled);
         if (mrEngine == null) return;

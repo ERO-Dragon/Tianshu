@@ -33,8 +33,9 @@ public final class MrConstants {
     public static final float CARD_MIN_BASE_HEIGHT = 40.0f;
     public static final float CARD_MAX_BASE_WIDTH = 160.0f;
     public static final float CARD_MAX_BASE_HEIGHT = 72.0f;
-    public static final float CARD_MAX_FOCUSED_WIDTH_RATIO = 0.25f;
-    public static final float CARD_MAX_FOCUSED_AREA_RATIO = 0.08f;
+    public static final float CARD_MAX_FOCUSED_WIDTH_RATIO = 0.34f;
+    public static final float CARD_MAX_FOCUSED_HEIGHT_RATIO = 0.62f;
+    public static final float CARD_MAX_FOCUSED_AREA_RATIO = 0.11f;
     public static final float CUT_CORNER_HEIGHT_RATIO = 0.18f;
     public static final float CUT_CORNER_MIN_SIZE = 6.0f;
     public static final float CUT_CORNER_MAX_SIZE = 18.0f;
