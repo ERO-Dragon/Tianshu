@@ -453,6 +453,10 @@ public class MrEngine {
         return manualFocusPreviewTarget != null && manualFocusPreviewProgress > 0.0f;
     }
 
+    public boolean isFocusedOn(String uuid) {
+        return uuid != null && stateMachine.isFocusing() && uuid.equals(stateMachine.getFocusedEntityUuid());
+    }
+
     public void stop() {
         closing = false;
         stateMachine.transitionToSilent();
@@ -700,18 +704,18 @@ public class MrEngine {
             float boardScale = contentScale * tracked.visualScaleFactor;
             boardScale = clampFocusedScale(boardScale, baseCardW, baseCardH, screenW, screenH);
             float visualContentScale = isBackground ? contentScale * tracked.visualScaleFactor : contentScale;
-            float cardW = baseCardW * boardScale;
             boolean hasMainHand = entity.getMainHandItemId() != null && !entity.getMainHandItemId().isEmpty();
             boolean isFocusedThisFrame = isFocused;
+            float cardW = computeCardWidth(baseCardW, boardScale, isFocusedThisFrame, screenW);
             if (isFocusedThisFrame) {
                 updateFocusedDetailText(tracked, entity, deltaTime);
             } else if (!isBackground) {
                 resetFocusedDetailText(tracked);
             }
             float visibleDetailChars = isFocusedThisFrame ? tracked.focusedDetailVisibleChars : 0.0f;
-            float cardH = computeCardHeight(baseCardH, boardScale, visualContentScale, cardW, isFocusedThisFrame, tracked.focusedDetailText, visibleDetailChars);
+            float cardH = computeCardHeight(baseCardH, boardScale, visualContentScale, cardW, isFocusedThisFrame, tracked.focusedDetailText, visibleDetailChars, screenH);
 
-            TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, boardScale, cardW, cardH, screenW, screenH, tracked);
+            TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, boardScale, cardW, cardH, screenW, screenH, tracked, isFocusedThisFrame);
             float targetCardX = targetGeometry.cardX;
             float targetCardY = targetGeometry.cardY;
 
@@ -811,10 +815,8 @@ public class MrEngine {
 
                 if (foundInFrame) {
                     updateGazeTimers(crosshairUuid, deltaTime);
-                    if (gazeTimer >= MrConstants.GAZE_FOCUS_DURATION) {
-                        stateMachine.transitionToFocusing(crosshairUuid);
-                        focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
-                        resetGazeTimers();
+                    if (getCombinedFocusProgress(crosshairUuid) >= 1.0f) {
+                        startCombinedFocus(crosshairUuid);
                     }
                 } else {
                     decayGazeTimers(deltaTime);
@@ -1431,10 +1433,10 @@ public class MrEngine {
         tracked.visualScaleFactor = smoothApproach(tracked.visualScaleFactor, MrConstants.FOCUS_SCALE, deltaTime);
         tracked.visualAlphaFactor = smoothApproach(tracked.visualAlphaFactor, 1.0f, deltaTime);
         float boardScale = clampFocusedScale(contentScale * tracked.visualScaleFactor, baseCardW, baseCardH, screenW, screenH);
-        float cardW = baseCardW * boardScale;
-        float cardH = computeCardHeight(baseCardH, boardScale, contentScale, cardW, true, tracked.focusedDetailText, tracked.focusedDetailVisibleChars);
+        float cardW = computeCardWidth(baseCardW, boardScale, true, screenW);
+        float cardH = computeCardHeight(baseCardH, boardScale, contentScale, cardW, true, tracked.focusedDetailText, tracked.focusedDetailVisibleChars, screenH);
 
-        TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, boardScale, cardW, cardH, screenW, screenH, tracked);
+        TargetGeometry targetGeometry = computeTargetGeometry(anchorX, anchorY, boardScale, cardW, cardH, screenW, screenH, tracked, true);
         MrWhipLayout.LayoutResult layoutResult = tracked.layout.compute(
                 anchorX, anchorY,
                 targetGeometry.cardX, targetGeometry.cardY,
@@ -1550,7 +1552,7 @@ public class MrEngine {
             return;
         }
         if (manualFocusPreviewTarget != null && snap.entityUuid != null && snap.entityUuid.equals(manualFocusPreviewTarget.getUuid())) {
-            snap.focusProgress = Math.max(0.0f, Math.min(1.0f, manualFocusPreviewProgress));
+            snap.focusProgress = getCombinedFocusProgress(snap.entityUuid);
             snap.focusProgressActive = snap.focusProgress > 0.0f;
             snap.focusExitProgressActive = false;
             return;
@@ -1560,9 +1562,34 @@ public class MrEngine {
             snap.focusProgressActive = false;
             return;
         }
-        float progress = MrConstants.GAZE_FOCUS_DURATION > 0.0f ? gazeTimer / MrConstants.GAZE_FOCUS_DURATION : 1.0f;
+        float progress = getCombinedFocusProgress(snap.entityUuid);
         snap.focusProgress = Math.max(0.0f, Math.min(1.0f, progress));
         snap.focusProgressActive = snap.focusProgress > 0.0f;
+        if (snap.focusProgressActive) snap.focusExitProgressActive = false;
+    }
+
+    private float getCombinedFocusProgress(String uuid) {
+        return Math.max(0.0f, Math.min(1.0f, getGazeFocusProgress(uuid) + getManualFocusPreviewProgress(uuid)));
+    }
+
+    private float getGazeFocusProgress(String uuid) {
+        if (!stateMachine.isScanning() || closing || uuid == null || !uuid.equals(lastGazeUuid)) return 0.0f;
+        return MrConstants.GAZE_FOCUS_DURATION > 0.0f ? gazeTimer / MrConstants.GAZE_FOCUS_DURATION : 1.0f;
+    }
+
+    private float getManualFocusPreviewProgress(String uuid) {
+        if (manualFocusPreviewTarget == null || uuid == null || !uuid.equals(manualFocusPreviewTarget.getUuid())) return 0.0f;
+        return manualFocusPreviewProgress;
+    }
+
+    private void startCombinedFocus(String uuid) {
+        manualFocusTarget = manualFocusPreviewTarget != null && uuid != null && uuid.equals(manualFocusPreviewTarget.getUuid())
+                ? manualFocusPreviewTarget
+                : null;
+        stateMachine.transitionToFocusing(uuid);
+        focusExitCountdown = MrConstants.FOCUS_EXIT_COUNTDOWN_SECONDS;
+        clearManualFocusPreview();
+        resetGazeTimers();
     }
 
     private float computeFocusExitProgress(MrCardSnapshot snap) {
@@ -1745,7 +1772,11 @@ public class MrEngine {
         return Math.min(scale, Math.min(maxByWidth, maxByArea));
     }
 
-    private float computeCardHeight(float baseCardH, float boardScale, float contentScale, float cardW, boolean isFocused, String focusedDetailText, float visibleChars) {
+    private float computeCardWidth(float baseCardW, float boardScale, boolean isFocused, int screenW) {
+        return baseCardW * boardScale;
+    }
+
+    private float computeCardHeight(float baseCardH, float boardScale, float contentScale, float cardW, boolean isFocused, String focusedDetailText, float visibleChars, int screenH) {
         float baseHeight = baseCardH * boardScale;
         if (!isFocused || focusedDetailText == null || focusedDetailText.isEmpty() || visibleChars <= 0.0f) return baseHeight;
         int charCount = Math.max(0, Math.min((int) Math.ceil(visibleChars), focusedDetailText.length()));
@@ -1754,13 +1785,14 @@ public class MrEngine {
         float detailTop = (MrConstants.CONTENT_PADDING_Y + MrConstants.FONT_LINE_HEIGHT + 2.0f + MrConstants.CONTENT_BAR_SPACING + MrConstants.FONT_LINE_HEIGHT + 8.0f) * contentScale;
         float bottomPadding = (MrConstants.CONTENT_PADDING_Y + 6.0f) * contentScale;
         float requiredHeight = detailTop + lines * MrConstants.FONT_LINE_HEIGHT * contentScale + bottomPadding;
-        return Math.max(baseHeight, requiredHeight);
+        float maxHeight = Math.max(baseHeight, screenH * MrConstants.CARD_MAX_FOCUSED_HEIGHT_RATIO);
+        return Math.max(baseHeight, Math.min(requiredHeight, maxHeight));
     }
 
     private int estimateWrappedLineCount(String text, float cardW, float contentScale) {
         float safeScale = Math.max(0.1f, contentScale);
         float availableWidth = Math.max(1.0f, (cardW - MrConstants.CONTENT_PADDING_X * safeScale * 2.0f) / safeScale);
-        float averageCharWidth = 6.0f;
+        float averageCharWidth = 9.0f;
         int maxCharsPerLine = Math.max(1, (int) (availableWidth / averageCharWidth));
         int lines = 0;
         String[] explicitLines = text.split("\n", -1);
@@ -1771,7 +1803,11 @@ public class MrEngine {
     }
 
     private TargetGeometry computeTargetGeometry(float anchorX, float anchorY, float scale, float cardW, float cardH, int screenW, int screenH, TrackedCard tracked) {
-        float segmentLength = getSegmentLength() * scale;
+        return computeTargetGeometry(anchorX, anchorY, scale, cardW, cardH, screenW, screenH, tracked, false);
+    }
+
+    private TargetGeometry computeTargetGeometry(float anchorX, float anchorY, float scale, float cardW, float cardH, int screenW, int screenH, TrackedCard tracked, boolean focused) {
+        float segmentLength = getSegmentLength() * scale * (focused ? 0.45f : 1.0f);
         float defaultQuadrantX = anchorX < screenW * 0.5f ? 1.0f : -1.0f;
         float defaultQuadrantY = anchorY < screenH * 0.5f ? 1.0f : -1.0f;
         if (tracked != null) {
@@ -1793,8 +1829,10 @@ public class MrEngine {
             defaultQuadrantY = tracked.lockedQuadrantY;
         }
 
-        float targetCenterX = anchorX + defaultQuadrantX * (segmentLength * 2.0f + cardW * 0.5f);
-        float targetCenterY = anchorY + defaultQuadrantY * (segmentLength * 1.25f + cardH * 0.35f);
+        float horizontalOffset = focused ? segmentLength * 1.15f : segmentLength * 2.0f;
+        float verticalOffset = focused ? segmentLength * 0.7f : segmentLength * 1.25f;
+        float targetCenterX = anchorX + defaultQuadrantX * (horizontalOffset + cardW * 0.5f);
+        float targetCenterY = anchorY + defaultQuadrantY * (verticalOffset + cardH * 0.35f);
         float cardX = targetCenterX - cardW * 0.5f;
         float cardY = targetCenterY - cardH * 0.5f;
         boolean anchorNearScreen = anchorX >= -cardW && anchorX <= screenW + cardW && anchorY >= -cardH && anchorY <= screenH + cardH;

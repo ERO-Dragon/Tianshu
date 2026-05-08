@@ -45,6 +45,7 @@ public final class CraftingGraphRenderer {
     private final Map<IngredientKey, Integer> availableCountByKeyCache = new HashMap<>();
     private final Map<IngredientKey, Integer> consumedIngredientCache = new HashMap<>();
     private final Map<IngredientData, String> bestAvailableItemIdCache = new HashMap<>();
+    private final Map<IngredientData, List<String>> ingredientCandidateCache = new HashMap<>();
     private final Map<String, ItemStack> itemCache = new HashMap<>();
     private final Set<String> missingItemIds = new HashSet<>();
     private String topPanelType;
@@ -56,6 +57,12 @@ public final class CraftingGraphRenderer {
     private int searchSelection;
     private List<StoredGraphEntry> topPanelEntries = List.of();
     private float topPanelScroll;
+    private boolean renderItemsForProfiling = true;
+    private boolean renderTextForProfiling = true;
+    private boolean renderEdgesForProfiling = true;
+    private boolean renderGeometryForProfiling = true;
+    private boolean renderShellForProfiling = true;
+    private boolean renderFrameForProfiling = true;
 
     public CraftingGraphRenderer(CraftingGraphEngine engine) {
         this.engine = engine;
@@ -82,9 +89,15 @@ public final class CraftingGraphRenderer {
         int contentY = drawerY + CraftingGraphConstants.DRAWER_MARGIN + 18 + topPanelOffset;
         engine.getCamera().renderFrame();
 
-        drawDrawer(g, font, drawerX, drawerY, drawerW, drawerH, alpha, drawerProgress);
-        geometryBatch.flush(g, GRAPH_BASE_Z);
-        g.flush();
+        if (renderShellForProfiling) {
+            drawDrawer(g, drawerX, drawerY, drawerW, drawerH, alpha, drawerProgress);
+            geometryBatch.flush(g, GRAPH_BASE_Z);
+            g.flush();
+        }
+        if (!renderFrameForProfiling) {
+            if (renderShellForProfiling) renderFixedOverlay(g, font, drawerX, drawerY, drawerW, drawerH, topPanelOffset, alpha);
+            return;
+        }
         g.enableScissor(drawerX, drawerY + topPanelOffset, drawerX + drawerW, drawerY + drawerH);
 
         g.pose().pushPose();
@@ -106,7 +119,7 @@ public final class CraftingGraphRenderer {
         g.disableScissor();
         g.flush();
 
-        renderFixedOverlay(g, font, drawerX, drawerY, drawerW, drawerH, topPanelOffset, alpha);
+        if (renderShellForProfiling) renderFixedOverlay(g, font, drawerX, drawerY, drawerW, drawerH, topPanelOffset, alpha);
     }
 
     private void renderFixedOverlay(GuiGraphics g, Font font, int drawerX, int drawerY, int drawerW, int drawerH, int topPanelOffset, float alpha) {
@@ -116,7 +129,7 @@ public final class CraftingGraphRenderer {
         drawTopPanel(g, font, drawerX, drawerY, drawerW, alpha);
         drawTopPanelToggleButtons(g, font, drawerX, drawerY, alpha);
         drawCurrentTreeActionButtons(g, drawerX, drawerY + topPanelOffset, drawerW, alpha);
-        drawHintText(g, font, drawerX, drawerY, drawerW, drawerH, alpha);
+        if (shouldDrawHintText()) drawHintText(g, font, drawerX, drawerY, drawerW, drawerH, alpha);
         g.pose().popPose();
         g.flush();
     }
@@ -140,6 +153,34 @@ public final class CraftingGraphRenderer {
         this.searchQuery = searchQuery != null ? searchQuery : "";
         this.searchResults = searchResults != null ? searchResults : List.of();
         this.searchSelection = Math.max(0, searchSelection);
+    }
+
+    public void toggleItemRenderingForProfiling() {
+        renderItemsForProfiling = !renderItemsForProfiling;
+    }
+
+    public void toggleTextRenderingForProfiling() {
+        renderTextForProfiling = !renderTextForProfiling;
+    }
+
+    public void toggleEdgeRenderingForProfiling() {
+        renderEdgesForProfiling = !renderEdgesForProfiling;
+    }
+
+    public void toggleGeometryRenderingForProfiling() {
+        renderGeometryForProfiling = !renderGeometryForProfiling;
+    }
+
+    public void toggleShellRenderingForProfiling() {
+        renderShellForProfiling = !renderShellForProfiling;
+    }
+
+    public void toggleFrameRenderingForProfiling() {
+        renderFrameForProfiling = !renderFrameForProfiling;
+    }
+
+    public boolean isRenderingItemsForProfiling() {
+        return renderItemsForProfiling;
     }
 
     public int graphViewportWidth() {
@@ -304,6 +345,41 @@ public final class CraftingGraphRenderer {
         return nodeType != null ? new SearchHit(index, nodeType) : null;
     }
 
+    public boolean hitItemRenderProfilerButton(double mouseX, double mouseY) {
+        return hitProfilerButton(mouseX, mouseY, 0);
+    }
+
+    public boolean hitTextRenderProfilerButton(double mouseX, double mouseY) {
+        return hitProfilerButton(mouseX, mouseY, 1);
+    }
+
+    public boolean hitEdgeRenderProfilerButton(double mouseX, double mouseY) {
+        return hitProfilerButton(mouseX, mouseY, 2);
+    }
+
+    public boolean hitGeometryRenderProfilerButton(double mouseX, double mouseY) {
+        return hitProfilerButton(mouseX, mouseY, 3);
+    }
+
+    public boolean hitShellRenderProfilerButton(double mouseX, double mouseY) {
+        return hitProfilerButton(mouseX, mouseY, 4);
+    }
+
+    public boolean hitFrameRenderProfilerButton(double mouseX, double mouseY) {
+        return hitProfilerButton(mouseX, mouseY, 5);
+    }
+
+    private boolean hitProfilerButton(double mouseX, double mouseY, int index) {
+        Minecraft mc = Minecraft.getInstance();
+        int drawerW = drawerWidth(mc.getWindow().getGuiScaledWidth());
+        if (drawerW <= 0) return false;
+        int drawerX = drawerX(drawerW);
+        int drawerY = CraftingGraphConstants.DRAWER_MARGIN + topPanelOffset();
+        int x = profilerButtonX(drawerX, drawerW, index);
+        int y = currentTreeActionButtonY(drawerY);
+        return mouseX >= x && mouseX <= x + 14 && mouseY >= y && mouseY <= y + 14;
+    }
+
     private boolean hitTopPanelToggle(double mouseX, double mouseY, int index) {
         Minecraft mc = Minecraft.getInstance();
         int drawerW = drawerWidth(mc.getWindow().getGuiScaledWidth());
@@ -319,6 +395,10 @@ public final class CraftingGraphRenderer {
         long window = Minecraft.getInstance().getWindow().getWindow();
         return org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS
                 || org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+    }
+
+    private boolean shouldDrawHintText() {
+        return engine != null && engine.isEmpty() && !searchOpen && topPanelProgress <= 0.0f;
     }
 
     private void drawCollapsedHandle(GuiGraphics g) {
@@ -362,10 +442,9 @@ public final class CraftingGraphRenderer {
         }
     }
 
-    private void drawDrawer(GuiGraphics g, Font font, int x, int y, int w, int h, float alpha, float drawerProgress) {
+    private void drawDrawer(GuiGraphics g, int x, int y, int w, int h, float alpha, float drawerProgress) {
         int left = Math.min(-32, x);
         g.fill(left, y, x + w, y + h, vanillaBackground(alpha));
-        drawDrawerHeader(g, font, x, y, w, alpha);
         drawDrawerBorder(g, left, y, x + w, h, alpha);
         float handleAlpha = alpha * Math.max(0.0f, Math.min(1.0f, 1.0f - drawerProgress));
         if (handleAlpha > 0.01f) {
@@ -399,6 +478,7 @@ public final class CraftingGraphRenderer {
         } else {
             drawSearchEntryButton(g, drawerX, drawerY, drawerW, alpha);
         }
+        drawProfilerButtons(g, drawerX, drawerY, drawerW, alpha);
         if (engine.isEmpty()) return;
         drawCurrentFavoriteButton(g, drawerX, drawerY, drawerW, alpha);
         if (currentTreeFavorited) drawDuplicateButton(g, drawerX, drawerY, drawerW, alpha);
@@ -414,6 +494,23 @@ public final class CraftingGraphRenderer {
         drawLine(g, x + 4, y + 6, x + 4, y + 8, icon);
         drawLine(g, x + 5, y + 9, x + 8, y + 9, icon);
         drawLine(g, x + 9, y + 10, x + 12, y + 13, icon);
+    }
+
+    private void drawProfilerButtons(GuiGraphics g, int drawerX, int drawerY, int drawerW, float alpha) {
+        drawProfilerButton(g, drawerX, drawerY, drawerW, alpha, 0, "I", renderItemsForProfiling);
+        drawProfilerButton(g, drawerX, drawerY, drawerW, alpha, 1, "T", renderTextForProfiling);
+        drawProfilerButton(g, drawerX, drawerY, drawerW, alpha, 2, "E", renderEdgesForProfiling);
+        drawProfilerButton(g, drawerX, drawerY, drawerW, alpha, 3, "G", renderGeometryForProfiling);
+        drawProfilerButton(g, drawerX, drawerY, drawerW, alpha, 4, "S", renderShellForProfiling);
+        drawProfilerButton(g, drawerX, drawerY, drawerW, alpha, 5, "F", renderFrameForProfiling);
+    }
+
+    private void drawProfilerButton(GuiGraphics g, int drawerX, int drawerY, int drawerW, float alpha, int index, String label, boolean enabled) {
+        int x = profilerButtonX(drawerX, drawerW, index);
+        int y = currentTreeActionButtonY(drawerY);
+        int icon = enabled ? color(alpha, 112, 232, 126) : color(alpha, 255, 96, 96);
+        drawVanillaButton(g, x, y, 14, 14, alpha, enabled, false);
+        g.drawString(Minecraft.getInstance().font, label, x + 4, y + 3, icon, false);
     }
 
     private void drawCurrentFavoriteButton(GuiGraphics g, int drawerX, int drawerY, int drawerW, float alpha) {
@@ -567,6 +664,10 @@ public final class CraftingGraphRenderer {
         return searchPanelX(drawerX, drawerW);
     }
 
+    private int profilerButtonX(int drawerX, int drawerW, int index) {
+        return drawerX + drawerW - 120 - index * 18;
+    }
+
     private int searchPanelX(int drawerX, int drawerW) {
         return drawerX + Math.min(130, Math.max(66, drawerW / 3));
     }
@@ -701,10 +802,13 @@ public final class CraftingGraphRenderer {
         consumedIngredientCache.clear();
         bestAvailableItemIdCache.clear();
         for (RecipePanelNode node : engine.getNodes()) {
+            boolean visible = nodeVisible(node, graphFrame.bounds);
+            boolean pickerVisible = node.isRecipePickerOpen() && recipePickerVisible(node, graphFrame.bounds);
+            if (!visible && !pickerVisible) continue;
             UniversalRecipeViewModel model = engine.getViewModel(node);
             VisibleNode visibleNode = graphFrame.visibleNode(node, model);
-            if (nodeVisible(node, graphFrame.bounds)) graphFrame.visibleNodes.add(visibleNode);
-            if (node.isRecipePickerOpen() && recipePickerVisible(node, graphFrame.bounds)) {
+            if (visible) graphFrame.visibleNodes.add(visibleNode);
+            if (pickerVisible) {
                 graphFrame.visiblePickers.add(visibleNode);
                 graphFrame.pickerOccluders.add(recipePickerOccluder(node));
             }
@@ -718,6 +822,7 @@ public final class CraftingGraphRenderer {
     }
 
     private void renderGraphGeometry(GuiGraphics g, float alpha, long now, GraphRenderFrame frame) {
+        if (!renderGeometryForProfiling) return;
         geometryBatch.begin();
         if (engine.isEmpty()) drawEmptyCanvasReferenceGeometry(geometryBatch, alpha);
         for (VisibleNode visibleNode : frame.visibleNodes) {
@@ -728,6 +833,7 @@ public final class CraftingGraphRenderer {
     }
 
     private void renderGraphEdges(GuiGraphics g, float alpha, GraphRenderFrame frame) {
+        if (!renderEdgesForProfiling) return;
         geometryBatch.begin();
         for (VisibleEdge visibleEdge : frame.visibleEdges) {
             drawEdgeGeometry(geometryBatch, visibleEdge.edge, visibleEdge.from, visibleEdge.to, alpha, frame);
@@ -736,12 +842,14 @@ public final class CraftingGraphRenderer {
     }
 
     private void renderGraphItems(GuiGraphics g, Font font, float alpha, long now, GraphRenderFrame frame) {
+        if (!renderItemsForProfiling) return;
         for (VisibleNode visibleNode : frame.visibleNodes) {
             drawNodeItems(g, font, visibleNode, alpha, now, frame);
         }
     }
 
     private void renderGraphText(GuiGraphics g, Font font, float alpha, long now, GraphRenderFrame frame) {
+        if (!renderTextForProfiling) return;
         if (engine.isEmpty()) drawEmptyCanvasReferenceText(g, font, alpha);
         for (VisibleNode visibleNode : frame.visibleNodes) {
             drawNodeText(g, font, visibleNode, alpha, frame);
@@ -784,14 +892,17 @@ public final class CraftingGraphRenderer {
         return x + w >= bounds.minX && x <= bounds.maxX && y + h >= bounds.minY && y <= bounds.maxY;
     }
 
-    private GraphRect slotRect(RecipePanelNode node, SlotViewData slot) {
-        float x = node.getX() + CraftingGraphConstants.NODE_CONTENT_X + slot.getX();
-        float y = node.getY() + CraftingGraphConstants.NODE_CONTENT_Y + slot.getY();
-        return new GraphRect(x, y, 18.0f, 18.0f);
+    private boolean slotOccluded(GraphRenderFrame frame, RecipePanelNode node, SlotViewData slot) {
+        return frame.occludes(
+                node.getX() + CraftingGraphConstants.NODE_CONTENT_X + slot.getX(),
+                node.getY() + CraftingGraphConstants.NODE_CONTENT_Y + slot.getY(),
+                18.0f,
+                18.0f
+        );
     }
 
-    private GraphRect pointRect(float x, float y, float radius) {
-        return new GraphRect(x - radius, y - radius, radius * 2.0f, radius * 2.0f);
+    private boolean pointOccluded(GraphRenderFrame frame, float x, float y, float radius) {
+        return frame.occludes(x - radius, y - radius, radius * 2.0f, radius * 2.0f);
     }
 
     private void drawNodeGeometry(GuiGeometryBatch batch, VisibleNode visibleNode, float alpha, long now, GraphRenderFrame frame) {
@@ -808,7 +919,7 @@ public final class CraftingGraphRenderer {
         int ox = x + Math.round(CraftingGraphConstants.NODE_CONTENT_X);
         int oy = y + Math.round(CraftingGraphConstants.NODE_CONTENT_Y);
         for (SlotViewData slot : visibleNode.model.getSlots()) {
-            if (frame.occludes(slotRect(visibleNode.node, slot))) continue;
+            if (slotOccluded(frame, visibleNode.node, slot)) continue;
             drawSlotGeometry(batch, node, slot, ox, oy, alpha, isSlotSatisfiedForDisplay(slot));
         }
     }
@@ -844,8 +955,9 @@ public final class CraftingGraphRenderer {
         int max = Math.min(categories.size(), Math.max(1, (listH - 24) / 18));
         for (int i = 0; i < max; i++) {
             ItemStack stack = categoryIconStack(node, categories.get(i));
-            GraphRect iconRect = new GraphRect(x + 10.0f, listY + 12.0f + i * 18.0f, 16.0f, 16.0f);
-            if (!stack.isEmpty() && !frame.occludes(iconRect)) g.renderItem(stack, x + 10, listY + 12 + i * 18);
+            int iconX = x + 10;
+            int iconY = listY + 12 + i * 18;
+            if (!stack.isEmpty() && !frame.occludes(iconX, iconY, 16.0f, 16.0f)) g.renderItem(stack, iconX, iconY);
         }
     }
 
@@ -903,7 +1015,7 @@ public final class CraftingGraphRenderer {
             if (stack == null) continue;
             int x = ox + (int) slot.getX();
             int y = oy + (int) slot.getY();
-            if (frame.occludes(slotRect(visibleNode.node, slot))) continue;
+            if (slotOccluded(frame, visibleNode.node, slot)) continue;
             g.renderItem(stack, x, y);
         }
     }
@@ -1012,14 +1124,14 @@ public final class CraftingGraphRenderer {
     }
 
     private void drawRecipePickerOverlay(GuiGraphics g, RecipePanelNode node, Font font, float alpha, long now) {
+        RecipePickerLayout layout = recipePickerLayout(node);
         geometryBatch.begin();
-        drawRecipePickerGeometry(geometryBatch, node, alpha, now);
+        drawRecipePickerGeometry(geometryBatch, node, layout, alpha, now);
         geometryBatch.flush(g, GRAPH_PICKER_Z);
-        drawRecipePickerItems(g, node, now);
+        drawRecipePickerItems(g, node, layout, now);
     }
 
-    private void drawRecipePickerGeometry(GuiGeometryBatch batch, RecipePanelNode node, float alpha, long now) {
-        RecipePickerLayout layout = recipePickerLayout(node);
+    private void drawRecipePickerGeometry(GuiGeometryBatch batch, RecipePanelNode node, RecipePickerLayout layout, float alpha, long now) {
         int bg = vanillaPanelBg(alpha);
         int border = node.canSwitchRecipe() ? vanillaLightBorder(alpha) : vanillaDarkBorder(alpha * 0.9f);
         drawVanillaPanel(batch, layout.x, layout.y, layout.w, layout.h, bg, border);
@@ -1037,8 +1149,7 @@ public final class CraftingGraphRenderer {
         }
     }
 
-    private void drawRecipePickerItems(GuiGraphics g, RecipePanelNode node, long now) {
-        RecipePickerLayout layout = recipePickerLayout(node);
+    private void drawRecipePickerItems(GuiGraphics g, RecipePanelNode node, RecipePickerLayout layout, long now) {
         g.pose().pushPose();
         g.pose().translate(0.0f, 0.0f, GRAPH_PICKER_Z + 20.0f);
         for (RecipePickerCell cell : layout.cells) {
@@ -1199,7 +1310,7 @@ public final class CraftingGraphRenderer {
         drawClippedOrthogonalEdge(batch, frame, x1 + 1, y1 + 1, x2 + 1, y2 + 1, midY + 1, shadow);
         drawClippedOrthogonalEdge(batch, frame, x1, y1, x2, y2, midY, base);
         drawTerminalArrow(batch, frame, x1, y1, x2, y2, midY, base);
-        if (!frame.occludes(pointRect(x1, y1, 5.0f))) drawAnchorDot(batch, x1, y1, alpha);
+        if (!pointOccluded(frame, x1, y1, 5.0f)) drawAnchorDot(batch, x1, y1, alpha);
     }
 
     private void drawClippedOrthogonalEdge(GuiGeometryBatch batch, GraphRenderFrame frame, int x1, int y1, int x2, int y2, int midY, int color) {
@@ -1255,7 +1366,7 @@ public final class CraftingGraphRenderer {
     }
 
     private void drawTerminalArrow(GuiGeometryBatch batch, GraphRenderFrame frame, int x1, int y1, int x2, int y2, int midY, int color) {
-        if (frame.occludes(pointRect(x2, y2, 8.0f))) return;
+        if (pointOccluded(frame, x2, y2, 8.0f)) return;
         int directionY = Integer.compare(y2, midY);
         if (directionY == 0) directionY = Integer.compare(y2, y1);
         if (directionY == 0) directionY = 1;
@@ -1285,8 +1396,10 @@ public final class CraftingGraphRenderer {
     }
 
     private List<String> ingredientCandidateItemIds(IngredientData item) {
-        LinkedHashSet<String> ids = new LinkedHashSet<>();
         if (item == null) return List.of();
+        List<String> cached = ingredientCandidateCache.get(item);
+        if (cached != null) return cached;
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
         if (item.getTagItems() != null) {
             for (String id : item.getTagItems()) addCandidateItemId(ids, id);
         }
@@ -1296,7 +1409,9 @@ public final class CraftingGraphRenderer {
             for (String id : split) addCandidateItemId(ids, id);
         }
         ids.removeIf(id -> id == null || id.isBlank() || id.startsWith("#"));
-        return new ArrayList<>(ids);
+        List<String> candidates = List.copyOf(ids);
+        ingredientCandidateCache.put(item, candidates);
+        return candidates;
     }
 
     private void addCandidateItemId(Set<String> ids, String itemId) {
@@ -1340,12 +1455,12 @@ public final class CraftingGraphRenderer {
     private void drawDrawerBorder(GuiGraphics g, int left, int y, int right, int h, float alpha) {
         int dark = vanillaDarkBorder(alpha);
         int light = color(alpha * 0.42f, 90, 90, 90);
-        drawLine(g, left, y, right, y, dark);
-        drawLine(g, left, y + h - 1, right, y + h - 1, dark);
-        drawLine(g, right - 1, y, right - 1, y + h - 1, dark);
-        drawLine(g, left, y + 1, right - 1, y + 1, light);
-        drawLine(g, left, y + h - 2, right - 1, y + h - 2, light);
-        drawLine(g, right - 2, y + 1, right - 2, y + h - 2, light);
+        g.fill(left, y, right, y + 1, dark);
+        g.fill(left, y + h - 1, right, y + h, dark);
+        g.fill(right - 1, y, right, y + h, dark);
+        g.fill(left, y + 1, right - 1, y + 2, light);
+        g.fill(left, y + h - 2, right - 1, y + h - 1, light);
+        g.fill(right - 2, y + 1, right - 1, y + h - 1, light);
     }
 
     private void drawAdvancementNodePanel(GuiGraphics g, int x, int y, int w, int h, float alpha, int border) {
@@ -1498,10 +1613,9 @@ public final class CraftingGraphRenderer {
             return visibleEdge;
         }
 
-        private boolean occludes(GraphRect rect) {
-            if (rect == null) return false;
+        private boolean occludes(float x, float y, float w, float h) {
             for (GraphOccluder occluder : pickerOccluders) {
-                if (occluder.intersects(rect)) return true;
+                if (occluder.intersects(x, y, w, h)) return true;
             }
             return false;
         }
@@ -1521,15 +1635,9 @@ public final class CraftingGraphRenderer {
     private record GraphViewBounds(float minX, float minY, float maxX, float maxY) {
     }
 
-    private record GraphRect(float x, float y, float w, float h) {
-        private boolean intersects(GraphRect other) {
-            return other != null && x + w > other.x && x < other.x + other.w && y + h > other.y && y < other.y + other.h;
-        }
-    }
-
     private record GraphOccluder(float x, float y, float w, float h) {
-        private boolean intersects(GraphRect rect) {
-            return rect != null && x + w > rect.x && x < rect.x + rect.w && y + h > rect.y && y < rect.y + rect.h;
+        private boolean intersects(float rx, float ry, float rw, float rh) {
+            return x + w > rx && x < rx + rw && y + h > ry && y < ry + rh;
         }
     }
 

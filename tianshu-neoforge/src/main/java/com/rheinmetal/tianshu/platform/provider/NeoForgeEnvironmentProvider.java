@@ -46,6 +46,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     private static final double FALLBACK_UNARMED_ATTACK_DAMAGE = 1.0;
     private static final double FALLBACK_UNARMED_ATTACK_SPEED = 4.0;
     private static final double FULL_DRAW_BOW_DAMAGE = 6.0;
+    private static final int TARGET_DAMAGE_IMMUNITY_TICKS = 10;
     private static final int MAX_BENEFICIAL_EFFECTS = 4;
     private static final int MAX_HARMFUL_EFFECTS = 2;
     private static final int MAX_POSSIBLE_DROPS = 8;
@@ -615,10 +616,23 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         if (effectiveDamage <= 0.0) return null;
         double health = Math.max(0.0, target.getHealth() + target.getAbsorptionAmount());
         int hits = Math.max(1, (int) Math.ceil(health / effectiveDamage));
-        double seconds = Math.max(0, hits - 1) / attackSpeed;
+        int effectiveIntervalTicks = estimateFullStrengthMeleeIntervalTicks(attackSpeed);
+        double seconds = estimateFullStrengthMeleeSeconds(hits, effectiveIntervalTicks);
         String weaponName = stack.isEmpty() ? "空手" : LocalizationHelper.safeGetDisplayName(stack.getHoverName().getString());
         String weaponId = stack.isEmpty() ? "minecraft:empty_hand" : stack.getItemHolder().getRegisteredName();
-        return new CombatCandidate(weaponName, weaponId, hits, seconds, effectiveDamage, attackSpeed, effectiveDamage * attackSpeed);
+        double dps = effectiveDamage * 20.0 / effectiveIntervalTicks;
+        return new CombatCandidate(weaponName, weaponId, hits, seconds, effectiveDamage, attackSpeed, dps);
+    }
+
+    private int estimateFullStrengthMeleeIntervalTicks(double attackSpeed) {
+        double safeAttackSpeed = attackSpeed > 0.0 ? attackSpeed : FALLBACK_UNARMED_ATTACK_SPEED;
+        int playerCooldownTicks = Math.max(1, (int) Math.ceil(20.0 / safeAttackSpeed));
+        return Math.max(playerCooldownTicks, TARGET_DAMAGE_IMMUNITY_TICKS);
+    }
+
+    private double estimateFullStrengthMeleeSeconds(int hits, int effectiveIntervalTicks) {
+        if (hits <= 1) return 0.0;
+        return (hits - 1) * Math.max(1, effectiveIntervalTicks) / 20.0;
     }
 
     private MrEntityExplanationData.CombatEstimateData buildRangedEstimateIfBetter(Player player, LivingEntity target, CombatCandidate bestMelee) {

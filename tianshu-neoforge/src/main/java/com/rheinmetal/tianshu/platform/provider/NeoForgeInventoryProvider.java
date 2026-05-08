@@ -49,6 +49,9 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
             "minecraft:black_shulker_box"
     );
 
+    private List<ItemSnapshot> cachedInventoryItems = Collections.emptyList();
+    private long cachedInventorySignature = Long.MIN_VALUE;
+
     @Override
     public ItemSnapshot getMainHandItemData() {
         Minecraft mc = Minecraft.getInstance();
@@ -59,20 +62,42 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
     @Override
     public List<ItemSnapshot> getAllInventoryItemsData() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return Collections.emptyList();
-
-        Player player = mc.player;
-        Inventory inv = player.getInventory();
-        List<ItemSnapshot> items = new ArrayList<>();
-
-        for (int i = 0; i < inv.getContainerSize(); i++) {
-            ItemStack stack = inv.getItem(i);
-            if (!stack.isEmpty()) {
-                items.add(toItemSnapshot(stack, i));
-            }
+        if (mc.player == null) {
+            cachedInventoryItems = Collections.emptyList();
+            cachedInventorySignature = Long.MIN_VALUE;
+            return cachedInventoryItems;
         }
 
-        return items;
+        Inventory inv = mc.player.getInventory();
+        long signature = inventorySignature(inv);
+        if (signature == cachedInventorySignature) return cachedInventoryItems;
+
+        List<ItemSnapshot> items = new ArrayList<>();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack stack = inv.getItem(i);
+            if (!stack.isEmpty()) items.add(toItemSnapshot(stack, i));
+        }
+        cachedInventorySignature = signature;
+        cachedInventoryItems = Collections.unmodifiableList(items);
+        return cachedInventoryItems;
+    }
+
+    private long inventorySignature(Inventory inv) {
+        long signature = 1125899906842597L;
+        int size = inv != null ? inv.getContainerSize() : 0;
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = inv.getItem(i);
+            if (stack.isEmpty()) {
+                signature = signature * 31L + i;
+                continue;
+            }
+            signature = signature * 31L + i;
+            signature = signature * 31L + stack.getCount();
+            signature = signature * 31L + stack.getDamageValue();
+            signature = signature * 31L + stack.getItemHolder().getRegisteredName().hashCode();
+            signature = signature * 31L + stack.getComponents().hashCode();
+        }
+        return signature;
     }
 
     @Override
