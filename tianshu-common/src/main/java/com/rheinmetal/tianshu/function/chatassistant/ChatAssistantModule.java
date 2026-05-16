@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.chatassistant;
 
 import com.rheinmetal.tianshu.core.FeatureManager;
-import com.rheinmetal.tianshu.core.module.ModuleRegistrationContext;
-import com.rheinmetal.tianshu.core.module.TianshuManagedModule;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.ChatAssistantClientEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.ChatAssistantIncomingChatPayload;

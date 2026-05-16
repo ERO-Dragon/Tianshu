@@ -8,14 +8,15 @@ import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
+import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
-import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
 import java.util.EnumSet;
 
@@ -25,20 +26,6 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
 
     public TtsProtocolAdapter(ProtocolRuntime runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withThreadPolicy(ThreadPolicy.IO_BLOCKING).withConcurrency(1, 64));
-    }
-
-    public ProtocolTaskHandle submitTtsTask(String envelopeId, ExecutionLane lane, Runnable task) {
-        String laneName = lane == ExecutionLane.TTS_AUTOREGRESSIVE ? "autoregressive" : "fast";
-        int queueCapacity = lane == ExecutionLane.TTS_AUTOREGRESSIVE ? 1 : 4;
-        return submitTask(
-                taskSpec(lane)
-                        .envelopeId(envelopeId)
-                        .concurrencyKey(MODULE_ID + ":synthesis:" + laneName)
-                        .maxConcurrency(1)
-                        .queueCapacity(queueCapacity)
-                        .build(),
-                task
-        );
     }
 
     public void registerSpeakCapability(EnvelopeHandler handler) {
@@ -55,17 +42,49 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void subscribeLlmStream(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.LLM_STREAM,
-                PayloadType.LLM_TEXT_CHUNK,
-                StreamTextPayload.class,
+    public void registerAlertCapability(EnvelopeHandler handler) {
+        registerCapability(
+                ProtocolCapabilities.TTS_ALERT,
+                PayloadType.TTS_TEXT,
+                TtsSpeakPayload.class,
                 BrokerType.EXCLUSIVE_INTERRUPT,
-                EnumSet.of(PacketType.STREAM_CHUNK, PacketType.STREAM_END),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.HIGH,
+                CompletionPolicy.MANUAL_COMPLETE,
                 handler,
                 defaults()
         );
+    }
+
+    public void registerStopCapability(EnvelopeHandler handler) {
+        registerCapability(
+                ProtocolCapabilities.TTS_STOP,
+                PayloadType.CANCEL,
+                CancelPayload.class,
+                BrokerType.LATEST_ONLY,
+                EnumSet.of(PacketType.COMMAND, PacketType.CANCEL),
+                Priority.CRITICAL,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    public void registerControlCapability(EnvelopeHandler handler) {
+        registerCapability(
+                ProtocolCapabilities.TTS_CONTROL,
+                PayloadType.CUSTOM,
+                TtsControlPayload.class,
+                BrokerType.LATEST_ONLY,
+                EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
+                Priority.CRITICAL,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    public TianshuEnvelope publishPlaybackStatus(TtsPlaybackStatusPayload payload) {
+        return publishTopic(ProtocolTopics.TTS_PLAYBACK, PayloadType.STATUS, payload);
     }
 }

@@ -37,6 +37,8 @@ public class AudioManager implements IAudioBridge {
     private volatile Mixer.Info currentMicMixer = null;
     private volatile int currentMicIndex = -1;
     private volatile Runnable onPlaybackFinished;
+    private final AtomicBoolean micTransition = new AtomicBoolean(false);
+    private volatile String pendingMicName = null;
 
     private Mixer.Info findRealPhysicalMic(DataLine.Info info) {
         Mixer.Info fallbackMic = null;
@@ -358,32 +360,102 @@ public class AudioManager implements IAudioBridge {
         return names.isEmpty() ? "未检测到麦克风" : names.get(0);
     }
 
+    @Override
+    public void selectMic(String micName) {
+        pendingMicName = micName == null ? "" : micName;
+        scheduleMicTransition();
+    }
+
+    private void scheduleMicTransition() {
+        if (!micTransition.compareAndSet(false, true)) {
+            return;
+        }
+        executorService.submit(() -> {
+            try {
+                while (true) {
+                    String requested = pendingMicName;
+                    pendingMicName = null;
+                    applyMicSelection(requested);
+                    if (pendingMicName == null) {
+                        return;
+                    }
+                }
+            } finally {
+                micTransition.set(false);
+                if (pendingMicName != null) {
+                    scheduleMicTransition();
+                }
+            }
+        });
+    }
+
+    private void applyMicSelection(String micName) {
+        List<Mixer.Info> mixers = getAvailableMicMixers();
+        Mixer.Info selected = null;
+        int selectedIndex = -1;
+        if (micName != null && !micName.isBlank()) {
+            for (int i = 0; i < mixers.size(); i++) {
+                Mixer.Info mixerInfo = mixers.get(i);
+                if (micName.equals(mixerInfo.getName())) {
+                    selected = mixerInfo;
+                    selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        currentMicMixer = selected;
+        currentMicIndex = selectedIndex;
+        boolean restart = isHardwareRunning.get();
+        if (restart) {
+            releaseCaptureHardware();
+            sleepQuietly(120);
+            ensureHardwareRunning();
+        }
+    }
+
     public void switchToNextMic() {
         List<Mixer.Info> mixers = getAvailableMicMixers();
         if (mixers.isEmpty()) return;
         int nextIdx = (currentMicIndex + 1) % mixers.size();
-        currentMicIndex = nextIdx;
-        currentMicMixer = mixers.get(nextIdx);
-        LOGGER.info("切换麦克风至: {}", currentMicMixer.getName());
+        String nextName = mixers.get(nextIdx).getName();
+        selectMic(nextName);
+        LOGGER.info("请求切换麦克风至: {}", nextName);
+    }
 
-        boolean wasRunning = isHardwareRunning.get();
-        if (wasRunning) {
-            isHardwareRunning.set(false);
-            if (targetDataLine != null) {
+    @Override
+    public void releaseCaptureHardware() {
+        isRecording.set(false);
+        isStreaming.set(false);
+        streamChunkConsumer = null;
+        ByteArrayOutputStream buffer = audioBuffer;
+        audioBuffer = null;
+        if (targetDataLine != null) {
+            try {
                 targetDataLine.stop();
                 targetDataLine.close();
+            } catch (Exception e) {
+                LOGGER.error("关闭麦克风采集通道异常", e);
+            } finally {
                 targetDataLine = null;
             }
-            try { Thread.sleep(100); } catch (InterruptedException ignored) {}
-            ensureHardwareRunning();
+        }
+        isHardwareRunning.set(false);
+        if (buffer != null) {
+            buffer.reset();
+        }
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
     @Override
     public void shutdown() {
-        isRecording.set(false);
-        isStreaming.set(false);
-        isHardwareRunning.set(false);
+        releaseCaptureHardware();
         stopTtsPlayback();
 
         executorService.shutdown();

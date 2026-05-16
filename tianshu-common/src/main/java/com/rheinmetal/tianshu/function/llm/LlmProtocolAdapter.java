@@ -1,27 +1,28 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationRequestPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationResultPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
-import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
+import com.rheinmetal.tianshu.protocol.payload.LlmRagPathRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.LlmRagPathResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LlmTaskRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.LlmTaskResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LlmTaskStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 
+import java.time.Duration;
 import java.util.EnumSet;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
@@ -32,11 +33,11 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withThreadPolicy(ThreadPolicy.IO_BLOCKING).withSupportsStreaming(true));
     }
 
-    public void registerChatCapability(EnvelopeHandler handler) {
+    public void registerTaskRequestCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.LLM_CHAT,
-                PayloadType.LLM_PROMPT,
-                LlmPromptPayload.class,
+                ProtocolCapabilities.LLM_TASK_REQUEST,
+                PayloadType.LLM_TASK_REQUEST,
+                LlmTaskRequestPayload.class,
                 BrokerType.PARALLEL_LIMIT,
                 EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
                 Priority.LOW,
@@ -46,13 +47,13 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void registerFeedbackCapability(EnvelopeHandler handler) {
+    public void registerRagPathResolveCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.LLM_FEEDBACK,
-                PayloadType.LLM_PROMPT,
-                LlmPromptPayload.class,
-                BrokerType.PARALLEL_LIMIT,
-                EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
+                ProtocolCapabilities.LLM_RAG_PATH_RESOLVE,
+                PayloadType.LLM_RAG_PATH_REQUEST,
+                LlmRagPathRequestPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.REQUEST),
                 Priority.LOW,
                 CompletionPolicy.MANUAL_COMPLETE,
                 handler,
@@ -60,48 +61,38 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void registerIntentClassifyCapability(EnvelopeHandler handler) {
-        registerCapability(
-                ProtocolCapabilities.LLM_INTENT_CLASSIFY,
-                PayloadType.LLM_INTENT_CLASSIFY,
-                LlmIntentClassifyPayload.class,
-                BrokerType.PARALLEL_LIMIT,
-                EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
+    public TianshuEnvelope respondRagPathResult(TianshuEnvelope parent, LlmRagPathResultPayload payload) {
+        return respondTo(parent, PayloadType.LLM_RAG_PATH_RESULT, payload);
+    }
+
+    public void registerLlmUsageAuthorizationResultRoute(EnvelopeHandler handler) {
+        registerDirectRoute(
+                MODULE_ID,
+                PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT,
+                DialogueLlmUsageAuthorizationResultPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
                 Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
                 handler,
                 defaults()
         );
     }
 
-    public void registerCommandRepairCapability(EnvelopeHandler handler) {
-        registerCapability(
-                ProtocolCapabilities.LLM_COMMAND_REPAIR,
-                PayloadType.LLM_COMMAND_REPAIR,
-                LlmCommandRepairPayload.class,
-                BrokerType.PARALLEL_LIMIT,
-                EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
+    public TianshuEnvelope requestLlmUsageAuthorization(TianshuEnvelope parent, DialogueLlmUsageAuthorizationRequestPayload payload) {
+        return requestCapability(parent, ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE, PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST, payload);
     }
 
-    public TianshuEnvelope publishIntentClassifyResult(TianshuEnvelope parent, LlmIntentClassifyResultPayload payload) {
-        return submitToTopic(parent, ProtocolTopics.LLM_INTENT_CLASSIFY_RESULT, PacketType.EVENT, PayloadType.LLM_INTENT_CLASSIFY, payload);
+    public TianshuEnvelope publishTaskStreamChunk(TianshuEnvelope parent, LlmTaskStreamChunkPayload payload) {
+        return respondTo(parent, PayloadType.LLM_TASK_STREAM_CHUNK, payload);
     }
 
-    public TianshuEnvelope publishCommandRepairResult(TianshuEnvelope parent, LlmCommandRepairResultPayload payload) {
-        return submitToTopic(parent, ProtocolTopics.LLM_COMMAND_REPAIR_RESULT, PacketType.EVENT, PayloadType.LLM_COMMAND_REPAIR, payload);
+    public TianshuEnvelope publishTaskStreamEnd(TianshuEnvelope parent, LlmTaskStreamChunkPayload payload) {
+        return respondTo(parent, PayloadType.LLM_TASK_STREAM_CHUNK, payload);
     }
 
-    public TianshuEnvelope publishStreamChunk(TianshuEnvelope parent, StreamTextPayload payload) {
-        return submitToTopic(parent, ProtocolTopics.LLM_STREAM, PacketType.STREAM_CHUNK, PayloadType.LLM_TEXT_CHUNK, payload);
-    }
-
-    public TianshuEnvelope publishStreamEnd(TianshuEnvelope parent, int index) {
-        return submitToTopic(parent, ProtocolTopics.LLM_STREAM, PacketType.STREAM_END, PayloadType.LLM_TEXT_CHUNK, new StreamTextPayload("", index, true));
+    public TianshuEnvelope respondTaskResult(TianshuEnvelope parent, LlmTaskResultPayload payload) {
+        return respondTo(parent, PayloadType.LLM_TASK_RESULT, payload);
     }
 
     public ProtocolTaskHandle submitLlmIoTask(String envelopeId, Runnable task) {
@@ -113,6 +104,19 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                         .queueCapacity(4)
                         .build(),
                 task
+        );
+    }
+
+    public ProtocolTaskHandle scheduleAuthorizationTimeout(String taskId, Runnable task, long delayMillis) {
+        return runtime().executors().schedule(
+                taskSpec(ExecutionLane.SCHEDULED)
+                        .taskId(taskId)
+                        .concurrencyKey(MODULE_ID + ":authorization-timeout")
+                        .maxConcurrency(1)
+                        .queueCapacity(64)
+                        .build(),
+                task,
+                Duration.ofMillis(Math.max(0L, delayMillis))
         );
     }
 }

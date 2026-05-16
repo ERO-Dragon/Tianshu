@@ -6,22 +6,27 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class DirectRouteRegistry {
-    private final Map<String, HandlerRegistration> directRoutes = new ConcurrentHashMap<>();
+    private final Map<String, List<HandlerRegistration>> directRoutes = new ConcurrentHashMap<>();
 
     public void register(String routeId, ModuleDescriptor moduleDescriptor, CapabilityDescriptor descriptor, EnvelopeHandler handler) {
         if (routeId == null || routeId.isBlank()) {
             throw new IllegalArgumentException("routeId cannot be blank");
         }
         HandlerRegistration registration = new HandlerRegistration(moduleDescriptor, descriptor, handler);
-        HandlerRegistration existing = directRoutes.putIfAbsent(routeId, registration);
-        if (existing != null) {
-            throw new IllegalStateException("Direct route already registered: " + routeId);
-        }
+        directRoutes.compute(routeId, (key, existing) -> {
+            List<HandlerRegistration> result = existing == null ? new ArrayList<>() : new ArrayList<>(existing);
+            boolean duplicatePayload = result.stream()
+                    .anyMatch(candidate -> candidate.capabilityDescriptor().supportedPayloadType() == descriptor.supportedPayloadType());
+            if (duplicatePayload) {
+                throw new IllegalStateException("Direct route already registered for payload: " + routeId + " / " + descriptor.supportedPayloadType());
+            }
+            result.add(registration);
+            return List.copyOf(result);
+        });
     }
 
     public List<HandlerRegistration> findDirect(String routeId) {
-        HandlerRegistration registration = directRoutes.get(routeId);
-        return registration == null ? List.of() : List.of(registration);
+        return directRoutes.getOrDefault(routeId, List.of());
     }
 
     public void unregisterModule(String moduleId) {
@@ -29,7 +34,16 @@ public final class DirectRouteRegistry {
             return;
         }
         String normalizedModuleId = moduleId.trim();
-        directRoutes.entrySet().removeIf(entry -> entry.getValue().moduleDescriptor().moduleId().equals(normalizedModuleId));
+        directRoutes.entrySet().removeIf(entry -> {
+            List<HandlerRegistration> remaining = entry.getValue().stream()
+                    .filter(registration -> !registration.moduleDescriptor().moduleId().equals(normalizedModuleId))
+                    .toList();
+            if (remaining.isEmpty()) {
+                return true;
+            }
+            entry.setValue(List.copyOf(remaining));
+            return false;
+        });
     }
 
     public List<String> routeIds() {

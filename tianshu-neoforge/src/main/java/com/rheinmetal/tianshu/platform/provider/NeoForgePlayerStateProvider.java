@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -125,6 +126,20 @@ public class NeoForgePlayerStateProvider implements IPlayerStateProvider {
         PositionData spawnPoint = getSpawnPoint();
 
         return new NavigationInfo(current, lastDeathPoint, spawnPoint);
+    }
+
+    @Override
+    public String getCurrentDimensionDisplayName() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return "unknown";
+        try {
+            String dimensionId = mc.level.dimension().location().toString();
+            String displayName = Component.translatable(mc.level.dimension().location().toLanguageKey("dimension")).getString();
+            displayName = LocalizationHelper.safeGetDisplayName(displayName);
+            return displayName == null || displayName.isBlank() ? dimensionId : displayName;
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
     @Override

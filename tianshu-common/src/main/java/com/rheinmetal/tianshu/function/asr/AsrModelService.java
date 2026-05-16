@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.asr;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.asr.download.AsrModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
@@ -37,7 +38,7 @@ public class AsrModelService {
     private final ITianshuConfig config;
     private final IAudioBridge audioBridge;
     private final ProtocolExecutorManager executorManager;
-    private final AsrModelDownloader downloader;
+    private final AsrModelDownloadCoordinator downloadCoordinator;
     private final Supplier<AsrEngine> engineSupplier;
     private final BooleanSupplier readySupplier;
     private final AtomicBoolean previewRunning = new AtomicBoolean(false);
@@ -49,7 +50,7 @@ public class AsrModelService {
         this.executorManager = executorManager;
         this.engineSupplier = engineSupplier;
         this.readySupplier = readySupplier;
-        this.downloader = new AsrModelDownloader(env);
+        this.downloadCoordinator = new AsrModelDownloadCoordinator(env, config);
     }
 
     public AsrModelInfo resolveCurrentModelInfo() {
@@ -97,27 +98,33 @@ public class AsrModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                () -> downloader.download(info, resolveModelDir(info), githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
-                    @Override
-                    public void onProgress(String label, int percent) {
-                        callback.onProgress(label, percent);
-                    }
+                () -> {
+                    try {
+                        downloadCoordinator.download(info, resolveModelDir(info), githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
+                            @Override
+                            public void onProgress(String label, int percent) {
+                                callback.onProgress(label, percent);
+                            }
 
-                    @Override
-                    public void onComplete() {
-                        callback.onComplete();
-                    }
+                            @Override
+                            public void onComplete() {
+                                callback.onComplete();
+                            }
 
-                    @Override
-                    public void onError(String message) {
-                        callback.onError(message);
+                            @Override
+                            public void onError(String message) {
+                                callback.onError(message);
+                            }
+                        });
+                    } catch (Exception e) {
+                        callback.onError(e.getMessage() == null ? "ASR 模型下载失败" : e.getMessage());
                     }
-                })
+                }
         );
     }
 
     public void downloadModelSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
-        downloader.downloadSync(info, targetDir, githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
+        downloadCoordinator.download(info, targetDir, githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
             @Override
             public void onProgress(String label, int percent) {
                 callback.onProgress(label, percent);
@@ -136,25 +143,40 @@ public class AsrModelService {
     }
 
     public boolean isDownloadPaused() {
-        return downloader.isDownloadPaused();
+        return downloadCoordinator.isPaused();
     }
 
     public void pauseDownload() {
-        downloader.pauseDownload();
+        downloadCoordinator.pause();
     }
 
     public void resumeDownload() {
-        downloader.resumeDownload();
+        downloadCoordinator.resume();
     }
 
     public void cancelDownload() {
-        downloader.cancelDownload();
+        downloadCoordinator.cancel();
     }
 
     public void preview(PreviewCallback callback) {
         AsrEngine engine = engineSupplier.get();
         if (!readySupplier.getAsBoolean() || engine == null) {
             callback.onError("ASR 引擎未就绪，请先下载并加载模型");
+            callback.onFinish();
+            return;
+        }
+        submitPreview(engine, callback, false);
+    }
+
+    public void preview(AsrModelInfo info, PreviewCallback callback) {
+        if (info == null) {
+            callback.onError("ASR 试听模型为空");
+            callback.onFinish();
+            return;
+        }
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null || !AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"))) {
+            callback.onError("ASR 试听模型未下载完整");
             callback.onFinish();
             return;
         }
@@ -171,7 +193,25 @@ public class AsrModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                () -> runPreview(engine, callback)
+                () -> runDraftPreview(info, modelDir, callback)
+        );
+    }
+
+    private void submitPreview(AsrEngine engine, PreviewCallback callback, boolean closeEngineAfterPreview) {
+        if (!previewRunning.compareAndSet(false, true)) {
+            callback.onError("ASR 试听正在播放中，请等待完成");
+            callback.onFinish();
+            return;
+        }
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.asr")
+                        .lane(ExecutionLane.ASR_STREAM)
+                        .concurrencyKey("module.asr:preview")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> runPreview(engine, callback, closeEngineAfterPreview)
         );
     }
 
@@ -188,7 +228,27 @@ public class AsrModelService {
         } catch (Throwable ignored) {}
     }
 
-    private void runPreview(AsrEngine engine, PreviewCallback callback) {
+    private void runDraftPreview(AsrModelInfo info, Path modelDir, PreviewCallback callback) {
+        AsrEngine previewEngine = new AsrEngine(env);
+        try {
+            if (!previewEngine.initialize(info, modelDir, null)) {
+                callback.onError("ASR 试听模型初始化失败");
+                previewRunning.set(false);
+                callback.onFinish();
+                return;
+            }
+            runPreview(previewEngine, callback, false);
+        } catch (Exception e) {
+            env.error("ASR 草稿模型试听失败", e);
+            callback.onError("ASR 草稿模型试听失败: " + e.getMessage());
+            previewRunning.set(false);
+            callback.onFinish();
+        } finally {
+            previewEngine.shutdown();
+        }
+    }
+
+    private void runPreview(AsrEngine engine, PreviewCallback callback, boolean closeEngineAfterPreview) {
         try {
             env.info("ASR 试听: 开始录音");
             audioBridge.startRecording();
@@ -220,6 +280,9 @@ public class AsrModelService {
             callback.onError("ASR 试听失败: " + e.getMessage());
         } finally {
             audioBridge.stopRecording();
+            if (closeEngineAfterPreview && engine != null) {
+                engine.shutdown();
+            }
             previewRunning.set(false);
             callback.onFinish();
         }

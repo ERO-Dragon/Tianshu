@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.ir;
 
+import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -13,11 +14,6 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrParsePayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmCommandRepairResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmIntentClassifyResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
 import com.rheinmetal.tianshu.protocol.payload.VoiceTriggerPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -46,34 +42,6 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void subscribeIntentClassifyResult(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.LLM_INTENT_CLASSIFY_RESULT,
-                PayloadType.LLM_INTENT_CLASSIFY,
-                LlmIntentClassifyResultPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
-    public void subscribeCommandRepairResult(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.LLM_COMMAND_REPAIR_RESULT,
-                PayloadType.LLM_COMMAND_REPAIR,
-                LlmCommandRepairResultPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
     public void registerParseCapability(EnvelopeHandler handler) {
         registerCapability(
                 ProtocolCapabilities.IR_PARSE,
@@ -88,23 +56,15 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public TianshuEnvelope publishResult(IrResultPayload payload) {
-        return publishTopic(ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
-    }
-
-    public TianshuEnvelope requestLlmChat(TianshuEnvelope parent, LlmPromptPayload payload) {
-        return requestCapability(parent, ProtocolCapabilities.LLM_CHAT, PayloadType.LLM_PROMPT, payload);
+    public TianshuEnvelope publishResult(TianshuEnvelope parent, IrResultPayload payload) {
+        return publishTopic(parent, ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
     }
 
     public TianshuEnvelope dispatchVoiceTrigger(TianshuEnvelope parent, String moduleId, VoiceTriggerPayload payload) {
         return commandCapability(parent, moduleId, PayloadType.VOICE_TRIGGER, payload);
     }
 
-    public TianshuEnvelope requestIntentClassify(TianshuEnvelope parent, LlmIntentClassifyPayload payload) {
-        return requestCapability(parent, ProtocolCapabilities.LLM_INTENT_CLASSIFY, PayloadType.LLM_INTENT_CLASSIFY, payload);
-    }
-
-    public TianshuEnvelope requestCommandRepair(TianshuEnvelope parent, LlmCommandRepairPayload payload) {
-        return requestCapability(parent, ProtocolCapabilities.LLM_COMMAND_REPAIR, PayloadType.LLM_COMMAND_REPAIR, payload);
+    public TianshuEnvelope requestDialogueArbitration(TianshuEnvelope parent, DialogueArbitrationRequestPayload payload) {
+        return requestCapability(parent, ProtocolCapabilities.DIALOGUE_ARBITRATE, PayloadType.DIALOGUE_ARBITRATION_REQUEST, payload);
     }
 }

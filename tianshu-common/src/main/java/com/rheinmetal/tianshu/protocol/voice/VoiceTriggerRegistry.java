@@ -6,10 +6,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class VoiceTriggerRegistry {
     private final Map<String, VoiceTriggerRegistration> registrations = new LinkedHashMap<>();
-    private Runnable changeListener;
+    private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
     public void register(VoiceTriggerRegistration registration) {
         synchronized (this) {
@@ -28,8 +29,21 @@ public final class VoiceTriggerRegistry {
         notifyChanged();
     }
 
-    public synchronized void setChangeListener(Runnable changeListener) {
-        this.changeListener = changeListener;
+    public void addChangeListener(Runnable changeListener) {
+        if (changeListener != null) {
+            changeListeners.addIfAbsent(changeListener);
+        }
+    }
+
+    public void removeChangeListener(Runnable changeListener) {
+        if (changeListener != null) {
+            changeListeners.remove(changeListener);
+        }
+    }
+
+    public void setChangeListener(Runnable changeListener) {
+        changeListeners.clear();
+        addChangeListener(changeListener);
     }
 
     public synchronized List<VoiceTriggerRegistration> registrations() {
@@ -64,11 +78,7 @@ public final class VoiceTriggerRegistry {
     }
 
     private void notifyChanged() {
-        Runnable listener;
-        synchronized (this) {
-            listener = changeListener;
-        }
-        if (listener != null) {
+        for (Runnable listener : changeListeners) {
             listener.run();
         }
     }

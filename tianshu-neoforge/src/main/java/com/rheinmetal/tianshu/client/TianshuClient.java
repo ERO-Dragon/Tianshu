@@ -10,8 +10,14 @@ import com.rheinmetal.tianshu.protocol.payload.ChatAssistantInterruptPayload;
 import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphController;
 import com.rheinmetal.tianshu.client.craftinggraph.CraftingGraphInteractionScreen;
 import com.rheinmetal.tianshu.client.geminicard.GeminiCardTooltipAdapter;
+import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.tts.TtsSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.registry.CompositeSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.registry.ModuleSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.function.CraftingGraph.CraftingGraphStorage;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
+import com.rheinmetal.tianshu.client.ir.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
 import com.rheinmetal.tianshu.client.mr.MrRenderer;
 import com.rheinmetal.tianshu.config.ClientConfig;
@@ -21,15 +27,16 @@ import com.rheinmetal.tianshu.function.AcousticRadar.AlertSpeaker;
 import com.rheinmetal.tianshu.function.AcousticRadar.DefaultAlertTextProvider;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarOutput;
 import com.rheinmetal.tianshu.function.AcousticRadar.RadarIndicator;
+import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.function.MR.MrConstants;
 import com.rheinmetal.tianshu.function.MR.MrEngine;
 import com.rheinmetal.tianshu.function.MR.MrTuningProvider;
 import com.rheinmetal.tianshu.core.FeatureManager;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.*;
-import com.rheinmetal.tianshu.function.ir.IrCommandParser;
-import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
-import com.rheinmetal.tianshu.gui.TianshuGUI;
+import com.rheinmetal.tianshu.function.tts.VoiceNotificationService;
+import com.rheinmetal.tianshu.client.gui.settings.module.TianshuSettingsModule;
+import com.rheinmetal.tianshu.platform.NeoForgeAssistantWorldIdentityProvider;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
 import com.rheinmetal.tianshu.snapshot.MrManualFocusTargetData;
@@ -100,6 +107,7 @@ public class TianshuClient {
     private static TianshuCoreManager coreManager;
     private static ChatAssistantClientBridge chatAssistantClientBridge;
     private static JunkCleanerClientController junkCleanerClientController;
+    private static TianshuSettingsModule settingsModule;
 
     private static ITargetScannerProvider targetScanner;
     private static IInventoryDataProvider inventoryProvider;
@@ -141,18 +149,35 @@ public class TianshuClient {
     public static IAudioEventProvider getAudioEventProvider() { return audioEventProvider; }
     public static WorldStateProvider getWorldStateProvider() { return worldStateProvider; }
 
-    private static IrCommandParser createClientIrCommandParser() {
-        return new IrCommandParser() {
-            @Override
-            public IRParseResult parse(String text, boolean fastIr) {
-                return ClientItemCommandManager.parsePlayerCommand(text, fastIr);
-            }
+    private static VoiceNotificationService voiceNotificationService() {
+        return coreManager.requireService(VoiceNotificationService.class);
+    }
 
-            @Override
-            public String formatPreview(IRParseResult result) {
-                return ClientItemCommandManager.formatPreview(result);
-            }
-        };
+    private static AsrInputService asrInputService() {
+        return coreManager.requireService(AsrInputService.class);
+    }
+
+    private static TianshuSettingsRegistrySource createSettingsRegistrySource() {
+        TianshuSettingsRegistrySource moduleSource = new ModuleSettingsRegistrySource(coreManager::managedModules);
+        TianshuSettingsRegistrySource asrSource = new AsrSettingsRegistrySource(coreManager, config, audioManager);
+        TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
+        return CompositeSettingsRegistrySource.of(moduleSource, asrSource, ttsSource);
+    }
+
+    private static void beginVoiceInput() {
+        asrInputService().beginVoiceInput();
+    }
+
+    private static void endVoiceInput() {
+        asrInputService().endVoiceInput();
+    }
+
+    private static void commitVoiceInput() {
+        asrInputService().commitVoiceInput();
+    }
+
+    private static void cancelVoiceInput() {
+        coreManager.findService(AsrInputService.class).ifPresent(AsrInputService::cancelVoiceInput);
     }
 
     public static void init() {
@@ -164,13 +189,13 @@ public class TianshuClient {
         nativeLibBridge.extractAndLoadAll();
 
         audioManager = new AudioManager();
-        audioManager.ensureHardwareRunning();
-
-        coreManager = new TianshuCoreManager(env, config, nativeLibBridge, audioManager);
-        coreManager.setIrCommandParser(createClientIrCommandParser());
-        chatAssistantClientBridge = new ChatAssistantClientBridge(coreManager.getProtocolRuntime());
-        chatAssistantClientBridge.register();
-        junkCleanerClientController = new JunkCleanerClientController();
+        String selectedMicName = config.getSelectedMicName();
+        if (selectedMicName != null && !selectedMicName.isBlank()) {
+            audioManager.selectMic(selectedMicName);
+        }
+        if (config.isAsrEnabled()) {
+            audioManager.ensureHardwareRunning();
+        }
 
         targetScanner = new NeoForgeTargetScanner();
         inventoryProvider = new NeoForgeInventoryProvider();
@@ -193,6 +218,23 @@ public class TianshuClient {
                 socialDataProvider,
                 audioEventProvider
         );
+
+        coreManager = new TianshuCoreManager(env, config, nativeLibBridge, audioManager, context -> new ClientTianshuModuleAssembler(
+                context.env(),
+                context.config(),
+                context.nativeLibBridge(),
+                context.audioBridge(),
+                context.eventBus(),
+                context.protocolRuntime(),
+                context.voiceInputGate(),
+                context.interruptionSignal(),
+                new NeoForgeAssistantWorldIdentityProvider(),
+                worldStateProvider
+        ));
+        chatAssistantClientBridge = new ChatAssistantClientBridge(coreManager.getProtocolRuntime());
+        chatAssistantClientBridge.register();
+        junkCleanerClientController = new JunkCleanerClientController();
+        settingsModule = new TianshuSettingsModule(coreManager, createSettingsRegistrySource());
 
         ensureCraftingGraphController("init");
 
@@ -325,8 +367,7 @@ public class TianshuClient {
         if (!config.isAiEnabled()) {
             if (isVoiceKeyPressed) {
                 isVoiceKeyPressed = false;
-                coreManager.getEventBus().publishEvent(new StopStreamRecordingEvent());
-                coreManager.getEventBus().publishEvent(new StopListeningEvent());
+                cancelVoiceInput();
                 lastTriggerMode = null;
             }
             tickCraftingGraph();
@@ -495,14 +536,14 @@ public class TianshuClient {
     }
 
     private static void handleVoiceKey() {
-        if (!coreManager.canAcceptVoiceInput()) return;
+        AsrInputService inputService = asrInputService();
+        if (!inputService.canAcceptVoiceInput()) return;
 
         TriggerMode currentMode = config.getTriggerMode();
 
         if (lastTriggerMode != null && lastTriggerMode != currentMode) {
             LOGGER.info("检测到模式切换: {} -> {}, 执行全局清理", lastTriggerMode, currentMode);
-            coreManager.getEventBus().publishEvent(new StopStreamRecordingEvent());
-            coreManager.getEventBus().publishEvent(new StopListeningEvent());
+            cancelVoiceInput();
             isVoiceKeyPressed = false;
             wasAlwaysKeyTriggered = false;
         }
@@ -511,13 +552,13 @@ public class TianshuClient {
             case ALWAYS -> {
                 if (!isVoiceKeyPressed) {
                     isVoiceKeyPressed = true;
-                    coreManager.getEventBus().publishEvent(new StartStreamRecordingEvent());
+                    beginVoiceInput();
                     LOGGER.info("启动常开模式");
                 }
                 boolean isDown = VOICE_KEY.isDown();
                 if (isDown && !wasAlwaysKeyTriggered) {
                     wasAlwaysKeyTriggered = true;
-                    coreManager.getEventBus().publishEvent(new ForceAsrFlushEvent());
+                    commitVoiceInput();
                 } else if (!isDown) {
                     wasAlwaysKeyTriggered = false;
                 }
@@ -526,22 +567,22 @@ public class TianshuClient {
                 boolean isTriggered = VOICE_KEY.isDown();
                 if (isTriggered && !isVoiceKeyPressed) {
                     isVoiceKeyPressed = true;
-                    coreManager.getEventBus().publishEvent(new StartListeningEvent());
+                    beginVoiceInput();
                 } else if (!isTriggered && isVoiceKeyPressed) {
                     isVoiceKeyPressed = false;
-                    coreManager.getEventBus().publishEvent(new StopListeningEvent());
+                    endVoiceInput();
                 }
             }
             case WAKE_WORD -> {
                 if (!isVoiceKeyPressed) {
                     isVoiceKeyPressed = true;
-                    coreManager.getEventBus().publishEvent(new StartStreamRecordingEvent());
+                    beginVoiceInput();
                     LOGGER.info("启动热词模式");
                 }
                 boolean isDown = VOICE_KEY.isDown();
                 if (isDown && !wasAlwaysKeyTriggered) {
                     wasAlwaysKeyTriggered = true;
-                    coreManager.getEventBus().publishEvent(new ForceAsrFlushEvent());
+                    commitVoiceInput();
                 } else if (!isDown) {
                     wasAlwaysKeyTriggered = false;
                 }
@@ -576,7 +617,7 @@ public class TianshuClient {
 
             event.addListener(Button.builder(
                     Component.literal("天枢 AI 控制台"),
-                    (button) -> Minecraft.getInstance().setScreen(new TianshuGUI(coreManager, config, audioManager, nativeLibBridge))
+                    button -> settingsModule.openScreen()
             ).pos(buttonX, myButtonY).size(buttonWidth, buttonHeight).build());
         }
     }
@@ -629,7 +670,7 @@ public class TianshuClient {
 
     public static void renderLlmReply(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
         if (coreManager == null) return;
-        TianshuEventBus eventBus = coreManager.getEventBus();
+        TianshuEventBus eventBus = coreManager.eventBus();
         if (eventBus == null) return;
 
         int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
@@ -690,12 +731,12 @@ public class TianshuClient {
                     new AlertSpeaker() {
                         @Override
                         public void speakAlert(String text) {
-                            coreManager.speakAlert(text);
+                            voiceNotificationService().speakAlert(text);
                         }
 
                         @Override
                         public void speakAlertWithInterrupt(String text) {
-                            coreManager.speakAlertWithInterrupt(text);
+                            voiceNotificationService().speakAlertWithInterrupt(text);
                         }
                     },
                     new DefaultAlertTextProvider(),

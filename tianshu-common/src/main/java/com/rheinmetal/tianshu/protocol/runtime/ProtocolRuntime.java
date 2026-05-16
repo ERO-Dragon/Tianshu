@@ -6,11 +6,15 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.FailurePolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TargetMode;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.broker.BrokerRegistry;
 import com.rheinmetal.tianshu.protocol.broker.BrokerSubmitResult;
 import com.rheinmetal.tianshu.protocol.broker.ProtocolBroker;
+import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
 import com.rheinmetal.tianshu.protocol.registry.DirectRouteRegistry;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
@@ -26,7 +30,9 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import java.util.List;
 import java.util.function.Consumer;
 
-public final class ProtocolRuntime {
+public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInterruptPublisher, AutoCloseable {
+    private static final String RUNTIME_SOURCE_ID = "core.runtime";
+
     private final ModuleRegistry moduleRegistry = new ModuleRegistry();
     private final CapabilityRegistry capabilityRegistry = new CapabilityRegistry();
     private final DirectRouteRegistry directRouteRegistry = new DirectRouteRegistry();
@@ -109,6 +115,10 @@ public final class ProtocolRuntime {
         if (childDelivery) {
             lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "ROUTED", "Envelope routed to " + registrations.size() + " handler(s)");
         }
+    }
+
+    public ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Runnable task) {
+        return executorManager.submit(spec, task);
     }
 
     private TianshuEnvelope createDeliveryEnvelope(TianshuEnvelope sourceEnvelope, boolean forceChildDelivery) {
@@ -216,6 +226,24 @@ public final class ProtocolRuntime {
     public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
     public ProtocolExecutorManager executors() { return executorManager; }
     public ProtocolContext context() { return context; }
+    public RuntimeInterruptPublisher runtimeInterrupts() { return this; }
+
+    @Override
+    public void publishRuntimeInterrupt(long sessionId, RuntimeInterruptPayload.Reason reason, String detail) {
+        submit(EnvelopeBuilder.eventTopic(
+                        RUNTIME_SOURCE_ID,
+                        ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT,
+                        PayloadType.CUSTOM,
+                        new RuntimeInterruptPayload(sessionId, reason, detail == null ? "" : detail, System.currentTimeMillis())
+                )
+                .priority(Priority.CRITICAL)
+                .build());
+    }
+
+    @Override
+    public void close() {
+        executorManager.close();
+    }
 
     private final class RuntimeContext implements ProtocolContext {
 

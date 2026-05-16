@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.model;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.rheinmetal.tianshu.constant.VramTier;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,13 +48,6 @@ public class AsrModelManager {
                 .collect(Collectors.toList());
     }
 
-    public static List<AsrModelInfo> getModelsByTier(VramTier tier) {
-        String tierStr = vramTierToRecommendedTier(tier);
-        return loadCatalog().stream()
-                .filter(m -> tierStr.equalsIgnoreCase(m.getRecommendedTier()))
-                .collect(Collectors.toList());
-    }
-
     public static AsrModelInfo getModelByName(String name) {
         if (name == null || name.isBlank()) return null;
         for (AsrModelInfo info : loadCatalog()) {
@@ -70,20 +62,6 @@ public class AsrModelManager {
             if (id.equals(info.id)) return info;
         }
         return null;
-    }
-
-    public static AsrModelInfo getDefaultModel(VramTier tier) {
-        String tierStr = vramTierToRecommendedTier(tier);
-        List<AsrModelInfo> catalog = loadCatalog();
-        AsrModelInfo pinned = catalog.stream()
-                .filter(m -> m.pinned && tierStr.equalsIgnoreCase(m.getRecommendedTier()))
-                .findFirst()
-                .orElse(null);
-        if (pinned != null) return pinned;
-        return catalog.stream()
-                .filter(m -> tierStr.equalsIgnoreCase(m.getRecommendedTier()))
-                .findFirst()
-                .orElse(null);
     }
 
     public static boolean isModelDownloaded(AsrModelInfo info, Path baseDir) {
@@ -104,15 +82,5 @@ public class AsrModelManager {
         return info.getAllRequiredFiles().stream()
                 .filter(f -> !Files.isRegularFile(modelDir.resolve(f)))
                 .collect(Collectors.toList());
-    }
-
-    private static String vramTierToRecommendedTier(VramTier tier) {
-        if (tier == null) return AsrModelInfo.TIER_MID;
-        return switch (tier) {
-            case LIGHT -> AsrModelInfo.TIER_LOW;
-            case STANDARD -> AsrModelInfo.TIER_MID;
-            case DELUXE -> AsrModelInfo.TIER_HIGH;
-            default -> AsrModelInfo.TIER_MID;
-        };
     }
 }

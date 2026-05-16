@@ -28,8 +28,7 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_ASR_FINAL_TEXT, PayloadType.ASR_TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.IR_COMMAND_EXECUTED, PayloadType.IR_RESULT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_INTENT_CLASSIFY_RESULT, PayloadType.LLM_INTENT_CLASSIFY, DeliveryPolicy.WAIT_IN_QUEUE, 20));
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_COMMAND_REPAIR_RESULT, PayloadType.LLM_COMMAND_REPAIR, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.TTS_PLAYBACK, PayloadType.STATUS, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_KEY_ACTION, PayloadType.INPUT_ACTION, DeliveryPolicy.WAIT_IN_QUEUE, 60));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_CHAT_TEXT, PayloadType.TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
@@ -38,5 +37,7 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.ITEM_HOVER_CLEARED, PayloadType.NONE, DeliveryPolicy.LATEST_ONLY, 10));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.ITEM_ANALYSIS_READY, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.FEEDBACK_EMIT, PayloadType.FEEDBACK, DeliveryPolicy.WAIT_IN_QUEUE, 80));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.SETTINGS_EVENT, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, DeliveryPolicy.WAIT_IN_QUEUE, 40));
     }
 }

@@ -51,6 +51,8 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
 
     private List<ItemSnapshot> cachedInventoryItems = Collections.emptyList();
     private long cachedInventorySignature = Long.MIN_VALUE;
+    private List<InventoryItemStackData> cachedInventoryItemStacks = Collections.emptyList();
+    private long cachedInventoryItemStacksSignature = Long.MIN_VALUE;
 
     @Override
     public ItemSnapshot getMainHandItemData() {
@@ -65,6 +67,8 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
         if (mc.player == null) {
             cachedInventoryItems = Collections.emptyList();
             cachedInventorySignature = Long.MIN_VALUE;
+            cachedInventoryItemStacks = Collections.emptyList();
+            cachedInventoryItemStacksSignature = Long.MIN_VALUE;
             return cachedInventoryItems;
         }
 
@@ -100,13 +104,58 @@ public class NeoForgeInventoryProvider implements IInventoryDataProvider {
         return signature;
     }
 
+    private long inventoryIdentitySignature(Inventory inv) {
+        long signature = 1125899906842597L;
+        int size = inv != null ? inv.getContainerSize() : 0;
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = inv.getItem(i);
+            if (stack.isEmpty()) {
+                signature = signature * 31L + i;
+                continue;
+            }
+            signature = signature * 31L + i;
+            signature = signature * 31L + stack.getCount();
+            signature = signature * 31L + stack.getItemHolder().getRegisteredName().hashCode();
+            if (stack.has(DataComponents.CUSTOM_NAME)) {
+                signature = signature * 31L + stack.getHoverName().getString().hashCode();
+            }
+        }
+        return signature;
+    }
+
     @Override
-    public List<MatchedSlotData> findItemSlotsByName(String name) {
+    public List<InventoryItemStackData> getInventoryItemStacksData() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || name == null || name.isBlank()) return Collections.emptyList();
+        if (mc.player == null) {
+            cachedInventoryItemStacks = Collections.emptyList();
+            cachedInventoryItemStacksSignature = Long.MIN_VALUE;
+            return cachedInventoryItemStacks;
+        }
+        var inv = mc.player.getInventory();
+        long signature = inventoryIdentitySignature(inv);
+        if (signature == cachedInventoryItemStacksSignature) {
+            return cachedInventoryItemStacks;
+        }
+        List<InventoryItemStackData> result = new ArrayList<>();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack stack = inv.getItem(i);
+            if (stack.isEmpty()) continue;
+            String itemId = stack.getItemHolder().getRegisteredName();
+            String displayName = LocalizationHelper.safeGetDisplayName(stack.getHoverName().getString());
+            result.add(new InventoryItemStackData(itemId, displayName, stack.getCount()));
+        }
+        cachedInventoryItemStacks = Collections.unmodifiableList(result);
+        cachedInventoryItemStacksSignature = signature;
+        return cachedInventoryItemStacks;
+    }
+
+    @Override
+    public List<MatchedSlotData> findItemSlotsByName(String namePattern) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || namePattern == null || namePattern.isBlank()) return Collections.emptyList();
 
         List<MatchedSlotData> results = new ArrayList<>();
-        String lowerName = name.toLowerCase();
+        String lowerName = namePattern.toLowerCase();
         Inventory inv = mc.player.getInventory();
 
         for (int i = 0; i < inv.getContainerSize(); i++) {

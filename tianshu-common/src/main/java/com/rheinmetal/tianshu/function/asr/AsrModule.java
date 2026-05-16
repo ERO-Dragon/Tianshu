@@ -3,39 +3,57 @@ package com.rheinmetal.tianshu.function.asr;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.core.module.ModuleRegistrationContext;
-import com.rheinmetal.tianshu.core.module.ModuleRuntimeContext;
-import com.rheinmetal.tianshu.core.module.ModuleRuntimeState;
-import com.rheinmetal.tianshu.core.module.TianshuManagedModule;
-import com.rheinmetal.tianshu.event.TianshuEventBus;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
+import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
+import com.rheinmetal.tianshu.function.asr.audio.AudioCaptureService;
+import com.rheinmetal.tianshu.function.asr.control.AsrController;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
-import com.rheinmetal.tianshu.model.AsrModelManager;
-import com.rheinmetal.tianshu.model.ModelFilesMissingException;
+import com.rheinmetal.tianshu.function.asr.engine.AsrEngineBootstrap;
+import com.rheinmetal.tianshu.function.asr.input.AsrInputGateway;
+import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
+import com.rheinmetal.tianshu.function.asr.session.AsrSessionManager;
+import com.rheinmetal.tianshu.function.asr.state.AsrStateMachine;
+import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.utils.PathUtils;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceSnapshot;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
-public final class AsrModule implements TianshuManagedModule {
+public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeControl {
     private final IAudioBridge audioBridge;
-    private final TianshuEventBus eventBus;
     private final ProtocolRuntime protocolRuntime;
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final BooleanSupplier voiceInputAcceptance;
     private final LongSupplier interruptProcessing;
-    private AsrWorker worker;
+    private final AtomicBoolean voiceResourceReloadQueued = new AtomicBoolean(false);
+    private AsrProtocolAdapter adapter;
+    private AsrController controller;
+    private AsrInputGateway inputGateway;
     private ModuleRuntimeState runtimeState;
+    private ModuleRuntimeContext runtimeContext;
+    private VoiceResourceAccess voiceResources;
+    private Consumer<VoiceResourceSnapshot> voiceResourceListener;
+    private volatile AsrEngine engine;
+    private volatile ProtocolTaskHandle voiceResourceReloadTask;
+    private volatile long appliedVoiceResourceVersion = -1L;
+    private volatile boolean destroyed;
     private AsrModelService modelService;
 
-    public AsrModule(IAudioBridge audioBridge, TianshuEventBus eventBus, ProtocolRuntime protocolRuntime, IGameEnvironment env, ITianshuConfig config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
+    public AsrModule(IAudioBridge audioBridge, ProtocolRuntime protocolRuntime, IGameEnvironment env, ITianshuConfig config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this.audioBridge = audioBridge;
-        this.eventBus = eventBus;
         this.protocolRuntime = protocolRuntime;
         this.env = env;
         this.config = config;
@@ -52,121 +70,223 @@ public final class AsrModule implements TianshuManagedModule {
     public void register(ModuleRegistrationContext context) {
         modelService = new AsrModelService(env, config, audioBridge, protocolRuntime.executors(), this::asrEngine, this::isAsrReady);
         context.services().register(AsrModelService.class, modelService);
+        context.services().register(AsrModuleRuntimeControl.class, this);
+        inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
+        context.services().register(AsrInputService.class, inputGateway);
     }
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
+        destroyed = false;
+        runtimeContext = context;
         runtimeState = context.runtimeState();
         initializeEngine(context);
-        worker = new AsrWorker(audioBridge, eventBus, protocolRuntime, env, config, this::asrEngine, this::isAsrReady, voiceInputAcceptance, interruptProcessing);
+        bindVoiceResources(context.voiceResources());
+        adapter = new AsrProtocolAdapter(protocolRuntime);
+        adapter.subscribeRuntimeInterrupt(this::handleRuntimeInterrupt);
+        AsrStateMachine stateMachine = new AsrStateMachine();
+        AsrSessionManager sessionManager = new AsrSessionManager();
+        AudioCaptureService audioCapture = new AudioCaptureService(audioBridge, env);
+        AsrRecognitionService recognition = new AsrRecognitionService(env, config, this::asrEngine, adapter);
+        controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition);
+        if (inputGateway == null) {
+            inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
+        }
+        inputGateway.bind(controller);
     }
 
     @Override
-    public void start(ModuleRuntimeContext context) {
+    public void stop() {
+        if (controller != null) {
+            controller.stop();
+        }
     }
 
     @Override
     public void destroy() {
-        if (worker != null) {
-            worker.stop();
-            worker = null;
+        destroyed = true;
+        unbindVoiceResources();
+        ProtocolTaskHandle reloadTask = voiceResourceReloadTask;
+        if (reloadTask != null && !reloadTask.isDone()) {
+            reloadTask.cancel("ASR module destroyed");
         }
-        if (workerTask != null && !workerTask.isDone()) {
-            workerTask.cancel("ASR module destroyed");
-            workerTask = null;
+        voiceResourceReloadQueued.set(false);
+        stop();
+        controller = null;
+        if (inputGateway != null) {
+            inputGateway.unbind();
+            inputGateway = null;
         }
+        adapter = null;
+        runtimeContext = null;
         if (runtimeState != null) {
-            runtimeState.clearAsrEngine();
+            runtimeState.capabilities().remove(AsrRuntimeCapabilities.INPUT);
             runtimeState = null;
+        }
+        AsrEngine currentEngine = engine;
+        engine = null;
+        if (currentEngine != null) {
+            currentEngine.shutdown();
+        }
+    }
+
+    @Override
+    public void releaseInputResources() {
+        if (inputGateway != null) {
+            inputGateway.cancelVoiceInput();
+        }
+        if (controller != null) {
+            controller.releaseHardware();
+            return;
+        }
+        try {
+            audioBridge.releaseCaptureHardware();
+        } catch (Throwable t) {
+            env.error("释放 ASR 麦克风采集硬件失败", t);
         }
     }
 
     private AsrEngine asrEngine() {
-        return runtimeState == null ? null : runtimeState.asrEngine();
+        return engine;
     }
 
     private boolean isAsrReady() {
-        return runtimeState != null && runtimeState.readiness().isAsrReady();
+        return config.isAsrEnabled() && runtimeState != null && runtimeState.capabilities().isReady(AsrRuntimeCapabilities.INPUT);
+    }
+
+    private boolean canAcceptVoiceInput() {
+        return config.isAsrEnabled() && voiceInputAcceptance.getAsBoolean();
+    }
+
+    private void handleRuntimeInterrupt(com.rheinmetal.tianshu.protocol.TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof RuntimeInterruptPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "runtime interrupt payload is invalid", null);
+            return;
+        }
+        AsrController activeController = controller;
+        if (activeController != null) {
+            activeController.handleRuntimeInterrupt(payload.sessionId());
+        }
     }
 
     private void initializeEngine(ModuleRuntimeContext context) {
-        if (context.runtimeState().readiness().isAsrReady()) {
-            env.info("ASR 引擎已就绪，跳过初始化");
+        engine = createEngine(context, true);
+        if (engine != null) {
+            appliedVoiceResourceVersion = context.voiceResources().snapshot().version();
+        }
+    }
+
+    private AsrEngine createEngine(ModuleRuntimeContext context, boolean notifyPlayer) {
+        AsrEngineBootstrap bootstrap = new AsrEngineBootstrap(env, config);
+        return bootstrap.initialize(context, moduleId(), notifyPlayer);
+    }
+
+    private void bindVoiceResources(VoiceResourceAccess resources) {
+        unbindVoiceResources();
+        voiceResources = resources;
+        voiceResourceListener = this::handleVoiceResourceChanged;
+        if (voiceResources != null) {
+            voiceResources.addChangeListener(voiceResourceListener);
+        }
+    }
+
+    private void unbindVoiceResources() {
+        VoiceResourceAccess resources = voiceResources;
+        Consumer<VoiceResourceSnapshot> listener = voiceResourceListener;
+        if (resources != null && listener != null) {
+            resources.removeChangeListener(listener);
+        }
+        voiceResources = null;
+        voiceResourceListener = null;
+    }
+
+    private void handleVoiceResourceChanged(VoiceResourceSnapshot snapshot) {
+        if (snapshot == null || destroyed || snapshot.version() <= appliedVoiceResourceVersion) {
             return;
         }
+        submitVoiceResourceReload(snapshot.version());
+    }
+
+    private void submitVoiceResourceReload(long requestedVersion) {
+        if (!voiceResourceReloadQueued.compareAndSet(false, true)) {
+            return;
+        }
+        voiceResourceReloadTask = protocolRuntime.executors().submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId(moduleId())
+                        .lane(ExecutionLane.MODEL_LOAD)
+                        .concurrencyKey(moduleId() + ":engine.reload")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> runVoiceResourceReload(requestedVersion)
+        );
+        if (voiceResourceReloadTask.state() == ProtocolTaskState.REJECTED) {
+            voiceResourceReloadQueued.set(false);
+            env.warn("ASR 热词资源重载任务提交被拒绝，version=" + requestedVersion);
+        }
+    }
+
+    private void runVoiceResourceReload(long requestedVersion) {
         try {
-            Path originalModelPath = config.getAsrModelPath();
-            if (originalModelPath == null || !Files.isDirectory(originalModelPath)) {
-                env.info("ASR 模型目录不存在，静默等待");
+            if (destroyed) {
                 return;
             }
-
-            String dirName = originalModelPath.getFileName() != null ? originalModelPath.getFileName().toString() : "";
-            AsrModelInfo modelInfo = AsrModelManager.getModelByName(dirName);
-            AsrEngine engine = new AsrEngine(env);
-
-            if (modelInfo != null) {
-                File safeDir = PathUtils.getSafeModelDir(originalModelPath.toFile());
-                if (safeDir == null) {
-                    env.error("获取安全模型目录失败", null);
-                    return;
-                }
-                try {
-                    Path hotwordsFile = resolveHotwordsFile(context, modelInfo);
-                    if (!engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile)) {
-                        env.error("ASR 引擎初始化失败，模型类型可能尚未适配", null);
-                        env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 引擎初始化失败，该模型类型尚未适配"));
-                        return;
-                    }
-                } catch (ModelFilesMissingException e) {
-                    env.error("ASR 模型文件缺失: " + e.getMessage(), null);
-                    env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 模型文件缺失，请重新下载"));
-                    return;
-                }
-            } else {
-                File safeDir = PathUtils.getSafeModelDir(originalModelPath.toFile());
-                if (safeDir == null) {
-                    env.error("获取安全模型目录失败", null);
-                    return;
-                }
-                if (!engine.initialize(safeDir.getAbsolutePath())) {
-                    env.error("ASR 引擎初始化失败", null);
-                    return;
-                }
+            ModuleRuntimeContext context = runtimeContext;
+            VoiceResourceAccess resources = voiceResources;
+            if (context == null || resources == null) {
+                return;
             }
-
-            context.runtimeState().installAsrEngine(engine);
-            env.info("ASR 引擎初始化成功");
-            env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f态势感知已就绪"));
-        } catch (Throwable t) {
-            env.error("ASR 引擎初始化失败", t);
+            VoiceResourceSnapshot snapshot = resources.snapshot();
+            if (snapshot.version() <= appliedVoiceResourceVersion) {
+                return;
+            }
+            reloadEngineForVoiceResources(context, snapshot.version(), requestedVersion);
+        } finally {
+            voiceResourceReloadQueued.set(false);
+            VoiceResourceAccess resources = voiceResources;
+            if (!destroyed && resources != null && resources.snapshot().version() > appliedVoiceResourceVersion) {
+                submitVoiceResourceReload(resources.snapshot().version());
+            }
         }
     }
 
-    private Path resolveHotwordsFile(ModuleRuntimeContext context, AsrModelInfo modelInfo) {
-        String language = resolveHotwordLanguage(modelInfo);
-        if ("en".equals(language)) {
-            return context.voiceResources().enHotwordsFile();
+    private void reloadEngineForVoiceResources(ModuleRuntimeContext context, long snapshotVersion, long requestedVersion) {
+        env.info("ASR 开始重载语音热词资源，requestedVersion=" + requestedVersion + ", snapshotVersion=" + snapshotVersion);
+        AsrController activeController = controller;
+        if (activeController != null) {
+            activeController.stop();
         }
-        return context.voiceResources().zhHotwordsFile();
-    }
-
-    private String resolveHotwordLanguage(AsrModelInfo modelInfo) {
-        if (modelInfo == null) {
-            return "zh";
+        ModuleRuntimeState state = runtimeState;
+        if (state != null) {
+            state.capabilities().install(AsrRuntimeCapabilities.INPUT, moduleId());
         }
-        for (String lang : modelInfo.getLang()) {
-            if (lang == null) {
-                continue;
-            }
-            String normalized = lang.trim().toLowerCase();
-            if (normalized.startsWith("en")) {
-                return "en";
-            }
-            if (normalized.startsWith("zh") || normalized.startsWith("cmn") || normalized.startsWith("cn")) {
-                return "zh";
-            }
+        AsrEngine previousEngine = engine;
+        engine = null;
+        if (previousEngine != null) {
+            previousEngine.shutdown();
         }
-        return "zh";
+        AsrEngine nextEngine = createEngine(context, false);
+        if (destroyed) {
+            if (nextEngine != null) {
+                nextEngine.shutdown();
+            }
+            return;
+        }
+        engine = nextEngine;
+        if (nextEngine != null) {
+            appliedVoiceResourceVersion = snapshotVersion;
+            ModuleRuntimeState readyState = runtimeState;
+            if (readyState != null) {
+                readyState.capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId());
+            }
+            env.info("ASR 语音热词资源重载完成，version=" + snapshotVersion);
+        } else {
+            ModuleRuntimeState failedState = runtimeState;
+            if (failedState != null) {
+                failedState.capabilities().markFailed(AsrRuntimeCapabilities.INPUT, moduleId(), "ASR 语音热词资源重载失败");
+            }
+            env.warn("ASR 语音热词资源重载未产生可用引擎，version=" + snapshotVersion);
+        }
     }
 }

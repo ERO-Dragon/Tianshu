@@ -1,0 +1,20 @@
+[
+  {
+    "name": "bge-large-zh-v1.5",
+    "displayName": "BGE Large zh v1.5",
+    "repoId": "CompendiumLabs/bge-large-zh-v1.5-gguf",
+    "hfFilePath": "bge-large-zh-v1.5-q4_k_m.gguf",
+    "modelFile": "bge-large-zh-v1.5-q4_k_m.gguf",
+    "contextSize": 512,
+    "lang": ["zh"]
+  },
+  {
+    "name": "bge-large-en-v1.5",
+    "displayName": "BGE Large en v1.5",
+    "repoId": "CompendiumLabs/bge-large-en-v1.5-gguf",
+    "hfFilePath": "bge-large-en-v1.5-q4_k_m.gguf",
+    "modelFile": "bge-large-en-v1.5-q4_k_m.gguf",
+    "contextSize": 512,
+    "lang": ["en"]
+  }
+]

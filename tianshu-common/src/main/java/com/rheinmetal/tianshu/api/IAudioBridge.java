@@ -1,10 +1,13 @@
 package com.rheinmetal.tianshu.api;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 public interface IAudioBridge {
 
     void ensureHardwareRunning();
+
+    void releaseCaptureHardware();
 
     void startRecording();
 
@@ -34,7 +37,11 @@ public interface IAudioBridge {
 
     boolean isStreaming();
 
+    List<String> getAvailableMicNames();
+
     String getCurrentMicName();
+
+    void selectMic(String micName);
 
     void switchToNextMic();
 

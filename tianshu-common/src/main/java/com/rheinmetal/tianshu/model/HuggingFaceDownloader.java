@@ -24,6 +24,19 @@ public class HuggingFaceDownloader {
 
     private final IGameEnvironment env;
 
+    @FunctionalInterface
+    public interface DownloadControl {
+        void checkCancelled() throws IOException;
+    }
+
+    public interface DownloadProgressListener {
+        default void onFileListResolved(int totalFiles) {
+        }
+
+        default void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
+        }
+    }
+
     public HuggingFaceDownloader(IGameEnvironment env) {
         this.env = env;
     }
@@ -52,6 +65,18 @@ public class HuggingFaceDownloader {
             boolean skipExisting,
             int maxRetries
     ) throws Exception {
+        downloadModelFiles(repoId, targetDir, revision, skipExisting, maxRetries, null, null);
+    }
+
+    public void downloadModelFiles(
+            String repoId,
+            Path targetDir,
+            String revision,
+            boolean skipExisting,
+            int maxRetries,
+            DownloadControl control,
+            DownloadProgressListener progress
+    ) throws Exception {
         Objects.requireNonNull(repoId, "repoId");
         Objects.requireNonNull(targetDir, "targetDir");
 
@@ -62,6 +87,7 @@ public class HuggingFaceDownloader {
         String baseUrl = getActiveBaseUrl();
         env.info("HuggingFace 下载: repo=" + repoId + " source=" + baseUrl);
 
+        checkControl(control);
         List<String> allFiles = fetchFileTree(baseUrl, repoId, revision);
 
         List<String> toDownload = allFiles.stream()
@@ -69,34 +95,116 @@ public class HuggingFaceDownloader {
                 .collect(Collectors.toList());
 
         env.info("需要下载 " + toDownload.size() + " 个文件（已过滤 " + (allFiles.size() - toDownload.size()) + " 个）");
+        if (progress != null) {
+            progress.onFileListResolved(toDownload.size());
+        }
 
-        for (String filePath : toDownload) {
+        int totalFiles = toDownload.size();
+        for (int i = 0; i < totalFiles; i++) {
+            checkControl(control);
+            String filePath = toDownload.get(i);
+            int fileIndex = i + 1;
             Path localPath = targetDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, targetDir);
 
-            if (skipExisting && Files.exists(localPath)) {
+            if (skipExisting && Files.exists(localPath) && Files.size(localPath) > 0) {
+                if (progress != null) {
+                    progress.onFileProgress(filePath, fileIndex, totalFiles, 1, 1);
+                }
                 continue;
             }
 
             String resolveUrl = buildResolveUrl(baseUrl, repoId, revision, filePath);
-            downloadFile(resolveUrl, localPath, maxRetries);
+            downloadFile(resolveUrl, localPath, maxRetries, control, (downloaded, total) -> {
+                if (progress != null) {
+                    progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
+                }
+            });
         }
     }
 
     public void downloadVocoder(Path vocoderDir, int maxRetries) throws Exception {
+        downloadVocoder(vocoderDir, maxRetries, null, null);
+    }
+
+    public void downloadVocoder(Path vocoderDir, int maxRetries, DownloadControl control, DownloadProgressListener progress) throws Exception {
         Files.createDirectories(vocoderDir);
         String baseUrl = getActiveBaseUrl();
         String repoId = "csukuangfj/sherpa-onnx-vocoders";
+        checkControl(control);
         List<String> allFiles = fetchFileTree(baseUrl, repoId, "main");
-        for (String filePath : allFiles) {
-            if (filePath.toLowerCase().endsWith(".onnx") && !shouldSkipFile(filePath)) {
-                Path localPath = vocoderDir.resolve(filePath).normalize();
-                ensureWithinTarget(localPath, vocoderDir);
-                if (!Files.exists(localPath)) {
-                    String resolveUrl = buildResolveUrl(baseUrl, repoId, "main", filePath);
-                    downloadFile(resolveUrl, localPath, maxRetries);
-                }
+        List<String> toDownload = allFiles.stream()
+                .filter(filePath -> filePath.toLowerCase().endsWith(".onnx") && !shouldSkipFile(filePath))
+                .collect(Collectors.toList());
+        if (progress != null) {
+            progress.onFileListResolved(toDownload.size());
+        }
+        int totalFiles = toDownload.size();
+        for (int i = 0; i < totalFiles; i++) {
+            checkControl(control);
+            String filePath = toDownload.get(i);
+            int fileIndex = i + 1;
+            Path localPath = vocoderDir.resolve(filePath).normalize();
+            ensureWithinTarget(localPath, vocoderDir);
+            if (!Files.exists(localPath) || Files.size(localPath) == 0) {
+                String resolveUrl = buildResolveUrl(baseUrl, repoId, "main", filePath);
+                downloadFile(resolveUrl, localPath, maxRetries, control, (downloaded, total) -> {
+                    if (progress != null) {
+                        progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
+                    }
+                });
+            } else if (progress != null) {
+                progress.onFileProgress(filePath, fileIndex, totalFiles, 1, 1);
             }
+        }
+    }
+
+    public void downloadSingleFile(String repoId, String filePath, Path targetFile, String revision, int maxRetries) throws Exception {
+        downloadSingleFile(repoId, filePath, targetFile, revision, maxRetries, null, null);
+    }
+
+    public void downloadSingleFile(String repoId, String filePath, Path targetFile, String revision, int maxRetries, DownloadControl control, DownloadProgressListener progress) throws Exception {
+        Objects.requireNonNull(repoId, "repoId");
+        Objects.requireNonNull(filePath, "filePath");
+        Objects.requireNonNull(targetFile, "targetFile");
+
+        Files.createDirectories(targetFile.getParent());
+        ensureWithinTarget(targetFile, targetFile.getParent());
+
+        if (Files.exists(targetFile) && Files.size(targetFile) > 0) {
+            env.info("文件已存在，跳过: " + targetFile.getFileName());
+            if (progress != null) {
+                progress.onFileListResolved(1);
+                progress.onFileProgress(filePath, 1, 1, 1, 1);
+            }
+            return;
+        }
+
+        String primary = getActiveBaseUrl();
+        String fallback = HF_OFFICIAL.equals(primary) ? HF_MIRROR : HF_OFFICIAL;
+
+        String primaryUrl = buildResolveUrl(primary, repoId, revision, filePath);
+        String fallbackUrl = buildResolveUrl(fallback, repoId, revision, filePath);
+
+        env.info("单文件下载: repo=" + repoId + " file=" + filePath + " primary=" + primary);
+        if (progress != null) {
+            progress.onFileListResolved(1);
+        }
+
+        try {
+            downloadFile(primaryUrl, targetFile, maxRetries, control, (downloaded, total) -> {
+                if (progress != null) {
+                    progress.onFileProgress(filePath, 1, 1, downloaded, total);
+                }
+            });
+        } catch (IOException e) {
+            checkControl(control);
+            env.warn("主源下载失败，切换到回退源: " + fallback + " - " + e.getMessage());
+            downloadFile(fallbackUrl, targetFile, maxRetries, control, (downloaded, total) -> {
+                if (progress != null) {
+                    progress.onFileProgress(filePath, 1, 1, downloaded, total);
+                }
+            });
         }
     }
 
@@ -185,34 +293,48 @@ public class HuggingFaceDownloader {
         return URLEncoder.encode(repoId, StandardCharsets.UTF_8);
     }
 
+    private interface FileProgressListener {
+        void onProgress(long downloaded, long total);
+    }
+
     private void downloadFile(String url, Path target, int maxRetries) throws IOException {
-        Files.createDirectories(target.getParent()); 
-        // 增加这一行：清理上次下载失败留下的尸体
+        downloadFile(url, target, maxRetries, null, null);
+    }
+
+    private void downloadFile(String url, Path target, int maxRetries, DownloadControl control, FileProgressListener progress) throws IOException {
+        Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        try { Files.deleteIfExists(tmp); } catch (IOException ignored) {}
+        Files.deleteIfExists(tmp);
         IOException lastException = null;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            checkControl(control);
+            HttpURLConnection conn = null;
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                conn = (HttpURLConnection) new URL(url).openConnection();
                 conn.setConnectTimeout((int) Duration.ofSeconds(15).toMillis());
                 conn.setReadTimeout((int) Duration.ofSeconds(120).toMillis());
                 conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "MC-Mod-TTS-Downloader/1.0");
+                conn.setRequestProperty("User-Agent", "Tianshu-HF-Downloader/1.0");
 
                 if (conn.getResponseCode() != 200) {
                     throw new IOException("HTTP " + conn.getResponseCode());
                 }
 
+                long total = conn.getContentLengthLong();
+                long downloaded = 0L;
                 try (InputStream in = conn.getInputStream();
                      OutputStream out = Files.newOutputStream(tmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
                     byte[] buf = new byte[8192];
                     int len;
                     while ((len = in.read(buf)) != -1) {
+                        checkControl(control);
                         out.write(buf, 0, len);
+                        downloaded += len;
+                        if (progress != null) {
+                            progress.onProgress(downloaded, total);
+                        }
                     }
-                } finally {
-                    conn.disconnect();
                 }
 
                 Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -220,16 +342,28 @@ public class HuggingFaceDownloader {
                 return;
             } catch (IOException e) {
                 lastException = e;
+                Files.deleteIfExists(tmp);
+                checkControl(control);
                 env.warn("下载重试 " + attempt + "/" + maxRetries + ": " + target.getFileName() + " - " + e.getMessage());
                 try {
                     Thread.sleep(1000L * attempt);
-                } catch (InterruptedException ignored) {
+                } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    return;
+                    throw new IOException("下载线程被中断", interrupted);
+                }
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
                 }
             }
         }
         throw new IOException("下载失败，重试 " + maxRetries + " 次后仍不成功: " + url, lastException);
+    }
+
+    private void checkControl(DownloadControl control) throws IOException {
+        if (control != null) {
+            control.checkCancelled();
+        }
     }
 
     private void ensureWithinTarget(Path path, Path targetDir) throws IOException {

@@ -1,8 +1,6 @@
 package com.rheinmetal.tianshu.config;
 
-import com.rheinmetal.tianshu.constant.ModelPresets;
 import com.rheinmetal.tianshu.constant.TriggerMode;
-import com.rheinmetal.tianshu.constant.VramTier;
 import com.rheinmetal.tianshu.core.FeatureManager;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -16,11 +14,17 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     public static final ModConfigSpec SPEC;
 
+    public static final ModConfigSpec.BooleanValue ASR_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> SELECTED_MIC_NAME;
+    public static final ModConfigSpec.ConfigValue<String> ASR_GITHUB_PROXY_URL;
+    public static final ModConfigSpec.BooleanValue ASR_RNNOISE_ENABLED;
+    public static final ModConfigSpec.BooleanValue ASR_VAD_ENABLED;
+    public static final ModConfigSpec.BooleanValue TTS_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> TTS_PREVIEW_TEXT;
+    public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.ConfigValue<String> WAKE_WORD;
-    public static final ModConfigSpec.EnumValue<VramTier> VRAM_TIER;
-    public static final ModConfigSpec.IntValue CUSTOM_VRAM_GB;
     public static final ModConfigSpec.IntValue ASR_PORT;
     public static final ModConfigSpec.IntValue LLM_PORT;
     public static final ModConfigSpec.IntValue TTS_PORT;
@@ -51,8 +55,22 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
         builder.comment("天枢 AI - 核心设置").push("general");
         AI_ENABLED = builder.define("enabled", true);
+        builder.pop();
+
+        builder.comment("ASR 语音识别设置").push("asr");
+        ASR_ENABLED = builder.define("enabled", true);
+        SELECTED_MIC_NAME = builder.define("selectedMicName", "");
+        ASR_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         TRIGGER_MODE = builder.defineEnum("triggerMode", TriggerMode.PUSH_TO_TALK);
         WAKE_WORD = builder.define("wakeWord", "天枢");
+        ASR_RNNOISE_ENABLED = builder.define("rnnoiseEnabled", false);
+        ASR_VAD_ENABLED = builder.define("vadEnabled", false);
+        builder.pop();
+
+        builder.comment("TTS 语音播报设置").push("tts");
+        TTS_ENABLED = builder.define("enabled", true);
+        TTS_PREVIEW_TEXT = builder.define("previewText", "这是一段天枢语音播报试听");
+        TTS_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         builder.pop();
 
         builder.comment("功能开关（纯客户端）").push("features");
@@ -92,11 +110,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
                 .defineInRange("tacticalMrNightAlpha", 0.55, 0.05, 1.5);
         builder.pop();
 
-        builder.comment("性能与显存设置").push("performance");
-        VRAM_TIER = builder.defineEnum("vramTier", VramTier.STANDARD);
-        CUSTOM_VRAM_GB = builder.defineInRange("customVramGB", 8, 1, 128);
-        builder.pop();
-
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
         ASR_PORT = builder.defineInRange("asrPort", 18765, 1024, 65535);
         LLM_PORT = builder.defineInRange("llmPort", 18766, 1024, 65535);
@@ -120,6 +133,16 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     }
 
     @Override
+    public boolean isAsrEnabled() {
+        return ASR_ENABLED.get();
+    }
+
+    @Override
+    public void setAsrEnabled(boolean enabled) {
+        ASR_ENABLED.set(enabled);
+    }
+
+    @Override
     public TriggerMode getTriggerMode() {
         return TRIGGER_MODE.get();
     }
@@ -137,21 +160,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setWakeWord(String word) {
         WAKE_WORD.set(word);
-    }
-
-    @Override
-    public VramTier getVramTier() {
-        return VRAM_TIER.get();
-    }
-
-    @Override
-    public void setVramTier(VramTier tier) {
-        VRAM_TIER.set(tier);
-    }
-
-    @Override
-    public int getCustomVramGB() {
-        return CUSTOM_VRAM_GB.get();
     }
 
     @Override
@@ -180,6 +188,70 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     }
 
     @Override
+    public String getSelectedMicName() {
+        return SELECTED_MIC_NAME.get();
+    }
+
+    @Override
+    public void setSelectedMicName(String name) {
+        SELECTED_MIC_NAME.set(name == null ? "" : name);
+    }
+
+    public String getAsrGithubProxyUrl() {
+        return ASR_GITHUB_PROXY_URL.get();
+    }
+
+    public void setAsrGithubProxyUrl(String url) {
+        ASR_GITHUB_PROXY_URL.set(url == null ? "" : url.trim());
+    }
+
+    @Override
+    public boolean isAsrRnnoiseEnabled() {
+        return ASR_RNNOISE_ENABLED.get();
+    }
+
+    @Override
+    public void setAsrRnnoiseEnabled(boolean enabled) {
+        ASR_RNNOISE_ENABLED.set(enabled);
+    }
+
+    @Override
+    public boolean isAsrVadEnabled() {
+        return ASR_VAD_ENABLED.get();
+    }
+
+    @Override
+    public void setAsrVadEnabled(boolean enabled) {
+        ASR_VAD_ENABLED.set(enabled);
+    }
+
+    @Override
+    public boolean isTtsEnabled() {
+        return TTS_ENABLED.get();
+    }
+
+    @Override
+    public void setTtsEnabled(boolean enabled) {
+        TTS_ENABLED.set(enabled);
+    }
+
+    public String getTtsPreviewText() {
+        return TTS_PREVIEW_TEXT.get();
+    }
+
+    public void setTtsPreviewText(String text) {
+        TTS_PREVIEW_TEXT.set(text == null ? "" : text.trim());
+    }
+
+    public String getTtsGithubProxyUrl() {
+        return TTS_GITHUB_PROXY_URL.get();
+    }
+
+    public void setTtsGithubProxyUrl(String url) {
+        TTS_GITHUB_PROXY_URL.set(url == null ? "" : url.trim());
+    }
+
+    @Override
     public String getCustomLlmName() {
         return CUSTOM_LLM_NAME.get();
     }
@@ -201,7 +273,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     @Override
     public Path getRootPath() {
-        return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), ModelPresets.DEFAULT_ROOT_DIR_NAME).resolve("module");
+        return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), "config/TianshuAIAssistant").resolve("module");
     }
 
     @Override
@@ -226,81 +298,60 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     @Override
     public Path getAsrModelPath() {
-        VramTier tier = getVramTier();
-        String name = ModelPresets.resolveTargetModelName(
-                tier,
-                ModelPresets.getPresetAsrName(VramTier.LIGHT),
-                ModelPresets.getPresetAsrName(VramTier.STANDARD),
-                ModelPresets.getPresetAsrName(VramTier.DELUXE),
-                getCustomAsrName()
-        );
-        return getAsrBasePath().resolve("model").resolve(name);
+        String name = getCustomAsrName();
+        return getAsrBasePath().resolve("model").resolve(name != null && !name.isBlank() ? name : "Zipformer");
     }
 
     @Override
     public Path getLlmModelPath() {
-        VramTier tier = getVramTier();
-        String name = ModelPresets.resolveTargetModelName(
-                tier,
-                ModelPresets.getPresetLlmName(VramTier.LIGHT),
-                ModelPresets.getPresetLlmName(VramTier.STANDARD),
-                ModelPresets.getPresetLlmName(VramTier.DELUXE),
-                getCustomLlmName()
-        );
-        return getLlmBasePath().resolve("model").resolve(name);
+        String name = getCustomLlmName();
+        return getLlmBasePath().resolve("model").resolve(name != null && !name.isBlank() ? name.trim() : getDefaultLlmModelName());
     }
 
     @Override
     public Path getTtsModelPath() {
-        VramTier tier = getVramTier();
-        String name = ModelPresets.resolveTargetModelName(
-                tier,
-                ModelPresets.getPresetTtsName(VramTier.LIGHT),
-                ModelPresets.getPresetTtsName(VramTier.STANDARD),
-                ModelPresets.getPresetTtsName(VramTier.DELUXE),
-                getCustomTtsName()
-        );
-        return getTtsBasePath().resolve("model").resolve(name);
+        String name = getCustomTtsName();
+        return getTtsBasePath().resolve("model").resolve(name != null && !name.isBlank() ? name : "vits-zh-hf-keqing");
     }
 
     @Override
     public Path getLlmGgufFilePath() {
-        VramTier tier = getVramTier();
-        String modelName = ModelPresets.resolveTargetModelName(
-                tier,
-                ModelPresets.getPresetLlmName(VramTier.LIGHT),
-                ModelPresets.getPresetLlmName(VramTier.STANDARD),
-                ModelPresets.getPresetLlmName(VramTier.DELUXE),
-                getCustomLlmName()
-        );
+        String modelName = getCustomLlmName();
+        if (modelName == null || modelName.isBlank()) {
+            modelName = getDefaultLlmModelName();
+        }
+        modelName = modelName.trim();
         Path modelDir = getLlmBasePath().resolve("model").resolve(modelName);
 
-        if (tier == VramTier.CUSTOM) {
-            String customName = getCustomLlmName();
-            if (customName != null && customName.trim().toLowerCase().endsWith(".gguf")) {
-                return getLlmBasePath().resolve("model").resolve(customName.trim());
-            }
-            if (Files.isDirectory(modelDir)) {
-                Path preferred = modelDir.resolve("model.gguf");
-                if (Files.isRegularFile(preferred)) {
-                    return preferred;
-                }
-                try (var stream = Files.list(modelDir)) {
-                    Path ggufFile = stream
-                        .filter(p -> Files.isRegularFile(p) && p.getFileName().toString().toLowerCase().endsWith(".gguf"))
-                        .sorted((a, b) -> a.getFileName().toString().compareToIgnoreCase(b.getFileName().toString()))
-                        .findFirst()
-                        .orElse(null);
-                    if (ggufFile != null) {
-                        return ggufFile;
-                    }
-                } catch (IOException e) {
-                }
-            }
-            return modelDir.resolve("model.gguf");
+        if (modelName.toLowerCase().endsWith(".gguf")) {
+            return getLlmBasePath().resolve("model").resolve(modelName);
         }
-
-        return modelDir.resolve(ModelPresets.getPresetLlmFileName(tier));
+        if (Files.isDirectory(modelDir)) {
+            com.rheinmetal.tianshu.model.LlmModelInfo catalogInfo = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName);
+            if (catalogInfo != null) {
+                Path catalogFile = modelDir.resolve(catalogInfo.getModelFile());
+                if (Files.isRegularFile(catalogFile)) {
+                    return catalogFile;
+                }
+            }
+            Path preferred = modelDir.resolve("model.gguf");
+            if (Files.isRegularFile(preferred)) {
+                return preferred;
+            }
+            try (var stream = Files.list(modelDir)) {
+                Path ggufFile = stream
+                    .filter(p -> Files.isRegularFile(p) && p.getFileName().toString().toLowerCase().endsWith(".gguf"))
+                    .sorted((a, b) -> a.getFileName().toString().compareToIgnoreCase(b.getFileName().toString()))
+                    .findFirst()
+                    .orElse(null);
+                if (ggufFile != null) {
+                    return ggufFile;
+                }
+            } catch (IOException e) {
+            }
+        }
+        com.rheinmetal.tianshu.model.LlmModelInfo catalogInfo = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName);
+        return modelDir.resolve(catalogInfo != null ? catalogInfo.getModelFile() : "model.gguf");
     }
 
     public boolean isTacticalRadarEnabled() {
@@ -371,6 +422,60 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     public void setTacticalMrEnabled(boolean enabled) {
         TACTICAL_MR_ENABLED.set(enabled);
+    }
+
+    @Override
+    public String getLlmEmbeddingModelName() {
+        com.rheinmetal.tianshu.model.LlmModelInfo embedding = com.rheinmetal.tianshu.model.LlmModelManager.getDefaultEmbeddingModel(getClientLanguageTag());
+        return embedding != null ? embedding.name : "";
+    }
+
+    @Override
+    public int getLlmContextSize() {
+        String modelName = getCustomLlmName();
+        if (modelName != null && !modelName.isBlank()) {
+            com.rheinmetal.tianshu.model.LlmModelInfo info = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName.trim());
+            if (info != null) return info.getContextSize();
+        }
+        com.rheinmetal.tianshu.model.LlmModelInfo defaultModel = getDefaultLlmModelInfo();
+        return defaultModel != null ? defaultModel.getContextSize() : 4096;
+    }
+
+    @Override
+    public int getLlmChatContextSize() {
+        return getLlmContextSize();
+    }
+
+    @Override
+    public int getLlmTaskContextSize() {
+        return Math.max(getLlmContextSize(), 8192);
+    }
+
+    @Override
+    public int getLlmEmbeddingContextSize() {
+        com.rheinmetal.tianshu.model.LlmModelInfo embedding = com.rheinmetal.tianshu.model.LlmModelManager.getDefaultEmbeddingModel(getClientLanguageTag());
+        return embedding != null ? embedding.getContextSize() : 4096;
+    }
+
+    private String getDefaultLlmModelName() {
+        com.rheinmetal.tianshu.model.LlmModelInfo info = getDefaultLlmModelInfo();
+        return info != null && info.name != null && !info.name.isBlank() ? info.name : "model";
+    }
+
+    private com.rheinmetal.tianshu.model.LlmModelInfo getDefaultLlmModelInfo() {
+        java.util.List<com.rheinmetal.tianshu.model.LlmModelInfo> catalog = com.rheinmetal.tianshu.model.LlmModelManager.getAllModels();
+        return catalog.isEmpty() ? null : catalog.get(0);
+    }
+
+    private String getClientLanguageTag() {
+        try {
+            String code = Minecraft.getInstance().getLanguageManager().getSelected();
+            if (code != null && !code.isBlank()) {
+                return code.split("[_-]", 2)[0].toLowerCase(java.util.Locale.ROOT);
+            }
+        } catch (Exception ignored) {
+        }
+        return java.util.Locale.getDefault().getLanguage();
     }
 
     @Override

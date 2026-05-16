@@ -10,6 +10,17 @@ public interface IInventoryDataProvider {
 
     List<ItemSnapshot> getAllInventoryItemsData();
 
+    default List<InventoryItemStackData> getInventoryItemStacksData() {
+        List<ItemSnapshot> snapshots = getAllInventoryItemsData();
+        if (snapshots == null || snapshots.isEmpty()) {
+            return List.of();
+        }
+        return snapshots.stream()
+                .filter(item -> item != null && item.getCount() > 0)
+                .map(item -> new InventoryItemStackData(item.getItemId(), item.getDisplayName(), item.getCount()))
+                .toList();
+    }
+
     List<MatchedSlotData> findItemSlotsByName(String namePattern);
 
     List<ItemSnapshot> findItemsByCategory(String category);

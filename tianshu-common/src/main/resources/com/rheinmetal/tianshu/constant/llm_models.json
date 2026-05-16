@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Qwen3.5-2B-GGUF",
+    "displayName": "Qwen3 0.6B",
+    "repoId": "unsloth/Qwen3.5-2B-GGUF",
+    "hfFilePath": "Qwen3.5-2B-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-2B-Q4_K_M.gguf",
+    "contextSize": 8192
+  },
+  {
+    "name": "Qwen3-4B",
+    "displayName": "Qwen3 4B",
+    "repoId": "Qwen/Qwen3-4B",
+    "hfFilePath": "Qwen3-4B-Q4_K_M.gguf",
+    "modelFile": "Qwen3-4B-Q4_K_M.gguf",
+    "contextSize": 8192
+  },
+  {
+    "name": "Qwen3-7B",
+    "displayName": "Qwen3 7B",
+    "repoId": "Qwen/Qwen3-7B",
+    "hfFilePath": "qwen-deluxe.gguf",
+    "modelFile": "qwen-deluxe.gguf",
+    "contextSize": 8192
+  }
+]

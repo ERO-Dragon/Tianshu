@@ -6,6 +6,12 @@ public interface IPlayerStateProvider {
 
     NavigationInfo getPlayerNavigationInfo();
 
+    default String getCurrentDimensionDisplayName() {
+        NavigationInfo navigation = getPlayerNavigationInfo();
+        PositionData position = navigation == null ? null : navigation.getCurrent();
+        return position == null ? "" : position.getDimension();
+    }
+
     GameSettingsData getClientGameSettings();
 
     DeathContextData getLastDeathContext();

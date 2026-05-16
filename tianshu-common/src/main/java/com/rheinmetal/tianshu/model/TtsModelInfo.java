@@ -1,5 +1,16 @@
 package com.rheinmetal.tianshu.model;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 
 public class TtsModelInfo {
@@ -100,5 +111,56 @@ public class TtsModelInfo {
 
     public boolean supportsSpeakerSelection() {
         return !supportsVoiceClone() && voicesFile != null && !voicesFile.isBlank();
+    }
+
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/sherpa-onnx-tts-models.json";
+    private static final Gson GSON = new Gson();
+    private static List<TtsModelInfo> cachedCatalog = null;
+
+    public static synchronized List<TtsModelInfo> loadCatalog() {
+        if (cachedCatalog != null) return cachedCatalog;
+        try (InputStream is = TtsModelInfo.class.getResourceAsStream(CATALOG_RESOURCE)) {
+            if (is == null) return Collections.emptyList();
+            try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
+                Type listType = new TypeToken<List<TtsModelInfo>>() {}.getType();
+                cachedCatalog = GSON.fromJson(reader, listType);
+                return cachedCatalog != null ? cachedCatalog : Collections.emptyList();
+            }
+        } catch (IOException e) {
+            return Collections.emptyList();
+        }
+    }
+
+    public static synchronized void invalidateCatalogCache() {
+        cachedCatalog = null;
+    }
+
+    public static boolean isModelDownloaded(TtsModelInfo info, Path ttsBasePath) {
+        if (info == null || ttsBasePath == null) return false;
+        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
+        Path dir = ttsBasePath.resolve("model").resolve(modelDirName);
+        if (!Files.isDirectory(dir)) return false;
+        if (info.modelFiles != null && !info.modelFiles.isEmpty()) {
+            return info.modelFiles.stream()
+                    .filter(f -> f != null && !f.isBlank())
+                    .anyMatch(f -> Files.isRegularFile(dir.resolve(f)));
+        }
+        if ("moss".equals(info.getEngineType())) {
+            return Files.isRegularFile(dir.resolve("browser_poc_manifest.json"))
+                    || containsModelFile(dir);
+        }
+        return containsModelFile(dir);
+    }
+
+    private static boolean containsModelFile(Path dir) {
+        if (!Files.isDirectory(dir)) return false;
+        try (var stream = Files.walk(dir)) {
+            return stream.anyMatch(p -> {
+                String name = p.getFileName().toString().toLowerCase();
+                return Files.isRegularFile(p) && (name.endsWith(".onnx") || name.endsWith(".bin") || name.endsWith(".gguf"));
+            });
+        } catch (IOException e) {
+            return false;
+        }
     }
 }

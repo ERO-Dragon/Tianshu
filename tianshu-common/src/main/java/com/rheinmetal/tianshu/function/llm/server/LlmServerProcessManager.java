@@ -29,15 +29,17 @@ public class LlmServerProcessManager {
     private final INativeLibBridge nativeLibBridge;
     private final ProtocolExecutorManager executorManager;
     private final Runnable onLlmReady;
+    private final Runnable onLlmStopped;
     private volatile Process llmProcess;
     private volatile ProtocolTaskHandle monitoringTask;
 
-    public LlmServerProcessManager(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, ProtocolExecutorManager executorManager, Runnable onLlmReady) {
+    public LlmServerProcessManager(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, ProtocolExecutorManager executorManager, Runnable onLlmReady, Runnable onLlmStopped) {
         this.env = env;
         this.config = config;
         this.nativeLibBridge = nativeLibBridge;
         this.executorManager = executorManager;
         this.onLlmReady = onLlmReady;
+        this.onLlmStopped = onLlmStopped;
     }
 
     public void stopServices() {
@@ -71,6 +73,7 @@ public class LlmServerProcessManager {
         if (llmProcess == process) {
             llmProcess = null;
         }
+        onLlmStopped.run();
         env.info("LLM服务已停止");
     }
 
@@ -97,6 +100,7 @@ public class LlmServerProcessManager {
             if (llmProcess == process) {
                 llmProcess = null;
             }
+            onLlmStopped.run();
             monitoringTask = null;
         });
         monitoringTask = task;
@@ -165,6 +169,121 @@ public class LlmServerProcessManager {
         return llmProcess;
     }
 
+    private void appendEmbeddingArgs(List<String> command) {
+        Path embeddingGguf = config.getLlmEmbeddingGgufFilePath();
+        if (embeddingGguf != null && Files.exists(embeddingGguf)) {
+            command.add("--embedding-model");
+            command.add(embeddingGguf.toAbsolutePath().toString());
+            command.add("--embedding-context");
+            command.add(String.valueOf(config.getLlmEmbeddingContextSize()));
+            command.add("--embedding-gpu-layers");
+            command.add("999");
+            env.info("Embedding model: " + embeddingGguf.toAbsolutePath());
+        }
+    }
+
+    private void appendRagArgs(List<String> command) {
+        if (appendRagRootArgs(command)) {
+            appendDynamicRagArgs(command);
+            return;
+        }
+        appendStaticRagArgs(command);
+        appendMemoryRagArgs(command);
+    }
+
+    private boolean appendRagRootArgs(List<String> command) {
+        if (!config.isLlmRagRootEnabled()) {
+            return false;
+        }
+        Path ragRootPath = config.getLlmRagRootPath();
+        if (ragRootPath == null) {
+            return false;
+        }
+        try {
+            Files.createDirectories(ragRootPath);
+            command.add("--rag-root-path");
+            command.add(ragRootPath.toAbsolutePath().toString());
+            env.info("RAG root path: " + ragRootPath.toAbsolutePath());
+            return true;
+        } catch (Exception e) {
+            env.warn("无法准备 RAG root 目录，回退到兼容 RAG 参数: " + ragRootPath);
+            return false;
+        }
+    }
+
+    private void appendDynamicRagArgs(List<String> command) {
+        command.add("--dynamic-rag-top-k");
+        command.add(String.valueOf(config.getLlmDynamicRagTopK()));
+    }
+
+    private void appendStaticRagArgs(List<String> command) {
+        Path ragPath = config.getLlmStaticRagPath();
+        if (ragPath != null && Files.isDirectory(ragPath)) {
+            try (var stream = Files.list(ragPath)) {
+                boolean hasContent = stream.anyMatch(p ->
+                        Files.isRegularFile(p) && (
+                                p.getFileName().toString().toLowerCase().endsWith(".txt") ||
+                                p.getFileName().toString().toLowerCase().endsWith(".md") ||
+                                p.getFileName().toString().toLowerCase().endsWith(".json") ||
+                                p.getFileName().toString().toLowerCase().endsWith(".jsonl")
+                        )
+                );
+                if (hasContent) {
+                    command.add("--static-rag-path");
+                    command.add(ragPath.toAbsolutePath().toString());
+                    command.add("--static-rag-top-k");
+                    command.add(String.valueOf(config.getLlmStaticRagTopK()));
+                    command.add("--dynamic-rag-top-k");
+                    command.add(String.valueOf(config.getLlmDynamicRagTopK()));
+                    env.info("Static RAG path: " + ragPath.toAbsolutePath());
+                }
+            } catch (Exception e) {
+                env.warn("无法扫描静态 RAG 目录: " + ragPath);
+            }
+        }
+    }
+
+    private void appendMemoryRagArgs(List<String> command) {
+        Path memoryRagPath = config.getLlmMemoryRagPath();
+        if (memoryRagPath == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(memoryRagPath);
+            command.add("--memory-rag-path");
+            command.add(memoryRagPath.toAbsolutePath().toString());
+            command.add("--memory-rag-refresh-interval-ms");
+            command.add(String.valueOf(config.getLlmMemoryRagRefreshIntervalMs()));
+            env.info("Memory RAG path: " + memoryRagPath.toAbsolutePath());
+        } catch (Exception e) {
+            env.warn("无法准备长期记忆 RAG 目录: " + memoryRagPath);
+        }
+    }
+
+    private void appendQueueArgs(List<String> command) {
+        command.add("--chat-max-queue-size");
+        command.add(String.valueOf(config.getLlmMaxQueueSize()));
+        command.add("--task-max-queue-size");
+        command.add(String.valueOf(config.getLlmTaskMaxQueueSize()));
+        command.add("--task-suspend-on-chat");
+        command.add(String.valueOf(config.isLlmTaskSuspendOnChatEnabled()));
+        command.add("--request-timeout-seconds");
+        command.add(String.valueOf(config.getLlmRequestTimeoutSeconds()));
+    }
+
+    private void appendCacheArgs(List<String> command) {
+        appendCacheArg(command, "--cache-type-k", config.getLlmCacheTypeK());
+        appendCacheArg(command, "--cache-type-v", config.getLlmCacheTypeV());
+    }
+
+    private void appendCacheArg(List<String> command, String name, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        command.add(name);
+        command.add(value.trim());
+    }
+
     private ProtocolTaskSpec processTaskSpec(String key) {
         return ProtocolTaskSpec.builder()
                 .moduleId("module.llm")
@@ -201,9 +320,9 @@ public class LlmServerProcessManager {
 
             Path nativesDir = nativeLibBridge.getNativesDir().toAbsolutePath();
             String nativeLibPath = nativesDir.toString();
-            String modelPath = config.getLlmGgufFilePath().toString();
+            String modelPath = config.getLlmGgufFilePath() == null ? "" : config.getLlmGgufFilePath().toString();
 
-            if (!Files.exists(Path.of(modelPath))) {
+            if (modelPath.isBlank() || !Files.exists(Path.of(modelPath))) {
                 env.error("模型文件不存在: " + modelPath, null);
                 return;
             }
@@ -224,13 +343,22 @@ public class LlmServerProcessManager {
             command.add("-m");
             command.add(modelPath);
             command.add("-c");
-            command.add("2060");
+            command.add(String.valueOf(config.getLlmContextSize()));
+            command.add("--chat-context");
+            command.add(String.valueOf(config.getLlmChatContextSize()));
+            command.add("--task-context");
+            command.add(String.valueOf(config.getLlmTaskContextSize()));
             command.add("-ngl");
             command.add("999");
             command.add("--host");
             command.add("127.0.0.1");
             command.add("--port");
             command.add(String.valueOf(config.getLlmPort()));
+
+            appendEmbeddingArgs(command);
+            appendRagArgs(command);
+            appendQueueArgs(command);
+            appendCacheArgs(command);
 
             env.info("启动命令: " + String.join(" ", command));
 

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ui;
 
-import com.rheinmetal.tianshu.core.module.ModuleRegistrationContext;
-import com.rheinmetal.tianshu.core.module.TianshuManagedModule;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.event.UiAsrTextEvent;
 import com.rheinmetal.tianshu.event.UiLlmEndEvent;
