@@ -1,8 +1,10 @@
 package com.rheinmetal.tianshu.function.ir;
 
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerDeliveryTarget;
+
 import java.util.List;
 
-record IrCompiledVoiceTrigger(String moduleId, List<IrCompiledVoiceWord> hotwords, List<IrCompiledVoiceWord> extraWords, int totalWords, int priority) {
+record IrCompiledVoiceTrigger(String moduleId, List<IrCompiledVoiceWord> hotwords, List<IrCompiledVoiceWord> extraWords, int totalWords, int priority, VoiceTriggerDeliveryTarget deliveryTarget) {
     IrCompiledVoiceTrigger {
         if (moduleId == null) moduleId = "";
         moduleId = moduleId.trim();

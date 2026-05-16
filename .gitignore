@@ -1,9 +1,51 @@
+# === IDE ===
 .eclipse/
-.github/
-.gradle/
 .idea/
-.trae/
 .vscode/
+.trae/
+*.iml
+*.ipr
+*.iws
+.settings/
+.classpath
+.project
+out/
+
+# === Build ===
+.gradle/
 build/
 bin/
+*.class
+*.hprof
+.factorypath
+
+# === OS ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# === Logs ===
 *.log
+logs/
+crash-reports/
+
+# === NeoForge / Minecraft ===
+runs/
+src/generated/
+
+# === 误提交的 Minecraft 源码 ===
+net/
+
+# === 第三方依赖 JAR (libs/) ===
+libs/*.jar
+
+# === 第三方参考代码 ===
+libs/MOSS-TTS-Nano-main/
+
+# === JavaLlamaServer (来自另一个 GitHub 项目) ===
+tianshu-common/src/main/resources/JavaLlamaServer/*.jar
+
+# === 敏感/本地配置 ===
+*.env
+*.key
+*.pem

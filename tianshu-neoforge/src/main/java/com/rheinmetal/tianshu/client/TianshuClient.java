@@ -6,14 +6,19 @@ import com.rheinmetal.tianshu.audio.AudioManager;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.module.TianshuSettingsModule;
 import com.rheinmetal.tianshu.client.gui.settings.registry.CompositeSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.registry.ExternalSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.registry.ModuleSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsContributorRegistry;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.tts.TtsSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
 import com.rheinmetal.tianshu.client.ir.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
+import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
+import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.event.TianshuEvent;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
@@ -78,6 +83,8 @@ public class TianshuClient {
     private static AudioManager audioManager;
     private static TianshuCoreManager coreManager;
     private static TianshuSettingsModule settingsModule;
+    private static TianshuSettingsContributorRegistry externalSettingsContributors;
+    private static CoreBackedTianshuIntegrationApi integrationApi;
 
     private static ITargetScannerProvider targetScanner;
     private static IInventoryDataProvider inventoryProvider;
@@ -95,9 +102,10 @@ public class TianshuClient {
 
     private static TianshuSettingsRegistrySource createSettingsRegistrySource() {
         TianshuSettingsRegistrySource moduleSource = new ModuleSettingsRegistrySource(coreManager::managedModules);
+        TianshuSettingsRegistrySource externalSource = new ExternalSettingsRegistrySource(externalSettingsContributors);
         TianshuSettingsRegistrySource asrSource = new AsrSettingsRegistrySource(coreManager, config, audioManager);
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
-        return CompositeSettingsRegistrySource.of(moduleSource, asrSource, ttsSource);
+        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, ttsSource);
     }
 
     private static void beginVoiceInput() {
@@ -167,6 +175,10 @@ public class TianshuClient {
                 new NeoForgeAssistantWorldIdentityProvider(),
                 worldStateProvider
         ));
+        externalSettingsContributors = new TianshuSettingsContributorRegistry();
+        integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
+        TianshuIntegrationAccess.publish(integrationApi);
+        NeoForge.EVENT_BUS.post(new TianshuIntegrationRegisterEvent(integrationApi, externalSettingsContributors));
         settingsModule = new TianshuSettingsModule(coreManager, createSettingsRegistrySource());
 
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
@@ -186,6 +198,7 @@ public class TianshuClient {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             LOGGER.info("检测到 JVM 即将关闭，执行最终清理...");
+            if (integrationApi != null) TianshuIntegrationAccess.clear(integrationApi);
             if (coreManager != null) coreManager.destroy();
             if (audioManager != null) audioManager.shutdown();
         }, "Tianshu-Shutdown-Hook"));
@@ -362,6 +375,9 @@ public class TianshuClient {
 
     public static void shutdownClient() {
         LOGGER.info("关闭天枢客户端资源");
+        if (integrationApi != null) {
+            TianshuIntegrationAccess.clear(integrationApi);
+        }
         if (coreManager != null) {
             coreManager.destroy();
         }

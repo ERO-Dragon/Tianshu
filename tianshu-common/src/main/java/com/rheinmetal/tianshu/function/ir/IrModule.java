@@ -134,7 +134,7 @@ public final class IrModule implements TianshuManagedModule {
     }
 
     private void dispatch(TianshuEnvelope envelope, IrInputText input, IrVoiceMatch match, IrItemEnhancementResult itemEnhancement) {
-        adapter.dispatchVoiceTrigger(envelope, match.moduleId(), new VoiceTriggerPayload(
+        adapter.dispatchVoiceTrigger(envelope, match.deliveryTarget(), new VoiceTriggerPayload(
                 input.rawText(),
                 input.text(),
                 match.moduleId(),

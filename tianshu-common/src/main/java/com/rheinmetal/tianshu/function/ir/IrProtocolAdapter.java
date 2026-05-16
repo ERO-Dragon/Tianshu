@@ -17,6 +17,7 @@ import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.VoiceTriggerPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerDeliveryTarget;
 
 import java.util.EnumSet;
 
@@ -60,8 +61,8 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
         return publishTopic(parent, ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
     }
 
-    public TianshuEnvelope dispatchVoiceTrigger(TianshuEnvelope parent, String moduleId, VoiceTriggerPayload payload) {
-        return commandCapability(parent, moduleId, PayloadType.VOICE_TRIGGER, payload);
+    public TianshuEnvelope dispatchVoiceTrigger(TianshuEnvelope parent, VoiceTriggerDeliveryTarget target, VoiceTriggerPayload payload) {
+        return commandCapability(parent, target.capabilityId(), PayloadType.VOICE_TRIGGER, payload);
     }
 
     public TianshuEnvelope requestDialogueArbitration(TianshuEnvelope parent, DialogueArbitrationRequestPayload payload) {
