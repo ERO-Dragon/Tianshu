@@ -35,7 +35,7 @@ public final class NearbyEntityData {
     public final float attackDamage;
     public final float armorValue;
     public final String detailText;
-    public final MrEntityExplanationData entityExplanationData;
+    public final EntityExplanationData entityExplanationData;
 
     public NearbyEntityData(
             String entityId,
@@ -90,7 +90,7 @@ public final class NearbyEntityData {
             float attackDamage,
             float armorValue,
             String detailText,
-            MrEntityExplanationData entityExplanationData
+            EntityExplanationData entityExplanationData
     ) {
         this.entityId = entityId;
         this.uuid = uuid;
@@ -143,7 +143,7 @@ public final class NearbyEntityData {
     public float getAttackDamage() { return attackDamage; }
     public float getArmorValue() { return armorValue; }
     public String getDetailText() { return detailText; }
-    public MrEntityExplanationData getEntityExplanationData() { return entityExplanationData; }
+    public EntityExplanationData getEntityExplanationData() { return entityExplanationData; }
 
     @Override
     public boolean equals(Object o) {

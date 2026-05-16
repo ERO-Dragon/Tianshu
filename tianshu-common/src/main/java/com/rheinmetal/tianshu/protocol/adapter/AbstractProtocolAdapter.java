@@ -18,6 +18,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
+import com.rheinmetal.tianshu.protocol.voice.VoiceCommandScope;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
 import java.util.EnumSet;
@@ -56,7 +58,11 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final void registerVoiceTrigger(List<String> hotwords, List<String> extraWords) {
-        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, hotwords, extraWords));
+        registerVoiceTrigger(hotwords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false);
+    }
+
+    protected final void registerVoiceTrigger(List<String> hotwords, List<String> commandWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
+        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, hotwords, commandWords, category, priority, scope, dialogueEligible));
     }
 
     protected final ProtocolTaskHandle submitTask(ExecutionLane lane, Runnable task) {

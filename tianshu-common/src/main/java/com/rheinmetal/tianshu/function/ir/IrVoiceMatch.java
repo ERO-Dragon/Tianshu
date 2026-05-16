@@ -2,7 +2,11 @@ package com.rheinmetal.tianshu.function.ir;
 
 import java.util.List;
 
-public record IrVoiceMatch(String moduleId, List<String> matchedHotwords, List<String> matchedExtraWords, double confidence) {
+public record IrVoiceMatch(String moduleId, List<String> matchedHotwords, List<String> matchedExtraWords, double confidence, int priority) {
+    public IrVoiceMatch(String moduleId, List<String> matchedHotwords, List<String> matchedExtraWords, double confidence) {
+        this(moduleId, matchedHotwords, matchedExtraWords, confidence, 0);
+    }
+
     public IrVoiceMatch {
         if (moduleId == null) moduleId = "";
         moduleId = moduleId.trim();

@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.function.ir.core.IRBaseUtils;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 final class IrVoiceTriggerMatcher {
@@ -22,8 +23,12 @@ final class IrVoiceTriggerMatcher {
             if (matchedHotwords.isEmpty() && matchedExtraWords.isEmpty()) {
                 continue;
             }
-            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedHotwords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedHotwords, matchedExtraWords)));
+            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedHotwords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedHotwords, matchedExtraWords), trigger.priority()));
         }
+        matches.sort(Comparator
+                .comparingDouble(IrVoiceMatch::confidence).reversed()
+                .thenComparing(IrVoiceMatch::priority, Comparator.reverseOrder())
+                .thenComparing(IrVoiceMatch::moduleId));
         return new IrMatchBatch(input, matches);
     }
 

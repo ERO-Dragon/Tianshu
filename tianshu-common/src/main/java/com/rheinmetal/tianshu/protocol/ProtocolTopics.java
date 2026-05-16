@@ -17,6 +17,11 @@ public final class ProtocolTopics {
     public static final String IR_RESULT = "IR.RESULT";
     public static final String IR_COMMAND_EXECUTED = "IR.COMMAND_EXECUTED";
     public static final String SYSTEM_RUNTIME_INTERRUPT = "SYSTEM.RUNTIME_INTERRUPT";
+    public static final String CORE_READY = "CORE.READY";
+    public static final String CORE_SHUTDOWN = "CORE.SHUTDOWN";
+    public static final String CORE_CAPABILITY_CHANGED = "CORE.CAPABILITY_CHANGED";
+    public static final String RESOURCE_RELOADED = "RESOURCE.RELOADED";
+    public static final String LANGUAGE_RELOADED = "LANGUAGE.RELOADED";
     public static final String TTS_PLAYBACK = "TTS.PLAYBACK";
     public static final String INPUT_HOVER_ITEM = "INPUT.HOVER_ITEM";
     public static final String ITEM_HOVER_STABLE = "ITEM.HOVER_STABLE";

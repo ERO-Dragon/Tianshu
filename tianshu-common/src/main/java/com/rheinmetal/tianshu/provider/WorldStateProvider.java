@@ -8,7 +8,6 @@ public final class WorldStateProvider {
     private final ITargetScannerProvider targetScanner;
     private final IWorldDataProvider worldData;
     private final IRecipeDataProvider recipe;
-    private final IRenderContextProvider renderContext;
     private final ISocialDataProvider social;
     private final IAudioEventProvider audioEvent;
 
@@ -19,7 +18,6 @@ public final class WorldStateProvider {
             ITargetScannerProvider targetScanner,
             IWorldDataProvider worldData,
             IRecipeDataProvider recipe,
-            IRenderContextProvider renderContext,
             ISocialDataProvider social,
             IAudioEventProvider audioEvent
     ) {
@@ -29,7 +27,6 @@ public final class WorldStateProvider {
         this.targetScanner = targetScanner;
         this.worldData = worldData;
         this.recipe = recipe;
-        this.renderContext = renderContext;
         this.social = social;
         this.audioEvent = audioEvent;
     }
@@ -40,7 +37,6 @@ public final class WorldStateProvider {
     public ITargetScannerProvider getTargetScanner() { return targetScanner; }
     public IWorldDataProvider getWorldData() { return worldData; }
     public IRecipeDataProvider getRecipe() { return recipe; }
-    public IRenderContextProvider getRenderContext() { return renderContext; }
     public ISocialDataProvider getSocial() { return social; }
     public IAudioEventProvider getAudioEvent() { return audioEvent; }
 }

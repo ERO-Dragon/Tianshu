@@ -9,17 +9,9 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.function.CompositeTianshuFunctionModuleAssembler;
+import com.rheinmetal.tianshu.function.TianshuCoreModuleInstallers;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
-import com.rheinmetal.tianshu.function.assistant.AssistantModuleInstaller;
 import com.rheinmetal.tianshu.function.assistant.scope.AssistantWorldIdentityProvider;
-import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
-import com.rheinmetal.tianshu.function.chatassistant.ChatAssistantModuleInstaller;
-import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
-import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
-import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
-import com.rheinmetal.tianshu.function.tts.AssistantSpeechBridgeInstaller;
-import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
-import com.rheinmetal.tianshu.function.ui.UiProtocolBridgeInstaller;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 
@@ -42,17 +34,20 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             AssistantWorldIdentityProvider assistantWorldIdentityProvider,
             WorldStateProvider worldStateProvider
     ) {
-        List<TianshuFunctionModuleInstaller> installers = List.of(
-                new IaModuleInstaller(protocolRuntime),
-                new ClientIrModuleInstaller(protocolRuntime),
-                new LlmModuleInstaller(env, config, nativeLibBridge, protocolRuntime),
-                new AssistantModuleInstaller(env, config, protocolRuntime, assistantWorldIdentityProvider, worldStateProvider),
-                new TtsModuleInstaller(audioBridge, eventBus, protocolRuntime, env, config, interruptionSignal),
-                new AssistantSpeechBridgeInstaller(protocolRuntime),
-                new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal),
-                new UiProtocolBridgeInstaller(protocolRuntime, eventBus),
-                new ChatAssistantModuleInstaller(protocolRuntime)
-        );
+        List<TianshuFunctionModuleInstaller> installers = new java.util.ArrayList<>();
+        installers.addAll(TianshuCoreModuleInstallers.clientCore(
+                env,
+                config,
+                nativeLibBridge,
+                audioBridge,
+                eventBus,
+                protocolRuntime,
+                voiceInputGate,
+                interruptionSignal,
+                assistantWorldIdentityProvider,
+                worldStateProvider,
+                new ClientIrModuleInstaller(protocolRuntime)
+        ));
         this.delegate = new CompositeTianshuFunctionModuleAssembler(installers);
     }
 

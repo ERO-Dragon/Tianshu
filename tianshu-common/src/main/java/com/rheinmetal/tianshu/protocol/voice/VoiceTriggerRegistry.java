@@ -12,11 +12,13 @@ public final class VoiceTriggerRegistry {
     private final Map<String, VoiceTriggerRegistration> registrations = new LinkedHashMap<>();
     private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
-    public void register(VoiceTriggerRegistration registration) {
+    public VoiceTriggerRegistrationResult register(VoiceTriggerRegistration registration) {
         synchronized (this) {
             registrations.put(registration.moduleId(), registration);
+            VoiceTriggerRegistrationResult result = VoiceTriggerRegistrationResult.accepted(registration.moduleId(), conflictsFor(registration));
+            notifyChanged();
+            return result;
         }
-        notifyChanged();
     }
 
     public void unregisterModule(String moduleId) {
@@ -59,6 +61,10 @@ public final class VoiceTriggerRegistry {
         return List.copyOf(words);
     }
 
+    public synchronized List<VoiceTriggerConflict> conflicts() {
+        return collectConflicts(registrations.values().stream().toList());
+    }
+
     public synchronized List<VoiceTriggerMatch> match(String text) {
         String normalizedText = TextListNormalizer.normalizeText(text);
         if (normalizedText.isEmpty()) {
@@ -75,6 +81,48 @@ public final class VoiceTriggerRegistry {
             matches.add(new VoiceTriggerMatch(registration.moduleId(), matchedHotwords, matchedExtraWords, confidence));
         }
         return List.copyOf(matches);
+    }
+
+    private List<VoiceTriggerConflict> conflictsFor(VoiceTriggerRegistration registration) {
+        if (registration == null) {
+            return List.of();
+        }
+        return collectConflicts(registrations.values().stream()
+                .filter(candidate -> candidate.moduleId().equals(registration.moduleId()) || sharesWord(candidate, registration))
+                .toList());
+    }
+
+    private boolean sharesWord(VoiceTriggerRegistration left, VoiceTriggerRegistration right) {
+        Set<String> rightWords = new LinkedHashSet<>();
+        rightWords.addAll(right.hotwords());
+        rightWords.addAll(right.extraWords());
+        for (String word : left.hotwords()) {
+            if (rightWords.contains(word)) return true;
+        }
+        for (String word : left.extraWords()) {
+            if (rightWords.contains(word)) return true;
+        }
+        return false;
+    }
+
+    private List<VoiceTriggerConflict> collectConflicts(List<VoiceTriggerRegistration> registrations) {
+        Map<String, List<String>> ownersByWord = new LinkedHashMap<>();
+        for (VoiceTriggerRegistration registration : registrations) {
+            Set<String> words = new LinkedHashSet<>();
+            words.addAll(registration.hotwords());
+            words.addAll(registration.extraWords());
+            for (String word : words) {
+                ownersByWord.computeIfAbsent(word, ignored -> new ArrayList<>()).add(registration.moduleId());
+            }
+        }
+        List<VoiceTriggerConflict> conflicts = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : ownersByWord.entrySet()) {
+            VoiceTriggerConflict conflict = new VoiceTriggerConflict(entry.getKey(), entry.getValue());
+            if (conflict.valid()) {
+                conflicts.add(conflict);
+            }
+        }
+        return List.copyOf(conflicts);
     }
 
     private void notifyChanged() {

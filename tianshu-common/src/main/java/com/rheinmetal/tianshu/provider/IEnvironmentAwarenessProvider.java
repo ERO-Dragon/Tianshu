@@ -24,9 +24,9 @@ public interface IEnvironmentAwarenessProvider {
 
     String getCrosshairTargetKey();
 
-    MrManualFocusTargetData getManualFocusTarget(double range);
+    FocusTargetData getFocusTarget(double range);
 
-    default MrManualFocusTargetData refreshManualFocusTarget(MrManualFocusTargetData currentTarget, double range) {
+    default FocusTargetData refreshFocusTarget(FocusTargetData currentTarget, double range) {
         return currentTarget;
     }
 }

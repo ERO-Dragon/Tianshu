@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.platform.provider;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
-import com.rheinmetal.tianshu.function.MR.MrConstants;
 import com.rheinmetal.tianshu.snapshot.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
@@ -50,8 +49,8 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     private static final int MAX_BENEFICIAL_EFFECTS = 4;
     private static final int MAX_HARMFUL_EFFECTS = 2;
     private static final int MAX_POSSIBLE_DROPS = 8;
+    private static final double DEFAULT_CROSSHAIR_TARGET_RANGE = 32.0;
 
-    // 核心：动态扫描半径。初始为 0，实现没有任何系统开启时的绝对 0 损耗
     private volatile double activeScanRadius = 0;
 
     private volatile List<NearbyEntityData> cachedHostileSnapshot = Collections.emptyList();
@@ -65,16 +64,16 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     }
 
     /**
-     * 核心接口：由上层管理者（如 TianshuClient）统一调用，更新底层的扫描框大小。
-     * 上层需要自行计算当前所有开启系统（雷达、MR等）中的最大需求半径传入。
-     * 如果所有系统都关闭了，传入 0 即可让底层进入休眠状态。
+     * 核心接口：由上层管理者（�?TianshuClient）统一调用，更新底层的扫描框大小�?
+     * 上层需要自行计算当前所有开启系统（雷达、MR等）中的最大需求半径传入�?
+     * 如果所有系统都关闭了，传入 0 即可让底层进入休眠状态�?
      */
     public void setActiveScanRadius(double radius) {
         this.activeScanRadius = radius <= 0.0 ? 0.0 : Math.max(4.0, radius);
     }
 
     private void onPlayerTick(PlayerTickEvent.Post event) {
-        // 1. 绝对 0 损耗拦截：没系统要数据，直接跳过
+        // 1. 绝对 0 损耗拦截：没系统要数据，直接跳�?
         if (activeScanRadius <= 0) return;
 
         Minecraft mc = Minecraft.getInstance();
@@ -91,7 +90,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         Vec3 playerPos = player.position();
         Vec3 playerEyePos = player.getEyePosition();
 
-        // 2. 动态膨胀：框的大小精准匹配当前最大需求
+        // 2. 动态膨胀：框的大小精准匹配当前最大需�?
         AABB searchBox = player.getBoundingBox().inflate(activeScanRadius);
 
         List<Entity> entities;
@@ -140,7 +139,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                     pullingBow = useItem.getItem() instanceof BowItem || useItem.getItem() instanceof CrossbowItem;
                 }
 
-                // 4. 修复：干掉荒谬的怪物潜行，改为蓄力攻击判定
+                // 4. 修复：干掉荒谬的怪物潜行，改为蓄力攻击判�?
                 boolean charging = isMobChargingAttack(living);
 
                 boolean occlusionVisible = computeOcclusionVisibleWithSample(uuid, playerEyePos, living, level, currentTick);
@@ -171,7 +170,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                     }
                 }
 
-                MrEntityExplanationData explanationData = buildEntityExplanationData(mc, living);
+                EntityExplanationData explanationData = buildEntityExplanationData(mc, living);
                 String detailText = explanationData != null ? buildEnemyFocusDetailText(explanationData) : null;
 
                 NearbyEntityData data = new NearbyEntityData(
@@ -328,7 +327,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         if (mc.crosshairPickEntity != null) {
             return mc.crosshairPickEntity.getUUID().toString();
         }
-        Entity entity = resolveManualFocusEntity(mc, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        Entity entity = resolveTargetEntity(mc, currentTargetRange());
         return entity != null ? entity.getUUID().toString() : null;
     }
 
@@ -336,9 +335,9 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     public String getCrosshairTargetKey() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return null;
-        Entity entity = resolveManualFocusEntity(mc, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        Entity entity = resolveTargetEntity(mc, currentTargetRange());
         if (entity != null) return entity.getUUID().toString();
-        BlockHitResult blockHit = resolveManualFocusBlock(mc, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        BlockHitResult blockHit = resolveTargetBlock(mc, currentTargetRange());
         if (blockHit == null || blockHit.getType() == HitResult.Type.MISS) return null;
         BlockPos pos = blockHit.getBlockPos();
         BlockState blockState = mc.level.getBlockState(pos);
@@ -347,31 +346,35 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     }
 
     @Override
-    public MrManualFocusTargetData getManualFocusTarget(double range) {
+    public FocusTargetData getFocusTarget(double range) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return null;
         double focusRange = Math.max(4.0, range);
-        BlockHitResult blockHit = resolveManualFocusBlock(mc, focusRange);
-        Entity entity = resolveManualFocusEntity(mc, focusRange, blockHit);
+        BlockHitResult blockHit = resolveTargetBlock(mc, focusRange);
+        Entity entity = resolveTargetEntity(mc, focusRange, blockHit);
         if (entity instanceof LivingEntity living) {
-            return buildManualFocusEntityTarget(mc, living);
+            return buildEntityFocusTarget(mc, living);
         }
         if (blockHit != null && blockHit.getType() != HitResult.Type.MISS) {
-            return buildManualFocusBlockTarget(mc, blockHit);
+            return buildBlockFocusTarget(mc, blockHit);
         }
         return null;
     }
 
     @Override
-    public MrManualFocusTargetData refreshManualFocusTarget(MrManualFocusTargetData currentTarget, double range) {
+    public FocusTargetData refreshFocusTarget(FocusTargetData currentTarget, double range) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || currentTarget == null) return currentTarget;
-        if (currentTarget.getType() == MrManualFocusTargetData.TargetType.BLOCK) {
+        if (currentTarget.getType() == FocusTargetData.TargetType.BLOCK) {
             return rebuildBlockTargetFromStoredAnchor(mc, currentTarget);
         }
         Entity entity = resolveEntityByUuid(mc, currentTarget.getUuid());
-        if (entity instanceof LivingEntity living) return buildManualFocusEntityTarget(mc, living);
+        if (entity instanceof LivingEntity living) return buildEntityFocusTarget(mc, living);
         return currentTarget;
+    }
+
+    private double currentTargetRange() {
+        return Math.max(4.0, activeScanRadius > 0.0 ? activeScanRadius : DEFAULT_CROSSHAIR_TARGET_RANGE);
     }
 
     private Entity resolveEntityByUuid(Minecraft mc, String uuid) {
@@ -379,7 +382,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (uuid.equals(entity.getUUID().toString())) return entity;
         }
-        double range = Math.max(4.0, activeScanRadius > 0.0 ? activeScanRadius : MrConstants.MR_RANGE);
+        double range = currentTargetRange();
         AABB searchBox = mc.player.getBoundingBox().inflate(range);
         for (Entity entity : mc.level.getEntities((Entity) null, searchBox, e -> e instanceof LivingEntity)) {
             if (uuid.equals(entity.getUUID().toString())) return entity;
@@ -387,11 +390,11 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return null;
     }
 
-    private Entity resolveManualFocusEntity(Minecraft mc, double range) {
-        return resolveManualFocusEntity(mc, range, null);
+    private Entity resolveTargetEntity(Minecraft mc, double range) {
+        return resolveTargetEntity(mc, range, null);
     }
 
-    private Entity resolveManualFocusEntity(Minecraft mc, double range, BlockHitResult blockHitLimit) {
+    private Entity resolveTargetEntity(Minecraft mc, double range, BlockHitResult blockHitLimit) {
         if (mc.player == null || mc.level == null) return null;
         if (mc.hitResult instanceof EntityHitResult entityHit) return entityHit.getEntity();
         Vec3 eye = mc.player.getEyePosition();
@@ -424,7 +427,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return bestEntity;
     }
 
-    private BlockHitResult resolveManualFocusBlock(Minecraft mc, double range) {
+    private BlockHitResult resolveTargetBlock(Minecraft mc, double range) {
         if (mc.hitResult instanceof BlockHitResult blockHit && blockHit.getType() != HitResult.Type.MISS) return blockHit;
         Vec3 eye = mc.player.getEyePosition();
         Vec3 look = mc.player.getLookAngle();
@@ -432,7 +435,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return mc.level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
     }
 
-    private MrManualFocusTargetData rebuildBlockTargetFromStoredAnchor(Minecraft mc, MrManualFocusTargetData target) {
+    private FocusTargetData rebuildBlockTargetFromStoredAnchor(Minecraft mc, FocusTargetData target) {
         BlockPos pos = parseBlockTargetPos(target);
         if (pos == null) return target;
         BlockState blockState = mc.level.getBlockState(pos);
@@ -445,10 +448,10 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         double relZ = target.getWorldZ() - playerPos.z;
         double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
         String detail = buildBlockDetailText(mc, pos, blockState, blockId, displayName, distance);
-        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.BLOCK, target.getUuid(), blockId, displayName, relX, relY, relZ, target.getWorldX(), target.getWorldY(), target.getWorldZ(), distance, 0.0f, 0.0f, 0.0f, 0.0f, null, false, true, 1.0f, 0.0f, detail);
+        return new FocusTargetData(FocusTargetData.TargetType.BLOCK, target.getUuid(), blockId, displayName, relX, relY, relZ, target.getWorldX(), target.getWorldY(), target.getWorldZ(), distance, 0.0f, 0.0f, 0.0f, 0.0f, null, false, true, 1.0f, 0.0f, detail);
     }
 
-    private BlockPos parseBlockTargetPos(MrManualFocusTargetData target) {
+    private BlockPos parseBlockTargetPos(FocusTargetData target) {
         if (target == null || target.getUuid() == null || !target.getUuid().startsWith("block:")) return null;
         String[] parts = target.getUuid().split(":");
         if (parts.length < 6) return null;
@@ -462,7 +465,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         }
     }
 
-    private MrManualFocusTargetData buildManualFocusEntityTarget(Minecraft mc, LivingEntity living) {
+    private FocusTargetData buildEntityFocusTarget(Minecraft mc, LivingEntity living) {
         Player player = mc.player;
         Vec3 playerPos = player.position();
         double worldX = living.getX();
@@ -485,9 +488,9 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         float armorValue = 0f;
         var armorAttr = living.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
         if (armorAttr != null) armorValue = (float) armorAttr.getValue();
-        MrEntityExplanationData explanationData = buildEntityExplanationData(mc, living);
+        EntityExplanationData explanationData = buildEntityExplanationData(mc, living);
         String detailText = explanationData != null ? buildEnemyFocusDetailText(explanationData) : buildBasicEntityDetailText(living, entityId, uuid, distance, attackDamage, armorValue, relX, relY, relZ, mainHandItemId);
-        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.ENTITY, uuid, entityId, living.getName().getString(), relX, relY, relZ, worldX, worldY, worldZ, distance, living.getHealth(), living.getMaxHealth(), attackDamage, armorValue, mainHandItemId, living instanceof Enemy, true, living.getBbHeight(), living.getEyeHeight(), detailText, explanationData);
+        return new FocusTargetData(FocusTargetData.TargetType.ENTITY, uuid, entityId, living.getName().getString(), relX, relY, relZ, worldX, worldY, worldZ, distance, living.getHealth(), living.getMaxHealth(), attackDamage, armorValue, mainHandItemId, living instanceof Enemy, true, living.getBbHeight(), living.getEyeHeight(), detailText, explanationData);
     }
 
     private String buildBasicEntityDetailText(LivingEntity living, String entityId, String uuid, double distance, float attackDamage, float armorValue, double relX, double relY, double relZ, String mainHandItemId) {
@@ -506,7 +509,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return detailText;
     }
 
-    private String buildEnemyFocusDetailText(MrEntityExplanationData data) {
+    private String buildEnemyFocusDetailText(EntityExplanationData data) {
         StringBuilder detail = new StringBuilder();
         detail.append("名称 ").append(data.getName());
         detail.append("\n类型 ").append(data.getTypeLabel());
@@ -522,29 +525,29 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
             detail.append("\n可能掉落 ").append(String.join("、", data.getPossibleDrops()));
         }
         if (data.getFollowRange() != null && data.getFollowRange() > 0.0) {
-            detail.append("\n脱离锁定 约").append(formatOneDecimal(data.getFollowRange())).append("格外");
+            detail.append("\n脱离锁定 ").append(formatOneDecimal(data.getFollowRange())).append("格外");
         }
         return detail.toString();
     }
 
-    private void appendCombatEstimate(StringBuilder detail, String label, MrEntityExplanationData.CombatEstimateData estimate) {
+    private void appendCombatEstimate(StringBuilder detail, String label, EntityExplanationData.CombatEstimateData estimate) {
         if (estimate == null) return;
-        detail.append("\n").append(label).append(" ").append(estimate.getWeaponName()).append("，");
+        detail.append("\n").append(label).append(" ").append(estimate.getWeaponName()).append(" ");
         if ("bow".equals(estimate.getMode())) {
-            detail.append("满弓约").append(estimate.getHitCount()).append("箭");
+            detail.append("满弓").append(estimate.getHitCount()).append("箭");
         } else {
-            detail.append("约").append(estimate.getHitCount()).append("次满蓄力攻击");
+            detail.append(estimate.getHitCount()).append("次满蓄力攻击");
         }
         detail.append("，最快约").append(formatOneDecimal(estimate.getFastestSeconds())).append("秒");
     }
 
-    private void appendEffects(StringBuilder detail, String label, List<MrEntityExplanationData.EffectData> effects) {
+    private void appendEffects(StringBuilder detail, String label, List<EntityExplanationData.EffectData> effects) {
         if (effects == null || effects.isEmpty()) return;
         List<String> texts = new ArrayList<>();
-        for (MrEntityExplanationData.EffectData effect : effects) {
+        for (EntityExplanationData.EffectData effect : effects) {
             texts.add(effect.getDisplayName() + toRomanNumeral(effect.getAmplifier() + 1) + " " + effect.getDurationSeconds() + "秒");
         }
-        detail.append("\n").append(label).append(" ").append(String.join("，", texts));
+        detail.append("\n").append(label).append(" ").append(String.join("、", texts));
     }
 
     private String toRomanNumeral(int level) {
@@ -562,17 +565,17 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return String.format(Locale.ROOT, "%.1f", value);
     }
 
-    private MrEntityExplanationData buildEntityExplanationData(Minecraft mc, LivingEntity living) {
+    private EntityExplanationData buildEntityExplanationData(Minecraft mc, LivingEntity living) {
         if (!(living instanceof Enemy) || mc.player == null) return null;
         double movementSpeed = getAttributeValue(living, Attributes.MOVEMENT_SPEED, 0.0);
         CombatCandidate bestMelee = findBestMeleeCandidate(mc.player, living);
-        MrEntityExplanationData.CombatEstimateData meleeEstimate = bestMelee != null ? bestMelee.toEstimateData("melee") : null;
-        MrEntityExplanationData.CombatEstimateData rangedEstimate = buildRangedEstimateIfBetter(mc.player, living, bestMelee);
-        List<MrEntityExplanationData.EffectData> beneficialEffects = collectEffects(living, true, MAX_BENEFICIAL_EFFECTS);
-        List<MrEntityExplanationData.EffectData> harmfulEffects = collectEffects(living, false, MAX_HARMFUL_EFFECTS);
+        EntityExplanationData.CombatEstimateData meleeEstimate = bestMelee != null ? bestMelee.toEstimateData("melee") : null;
+        EntityExplanationData.CombatEstimateData rangedEstimate = buildRangedEstimateIfBetter(mc.player, living, bestMelee);
+        List<EntityExplanationData.EffectData> beneficialEffects = collectEffects(living, true, MAX_BENEFICIAL_EFFECTS);
+        List<EntityExplanationData.EffectData> harmfulEffects = collectEffects(living, false, MAX_HARMFUL_EFFECTS);
         List<String> possibleDrops = collectPossibleDrops(living);
         Double followRange = getNullableAttributeValue(living, Attributes.FOLLOW_RANGE);
-        return new MrEntityExplanationData(
+        return new EntityExplanationData(
                 LocalizationHelper.safeGetDisplayName(living.getName().getString()),
                 "敌人",
                 living.isInvisible(),
@@ -635,7 +638,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return (hits - 1) * Math.max(1, effectiveIntervalTicks) / 20.0;
     }
 
-    private MrEntityExplanationData.CombatEstimateData buildRangedEstimateIfBetter(Player player, LivingEntity target, CombatCandidate bestMelee) {
+    private EntityExplanationData.CombatEstimateData buildRangedEstimateIfBetter(Player player, LivingEntity target, CombatCandidate bestMelee) {
         if (bestMelee == null || !hasArrowForBow(player)) return null;
         ItemStack bestBow = findBestBow(player);
         if (bestBow == null || bestBow.isEmpty()) return null;
@@ -650,7 +653,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         if (seconds >= bestMelee.fastestSeconds) return null;
         String weaponName = LocalizationHelper.safeGetDisplayName(bestBow.getHoverName().getString());
         String weaponId = bestBow.getItemHolder().getRegisteredName();
-        return new MrEntityExplanationData.CombatEstimateData(weaponName, weaponId, "bow", arrows, seconds, effectiveDamage, 1.0);
+        return new EntityExplanationData.CombatEstimateData(weaponName, weaponId, "bow", arrows, seconds, effectiveDamage, 1.0);
     }
 
     private ItemStack findBestBow(Player player) {
@@ -695,20 +698,20 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return Math.max(0.0, result);
     }
 
-    private List<MrEntityExplanationData.EffectData> collectEffects(LivingEntity living, boolean beneficial, int limit) {
-        List<MrEntityExplanationData.EffectData> effects = new ArrayList<>();
+    private List<EntityExplanationData.EffectData> collectEffects(LivingEntity living, boolean beneficial, int limit) {
+        List<EntityExplanationData.EffectData> effects = new ArrayList<>();
         for (MobEffectInstance effect : living.getActiveEffects()) {
             try {
                 if (effect.getEffect().value().isBeneficial() != beneficial) continue;
                 String effectId = effect.getEffect().unwrapKey().map(key -> key.location().toString()).orElse("unknown");
                 String displayName = Component.translatable(effect.getEffect().value().getDescriptionId()).getString();
                 int seconds = Math.max(0, effect.getDuration() / 20);
-                effects.add(new MrEntityExplanationData.EffectData(effectId, LocalizationHelper.safeGetDisplayName(displayName), effect.getAmplifier(), seconds, beneficial));
+                effects.add(new EntityExplanationData.EffectData(effectId, LocalizationHelper.safeGetDisplayName(displayName), effect.getAmplifier(), seconds, beneficial));
             } catch (Exception e) {
                 LOGGER.warn("提取实体药水效果失败: {}", e.getMessage());
             }
         }
-        effects.sort(Comparator.comparingInt(MrEntityExplanationData.EffectData::getAmplifier).reversed().thenComparing(Comparator.comparingInt(MrEntityExplanationData.EffectData::getDurationSeconds).reversed()));
+        effects.sort(Comparator.comparingInt(EntityExplanationData.EffectData::getAmplifier).reversed().thenComparing(Comparator.comparingInt(EntityExplanationData.EffectData::getDurationSeconds).reversed()));
         if (effects.size() <= limit) return effects;
         return new ArrayList<>(effects.subList(0, limit));
     }
@@ -724,19 +727,19 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
 
     private void addKnownDropHints(ResourceLocation lootTable, Set<String> drops) {
         String path = lootTable.toString();
-        if (path.endsWith("entities/zombie")) addDrops(drops, "腐肉", "铁锭", "胡萝卜", "马铃薯");
-        else if (path.endsWith("entities/skeleton")) addDrops(drops, "骨头", "箭", "弓");
+        if (path.endsWith("entities/zombie")) addDrops(drops, "腐肉", "铁锭", "胡萝�?, "马铃�?);
+        else if (path.endsWith("entities/skeleton")) addDrops(drops, "骨头", "�?, "�?);
         else if (path.endsWith("entities/creeper")) addDrops(drops, "火药", "音乐唱片");
-        else if (path.endsWith("entities/spider")) addDrops(drops, "线", "蜘蛛眼");
+        else if (path.endsWith("entities/spider")) addDrops(drops, "�?, "蜘蛛�?);
         else if (path.endsWith("entities/enderman")) addDrops(drops, "末影珍珠");
-        else if (path.endsWith("entities/witch")) addDrops(drops, "玻璃瓶", "萤石粉", "红石粉", "火药", "蜘蛛眼", "糖", "木棍");
-        else if (path.endsWith("entities/slime")) addDrops(drops, "黏液球");
-        else if (path.endsWith("entities/blaze")) addDrops(drops, "烈焰棒");
+        else if (path.endsWith("entities/witch")) addDrops(drops, "玻璃�?, "萤石�?, "红石�?, "火药", "蜘蛛�?, "�?, "木棍");
+        else if (path.endsWith("entities/slime")) addDrops(drops, "黏液�?);
+        else if (path.endsWith("entities/blaze")) addDrops(drops, "烈焰�?);
         else if (path.endsWith("entities/ghast")) addDrops(drops, "恶魂之泪", "火药");
-        else if (path.endsWith("entities/guardian") || path.endsWith("entities/elder_guardian")) addDrops(drops, "海晶碎片", "海晶砂粒", "生鳕鱼");
-        else if (path.endsWith("entities/drowned")) addDrops(drops, "腐肉", "铜锭", "三叉戟", "鹦鹉螺壳");
-        else if (path.endsWith("entities/husk")) addDrops(drops, "腐肉", "铁锭", "胡萝卜", "马铃薯");
-        else if (path.endsWith("entities/stray")) addDrops(drops, "骨头", "箭", "迟缓之箭", "弓");
+        else if (path.endsWith("entities/guardian") || path.endsWith("entities/elder_guardian")) addDrops(drops, "海晶碎片", "海晶砂粒", "生鳕�?);
+        else if (path.endsWith("entities/drowned")) addDrops(drops, "腐肉", "铜锭", "三叉�?, "鹦鹉螺壳");
+        else if (path.endsWith("entities/husk")) addDrops(drops, "腐肉", "铁锭", "胡萝�?, "马铃�?);
+        else if (path.endsWith("entities/stray")) addDrops(drops, "骨头", "�?, "迟缓之箭", "�?);
         while (drops.size() > MAX_POSSIBLE_DROPS) {
             Iterator<String> iterator = drops.iterator();
             String last = null;
@@ -752,9 +755,9 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
 
     private String describeMovementSpeed(double speed) {
         if (speed <= 0.0) return null;
-        if (speed < 0.2) return "慢";
-        if (speed < 0.3) return "普通";
-        if (speed < 0.4) return "快";
+        if (speed < 0.2) return "�?;
+        if (speed < 0.3) return "普�?;
+        if (speed < 0.4) return "�?;
         return "很快";
     }
 
@@ -880,8 +883,8 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
             this.dps = dps;
         }
 
-        MrEntityExplanationData.CombatEstimateData toEstimateData(String mode) {
-            return new MrEntityExplanationData.CombatEstimateData(weaponName, weaponId, mode, hitCount, fastestSeconds, effectiveDamage, attackSpeed);
+        EntityExplanationData.CombatEstimateData toEstimateData(String mode) {
+            return new EntityExplanationData.CombatEstimateData(weaponName, weaponId, mode, hitCount, fastestSeconds, effectiveDamage, attackSpeed);
         }
     }
 
@@ -902,7 +905,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         return detail.toString();
     }
 
-    private MrManualFocusTargetData buildManualFocusBlockTarget(Minecraft mc, BlockHitResult blockHit) {
+    private FocusTargetData buildBlockFocusTarget(Minecraft mc, BlockHitResult blockHit) {
         BlockPos pos = blockHit.getBlockPos();
         BlockState blockState = mc.level.getBlockState(pos);
         if (blockState.isAir()) return null;
@@ -916,7 +919,7 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
         String uuid = "block:" + mc.level.dimension().location() + ":" + pos.getX() + ":" + pos.getY() + ":" + pos.getZ();
         String detail = buildBlockDetailText(mc, pos, blockState, blockId, displayName, distance);
-        return new MrManualFocusTargetData(MrManualFocusTargetData.TargetType.BLOCK, uuid, blockId, displayName, relX, relY, relZ, hitLocation.x, hitLocation.y, hitLocation.z, distance, 0.0f, 0.0f, 0.0f, 0.0f, null, false, true, 1.0f, 0.0f, detail);
+        return new FocusTargetData(FocusTargetData.TargetType.BLOCK, uuid, blockId, displayName, relX, relY, relZ, hitLocation.x, hitLocation.y, hitLocation.z, distance, 0.0f, 0.0f, 0.0f, 0.0f, null, false, true, 1.0f, 0.0f, detail);
     }
 
     private String shortUuid(String uuid) {
