@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.protocol.broker.BrokerSubmitResult;
 import com.rheinmetal.tianshu.protocol.broker.ProtocolBroker;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleRegistry;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
+import com.rheinmetal.tianshu.protocol.summary.StateSummaryRegistry;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
 import com.rheinmetal.tianshu.protocol.registry.DirectRouteRegistry;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
@@ -45,6 +46,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     private final StormGuard stormGuard = new StormGuard(200, 32);
     private final VoiceTriggerRegistry voiceTriggerRegistry = new VoiceTriggerRegistry();
     private final IntegrationModuleRegistry integrationModuleRegistry = new IntegrationModuleRegistry();
+    private final StateSummaryRegistry stateSummaryRegistry = new StateSummaryRegistry();
     private final ProtocolExecutorManager executorManager;
     private final BrokerRegistry brokerRegistry;
     private final ProtocolContext context;
@@ -227,6 +229,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
     public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
     public IntegrationModuleRegistry integrationModules() { return integrationModuleRegistry; }
+    public StateSummaryRegistry stateSummaries() { return stateSummaryRegistry; }
     public ProtocolExecutorManager executors() { return executorManager; }
     public ProtocolContext context() { return context; }
     public RuntimeInterruptPublisher runtimeInterrupts() { return this; }

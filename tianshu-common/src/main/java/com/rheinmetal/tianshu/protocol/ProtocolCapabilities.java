@@ -16,6 +16,12 @@ public final class ProtocolCapabilities {
     public static final String CORE_CAPABILITY_PROBE = "CORE.CAPABILITY_PROBE";
     public static final String INTEGRATION_MODULE_REGISTER = "INTEGRATION.MODULE_REGISTER";
     public static final String INTEGRATION_MODULE_UNREGISTER = "INTEGRATION.MODULE_UNREGISTER";
+    public static final String STATE_SUMMARY_SUBMIT = "STATE_SUMMARY.SUBMIT";
+    public static final String STATE_SUMMARY_QUERY = "STATE_SUMMARY.QUERY";
+    public static final String GUI_CONTRIBUTION_REGISTER = "GUI.CONTRIBUTION_REGISTER";
+    public static final String GUI_ACTION_EVENT = "GUI.ACTION_EVENT";
+    public static final String SHARED_SNAPSHOT_CATALOG = "SHARED_SNAPSHOT.CATALOG";
+    public static final String SHARED_SNAPSHOT_QUERY = "SHARED_SNAPSHOT.QUERY";
     public static final String DIALOGUE_ARBITRATE = "DIALOGUE.ARBITRATE";
     public static final String DIALOGUE_PARTICIPANT_REGISTER = "DIALOGUE.PARTICIPANT_REGISTER";
     public static final String DIALOGUE_PARTICIPANT_UNREGISTER = "DIALOGUE.PARTICIPANT_UNREGISTER";
