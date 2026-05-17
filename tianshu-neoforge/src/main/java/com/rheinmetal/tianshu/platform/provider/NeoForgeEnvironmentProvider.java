@@ -31,7 +31,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import org.slf4j.Logger;
@@ -48,7 +47,6 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     private static final int TARGET_DAMAGE_IMMUNITY_TICKS = 10;
     private static final int MAX_BENEFICIAL_EFFECTS = 4;
     private static final int MAX_HARMFUL_EFFECTS = 2;
-    private static final int MAX_POSSIBLE_DROPS = 8;
     private static final double DEFAULT_CROSSHAIR_TARGET_RANGE = 32.0;
 
     private volatile double activeScanRadius = 0;
@@ -63,17 +61,11 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         NeoForge.EVENT_BUS.addListener(this::onPlayerTick);
     }
 
-    /**
-     * 核心接口：由上层管理者（�?TianshuClient）统一调用，更新底层的扫描框大小�?
-     * 上层需要自行计算当前所有开启系统（雷达、MR等）中的最大需求半径传入�?
-     * 如果所有系统都关闭了，传入 0 即可让底层进入休眠状态�?
-     */
     public void setActiveScanRadius(double radius) {
         this.activeScanRadius = radius <= 0.0 ? 0.0 : Math.max(4.0, radius);
     }
 
     private void onPlayerTick(PlayerTickEvent.Post event) {
-        // 1. 绝对 0 损耗拦截：没系统要数据，直接跳�?
         if (activeScanRadius <= 0) return;
 
         Minecraft mc = Minecraft.getInstance();
@@ -90,7 +82,6 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
         Vec3 playerPos = player.position();
         Vec3 playerEyePos = player.getEyePosition();
 
-        // 2. 动态膨胀：框的大小精准匹配当前最大需�?
         AABB searchBox = player.getBoundingBox().inflate(activeScanRadius);
 
         List<Entity> entities;
@@ -139,7 +130,6 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
                     pullingBow = useItem.getItem() instanceof BowItem || useItem.getItem() instanceof CrossbowItem;
                 }
 
-                // 4. 修复：干掉荒谬的怪物潜行，改为蓄力攻击判�?
                 boolean charging = isMobChargingAttack(living);
 
                 boolean occlusionVisible = computeOcclusionVisibleWithSample(uuid, playerEyePos, living, level, currentTick);
@@ -717,47 +707,14 @@ public class NeoForgeEnvironmentProvider implements IEnvironmentAwarenessProvide
     }
 
     private List<String> collectPossibleDrops(LivingEntity living) {
-        LinkedHashSet<String> drops = new LinkedHashSet<>();
-        try {
-            ResourceLocation lootTable = living.getType().getDefaultLootTable().location();
-            addKnownDropHints(lootTable, drops);
-        } catch (Exception ignored) {}
-        return new ArrayList<>(drops);
-    }
-
-    private void addKnownDropHints(ResourceLocation lootTable, Set<String> drops) {
-        String path = lootTable.toString();
-        if (path.endsWith("entities/zombie")) addDrops(drops, "腐肉", "铁锭", "胡萝�?, "马铃�?);
-        else if (path.endsWith("entities/skeleton")) addDrops(drops, "骨头", "�?, "�?);
-        else if (path.endsWith("entities/creeper")) addDrops(drops, "火药", "音乐唱片");
-        else if (path.endsWith("entities/spider")) addDrops(drops, "�?, "蜘蛛�?);
-        else if (path.endsWith("entities/enderman")) addDrops(drops, "末影珍珠");
-        else if (path.endsWith("entities/witch")) addDrops(drops, "玻璃�?, "萤石�?, "红石�?, "火药", "蜘蛛�?, "�?, "木棍");
-        else if (path.endsWith("entities/slime")) addDrops(drops, "黏液�?);
-        else if (path.endsWith("entities/blaze")) addDrops(drops, "烈焰�?);
-        else if (path.endsWith("entities/ghast")) addDrops(drops, "恶魂之泪", "火药");
-        else if (path.endsWith("entities/guardian") || path.endsWith("entities/elder_guardian")) addDrops(drops, "海晶碎片", "海晶砂粒", "生鳕�?);
-        else if (path.endsWith("entities/drowned")) addDrops(drops, "腐肉", "铜锭", "三叉�?, "鹦鹉螺壳");
-        else if (path.endsWith("entities/husk")) addDrops(drops, "腐肉", "铁锭", "胡萝�?, "马铃�?);
-        else if (path.endsWith("entities/stray")) addDrops(drops, "骨头", "�?, "迟缓之箭", "�?);
-        while (drops.size() > MAX_POSSIBLE_DROPS) {
-            Iterator<String> iterator = drops.iterator();
-            String last = null;
-            while (iterator.hasNext()) last = iterator.next();
-            if (last == null) break;
-            drops.remove(last);
-        }
-    }
-
-    private void addDrops(Set<String> drops, String... values) {
-        drops.addAll(Arrays.asList(values));
+        return Collections.emptyList();
     }
 
     private String describeMovementSpeed(double speed) {
         if (speed <= 0.0) return null;
-        if (speed < 0.2) return "�?;
-        if (speed < 0.3) return "普�?;
-        if (speed < 0.4) return "�?;
+        if (speed < 0.2) return "较慢";
+        if (speed < 0.3) return "普通";
+        if (speed < 0.4) return "较快";
         return "很快";
     }
 

@@ -11,7 +11,9 @@ public final class TtsPcm16AudioConverter {
         byte[] pcm = new byte[samples.length * 2];
         for (int i = 0; i < samples.length; i++) {
             float clamped = Math.max(-1.0f, Math.min(1.0f, samples[i]));
-            short value = (short) Math.round(clamped * 32767.0f);
+            short value = clamped <= -1.0f
+                    ? Short.MIN_VALUE
+                    : (short) Math.round(clamped * 32767.0f);
             pcm[2 * i] = (byte) (value & 0xFF);
             pcm[2 * i + 1] = (byte) ((value >> 8) & 0xFF);
         }

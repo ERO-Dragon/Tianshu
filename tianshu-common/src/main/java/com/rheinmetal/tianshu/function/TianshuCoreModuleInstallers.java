@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.function.assistant.AssistantModuleInstaller;
+import com.rheinmetal.tianshu.function.assistant.rag.RuntimeFactTextResolver;
 import com.rheinmetal.tianshu.function.assistant.scope.AssistantWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
@@ -37,6 +38,36 @@ public final class TianshuCoreModuleInstallers {
             WorldStateProvider worldStateProvider,
             TianshuFunctionModuleInstaller irInstaller
     ) {
+        return clientCore(
+                env,
+                config,
+                nativeLibBridge,
+                audioBridge,
+                eventBus,
+                protocolRuntime,
+                voiceInputGate,
+                interruptionSignal,
+                assistantWorldIdentityProvider,
+                worldStateProvider,
+                null,
+                irInstaller
+        );
+    }
+
+    public static List<TianshuFunctionModuleInstaller> clientCore(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            INativeLibBridge nativeLibBridge,
+            IAudioBridge audioBridge,
+            TianshuEventBus eventBus,
+            ProtocolRuntime protocolRuntime,
+            BooleanSupplier voiceInputGate,
+            LongSupplier interruptionSignal,
+            AssistantWorldIdentityProvider assistantWorldIdentityProvider,
+            WorldStateProvider worldStateProvider,
+            RuntimeFactTextResolver runtimeFactTextResolver,
+            TianshuFunctionModuleInstaller irInstaller
+    ) {
         TianshuFunctionModuleInstaller effectiveIrInstaller = irInstaller == null
                 ? moduleHostInstaller(protocolRuntime)
                 : irInstaller;
@@ -44,7 +75,7 @@ public final class TianshuCoreModuleInstallers {
                 new IaModuleInstaller(protocolRuntime),
                 effectiveIrInstaller,
                 new LlmModuleInstaller(env, config, nativeLibBridge, protocolRuntime),
-                new AssistantModuleInstaller(env, config, protocolRuntime, assistantWorldIdentityProvider, worldStateProvider),
+                new AssistantModuleInstaller(env, config, protocolRuntime, assistantWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver),
                 new TtsModuleInstaller(audioBridge, eventBus, protocolRuntime, env, config, interruptionSignal),
                 new AssistantSpeechBridgeInstaller(protocolRuntime),
                 new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal),

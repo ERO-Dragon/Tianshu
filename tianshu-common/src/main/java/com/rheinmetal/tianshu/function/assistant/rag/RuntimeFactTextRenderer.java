@@ -11,14 +11,14 @@ import java.util.regex.Pattern;
 public final class RuntimeFactTextRenderer {
     private static final Pattern INVENTORY_ITEM_PATTERN = Pattern.compile("(.+)x(\\d+)");
     private static final int MAX_RENDERED_ITEM_TYPES = 36;
-    private final RuntimeFactLanguageBundle languageBundle;
+    private final RuntimeFactTextResolver textResolver;
 
     public RuntimeFactTextRenderer() {
-        this(RuntimeFactLanguageBundle.defaultBundle());
+        this(DefaultRuntimeFactTextResolver.instance());
     }
 
-    public RuntimeFactTextRenderer(RuntimeFactLanguageBundle languageBundle) {
-        this.languageBundle = languageBundle == null ? RuntimeFactLanguageBundle.defaultBundle() : languageBundle;
+    public RuntimeFactTextRenderer(RuntimeFactTextResolver textResolver) {
+        this.textResolver = textResolver == null ? DefaultRuntimeFactTextResolver.instance() : textResolver;
     }
 
     public String render(RuntimeFact fact, AssistantPromptLanguage language) {
@@ -36,22 +36,22 @@ public final class RuntimeFactTextRenderer {
     }
 
     private String renderDimension(Map<String, String> fields, AssistantPromptLanguage language) {
-        return languageBundle.format(language, "tianshu.llm.rag.player.dimension", Map.of(
+        return textResolver.format(language, "tianshu.llm.rag.player.dimension", Map.of(
                 "dimension", displayNameOrLocalizedId("dimension", value(fields, "dimensionDisplayName"), value(fields, "dimension"), language)
         ));
     }
 
     private String renderPlayerStatus(Map<String, String> fields, AssistantPromptLanguage language) {
-        return languageBundle.format(language, "tianshu.llm.rag.player.status", Map.of(
+        return textResolver.format(language, "tianshu.llm.rag.player.status", Map.of(
                 "health", percentFromFraction(value(fields, "health"), language),
                 "hunger", percentFromValue(value(fields, "hunger"), 20.0d, language),
                 "saturation", percentFromValue(value(fields, "saturation"), 20.0d, language),
-                "experienceLevel", fallback(value(fields, "experienceLevel"), languageBundle.text(language, "tianshu.llm.rag.value.unknown"))
+                "experienceLevel", fallback(value(fields, "experienceLevel"), textResolver.text(language, "tianshu.llm.rag.value.unknown"))
         ));
     }
 
     private String renderWorldEnvironment(Map<String, String> fields, AssistantPromptLanguage language) {
-        return languageBundle.format(language, "tianshu.llm.rag.world.environment", Map.of(
+        return textResolver.format(language, "tianshu.llm.rag.world.environment", Map.of(
                 "biome", displayNameOrLocalizedId("biome", value(fields, "biomeDisplayName"), value(fields, "biome"), language),
                 "weather", localizedWeather(value(fields, "raining"), value(fields, "thundering"), language),
                 "time", readableTime(value(fields, "dayTimeTicks"), language)
@@ -61,9 +61,9 @@ public final class RuntimeFactTextRenderer {
     private String renderInventoryItems(Map<String, String> fields, AssistantPromptLanguage language) {
         String items = inventoryItems(value(fields, "items"), language);
         if (items.isBlank()) {
-            return languageBundle.text(language, "tianshu.llm.rag.inventory.empty");
+            return textResolver.text(language, "tianshu.llm.rag.inventory.empty");
         }
-        return languageBundle.format(language, "tianshu.llm.rag.inventory.items", Map.of("items", items));
+        return textResolver.format(language, "tianshu.llm.rag.inventory.items", Map.of("items", items));
     }
 
     private String displayNameOrLocalizedId(String category, String displayName, String rawValue, AssistantPromptLanguage language) {
@@ -77,10 +77,11 @@ public final class RuntimeFactTextRenderer {
     private String localizedId(String category, String rawValue, AssistantPromptLanguage language) {
         String normalized = normalizeId(rawValue);
         if (normalized.isBlank()) {
-            return languageBundle.text(language, "tianshu.llm.rag." + category + ".unknown");
+            return textResolver.text(language, "tianshu.llm.rag." + category + ".unknown");
         }
-        String localized = languageBundle.text(language, category + "." + normalized.replace(':', '.'));
-        if (!localized.equals(category + "." + normalized.replace(':', '.'))) {
+        String lookupKey = category + "." + normalized.replace(':', '.');
+        String localized = textResolver.text(language, lookupKey);
+        if (!localized.equals(lookupKey)) {
             return localized;
         }
         if (language == AssistantPromptLanguage.EN_US) {
@@ -91,12 +92,12 @@ public final class RuntimeFactTextRenderer {
 
     private String localizedWeather(String raining, String thundering, AssistantPromptLanguage language) {
         if (Boolean.parseBoolean(thundering)) {
-            return languageBundle.text(language, "tianshu.llm.rag.weather.thunderstorm");
+            return textResolver.text(language, "tianshu.llm.rag.weather.thunderstorm");
         }
         if (Boolean.parseBoolean(raining)) {
-            return languageBundle.text(language, "tianshu.llm.rag.weather.rain");
+            return textResolver.text(language, "tianshu.llm.rag.weather.rain");
         }
-        return languageBundle.text(language, "tianshu.llm.rag.weather.clear");
+        return textResolver.text(language, "tianshu.llm.rag.weather.clear");
     }
 
     private String readableTime(String ticks, AssistantPromptLanguage language) {
@@ -109,8 +110,8 @@ public final class RuntimeFactTextRenderer {
         if (displayHour == 0) {
             displayHour = 12;
         }
-        return languageBundle.format(language, "tianshu.llm.rag.time.expression", Map.of(
-                "period", languageBundle.text(language, periodKey),
+        return textResolver.format(language, "tianshu.llm.rag.time.expression", Map.of(
+                "period", textResolver.text(language, periodKey),
                 "hour", Integer.toString(displayHour)
         ));
     }
@@ -139,7 +140,7 @@ public final class RuntimeFactTextRenderer {
 
     private String percentFromFraction(String fraction, AssistantPromptLanguage language) {
         if (fraction == null || fraction.isBlank()) {
-            return languageBundle.text(language, "tianshu.llm.rag.value.unknown");
+            return textResolver.text(language, "tianshu.llm.rag.value.unknown");
         }
         String[] parts = fraction.split("/");
         if (parts.length != 2) {
@@ -156,7 +157,7 @@ public final class RuntimeFactTextRenderer {
     private String percentFromValue(String value, double maximum, AssistantPromptLanguage language) {
         double current = parseDouble(value, -1.0d);
         if (current < 0.0d || maximum <= 0.0d) {
-            return fallback(value, languageBundle.text(language, "tianshu.llm.rag.value.unknown"));
+            return fallback(value, textResolver.text(language, "tianshu.llm.rag.value.unknown"));
         }
         return Math.round(current * 100.0d / maximum) + "%";
     }
@@ -175,15 +176,15 @@ public final class RuntimeFactTextRenderer {
             }
             String text = renderInventoryItem(trimmed, language);
             if (builder.length() > 0) {
-                builder.append(languageBundle.text(language, "tianshu.llm.rag.inventory.separator"));
+                builder.append(textResolver.text(language, "tianshu.llm.rag.inventory.separator"));
             }
             builder.append(text);
             rendered++;
             if (rendered >= MAX_RENDERED_ITEM_TYPES) {
                 int remaining = entries.length - rendered;
                 if (remaining > 0) {
-                    builder.append(languageBundle.text(language, "tianshu.llm.rag.inventory.separator"));
-                    builder.append(languageBundle.format(language, "tianshu.llm.rag.inventory.more", Map.of("count", Integer.toString(remaining))));
+                    builder.append(textResolver.text(language, "tianshu.llm.rag.inventory.separator"));
+                    builder.append(textResolver.format(language, "tianshu.llm.rag.inventory.more", Map.of("count", Integer.toString(remaining))));
                 }
                 break;
             }
@@ -196,7 +197,7 @@ public final class RuntimeFactTextRenderer {
         if (!matcher.matches()) {
             return entry;
         }
-        return languageBundle.format(language, "tianshu.llm.rag.inventory.item", Map.of(
+        return textResolver.format(language, "tianshu.llm.rag.inventory.item", Map.of(
                 "name", matcher.group(1).trim(),
                 "count", matcher.group(2).trim()
         ));
@@ -209,7 +210,7 @@ public final class RuntimeFactTextRenderer {
     private String titleizeIdentifier(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isBlank()) {
-            return languageBundle.text(AssistantPromptLanguage.EN_US, "tianshu.llm.rag.biome.unknown");
+            return textResolver.text(AssistantPromptLanguage.EN_US, "tianshu.llm.rag.biome.unknown");
         }
         int separator = normalized.indexOf(':');
         if (separator >= 0 && separator < normalized.length() - 1) {
@@ -226,7 +227,7 @@ public final class RuntimeFactTextRenderer {
             }
             builder.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1).toLowerCase(Locale.ROOT));
         }
-        return builder.isEmpty() ? languageBundle.text(AssistantPromptLanguage.EN_US, "tianshu.llm.rag.biome.unknown") : builder.toString();
+        return builder.isEmpty() ? textResolver.text(AssistantPromptLanguage.EN_US, "tianshu.llm.rag.biome.unknown") : builder.toString();
     }
 
     private String value(Map<String, String> fields, String key) {

@@ -26,6 +26,8 @@ import com.rheinmetal.tianshu.function.assistant.rag.AssistantRagPathClient;
 import com.rheinmetal.tianshu.function.assistant.rag.AssistantRagPathResolution;
 import com.rheinmetal.tianshu.function.assistant.rag.DynamicRagCandidateBuilder;
 import com.rheinmetal.tianshu.function.assistant.rag.DynamicRagUpdatePolicy;
+import com.rheinmetal.tianshu.function.assistant.rag.RuntimeFactTextRenderer;
+import com.rheinmetal.tianshu.function.assistant.rag.RuntimeFactTextResolver;
 import com.rheinmetal.tianshu.function.assistant.runtime.AssistantRuntimeMaintenanceCoordinator;
 import com.rheinmetal.tianshu.function.assistant.runtime.AssistantRuntimeMaintenancePolicy;
 import com.rheinmetal.tianshu.function.assistant.scope.AssistantScopeProvider;
@@ -45,6 +47,7 @@ public final class AssistantModule implements TianshuManagedModule {
     private final ProtocolRuntime runtime;
     private final AssistantWorldIdentityProvider worldIdentityProvider;
     private final WorldStateProvider worldStateProvider;
+    private final RuntimeFactTextResolver runtimeFactTextResolver;
     private final AssistantProtocolAdapter adapter;
     private AssistantDialogueGateway dialogueGateway;
     private AssistantParticipantRegistrar participantRegistrar;
@@ -54,15 +57,20 @@ public final class AssistantModule implements TianshuManagedModule {
     private AssistantStorageLayout storageLayout;
 
     public AssistantModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
-        this(env, config, runtime, null, null);
+        this(env, config, runtime, null, null, null);
     }
 
     public AssistantModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AssistantWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider) {
+        this(env, config, runtime, worldIdentityProvider, worldStateProvider, null);
+    }
+
+    public AssistantModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AssistantWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider, RuntimeFactTextResolver runtimeFactTextResolver) {
         this.env = env;
         this.config = config;
         this.runtime = runtime;
         this.worldIdentityProvider = worldIdentityProvider;
         this.worldStateProvider = worldStateProvider;
+        this.runtimeFactTextResolver = runtimeFactTextResolver;
         this.adapter = new AssistantProtocolAdapter(runtime);
     }
 
@@ -151,7 +159,7 @@ public final class AssistantModule implements TianshuManagedModule {
             runtimeFactCollector.registerProvider(new InventoryRuntimeFactProvider(worldStateProvider));
         }
         AssistantScopeProvider scopeProvider = worldIdentityProvider == null ? new DefaultAssistantScopeProvider(env) : new DefaultAssistantScopeProvider(worldIdentityProvider);
-        DynamicRagCandidateBuilder ragCandidateBuilder = new DynamicRagCandidateBuilder(runtimeFactPool, DynamicRagUpdatePolicy.DEFAULT);
+        DynamicRagCandidateBuilder ragCandidateBuilder = new DynamicRagCandidateBuilder(runtimeFactPool, DynamicRagUpdatePolicy.DEFAULT, new RuntimeFactTextRenderer(runtimeFactTextResolver));
         AssistantContextCollector contextCollector = new AssistantContextCollector(memorySystem, ragCandidateBuilder);
         AssistantPromptResourceRepository promptResourceRepository = new AssistantPromptResourceRepository(storageLayout, jsonStore);
         AssistantCompressionTaskDispatcher compressionTaskDispatcher = new AssistantCompressionTaskDispatcher(memorySystem, llmClient, scopeProvider, promptResourceRepository);

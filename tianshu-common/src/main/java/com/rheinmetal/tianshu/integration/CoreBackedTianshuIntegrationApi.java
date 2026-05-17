@@ -13,7 +13,6 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
 import java.util.List;
-import java.util.Optional;
 
 public final class CoreBackedTianshuIntegrationApi implements TianshuIntegrationApi {
     private final TianshuCoreManager coreManager;
@@ -96,10 +95,5 @@ public final class CoreBackedTianshuIntegrationApi implements TianshuIntegration
     @Override
     public void submit(TianshuEnvelope envelope) {
         coreManager.protocolRuntime().submit(envelope);
-    }
-
-    @Override
-    public Optional<TianshuEnvelope> request(TianshuEnvelope envelope) {
-        return coreManager.protocolRuntime().request(envelope);
     }
 }

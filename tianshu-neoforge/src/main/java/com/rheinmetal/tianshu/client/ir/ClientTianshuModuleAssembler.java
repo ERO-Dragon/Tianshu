@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.function.CompositeTianshuFunctionModuleAssembler;
 import com.rheinmetal.tianshu.function.TianshuCoreModuleInstallers;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
 import com.rheinmetal.tianshu.function.assistant.scope.AssistantWorldIdentityProvider;
+import com.rheinmetal.tianshu.client.rag.MinecraftRuntimeFactTextResolver;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 
@@ -46,6 +47,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 interruptionSignal,
                 assistantWorldIdentityProvider,
                 worldStateProvider,
+                new MinecraftRuntimeFactTextResolver(),
                 new ClientIrModuleInstaller(protocolRuntime)
         ));
         this.delegate = new CompositeTianshuFunctionModuleAssembler(installers);

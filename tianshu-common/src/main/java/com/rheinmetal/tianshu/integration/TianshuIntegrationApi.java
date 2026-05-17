@@ -12,7 +12,6 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface TianshuIntegrationApi {
     CoreCapabilityProbe probe();
@@ -38,6 +37,4 @@ public interface TianshuIntegrationApi {
     StateSummaryRegistry stateSummaries();
 
     void submit(TianshuEnvelope envelope);
-
-    Optional<TianshuEnvelope> request(TianshuEnvelope envelope);
 }

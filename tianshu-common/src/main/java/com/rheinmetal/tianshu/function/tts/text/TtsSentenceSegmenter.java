@@ -25,8 +25,8 @@ public final class TtsSentenceSegmenter {
 
     public TtsSentenceSegmenter(int minLength, int preferredLength, int maxLength) {
         this.minLength = Math.max(8, minLength);
-        this.preferredLength = Math.max(this.minLength + 8, preferredLength);
-        this.maxLength = Math.max(this.preferredLength + 16, maxLength);
+        this.maxLength = Math.max(this.minLength + 1, maxLength);
+        this.preferredLength = Math.min(Math.max(this.minLength + 1, preferredLength), this.maxLength);
     }
 
     public boolean shouldFlush(String text) {
