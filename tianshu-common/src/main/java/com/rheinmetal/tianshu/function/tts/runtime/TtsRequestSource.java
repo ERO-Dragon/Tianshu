@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 public enum TtsRequestSource {
-    ASSISTANT,
+    AX,
     ALERT,
     PREVIEW,
     SYSTEM,

@@ -21,8 +21,6 @@ import com.rheinmetal.tianshu.core.runtime.RuntimeEnginePhase;
 import com.rheinmetal.tianshu.core.runtime.RuntimeInterruptionService;
 import com.rheinmetal.tianshu.core.runtime.RuntimeReadinessState;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
-import com.rheinmetal.tianshu.event.InterruptEvent;
-import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -38,7 +36,6 @@ public class TianshuCoreManager {
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final INativeLibBridge nativeLibBridge;
-    private final TianshuEventBus eventBus;
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
@@ -59,7 +56,6 @@ public class TianshuCoreManager {
         this.env = env;
         this.config = config;
         this.nativeLibBridge = nativeLibBridge;
-        this.eventBus = new TianshuEventBus(env);
         this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread);
         this.moduleHost = new TianshuModuleHost(env);
         this.moduleServices = new ModuleServiceRegistry();
@@ -67,13 +63,12 @@ public class TianshuCoreManager {
         this.runtimeState = new ModuleRuntimeState();
         this.state = runtimeState.readiness();
         this.envSetupManager = new EnvSetupManager(env, nativeLibBridge, protocolRuntime.executors());
-        this.interruptionService = new RuntimeInterruptionService(eventBus, protocolRuntime.runtimeInterrupts());
+        this.interruptionService = new RuntimeInterruptionService(protocolRuntime.runtimeInterrupts());
         TianshuModuleAssemblyContext moduleAssemblyContext = new TianshuModuleAssemblyContext(
                 env,
                 config,
                 nativeLibBridge,
                 audioBridge,
-                eventBus,
                 protocolRuntime,
                 this::runtimeReadyForRequests,
                 this::interruptOngoingProcessing
@@ -116,10 +111,6 @@ public class TianshuCoreManager {
 
     public boolean isEnvironmentReady() {
         return envSetupManager.isEnvironmentReady();
-    }
-
-    public TianshuEventBus eventBus() {
-        return eventBus;
     }
 
     public boolean isEnvironmentSetupCompleted() {
@@ -202,14 +193,11 @@ public class TianshuCoreManager {
     public void destroy() {
         env.info("核心管理器：销毁全部资源");
 
-        long stoppedSession = eventBus.beginNewSession();
-        eventBus.clearAllQueues();
-        eventBus.publishEvent(new InterruptEvent(stoppedSession));
+        interruptionService.interruptOngoingProcessing(RuntimeInterruptPayload.Reason.CLIENT_SHUTDOWN, "client_shutdown");
 
         lifecycleCoordinator.destroyModules();
         protocolRuntime.close();
 
-        eventBus.clearAllQueues();
         state.reset();
         state.setPhase(RuntimeEnginePhase.DESTROYED);
     }

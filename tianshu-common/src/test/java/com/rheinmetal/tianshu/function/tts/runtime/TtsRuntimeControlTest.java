@@ -97,11 +97,11 @@ class TtsRuntimeControlTest {
     }
 
     private static TtsRequest request(String requestId) {
-        return new TtsRequest(requestId, requestId, requestId, "hello", TtsRequestSource.ASSISTANT, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
+        return new TtsRequest(requestId, requestId, requestId, "hello", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
     }
 
     private static TtsStreamChunk chunk(String streamId, String text, boolean last) {
-        return new TtsStreamChunk(streamId, streamId, streamId, text, TtsRequestSource.ASSISTANT, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), last);
+        return new TtsStreamChunk(streamId, streamId, streamId, text, TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), last);
     }
 
     private static boolean awaitState(List<TtsSession> statuses, String requestId, TtsSessionState state) throws InterruptedException {

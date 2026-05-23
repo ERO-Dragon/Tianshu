@@ -19,7 +19,6 @@ public final class ProtocolTopics {
     public static final String LANGUAGE_RELOADED = "LANGUAGE.RELOADED";
     public static final String RESOURCE_EVENTS = "RESOURCE.EVENTS";
     public static final String STATE_SUMMARY_CHANGED = "STATE_SUMMARY.CHANGED";
-    public static final String SHARED_SNAPSHOT_CATALOG = "SHARED_SNAPSHOT.CATALOG";
     public static final String GUI_CONTRIBUTION_CHANGED = "GUI.CONTRIBUTION_CHANGED";
     public static final String TTS_PLAYBACK = "TTS.PLAYBACK";
     public static final String FEEDBACK_EMIT = "FEEDBACK.EMIT";

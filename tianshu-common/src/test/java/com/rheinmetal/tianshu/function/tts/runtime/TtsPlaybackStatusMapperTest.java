@@ -14,7 +14,7 @@ class TtsPlaybackStatusMapperTest {
                 "env-1",
                 "trace-1",
                 "hello",
-                TtsRequestSource.ASSISTANT,
+                TtsRequestSource.AX,
                 TtsPlaybackPolicy.QUEUE,
                 Priority.NORMAL,
                 TtsVoiceProfile.defaults(),

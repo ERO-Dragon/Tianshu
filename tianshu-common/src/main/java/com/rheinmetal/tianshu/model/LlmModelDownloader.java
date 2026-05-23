@@ -14,15 +14,25 @@ public class LlmModelDownloader {
         void onError(String message);
     }
 
+    public interface DownloadControl {
+        void checkCancelled() throws java.io.IOException;
+    }
+
     private final IGameEnvironment env;
     private final HuggingFaceDownloader hfDownloader;
+    private volatile boolean cancelled = false;
 
     public LlmModelDownloader(IGameEnvironment env) {
         this.env = env;
         this.hfDownloader = new HuggingFaceDownloader(env);
     }
 
+    public void cancelDownload() {
+        cancelled = true;
+    }
+
     public void download(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback) {
+        cancelled = false;
         Objects.requireNonNull(info, "info");
         Objects.requireNonNull(targetDir, "targetDir");
         Objects.requireNonNull(callback, "callback");
@@ -52,8 +62,17 @@ public class LlmModelDownloader {
         env.info("LLM 模型下载: repo=" + info.repoId + " file=" + filePath + " → " + targetFile);
 
         callback.onProgress("下载中", 5);
-        hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3);
+        hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3, this::checkCancelled, new HuggingFaceDownloader.DownloadProgressListener() {
+            @Override
+            public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
+                if (totalBytes > 0L) {
+                    int percent = 5 + (int) Math.min(90L, downloadedBytes * 90L / totalBytes);
+                    callback.onProgress("下载中", percent);
+                }
+            }
+        });
 
+        checkCancelled();
         if (!Files.exists(targetFile) || Files.size(targetFile) == 0) {
             throw new IllegalStateException("下载完成但文件不存在或为空: " + targetFile);
         }
@@ -67,5 +86,12 @@ public class LlmModelDownloader {
             return info.hfFilePath;
         }
         return info.getModelFile();
+    }
+
+    private void checkCancelled() throws java.io.IOException {
+        if (cancelled || Thread.currentThread().isInterrupted()) {
+            cancelled = false;
+            throw new java.io.IOException("下载已取消");
+        }
     }
 }

@@ -27,7 +27,6 @@ public record CoreCapabilityProbe(
                         IntegrationCapability.STATE_SUMMARY_PROVIDER,
                         IntegrationCapability.STATE_SUMMARY_CONSUMER,
                         IntegrationCapability.GUI_RENDER_CONTRIBUTOR,
-                        IntegrationCapability.SHARED_SNAPSHOT_CONSUMER,
                         IntegrationCapability.LIFECYCLE_LISTENER,
                         IntegrationCapability.RESOURCE_RELOAD_LISTENER
                 )

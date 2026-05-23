@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.client.ir;
 
+import com.rheinmetal.tianshu.client.language.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.function.ir.core.IRSnapshot;
 import net.minecraft.client.Minecraft;
-import net.minecraft.locale.Language;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -78,7 +78,7 @@ final class IRCacheStore {
     }
 
     private String currentLanguageCode() {
-        return Language.getInstance().getOrDefault("language.code");
+        return ClientLanguagePolicy.currentPromptLanguage().code();
     }
 
     private void updateDigest(MessageDigest digest, String value) {

@@ -14,7 +14,7 @@ class TtsStreamChunkTest {
         assertEquals("env-1", chunk.envelopeId());
         assertEquals("trace-1", chunk.traceId());
         assertEquals("", chunk.text());
-        assertEquals(TtsRequestSource.ASSISTANT, chunk.source());
+        assertEquals(TtsRequestSource.AX, chunk.source());
         assertEquals(TtsPlaybackPolicy.QUEUE, chunk.playbackPolicy());
     }
 

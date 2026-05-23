@@ -22,7 +22,7 @@ class TtsStreamRegistryTest {
     @Test
     void lastChunkFlushesAndRemovesStream() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
-        TtsStreamChunk chunk = new TtsStreamChunk("stream-1", "env-1", "trace-1", "你好世界", TtsRequestSource.ASSISTANT, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true);
+        TtsStreamChunk chunk = new TtsStreamChunk("stream-1", "env-1", "trace-1", "你好世界", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true);
 
         Optional<String> segment = registry.append(chunk);
 
@@ -34,7 +34,7 @@ class TtsStreamRegistryTest {
     @Test
     void cancelClearsBufferedStream() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
-        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "还没有结束", TtsRequestSource.ASSISTANT, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "还没有结束", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
 
         registry.cancel("stream-1");
 
@@ -44,8 +44,8 @@ class TtsStreamRegistryTest {
     @Test
     void clearRemovesAllBufferedStreams() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
-        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "第一段", TtsRequestSource.ASSISTANT, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
-        registry.append(new TtsStreamChunk("stream-2", "env-2", "trace-2", "第二段", TtsRequestSource.ASSISTANT, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "第一段", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        registry.append(new TtsStreamChunk("stream-2", "env-2", "trace-2", "第二段", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
 
         registry.clear();
 

@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.client.rag;
 
-import com.rheinmetal.tianshu.function.assistant.prompt.AssistantPromptLanguage;
-import com.rheinmetal.tianshu.function.assistant.rag.DefaultRuntimeFactTextResolver;
-import com.rheinmetal.tianshu.function.assistant.rag.RuntimeFactTextResolver;
+import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage;
+import com.rheinmetal.tianshu.function.auxilium.rag.DefaultRuntimeFactTextResolver;
+import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextResolver;
 import net.minecraft.client.resources.language.I18n;
 
 public final class MinecraftRuntimeFactTextResolver implements RuntimeFactTextResolver {
@@ -17,7 +17,7 @@ public final class MinecraftRuntimeFactTextResolver implements RuntimeFactTextRe
     }
 
     @Override
-    public String text(AssistantPromptLanguage language, String key) {
+    public String text(AXPromptLanguage language, String key) {
         if (key == null || key.isBlank()) {
             return "";
         }

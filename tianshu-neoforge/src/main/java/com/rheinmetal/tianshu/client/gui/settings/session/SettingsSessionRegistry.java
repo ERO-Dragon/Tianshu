@@ -78,18 +78,18 @@ public final class SettingsSessionRegistry {
             requiresReload = requiresReload || result.requiresReload();
         }
         if (!savedAny) {
-            return SettingsSaveResult.unchanged(Component.literal("没有需要保存的修改"));
+            return SettingsSaveResult.unchanged(Component.translatable("tianshu.gui.settings.message.no_changes"));
         }
-        return SettingsSaveResult.success(Component.literal("设置已保存"), true, requiresRestart, requiresReload);
+        return SettingsSaveResult.success(Component.translatable("tianshu.gui.settings.message.saved"), true, requiresRestart, requiresReload);
     }
 
     public SettingsSaveResult save(String moduleId) {
         ModuleSettingsSession session = find(moduleId);
         if (session == null) {
-            return SettingsSaveResult.failure(Component.literal("当前模块没有可保存的设置会话"), SettingsSaveResult.FailureType.MISSING_SESSION);
+            return SettingsSaveResult.failure(Component.translatable("tianshu.gui.settings.message.missing_save_session"), SettingsSaveResult.FailureType.MISSING_SESSION);
         }
         if (!session.dirty()) {
-            return SettingsSaveResult.unchanged(Component.literal("当前模块没有需要保存的修改"));
+            return SettingsSaveResult.unchanged(Component.translatable("tianshu.gui.settings.message.current_no_changes"));
         }
         SettingsValidationResult validation = session.validate();
         if (!validation.success()) {
@@ -105,10 +105,10 @@ public final class SettingsSessionRegistry {
     public SettingsSaveResult reset(String moduleId) {
         ModuleSettingsSession session = find(moduleId);
         if (session == null) {
-            return SettingsSaveResult.failure(Component.literal("当前模块没有可重置的设置会话"), SettingsSaveResult.FailureType.MISSING_SESSION);
+            return SettingsSaveResult.failure(Component.translatable("tianshu.gui.settings.message.missing_reset_session"), SettingsSaveResult.FailureType.MISSING_SESSION);
         }
         boolean changed = session.dirty();
         session.reset();
-        return SettingsSaveResult.success(Component.literal(changed ? "当前模块设置已重置" : "当前模块没有需要重置的修改"), changed, false, false);
+        return SettingsSaveResult.success(Component.translatable(changed ? "tianshu.gui.settings.message.current_reset" : "tianshu.gui.settings.message.current_no_reset_changes"), changed, false, false);
     }
 }

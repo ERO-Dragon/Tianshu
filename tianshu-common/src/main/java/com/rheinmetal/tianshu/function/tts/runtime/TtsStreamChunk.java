@@ -15,7 +15,7 @@ public record TtsStreamChunk(
         envelopeId = envelopeId == null || envelopeId.isBlank() ? streamId : envelopeId.trim();
         traceId = traceId == null || traceId.isBlank() ? streamId : traceId.trim();
         text = text == null ? "" : text;
-        source = source == null ? TtsRequestSource.ASSISTANT : source;
+        source = source == null ? TtsRequestSource.AX : source;
         playbackPolicy = playbackPolicy == null ? TtsPlaybackPolicy.QUEUE : playbackPolicy;
         voiceProfile = voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile;
     }

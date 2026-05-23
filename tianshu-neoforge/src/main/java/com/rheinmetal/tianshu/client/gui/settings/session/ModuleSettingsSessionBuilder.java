@@ -8,8 +8,8 @@ import java.util.List;
 public final class ModuleSettingsSessionBuilder {
     private final String moduleId;
     private final List<SettingsValue<?>> values = new ArrayList<>();
-    private Component successMessage = Component.literal("设置已保存");
-    private Component validationFailureMessage = Component.literal("设置存在无效值");
+    private Component successMessage = Component.translatable("tianshu.gui.settings.message.saved");
+    private Component validationFailureMessage = Component.translatable("tianshu.gui.settings.validation.invalid_values");
     private boolean requiresRestart;
     private boolean requiresReload;
 

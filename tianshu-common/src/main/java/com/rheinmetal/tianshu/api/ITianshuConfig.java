@@ -63,6 +63,21 @@ public interface ITianshuConfig {
     String getCustomLlmName();
     void setCustomLlmName(String name);
 
+    default boolean isLlmEnabled() {
+        return isAiEnabled();
+    }
+
+    default void setLlmEnabled(boolean enabled) {
+        setAiEnabled(enabled);
+    }
+
+    default int getLlmGpuLayerPercent() {
+        return 80;
+    }
+
+    default void setLlmGpuLayerPercent(int percent) {
+    }
+
     String getCustomTtsName();
     void setCustomTtsName(String name);
 
@@ -139,63 +154,63 @@ public interface ITianshuConfig {
         return 1000;
     }
 
-    default int getLlmAssistantChatInputTokenBudget() {
+    default int getLlmAXChatInputTokenBudget() {
         return 8000;
     }
 
-    default int getLlmAssistantRecentRawChatTokenBudget() {
+    default int getLlmAXRecentRawChatTokenBudget() {
         return 4000;
     }
 
-    default int getLlmAssistantShortTermChatTokenBudget() {
+    default int getLlmAXShortTermChatTokenBudget() {
         return 1500;
     }
 
-    default int getLlmAssistantUserConventionChatTokenBudget() {
+    default int getLlmAXUserConventionChatTokenBudget() {
         return 500;
     }
 
-    default int getLlmAssistantDynamicRagChatTokenBudget() {
+    default int getLlmAXDynamicRagChatTokenBudget() {
         return 500;
     }
 
-    default int getLlmAssistantRecentRawKeepTokenTarget() {
+    default int getLlmAXRecentRawKeepTokenTarget() {
         return 5000;
     }
 
-    default int getLlmAssistantRecentRawKeepTokenMax() {
+    default int getLlmAXRecentRawKeepTokenMax() {
         return 8000;
     }
 
-    default int getLlmAssistantShortTermCompressTokenTarget() {
+    default int getLlmAXShortTermCompressTokenTarget() {
         return 7000;
     }
 
-    default int getLlmAssistantShortTermCompressTokenMax() {
+    default int getLlmAXShortTermCompressTokenMax() {
         return 10000;
     }
 
-    default int getLlmAssistantMaxRawEstimatedTokens() {
+    default int getLlmAXMaxRawEstimatedTokens() {
         return 28000;
     }
 
-    default int getLlmAssistantMaxRawCharacters() {
+    default int getLlmAXMaxRawCharacters() {
         return 120000;
     }
 
-    default int getLlmAssistantShortTermChatBlockLimit() {
+    default int getLlmAXShortTermChatBlockLimit() {
         return 3;
     }
 
-    default long getLlmAssistantConversationPauseMillis() {
+    default long getLlmAXConversationPauseMillis() {
         return 60000L;
     }
 
-    default int getLlmAssistantLongTermMemoryMaxEntries() {
+    default int getLlmAXLongTermMemoryMaxEntries() {
         return 2048;
     }
 
-    default long getLlmAssistantLongTermMemoryTtlMillis() {
+    default long getLlmAXLongTermMemoryTtlMillis() {
         return 1209600000L;
     }
 

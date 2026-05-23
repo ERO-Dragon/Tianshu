@@ -1,26 +1,10 @@
 package com.rheinmetal.tianshu.provider;
 
-import com.rheinmetal.tianshu.snapshot.*;
+import com.rheinmetal.tianshu.snapshot.PlayerStatusData;
 
 public interface IPlayerStateProvider {
 
-    NavigationInfo getPlayerNavigationInfo();
-
-    default String getCurrentDimensionDisplayName() {
-        NavigationInfo navigation = getPlayerNavigationInfo();
-        PositionData position = navigation == null ? null : navigation.getCurrent();
-        return position == null ? "" : position.getDimension();
-    }
-
-    GameSettingsData getClientGameSettings();
-
-    DeathContextData getLastDeathContext();
+    String getCurrentDimensionDisplayName();
 
     PlayerStatusData getPlayerStatus();
-
-    PositionData getSpawnPoint();
-
-    long getLastDamageTick();
-
-    float getCurrentDynamicFov();
 }

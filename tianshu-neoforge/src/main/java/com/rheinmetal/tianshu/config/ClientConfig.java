@@ -21,6 +21,8 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue TTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> TTS_PREVIEW_TEXT;
     public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
+    public static final ModConfigSpec.BooleanValue LLM_ENABLED;
+    public static final ModConfigSpec.IntValue LLM_GPU_LAYER_PERCENT;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.ConfigValue<String> WAKE_WORD;
@@ -52,6 +54,11 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         TTS_ENABLED = builder.define("enabled", true);
         TTS_PREVIEW_TEXT = builder.define("previewText", "这是一段天枢语音播报试听");
         TTS_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
+        builder.pop();
+
+        builder.comment("LLM 大语言模型设置").push("llm");
+        LLM_ENABLED = builder.define("enabled", true);
+        LLM_GPU_LAYER_PERCENT = builder.defineInRange("gpuLayerPercent", 100, 0, 100);
         builder.pop();
 
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
@@ -203,6 +210,26 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setCustomLlmName(String name) {
         CUSTOM_LLM_NAME.set(name);
+    }
+
+    @Override
+    public boolean isLlmEnabled() {
+        return LLM_ENABLED.get();
+    }
+
+    @Override
+    public void setLlmEnabled(boolean enabled) {
+        LLM_ENABLED.set(enabled);
+    }
+
+    @Override
+    public int getLlmGpuLayerPercent() {
+        return LLM_GPU_LAYER_PERCENT.get();
+    }
+
+    @Override
+    public void setLlmGpuLayerPercent(int percent) {
+        LLM_GPU_LAYER_PERCENT.set(percent);
     }
 
     @Override

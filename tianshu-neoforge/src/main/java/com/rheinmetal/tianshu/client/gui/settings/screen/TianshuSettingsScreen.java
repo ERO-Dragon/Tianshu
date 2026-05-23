@@ -28,9 +28,9 @@ import net.minecraft.network.chat.Component;
 import java.util.List;
 
 public final class TianshuSettingsScreen extends Screen {
-    private static final Component TITLE = Component.literal("天枢设置");
-    private static final Component LEFT_TITLE = Component.literal("模块");
-    private static final Component SAVE = Component.literal("保存");
+    private static final Component TITLE = Component.translatable("tianshu.gui.settings.title");
+    private static final Component LEFT_TITLE = Component.translatable("tianshu.gui.settings.modules");
+    private static final Component SAVE = Component.translatable("tianshu.gui.settings.action.save");
     private static final int SCROLL_STEP = 24;
 
     private final ModuleSettingsContext context;
@@ -120,19 +120,19 @@ public final class TianshuSettingsScreen extends Screen {
 
     private void showSaveResult(SettingsSaveResult result) {
         if (result == null) {
-            showStatus(Component.literal("设置操作没有返回结果"));
+            showStatus(Component.translatable("tianshu.gui.settings.status.no_result"));
             return;
         }
         if (!result.success()) {
-            showStatus(result.message().getString().isBlank() ? Component.literal("设置操作失败") : result.message());
+            showStatus(result.message().getString().isBlank() ? Component.translatable("tianshu.gui.settings.status.failed") : result.message());
             return;
         }
         if (result.requiresRestart()) {
-            showStatus(Component.literal(result.message().getString() + "，需要重启游戏"));
+            showStatus(Component.translatable("tianshu.gui.settings.status.requires_restart", result.message()));
         } else if (result.requiresReload()) {
-            showStatus(Component.literal(result.message().getString() + "，需要重新加载运行时"));
+            showStatus(Component.translatable("tianshu.gui.settings.status.requires_reload", result.message()));
         } else {
-            showStatus(result.message().getString().isBlank() ? Component.literal("设置操作完成") : result.message());
+            showStatus(result.message().getString().isBlank() ? Component.translatable("tianshu.gui.settings.status.completed") : result.message());
         }
     }
 

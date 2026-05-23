@@ -34,7 +34,6 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LANGUAGE_RELOADED, PayloadType.RESOURCE_RELOAD_EVENT, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.RESOURCE_EVENTS, PayloadType.RESOURCE_RELOAD_EVENT, DeliveryPolicy.WAIT_IN_QUEUE, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.STATE_SUMMARY_CHANGED, PayloadType.STATE_SUMMARY, DeliveryPolicy.LATEST_ONLY, 80));
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.SHARED_SNAPSHOT_CATALOG, PayloadType.SHARED_SNAPSHOT_CATALOG, DeliveryPolicy.LATEST_ONLY, 10));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.GUI_CONTRIBUTION_CHANGED, PayloadType.GUI_CONTRIBUTION, DeliveryPolicy.WAIT_IN_QUEUE, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.TTS_PLAYBACK, PayloadType.STATUS, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.FEEDBACK_EMIT, PayloadType.FEEDBACK, DeliveryPolicy.WAIT_IN_QUEUE, 80));

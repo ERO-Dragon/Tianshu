@@ -4,16 +4,15 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.event.TianshuEventBus;
-import com.rheinmetal.tianshu.function.assistant.AssistantModuleInstaller;
-import com.rheinmetal.tianshu.function.assistant.rag.RuntimeFactTextResolver;
-import com.rheinmetal.tianshu.function.assistant.scope.AssistantWorldIdentityProvider;
+import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
+import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextResolver;
+import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
-import com.rheinmetal.tianshu.function.tts.AssistantSpeechBridgeInstaller;
+import com.rheinmetal.tianshu.function.tts.AXSpeechBridgeInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
-import com.rheinmetal.tianshu.function.ui.UiProtocolBridgeInstaller;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 
@@ -30,11 +29,10 @@ public final class TianshuCoreModuleInstallers {
             ITianshuConfig config,
             INativeLibBridge nativeLibBridge,
             IAudioBridge audioBridge,
-            TianshuEventBus eventBus,
             ProtocolRuntime protocolRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
-            AssistantWorldIdentityProvider assistantWorldIdentityProvider,
+            AXWorldIdentityProvider axWorldIdentityProvider,
             WorldStateProvider worldStateProvider,
             TianshuFunctionModuleInstaller irInstaller
     ) {
@@ -43,12 +41,12 @@ public final class TianshuCoreModuleInstallers {
                 config,
                 nativeLibBridge,
                 audioBridge,
-                eventBus,
                 protocolRuntime,
                 voiceInputGate,
                 interruptionSignal,
-                assistantWorldIdentityProvider,
+                axWorldIdentityProvider,
                 worldStateProvider,
+                null,
                 null,
                 irInstaller
         );
@@ -59,13 +57,13 @@ public final class TianshuCoreModuleInstallers {
             ITianshuConfig config,
             INativeLibBridge nativeLibBridge,
             IAudioBridge audioBridge,
-            TianshuEventBus eventBus,
             ProtocolRuntime protocolRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
-            AssistantWorldIdentityProvider assistantWorldIdentityProvider,
+            AXWorldIdentityProvider axWorldIdentityProvider,
             WorldStateProvider worldStateProvider,
             RuntimeFactTextResolver runtimeFactTextResolver,
+            AXPromptLanguageProvider promptLanguageProvider,
             TianshuFunctionModuleInstaller irInstaller
     ) {
         TianshuFunctionModuleInstaller effectiveIrInstaller = irInstaller == null
@@ -75,11 +73,10 @@ public final class TianshuCoreModuleInstallers {
                 new IaModuleInstaller(protocolRuntime),
                 effectiveIrInstaller,
                 new LlmModuleInstaller(env, config, nativeLibBridge, protocolRuntime),
-                new AssistantModuleInstaller(env, config, protocolRuntime, assistantWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver),
-                new TtsModuleInstaller(audioBridge, eventBus, protocolRuntime, env, config, interruptionSignal),
-                new AssistantSpeechBridgeInstaller(protocolRuntime),
-                new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal),
-                new UiProtocolBridgeInstaller(protocolRuntime, eventBus)
+                new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider),
+                new TtsModuleInstaller(audioBridge, protocolRuntime, env, config),
+                new AXSpeechBridgeInstaller(protocolRuntime),
+                new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal)
         );
     }
 

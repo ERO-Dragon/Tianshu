@@ -1,22 +1,26 @@
 package com.rheinmetal.tianshu.core.runtime;
 
-import com.rheinmetal.tianshu.event.InterruptEvent;
-import com.rheinmetal.tianshu.event.TianshuEventBus;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.runtime.RuntimeInterruptPublisher;
 
-public final class RuntimeInterruptionService {
-    private final TianshuEventBus eventBus;
-    private final RuntimeInterruptPublisher interruptPublisher;
+import java.util.concurrent.atomic.AtomicLong;
 
-    public RuntimeInterruptionService(TianshuEventBus eventBus, RuntimeInterruptPublisher interruptPublisher) {
-        this.eventBus = eventBus;
+public final class RuntimeInterruptionService {
+    private final RuntimeInterruptPublisher interruptPublisher;
+    private final AtomicLong sessionSeq = new AtomicLong(1L);
+    private volatile long activeSessionId = sessionSeq.get();
+
+    public RuntimeInterruptionService(RuntimeInterruptPublisher interruptPublisher) {
         this.interruptPublisher = interruptPublisher;
     }
 
+    public long activeSessionId() {
+        return activeSessionId;
+    }
+
     public long interruptOngoingProcessing(RuntimeInterruptPayload.Reason reason, String detail) {
-        long sessionId = eventBus.beginNewSession();
-        eventBus.publishEvent(new InterruptEvent(sessionId));
+        long sessionId = sessionSeq.incrementAndGet();
+        activeSessionId = sessionId;
         interruptPublisher.publishRuntimeInterrupt(sessionId, reason, detail == null ? "" : detail);
         return sessionId;
     }

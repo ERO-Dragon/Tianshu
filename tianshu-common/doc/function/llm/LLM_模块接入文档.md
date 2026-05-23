@@ -140,8 +140,8 @@ LlmTaskRequestPayload payload = new LlmTaskRequestPayload(
         400,
         0.2D,
         System.currentTimeMillis() + 300000L,
-        "module.assistant",
-        "tianshu.assistant",
+        "module.ax",
+        "tianshu.ax",
         "none",
         List.of(),
         LlmUsageAuthorizationPayload.EMPTY
@@ -274,7 +274,7 @@ moduleId + "/" + agentId
 
 ## 7. RAG 文件路径能力
 
-外部模组和 Assistant 不需要自己从配置目录拼 RAG 路径，也不需要 import `function.llm.*`。路径查询通过协议中心请求 LLM 能力：
+外部模组和 Auxilium 不需要自己从配置目录拼 RAG 路径，也不需要 import `function.llm.*`。路径查询通过协议中心请求 LLM 能力：
 
 ```text
 ProtocolCapabilities.LLM_RAG_PATH_RESOLVE

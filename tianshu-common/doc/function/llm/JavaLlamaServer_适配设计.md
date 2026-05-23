@@ -350,7 +350,7 @@ common 不负责：
 - 决定 NPC 是否应记住某事。
 - 把世界状态自动写入长期记忆。
 
-这些属于 assistant 或更上层业务模块。
+这些属于 Auxilium 或更上层业务模块。
 
 ### 8.2 多世界 RAG root 适配方向
 
@@ -393,7 +393,7 @@ common 已开放这些字段。接入链路为：
 4. `LlmModule` 使用当前 scope 自动补齐 worldId。
 5. `LlmGatewayRequest` 和 `LlmRagContext` 只做路由上下文透传。
 6. `LlmEngine` 将 `world/profile/static_scope/static_mods` 写入 `/v1/chat/completions` 请求体。
-7. assistant 当前使用 `module.assistant/tianshu.assistant` profile，后台压缩任务默认 `static_scope=none`。
+7. Auxilium 当前使用 `module.ax/tianshu.ax` profile，后台压缩任务默认 `static_scope=none`。
 
 兼容策略：RAG root 准备失败或配置禁用时，启动层回退旧 `--static-rag-path` / `--memory-rag-path` 参数。
 
@@ -412,11 +412,11 @@ common 已开放这些字段。接入链路为：
 
 当前外部模块统一通过 `LLM_TASK_REQUEST` 进入 task lane。这符合“LLM 是能力层”的边界：
 
-- assistant 的玩家可见输出也经过 IA 授权和 assistant 自己的语义层处理。
+- Auxilium 的玩家可见输出也经过 IA 授权和 Auxilium 自己的语义层处理。
 - 后台模块可以通过 task priority 影响队列顺序。
 - common 不直接决定某段文本是否应该播给玩家。
 
-如果未来 assistant 需要 chat lane，需要新增明确的 `LLM_CHAT_REQUEST` 或在 payload 中暴露 lane，并同步处理权限、仲裁和所有权。不能让任意模块随意使用 chat lane 抢占玩家对话资源。
+如果未来 Auxilium 需要 chat lane，需要新增明确的 `LLM_CHAT_REQUEST` 或在 payload 中暴露 lane，并同步处理权限、仲裁和所有权。不能让任意模块随意使用 chat lane 抢占玩家对话资源。
 
 ## 10. 服务端文档同步要求
 
@@ -435,6 +435,6 @@ common 已开放这些字段。接入链路为：
 
 1. common 已适配 `--rag-root-path` 的启动参数与请求路由字段，但服务端目录内容迁移和 profile 文件生成仍由上层模块负责。
 2. common 仍是单活 HTTP stream 模型，不支持多 stream 并发。
-3. `LLM_STREAM` 旧 topic 仍可能被其他模块订阅，后续应逐步迁移到 assistant/dialogue delivery 语义。
+3. `LLM_STREAM` 旧 topic 仍可能被其他模块订阅，后续应逐步迁移到 Auxilium/dialogue delivery 语义。
 4. 服务端 queue/lane 状态目前只用于健康判断，没有进入 common 侧动态背压策略。
 5. server jar/native 解压的版本校验、hash 校验、坏缓存清理还可以继续增强。

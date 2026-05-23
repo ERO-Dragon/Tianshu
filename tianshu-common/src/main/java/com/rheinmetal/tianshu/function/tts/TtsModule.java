@@ -6,8 +6,6 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
-import com.rheinmetal.tianshu.event.TianshuEventBus;
-import com.rheinmetal.tianshu.event.TtsPlaybackEndEvent;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsControlResult;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsFailure;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsPlaybackPolicy;
@@ -29,7 +27,6 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 public final class TtsModule implements TianshuManagedModule {
     private final IAudioBridge audioBridge;
-    private final TianshuEventBus eventBus;
     private final ProtocolRuntime runtime;
     private final IGameEnvironment env;
     private final ITianshuConfig config;
@@ -40,9 +37,8 @@ public final class TtsModule implements TianshuManagedModule {
     private VoiceNotificationService voiceNotificationService;
     private TtsVoiceLibraryService voiceLibraryService;
 
-    public TtsModule(IAudioBridge audioBridge, TianshuEventBus eventBus, ProtocolRuntime runtime, IGameEnvironment env, ITianshuConfig config) {
+    public TtsModule(IAudioBridge audioBridge, ProtocolRuntime runtime, IGameEnvironment env, ITianshuConfig config) {
         this.audioBridge = audioBridge;
-        this.eventBus = eventBus;
         this.runtime = runtime;
         this.env = env;
         this.config = config;
@@ -79,7 +75,7 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         DefaultTtsSynthesisEngine synthesisEngine = new DefaultTtsSynthesisEngine(env, config, modelService);
-        ttsRuntime = new TtsRuntime(env, runtime.executors(), synthesisEngine, audioBridge, this::publishPlaybackStatus, this::publishPlaybackCompleted);
+        ttsRuntime = new TtsRuntime(env, runtime.executors(), synthesisEngine, audioBridge, this::publishPlaybackStatus, ignored -> {});
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
         }
@@ -129,7 +125,7 @@ public final class TtsModule implements TianshuManagedModule {
         if (!ensureRuntimeAvailable(context, envelope.envelopeId())) {
             return;
         }
-        TtsRequest request = requestFromPayload(envelope, payload, TtsRequestSource.ASSISTANT, payload.interruptCurrent() ? TtsPlaybackPolicy.REPLACE_CURRENT : TtsPlaybackPolicy.QUEUE, Priority.LOW, false);
+        TtsRequest request = requestFromPayload(envelope, payload, TtsRequestSource.AX, payload.interruptCurrent() ? TtsPlaybackPolicy.REPLACE_CURRENT : TtsPlaybackPolicy.QUEUE, Priority.LOW, false);
         ttsRuntime.submit(request, () -> context.complete(envelope.envelopeId()), failure -> failProtocol(context, envelope.envelopeId(), "TTS_FAILED", failure));
     }
 
@@ -264,9 +260,4 @@ public final class TtsModule implements TianshuManagedModule {
         ));
     }
 
-    private void publishPlaybackCompleted(TtsSession session) {
-        if (session.request().expectPlaybackEndEvent()) {
-            eventBus.publishEvent(new TtsPlaybackEndEvent(session.request().source().name().toLowerCase()));
-        }
-    }
 }

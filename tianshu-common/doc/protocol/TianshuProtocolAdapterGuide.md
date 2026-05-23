@@ -113,7 +113,7 @@ public TianshuEnvelope speak(String text) {
 public TianshuEnvelope publishHoverStable(GeminiCardHoverPayload payload) {
     return publishTopic(
         ProtocolTopics.ITEM_HOVER_STABLE,
-        PayloadType.SNAPSHOT,
+        PayloadType.CUSTOM,
         payload,
         AdapterDefaults.highFrequencyFact()
     );
@@ -780,7 +780,6 @@ registerCapability(
 | `TTS_TEXT` | 要给 TTS 读的文字 |
 | `LLM_PROMPT` | 给 LLM 的提示词 |
 | `LLM_TEXT_CHUNK` | LLM 流式文本片段 |
-| `SNAPSHOT` | 从 Minecraft 活对象拷出来的快照 |
 | `STATUS` / `ERROR` / `CANCEL` / `HEARTBEAT` / `PROGRESS` | 协议状态类内容 |
 | `CUSTOM` | 临时或模块自定义内容 |
 

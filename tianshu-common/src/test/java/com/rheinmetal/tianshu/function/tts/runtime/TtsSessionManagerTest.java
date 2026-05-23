@@ -56,7 +56,7 @@ class TtsSessionManagerTest {
                 requestId,
                 requestId,
                 "hello",
-                TtsRequestSource.ASSISTANT,
+                TtsRequestSource.AX,
                 TtsPlaybackPolicy.QUEUE,
                 Priority.NORMAL,
                 TtsVoiceProfile.defaults(),

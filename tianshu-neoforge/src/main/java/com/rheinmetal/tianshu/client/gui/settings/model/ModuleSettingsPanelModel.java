@@ -350,7 +350,7 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         private Function<T, Component> labeler = item -> Component.literal(String.valueOf(item));
         private Supplier<T> selected = () -> null;
         private Consumer<T> onSelect = item -> {};
-        private Component emptyText = Component.literal("无可用项目");
+        private Component emptyText = Component.translatable("tianshu.gui.common.no_available_items");
         private BooleanSupplier itemEnabled = ALWAYS_ENABLED;
         private BooleanSupplier itemVisible = ALWAYS_VISIBLE;
 

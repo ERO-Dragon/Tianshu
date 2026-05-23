@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -31,7 +32,7 @@ class TtsRuntimePolicyTest {
     void dropIfBusyAcceptsWithoutCreatingSecondSession() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         runtime.prepare();
 
@@ -50,7 +51,7 @@ class TtsRuntimePolicyTest {
     void replaceCurrentCancelsExistingSessionAndRunsReplacement() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         runtime.prepare();
 
@@ -70,7 +71,7 @@ class TtsRuntimePolicyTest {
     void latestOnlyCancelsPreviousNonTerminalSessions() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         runtime.prepare();
 
@@ -89,7 +90,7 @@ class TtsRuntimePolicyTest {
     void interruptLowerPriorityCancelsWhenIncomingPriorityIsHighEnough() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         runtime.prepare();
 
@@ -108,7 +109,7 @@ class TtsRuntimePolicyTest {
     void queueKeepsSecondSessionUntilFirstCompletes() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         runtime.prepare();
 
@@ -132,7 +133,7 @@ class TtsRuntimePolicyTest {
                 requestId,
                 requestId,
                 "hello " + requestId,
-                TtsRequestSource.ASSISTANT,
+                TtsRequestSource.AX,
                 policy,
                 priority,
                 TtsVoiceProfile.defaults(),

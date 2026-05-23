@@ -18,7 +18,7 @@ LLM 模块不负责：
 |---|---|
 | `function.llm` | 服务进程管理、gateway、IA 授权查询、调度、HTTP 调用、结果回传 |
 | `function.ia` | 仲裁、session store、INTERACTIVE LLM 使用授权 |
-| `function.assistant` / 其他 owner 模块 | 赢得仲裁后的业务 prompt 组装和 LLM 请求发起 |
+| `function.auxilium` / 其他 owner 模块 | 赢得仲裁后的业务 prompt 组装和 LLM 请求发起 |
 | JavaLlamaServer | 独立 JVM 推理、RAG 检索、chat/task lane、OpenAI 兼容 HTTP API |
 
 ## 2. 总体链路
@@ -147,7 +147,7 @@ profile = <moduleId>/<agentId>
 
 ## 8. RAG 目录能力
 
-外部模组和 Assistant 不应该硬编码 `config/Tianshu...` 下的 RAG 目录，也不应该 import `function.llm.*`。RAG 路径查询是 LLM 模块暴露的协议能力：
+外部模组和 Auxilium 不应该硬编码 `config/Tianshu...` 下的 RAG 目录，也不应该 import `function.llm.*`。RAG 路径查询是 LLM 模块暴露的协议能力：
 
 ```text
 ProtocolCapabilities.LLM_RAG_PATH_RESOLVE

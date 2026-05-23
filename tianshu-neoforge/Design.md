@@ -1,4 +1,4 @@
-0. 🛡️ 零信任安全基座与静默监听协议（已完成）
+﻿0. 🛡️ 零信任安全基座与静默监听协议（已完成）
 {
     痛点：多人服务器对数据读取极度敏感，传统 Mod 主动发包握手易触发反作弊；开发者容易陷入单机/多人的逻辑分支陷阱导致代码臃肿。
     功能描述：整个 Mod 的底层安全宪法。采用“客户端绝对静默 + 服务端单向发令”的统一架构，实现单机与多人的零代码分支管控。
@@ -56,8 +56,8 @@
 4. ⚖️ 【思衡】IA 仲裁机构（规划中）
 {
     定位：思衡是连接【识意】IR 与各业务对话参与者之间的开放交互仲裁层，不是 LLM 模块，也不是协议中心。它只处理“未被识意确定性消费的开放输入”，负责判断这次自然语言交互应由谁接管。
-    核心职责：接收识意通过内部链路提交的开放交互请求；向天枢助手、外部模组适配器、NPC 模组、物品/方块/实体交互模块等 DialogueParticipant 收集 ClaimResult；根据 claim 强度、上下文置信度、当前会话焦点、权限、安全策略与默认兜底规则裁决本次输入归属。
-    会话管理：思衡维护玩家当前正在与哪个参与者/目标对话，支持多轮对话续接、超时释放、显式切换、取消与默认助手兜底。当没有外部参与者认领，或外部认领被权限拒绝时，开放输入交由默认天枢助手处理。
+    核心职责：接收识意通过内部链路提交的开放交互请求；向辅星、外部模组适配器、NPC 模组、物品/方块/实体交互模块等 DialogueParticipant 收集 ClaimResult；根据 claim 强度、上下文置信度、当前会话焦点、权限、安全策略与默认兜底规则裁决本次输入归属。
+    会话管理：思衡维护玩家当前正在与哪个参与者/目标对话，支持多轮对话续接、超时释放、显式切换、取消与默认助手兜底。当没有外部参与者认领，或外部认领被权限拒绝时，开放输入交由默认辅星处理。
     外部接入：其他模组若希望接入天枢语音/对话系统，应通过稳定 API 注册 DialogueParticipant。参与者只需要实现 claim 与 handle：claim 用于判断当前输入是否应由自己处理并返回认领强度、目标、理由与所需权限；handle 仅在胜出后处理 DialogueSession，可选择调用天枢能力、自行处理或交还默认助手。
     输入边界：思衡不接收 ASR 广播，也不监听公共 IR 广播；它只接收识意在内部链路上提交的 OpenInteractionRequest。Claim 阶段默认只向参与者提供受限上下文，不把完整 ASR 原文作为公共上下文分发；胜出参与者只能在 DialogueSession 内读取本次会话被授权的输入文本。
     边界红线：思衡不直接调用 LLM，不构造业务 prompt，不生成回复文本，不播放 TTS，不执行 Minecraft 动作，也不规定外部模组必须用何种方式声明交互。所有 LLM、TTS、IR、UI、ServerAction 等能力调用仍必须通过枢机信封与能力路由完成。
@@ -69,15 +69,15 @@
     定位：织言是天枢的底层 LLM 能力模块，负责模型服务管理、推理请求接收、task 调度、流式文本生成与结果回传。它是语言生成与推理能力提供者，不负责 agent 人格、记忆生命周期、上下文编排、对话所有权或玩家可见输出授权。
     特征：通过网络下载不同参数的模型，最小为2B。
     功能描述：
-     - 推理执行：接收天枢助手、外部 DialogueParticipant 或其他业务模块提交的 LLM task 请求，并按优先级、超时、取消与并发策略调度执行。
+     - 推理执行：接收辅星、外部 DialogueParticipant 或其他业务模块提交的 LLM task 请求，并按优先级、超时、取消与并发策略调度执行。
      - 对话生成：根据调用方已经组装好的 messages、dynamic facts、RAG 参数与 generation options 生成自然语言结果。
      - 意图辅助修复：对于识意未能确定解析但仍疑似指令的文本，可由相关模块向织言申请语义修复，修复结果可再次交回识意进行二次解析。
      - 模块分析辅助：为双鉴、天镜、行策、玄哨、余烬等模块提供解释、总结、提示词生成、状态分析等能力。
      - 流式输出：支持流式文本生成，但底层流不天然代表玩家可见输出；调用方必须结合自身会话、权限和归属语义再转发给 UI、TTS 或其他展示模块。
-    边界红线：织言不主动接收 ASR 文本，也不订阅公共 IR 广播；开放输入必须先经过识意与思衡。织言不决定某句话归谁处理，不维护天枢助手或其他 agent 的长期记忆，不构造具体业务 prompt，不直接播放 TTS，不直接执行游戏动作。所有对织言的调用必须通过枢机能力路由，受优先级、并发、超时、取消与权限策略约束。
+    边界红线：织言不主动接收 ASR 文本，也不订阅公共 IR 广播；开放输入必须先经过识意与思衡。织言不决定某句话归谁处理，不维护辅星或其他 agent 的长期记忆，不构造具体业务 prompt，不直接播放 TTS，不直接执行游戏动作。所有对织言的调用必须通过枢机能力路由，受优先级、并发、超时、取消与权限策略约束。
 }
 
-6. 🧠 【辅星】天枢助手 Agent 模块（待完善）
+6. 🧠 【辅星】辅星 Agent 模块（待完善）
 {
     定位：辅星是天枢默认助手 Agent 模块，负责在获得思衡授权的对话所有权后，编排助手人格、上下文、动态事实、短期记忆、长期记忆、RAG、提示词和输出处理，并通过枢机调用织言完成推理生成。
     功能描述：辅星接收思衡定向投递的 DialogueSession，归一化玩家输入，收集运行时事实，选择记忆与 RAG 内容，组装 LLM task 请求，接收织言的流式输出和最终结果，再按当前会话权限将结果转交 UI、回响或其他授权输出链路。
@@ -320,7 +320,7 @@
     搜索层：Ctrl+F 唤出搜索框，搜索框固定在合成图区顶部的屏幕坐标层，和当前树收藏/副本/清空按钮横向排布；它不属于收藏/历史下滑列表区，因此会随合成图区被顶部下滑区向下挤开，且不随画布缩放平移。
     七、 持久化、容灾与双子抽屉系统
     收藏系统：永久保存图谱树，无限制。当前树收藏按钮位于合成图区右上角，收藏成功后该星星进入已收藏态，并在旁边显示“空加号星星”用于创建该收藏的副本/另存为；当前树发生展开、删除、切配方、撤销等语义变化后，已收藏态取消，副本按钮收起。
-    历史记录系统：每次“虚空生根”自动存档，最多保留 5 条 (FIFO)，防止孤岛迷失。收藏/历史文件统一保存在当前游戏版本目录的 config/TianshuAIAssistant/cache/crafting_graph 下；其中 favorites/ 存放永久收藏，history/ 存放历史记录，crash_recovery.json 存放崩溃恢复快照。
+    历史记录系统：每次“虚空生根”自动存档，最多保留 5 条 (FIFO)，防止孤岛迷失。收藏/历史文件统一保存在当前游戏版本目录的 config/TianshuAIAX/cache/crafting_graph 下；其中 favorites/ 存放永久收藏，history/ 存放历史记录，crash_recovery.json 存放崩溃恢复快照。
     命令模式撤销栈：严禁序列化树快照。只记录 DeleteBranchCommand { UUID 列表 }，Ctrl+Z 时精准重建。撤销恢复时必须恢复 RecipePanelNodeType、节点绑定 itemId、RecipeGraphEdge 的语义方向与两端 GraphAnchorData；恢复完成后重新扫描剩余边重算 inputAnchorsLocked/outputAnchorsLocked，不能依赖删除前的脏锁状态。
     增量崩溃恢复：引入 isDirty 脏位。isDirty 只表示内存图谱结构发生过变化，不能在每次节点移动、展开、删除、翻页时立即写盘。自动保存采用低频节流策略：每次客户端 Tick 只做轻量判断，只有 dirty=true 且距离上次自动保存至少 60 秒、且当前没有正在进行的后台写入任务时，才生成一次 SaveData 并提交写盘。序列化写盘必须放入单线程后台 IO 队列，禁止在渲染线程、输入事件线程或 GUI 绘制流程中同步 Files.write。提交前对 JSON 内容计算 hash，如果和上次成功写入内容一致则跳过本次磁盘写入，只刷新节流时间，避免 selectedRecipeIndex 未变化或重复 tick 导致无意义覆盖。序列化字段至少包含节点 UUID、parentUuid、nodeType、itemId、displayName、selectedRecipeIndex、坐标、边 from/to、itemId、GraphExpansionDirection、fromAnchor/toAnchor；锁定状态优先在加载后按边锚点重算，避免旧存档锁状态与边集合不一致。下次上线弹窗提示恢复。
     八、 搜索与“虚空生根”系统
@@ -350,7 +350,7 @@
     任务：Shift 监听与红剪刀/红X秒删；DeleteBranchCommand 与基于 UUID 的 Undo Stack；删除和撤销后按剩余 RecipeGraphEdge 的 GraphAnchorData 重算输入/输出锁定。
     🚩 Phase 5: 双子抽屉与增量崩溃恢复
     目标：数据安全与存档。
-    任务：左上角收藏/历史入口竖排；顶部下滑双子面板；当前树收藏、空加号星星副本、清空整树按钮位于合成图区右上角；收藏/历史列表垂直滚动并支持点击恢复；60秒 isDirty 异步序列化；恢复弹窗；持久化结构必须覆盖 nodeType、itemId 主语、语义边方向和两端 GraphAnchorData；文件统一落在 config/TianshuAIAssistant/cache/crafting_graph。所有固定 UI、弹窗、搜索框和列表项继续使用 AdvancementStyle 原版灰黑面板与按钮基线，避免重新引入科技风控件。
+    任务：左上角收藏/历史入口竖排；顶部下滑双子面板；当前树收藏、空加号星星副本、清空整树按钮位于合成图区右上角；收藏/历史列表垂直滚动并支持点击恢复；60秒 isDirty 异步序列化；恢复弹窗；持久化结构必须覆盖 nodeType、itemId 主语、语义边方向和两端 GraphAnchorData；文件统一落在 config/TianshuAIAX/cache/crafting_graph。所有固定 UI、弹窗、搜索框和列表项继续使用 AdvancementStyle 原版灰黑面板与按钮基线，避免重新引入科技风控件。
     🚩 Phase 6: 搜索聚焦与虚空生根
     目标：闭环原生配方查阅。
     任务：Ctrl+F 输入框；画布内模糊匹配聚焦；未匹配时加号生根孤岛节点；搜索结果和虚空生根入口必须区分 SOURCE/USAGE。
@@ -399,7 +399,7 @@
 
     Phase 5：双子抽屉、收藏、历史与崩溃恢复验收
     验收目标：验证左上角收藏/历史入口竖排、顶部下滑双子面板、当前树收藏/副本/清空按钮、历史记录、文件落点、异步节流保存和崩溃恢复。
-    验收操作：展开图谱抽屉；点击收藏入口并观察列表从上方滑下，再次点击收起；点击历史入口并确认收藏/历史互斥；创建图谱后收藏当前树，观察星星状态和空加号星星副本按钮；修改图谱后观察收藏态取消；多次虚空生根后检查历史列表和最多 5 条 FIFO；检查 .minecraft/versions/Tianshu/config/TianshuAIAssistant/cache/crafting_graph 下 favorites、history、crash_recovery.json；重进世界测试恢复提示。
+    验收操作：展开图谱抽屉；点击收藏入口并观察列表从上方滑下，再次点击收起；点击历史入口并确认收藏/历史互斥；创建图谱后收藏当前树，观察星星状态和空加号星星副本按钮；修改图谱后观察收藏态取消；多次虚空生根后检查历史列表和最多 5 条 FIFO；检查 .minecraft/versions/Tianshu/config/TianshuAIAX/cache/crafting_graph 下 favorites、history、crash_recovery.json；重进世界测试恢复提示。
     通过标准：收藏/历史入口位于左上角竖排；顶部列表展开时合成图区被向下排开；搜索和当前树操作按钮始终属于合成图区右上角横排，不进入收藏/历史列表区；收藏列表和历史列表可滚动并能恢复完整图谱；收藏成功后出现已收藏态和副本按钮，图谱语义变化后取消已收藏态；历史最多保留 5 条；保存文件落在指定 cache/crafting_graph 目录；保存采用低频节流与后台 IO，不造成明显卡顿；崩溃恢复能恢复 nodeType、itemId、语义边方向和 GraphAnchorData。
     失败判定：收藏/历史布局混入当前树按钮、顶部面板不排开合成图区、恢复后节点类型或边语义丢失、文件写到错误目录、频繁写盘造成卡顿、历史无限增长或无法恢复，均判定 Phase 5 失败。
 
@@ -637,7 +637,7 @@
 
     【当前实现补充】
     - 已完成模块骨架：客户端净囊控制器、语音意图解析、动态垃圾清单本地持久化、背包角标渲染、服务端授权清理包和服务端真实背包清理执行器。
-    - 当前清单持久化位置：config/TianshuAIAssistant/module/junk/cache/junk-list.json。客户端只保存 ItemID，不保存 ItemStack、Player、Level 等 Minecraft 活对象，服务端不保存玩家分类清单。
+    - 当前清单持久化位置：config/TianshuAIAX/module/junk/cache/junk-list.json。客户端只保存 ItemID，不保存 ItemStack、Player、Level 等 Minecraft 活对象，服务端不保存玩家分类清单。
     - 当前清理链路：IR 基于净囊注册的 hotwords/extraWords 做指令拦截，命中后向净囊模块投递结构化消息，消息包含命中的指令词以及解析到的物品信息；净囊模块据此决定 MARK/UNMARK/CLEAR。“清空垃圾/清理垃圾/扔掉没用的/倒垃圾”等清理意图会进入 JunkClearRequestClientGateway 申请门面。该门面调用 common 里的 JunkClearRequestGate 做瘫痪态权限判断、清单净化和数量限制，只有 FeatureManager.isAutoTrashAllowed() 已被服务端 S2C 授权包置 true 时，才允许发送 C2SRequestClearJunkPacket。服务端再次读取 ServerConfig.ALLOW_AUTO_TRASH 后遍历真实背包，命中客户端提交垃圾清单的物品由服务端执行等价于玩家按 Q 的抛弃操作，并通过 S2CJunkClearResultPacket 返回结果。
     - 分层边界：tianshu-common 只放纯 Java 规则，包括 JunkItemIdPolicy、JunkTextNormalizer、JunkVoiceRules、JunkVoiceWords、JunkClearRequestGate；NeoForge 侧只保留 Minecraft ItemStack 判定、配置路径、网络 payload、实际发包和服务端实体生成。业务控制器不得直接 PacketDistributor.sendToServer，必须走申请门面。
     - 语音词库资源：净囊模块已按通语模块同类结构提供 common 资源 com/rheinmetal/tianshu/constant/junk_cleaner_voice_words.json，只承载 hotwords/extraWords，用于后续协议中心/ASR/IR 词库登记；MARK/UNMARK/CLEAR 的业务判断仍由模块内部状态机和 JunkVoiceRules 负责，不把业务意图分类塞进词库 JSON。

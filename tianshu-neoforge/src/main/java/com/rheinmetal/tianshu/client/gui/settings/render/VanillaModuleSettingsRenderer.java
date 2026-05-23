@@ -105,7 +105,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         SettingsLayoutItem item = layout.row();
         List<T> values = safeList(select.values());
         if (values.isEmpty()) {
-            addIfVisible(new SettingsTextWidget(x + SettingsLayoutMetrics.INDENT, item.screenY(), width - SettingsLayoutMetrics.INDENT, SettingsLayoutMetrics.ROW_HEIGHT, Component.literal(safeComponent(select.label(), Component.empty()).getString() + ": 无可用选项"), active ? 0xA0A0A0 : 0x606060), item, false);
+            addIfVisible(new SettingsTextWidget(x + SettingsLayoutMetrics.INDENT, item.screenY(), width - SettingsLayoutMetrics.INDENT, SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xA0A0A0 : 0x606060), item, false);
             layout.gap();
             return;
         }
@@ -149,7 +149,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             boolean active = groupActive && safeBoolean(entry.enabled(), true);
             String text = safeComponent(entry.label(), Component.empty()).getString() + ": " + safeGet(entry.value(), Component.empty()).getString();
             SettingsLayoutItem item = layout.row();
-            addIfVisible(new SettingsTextWidget(x + SettingsLayoutMetrics.INDENT, item.screenY(), width - SettingsLayoutMetrics.INDENT, SettingsLayoutMetrics.ROW_HEIGHT, Component.literal(text), active ? 0xC0C0C0 : 0x606060), item, active);
+            addIfVisible(new SettingsTextWidget(x + SettingsLayoutMetrics.INDENT, item.screenY(), width - SettingsLayoutMetrics.INDENT, SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeGet(entry.value(), Component.empty())), active ? 0xC0C0C0 : 0x606060), item, active);
             layout.gap();
         }
         layout.groupGap();
@@ -190,7 +190,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         List<T> items = safeList(safeGet(group.items(), List.of()));
         if (items.isEmpty()) {
             SettingsLayoutItem item = layout.row();
-            addIfVisible(new SettingsTextWidget(x + SettingsLayoutMetrics.INDENT, item.screenY(), width - SettingsLayoutMetrics.INDENT, SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(group.emptyText(), Component.literal("无可用项目")), groupActive ? 0xA0A0A0 : 0x606060), item, groupActive);
+            addIfVisible(new SettingsTextWidget(x + SettingsLayoutMetrics.INDENT, item.screenY(), width - SettingsLayoutMetrics.INDENT, SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(group.emptyText(), Component.translatable("tianshu.gui.common.no_available_items")), groupActive ? 0xA0A0A0 : 0x606060), item, groupActive);
             layout.groupGap();
             return;
         }
@@ -198,7 +198,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         for (T value : items) {
             boolean active = value == selected || value != null && value.equals(selected);
             Component valueLabel = safeLabel(group.labeler(), value);
-            Component label = active ? Component.literal("> " + valueLabel.getString()) : valueLabel;
+            Component label = active ? Component.translatable("tianshu.gui.settings.list.selected", valueLabel) : valueLabel;
             List<SettingsTemplateModel.ItemActionEntry<T>> actions = visibleItemActions(group, value);
             SettingsLayoutItem item = layout.row();
             int rowX = x + SettingsLayoutMetrics.INDENT;
@@ -254,8 +254,8 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private Component styledLabel(Component label, SettingsButtonStyle style) {
         return switch (style) {
             case NORMAL -> label;
-            case PRIMARY -> Component.literal("[+] " + label.getString());
-            case DANGER -> Component.literal("[!] " + label.getString());
+            case PRIMARY -> Component.translatable("tianshu.gui.settings.button.primary", label);
+            case DANGER -> Component.translatable("tianshu.gui.settings.button.danger", label);
         };
     }
 

@@ -3,9 +3,6 @@ package com.rheinmetal.tianshu.platform.provider;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.provider.ISocialDataProvider;
 import com.rheinmetal.tianshu.snapshot.ChatMessageData;
-import com.rheinmetal.tianshu.snapshot.WaypointData;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -34,15 +31,7 @@ public class NeoForgeSocialDataProvider implements ISocialDataProvider {
             if (messageText == null || messageText.isEmpty()) return;
 
             String senderName = extractSender(messageText);
-            String playerName = getPlayerName();
-            boolean mentionsSelf = playerName != null
-                    && !"unknown".equals(playerName)
-                    && messageText.contains(playerName);
-
-            chatHistory.addLast(new ChatMessageData(
-                    senderName, messageText,
-                    System.currentTimeMillis(), mentionsSelf
-            ));
+            chatHistory.addLast(new ChatMessageData(senderName, messageText));
 
             while (chatHistory.size() > MAX_CHAT_HISTORY) {
                 chatHistory.removeFirst();
@@ -72,40 +61,4 @@ public class NeoForgeSocialDataProvider implements ISocialDataProvider {
         return all.subList(all.size() - count, all.size());
     }
 
-    @Override
-    public String getPlayerName() {
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                return mc.player.getName().getString();
-            }
-        } catch (Exception ignored) {}
-        return "unknown";
-    }
-
-    @Override
-    public String getPlayerUUID() {
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                return mc.player.getUUID().toString();
-            }
-        } catch (Exception ignored) {}
-        return "unknown";
-    }
-
-    @Override
-    public boolean isChatOpen() {
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            return mc.screen instanceof ChatScreen;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    @Override
-    public List<WaypointData> getExternalWaypoints() {
-        return Collections.emptyList();
-    }
 }

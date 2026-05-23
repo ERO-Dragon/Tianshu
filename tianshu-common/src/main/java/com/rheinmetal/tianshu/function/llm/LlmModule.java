@@ -55,6 +55,8 @@ public final class LlmModule implements TianshuManagedModule {
     private final DefaultLlmTaskGatewayService taskGatewayService;
     private ModuleRuntimeContext runtimeContext;
     private LlmServerProcessManager processManager;
+    private LlmModuleService moduleService;
+    private LlmModelService modelService;
 
     public LlmModule(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, ProtocolRuntime runtime) {
         this.env = env;
@@ -79,10 +81,14 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        moduleService = new LlmModuleService(config);
+        modelService = new LlmModelService(env, config, runtime.executors());
+        context.services().register(LlmInvocationService.class, invocationService);
+        context.services().register(LlmModuleService.class, moduleService);
+        context.services().register(LlmModelService.class, modelService);
         adapter.registerTaskRequestCapability(this::handleTaskRequest);
         adapter.registerRagPathResolveCapability(this::handleRagPathResolve);
         adapter.registerLlmUsageAuthorizationResultRoute(this::handleUsageAuthorizationResult);
-        context.services().register(LlmInvocationService.class, invocationService);
     }
 
     private void handleUsageAuthorizationResult(TianshuEnvelope envelope, ProtocolContext context) {
@@ -132,14 +138,25 @@ public final class LlmModule implements TianshuManagedModule {
         llmEngine.initialize("http://127.0.0.1:" + config.getLlmPort());
         processManager = new LlmServerProcessManager(env, config, nativeLibBridge, runtime.executors(), () -> {
             markCapabilitiesReady();
+            if (moduleService != null) {
+                moduleService.markReady();
+            }
             env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f中枢核心已就绪"));
-        }, () -> markCapabilitiesFailed("LLM server is not ready"));
+        }, () -> {
+            markCapabilitiesFailed("LLM server is not ready");
+            if (moduleService != null) {
+                moduleService.markFailed("LLM server is not ready");
+            }
+        });
+        if (moduleService != null) {
+            moduleService.bindProcessManager(processManager);
+        }
     }
 
     @Override
     public void start(ModuleRuntimeContext context) {
-        if (processManager != null) {
-            processManager.startLlmServer();
+        if (moduleService != null) {
+            moduleService.load();
         }
     }
 
@@ -147,7 +164,9 @@ public final class LlmModule implements TianshuManagedModule {
     public void stop() {
         taskGatewayService.shutdown();
         invocationService.cancelActiveGeneration();
-        if (processManager != null) {
+        if (moduleService != null) {
+            moduleService.unload();
+        } else if (processManager != null) {
             processManager.stopLlmServer();
         }
     }
@@ -156,6 +175,9 @@ public final class LlmModule implements TianshuManagedModule {
     public void destroy() {
         stop();
         engineProvider.stop();
+        if (moduleService != null && processManager != null) {
+            moduleService.unbindProcessManager(processManager);
+        }
         if (runtimeContext != null) {
             PROVIDED_CAPABILITIES.forEach(runtimeContext.runtimeState().capabilities()::remove);
         }
