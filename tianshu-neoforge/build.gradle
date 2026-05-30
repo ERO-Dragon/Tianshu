@@ -62,24 +62,12 @@ neoForge {
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
-    jarJar
 }
 
 dependencies {
     implementation project(':tianshu-common')
-    implementation files('../libs/sherpa-onnx-v1.12.39.jar')
-    implementation files('../libs/onnxruntime-1.24.3.jar')
-    implementation files('../libs/commons-compress-1.28.0.jar')
-    implementation files('../libs/sentencepiece4j-1.0.2.jar')
-    implementation files('../libs/pinyin4j-2.5.1.jar')
-    
-    implementation files('../libs/protobuf-java-4.33.2.jar')
-    jarJar files('../libs/sherpa-onnx-v1.12.39.jar')
-    jarJar files('../libs/onnxruntime-1.24.3.jar')
-    // jarJar files('../libs/commons-compress-1.28.0.jar')
-    jarJar files('../libs/sentencepiece4j-1.0.2.jar')
-    jarJar files('../libs/protobuf-java-4.33.2.jar')
-    jarJar files('../libs/pinyin4j-2.5.1.jar')
+    compileOnly files('../libs/tianshu_libs-1.0.1.jar')
+    runtimeOnly files('../libs/tianshu_libs-1.0.1.jar')
 }
 
 sourceSets.main.resources {
@@ -89,7 +77,6 @@ sourceSets.main.resources {
 }
 jar {
     from project(':tianshu-common').sourceSets.main.output
-    
     // 可选：防止 common 里的 META-INF 签名文件和 neoforge 冲突导致报错
     exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
 }
@@ -137,7 +124,9 @@ publishing {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
-
+// tasks.named('jarJar') {
+//     exclude 'ai/onnxruntime/native/win-x64/onnxruntime.dll'
+// }
 idea {
     module {
         downloadSources = true

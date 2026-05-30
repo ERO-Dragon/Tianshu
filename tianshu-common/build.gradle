@@ -13,12 +13,9 @@ repositories {
 }
 
 dependencies {
-    implementation files('../libs/sherpa-onnx-v1.12.39.jar')
-    implementation files('../libs/commons-compress-1.28.0.jar')
-    implementation files('../libs/sentencepiece4j-1.0.2.jar')
-    implementation files('../libs/onnxruntime-1.24.3.jar')
-    implementation files('../libs/pinyin4j-2.5.1.jar')
-    implementation 'com.google.code.gson:gson:2.10.1'
+    compileOnly files('../libs/tianshu_libs-1.0.1.jar')
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
 }
 
