@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.core.runtime;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.core.EnvSetupManager;
 import com.rheinmetal.tianshu.core.lifecycle.ModuleLifecycleException;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
@@ -16,7 +15,6 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
 
 public final class CoreModuleLifecycleCoordinator {
     private final IGameEnvironment env;
-    private final EnvSetupManager envSetupManager;
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
@@ -32,7 +30,6 @@ public final class CoreModuleLifecycleCoordinator {
 
     public CoreModuleLifecycleCoordinator(
             IGameEnvironment env,
-            EnvSetupManager envSetupManager,
             ProtocolRuntime protocolRuntime,
             TianshuModuleHost moduleHost,
             ModuleServiceRegistry moduleServices,
@@ -42,7 +39,6 @@ public final class CoreModuleLifecycleCoordinator {
             Runnable moduleBuilder
     ) {
         this.env = env;
-        this.envSetupManager = envSetupManager;
         this.protocolRuntime = protocolRuntime;
         this.moduleHost = moduleHost;
         this.moduleServices = moduleServices;
@@ -76,10 +72,6 @@ public final class CoreModuleLifecycleCoordinator {
             if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING || initialized) {
                 return;
             }
-            if (!envSetupManager.isEnvironmentReady()) {
-                env.info("环境未就绪，跳过 Worker 初始化");
-                return;
-            }
             runLifecycleLocked(false, CoreLifecyclePhase.INITIALIZING);
         }
     }
@@ -88,10 +80,6 @@ public final class CoreModuleLifecycleCoordinator {
         synchronized (lifecycleLock) {
             if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING) {
                 env.warn("核心生命周期已销毁，忽略模块刷新请求");
-                return;
-            }
-            if (!envSetupManager.isEnvironmentReady()) {
-                env.info("环境未就绪，跳过模块生命周期刷新");
                 return;
             }
 

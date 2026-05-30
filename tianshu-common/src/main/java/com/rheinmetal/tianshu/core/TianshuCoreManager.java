@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.core;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.EmptyTianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
@@ -35,39 +34,34 @@ public class TianshuCoreManager {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final INativeLibBridge nativeLibBridge;
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
     private final VoiceResourceManager voiceResourceManager;
     private final ModuleRuntimeState runtimeState;
     private final RuntimeReadinessState state;
-    private final EnvSetupManager envSetupManager;
     private final RuntimeInterruptionService interruptionService;
     private final TianshuModuleAssembler moduleAssembler;
     private final CoreModuleLifecycleCoordinator lifecycleCoordinator;
     private final AtomicBoolean restarting = new AtomicBoolean(false);
 
-    public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, IAudioBridge audioBridge) {
-        this(env, config, nativeLibBridge, audioBridge, null);
+    public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge) {
+        this(env, config, audioBridge, null);
     }
 
-    public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
+    public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
         this.env = env;
         this.config = config;
-        this.nativeLibBridge = nativeLibBridge;
         this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread);
         this.moduleHost = new TianshuModuleHost(env);
         this.moduleServices = new ModuleServiceRegistry();
         this.voiceResourceManager = new VoiceResourceManager(env, config);
         this.runtimeState = new ModuleRuntimeState();
         this.state = runtimeState.readiness();
-        this.envSetupManager = new EnvSetupManager(env, nativeLibBridge, protocolRuntime.executors());
         this.interruptionService = new RuntimeInterruptionService(protocolRuntime.runtimeInterrupts());
         TianshuModuleAssemblyContext moduleAssemblyContext = new TianshuModuleAssemblyContext(
                 env,
                 config,
-                nativeLibBridge,
                 audioBridge,
                 protocolRuntime,
                 this::runtimeReadyForRequests,
@@ -78,7 +72,6 @@ public class TianshuCoreManager {
                 : moduleAssemblerFactory.create(moduleAssemblyContext);
         this.lifecycleCoordinator = new CoreModuleLifecycleCoordinator(
                 env,
-                envSetupManager,
                 protocolRuntime,
                 moduleHost,
                 moduleServices,
@@ -110,19 +103,11 @@ public class TianshuCoreManager {
     }
 
     public boolean isEnvironmentReady() {
-        return envSetupManager.isEnvironmentReady();
+        return true;
     }
 
     public boolean isEnvironmentSetupCompleted() {
-        return envSetupManager.isSetupCompleted();
-    }
-
-    public void startEnvironmentSetup(EnvSetupManager.SetupCallback callback) {
-        envSetupManager.startSetup(callback);
-    }
-
-    public void markEnvironmentSetupCompleted() {
-        envSetupManager.markSetupCompleted();
+        return true;
     }
 
     public boolean isEngineReady() {
@@ -204,7 +189,6 @@ public class TianshuCoreManager {
 
     public void onEnvSetupFinished() {
         env.info("环境配置完成，刷新模块生命周期");
-        reloadNatives();
         if (lifecycleCoordinator.isInitialized()) {
             lifecycleCoordinator.submitRefresh(RuntimeRefreshReason.ENVIRONMENT_READY, null);
         } else {
@@ -221,16 +205,6 @@ public class TianshuCoreManager {
             if (onComplete != null) {
                 onComplete.run();
             }
-        }
-    }
-
-    public void reloadNatives() {
-        try {
-            if (!nativeLibBridge.isNativesReady()) {
-                nativeLibBridge.extractAndLoadAll();
-            }
-        } catch (Exception e) {
-            env.error("重新加载 Native 库失败", e);
         }
     }
 }

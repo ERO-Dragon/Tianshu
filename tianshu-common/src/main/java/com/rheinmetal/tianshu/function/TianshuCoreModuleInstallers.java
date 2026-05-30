@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
@@ -27,7 +26,6 @@ public final class TianshuCoreModuleInstallers {
     public static List<TianshuFunctionModuleInstaller> clientCore(
             IGameEnvironment env,
             ITianshuConfig config,
-            INativeLibBridge nativeLibBridge,
             IAudioBridge audioBridge,
             ProtocolRuntime protocolRuntime,
             BooleanSupplier voiceInputGate,
@@ -39,7 +37,6 @@ public final class TianshuCoreModuleInstallers {
         return clientCore(
                 env,
                 config,
-                nativeLibBridge,
                 audioBridge,
                 protocolRuntime,
                 voiceInputGate,
@@ -55,7 +52,6 @@ public final class TianshuCoreModuleInstallers {
     public static List<TianshuFunctionModuleInstaller> clientCore(
             IGameEnvironment env,
             ITianshuConfig config,
-            INativeLibBridge nativeLibBridge,
             IAudioBridge audioBridge,
             ProtocolRuntime protocolRuntime,
             BooleanSupplier voiceInputGate,
@@ -72,7 +68,7 @@ public final class TianshuCoreModuleInstallers {
         return List.of(
                 new IaModuleInstaller(protocolRuntime),
                 effectiveIrInstaller,
-                new LlmModuleInstaller(env, config, nativeLibBridge, protocolRuntime),
+                new LlmModuleInstaller(env, config, protocolRuntime),
                 new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider),
                 new TtsModuleInstaller(audioBridge, protocolRuntime, env, config),
                 new AXSpeechBridgeInstaller(protocolRuntime),

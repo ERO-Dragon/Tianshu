@@ -19,7 +19,7 @@ import java.util.Map;
 
 final class IRCacheStore {
     private static final String CACHE_FILE_NAME = "item-ir-cache.bin";
-    private static final String CACHE_DIR_NAME = "TianshuAIAssistant";
+    private static final String CACHE_DIR_NAME = "Tianshu";
     private static final String CACHE_SUB_DIR_NAME = "cache";
 
     Path cacheFilePath() {

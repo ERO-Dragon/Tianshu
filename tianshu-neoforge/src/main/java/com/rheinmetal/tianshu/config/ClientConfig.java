@@ -244,7 +244,12 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     @Override
     public Path getRootPath() {
-        return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), "config/TianshuAIAssistant").resolve("module");
+        return getGameConfigDir().resolve("module");
+    }
+
+    @Override
+    public Path getGameConfigDir() {
+        return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), "config/Tianshu");
     }
 
     @Override

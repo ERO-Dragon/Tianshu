@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.client.ir;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
@@ -26,7 +25,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
             ITianshuConfig config,
-            INativeLibBridge nativeLibBridge,
             IAudioBridge audioBridge,
             ProtocolRuntime protocolRuntime,
             BooleanSupplier voiceInputGate,
@@ -38,7 +36,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
         installers.addAll(TianshuCoreModuleInstallers.clientCore(
                 env,
                 config,
-                nativeLibBridge,
                 audioBridge,
                 protocolRuntime,
                 voiceInputGate,

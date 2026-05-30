@@ -11,8 +11,10 @@ public final class AXStorageLayout {
     private volatile AXRagPathResolution ragPathResolution;
 
     public AXStorageLayout(ITianshuConfig config) {
-        Path llmBasePath = config == null ? Path.of("config", "TianshuAIAX", "module", "llm") : config.getLlmBasePath();
-        this.root = llmBasePath.resolve("cache").resolve("AX");
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.root = config.getLlmBasePath().resolve("cache").resolve("AX");
     }
 
     public void updateRagPathResolution(AXRagPathResolution resolution) {

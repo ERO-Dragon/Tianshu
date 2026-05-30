@@ -11,7 +11,10 @@ public final class LlmRagPathResolver {
     private final WorldScopeProvider worldScopeProvider;
 
     public LlmRagPathResolver(ITianshuConfig config, WorldScopeProvider worldScopeProvider) {
-        this.ragRoot = config == null ? Path.of("config", "TianshuAIAssistant", "module", "llm", "rag", "root") : config.getLlmRagRootPath();
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.ragRoot = config.getLlmRagRootPath();
         this.worldScopeProvider = worldScopeProvider;
     }
 

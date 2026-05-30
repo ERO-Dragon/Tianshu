@@ -253,8 +253,8 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
 这里的 `hotwords` 和 `extraWords` 都会汇总到 ASR 的共享热词文件里。ASR 热词按语言区分，当前路径形态是：
 
 ```text
-config/TianshuAIAssistant/module/asr/hotwords/zh/hotwords.txt
-config/TianshuAIAssistant/module/asr/hotwords/en/hotwords.txt
+config/Tianshu/module/asr/hotwords/zh/hotwords.txt
+config/Tianshu/module/asr/hotwords/en/hotwords.txt
 ```
 
 注意，热词库不放在具体 ASR 模型目录里。ASR 模型目录只放模型。

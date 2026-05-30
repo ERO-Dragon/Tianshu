@@ -82,6 +82,7 @@ public interface ITianshuConfig {
     void setCustomTtsName(String name);
 
     Path getRootPath();
+    Path getGameConfigDir();
     Path getAsrBasePath();
     Path getLlmBasePath();
     Path getTtsBasePath();

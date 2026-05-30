@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.INativeLibBridge;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -23,7 +22,6 @@ import com.rheinmetal.tianshu.function.llm.inference.LlmMessageRole;
 import com.rheinmetal.tianshu.function.llm.inference.LlmRagRoutingContext;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagPathResolution;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagPathResolver;
-import com.rheinmetal.tianshu.function.llm.server.LlmServerProcessManager;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.LlmRagPathRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmRagPathResultPayload;
@@ -43,7 +41,6 @@ public final class LlmModule implements TianshuManagedModule {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final INativeLibBridge nativeLibBridge;
     private final ProtocolRuntime runtime;
     private final WorldScopeProvider scopeProvider;
     private final LlmEngineProvider engineProvider;
@@ -54,14 +51,12 @@ public final class LlmModule implements TianshuManagedModule {
     private final IaBackedLlmUsageAuthorizer usageAuthorizer;
     private final DefaultLlmTaskGatewayService taskGatewayService;
     private ModuleRuntimeContext runtimeContext;
-    private LlmServerProcessManager processManager;
     private LlmModuleService moduleService;
     private LlmModelService modelService;
 
-    public LlmModule(IGameEnvironment env, ITianshuConfig config, INativeLibBridge nativeLibBridge, ProtocolRuntime runtime) {
+    public LlmModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
         this.env = env;
         this.config = config;
-        this.nativeLibBridge = nativeLibBridge;
         this.runtime = runtime;
         this.scopeProvider = new DefaultWorldScopeProvider(new DefaultWorldIdentityProvider(env));
         this.engineProvider = new LlmEngineProvider(env, config);
@@ -135,22 +130,26 @@ public final class LlmModule implements TianshuManagedModule {
     public void prepare(ModuleRuntimeContext context) {
         runtimeContext = context;
         markCapabilitiesInstalled(context);
-        llmEngine.initialize("http://127.0.0.1:" + config.getLlmPort());
-        processManager = new LlmServerProcessManager(env, config, nativeLibBridge, runtime.executors(), () -> {
+        
+        if (!engineProvider.isAiServiceAvailable()) {
+            markCapabilitiesFailed("LLM model not configured");
+            return;
+        }
+
+        llmEngine.initialize("direct");
+        
+        engineProvider.startAsync(() -> {
             markCapabilitiesReady();
             if (moduleService != null) {
                 moduleService.markReady();
             }
             env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f中枢核心已就绪"));
         }, () -> {
-            markCapabilitiesFailed("LLM server is not ready");
+            markCapabilitiesFailed("LLM service failed to start");
             if (moduleService != null) {
-                moduleService.markFailed("LLM server is not ready");
+                moduleService.markFailed("LLM service failed to start");
             }
         });
-        if (moduleService != null) {
-            moduleService.bindProcessManager(processManager);
-        }
     }
 
     @Override
@@ -166,8 +165,6 @@ public final class LlmModule implements TianshuManagedModule {
         invocationService.cancelActiveGeneration();
         if (moduleService != null) {
             moduleService.unload();
-        } else if (processManager != null) {
-            processManager.stopLlmServer();
         }
     }
 
@@ -175,14 +172,10 @@ public final class LlmModule implements TianshuManagedModule {
     public void destroy() {
         stop();
         engineProvider.stop();
-        if (moduleService != null && processManager != null) {
-            moduleService.unbindProcessManager(processManager);
-        }
         if (runtimeContext != null) {
             PROVIDED_CAPABILITIES.forEach(runtimeContext.runtimeState().capabilities()::remove);
         }
         runtimeContext = null;
-        processManager = null;
     }
 
     private void handleTaskRequest(TianshuEnvelope envelope, ProtocolContext context) {

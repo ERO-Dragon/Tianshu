@@ -24,7 +24,6 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.platform.NeoForgeAXWorldIdentityProvider;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
-import com.rheinmetal.tianshu.platform.NeoForgeNativeLibBridge;
 import com.rheinmetal.tianshu.platform.provider.NeoForgeEnvironmentProvider;
 import com.rheinmetal.tianshu.platform.provider.NeoForgeInventoryProvider;
 import com.rheinmetal.tianshu.platform.provider.NeoForgePlayerStateProvider;
@@ -62,7 +61,6 @@ public class TianshuClient {
 
     private static NeoForgeEnvironment env;
     private static ClientConfig config;
-    private static NeoForgeNativeLibBridge nativeLibBridge;
     private static AudioManager audioManager;
     private static TianshuCoreManager coreManager;
     private static TianshuSettingsModule settingsModule;
@@ -110,9 +108,6 @@ public class TianshuClient {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
         config = new ClientConfig();
-        nativeLibBridge = new NeoForgeNativeLibBridge();
-        nativeLibBridge.ensureDirectories();
-        nativeLibBridge.extractAndLoadAll();
 
         audioManager = new AudioManager();
         String selectedMicName = config.getSelectedMicName();
@@ -135,10 +130,9 @@ public class TianshuClient {
                 socialDataProvider
         );
 
-        coreManager = new TianshuCoreManager(env, config, nativeLibBridge, audioManager, context -> new ClientTianshuModuleAssembler(
+        coreManager = new TianshuCoreManager(env, config, audioManager, context -> new ClientTianshuModuleAssembler(
                 context.env(),
                 context.config(),
-                context.nativeLibBridge(),
                 context.audioBridge(),
                 context.protocolRuntime(),
                 context.voiceInputGate(),
