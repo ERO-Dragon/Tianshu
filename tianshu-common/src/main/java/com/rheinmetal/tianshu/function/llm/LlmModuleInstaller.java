@@ -22,8 +22,7 @@ public final class LlmModuleInstaller implements TianshuFunctionModuleInstaller 
     public void install(TianshuModuleHost moduleHost, ModuleServiceRegistry moduleServices) {
         moduleHost.registerOptionalModule(
                 new LlmModule(env, config, protocolRuntime),
-                LlmRuntimeCapabilities.INFERENCE,
-                LlmRuntimeCapabilities.TASK
+                LlmRuntimeCapabilities.LLM_REQUEST
         );
     }
 }

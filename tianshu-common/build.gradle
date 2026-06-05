@@ -13,7 +13,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly files('../libs/tianshu_libs-1.0.1.jar')
+    implementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'

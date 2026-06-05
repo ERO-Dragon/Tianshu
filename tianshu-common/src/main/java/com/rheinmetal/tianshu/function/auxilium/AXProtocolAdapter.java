@@ -10,8 +10,6 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.LlmRagPathRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmRagPathResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmTaskRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -69,24 +67,6 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 handler,
                 defaults()
         );
-    }
-
-    public void registerLlmRagPathResultRoute(EnvelopeHandler handler) {
-        registerDirectRoute(
-                MODULE_ID,
-                PayloadType.LLM_RAG_PATH_RESULT,
-                LlmRagPathResultPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.RESPONSE),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
-    public TianshuEnvelope requestRagPath(LlmRagPathRequestPayload payload) {
-        return requestCapability(ProtocolCapabilities.LLM_RAG_PATH_RESOLVE, PayloadType.LLM_RAG_PATH_REQUEST, payload);
     }
 
     public TianshuEnvelope requestLlm(LlmTaskRequestPayload payload) {

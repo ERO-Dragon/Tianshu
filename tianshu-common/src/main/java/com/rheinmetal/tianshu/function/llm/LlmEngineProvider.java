@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.function.llm.engine.LlmEngine;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 
 import java.nio.file.Path;
@@ -39,24 +38,7 @@ public final class LlmEngineProvider {
                    .embeddingGpuLayers(999);
         }
 
-        Path staticRagPath = config.getLlmStaticRagPath();
-        if (staticRagPath != null) {
-            builder.staticRagPath(staticRagPath.toString());
-        }
-
-        Path memoryRagPath = config.getLlmMemoryRagPath();
-        if (memoryRagPath != null) {
-            builder.memoryRagPath(memoryRagPath.toString());
-        }
-
         return builder.build();
-    }
-
-    public LlmEngine getLlmEngine() {
-        if (aiService == null) {
-            return null;
-        }
-        return new LlmEngine(env, aiService);
     }
 
     public boolean isAiServiceAvailable() {

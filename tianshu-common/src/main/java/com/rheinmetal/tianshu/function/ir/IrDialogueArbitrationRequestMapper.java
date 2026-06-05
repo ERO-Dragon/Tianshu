@@ -18,7 +18,7 @@ final class IrDialogueArbitrationRequestMapper {
         String requestId = UUID.randomUUID().toString();
         String playerId = resolvePlayerId(voiceInput);
         String turnId = Integer.toString(voiceInput == null ? 0 : voiceInput.turnId());
-        List<String> matchedHotwords = matchBatch == null ? List.of() : matchBatch.matches().stream().flatMap(match -> match.matchedHotwords().stream()).distinct().toList();
+        List<String> matchedHotwords = matchBatch == null ? java.util.List.<String>of() : matchBatch.matches().stream().<String>flatMap(match -> match.matchedHotwords().stream()).distinct().toList();
         List<String> matchedEntityRefs = matchBatch == null ? List.of() : matchBatch.matches().stream().map(IrVoiceMatch::moduleId).filter(value -> value != null && !value.isBlank()).distinct().toList();
         List<String> matchedItemIds = itemEnhancement == null ? List.of() : itemEnhancement.matchedItemIds();
         String repairedText = resolveRepairedText(voiceInput, preparedInput, itemEnhancement);

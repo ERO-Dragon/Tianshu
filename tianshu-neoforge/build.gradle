@@ -66,8 +66,7 @@ configurations {
 
 dependencies {
     implementation project(':tianshu-common')
-    compileOnly files('../libs/tianshu_libs-1.0.1.jar')
-    runtimeOnly files('../libs/tianshu_libs-1.0.1.jar')
+    implementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
 }
 
 sourceSets.main.resources {

@@ -1,26 +1,18 @@
 package com.rheinmetal.tianshu.function.auxilium.storage;
 
 import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.function.auxilium.rag.AXRagPathResolution;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 
 import java.nio.file.Path;
 
 public final class AXStorageLayout {
     private final Path root;
-    private volatile AXRagPathResolution ragPathResolution;
 
     public AXStorageLayout(ITianshuConfig config) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }
         this.root = config.getLlmBasePath().resolve("cache").resolve("AX");
-    }
-
-    public void updateRagPathResolution(AXRagPathResolution resolution) {
-        if (resolution != null && resolution.valid()) {
-            this.ragPathResolution = resolution;
-        }
     }
 
     public Path root() {
@@ -41,18 +33,10 @@ public final class AXStorageLayout {
     }
 
     public Path memoryRagRoot(AXScope scope) {
-        AXRagPathResolution resolution = ragPathResolution;
-        if (resolution != null && resolution.valid()) {
-            return resolution.memoryRagRoot();
-        }
         return worldRoot(scope).resolve("memory_rag");
     }
 
     public Path memoryRagFile(AXScope scope) {
-        AXRagPathResolution resolution = ragPathResolution;
-        if (resolution != null && resolution.valid()) {
-            return resolution.memoriesFile();
-        }
         return memoryRagRoot(scope).resolve("memories.jsonl");
     }
 

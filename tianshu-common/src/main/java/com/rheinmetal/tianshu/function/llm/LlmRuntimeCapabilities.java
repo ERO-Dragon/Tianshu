@@ -3,8 +3,8 @@ package com.rheinmetal.tianshu.function.llm;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 
 public final class LlmRuntimeCapabilities {
-    public static final RuntimeCapability INFERENCE = RuntimeCapability.of("capability.llm.inference");
-    public static final RuntimeCapability TASK = RuntimeCapability.of("capability.llm.task");
+    public static final RuntimeCapability LLM_REQUEST = RuntimeCapability.of("capability.llm.request");
+    public static final RuntimeCapability LLM_CACHE_MANAGE = RuntimeCapability.of("capability.llm.cache_manage");
 
     private LlmRuntimeCapabilities() {
     }
