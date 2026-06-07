@@ -34,6 +34,9 @@ public final class AsrSettingsApplier {
         if (changeSet.enabledNow()) {
             audioBridge.ensureHardwareRunning();
         }
+        if (changeSet.requiresAudioReconfiguration()) {
+            runtimeActions.reconfigureAudioPipeline();
+        }
         if (changeSet.requiresRuntimeReload()) {
             runtimeActions.restartRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
         }

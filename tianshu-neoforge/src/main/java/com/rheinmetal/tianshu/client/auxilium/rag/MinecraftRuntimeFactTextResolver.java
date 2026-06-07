@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.client.rag;
+package com.rheinmetal.tianshu.client.auxilium.rag;
 
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.rag.DefaultRuntimeFactTextResolver;

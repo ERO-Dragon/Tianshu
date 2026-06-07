@@ -9,22 +9,22 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class LlmModuleService {
+    public interface RuntimeController {
+        void start();
+        void stop();
+    }
+
     private final ITianshuConfig config;
     private final AtomicReference<LlmRuntimeState> state = new AtomicReference<>(LlmRuntimeState.STOPPED);
     private final AtomicReference<String> failureMessage = new AtomicReference<>("");
-    private final AtomicReference<Runnable> onReadyCallback = new AtomicReference<>();
-    private final AtomicReference<Runnable> onFailedCallback = new AtomicReference<>();
+    private final AtomicReference<RuntimeController> runtimeController = new AtomicReference<>();
 
     public LlmModuleService(ITianshuConfig config) {
         this.config = Objects.requireNonNull(config, "config");
     }
 
-    public void setReadyCallback(Runnable onReady) {
-        onReadyCallback.set(onReady);
-    }
-
-    public void setFailedCallback(Runnable onFailed) {
-        onFailedCallback.set(onFailed);
+    public void bindRuntimeController(RuntimeController controller) {
+        runtimeController.set(controller);
     }
 
     public LlmControlResult load() {
@@ -41,6 +41,17 @@ public final class LlmModuleService {
         }
         failureMessage.set("");
         state.set(LlmRuntimeState.STARTING);
+        RuntimeController controller = runtimeController.get();
+        if (controller == null) {
+            markFailed("LLM runtime controller is not bound");
+            return LlmControlResult.rejected("LLM runtime controller is not bound");
+        }
+        try {
+            controller.start();
+        } catch (Exception e) {
+            markFailed(e.getMessage());
+            return LlmControlResult.rejected(e.getMessage());
+        }
         return LlmControlResult.accepted(LlmRuntimeState.STARTING, "LLM loading started");
     }
 
@@ -50,30 +61,47 @@ public final class LlmModuleService {
             return LlmControlResult.accepted(current, "LLM is not running");
         }
         if (current == LlmRuntimeState.FAILED) {
-            state.set(config.isLlmEnabled() ? LlmRuntimeState.STOPPED : LlmRuntimeState.DISABLED);
+            RuntimeController controller = runtimeController.get();
+            if (controller != null) {
+                try {
+                    controller.stop();
+                } catch (Exception e) {
+                    markFailed(e.getMessage());
+                    return LlmControlResult.rejected(e.getMessage());
+                }
+            } else {
+                markStopped();
+            }
             return LlmControlResult.accepted(state.get(), "LLM runtime was failed");
         }
         state.set(LlmRuntimeState.STOPPING);
-        state.set(config.isLlmEnabled() ? LlmRuntimeState.STOPPED : LlmRuntimeState.DISABLED);
-        return LlmControlResult.accepted(state.get(), "LLM unloaded");
+        RuntimeController controller = runtimeController.get();
+        if (controller != null) {
+            try {
+                controller.stop();
+            } catch (Exception e) {
+                markFailed(e.getMessage());
+                return LlmControlResult.rejected(e.getMessage());
+            }
+        } else {
+            markStopped();
+        }
+        return LlmControlResult.accepted(state.get(), "LLM unload requested");
     }
 
     public void markReady() {
         failureMessage.set("");
         state.set(config.isLlmEnabled() ? LlmRuntimeState.RUNNING : LlmRuntimeState.DISABLED);
-        Runnable callback = onReadyCallback.getAndSet(null);
-        if (callback != null) {
-            callback.run();
-        }
     }
 
     public void markFailed(String reason) {
         failureMessage.set(reason == null ? "" : reason.trim());
         state.set(config.isLlmEnabled() ? LlmRuntimeState.FAILED : LlmRuntimeState.DISABLED);
-        Runnable callback = onFailedCallback.getAndSet(null);
-        if (callback != null) {
-            callback.run();
-        }
+    }
+
+    public void markStopped() {
+        failureMessage.set("");
+        state.set(config.isLlmEnabled() ? LlmRuntimeState.STOPPED : LlmRuntimeState.DISABLED);
     }
 
     public LlmRuntimeSnapshot snapshot() {

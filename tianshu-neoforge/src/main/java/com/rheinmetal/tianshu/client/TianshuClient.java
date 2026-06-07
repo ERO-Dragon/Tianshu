@@ -3,6 +3,10 @@ package com.rheinmetal.tianshu.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
+import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudRenderer;
+import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudState;
+import com.rheinmetal.tianshu.client.gui.auxilium.AXClientOutputConfig;
+import com.rheinmetal.tianshu.client.gui.auxilium.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.llm.LlmSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.module.TianshuSettingsModule;
@@ -14,7 +18,7 @@ import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegist
 import com.rheinmetal.tianshu.client.gui.tts.TtsSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
-import com.rheinmetal.tianshu.client.ir.ClientTianshuModuleAssembler;
+import com.rheinmetal.tianshu.client.lifecycle.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
@@ -44,6 +48,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
@@ -62,6 +67,9 @@ public class TianshuClient {
     private static NeoForgeEnvironment env;
     private static ClientConfig config;
     private static AudioManager audioManager;
+    private static AXClientOutputConfig axOutputConfig;
+    private static AXChatHudState axChatHudState;
+    private static AXChatHudRenderer axChatHudRenderer;
     private static TianshuCoreManager coreManager;
     private static TianshuSettingsModule settingsModule;
     private static TianshuSettingsContributorRegistry externalSettingsContributors;
@@ -83,7 +91,8 @@ public class TianshuClient {
         TianshuSettingsRegistrySource asrSource = new AsrSettingsRegistrySource(coreManager, config, audioManager);
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config);
-        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, ttsSource, llmSource);
+        TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(axOutputConfig);
+        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource);
     }
 
     private static void beginVoiceInput() {
@@ -108,6 +117,9 @@ public class TianshuClient {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
         config = new ClientConfig();
+        axOutputConfig = new AXClientOutputConfig(config.getRootPath().resolve("ax"));
+        axChatHudState = new AXChatHudState();
+        axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axOutputConfig);
 
         audioManager = new AudioManager();
         String selectedMicName = config.getSelectedMicName();
@@ -138,7 +150,9 @@ public class TianshuClient {
                 context.voiceInputGate(),
                 context.interruptionSignal(),
                 new NeoForgeAXWorldIdentityProvider(),
-                worldStateProvider
+                worldStateProvider,
+                axOutputConfig,
+                axChatHudState
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();
         integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
@@ -148,6 +162,7 @@ public class TianshuClient {
 
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenInit);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onRenderGui);
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
@@ -291,6 +306,12 @@ public class TianshuClient {
                     Component.translatable("tianshu.gui.settings.console"),
                     button -> settingsModule.openScreen()
             ).pos(buttonX, myButtonY).size(buttonWidth, buttonHeight).build());
+        }
+    }
+
+    public static void onRenderGui(RenderGuiEvent.Post event) {
+        if (axChatHudRenderer != null) {
+            axChatHudRenderer.render(event.getGuiGraphics(), 0.0F);
         }
     }
 

@@ -4,13 +4,15 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextResolver;
+import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityCoreAdapter;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
-import com.rheinmetal.tianshu.function.tts.AXSpeechBridgeInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
@@ -62,16 +64,47 @@ public final class TianshuCoreModuleInstallers {
             AXPromptLanguageProvider promptLanguageProvider,
             TianshuFunctionModuleInstaller irInstaller
     ) {
+        return clientCore(
+                env,
+                config,
+                audioBridge,
+                protocolRuntime,
+                voiceInputGate,
+                interruptionSignal,
+                axWorldIdentityProvider,
+                worldStateProvider,
+                runtimeFactTextResolver,
+                promptLanguageProvider,
+                AXOutputSettings.DEFAULT,
+                AXChatOutputSink.NOOP,
+                irInstaller
+        );
+    }
+
+    public static List<TianshuFunctionModuleInstaller> clientCore(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            IAudioBridge audioBridge,
+            ProtocolRuntime protocolRuntime,
+            BooleanSupplier voiceInputGate,
+            LongSupplier interruptionSignal,
+            AXWorldIdentityProvider axWorldIdentityProvider,
+            WorldStateProvider worldStateProvider,
+            RuntimeFactTextResolver runtimeFactTextResolver,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXOutputSettings axOutputSettings,
+            AXChatOutputSink axChatOutputSink,
+            TianshuFunctionModuleInstaller irInstaller
+    ) {
         TianshuFunctionModuleInstaller effectiveIrInstaller = irInstaller == null
                 ? moduleHostInstaller(protocolRuntime)
                 : irInstaller;
         return List.of(
                 new IaModuleInstaller(protocolRuntime),
                 effectiveIrInstaller,
-                new LlmModuleInstaller(env, config, protocolRuntime),
-                new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider),
+                new LlmModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
+                new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, axOutputSettings, axChatOutputSink),
                 new TtsModuleInstaller(audioBridge, protocolRuntime, env, config),
-                new AXSpeechBridgeInstaller(protocolRuntime),
                 new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal)
         );
     }

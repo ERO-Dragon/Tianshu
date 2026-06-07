@@ -1,8 +1,6 @@
 package com.rheinmetal.tianshu.protocol;
 
 public final class ProtocolTopics {
-    public static final String LLM_STREAM = "LLM_STREAM";
-    public static final String LLM_TASK_STREAM = "LLM_TASK_STREAM";
     public static final String UI_STATUS = "UI_STATUS";
     public static final String DEBUG_TRACE = "DEBUG_TRACE";
     public static final String INPUT_ASR_FINAL_TEXT = "INPUT.ASR_FINAL_TEXT";

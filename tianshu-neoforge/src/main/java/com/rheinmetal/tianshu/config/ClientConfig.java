@@ -16,6 +16,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue ASR_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> SELECTED_MIC_NAME;
     public static final ModConfigSpec.ConfigValue<String> ASR_GITHUB_PROXY_URL;
+    public static final ModConfigSpec.BooleanValue ASR_HIGH_PASS_FILTER_ENABLED;
     public static final ModConfigSpec.BooleanValue ASR_RNNOISE_ENABLED;
     public static final ModConfigSpec.BooleanValue ASR_VAD_ENABLED;
     public static final ModConfigSpec.BooleanValue TTS_ENABLED;
@@ -46,6 +47,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         ASR_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         TRIGGER_MODE = builder.defineEnum("triggerMode", TriggerMode.PUSH_TO_TALK);
         WAKE_WORD = builder.define("wakeWord", "天枢");
+        ASR_HIGH_PASS_FILTER_ENABLED = builder.define("highPassFilterEnabled", true);
         ASR_RNNOISE_ENABLED = builder.define("rnnoiseEnabled", false);
         ASR_VAD_ENABLED = builder.define("vadEnabled", false);
         builder.pop();
@@ -164,6 +166,16 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setAsrRnnoiseEnabled(boolean enabled) {
         ASR_RNNOISE_ENABLED.set(enabled);
+    }
+
+    @Override
+    public boolean isAsrHighPassFilterEnabled() {
+        return ASR_HIGH_PASS_FILTER_ENABLED.get();
+    }
+
+    @Override
+    public void setAsrHighPassFilterEnabled(boolean enabled) {
+        ASR_HIGH_PASS_FILTER_ENABLED.set(enabled);
     }
 
     @Override

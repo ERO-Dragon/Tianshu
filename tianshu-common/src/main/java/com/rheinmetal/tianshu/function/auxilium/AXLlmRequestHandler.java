@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
-import com.rheinmetal.tianshu.protocol.payload.LlmTaskResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmTaskStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 
 public interface AXLlmRequestHandler {
-    default void onStreamChunk(LlmTaskStreamChunkPayload payload) {
+    default void onStreamChunk(LLMPromptStreamChunkPayload payload) {
     }
 
-    void onResult(LlmTaskResultPayload payload);
+    void onResult(LLMPromptResultPayload payload);
 }

@@ -14,6 +14,13 @@ public class ModuleServiceRegistry {
         services.put(type, service);
     }
 
+    public <T> void unregister(Class<T> type, T service) {
+        if (type == null || service == null) {
+            return;
+        }
+        services.remove(type, service);
+    }
+
     public <T> Optional<T> find(Class<T> type) {
         Object service = services.get(type);
         if (service == null) {

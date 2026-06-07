@@ -7,7 +7,10 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
+import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -17,8 +20,9 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.Socket;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,14 +32,9 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 public class AsrModelDownloader {
@@ -80,7 +79,7 @@ public class AsrModelDownloader {
         try {
             downloadSync(info, targetDir, githubProxyUrl, callback);
         } catch (Exception e) {
-            callback.onError(e.getMessage() != null ? e.getMessage() : "下载失败");
+            callback.onError(e.getMessage() != null ? e.getMessage() : "ASR model download failed");
         }
     }
 
@@ -93,19 +92,20 @@ public class AsrModelDownloader {
     private void doDownload(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
         Objects.requireNonNull(info, "info");
         Objects.requireNonNull(targetDir, "targetDir");
+        List<String> requiredFiles = validateRequiredFiles(info);
         Path stagingDir = targetDir.resolveSibling(targetDir.getFileName() + "-staging");
         deleteRecursivelyIfExists(stagingDir);
         Files.createDirectories(stagingDir);
         try {
             if (info.isHfDownload()) {
-                downloadFromHuggingFace(info, stagingDir, callback);
+                downloadFromHuggingFace(info, requiredFiles, stagingDir, callback);
             } else {
-                downloadFromGitHub(info, stagingDir, targetDir, githubProxyUrl, callback);
+                downloadFromArchive(info, requiredFiles, stagingDir, targetDir, githubProxyUrl, callback);
             }
-            validateStandardModel(info, stagingDir);
+            validateRequiredFiles(requiredFiles, stagingDir);
             deleteRecursivelyIfExists(targetDir);
             Files.move(stagingDir, targetDir, StandardCopyOption.REPLACE_EXISTING);
-            callback.onProgress("完成", 100);
+            callback.onProgress("Complete", 100);
             callback.onComplete();
         } catch (Exception e) {
             deleteRecursivelyIfExists(stagingDir);
@@ -113,295 +113,129 @@ public class AsrModelDownloader {
         }
     }
 
-    private void downloadFromHuggingFace(AsrModelInfo info, Path stagingDir, DownloadProgressCallback callback) throws Exception {
-        callback.onProgress("探测网络环境", 2);
-        String baseUrl = resolveHfBaseUrl();
-        env.info("ASR HF 下载: repo=" + info.id + " source=" + baseUrl);
+    private List<String> validateRequiredFiles(AsrModelInfo info) throws IOException {
+        List<String> files = info.getAllRequiredFiles();
+        if (files.isEmpty()) {
+            throw new IOException("ASR model [" + info.getDisplayName() + "] has no required file entries");
+        }
+        for (String file : files) {
+            Path relative = Path.of(file).normalize();
+            if (relative.isAbsolute() || relative.startsWith("..")) {
+                throw new IOException("ASR required file contains unsafe path: " + file);
+            }
+        }
+        return files;
+    }
 
-        callback.onProgress("解析文件列表", 5);
-        List<String> allFiles = fetchFileTree(baseUrl, info.id, REVISION);
-        StandardModelSources sources = resolveSources(info, allFiles);
-        List<SourceTarget> downloads = sources.toSourceTargets();
-        env.info("ASR 选择文件: " + downloads.stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
+    private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback) throws Exception {
+        callback.onProgress("Checking network", 2);
+        String baseUrl = resolveHfBaseUrl();
+        String repoId = info.remoteRepoId();
+        if (repoId.isBlank()) {
+            throw new IOException("ASR model [" + info.getDisplayName() + "] has no HuggingFace repo id");
+        }
+        env.info("ASR HF download: repo=" + repoId + " source=" + baseUrl);
+
+        callback.onProgress("Resolving file list", 5);
+        List<String> repoFiles = fetchFileTree(baseUrl, repoId, REVISION);
+        List<SourceTarget> downloads = resolveRequestedFiles(requiredFiles, repoFiles);
+        env.info("ASR selected files: " + downloads.stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
 
         int total = downloads.size();
         for (int i = 0; i < total; i++) {
             waitIfDownloadPaused();
             SourceTarget item = downloads.get(i);
-            Path localPath = stagingDir.resolve(item.targetName()).normalize();
+            Path localPath = stagingDir.resolve(item.targetPath()).normalize();
             ensureWithinTarget(localPath, stagingDir);
-            String resolveUrl = buildResolveUrl(baseUrl, info.id, REVISION, item.sourcePath());
+            String resolveUrl = buildResolveUrl(baseUrl, repoId, REVISION, item.sourcePath());
             downloadSingleFile(resolveUrl, localPath, 3);
             int percent = 5 + (int) (((i + 1) / (double) total) * 90);
-            callback.onProgress("下载中", percent);
+            callback.onProgress("Downloading model files", percent);
         }
     }
 
-    private void downloadFromGitHub(AsrModelInfo info, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
-        callback.onProgress("探测网络环境", 2);
+    private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
+        callback.onProgress("Checking network", 2);
         boolean useProxy = shouldUseGithubProxy(githubProxyUrl);
         String finalUrl = buildGithubDownloadUrl(info.downloadUrl, githubProxyUrl, useProxy);
-        env.info("ASR GitHub 下载: url=" + finalUrl + " (useProxy=" + useProxy + ")");
+        env.info("ASR archive download: url=" + finalUrl + " (useProxy=" + useProxy + ")");
 
-        Path archivePath = targetDir.resolveSibling(targetDir.getFileName() + ".tar.bz2");
+        Path archivePath = targetDir.resolveSibling(targetDir.getFileName() + archiveSuffix(info.downloadUrl));
         Path extractDir = targetDir.resolveSibling(targetDir.getFileName() + "-extract");
         Files.deleteIfExists(archivePath);
         deleteRecursivelyIfExists(extractDir);
         try {
-            callback.onProgress("下载压缩包", 5);
+            callback.onProgress("Downloading archive", 5);
             downloadSingleFileWithProgress(finalUrl, archivePath, 5, 60_000, (downloaded, total) -> {
                 int percent = total > 0 ? Math.min(80, (int) (downloaded * 75 / total) + 5) : 40;
-                callback.onProgress("下载压缩包", percent);
+                callback.onProgress("Downloading archive", percent);
             });
 
-            callback.onProgress("解压模型", 82);
+            callback.onProgress("Extracting model", 82);
             Files.createDirectories(extractDir);
-            extractTarBz2(archivePath, extractDir);
+            extractArchive(archivePath, extractDir, info.downloadUrl);
 
-            callback.onProgress("整理模型", 92);
-            List<String> allFiles = listRelativeFiles(extractDir);
-            StandardModelSources sources = resolveArchiveSources(info, allFiles);
-            for (SourceTarget item : sources.toSourceTargets()) {
+            callback.onProgress("Materializing model files", 92);
+            List<String> archiveFiles = listRelativeFiles(extractDir);
+            for (SourceTarget item : resolveRequestedFiles(requiredFiles, archiveFiles)) {
                 Path source = extractDir.resolve(item.sourcePath()).normalize();
                 ensureWithinTarget(source, extractDir);
-                Path target = stagingDir.resolve(item.targetName()).normalize();
+                Path target = stagingDir.resolve(item.targetPath()).normalize();
                 ensureWithinTarget(target, stagingDir);
                 Files.createDirectories(target.getParent());
                 Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
             }
-            env.info("ASR 压缩包整理完成: " + sources.toSourceTargets().stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
         } finally {
             deleteRecursivelyIfExists(extractDir);
             Files.deleteIfExists(archivePath);
         }
     }
 
-    private StandardModelSources resolveSources(AsrModelInfo info, List<String> paths) throws IOException {
-        if (!info.isTransducer()) {
-            throw new IOException("当前 ASR 下载器仅支持标准化 Transducer 模型: " + info.getModelType());
+    private List<SourceTarget> resolveRequestedFiles(List<String> requestedFiles, List<String> availableFiles) throws IOException {
+        List<SourceTarget> result = new ArrayList<>();
+        for (String requested : requestedFiles) {
+            String source = resolveRequestedFile(requested, availableFiles);
+            result.add(new SourceTarget(source, requested));
         }
-        List<SourceFile> files = paths.stream()
-                .filter(Objects::nonNull)
-                .filter(path -> !path.isBlank())
-                .map(SourceFile::new)
-                .filter(SourceFile::isUseful)
+        return result;
+    }
+
+    private String resolveRequestedFile(String requested, List<String> availableFiles) throws IOException {
+        String normalizedRequest = normalizePath(requested);
+        List<String> exactMatches = availableFiles.stream()
+                .filter(path -> normalizePath(path).equalsIgnoreCase(normalizedRequest))
                 .toList();
-
-        String encoder = resolveRole(info, files, "encoder", AsrModelInfo.STANDARD_ENCODER, true);
-        String decoder = resolveRole(info, files, "decoder", AsrModelInfo.STANDARD_DECODER, true);
-        String joiner = resolveRole(info, files, "joiner", AsrModelInfo.STANDARD_JOINER, true);
-        String tokens = resolveRole(info, files, "tokens", AsrModelInfo.STANDARD_TOKENS, true);
-        String bpeModel = resolveRole(info, files, "bpeModel", AsrModelInfo.STANDARD_BPE_MODEL, requiresFile(info, AsrModelInfo.STANDARD_BPE_MODEL));
-        String bpeVocab = resolveRole(info, files, "bpeVocab", AsrModelInfo.STANDARD_BPE_VOCAB, requiresFile(info, AsrModelInfo.STANDARD_BPE_VOCAB));
-        return new StandardModelSources(encoder, decoder, joiner, tokens, bpeModel, bpeVocab);
-    }
-
-    private StandardModelSources resolveArchiveSources(AsrModelInfo info, List<String> paths) throws IOException {
-        if (!info.isTransducer()) {
-            throw new IOException("当前 ASR 下载器仅支持标准化 Transducer 模型: " + info.getModelType());
+        if (exactMatches.size() == 1) {
+            return exactMatches.get(0);
         }
-        List<SourceFile> files = paths.stream()
-                .filter(Objects::nonNull)
-                .filter(path -> !path.isBlank())
-                .map(SourceFile::new)
-                .filter(SourceFile::isUseful)
+        if (exactMatches.size() > 1) {
+            throw new IOException("ASR model file is ambiguous: " + requested + " -> " + String.join(", ", exactMatches));
+        }
+
+        String requestName = fileName(normalizedRequest);
+        List<String> nameMatches = availableFiles.stream()
+                .filter(path -> fileName(path).equalsIgnoreCase(requestName))
                 .toList();
-
-        StandardModelSources explicitSources = resolveExplicitSources(info, files);
-        if (explicitSources != null) return explicitSources;
-
-        String tokens = resolveRole(info, files, "tokens", AsrModelInfo.STANDARD_TOKENS, true);
-        String bpeModel = resolveRole(info, files, "bpeModel", AsrModelInfo.STANDARD_BPE_MODEL, requiresFile(info, AsrModelInfo.STANDARD_BPE_MODEL));
-        String bpeVocab = resolveRole(info, files, "bpeVocab", AsrModelInfo.STANDARD_BPE_VOCAB, requiresFile(info, AsrModelInfo.STANDARD_BPE_VOCAB));
-        ModelFileGroup group = resolveBestModelGroup(files);
-        return new StandardModelSources(group.encoder().path(), group.decoder().path(), group.joiner().path(), tokens, bpeModel, bpeVocab);
-    }
-
-    private StandardModelSources resolveExplicitSources(AsrModelInfo info, List<SourceFile> files) throws IOException {
-        if (info.getSourceFile("encoder") == null
-                && info.getSourceFile(AsrModelInfo.STANDARD_ENCODER) == null
-                && info.getSourceFile("decoder") == null
-                && info.getSourceFile(AsrModelInfo.STANDARD_DECODER) == null
-                && info.getSourceFile("joiner") == null
-                && info.getSourceFile(AsrModelInfo.STANDARD_JOINER) == null) {
-            return null;
+        if (nameMatches.size() == 1) {
+            return nameMatches.get(0);
         }
-        String encoder = resolveRole(info, files, "encoder", AsrModelInfo.STANDARD_ENCODER, true);
-        String decoder = resolveRole(info, files, "decoder", AsrModelInfo.STANDARD_DECODER, true);
-        String joiner = resolveRole(info, files, "joiner", AsrModelInfo.STANDARD_JOINER, true);
-        String tokens = resolveRole(info, files, "tokens", AsrModelInfo.STANDARD_TOKENS, true);
-        String bpeModel = resolveRole(info, files, "bpeModel", AsrModelInfo.STANDARD_BPE_MODEL, requiresFile(info, AsrModelInfo.STANDARD_BPE_MODEL));
-        String bpeVocab = resolveRole(info, files, "bpeVocab", AsrModelInfo.STANDARD_BPE_VOCAB, requiresFile(info, AsrModelInfo.STANDARD_BPE_VOCAB));
-        return new StandardModelSources(encoder, decoder, joiner, tokens, bpeModel, bpeVocab);
-    }
-
-    private ModelFileGroup resolveBestModelGroup(List<SourceFile> files) throws IOException {
-        Map<String, List<SourceFile>> grouped = files.stream()
-                .filter(file -> matchesRole(file, "encoder", AsrModelInfo.STANDARD_ENCODER)
-                        || matchesRole(file, "decoder", AsrModelInfo.STANDARD_DECODER)
-                        || matchesRole(file, "joiner", AsrModelInfo.STANDARD_JOINER))
-                .collect(Collectors.groupingBy(SourceFile::parent));
-
-        List<ModelFileGroup> candidates = grouped.entrySet().stream()
-                .map(entry -> buildModelGroup(entry.getKey(), entry.getValue()))
-                .filter(Objects::nonNull)
-                .sorted(this::compareModelGroups)
-                .toList();
-
-        if (candidates.isEmpty()) {
-            throw new IOException("ASR 模型缺少完整同组 encoder/decoder/joiner");
+        if (nameMatches.isEmpty()) {
+            throw new IOException("ASR model file was not found in source: " + requested);
         }
-
-        ModelFileGroup best = candidates.get(0);
-        List<ModelFileGroup> sameScore = candidates.stream()
-                .filter(group -> group.score() == best.score())
-                .toList();
-        if (sameScore.size() > 1) {
-            throw new IOException("ASR 压缩包存在多个同分模型组，请在 JSON sourceFiles 中明确指定: "
-                    + sameScore.stream().map(ModelFileGroup::groupPath).collect(Collectors.joining(", ")));
-        }
-        return best;
+        throw new IOException("ASR model file name is ambiguous: " + requested + " -> " + String.join(", ", nameMatches));
     }
 
-    private ModelFileGroup buildModelGroup(String groupPath, List<SourceFile> files) {
-        SourceFile encoder = bestInGroup(files, "encoder", AsrModelInfo.STANDARD_ENCODER);
-        SourceFile decoder = bestInGroup(files, "decoder", AsrModelInfo.STANDARD_DECODER);
-        SourceFile joiner = bestInGroup(files, "joiner", AsrModelInfo.STANDARD_JOINER);
-        if (encoder == null || decoder == null || joiner == null) return null;
-        int score = scoreModelGroup(groupPath, encoder, decoder, joiner);
-        return new ModelFileGroup(groupPath, encoder, decoder, joiner, score);
-    }
-
-    private int compareModelGroups(ModelFileGroup left, ModelFileGroup right) {
-        int scoreCompare = Integer.compare(right.score(), left.score());
-        if (scoreCompare != 0) return scoreCompare;
-        int lengthCompare = Integer.compare(left.groupPath().length(), right.groupPath().length());
-        if (lengthCompare != 0) return lengthCompare;
-        return left.groupPath().compareTo(right.groupPath());
-    }
-
-    private SourceFile bestInGroup(List<SourceFile> files, String role, String standardName) {
-        return files.stream()
-                .filter(file -> matchesRole(file, role, standardName))
-                .sorted(comparatorFor(role))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private int scoreModelGroup(String groupPath, SourceFile encoder, SourceFile decoder, SourceFile joiner) {
-        String normalizedGroup = groupPath.toLowerCase(Locale.ROOT).replace('\\', '/');
-        int score = scoreFor(encoder, "encoder") + scoreFor(decoder, "decoder") + scoreFor(joiner, "joiner");
-        if (normalizedGroup.contains("/exp") || normalizedGroup.equals("exp")) score += 300;
-        if (normalizedGroup.contains("/onnx") || normalizedGroup.equals("onnx")) score += 180;
-        if (normalizedGroup.endsWith("/int8") || normalizedGroup.equals("int8")) score += 120;
-        if (normalizedGroup.isBlank()) score += 80;
-        score -= Math.max(0, encoder.pathSegments() - 2) * 5;
-        return score;
-    }
-
-    private String resolveRole(AsrModelInfo info, List<SourceFile> files, String role, String standardName, boolean required) throws IOException {
-        String roleSource = info.getSourceFile(role);
-        String explicit = roleSource != null ? roleSource : info.getSourceFile(standardName);
-        if (explicit != null) {
-            SourceFile matched = files.stream()
-                    .filter(file -> samePath(file.path(), explicit) || file.fileName().equalsIgnoreCase(explicit))
-                    .findFirst()
-                    .orElse(null);
-            if (matched == null) throw new IOException("ASR 模型源文件不存在: role=" + role + " path=" + explicit);
-            return matched.path();
-        }
-
-        List<SourceFile> candidates = files.stream()
-                .filter(file -> matchesRole(file, role, standardName))
-                .sorted(comparatorFor(role))
-                .toList();
-        if (candidates.isEmpty()) {
-            if (required) throw new IOException("ASR 模型缺少源文件: " + role);
-            return null;
-        }
-        SourceFile best = candidates.get(0);
-        List<SourceFile> sameScore = candidates.stream()
-                .filter(file -> scoreFor(file, role) == scoreFor(best, role))
-                .toList();
-        if (sameScore.size() > 1 && isAmbiguous(role, sameScore)) {
-            throw new IOException("ASR 模型源文件候选不唯一: " + role + " -> " + sameScore.stream().map(SourceFile::path).collect(Collectors.joining(", ")));
-        }
-        return best.path();
-    }
-
-    private boolean matchesRole(SourceFile file, String role, String standardName) {
-        String name = file.fileNameLower();
-        String path = file.pathLower();
-        return switch (role) {
-            case "encoder" -> name.endsWith(".onnx") && name.contains("encoder");
-            case "decoder" -> name.endsWith(".onnx") && name.contains("decoder");
-            case "joiner" -> name.endsWith(".onnx") && name.contains("joiner");
-            case "tokens" -> name.equals(AsrModelInfo.STANDARD_TOKENS);
-            case "bpeModel" -> name.equals(AsrModelInfo.STANDARD_BPE_MODEL) || path.endsWith("/" + AsrModelInfo.STANDARD_BPE_MODEL);
-            case "bpeVocab" -> name.equals(AsrModelInfo.STANDARD_BPE_VOCAB) || path.endsWith("/" + AsrModelInfo.STANDARD_BPE_VOCAB);
-            default -> name.equalsIgnoreCase(standardName);
-        };
-    }
-
-    private Comparator<SourceFile> comparatorFor(String role) {
-        return Comparator.comparingInt((SourceFile file) -> scoreFor(file, role)).reversed()
-                .thenComparingInt(file -> file.path().length())
-                .thenComparing(SourceFile::path);
-    }
-
-    private int scoreFor(SourceFile file, String role) {
-        String name = file.fileNameLower();
-        String path = file.pathLower();
-        int score = 0;
-        if (role.equals("decoder")) {
-            if (name.contains(".int8.")) score -= 1000;
-            else if (name.contains("int8")) score -= 800;
-            else score += 1000;
-            if (path.contains("/int8/") || path.contains("\\int8\\")) score -= 300;
-        } else {
-            if (name.contains(".int8.")) score += 1000;
-            else if (name.contains("int8")) score += 800;
-            else if (name.contains(".fp16.")) score += 500;
-            if (path.contains("/int8/") || path.contains("\\int8\\")) score += 300;
-        }
-        if (path.contains("/exp/") || path.contains("\\exp\\")) score += 80;
-        if (path.contains("/onnx/") || path.contains("\\onnx\\")) score += 60;
-        if (path.contains("/data/lang_char/") || path.contains("/data/lang_bpe/")) score += role.equals("tokens") || role.startsWith("bpe") ? 200 : 0;
-        if (path.contains("/data/")) score += role.equals("tokens") || role.startsWith("bpe") ? 100 : 0;
-        if (file.pathSegments() <= 2) score += 20;
-        if (name.equals(role + ".onnx")) score += 50;
-        if (role.equals("tokens") && name.equals(AsrModelInfo.STANDARD_TOKENS)) score += 100;
-        return score;
-    }
-
-    private boolean isAmbiguous(String role, List<SourceFile> files) {
-        if (files.size() <= 1) return false;
-        Set<String> parents = files.stream().map(SourceFile::parent).collect(Collectors.toCollection(HashSet::new));
-        if (Set.of("encoder", "joiner").contains(role) && parents.size() == 1) return false;
-        if (role.equals("decoder") && files.stream().noneMatch(this::isInt8File) && parents.size() == 1) return false;
-        if ((role.equals("tokens") || role.startsWith("bpe")) && files.stream().map(SourceFile::fileNameLower).distinct().count() == 1) return false;
-        return true;
-    }
-
-    private boolean isInt8File(SourceFile file) {
-        String name = file.fileNameLower();
-        String path = file.pathLower();
-        return name.contains("int8") || path.contains("/int8/") || path.contains("\\int8\\");
-    }
-
-    private boolean requiresFile(AsrModelInfo info, String fileName) {
-        return info.getAllRequiredFiles().stream().anyMatch(file -> file.equalsIgnoreCase(fileName));
-    }
-
-    private void validateStandardModel(AsrModelInfo info, Path modelDir) throws IOException {
+    private void validateRequiredFiles(List<String> requiredFiles, Path modelDir) throws IOException {
         List<String> missing = new ArrayList<>();
-        for (String file : info.getAllRequiredFiles()) {
-            if (!Files.isRegularFile(modelDir.resolve(file))) {
+        for (String file : requiredFiles) {
+            Path path = modelDir.resolve(file).normalize();
+            ensureWithinTarget(path, modelDir);
+            if (!Files.isRegularFile(path)) {
                 missing.add(file);
             }
         }
         if (!missing.isEmpty()) {
-            throw new IOException("ASR 模型标准化失败，缺少文件: " + String.join(", ", missing));
+            throw new IOException("ASR model materialization failed, missing files: " + String.join(", ", missing));
         }
     }
 
@@ -409,12 +243,12 @@ public class AsrModelDownloader {
         try {
             String activeUrl = HuggingFaceDownloader.getActiveBaseUrl();
             if (HF_OFFICIAL.equals(activeUrl)) {
-                env.info("HuggingFace 官方可达，使用官方源");
+                env.info("HuggingFace official endpoint is reachable");
                 return HF_OFFICIAL;
             }
         } catch (Exception ignored) {
         }
-        env.info("HuggingFace 官方不可达，使用镜像源");
+        env.info("Using HuggingFace mirror");
         return HF_MIRROR;
     }
 
@@ -422,10 +256,10 @@ public class AsrModelDownloader {
         if (githubProxyUrl == null || githubProxyUrl.isBlank()) return false;
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("github.com", 443), 300);
-            env.info("GitHub 官方可达，不使用代理");
+            env.info("GitHub official endpoint is reachable");
             return false;
         } catch (IOException e) {
-            env.info("GitHub 官方不可达，使用代理");
+            env.info("GitHub official endpoint is unreachable, using proxy");
             return true;
         }
     }
@@ -437,6 +271,33 @@ public class AsrModelDownloader {
         return normalizedProxy + downloadUrl;
     }
 
+    private String archiveSuffix(String downloadUrl) {
+        if (downloadUrl == null) return ".archive";
+        String lower = downloadUrl.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".tar.bz2")) return ".tar.bz2";
+        if (lower.endsWith(".tar.gz")) return ".tar.gz";
+        if (lower.endsWith(".tgz")) return ".tgz";
+        if (lower.endsWith(".zip")) return ".zip";
+        return ".archive";
+    }
+
+    private void extractArchive(Path archive, Path targetDir, String downloadUrl) throws IOException {
+        String lower = downloadUrl == null ? "" : downloadUrl.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".tar.bz2")) {
+            extractTarBz2(archive, targetDir);
+            return;
+        }
+        if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
+            extractTarGz(archive, targetDir);
+            return;
+        }
+        if (lower.endsWith(".zip")) {
+            extractZip(archive, targetDir);
+            return;
+        }
+        throw new IOException("Unsupported ASR model archive type: " + downloadUrl);
+    }
+
     private List<String> fetchFileTree(String baseUrl, String repoId, String revision) throws Exception {
         String url = String.format(
                 "%s/api/models/%s/tree/%s?recursive=true&expand=false",
@@ -445,14 +306,14 @@ public class AsrModelDownloader {
                 URLEncoder.encode(revision, StandardCharsets.UTF_8)
         );
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        HttpURLConnection conn = openConnection(url);
         conn.setConnectTimeout((int) Duration.ofSeconds(10).toMillis());
         conn.setReadTimeout((int) Duration.ofSeconds(15).toMillis());
         conn.setRequestMethod("GET");
         conn.setRequestProperty("User-Agent", "Tianshu-ASR-Downloader/1.0");
 
         int code = conn.getResponseCode();
-        if (code != 200) throw new IOException("HF tree API 失败. repo=" + repoId + " code=" + code);
+        if (code != 200) throw new IOException("HF tree API failed. repo=" + repoId + " code=" + code);
 
         try (InputStream is = conn.getInputStream(); Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
             JsonArray root = GSON.fromJson(reader, JsonArray.class);
@@ -497,6 +358,14 @@ public class AsrModelDownloader {
         return URLEncoder.encode(repoId, StandardCharsets.UTF_8);
     }
 
+    private HttpURLConnection openConnection(String url) throws IOException {
+        try {
+            return (HttpURLConnection) new URI(url).toURL().openConnection();
+        } catch (URISyntaxException e) {
+            throw new IOException("Invalid download URL: " + url, e);
+        }
+    }
+
     private void downloadSingleFile(String url, Path target, int maxRetries) throws IOException {
         Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
@@ -505,7 +374,7 @@ public class AsrModelDownloader {
         IOException lastException = null;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                HttpURLConnection conn = openConnection(url);
                 conn.setConnectTimeout((int) Duration.ofSeconds(15).toMillis());
                 conn.setReadTimeout((int) Duration.ofSeconds(120).toMillis());
                 conn.setRequestMethod("GET");
@@ -517,7 +386,7 @@ public class AsrModelDownloader {
                     byte[] buf = new byte[8192];
                     int len;
                     while ((len = in.read(buf)) != -1) {
-                        if (downloadCancelled) throw new IOException("下载已取消");
+                        if (downloadCancelled) throw new IOException("Download was cancelled");
                         waitIfDownloadPaused();
                         out.write(buf, 0, len);
                     }
@@ -526,20 +395,20 @@ public class AsrModelDownloader {
                 }
 
                 Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                env.info("下载完成: " + target.getFileName());
+                env.info("Downloaded: " + target.getFileName());
                 return;
             } catch (IOException e) {
                 lastException = e;
-                env.warn("下载重试 " + attempt + "/" + maxRetries + ": " + target.getFileName() + " - " + e.getMessage());
+                env.warn("Download retry " + attempt + "/" + maxRetries + ": " + target.getFileName() + " - " + e.getMessage());
                 try {
                     Thread.sleep(1000L * attempt);
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
-                    throw new IOException("下载线程被中断", ignored);
+                    throw new IOException("Download thread was interrupted", ignored);
                 }
             }
         }
-        throw new IOException("下载失败，重试 " + maxRetries + " 次后仍不成功: " + url, lastException);
+        throw new IOException("Download failed after " + maxRetries + " retries: " + url, lastException);
     }
 
     private void downloadSingleFileWithProgress(String urlString, Path targetPath, int maxRetries, int timeoutMillis, ProgressListener listener) throws IOException {
@@ -550,20 +419,20 @@ public class AsrModelDownloader {
             Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".downloading");
             try {
                 Files.createDirectories(targetPath.getParent());
-                conn = (HttpURLConnection) new URL(urlString).openConnection();
+                conn = openConnection(urlString);
                 conn.setConnectTimeout(timeoutMillis);
                 conn.setReadTimeout(timeoutMillis);
                 conn.setRequestMethod("GET");
                 conn.setRequestProperty("User-Agent", "Tianshu-ASR-Downloader/1.0");
                 int code = conn.getResponseCode();
-                if (code != 200) throw new IOException("HTTP 错误: " + code);
+                if (code != 200) throw new IOException("HTTP " + code);
                 long total = conn.getContentLengthLong();
                 long downloaded = 0L;
                 try (InputStream in = conn.getInputStream(); OutputStream out = Files.newOutputStream(tempPath)) {
                     byte[] buffer = new byte[8192];
                     int read;
                     while ((read = in.read(buffer)) != -1) {
-                        if (downloadCancelled) throw new IOException("下载已取消");
+                        if (downloadCancelled) throw new IOException("Download was cancelled");
                         waitIfDownloadPaused();
                         out.write(buffer, 0, read);
                         downloaded += read;
@@ -580,7 +449,7 @@ public class AsrModelDownloader {
                 if (conn != null) conn.disconnect();
             }
         }
-        throw last != null ? last : new IOException("下载失败");
+        throw last != null ? last : new IOException("Download failed");
     }
 
     private void extractTarBz2(Path archive, Path targetDir) throws IOException {
@@ -604,27 +473,78 @@ public class AsrModelDownloader {
         }
     }
 
-    private boolean samePath(String left, String right) {
-        return left.replace('\\', '/').equalsIgnoreCase(right.replace('\\', '/'));
+    private void extractTarGz(Path archive, Path targetDir) throws IOException {
+        try (InputStream fis = Files.newInputStream(archive);
+             InputStream bis = new BufferedInputStream(fis);
+             GzipCompressorInputStream gzIn = new GzipCompressorInputStream(bis);
+             TarArchiveInputStream tarIn = new TarArchiveInputStream(gzIn)) {
+            extractTarStream(tarIn, targetDir);
+        }
+    }
+
+    private void extractTarStream(TarArchiveInputStream tarIn, Path targetDir) throws IOException {
+        TarArchiveEntry entry;
+        while ((entry = tarIn.getNextEntry()) != null) {
+            Path outputPath = targetDir.resolve(entry.getName()).normalize();
+            ensureWithinTarget(outputPath, targetDir);
+            if (entry.isDirectory()) {
+                Files.createDirectories(outputPath);
+                continue;
+            }
+            Files.createDirectories(outputPath.getParent());
+            try (OutputStream out = Files.newOutputStream(outputPath)) {
+                tarIn.transferTo(out);
+            }
+        }
+    }
+
+    private void extractZip(Path archive, Path targetDir) throws IOException {
+        try (InputStream fis = Files.newInputStream(archive);
+             InputStream bis = new BufferedInputStream(fis);
+             ZipArchiveInputStream zipIn = new ZipArchiveInputStream(bis)) {
+            ZipArchiveEntry entry;
+            while ((entry = zipIn.getNextEntry()) != null) {
+                Path outputPath = targetDir.resolve(entry.getName()).normalize();
+                ensureWithinTarget(outputPath, targetDir);
+                if (entry.isDirectory()) {
+                    Files.createDirectories(outputPath);
+                    continue;
+                }
+                Files.createDirectories(outputPath.getParent());
+                try (OutputStream out = Files.newOutputStream(outputPath)) {
+                    zipIn.transferTo(out);
+                }
+            }
+        }
+    }
+
+    private String normalizePath(String path) {
+        return path == null ? "" : path.trim().replace('\\', '/');
+    }
+
+    private String fileName(String path) {
+        String normalized = normalizePath(path);
+        int index = normalized.lastIndexOf('/');
+        return index >= 0 ? normalized.substring(index + 1) : normalized;
     }
 
     private void ensureWithinTarget(Path path, Path targetDir) throws IOException {
         if (!path.toAbsolutePath().normalize().startsWith(targetDir.toAbsolutePath().normalize())) {
-            throw new IOException("路径穿越检测: " + path);
+            throw new IOException("Unsafe path detected: " + path);
         }
     }
 
     private void waitIfDownloadPaused() throws IOException {
         while (downloadPaused) {
-            if (downloadCancelled) throw new IOException("下载已取消");
+            if (downloadCancelled) throw new IOException("Download was cancelled");
             try {
                 Thread.sleep(200);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new IOException("下载线程被中断", e);
+                throw new IOException("Download thread was interrupted", e);
             }
         }
-        if (downloadCancelled) throw new IOException("下载已取消");
+        if (downloadCancelled) throw new IOException("Download was cancelled");
     }
 
     private void deleteRecursivelyIfExists(Path path) throws IOException {
@@ -648,64 +568,9 @@ public class AsrModelDownloader {
         }
     }
 
-    private record SourceTarget(String sourcePath, String targetName) {
+    private record SourceTarget(String sourcePath, String targetPath) {
         private String display() {
-            return sourcePath + " -> " + targetName;
-        }
-    }
-
-    private record StandardModelSources(String encoder, String decoder, String joiner, String tokens, String bpeModel, String bpeVocab) {
-        private List<SourceTarget> toSourceTargets() {
-            Map<String, String> targets = new HashMap<>();
-            targets.put(encoder, AsrModelInfo.STANDARD_ENCODER);
-            targets.put(decoder, AsrModelInfo.STANDARD_DECODER);
-            targets.put(joiner, AsrModelInfo.STANDARD_JOINER);
-            targets.put(tokens, AsrModelInfo.STANDARD_TOKENS);
-            if (bpeModel != null) targets.put(bpeModel, AsrModelInfo.STANDARD_BPE_MODEL);
-            if (bpeVocab != null) targets.put(bpeVocab, AsrModelInfo.STANDARD_BPE_VOCAB);
-            return targets.entrySet().stream().map(entry -> new SourceTarget(entry.getKey(), entry.getValue())).toList();
-        }
-    }
-
-    private record ModelFileGroup(String groupPath, SourceFile encoder, SourceFile decoder, SourceFile joiner, int score) {
-    }
-
-    private record SourceFile(String path) {
-        private String fileName() {
-            int index = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-            return index >= 0 ? path.substring(index + 1) : path;
-        }
-
-        private String fileNameLower() {
-            return fileName().toLowerCase(Locale.ROOT);
-        }
-
-        private String pathLower() {
-            return path.toLowerCase(Locale.ROOT).replace('\\', '/');
-        }
-
-        private String parent() {
-            String normalized = path.replace('\\', '/');
-            int index = normalized.lastIndexOf('/');
-            return index >= 0 ? normalized.substring(0, index) : "";
-        }
-
-        private int pathSegments() {
-            String normalized = path.replace('\\', '/');
-            if (normalized.isBlank()) return 0;
-            return normalized.split("/").length;
-        }
-
-        private boolean isUseful() {
-            String lower = fileNameLower();
-            if (lower.equals(".gitattributes")) return false;
-            if (lower.startsWith("readme")) return false;
-            if (lower.endsWith(".py")) return false;
-            if (pathLower().contains("/dict/")) return false;
-            return lower.endsWith(".onnx")
-                    || lower.equals(AsrModelInfo.STANDARD_TOKENS)
-                    || lower.equals(AsrModelInfo.STANDARD_BPE_MODEL)
-                    || lower.equals(AsrModelInfo.STANDARD_BPE_VOCAB);
+            return sourcePath + " -> " + targetPath;
         }
     }
 

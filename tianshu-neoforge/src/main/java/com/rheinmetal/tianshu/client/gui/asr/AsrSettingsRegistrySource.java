@@ -84,7 +84,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 .enable("asr.enabled", asr("enabled"), draft.enabled)
                 .options("as.main", asr("section.main"), draft::buildMainOptions)
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
-                        .toggle("asr.rnnoise", asr("option.rnnoise"), draft.rnnoiseEnabled, draft.enabled::get)
+                        .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
                         .toggle("asr.vad", asr("option.vad"), draft.vadEnabled, draft.enabled::get))
                 .status("asr.status", asr("section.status"), status -> status
                         .row("asr.status.model", asr("row.draft_model"), draft::selectedModelStatus)
@@ -136,7 +136,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<TriggerMode> triggerMode;
         private final MutableSettingsValue<String> wakeWord;
         private final MutableSettingsValue<String> selectedModelName;
-        private final MutableSettingsValue<Boolean> rnnoiseEnabled;
+        private final MutableSettingsValue<Boolean> highPassFilterEnabled;
         private final MutableSettingsValue<Boolean> vadEnabled;
         private final MutableSettingsValue<Boolean> hotwordsExpanded;
         private final MutableSettingsValue<Boolean> downloadExpanded;
@@ -166,7 +166,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.triggerMode = new MutableSettingsValue<>(config::getTriggerMode, config::setTriggerMode, Objects::nonNull);
             this.wakeWord = new MutableSettingsValue<>(config::getWakeWord, config::setWakeWord, value -> value != null && !value.isBlank());
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, value -> value != null && !value.isBlank());
-            this.rnnoiseEnabled = new MutableSettingsValue<>(config::isAsrRnnoiseEnabled, config::setAsrRnnoiseEnabled);
+            this.highPassFilterEnabled = new MutableSettingsValue<>(config::isAsrHighPassFilterEnabled, config::setAsrHighPassFilterEnabled);
             this.vadEnabled = new MutableSettingsValue<>(config::isAsrVadEnabled, config::setAsrVadEnabled);
             this.hotwordsExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
             this.downloadExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
@@ -180,7 +180,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildMainOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
-            options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, Component::literal, enabled::get)
+            options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get)
                     .select("asr.trigger", asr("option.trigger"), List.of(TriggerMode.values()), triggerMode, this::triggerLabel, enabled::get)
                     .text("asr.wakeWord", asr("option.wake_word"), wakeWord, () -> enabled.get() && triggerMode.get() == TriggerMode.WAKE_WORD);
@@ -192,9 +192,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
             options.select("asr.download.lang", asr("option.language"), filterValues(this::languageTags), languageFilter, this::filterOptionLabel)
-                    .select("asr.download.performance", asr("option.performance"), tierValues(AsrModelInfo::getPerformanceClass), performanceFilter, this::tierOptionLabel)
-                    .select("asr.download.quality", asr("option.quality"), tierValues(AsrModelInfo::getQualityTier), qualityFilter, this::tierOptionLabel)
-                    .select("asr.download.recommended", asr("option.recommended"), tierValues(AsrModelInfo::getRecommendedTier), recommendedFilter, this::tierOptionLabel)
+                    .select("asr.download.performance", asr("option.performance"), scoreFilterValues(AsrModelInfo::getPerformanceScore), performanceFilter, this::scoreFilterLabel)
+                    .select("asr.download.quality", asr("option.quality"), scoreFilterValues(AsrModelInfo::getRecognitionQualityScore), qualityFilter, this::scoreFilterLabel)
+                    .select("asr.download.recommended", asr("option.recommended"), scoreFilterValues(AsrModelInfo::getRecommendationScore), recommendedFilter, this::scoreFilterLabel)
                     .select("asr.download.sort", asr("option.sort"), List.of(SortMode.values()), sortMode, SortMode::label);
         }
 
@@ -219,17 +219,17 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                     || triggerMode.dirty()
                     || wakeWord.dirty()
                     || selectedModelName.dirty()
-                    || rnnoiseEnabled.dirty()
+                    || highPassFilterEnabled.dirty()
                     || vadEnabled.dirty()
                     || githubProxyUrl.dirty();
         }
 
         @Override
         public SettingsValidationResult validate() {
-            if (!wakeWord.valid()) {
+            if (enabled.get() && triggerMode.get() == TriggerMode.WAKE_WORD && !wakeWord.valid()) {
                 return SettingsValidationResult.failure(asr("validation.wake_word_empty"));
             }
-            if (!selectedModelName.valid() || resolveModel(selectedModelName.get()) == null) {
+            if (enabled.get() && (!selectedModelName.valid() || resolveModel(selectedModelName.get()) == null)) {
                 return SettingsValidationResult.failure(asr("validation.invalid_model"));
             }
             return SettingsValidationResult.successful();
@@ -241,7 +241,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             enabled.save();
             triggerMode.save();
             wakeWord.save();
-            rnnoiseEnabled.save();
+            highPassFilterEnabled.save();
             vadEnabled.save();
             githubProxyUrl.save();
             String mic = selectedMic.get();
@@ -262,7 +262,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             triggerMode.reset();
             wakeWord.reset();
             selectedModelName.reset();
-            rnnoiseEnabled.reset();
+            highPassFilterEnabled.reset();
             vadEnabled.reset();
             githubProxyUrl.reset();
         }
@@ -305,25 +305,39 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private String currentModelName() {
             String custom = config.getCustomAsrName();
-            if (custom != null && !custom.isBlank()) {
+            if (custom != null && !custom.isBlank() && resolveModel(custom) != null) {
                 return custom;
             }
             Path modelPath = config.getAsrModelPath();
-            return modelPath != null && modelPath.getFileName() != null ? modelPath.getFileName().toString() : "";
+            if (modelPath != null && modelPath.getFileName() != null) {
+                String pathName = modelPath.getFileName().toString();
+                if (resolveModel(pathName) != null) {
+                    return pathName;
+                }
+            }
+            return catalog.stream()
+                    .map(AsrModelInfo::localKey)
+                    .filter(name -> name != null && !name.isBlank())
+                    .findFirst()
+                    .orElse("");
         }
 
         private List<String> modelNames() {
             return catalog.stream()
-                    .map(info -> info.name)
+                    .sorted(Comparator.comparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER))
+                    .map(AsrModelInfo::localKey)
                     .filter(name -> name != null && !name.isBlank())
                     .distinct()
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
                     .toList();
         }
 
         private AsrModelInfo resolveModel(String name) {
-            AsrModelInfo info = AsrModelManager.getModelByName(name);
-            return info != null ? info : AsrModelManager.getModelById(name);
+            return AsrModelManager.getModelByLocalKey(name);
+        }
+
+        private Component modelOptionLabel(String name) {
+            AsrModelInfo info = resolveModel(name);
+            return info == null ? Component.literal(name == null ? "" : name) : Component.literal(info.getDisplayName());
         }
 
         private Component selectedModelStatus() {
@@ -553,10 +567,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (left == null || right == null) {
                 return false;
             }
-            if (left.name != null && right.name != null) {
-                return left.name.equalsIgnoreCase(right.name);
-            }
-            return Objects.equals(left.id, right.id);
+            return left.localKey().equalsIgnoreCase(right.localKey());
         }
 
         private AsrModelInfo selectedDownloadModel() {
@@ -568,9 +579,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void useDownloadModel(AsrModelInfo info) {
-            if (info != null && info.name != null && !info.name.isBlank()) {
+            if (info != null && !info.localKey().isBlank()) {
                 selectedDownloadModel = info;
-                selectedModelName.set(info.name);
+                selectedModelName.set(info.localKey());
             }
         }
 
@@ -583,7 +594,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return common("dash");
             }
-            return asr("download.meta", languageLabel(info), tierLabel(info.getQualityTier()), tierLabel(info.getPerformanceClass()), tierLabel(info.getRecommendedTier()));
+            return asr("download.meta", tagLabel(info), languageLabel(info), scoreLabel(info.getRecognitionQualityScore()), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getRecommendationScore()));
         }
 
         private Component selectedDownloadFiles() {
@@ -609,11 +620,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             SortMode mode = sortMode.get();
             if (mode == SortMode.QUALITY) {
                 return Comparator.comparingInt(AsrModelInfo::getQualityScore).reversed()
-                        .thenComparingInt(AsrModelInfo::getPerformanceScore)
+                        .thenComparing(Comparator.comparingInt(AsrModelInfo::getPerformanceScore).reversed())
                         .thenComparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
             }
             if (mode == SortMode.PERFORMANCE) {
-                return Comparator.comparingInt(AsrModelInfo::getPerformanceScore)
+                return Comparator.comparingInt(AsrModelInfo::getPerformanceScore).reversed()
                         .thenComparing(Comparator.comparingInt(AsrModelInfo::getQualityScore).reversed())
                         .thenComparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
             }
@@ -621,16 +632,17 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 return Comparator.comparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
             }
             return Comparator.comparingInt(AsrModelInfo::getValueScore).reversed()
+                    .thenComparing(Comparator.comparingInt(AsrModelInfo::getRecommendationScore).reversed())
                     .thenComparing(Comparator.comparingInt(AsrModelInfo::getQualityScore).reversed())
-                    .thenComparingInt(AsrModelInfo::getPerformanceScore)
+                    .thenComparing(Comparator.comparingInt(AsrModelInfo::getPerformanceScore).reversed())
                     .thenComparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
         }
 
         private boolean matchesFilters(AsrModelInfo info) {
             return matches(languageFilter.get(), languageTags(info))
-                    && matches(performanceFilter.get(), List.of(info.getPerformanceClass()))
-                    && matches(qualityFilter.get(), List.of(info.getQualityTier()))
-                    && matches(recommendedFilter.get(), List.of(info.getRecommendedTier()));
+                    && matchesScore(performanceFilter.get(), info.getPerformanceScore())
+                    && matchesScore(qualityFilter.get(), info.getRecognitionQualityScore())
+                    && matchesScore(recommendedFilter.get(), info.getRecommendationScore());
         }
 
         private boolean matches(String filter, List<String> values) {
@@ -649,7 +661,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return Component.empty();
             }
-            return asr("download.card", info.getDisplayName(), common(isDownloaded(info) ? "downloaded" : "not_downloaded"), languageLabel(info), tierLabel(info.getQualityTier()), tierLabel(info.getPerformanceClass()), tierLabel(info.getRecommendedTier()));
+            return asr("download.card", info.getDisplayName(), common(isDownloaded(info) ? "downloaded" : "not_downloaded"), tagLabel(info), languageLabel(info), scoreLabel(info.getRecognitionQualityScore()), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getRecommendationScore()));
         }
 
         private boolean isDownloaded(AsrModelInfo info) {
@@ -665,14 +677,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return List.copyOf(values);
         }
 
-        private List<String> tierValues(java.util.function.Function<AsrModelInfo, String> mapper) {
+        private List<String> scoreFilterValues(java.util.function.ToIntFunction<AsrModelInfo> mapper) {
             Set<String> values = new LinkedHashSet<>();
             values.add(ALL);
             for (AsrModelInfo info : catalog) {
-                String value = mapper.apply(info);
-                if (value != null && !value.isBlank()) {
-                    values.add(value.toUpperCase(Locale.ROOT));
-                }
+                values.add(String.valueOf(mapper.applyAsInt(info)));
             }
             return List.copyOf(values);
         }
@@ -688,23 +697,33 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return ALL.equals(value) ? common("all") : Component.literal(value);
         }
 
-        private Component tierOptionLabel(String value) {
-            return ALL.equals(value) ? common("all") : tierLabel(value);
+        private Component scoreFilterLabel(String value) {
+            return ALL.equals(value) ? common("all") : asr("score.at_least", value);
         }
 
-        private Component tierLabel(String tier) {
-            if ("HIGH".equalsIgnoreCase(tier)) {
-                return common("high");
+        private boolean matchesScore(String filter, int score) {
+            if (filter == null || ALL.equals(filter)) {
+                return true;
             }
-            if ("LOW".equalsIgnoreCase(tier)) {
-                return common("low");
+            try {
+                return score >= Integer.parseInt(filter);
+            } catch (NumberFormatException e) {
+                return true;
             }
-            return common("mid");
+        }
+
+        private String scoreLabel(int score) {
+            return score + "/10";
         }
 
         private String languageLabel(AsrModelInfo info) {
             List<String> tags = languageTags(info);
             return tags.isEmpty() ? "-" : String.join(",", tags);
+        }
+
+        private String tagLabel(AsrModelInfo info) {
+            List<String> tags = info == null ? List.of() : info.getTags();
+            return tags.isEmpty() ? "-" : String.join(", ", tags);
         }
 
         private AsrModelService asrModelService() {
@@ -716,6 +735,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void releaseVoiceInputResources() {
                     coreManager.findService(AsrModuleRuntimeControl.class).ifPresent(AsrModuleRuntimeControl::releaseInputResources);
+                }
+
+                @Override
+                public void reconfigureAudioPipeline() {
+                    coreManager.findService(AsrModuleRuntimeControl.class).ifPresent(AsrModuleRuntimeControl::reconfigureAudioPipeline);
                 }
 
                 @Override

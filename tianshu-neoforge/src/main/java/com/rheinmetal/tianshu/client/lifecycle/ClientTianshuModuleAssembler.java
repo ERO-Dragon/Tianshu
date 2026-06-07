@@ -1,17 +1,20 @@
-package com.rheinmetal.tianshu.client.ir;
+package com.rheinmetal.tianshu.client.lifecycle;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.client.auxilium.prompt.MinecraftAXPromptLanguageProvider;
+import com.rheinmetal.tianshu.client.auxilium.rag.MinecraftRuntimeFactTextResolver;
+import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.CompositeTianshuFunctionModuleAssembler;
 import com.rheinmetal.tianshu.function.TianshuCoreModuleInstallers;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
-import com.rheinmetal.tianshu.client.rag.MinecraftAXPromptLanguageProvider;
-import com.rheinmetal.tianshu.client.rag.MinecraftRuntimeFactTextResolver;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 
@@ -32,6 +35,32 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             AXWorldIdentityProvider axWorldIdentityProvider,
             WorldStateProvider worldStateProvider
     ) {
+        this(
+                env,
+                config,
+                audioBridge,
+                protocolRuntime,
+                voiceInputGate,
+                interruptionSignal,
+                axWorldIdentityProvider,
+                worldStateProvider,
+                AXOutputSettings.DEFAULT,
+                AXChatOutputSink.NOOP
+        );
+    }
+
+    public ClientTianshuModuleAssembler(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            IAudioBridge audioBridge,
+            ProtocolRuntime protocolRuntime,
+            BooleanSupplier voiceInputGate,
+            LongSupplier interruptionSignal,
+            AXWorldIdentityProvider axWorldIdentityProvider,
+            WorldStateProvider worldStateProvider,
+            AXOutputSettings axOutputSettings,
+            AXChatOutputSink axChatOutputSink
+    ) {
         List<TianshuFunctionModuleInstaller> installers = new java.util.ArrayList<>();
         installers.addAll(TianshuCoreModuleInstallers.clientCore(
                 env,
@@ -44,6 +73,8 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 worldStateProvider,
                 new MinecraftRuntimeFactTextResolver(),
                 new MinecraftAXPromptLanguageProvider(),
+                axOutputSettings,
+                axChatOutputSink,
                 new ClientIrModuleInstaller(protocolRuntime)
         ));
         this.delegate = new CompositeTianshuFunctionModuleAssembler(installers);

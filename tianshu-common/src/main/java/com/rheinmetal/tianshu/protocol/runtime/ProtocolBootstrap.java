@@ -16,8 +16,6 @@ public final class ProtocolBootstrap {
     }
 
     private static void registerTopics(ProtocolRuntime runtime) {
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_STREAM, PayloadType.LLM_TEXT_CHUNK, DeliveryPolicy.WAIT_IN_QUEUE, 20));
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_TASK_STREAM, PayloadType.LLM_TASK_STREAM_CHUNK, DeliveryPolicy.WAIT_IN_QUEUE, 20));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.UI_STATUS, PayloadType.TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 60));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DEBUG_TRACE, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 30));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.INPUT_ASR_FINAL_TEXT, PayloadType.ASR_TEXT, DeliveryPolicy.WAIT_IN_QUEUE, 20));

@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LlmTaskRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmTaskResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmTaskStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 
 import java.util.Map;
 import java.util.Objects;
@@ -17,16 +17,19 @@ public final class AXLlmClient {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
     }
 
-    public TianshuEnvelope submit(TianshuEnvelope parent, LlmTaskRequestPayload payload, AXLlmRequestHandler handler) {
+    public TianshuEnvelope submit(TianshuEnvelope parent, LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
         Objects.requireNonNull(parent, "parent");
         return submit(adapter.requestLlm(parent, payload), handler);
     }
 
-    public TianshuEnvelope submitDetached(LlmTaskRequestPayload payload, AXLlmRequestHandler handler) {
+    public TianshuEnvelope submitDetached(LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
         return submit(adapter.requestLlm(payload), handler);
     }
 
-    public boolean handleStreamChunk(String requestEnvelopeId, LlmTaskStreamChunkPayload payload) {
+    public boolean handleStreamChunk(String requestEnvelopeId, LLMPromptStreamChunkPayload payload) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return false;
+        }
         PendingRequest request = handlers.get(requestEnvelopeId);
         if (request == null || request.expired()) {
             handlers.remove(requestEnvelopeId);
@@ -36,7 +39,10 @@ public final class AXLlmClient {
         return true;
     }
 
-    public boolean handleResult(String requestEnvelopeId, LlmTaskResultPayload payload) {
+    public boolean handleResult(String requestEnvelopeId, LLMPromptResultPayload payload) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return false;
+        }
         PendingRequest request = handlers.remove(requestEnvelopeId);
         if (request == null || request.expired()) {
             return false;

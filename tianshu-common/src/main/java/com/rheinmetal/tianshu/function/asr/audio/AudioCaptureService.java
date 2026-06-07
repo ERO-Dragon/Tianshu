@@ -21,6 +21,7 @@ public final class AudioCaptureService {
 
     public void startPttCapture() {
         stopStreamCapture();
+        frameProcessor.reset();
         audioBridge.startRecording();
     }
 
@@ -29,6 +30,7 @@ public final class AudioCaptureService {
     }
 
     public void startStreamCapture(Consumer<byte[]> consumer) {
+        frameProcessor.reset();
         audioBridge.startStreamRecording(chunk -> {
             byte[] processed = frameProcessor.process(chunk);
             if (processed != null && processed.length > 0) {

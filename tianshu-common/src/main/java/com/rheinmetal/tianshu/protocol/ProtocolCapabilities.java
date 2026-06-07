@@ -4,7 +4,6 @@ public final class ProtocolCapabilities {
     public static final String ASR_RECOGNIZE = "ASR_RECOGNIZE";
     public static final String IR_PARSE = "IR_PARSE";
     public static final String IR_EXECUTE = "IR_EXECUTE";
-    public static final String LLM_TASK_REQUEST = "LLM_TASK_REQUEST";
     public static final String LLM_REQUEST = "LLM.REQUEST";
     public static final String LLM_CACHE_MANAGE = "LLM.CACHE_MANAGE";
     public static final String TTS_SPEAK = "TTS_SPEAK";

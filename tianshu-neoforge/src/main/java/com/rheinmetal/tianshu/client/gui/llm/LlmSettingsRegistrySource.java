@@ -26,6 +26,13 @@ import java.util.Objects;
 
 public final class LlmSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = "module.llm";
+    private static final String ALL = "all";
+    private static final String RECOMMENDED = "recommended";
+    private static final String SMALL = "small";
+    private static final String MEDIUM = "medium";
+    private static final String LARGE = "large";
+    private static final String DOWNLOADED = "downloaded";
+    private static final String NOT_DOWNLOADED = "not_downloaded";
     private static final Component TITLE = llm("title");
     private static final Component DESCRIPTION = llm("description");
 
@@ -64,14 +71,15 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         panel.enable("llm.enabled", llm("enabled"), draft.enabled)
                 .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
-                .status("llm.load.info", llm("section.model_info"), draft.enabled::get, draft::buildModelInfo)
                 .options("llm.load.settings", llm("section.load_settings"), draft.enabled::get, draft::buildLoadOptions)
-                .actions("llm.load.control", llm("section.load_control"), draft.enabled::get, actions -> actions
+                .status("llm.load.info", llm("section.load_settings"), draft.enabled::get, draft::buildModelInfo)
+                .actions("llm.load.control", llm("section.load_settings"), draft.enabled::get, actions -> actions
                         .button("llm.load.start", llm("action.load"), SettingsButtonStyle.PRIMARY, () -> draft.startLoad(context), draft::canLoad)
                         .button("llm.load.stop", llm("action.unload"), SettingsButtonStyle.DANGER, () -> draft.stopLoad(context), draft::canUnload))
-                .status("llm.load.status", llm("section.load_status"), draft.enabled::get, draft::buildLoadStatus)
+                .status("llm.load.status", llm("section.load_settings"), draft.enabled::get, draft::buildLoadStatus)
                 .separator("llm.download.separator")
                 .enable("llm.download.expand", llm("download.expand"), draft.downloadExpanded::get, draft.downloadExpanded::set)
+                .options("llm.download.filters", llm("section.download"), () -> true, draft.downloadExpanded::get, draft::buildDownloadFilters)
                 .<LlmModelInfo>list("llm.download.models", llm("section.download_models"), () -> true, draft.downloadExpanded::get, list -> list
                         .items(draft::downloadableModels)
                         .label(draft::downloadModelLabel)
@@ -91,6 +99,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<Double> gpuLayerPercent;
         private final MutableSettingsValue<Boolean> downloadExpanded;
+        private final MutableSettingsValue<String> recommendationFilter;
+        private final MutableSettingsValue<String> scaleFilter;
+        private final MutableSettingsValue<String> downloadStateFilter;
         private volatile LlmModelInfo selectedDownloadModel;
 
         private LlmSettingsDraft(ClientConfig config, TianshuCoreManager coreManager) {
@@ -102,6 +113,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.gpuLayerPercent = new MutableSettingsValue<>(() -> (double) config.getLlmGpuLayerPercent(), ignored -> {}, value -> value != null && value >= 0 && value <= 100);
             this.downloadExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
+            this.recommendationFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
+            this.scaleFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
+            this.downloadStateFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.selectedDownloadModel = resolveModel(selectedModelName.get());
         }
 
@@ -141,6 +155,12 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     .slider("llm.efficiency", llm("option.efficiency"), gpuLayerPercent, 0, 100, enabled::get);
         }
 
+        private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
+            options.select("llm.download.recommended", llm("option.recommended"), List.of(ALL, RECOMMENDED), recommendationFilter, this::filterLabel)
+                    .select("llm.download.scale", llm("option.scale"), List.of(ALL, SMALL, MEDIUM, LARGE), scaleFilter, this::filterLabel)
+                    .select("llm.download.state", llm("option.download_state"), List.of(ALL, DOWNLOADED, NOT_DOWNLOADED), downloadStateFilter, this::filterLabel);
+        }
+
         private void buildLoadStatus(com.rheinmetal.tianshu.client.gui.settings.api.StatusTemplate status) {
             status.row("llm.load.state", llm("row.load_state"), this::loadStateStatus);
         }
@@ -174,7 +194,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         @Override
         public SettingsSaveResult save() {
-            boolean wasEnabled = config.isLlmEnabled();
             enabled.save();
             config.setCustomLlmName(selectedModelName.get());
             selectedModelName.save();
@@ -183,8 +202,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             config.save();
             if (!enabled.get()) {
                 moduleService.unload();
-            } else if (!wasEnabled) {
-                moduleService.load();
             }
             return SettingsSaveResult.success(llm("message.saved"), true, true);
         }
@@ -328,13 +345,22 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private List<LlmModelInfo> downloadableModels() {
-            return modelService.allModels();
+            return modelService.allModels().stream()
+                    .filter(this::matchesRecommendationFilter)
+                    .filter(this::matchesScaleFilter)
+                    .filter(this::matchesDownloadStateFilter)
+                    .toList();
         }
 
         private Component downloadModelLabel(LlmModelInfo info) {
             if (info == null) return Component.empty();
             boolean downloaded = modelService.hasModelContent(info);
-            return llm("download.card", info.getDisplayName(), common(downloaded ? "downloaded" : "not_downloaded"));
+            return llm("download.card",
+                    info.getDisplayName(),
+                    modelScaleLabel(info).getString(),
+                    modelDownloadSizeLabel(info).getString(),
+                    modelRecommendationLabel(info).getString(),
+                    common(downloaded ? "downloaded" : "not_downloaded").getString());
         }
 
         private LlmModelInfo selectedDownloadModel() {
@@ -411,6 +437,109 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void runOnClient(Runnable runnable) {
             Minecraft.getInstance().execute(runnable);
+        }
+
+        private Component filterLabel(String value) {
+            return switch (value == null ? ALL : value) {
+                case RECOMMENDED -> llm("filter.recommended");
+                case SMALL -> llm("filter.small");
+                case MEDIUM -> llm("filter.medium");
+                case LARGE -> llm("filter.large");
+                case DOWNLOADED -> common("downloaded");
+                case NOT_DOWNLOADED -> common("not_downloaded");
+                default -> llm("filter.all");
+            };
+        }
+
+        private boolean matchesRecommendationFilter(LlmModelInfo info) {
+            if (!RECOMMENDED.equals(recommendationFilter.get())) {
+                return true;
+            }
+            long[] vram = safeVramBytes();
+            if (vram == null) {
+                return true;
+            }
+            long freeMb = Math.max(0L, (vram[0] - vram[1]) / (1024 * 1024));
+            return modelScaleRank(info) <= recommendedScaleRank(freeMb);
+        }
+
+        private boolean matchesScaleFilter(LlmModelInfo info) {
+            return switch (scaleFilter.get()) {
+                case SMALL -> modelScaleRank(info) <= 1;
+                case MEDIUM -> modelScaleRank(info) == 2;
+                case LARGE -> modelScaleRank(info) >= 3;
+                default -> true;
+            };
+        }
+
+        private boolean matchesDownloadStateFilter(LlmModelInfo info) {
+            return switch (downloadStateFilter.get()) {
+                case DOWNLOADED -> modelService.hasModelContent(info);
+                case NOT_DOWNLOADED -> !modelService.hasModelContent(info);
+                default -> true;
+            };
+        }
+
+        private Component modelScaleLabel(LlmModelInfo info) {
+            if (info == null || info.name == null) return common("dash");
+            String name = info.name.toLowerCase();
+            if (name.contains("0.6b")) return Component.literal("0.6B");
+            if (name.contains("1.5b")) return Component.literal("1.5B");
+            if (name.contains("1b")) return Component.literal("1B");
+            if (name.contains("2b")) return Component.literal("2B");
+            if (name.contains("3b")) return Component.literal("3B");
+            if (name.contains("4b")) return Component.literal("4B");
+            if (name.contains("7b")) return Component.literal("7B");
+            if (name.contains("8b")) return Component.literal("8B");
+            if (name.contains("13b")) return Component.literal("13B");
+            if (name.contains("14b")) return Component.literal("14B");
+            return common("dash");
+        }
+
+        private Component modelDownloadSizeLabel(LlmModelInfo info) {
+            if (info == null) return common("unknown");
+            if (modelService.hasModelContent(info)) {
+                return selectedModelSizeStatusFor(info);
+            }
+            return common("unknown");
+        }
+
+        private Component modelRecommendationLabel(LlmModelInfo info) {
+            return switch (modelScaleRank(info)) {
+                case 0 -> llm("download.recommend.tiny");
+                case 1 -> llm("download.recommend.small");
+                case 2 -> llm("download.recommend.medium");
+                case 3 -> llm("download.recommend.large");
+                default -> llm("download.recommend.xlarge");
+            };
+        }
+
+        private Component selectedModelSizeStatusFor(LlmModelInfo info) {
+            if (info == null) return common("dash");
+            if (!modelService.hasModelContent(info)) return common("not_downloaded");
+            long sizeBytes = modelService.modelSizeBytes(info);
+            if (sizeBytes <= 0L) return common("unknown");
+            if (sizeBytes > 1024L * 1024 * 1024) {
+                return Component.literal(String.format("%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
+            }
+            return Component.literal(String.format("%.0f MB", sizeBytes / (1024.0 * 1024)));
+        }
+
+        private int modelScaleRank(LlmModelInfo info) {
+            if (info == null || info.name == null) return 2;
+            String name = info.name.toLowerCase();
+            if (name.contains("0.6b") || name.contains("1b")) return 0;
+            if (name.contains("1.5b") || name.contains("2b") || name.contains("3b")) return 1;
+            if (name.contains("4b") || name.contains("7b") || name.contains("8b")) return 2;
+            if (name.contains("13b") || name.contains("14b")) return 3;
+            return 2;
+        }
+
+        private int recommendedScaleRank(long freeMb) {
+            if (freeMb < 4096) return 1;
+            if (freeMb < 8192) return 2;
+            if (freeMb < 16384) return 3;
+            return 4;
         }
     }
 }

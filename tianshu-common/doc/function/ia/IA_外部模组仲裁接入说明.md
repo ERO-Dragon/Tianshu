@@ -47,19 +47,19 @@ IA 负责：
 - 声明自己的 participant 身份和能力范围。
 - 注册接收 IA delivery 的 capability。
 - 在收到 delivery 后执行自身业务逻辑。
-- 如需调用 LLM，向 LLM 模块提交对话型请求，并携带 session 授权上下文。
+- 如需调用 LLM，通过协议中心提交 `LLMPromptRequestPayload`，并把 IA delivery 中的正文和上下文组织进 prompt / RAG chunk。
 - 在完成、取消、失败、需要续租或确认中断时，通过 session control 通知 IA。
 
 ### 2.3 LLM 负责
 
 LLM 模块负责：
 
-- 统一接收 LLM task request。
-- 对 `INTERACTIVE` 类型请求向 IA 查询 `DIALOGUE_LLM_USAGE_AUTHORIZE`。
-- IA 允许后才执行对话型推理。
-- IA 拒绝或不可用时 fail closed。
+- 通过协议中心统一接收 `ProtocolCapabilities.LLM_REQUEST`。
+- 处理 `PayloadType.LLM_PROMPT_REQUEST` / `LLMPromptRequestPayload`。
+- 按 `lane=CHAT` 或 `lane=TASK` 执行推理调度。
+- 通过 direct response 返回 `LLMPromptResultPayload` / `LLMPromptStreamChunkPayload`。
 
-外部模组不需要也不应该各自实现 IA 授权客户端作为最终安全边界。
+外部模组不需要也不应该绕过协议中心直接访问 LLM 底层实现。对话正文的 owner 归属由 IA 在 delivery 前完成；LLM 只处理 owner 模块提交的推理请求，不参与 owner 判定。
 
 ## 3. 注册 participant
 
@@ -193,73 +193,78 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 
 ## 6. 调用 LLM
 
-如果 owner 需要调用 LLM，应向 LLM 模块提交 `LlmTaskRequestPayload`。
-
-对话型请求必须使用：
+如果 owner 需要调用 LLM，应通过协议中心提交 `LLMPromptRequestPayload`。
 
 ```text
-LlmTaskUsageKind.INTERACTIVE
+ProtocolCapabilities.LLM_REQUEST
+PayloadType.LLM_PROMPT_REQUEST
+LLMPromptRequestPayload
 ```
 
-并携带：
-
-```text
-moduleId = 当前 owner moduleId
-agentId = 当前 owner participantId
-authorization.sessionId = DialogueDeliveryPayload.sessionId
-authorization.turnId = DialogueDeliveryPayload.turnId
-```
-
-当前协议 payload 中：
+对话型请求使用 `lane=CHAT`。请求内容由 `chunks` 组成，常见结构是一个 `message` chunk，包含 system / user / assistant 消息；需要 RAG 时再追加 `rag` chunk。
 
 ```java
-LlmUsageAuthorizationPayload(
-    String sessionId,
-    String turnId
+LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
+    delivery.requestId(),
+    1024,
+    0.7f,
+    true,
+    false,
+    "CHAT",
+    0,
+    false,
+    List.of(LLMPromptRequestPayload.ChunkPayload.message(List.of(
+        LLMPromptRequestPayload.MessageItemPayload.system("你是当前 IA owner participant"),
+        LLMPromptRequestPayload.MessageItemPayload.user(delivery.repairedText())
+    )))
+);
+```
+
+提交方式：
+
+```text
+EnvelopeBuilder.requestCapability(
+    ownerModuleId,
+    ProtocolCapabilities.LLM_REQUEST,
+    PayloadType.LLM_PROMPT_REQUEST,
+    payload
 )
 ```
 
-`moduleId` 和 `agentId` 位于 `LlmTaskRequestPayload` 顶层字段中。这里的 `agentId` 在 dialogue 授权语义上对应 IA 的 `participantId`。
+LLM 输出不会发布到公共 LLM 文本 topic，而是作为原请求的 direct response 返回：
+
+```text
+LLMPromptStreamChunkPayload
+LLMPromptResultPayload
+```
 
 注意：
 
-- `INTERACTIVE` 是 common 协议层的使用场景标记，不是 JavaLlamaServer 的 `lane`，也不是 message role。
-- 当前 LLM common gateway 会统一通过服务端 `task` lane 调用 JavaLlamaServer；`INTERACTIVE` 只表示进入 LLM gateway 调度前必须向 IA 查询授权。
-- 是否需要 IA 授权只由 `usageKind` 决定，不由 `purpose` 字符串决定。
-- 调用方和 IA 都不直接传 `world`；`world` 由 LLM common 的 `WorldScopeProvider` / `WorldIdentityProvider` 生成，并把 `moduleId/agentId` 组装为服务端 profile。默认 fallback 只保证本地实例级区分；单机存档名、服务器地址、Realm id 等精确世界身份由 MC 适配层注入，不由外部业务模组或 IA 传给 LLM。
-- `LLM_TASK_REQUEST` 的协议 complete 只表示 gateway 已接收或拒绝请求，不表示推理完成；实际输出通过 `LlmTaskStreamChunkPayload` 和 `LlmTaskResultPayload` 绑定 parent envelope 异步返回。
-
-LLM 模块收到 `INTERACTIVE` 请求后，会向 IA 查询：
-
-```text
-ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE
-PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST
-```
-
-IA 实际校验：
-
-```text
-session 是否存在
-session 是否 active
-lease 是否未过期
-turnId 是否匹配
-requesterModuleId/requesterParticipantId 是否为当前 owner
-```
-
-外部模组不要在 LLM 请求中伪造 owner 或 lease。当前协议不再接受调用方自带 owner/lease 作为安全事实。
+- `LLM_REQUEST` 是当前 LLM 的公共能力入口。
+- `LLM_PROMPT_REQUEST` 是当前 LLM 的公共请求 payload 类型。
+- `CHAT` / `TASK` 是 `LLMPromptRequestPayload.lane`，不是 IA owner 判定。
+- IA 不把 owner/lease 作为 LLM payload 字段传入；owner 归属由 IA 在 delivery 前完成。
+- 外部模组不要恢复或依赖旧的任务式 LLM 接入口。
 
 ## 7. 非对话型 LLM 任务
 
-如果模组调用 LLM 是后台任务，例如摘要、索引、压缩、离线分析，不基于当前 dialogue session，应使用：
+如果模组调用 LLM 是后台任务，例如摘要、索引、压缩、离线分析，不基于当前 dialogue session，应仍然使用同一个 LLM capability，只把 `LLMPromptRequestPayload.lane` 设置为 `TASK`。
 
-```text
-LlmTaskUsageKind.TASK
-LlmUsageAuthorizationPayload.EMPTY
+```java
+LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
+    "memory-compress",
+    2048,
+    0.3f,
+    false,
+    false,
+    "TASK",
+    10,
+    true,
+    chunks
+);
 ```
 
-`TASK` 请求不走 IA 对话 owner 授权，但仍受 LLM gateway 的消息大小、队列、并发和资源策略限制。
-
-不要把实际面向玩家开放对话的请求伪装成 `TASK`。凡是来自 IA dialogue delivery 并用于回答本轮玩家对话的请求，都应使用 `INTERACTIVE`。
+`TASK` 请求不代表 IA 对话 owner，也不能用于接管当前玩家对话。凡是来自 IA dialogue delivery 并用于回答本轮玩家对话的请求，都应使用 `lane=CHAT`，并由当前 owner 模块提交。
 
 ## 8. 控制 session
 
@@ -336,7 +341,7 @@ PayloadType.DIALOGUE_SESSION_EVENT
 1. 校验 DialogueDeliveryPayload。
 2. 读取 repairedText / normalizedText。
 3. 构造业务响应。
-4. 如需 LLM，提交 INTERACTIVE LlmTaskRequestPayload。
+4. 如需 LLM，提交 lane=CHAT 的 LLMPromptRequestPayload。
 5. 等待 LLM result 或 stream chunk。
 6. 输出结果或执行动作。
 7. 主动释放 session。
@@ -360,8 +365,8 @@ PayloadType.DIALOGUE_SESSION_EVENT
 - 通过公共 session event 获取正文。
 - 自行广播玩家输入正文、LLM prompt 或 LLM response。
 - 在非 owner 状态下处理当前 session 正文。
-- 伪造 `moduleId` / `participantId` 请求 LLM。
-- 将对话型玩家请求伪装成 `TASK` 绕过 IA 授权。
+- 绕过 IA delivery，把非 owner 模块的内容伪装成当前对话响应。
+- 将当前玩家对话交给 `lane=TASK` 后台任务承接。
 - 自建全局线程池绕过协议中心调度。
 - 长时间持有 session 不续租也不释放。
 - 在模块卸载后保留 participant 注册。
@@ -376,13 +381,12 @@ PayloadType.DIALOGUE_SESSION_EVENT
 - [ ] `DialogueParticipantDescriptor.routeCapability` 指向该 capability。
 - [ ] 能在模块停止时注销 participant。
 - [ ] 能处理 `DialogueDeliveryPayload.expireAtMillis`。
-- [ ] 对话型 LLM 请求使用 `INTERACTIVE`。
-- [ ] 不用 `purpose` 判断是否需要 IA 授权。
-- [ ] LLM 请求中的 `moduleId` / `agentId` 与 IA 注册身份一致。
-- [ ] LLM 请求携带 `sessionId` / `turnId`。
-- [ ] 不向 LLM 请求中传自声明 owner 或 lease。
+- [ ] 对话型 LLM 请求使用 `LLMPromptRequestPayload`。
+- [ ] 对话型 LLM 请求使用 `lane=CHAT`。
+- [ ] 后台 LLM 请求才使用 `lane=TASK`。
+- [ ] 不把 IA owner 判定塞进 LLM payload。
 - [ ] 不直接访问 JavaLlamaServer HTTP，不直接订阅或广播底层 LLM 文本。
-- [ ] 理解 `LLM_TASK_REQUEST` complete 只表示 gateway 接收/拒绝，最终输出通过 result/chunk 异步返回。
+- [ ] 理解 `LLM_REQUEST` 的最终输出通过 result/chunk direct response 返回。
 - [ ] 完成后会释放 session，长任务会续租。
 - [ ] 不把正文写入公共 topic、日志或诊断快照。
 
@@ -403,35 +407,33 @@ ownerModuleId = module.maid
 ownerParticipantId = maid.default
 ```
 
-女仆模组向 LLM 发对话型请求时必须使用：
+女仆模组向 LLM 发对话型请求时使用：
 
 ```text
-usageKind = INTERACTIVE
-moduleId = module.maid
-agentId = maid.default
-authorization.sessionId = delivery.sessionId
-authorization.turnId = delivery.turnId
+ProtocolCapabilities.LLM_REQUEST
+PayloadType.LLM_PROMPT_REQUEST
+LLMPromptRequestPayload.lane = CHAT
 ```
 
-LLM 向 IA 查询授权时会提交：
+请求的 prompt / RAG 内容由女仆模组根据 `DialogueDeliveryPayload` 构造。IA 不把 owner/lease 作为 LLM payload 字段传入；owner 事实保存在 IA session 中，并体现在只有当前 owner 才会收到正文 delivery。
+
+女仆模组处理完成后，应通过 IA session control 释放或续租：
 
 ```text
 sessionId = delivery.sessionId
-requesterModuleId = module.maid
-requesterParticipantId = maid.default
 turnId = delivery.turnId
 ```
 
-只有当 IA 当前 session owner 仍然是 `module.maid / maid.default`，且 session active、lease 未过期、turn 匹配时，LLM 才会放行。
+只有当前 owner 能接收本轮 `DialogueDeliveryPayload`。非 owner 不应持有正文，也不应构造本轮对话的 LLM 请求。
 
 ## 14. 接入原则总结
 
 1. 外部模组通过 participant 参与仲裁，不直接抢夺语音链路。
 2. IA 决定 owner，owner 才能接收正文。
 3. LLM 是 owner 可调用的能力，不是 owner 判定者。
-4. 对话型 LLM 请求必须由 LLM 入口向 IA 查询授权。
-5. 是否需要 IA 授权只看 `usageKind`，不看 `purpose`。
-6. 外部模组只携带 session 上下文，不携带自声明 owner/lease。
+4. 对话型 LLM 请求使用 `LLM_REQUEST + LLMPromptRequestPayload + lane=CHAT`。
+5. 后台 LLM 请求使用同一个能力入口，只把 `lane` 设置为 `TASK`。
+6. 外部模组不要向 LLM payload 携带自声明 owner/lease。
 7. 非 owner 只能看状态事件，不能看正文。
 8. LLM 输出必须绑定原始请求返回，不做底层 LLM 公共广播。
 9. 所有跨模块通信走协议中心 capability、direct route 或 topic。

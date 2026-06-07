@@ -14,7 +14,7 @@ public record LLMPromptStreamChunkPayload(
 
     public LLMPromptStreamChunkPayload {
         requestId = normalize(requestId);
-        text = text == null ? "" : text.trim();
+        text = text == null ? "" : text;
         ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
     }
 

@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.llm;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
+import com.rheinmetal.tianshu.libs.llm.KvCacheType;
 
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
@@ -10,12 +11,11 @@ import java.util.concurrent.CompletableFuture;
 public final class LlmEngineProvider {
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final JavaLlamaServer aiService;
+    private JavaLlamaServer aiService;
 
     public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config) {
         this.env = env;
         this.config = config;
-        this.aiService = createAiService();
     }
 
     private JavaLlamaServer createAiService() {
@@ -25,38 +25,79 @@ public final class LlmEngineProvider {
             return null;
         }
 
+        int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
+        int chatThreads = Math.max(1, processors - 1);
+        int taskThreads = Math.max(1, processors / 2);
+        int gpuLayers = gpuLayersFromPercent(config.getLlmGpuLayerPercent());
+
         JavaLlamaServer.Builder builder = JavaLlamaServer.builder()
-                .chatModel(modelPath.toString())
-                .chatContext(config.getLlmContextSize())
-                .chatThreads(Runtime.getRuntime().availableProcessors())
-                .gpuLayers(999);
+                .model(modelPath.toString())
+                .modelAlias(blankToNull(config.getCustomLlmName()))
+                .modelProfile("auto")
+                .chatContext(config.getLlmChatContextSize())
+                .chatThreads(chatThreads)
+                .chatMaxQueueSize(config.getLlmMaxQueueSize())
+                .taskContext(config.getLlmTaskContextSize())
+                .taskThreads(taskThreads)
+                .taskMaxQueueSize(config.getLlmTaskMaxQueueSize())
+                .taskSuspendOnChat(config.isLlmTaskSuspendOnChatEnabled())
+                .requestTimeoutSeconds(config.getLlmRequestTimeoutSeconds())
+                .cacheTypeK(parseCacheType(config.getLlmCacheTypeK(), KvCacheType.Q8_0))
+                .cacheTypeV(parseCacheType(config.getLlmCacheTypeV(), KvCacheType.Q8_0))
+                .gpuLayers(gpuLayers);
 
         Path embeddingPath = config.getLlmEmbeddingGgufFilePath();
         if (embeddingPath != null) {
             builder.embeddingModel(embeddingPath.toString())
-                   .embeddingContext(config.getLlmEmbeddingContextSize())
-                   .embeddingGpuLayers(999);
+                    .embeddingContextSize(config.getLlmEmbeddingContextSize())
+                    .embeddingThreads(Math.max(1, processors / 2))
+                    .embeddingAlias(blankToNull(config.getLlmEmbeddingModelName()))
+                    .embeddingGpuLayers(gpuLayers);
         }
 
         return builder.build();
     }
 
+    private int gpuLayersFromPercent(int percent) {
+        int clamped = Math.max(0, Math.min(100, percent));
+        if (clamped == 0) {
+            return 0;
+        }
+        return Math.max(1, Math.round(999f * clamped / 100f));
+    }
+
+    private KvCacheType parseCacheType(String value, KvCacheType fallback) {
+        try {
+            return KvCacheType.parse(value);
+        } catch (Exception e) {
+            env.warn("Invalid LLM KV cache type: " + value + ", fallback to " + fallback.wireName());
+            return fallback;
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     public boolean isAiServiceAvailable() {
+        ensureAiService();
         return aiService != null;
     }
 
     public JavaLlamaServer getAiService() {
+        ensureAiService();
         return aiService;
     }
 
     public void startAsync(Runnable onReady, Runnable onFailed) {
-        if (aiService == null) {
+        JavaLlamaServer service = ensureAiService();
+        if (service == null) {
             onFailed.run();
             return;
         }
         CompletableFuture.runAsync(() -> {
             try {
-                aiService.start();
+                service.start();
                 if (onReady != null) {
                     onReady.run();
                 }
@@ -70,8 +111,17 @@ public final class LlmEngineProvider {
     }
 
     public void stop() {
-        if (aiService != null) {
-            aiService.shutdown();
+        JavaLlamaServer service = aiService;
+        aiService = null;
+        if (service != null) {
+            service.shutdown();
         }
+    }
+
+    private synchronized JavaLlamaServer ensureAiService() {
+        if (aiService == null) {
+            aiService = createAiService();
+        }
+        return aiService;
     }
 }

@@ -10,10 +10,38 @@ public record DialogueParticipantDescriptor(
         List<String> supportedIntents,
         List<String> supportedEntityTypes,
         List<String> supportedItemIds,
+        DialogueClaimProfile claimProfile,
         String routeCapability,
         DialogueInterruptPolicy interruptPolicy,
         DialogueLeasePolicy leasePolicy
 ) {
+    public DialogueParticipantDescriptor(
+            String participantId,
+            String moduleId,
+            String displayName,
+            int priority,
+            List<String> supportedIntents,
+            List<String> supportedEntityTypes,
+            List<String> supportedItemIds,
+            String routeCapability,
+            DialogueInterruptPolicy interruptPolicy,
+            DialogueLeasePolicy leasePolicy
+    ) {
+        this(
+                participantId,
+                moduleId,
+                displayName,
+                priority,
+                supportedIntents,
+                supportedEntityTypes,
+                supportedItemIds,
+                DialogueClaimProfile.legacy(supportedIntents, supportedEntityTypes, supportedItemIds),
+                routeCapability,
+                interruptPolicy,
+                leasePolicy
+        );
+    }
+
     public DialogueParticipantDescriptor {
         participantId = requireText(participantId, "participantId");
         moduleId = requireText(moduleId, "moduleId");
@@ -21,6 +49,7 @@ public record DialogueParticipantDescriptor(
         supportedIntents = copyTextList(supportedIntents);
         supportedEntityTypes = copyTextList(supportedEntityTypes);
         supportedItemIds = copyTextList(supportedItemIds);
+        claimProfile = claimProfile == null ? DialogueClaimProfile.legacy(supportedIntents, supportedEntityTypes, supportedItemIds) : claimProfile;
         routeCapability = requireText(routeCapability, "routeCapability");
         interruptPolicy = interruptPolicy == null ? DialogueInterruptPolicy.ALLOW_AFTER_LEASE : interruptPolicy;
         leasePolicy = leasePolicy == null ? DialogueLeasePolicy.DEFAULT : leasePolicy;

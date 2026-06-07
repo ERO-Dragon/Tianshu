@@ -25,28 +25,41 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     @Override
     public void index(String uid, List<String> texts) {
-        if (uid == null || texts == null || texts.isEmpty()) {
+        List<String> validTexts = validTexts(texts);
+        if (uid == null || uid.isBlank() || validTexts.isEmpty()) {
             return;
         }
 
         try {
-            float[][] vectors = embeddingService.embed(texts);
             VectorStore store = stores.computeIfAbsent(uid, k -> new VectorStore(uid));
+            List<String> textsToIndex = validTexts.stream()
+                    .filter(text -> !store.containsText(text))
+                    .toList();
+            if (textsToIndex.isEmpty()) {
+                return;
+            }
+
+            float[][] vectors = embeddingService.embed(textsToIndex);
+            if (vectors == null || vectors.length != textsToIndex.size()) {
+                env.warn("[RAG] Embedding result size mismatch for uid: " + uid);
+                return;
+            }
 
             List<String> filteredTexts = new ArrayList<>();
             List<float[]> filteredVectors = new ArrayList<>();
 
-            for (int i = 0; i < texts.size(); i++) {
-                String text = texts.get(i);
+            for (int i = 0; i < textsToIndex.size(); i++) {
+                String text = textsToIndex.get(i);
                 float[] vector = vectors[i];
-                if (text != null && !text.isBlank() && vector != null && vector.length > 0) {
+                if (isUsableVector(vector)) {
                     filteredTexts.add(text);
                     filteredVectors.add(VectorMath.normalize(vector));
                 }
             }
 
-            store.addAll(filteredTexts, filteredVectors);
-            env.info("[RAG] Indexed " + filteredTexts.size() + " vectors for uid: " + uid);
+            if (store.addAll(filteredTexts, filteredVectors)) {
+                env.info("[RAG] Indexed " + filteredTexts.size() + " vectors for uid: " + uid);
+            }
         } catch (Exception e) {
             env.error("[RAG] Failed to index texts for uid: " + uid, e);
         }
@@ -54,12 +67,15 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     @Override
     public List<RagSearchResult> search(String uid, String queryText, int topK, float threshold) {
-        if (uid == null || queryText == null || queryText.isBlank()) {
+        if (uid == null || uid.isBlank() || queryText == null || queryText.isBlank()) {
             return List.of();
         }
 
         try {
             float[] queryVector = embeddingService.embed(queryText);
+            if (!isUsableVector(queryVector)) {
+                return List.of();
+            }
             VectorStore store = stores.get(uid);
             if (store == null || store.isEmpty()) {
                 return List.of();
@@ -76,6 +92,9 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     @Override
     public void evict(String uid) {
+        if (uid == null || uid.isBlank()) {
+            return;
+        }
         VectorStore removed = stores.remove(uid);
         if (removed != null) {
             env.info("[RAG] Evicted all vectors for uid: " + uid);
@@ -84,15 +103,22 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     @Override
     public void evict(String uid, String content) {
+        if (uid == null || uid.isBlank() || content == null) {
+            return;
+        }
         VectorStore store = stores.get(uid);
         if (store != null) {
-            store.remove(content);
-            env.info("[RAG] Evicted content from uid: " + uid);
+            if (store.remove(content)) {
+                env.info("[RAG] Evicted content from uid: " + uid);
+            }
         }
     }
 
     @Override
     public boolean hasCache(String uid) {
+        if (uid == null || uid.isBlank()) {
+            return false;
+        }
         VectorStore store = stores.get(uid);
         return store != null && !store.isEmpty();
     }
@@ -108,5 +134,28 @@ public final class DefaultRagCacheManager implements RagCacheManager {
     public void clear() {
         stores.clear();
         env.info("[RAG] Cleared all caches");
+    }
+
+    private static List<String> validTexts(List<String> texts) {
+        if (texts == null || texts.isEmpty()) {
+            return List.of();
+        }
+        return texts.stream()
+                .filter(text -> text != null && !text.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private static boolean isUsableVector(float[] vector) {
+        if (vector == null || vector.length == 0) {
+            return false;
+        }
+        for (float value : vector) {
+            if (Float.isNaN(value) || Float.isInfinite(value)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

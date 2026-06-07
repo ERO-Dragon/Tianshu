@@ -59,9 +59,9 @@ public final class DialogueArbitrationPolicy {
 
     private Comparator<DialogueClaim> claimComparator() {
         return Comparator.comparing(DialogueClaim::exclusive)
-                .thenComparing(DialogueClaim::priority)
                 .thenComparing(DialogueClaim::score)
                 .thenComparing(DialogueClaim::confidence)
+                .thenComparing(DialogueClaim::priority)
                 .thenComparing(DialogueClaim::participantId, Comparator.reverseOrder());
     }
 }

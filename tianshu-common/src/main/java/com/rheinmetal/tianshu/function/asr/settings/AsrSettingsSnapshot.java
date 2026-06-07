@@ -10,6 +10,7 @@ public record AsrSettingsSnapshot(
         TriggerMode triggerMode,
         String wakeWord,
         String modelName,
+        boolean highPassFilterEnabled,
         boolean rnnoiseEnabled,
         boolean vadEnabled
 ) {
@@ -27,6 +28,7 @@ public record AsrSettingsSnapshot(
                 config.getTriggerMode(),
                 config.getWakeWord(),
                 modelName,
+                config.isAsrHighPassFilterEnabled(),
                 config.isAsrRnnoiseEnabled(),
                 config.isAsrVadEnabled()
         );

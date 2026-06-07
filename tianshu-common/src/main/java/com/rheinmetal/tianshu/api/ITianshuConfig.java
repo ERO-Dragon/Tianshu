@@ -45,6 +45,13 @@ public interface ITianshuConfig {
     default void setAsrRnnoiseEnabled(boolean enabled) {
     }
 
+    default boolean isAsrHighPassFilterEnabled() {
+        return true;
+    }
+
+    default void setAsrHighPassFilterEnabled(boolean enabled) {
+    }
+
     default boolean isAsrVadEnabled() {
         return false;
     }

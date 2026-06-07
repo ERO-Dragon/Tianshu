@@ -66,7 +66,8 @@ configurations {
 
 dependencies {
     implementation project(':tianshu-common')
-    implementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    localRuntime fileTree('../libs') { include 'tianshu_libs-*.jar' }
 }
 
 sourceSets.main.resources {
@@ -97,6 +98,7 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             mod_name               : mod_name,
             mod_license            : mod_license,
             mod_version            : mod_version,
+            tianshu_libs_version_range: tianshu_libs_version_range,
     ]
     inputs.properties replaceProperties
     expand replaceProperties

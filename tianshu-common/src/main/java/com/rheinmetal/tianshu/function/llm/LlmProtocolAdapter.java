@@ -20,11 +20,14 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.llm";
@@ -94,7 +97,12 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public void handleLLMRequest(TianshuEnvelope envelope) {
+        handleLLMRequest(envelope, null);
+    }
+
+    public void handleLLMRequest(TianshuEnvelope envelope, ProtocolContext context) {
         if (envelope == null || !(envelope.payload() instanceof LLMPromptRequestPayload payload)) {
+            complete(context, envelope);
             return;
         }
 
@@ -104,6 +112,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     "LLM_SERVICE_NOT_READY",
                     "LLM service is not initialized"
             ));
+            fail(context, envelope, "LLM_SERVICE_NOT_READY", "LLM service is not initialized", null);
             return;
         }
 
@@ -113,13 +122,21 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             boolean isTask = "TASK".equalsIgnoreCase(payload.lane());
 
             if (isTask && isStream) {
-                handleTaskStreamRequest(envelope, request, payload);
+                handleTaskStreamRequest(envelope, request, payload, context);
             } else if (isTask) {
-                handleTaskRequest(envelope, request, payload);
+                handleTaskRequest(envelope, request, payload, context);
             } else if (isStream) {
-                handleStreamRequest(envelope, request, payload);
+                if (handleStreamRequest(envelope, request, payload)) {
+                    complete(context, envelope);
+                } else {
+                    fail(context, envelope, "LLM_INFERENCE_FAILED", "LLM stream chat failed", null);
+                }
             } else {
-                handleChatRequest(envelope, request, payload);
+                if (handleChatRequest(envelope, request, payload)) {
+                    complete(context, envelope);
+                } else {
+                    fail(context, envelope, "LLM_INFERENCE_FAILED", "LLM chat failed", null);
+                }
             }
         } catch (Exception e) {
             respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
@@ -127,57 +144,76 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     "LLM_REQUEST_FAILED",
                     e.getMessage()
             ));
+            fail(context, envelope, "LLM_REQUEST_FAILED", e.getMessage(), e);
         }
     }
 
-    private void handleChatRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload) {
+    private boolean handleChatRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload) {
         try {
             LLMService.LLMResult result = llmService.chat(request);
             respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(payload.requestId(), result.text(), result.ragHits()));
+            return true;
         } catch (Exception e) {
             respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
                     payload.requestId(),
                     "LLM_INFERENCE_FAILED",
                     e.getMessage()
             ));
+            return false;
         }
     }
 
-    private void handleStreamRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload) {
+    private boolean handleStreamRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload) {
         StringBuilder collected = new StringBuilder();
         int[] index = {0};
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
 
-        llmService.chatStream(request, token -> {
-            if (token != null && !token.isBlank()) {
-                collected.append(token);
-                LLMPromptStreamChunkPayload chunk = LLMPromptStreamChunkPayload.chunk(
-                        payload.requestId(),
-                        token,
-                        index[0]++
-                );
-                publishLLMPromptStreamChunk(envelope, chunk);
-            }
-        }, ragHits);
+        try {
+            llmService.chatStream(request, token -> {
+                if (token != null && !token.isEmpty()) {
+                    collected.append(token);
+                    LLMPromptStreamChunkPayload chunk = LLMPromptStreamChunkPayload.chunk(
+                            payload.requestId(),
+                            token,
+                            index[0]++
+                    );
+                    publishLLMPromptStreamChunk(envelope, chunk);
+                }
+            }, ragHits);
 
-        publishLLMPromptStreamEnd(envelope, index[0]);
-        respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
-                payload.requestId(),
-                collected.toString(),
-                ragHits
-        ));
+            publishLLMPromptStreamEnd(envelope, index[0]);
+            respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
+                    payload.requestId(),
+                    collected.toString(),
+                    ragHits
+            ));
+            return true;
+        } catch (Exception e) {
+            respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
+                    payload.requestId(),
+                    "LLM_INFERENCE_FAILED",
+                    e.getMessage(),
+                    collected.toString()
+            ));
+            return false;
+        }
     }
 
-    private void handleTaskRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload) {
+    private void handleTaskRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload, ProtocolContext context) {
         try {
-            llmService.submitTask(request)
-                    .thenAccept(text -> respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(payload.requestId(), text)))
+            List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
+            llmService.submitTask(request, ragHits)
+                    .thenAccept(text -> {
+                        respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(payload.requestId(), text, ragHits));
+                        complete(context, envelope);
+                    })
                     .exceptionally(ex -> {
                         respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
                                 payload.requestId(),
                                 "LLM_INFERENCE_FAILED",
-                                ex.getMessage()
+                                failureMessage(ex)
                         ));
+                        fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(ex), ex);
                         return null;
                     });
         } catch (Exception e) {
@@ -186,16 +222,17 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     "LLM_INFERENCE_FAILED",
                     e.getMessage()
             ));
+            fail(context, envelope, "LLM_INFERENCE_FAILED", e.getMessage(), e);
         }
     }
 
-    private void handleTaskStreamRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload) {
+    private void handleTaskStreamRequest(TianshuEnvelope envelope, LLMRequest request, LLMPromptRequestPayload payload, ProtocolContext context) {
         StringBuilder collected = new StringBuilder();
         int[] index = {0};
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
 
-        llmService.submitTaskStream(request, token -> {
-            if (token != null && !token.isBlank()) {
+        CompletableFuture<String> future = llmService.submitTaskStream(request, token -> {
+            if (token != null && !token.isEmpty()) {
                 collected.append(token);
                 LLMPromptStreamChunkPayload chunk = LLMPromptStreamChunkPayload.chunk(
                         payload.requestId(),
@@ -206,12 +243,24 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             }
         }, ragHits);
 
-        publishLLMPromptStreamEnd(envelope, index[0]);
-        respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
-                payload.requestId(),
-                collected.toString(),
-                ragHits
-        ));
+        future.thenAccept(text -> {
+            publishLLMPromptStreamEnd(envelope, index[0]);
+            respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
+                    payload.requestId(),
+                    collected.length() > 0 ? collected.toString() : text,
+                    ragHits
+            ));
+            complete(context, envelope);
+        }).exceptionally(ex -> {
+            respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
+                    payload.requestId(),
+                    "LLM_INFERENCE_FAILED",
+                    failureMessage(ex),
+                    collected.toString()
+            ));
+            fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(ex), ex);
+            return null;
+        });
     }
 
     private LLMRequest toLLMRequest(LLMPromptRequestPayload payload) {
@@ -262,13 +311,19 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public void handleLLMCacheManage(TianshuEnvelope envelope) {
+        handleLLMCacheManage(envelope, null);
+    }
+
+    public void handleLLMCacheManage(TianshuEnvelope envelope, ProtocolContext context) {
         if (envelope == null || !(envelope.payload() instanceof LLMCacheManagePayload payload)) {
+            complete(context, envelope);
             return;
         }
 
         if (llmService == null) {
             respondTo(envelope, PayloadType.LLM_CACHE_MANAGE_RESULT,
                     LLMCacheManageResultPayload.failed(payload.uid(), "LLM service is not initialized"));
+            fail(context, envelope, "LLM_SERVICE_NOT_READY", "LLM service is not initialized", null);
             return;
         }
 
@@ -292,9 +347,31 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             };
 
             respondTo(envelope, PayloadType.LLM_CACHE_MANAGE_RESULT, result);
+            complete(context, envelope);
         } catch (Exception e) {
             respondTo(envelope, PayloadType.LLM_CACHE_MANAGE_RESULT,
                     LLMCacheManageResultPayload.failed(payload.uid(), e.getMessage()));
+            fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", e.getMessage(), e);
         }
+    }
+
+    private void complete(ProtocolContext context, TianshuEnvelope envelope) {
+        if (context != null && envelope != null) {
+            context.complete(envelope.envelopeId());
+        }
+    }
+
+    private void fail(ProtocolContext context, TianshuEnvelope envelope, String code, String message, Throwable throwable) {
+        if (context != null && envelope != null) {
+            context.fail(envelope.envelopeId(), code, message, throwable);
+        }
+    }
+
+    private static String failureMessage(Throwable throwable) {
+        Throwable current = throwable instanceof CompletionException && throwable.getCause() != null
+                ? throwable.getCause()
+                : throwable;
+        String message = current == null ? null : current.getMessage();
+        return message == null || message.isBlank() ? "LLM request failed" : message;
     }
 }

@@ -1,0 +1,442 @@
+[
+    {
+        "name":  "sherpa-onnx-zipformer-ru-int8-2025-04-20",
+        "displayName":  "Zipformer 俄语 Int8",
+        "id":  "csukuangfj/sherpa-onnx-zipformer-ru-int8-2025-04-20",
+        "architecture":  "transducer",
+        "isStreaming":  false,
+        "lang":  [
+                     "ru"
+                 ],
+        "tags":  [
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.int8.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.int8.onnx",
+                          "bpe":  "bpe.model",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  7,
+        "performanceScore":  9,
+        "recommendationScore":  7,
+        "size":  73481707,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
+        "displayName":  "Zipformer 中文 Int8",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "zh"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.int8.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.int8.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  8,
+        "performanceScore":  9,
+        "recommendationScore":  9,
+        "size":  167360920,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30",
+        "displayName":  "Zipformer 中文 XLarge Int8",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "zh"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.int8.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.int8.onnx",
+                          "bpe":  "bpe.model",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  9,
+        "performanceScore":  6,
+        "recommendationScore":  9,
+        "size":  771494758,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06",
+        "displayName":  "Zipformer Kroko 法语",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "fr"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  6,
+        "performanceScore":  9,
+        "recommendationScore":  6,
+        "size":  71052319,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06",
+        "displayName":  "Zipformer Kroko 英文",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "en"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  7,
+        "performanceScore":  9,
+        "recommendationScore":  8,
+        "size":  71053214,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-whisper-distil-small.en",
+        "displayName":  "Whisper Distil Small 英文",
+        "id":  "csukuangfj/sherpa-onnx-whisper-distil-small.en",
+        "architecture":  "whisper",
+        "isStreaming":  false,
+        "lang":  [
+                     "en"
+                 ],
+        "tags":  [
+
+                 ],
+        "fileRoles":  {
+                          "encoder":  "distil-small.en-encoder.int8.onnx",
+                          "decoder":  "distil-small.en-decoder.onnx",
+                          "tokens":  "distil-small.en-tokens.txt"
+                      },
+        "recognitionQualityScore":  7,
+        "performanceScore":  6,
+        "recommendationScore":  7,
+        "size":  397844339,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-whisper-distil-large-v3",
+        "displayName":  "Whisper Distil Large v3 英文",
+        "id":  "csukuangfj/sherpa-onnx-whisper-distil-large-v3",
+        "architecture":  "whisper",
+        "isStreaming":  false,
+        "lang":  [
+                     "en"
+                 ],
+        "tags":  [
+
+                 ],
+        "fileRoles":  {
+                          "encoder":  "distil-large-v3-encoder.int8.onnx",
+                          "decoder":  "distil-large-v3-decoder.onnx",
+                          "decoderWeights":  "distil-large-v3-decoder.weights",
+                          "tokens":  "distil-large-v3-tokens.txt"
+                      },
+        "recognitionQualityScore":  9,
+        "performanceScore":  4,
+        "recommendationScore":  7,
+        "size":  1121403841,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-whisper-turbo",
+        "displayName":  "Whisper Turbo 多语种",
+        "id":  "csukuangfj/sherpa-onnx-whisper-turbo",
+        "architecture":  "whisper",
+        "isStreaming":  false,
+        "lang":  [
+                     "zh",
+                     "en",
+                     "ja",
+                     "ko",
+                     "fr",
+                     "de",
+                     "ru",
+                     "es"
+                 ],
+        "tags":  [
+
+                 ],
+        "fileRoles":  {
+                          "encoder":  "turbo-encoder.int8.onnx",
+                          "decoder":  "turbo-decoder.onnx",
+                          "tokens":  "turbo-tokens.txt"
+                      },
+        "recognitionQualityScore":  9,
+        "performanceScore":  5,
+        "recommendationScore":  8,
+        "size":  1311742559,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-de-kroko-2025-08-06",
+        "displayName":  "Zipformer Kroko 德语",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-de-kroko-2025-08-06",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "de"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  6,
+        "performanceScore":  9,
+        "recommendationScore":  6,
+        "size":  71051469,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16",
+        "displayName":  "Zipformer Vosk 俄语 Small Int8",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "ru"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.int8.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.int8.onnx",
+                          "bpe":  "bpe.model",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  6,
+        "performanceScore":  10,
+        "recommendationScore":  7,
+        "size":  28819129,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16",
+        "displayName":  "Zipformer Vosk 俄语 Small",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "ru"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.onnx",
+                          "bpe":  "bpe.model",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  7,
+        "performanceScore":  8,
+        "recommendationScore":  6,
+        "size":  94366259,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10",
+        "displayName":  "Zipformer 多语种 Int8",
+        "id":  "csukuangfj/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10",
+        "architecture":  "transducer",
+        "isStreaming":  true,
+        "lang":  [
+                     "ar",
+                     "en",
+                     "id",
+                     "ja",
+                     "ru",
+                     "th",
+                     "vi",
+                     "zh"
+                 ],
+        "tags":  [
+                     "streaming",
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+                          "decoder":  "decoder-epoch-75-avg-11-chunk-16-left-128.onnx",
+                          "joiner":  "joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+                          "bpe":  "bpe.model",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  8,
+        "performanceScore":  7,
+        "recommendationScore":  8,
+        "size":  339349396,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
+        "displayName":  "NeMo GigaAM v3 俄语 Int8",
+        "id":  "csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
+        "architecture":  "transducer",
+        "isStreaming":  false,
+        "lang":  [
+                     "ru"
+                 ],
+        "tags":  [
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.int8.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  8,
+        "performanceScore":  7,
+        "recommendationScore":  7,
+        "size":  229343109,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17",
+        "displayName":  "Zipformer ReazonSpeech 英日双语",
+        "id":  "csukuangfj/sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17",
+        "architecture":  "transducer",
+        "isStreaming":  false,
+        "lang":  [
+                     "en",
+                     "ja"
+                 ],
+        "tags":  [
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder.onnx",
+                          "decoder":  "decoder.onnx",
+                          "joiner":  "joiner.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  8,
+        "performanceScore":  5,
+        "recommendationScore":  7,
+        "size":  437969761,
+        "downloadUrl":  "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17.tar.bz2"
+    },
+    {
+        "name":  "sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03",
+        "displayName":  "Zipformer X ASR 中英双语",
+        "id":  "csukuangfj/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03",
+        "architecture":  "transducer",
+        "isStreaming":  false,
+        "lang":  [
+                     "zh",
+                     "en"
+                 ],
+        "tags":  [
+                     "hotwords"
+                 ],
+        "fileRoles":  {
+                          "encoder":  "encoder-epoch-99-avg-1.int8.onnx",
+                          "decoder":  "decoder-epoch-99-avg-1.onnx",
+                          "joiner":  "joiner-epoch-99-avg-1.int8.onnx",
+                          "bpe":  "bpe.model",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  9,
+        "performanceScore":  8,
+        "recommendationScore":  9,
+        "size":  131000000,
+        "downloadUrl":  "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-x-asr-zipformer-transducer-zh-en-int8-2026-06-03.tar.bz2"
+    },
+    {
+        "name":  "sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17",
+        "displayName":  "SenseVoice FunASR Nano Int8",
+        "id":  "csukuangfj/sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17",
+        "architecture":  "sensevoice",
+        "isStreaming":  false,
+        "lang":  [
+                     "zh",
+                     "en",
+                     "ja",
+                     "ko",
+                     "yue"
+                 ],
+        "tags":  [
+
+                 ],
+        "fileRoles":  {
+                          "model":  "model.int8.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  8,
+        "performanceScore":  6,
+        "recommendationScore":  8,
+        "size":  264471717,
+        "downloadUrl":  null
+    },
+    {
+        "name":  "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
+        "displayName":  "SenseVoice 中英日韩粤 Int8",
+        "id":  "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
+        "architecture":  "sensevoice",
+        "isStreaming":  false,
+        "lang":  [
+                     "zh",
+                     "en",
+                     "ja",
+                     "ko",
+                     "yue"
+                 ],
+        "tags":  [
+
+                 ],
+        "fileRoles":  {
+                          "model":  "model.int8.onnx",
+                          "tokens":  "tokens.txt"
+                      },
+        "recognitionQualityScore":  9,
+        "performanceScore":  8,
+        "recommendationScore":  9,
+        "size":  237431441,
+        "downloadUrl":  null
+    }
+]

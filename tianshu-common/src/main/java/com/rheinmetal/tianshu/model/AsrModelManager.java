@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 
 public class AsrModelManager {
 
-    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/sherpa_onnx_asr_hotword_models.json";
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/asr_model.json";
     private static final Gson GSON = new Gson();
     private static List<AsrModelInfo> cachedCatalog = null;
 
@@ -26,8 +26,11 @@ public class AsrModelManager {
             if (is == null) return Collections.emptyList();
             try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
                 Type listType = new TypeToken<List<AsrModelInfo>>() {}.getType();
-                cachedCatalog = GSON.fromJson(reader, listType);
-                return cachedCatalog != null ? cachedCatalog : Collections.emptyList();
+                List<AsrModelInfo> parsed = GSON.fromJson(reader, listType);
+                cachedCatalog = parsed == null ? Collections.emptyList() : parsed.stream()
+                        .filter(info -> info != null)
+                        .collect(Collectors.toList());
+                return cachedCatalog;
             }
         } catch (IOException e) {
             return Collections.emptyList();
@@ -49,24 +52,28 @@ public class AsrModelManager {
     }
 
     public static AsrModelInfo getModelByName(String name) {
-        if (name == null || name.isBlank()) return null;
+        return getModelByLocalKey(name);
+    }
+
+    public static AsrModelInfo getModelByLocalKey(String localKey) {
+        if (localKey == null || localKey.isBlank()) return null;
         for (AsrModelInfo info : loadCatalog()) {
-            if (name.equals(info.name)) return info;
+            if (localKey.equals(info.localKey())) return info;
         }
         return null;
     }
 
-    public static AsrModelInfo getModelById(String id) {
-        if (id == null || id.isBlank()) return null;
+    public static AsrModelInfo getModelByRemoteRepoId(String repoId) {
+        if (repoId == null || repoId.isBlank()) return null;
         for (AsrModelInfo info : loadCatalog()) {
-            if (id.equals(info.id)) return info;
+            if (repoId.equals(info.remoteRepoId())) return info;
         }
         return null;
     }
 
     public static boolean isModelDownloaded(AsrModelInfo info, Path baseDir) {
         if (info == null || baseDir == null) return false;
-        Path modelDir = baseDir.resolve(info.name);
+        Path modelDir = baseDir.resolve(info.localKey());
         if (!Files.isDirectory(modelDir)) return false;
         for (String file : info.getAllRequiredFiles()) {
             if (!Files.isRegularFile(modelDir.resolve(file))) {
@@ -78,7 +85,7 @@ public class AsrModelManager {
 
     public static List<String> findMissingFiles(AsrModelInfo info, Path baseDir) {
         if (info == null || baseDir == null) return Collections.emptyList();
-        Path modelDir = baseDir.resolve(info.name);
+        Path modelDir = baseDir.resolve(info.localKey());
         return info.getAllRequiredFiles().stream()
                 .filter(f -> !Files.isRegularFile(modelDir.resolve(f)))
                 .collect(Collectors.toList());

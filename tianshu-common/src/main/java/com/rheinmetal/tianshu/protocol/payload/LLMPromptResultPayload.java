@@ -20,7 +20,7 @@ public record LLMPromptResultPayload(
     public LLMPromptResultPayload {
         requestId = normalize(requestId);
         status = normalizeStatus(status);
-        text = text == null ? "" : text.trim();
+        text = text == null ? "" : text;
         errorCode = errorCode == null || errorCode.isBlank() ? null : errorCode.trim();
         errorMessage = errorMessage == null || errorMessage.isBlank() ? null : errorMessage.trim();
         ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
@@ -75,7 +75,7 @@ public record LLMPromptResultPayload(
             String content
     ) implements ITianshuPayload {
         public HitEntry {
-            content = content == null ? "" : content.trim();
+            content = content == null ? "" : content;
             score = Double.isNaN(score) || Double.isInfinite(score) ? 0.0 : score;
         }
 

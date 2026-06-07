@@ -50,7 +50,7 @@ public class AsrModelService {
         this.executorManager = executorManager;
         this.engineSupplier = engineSupplier;
         this.readySupplier = readySupplier;
-        this.downloadCoordinator = new AsrModelDownloadCoordinator(env, config);
+        this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
     }
 
     public AsrModelInfo resolveCurrentModelInfo() {
@@ -59,14 +59,12 @@ public class AsrModelService {
             return null;
         }
         String dirName = modelPath.getFileName().toString();
-        AsrModelInfo info = AsrModelManager.getModelByName(dirName);
-        if (info != null) return info;
-        return AsrModelManager.getModelById(dirName);
+        return AsrModelManager.getModelByLocalKey(dirName);
     }
 
     public Path resolveModelDir(AsrModelInfo info) {
-        if (info == null || info.name == null) return null;
-        return config.getAsrBasePath().resolve("model").resolve(info.name);
+        if (info == null || info.localKey().isBlank()) return null;
+        return config.getAsrBasePath().resolve("model").resolve(info.localKey());
     }
 
     public boolean hasModelContent(AsrModelInfo info) {

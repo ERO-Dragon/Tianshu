@@ -22,7 +22,9 @@ public record AsrSettingsChangeSet(
                 !Objects.equals(before.modelName(), after.modelName()),
                 before.triggerMode() != after.triggerMode(),
                 !Objects.equals(before.wakeWord(), after.wakeWord()),
-                before.rnnoiseEnabled() != after.rnnoiseEnabled() || before.vadEnabled() != after.vadEnabled()
+                before.highPassFilterEnabled() != after.highPassFilterEnabled()
+                        || before.rnnoiseEnabled() != after.rnnoiseEnabled()
+                        || before.vadEnabled() != after.vadEnabled()
         );
     }
 

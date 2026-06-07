@@ -12,15 +12,34 @@ repositories {
     mavenCentral()
 }
 
+def extractTianshuLibsJarJar = tasks.register('extractTianshuLibsJarJar', Copy) {
+    def libsJars = fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    from(libsJars.collect { zipTree(it) }) {
+        include 'META-INF/jarjar/*.jar'
+        eachFile { details ->
+            details.path = details.name
+        }
+        includeEmptyDirs = false
+    }
+    into layout.buildDirectory.dir('extracted/tianshu-libs-jarjar')
+}
+
 dependencies {
-    implementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    testImplementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly files({
+        fileTree(layout.buildDirectory.dir('extracted/tianshu-libs-jarjar').get().asFile) {
+            include '*.jar'
+        }.files
+    })
 }
 
 test {
     useJUnitPlatform()
+    dependsOn extractTianshuLibsJarJar
 }
 
 tasks.withType(JavaCompile).configureEach {

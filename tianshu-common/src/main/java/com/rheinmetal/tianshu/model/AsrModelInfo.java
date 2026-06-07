@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.model;
 
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -10,56 +11,56 @@ public class AsrModelInfo {
     public static final String TIER_LOW = "LOW";
     public static final String TIER_MID = "MID";
     public static final String TIER_HIGH = "HIGH";
-
-    public static final String TYPE_TRANSDUCER = "TRANSDUCER";
-    public static final String TYPE_PARAFORMER = "PARAFORMER";
-    public static final String TYPE_WHISPER = "WHISPER";
-    public static final String TYPE_NEMO = "NEMO";
-    public static final String TYPE_CTC = "CTC";
-    public static final String TYPE_WENET = "WENET";
-    public static final String TYPE_TELESPEECH = "TELESPEECH";
-    public static final String TYPE_SENSEVOICE = "SENSEVOICE";
-    public static final String TYPE_MOONSHINE = "MOONSHINE";
-    public static final String TYPE_DOLPHIN = "DOLPHIN";
-    public static final String TYPE_QWEN3_ASR = "QWEN3_ASR";
-    public static final String TYPE_FUNASR_NANO = "FUNASR_NANO";
-    public static final String TYPE_OTHER = "OTHER";
-
-    public static final String STANDARD_ENCODER = "encoder.onnx";
-    public static final String STANDARD_DECODER = "decoder.onnx";
-    public static final String STANDARD_JOINER = "joiner.onnx";
-    public static final String STANDARD_TOKENS = "tokens.txt";
-    public static final String STANDARD_BPE_MODEL = "bpe.model";
-    public static final String STANDARD_BPE_VOCAB = "bpe.vocab";
+    private static final int DEFAULT_SCORE = 6;
 
     public String author;
     public String name;
     public String id;
     public long size;
     public List<String> lang;
+    /**
+     * Legacy flat file list. New ASR catalog entries should use fileRoles as the
+     * single source of model files, because each runtime file has a semantic role.
+     */
     public List<String> modelFiles;
-    public List<String> lexiconFiles;
-    public Map<String, String> sourceFiles;
     public boolean pinned;
+    public String architecture;
     public boolean isStreaming;
-    public String modelType;
-    public boolean supportHotwords;
+    public Integer recognitionQualityScore;
+    public Integer performanceScore;
+    public Integer recommendationScore;
+    /**
+     * Legacy score tiers. New ASR catalog entries should use the 10-point score
+     * fields above.
+     */
     public String recommendedTier;
     public String downloadUrl;
-    public boolean isInt8Available;
     public String qualityTier;
     public String performanceClass;
     public String displayName;
+    public List<String> tags;
+    public Map<String, String> fileRoles;
 
     public String getDisplayName() {
         if (displayName != null && !displayName.isBlank()) return displayName;
-        if (name != null && !name.isBlank()) return name;
-        return id != null ? id : "未知模型";
+        if (localKey() != null && !localKey().isBlank()) return localKey();
+        return remoteRepoId() != null ? remoteRepoId() : "Unknown ASR model";
     }
 
-    public String getModelType() {
-        if (modelType != null && !modelType.isBlank()) return modelType;
-        return TYPE_TRANSDUCER;
+    public String localKey() {
+        return name == null ? "" : name.trim();
+    }
+
+    public String remoteRepoId() {
+        return id == null ? "" : id.trim();
+    }
+
+    public String architecture() {
+        return architecture == null ? "" : architecture.trim();
+    }
+
+    public boolean isStreamingModel() {
+        return isStreaming;
     }
 
     public String getRecommendedTier() {
@@ -78,88 +79,89 @@ public class AsrModelInfo {
     }
 
     public int getQualityScore() {
-        return tierToScore(getQualityTier());
+        return getRecognitionQualityScore();
     }
 
     public int getPerformanceScore() {
-        return tierToScore(getPerformanceClass());
+        return clampScore(performanceScore, tierToScore(getPerformanceClass()));
+    }
+
+    public int getRecognitionQualityScore() {
+        return clampScore(recognitionQualityScore, tierToScore(getQualityTier()));
+    }
+
+    public int getRecommendationScore() {
+        return clampScore(recommendationScore, tierToScore(getRecommendedTier()));
     }
 
     public int getValueScore() {
-        return getQualityScore() * 10 - getPerformanceScore() * 4;
+        return getRecommendationScore() * 100 + getRecognitionQualityScore() * 10 + getPerformanceScore();
     }
 
     public boolean isHfDownload() {
         return downloadUrl == null || downloadUrl.isBlank();
     }
 
-    public boolean isArchiveDownload() {
-        return downloadUrl != null && !downloadUrl.isBlank();
+    public List<String> getAllRequiredFiles() {
+        LinkedHashSet<String> files = new LinkedHashSet<>();
+        files.addAll(getFileRoles().values());
+        files.addAll(getLegacyModelFiles());
+        return List.copyOf(files);
     }
 
     public List<String> getModelFiles() {
-        if (modelFiles != null && !modelFiles.isEmpty()) return Collections.unmodifiableList(modelFiles);
-        if (isTransducer()) return List.of(STANDARD_ENCODER, STANDARD_DECODER, STANDARD_JOINER);
-        return Collections.emptyList();
-    }
-
-    public List<String> getLexiconFiles() {
-        if (lexiconFiles != null && !lexiconFiles.isEmpty()) return Collections.unmodifiableList(lexiconFiles);
-        if (isTransducer()) return List.of(STANDARD_TOKENS);
-        return Collections.emptyList();
-    }
-
-    public List<String> getAllRequiredFiles() {
-        List<String> all = new ArrayList<>();
-        all.addAll(getModelFiles());
-        all.addAll(getLexiconFiles());
-        return Collections.unmodifiableList(all);
-    }
-
-    public String getSourceFile(String role) {
-        if (sourceFiles == null || role == null) return null;
-        String value = sourceFiles.get(role);
-        return value != null && !value.isBlank() ? value : null;
+        return getAllRequiredFiles();
     }
 
     public List<String> getLang() {
         return lang != null ? lang : Collections.singletonList("zh");
     }
 
-    public boolean isTransducer() {
-        return TYPE_TRANSDUCER.equalsIgnoreCase(getModelType());
+    public List<String> getTags() {
+        if (tags == null || tags.isEmpty()) return Collections.emptyList();
+        return tags.stream()
+                .filter(tag -> tag != null && !tag.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 
-    public boolean isParaformer() {
-        return TYPE_PARAFORMER.equalsIgnoreCase(getModelType());
+    public Map<String, String> getFileRoles() {
+        if (fileRoles == null || fileRoles.isEmpty()) return Collections.emptyMap();
+        Map<String, String> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : fileRoles.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            String role = entry.getKey().trim().toLowerCase();
+            String file = entry.getValue().trim();
+            if (!role.isBlank() && !file.isBlank()) {
+                normalized.put(role, file);
+            }
+        }
+        return normalized;
     }
 
-    public boolean usesEncoderDecoderOnly() {
-        return TYPE_PARAFORMER.equalsIgnoreCase(getModelType())
-                || TYPE_CTC.equalsIgnoreCase(getModelType())
-                || TYPE_WENET.equalsIgnoreCase(getModelType())
-                || TYPE_TELESPEECH.equalsIgnoreCase(getModelType());
-    }
-
-    public boolean usesSingleModelFile() {
-        return TYPE_WHISPER.equalsIgnoreCase(getModelType())
-                || TYPE_NEMO.equalsIgnoreCase(getModelType())
-                || TYPE_SENSEVOICE.equalsIgnoreCase(getModelType())
-                || TYPE_MOONSHINE.equalsIgnoreCase(getModelType())
-                || TYPE_DOLPHIN.equalsIgnoreCase(getModelType())
-                || TYPE_QWEN3_ASR.equalsIgnoreCase(getModelType())
-                || TYPE_FUNASR_NANO.equalsIgnoreCase(getModelType())
-                || TYPE_OTHER.equalsIgnoreCase(getModelType());
-    }
-
-    public boolean isEngineSupported() {
-        return isTransducer() || usesEncoderDecoderOnly();
+    private List<String> getLegacyModelFiles() {
+        if (modelFiles == null || modelFiles.isEmpty()) return Collections.emptyList();
+        return modelFiles.stream()
+                .filter(file -> file != null && !file.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 
     private int tierToScore(String tier) {
-        if (TIER_HIGH.equalsIgnoreCase(tier)) return 3;
-        if (TIER_MID.equalsIgnoreCase(tier)) return 2;
-        if (TIER_LOW.equalsIgnoreCase(tier)) return 1;
-        return 2;
+        if (TIER_HIGH.equalsIgnoreCase(tier)) return 8;
+        if (TIER_MID.equalsIgnoreCase(tier)) return 6;
+        if (TIER_LOW.equalsIgnoreCase(tier)) return 4;
+        return DEFAULT_SCORE;
+    }
+
+    private int clampScore(Integer score, int fallback) {
+        int value = score == null ? fallback : score;
+        if (value < 1) return 1;
+        if (value > 10) return 10;
+        return value;
     }
 }

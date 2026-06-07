@@ -10,8 +10,8 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.LlmTaskRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.StreamTextPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -21,7 +21,6 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
     public static final String SOURCE_ID = AXModule.MODULE_ID;
     public static final String DIALOGUE_DELIVERY_CAPABILITY = "AX.DIALOGUE_DELIVERY";
-    public static final String STREAM_CHUNK_ROUTE = "AX.STREAM_CHUNK";
 
     public AXProtocolAdapter(ProtocolRuntime runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withSupportsStreaming(true));
@@ -41,11 +40,11 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void registerLlmTaskResultRoute(EnvelopeHandler handler) {
+    public void registerLlmPromptResultRoute(EnvelopeHandler handler) {
         registerDirectRoute(
                 MODULE_ID,
-                PayloadType.LLM_TASK_RESULT,
-                com.rheinmetal.tianshu.protocol.payload.LlmTaskResultPayload.class,
+                PayloadType.LLM_PROMPT_RESULT,
+                com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
                 Priority.LOW,
@@ -55,11 +54,11 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void registerLlmTaskStreamChunkRoute(EnvelopeHandler handler) {
+    public void registerLlmPromptStreamChunkRoute(EnvelopeHandler handler) {
         registerDirectRoute(
                 MODULE_ID,
-                PayloadType.LLM_TASK_STREAM_CHUNK,
-                com.rheinmetal.tianshu.protocol.payload.LlmTaskStreamChunkPayload.class,
+                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
                 Priority.LOW,
@@ -69,19 +68,23 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public TianshuEnvelope requestLlm(LlmTaskRequestPayload payload) {
-        return requestCapability(ProtocolCapabilities.LLM_TASK_REQUEST, PayloadType.LLM_TASK_REQUEST, payload);
+    public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
+        return requestCapability(ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
     }
 
-    public TianshuEnvelope requestLlm(TianshuEnvelope parent, LlmTaskRequestPayload payload) {
-        return requestCapability(parent, ProtocolCapabilities.LLM_TASK_REQUEST, PayloadType.LLM_TASK_REQUEST, payload);
+    public TianshuEnvelope requestLlm(TianshuEnvelope parent, LLMPromptRequestPayload payload) {
+        return requestCapability(parent, ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
     }
 
-    public TianshuEnvelope publishStreamChunk(TianshuEnvelope parent, StreamTextPayload payload) {
-        return respondTo(parent, PayloadType.LLM_TEXT_CHUNK, payload);
+    public TianshuEnvelope speakTts(TtsSpeakPayload payload) {
+        return commandCapability(ProtocolCapabilities.TTS_SPEAK, PayloadType.TTS_TEXT, payload);
     }
 
-    public TianshuEnvelope publishStreamEnd(TianshuEnvelope parent, int index) {
-        return respondTo(parent, PayloadType.LLM_TEXT_CHUNK, new StreamTextPayload("", index, true));
+    public TianshuEnvelope speakTts(TianshuEnvelope parent, TtsSpeakPayload payload) {
+        return commandCapability(parent, ProtocolCapabilities.TTS_SPEAK, PayloadType.TTS_TEXT, payload);
+    }
+
+    public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.payload.DialogueSessionControlPayload payload) {
+        return commandCapability(parent, ProtocolCapabilities.DIALOGUE_SESSION_CONTROL, PayloadType.DIALOGUE_SESSION_CONTROL, payload);
     }
 }

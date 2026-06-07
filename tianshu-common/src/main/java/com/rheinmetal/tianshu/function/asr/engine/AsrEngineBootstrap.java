@@ -65,7 +65,8 @@ public final class AsrEngineBootstrap {
 
         AsrModelInfo modelInfo = resolveModelInfo(modelPath);
         if (modelInfo == null) {
-            return engine.initialize(safeDir.getAbsolutePath());
+            env.error("ASR model is not declared in asr_model.json: " + modelPath.getFileName(), null);
+            return false;
         }
 
         Path hotwordsFile = resolveHotwordsFile(context, modelInfo);
@@ -79,11 +80,7 @@ public final class AsrEngineBootstrap {
 
     private AsrModelInfo resolveModelInfo(Path modelPath) {
         String dirName = modelPath.getFileName() != null ? modelPath.getFileName().toString() : "";
-        AsrModelInfo info = AsrModelManager.getModelByName(dirName);
-        if (info != null) {
-            return info;
-        }
-        return AsrModelManager.getModelById(dirName);
+        return AsrModelManager.getModelByLocalKey(dirName);
     }
 
     private Path resolveHotwordsFile(ModuleRuntimeContext context, AsrModelInfo modelInfo) {

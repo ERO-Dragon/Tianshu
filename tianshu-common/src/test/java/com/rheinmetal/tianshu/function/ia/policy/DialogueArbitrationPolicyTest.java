@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueArbitrationPolicyTest {
     @Test
-    void selectsHighestPriorityThenScoreClaim() {
+    void selectsHighestScoreBeforePriority() {
         DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
         DialogueParticipantDescriptor low = descriptor("low", 1);
         DialogueParticipantDescriptor high = descriptor("high", 2);
@@ -22,6 +22,24 @@ class DialogueArbitrationPolicyTest {
         var decision = policy.decide(
                 List.of(low, high),
                 List.of(new DialogueClaim("low", 1.0D, 1.0D, 1, false, ""), new DialogueClaim("high", 0.2D, 0.2D, 2, false, "")),
+                Optional.empty(),
+                100L,
+                false
+        );
+
+        assertTrue(decision.accepted());
+        assertEquals("low", decision.owner().participantId());
+    }
+
+    @Test
+    void usesPriorityAsTieBreakerAfterScoreAndConfidence() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        DialogueParticipantDescriptor low = descriptor("low", 1);
+        DialogueParticipantDescriptor high = descriptor("high", 2);
+
+        var decision = policy.decide(
+                List.of(low, high),
+                List.of(new DialogueClaim("low", 0.8D, 0.7D, 1, false, ""), new DialogueClaim("high", 0.8D, 0.7D, 2, false, "")),
                 Optional.empty(),
                 100L,
                 false

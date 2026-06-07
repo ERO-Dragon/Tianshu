@@ -41,6 +41,7 @@ public class Chunk {
     // type="rag" 时
     public List<String> content;       // RAG 文本数组
     public String uid;                  // 唯一标识
+    public String prompt;               // 该 RAG 分块注入 prompt 前缀
     public Boolean use_cache;           // 是否使用缓存（默认 true）
     public Boolean include_rag_hits;    // 是否返回检索结果
     public Integer memory_rag_token_budget; // 记忆 RAG 预算
@@ -60,29 +61,48 @@ public class MessageItem {
 
 ## 3. API 使用方式
 
-### 3.1 同步聊天
+### 3.1 模块装配
+
+实际运行时由 NeoForge 客户端层创建公共运行环境和世界身份 Provider，再通过 common 的模块装配器安装 LLM 模块：
 
 ```java
-LLMService service = LLMService.builder()
-    .chatModel("models/qwen3.bin")
-    .embeddingModel("models/bge.bin")
-    .build();
+new ClientTianshuModuleAssembler(
+    env,
+    config,
+    audioBridge,
+    protocolRuntime,
+    voiceInputGate,
+    interruptionSignal,
+    new NeoForgeAXWorldIdentityProvider(),
+    worldStateProvider
+);
+```
 
-String reply = service.chatSync("你好", "你是铁匠NPC");
+LLM 模块内部职责：
+- `LlmEngineProvider` 按配置创建并异步启动 `JavaLlamaServer`
+- `LlmModule` 创建并注册 `LLMService`
+- `LLMService` 负责请求编排、RAG 检索、缓存管理和 libs 调用
+- 其他模块通过模块服务注册表获取 `LLMService`，或通过 `LLM_REQUEST` / `LLM_CACHE_MANAGE` 协议能力调用
+
+`env` 是 common 层对游戏环境的抽象，包含日志、主线程执行、玩家消息、游戏目录等能力；它由 NeoForge 层注入，不是普通业务调用方需要手动设置的参数。`cacheNamespace` 和 `cacheDirectory` 也是 LLM 模块内部装配参数：namespace 绑定当前 LLM/embedding 模型组合，目录由当前世界 scope 自动决定。每个 RAG chunk 自己仍通过 `uid`、`prompt`、`use_cache`、`include_rag_hits`、`memory_rag_token_budget` 决定该分块的 RAG 行为。
+
+### 3.2 同步聊天
+
+```java
+String reply = service.chat("你好", "你是铁匠NPC");
 
 // 或使用 LLMRequest
 LLMRequest request = LLMRequest.of(
-    LLMRequest.Chunk.message(
-        LLMRequest.MessageItem.of("system", "你是铁匠NPC"),
-        LLMRequest.MessageItem.of("user", "我需要一把剑")
+    Chunk.message(
+        MessageItem.of("system", "你是铁匠NPC"),
+        MessageItem.of("user", "我需要一把剑")
     ),
-    LLMRequest.Chunk.rag("rag_dynamic", List.of("玩家手持铁锭"), true, true, 1000)
+    Chunk.rag("rag_dynamic", "相关上下文：", List.of("玩家手持铁锭"), true, true, 1000)
 );
-request.setStream(true);
-String reply = service.chatSync(request);
+LLMService.LLMResult result = service.chat(request);
 ```
 
-### 3.2 流式聊天
+### 3.3 流式聊天
 
 ```java
 service.chatStream(request, token -> {
@@ -90,13 +110,13 @@ service.chatStream(request, token -> {
 });
 ```
 
-### 3.3 后台任务
+### 3.4 后台任务
 
 ```java
 LLMRequest request = LLMRequest.of(
-    LLMRequest.Chunk.message(
-        LLMRequest.MessageItem.of("system", "你是记忆压缩器"),
-        LLMRequest.MessageItem.of("user", longText)
+    Chunk.message(
+        MessageItem.of("system", "你是记忆压缩器"),
+        MessageItem.of("user", longText)
     )
 );
 request.setLane("TASK");
@@ -104,6 +124,16 @@ request.setTaskPriority(10);
 
 CompletableFuture<String> future = service.submitTask(request);
 ```
+
+流式后台任务必须以 `CompletableFuture` 完成为准：
+
+```java
+CompletableFuture<String> future = service.submitTaskStream(request, token -> {
+    publish(token);
+}, ragHits);
+```
+
+协议层只有在该 future 完成后才发送 stream end 和最终 result，并完成对应 envelope。
 
 ---
 
@@ -118,7 +148,7 @@ RagCacheManager cache = service.getRagCache();
 cache.index("rag_memory_001", List.of("新记忆1", "新记忆2"));
 
 // 检索
-List<RagSearchResult> results = cache.search("rag_memory_001", "我的钻石镐在哪", 4);
+List<RagSearchResult> results = cache.search("rag_memory_001", "我的钻石镐在哪", 4, 0.7f);
 
 // 删除
 cache.evict("rag_memory_001");                    // 删除某 uid
@@ -142,7 +172,7 @@ public interface RagCacheManager {
     void index(String uid, List<String> texts);
 
     // 基于 uid 检索（使用缓存的向量）
-    List<RagSearchResult> search(String uid, String queryText, int topK);
+    List<RagSearchResult> search(String uid, String queryText, int topK, float threshold);
 
     // 删除
     void evict(String uid);
@@ -162,6 +192,18 @@ public class CacheStats {
     public long cacheSizeBytes;
 }
 ```
+
+持久缓存采用带版本头的二进制格式，包含 magic、version、namespace、向量维度和条目数。namespace 应绑定当前 LLM/embedding 模型组合；加载时若版本、namespace、维度或向量值非法，缓存会被忽略并等待后续重新索引。
+
+缓存目录按世界隔离，当前实现为：
+
+```text
+config/Tianshu/module/llm/<worldId>/cache
+```
+
+`worldId` 由世界身份 Provider 自动生成：NeoForge 层可提供单机世界名或服务器地址，common 层会将稳定身份哈希成安全目录名，例如 `local_<hash>` / `server_<hash>`。这里不直接使用原始世界名，目的是避免特殊字符、重命名和服务器地址泄露导致的路径问题。
+
+`index(uid, texts)` 是增量 upsert：同一 uid 下相同 content 不会重复堆积；已经存在且内容未变化时不会再次 embedding，也不会重写向量文件或 manifest。只有新增 content、删除 content、清空或模型 namespace 不兼容后重建索引时才会写磁盘。
 
 ---
 
@@ -210,6 +252,9 @@ LLMRequest
 **说明**：
 - `use_cache=true`：LLM 层用缓存的向量自己计算相似度
 - `use_cache=false`：直接调用 libs.search() 检索
+- chunks 按请求数组顺序处理；message chunk 会按内部 message 顺序追加，rag chunk 的检索结果会在出现位置注入为 system message，因此多 chunk 的 prompt 组装顺序保持请求声明顺序
+- RAG 注入会按 `memory_rag_token_budget` 做预算裁剪，返回的 `ragHits` 与实际注入给模型的内容保持一致
+- `thinking=false` 会显式传给 libs 的 `SamplerConfig.enableThinking=false`，避免模型模板默认进入 thinking
 
 ---
 
@@ -248,19 +293,20 @@ LLMRequest
 
 ```java
 LLMRequest request = LLMRequest.of(
-    LLMRequest.Chunk.message(
-        LLMRequest.MessageItem.of("system", "你是一个 Minecraft 助手"),
-        LLMRequest.MessageItem.of("user", "我的钻石镐在哪里？")
+    Chunk.message(
+        MessageItem.of("system", "你是一个 Minecraft 助手"),
+        MessageItem.of("user", "我的钻石镐在哪里？")
     ),
-    LLMRequest.Chunk.rag(
+    Chunk.rag(
         "rag_dynamic_001",
+        "相关上下文：",
         List.of("玩家手持钻石镐", "坐标 (100,64,200)"),
         true, true, 2000
     )
 );
 request.setStream(true);
 
-String reply = service.chatSync(request);
+service.chatStream(request, token -> publish(token));
 ```
 
 ---
@@ -273,3 +319,7 @@ String reply = service.chatSync(request);
 | 缓存归属 | LLM 层负责，libs 只提供 embed |
 | 有缓存场景 | 使用 embed() 获取向量，LLM 层自己计算相似度 |
 | 无缓存场景 | 直接调用 libs.search() 检索 |
+| 持久缓存 | 按 worldId 分目录，带版本和 namespace 校验，namespace 绑定模型组合 |
+| 磁盘写入 | 相同 uid/content 已缓存时跳过 embedding 和写盘；manifest 只有 uid 集合变化时才更新 |
+| TASK 生命周期 | 以 libs 返回的 CompletableFuture 完成为准，不在协议 handler 返回时提前完成 |
+| 文本保真 | LLM result 和 stream token 不 trim，避免破坏代码块/换行/空格 |
