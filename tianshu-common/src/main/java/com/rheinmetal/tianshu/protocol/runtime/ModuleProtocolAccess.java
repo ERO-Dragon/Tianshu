@@ -13,7 +13,9 @@ public interface ModuleProtocolAccess {
 
     void registerTopic(TopicDescriptor descriptor);
 
-    void registerDirectRoute(String routeId, ModuleDescriptor descriptor, CapabilityDescriptor capabilityDescriptor, EnvelopeHandler handler);
+    void registerResponseHandler(String requestEnvelopeId, ModuleDescriptor descriptor, CapabilityDescriptor capabilityDescriptor, EnvelopeHandler handler);
+
+    void unregisterResponseHandlers(String requestEnvelopeId);
 
     void subscribeTopic(ModuleDescriptor moduleDescriptor, TopicSubscriptionDescriptor descriptor, EnvelopeHandler handler);
 

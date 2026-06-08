@@ -48,8 +48,8 @@ CoreManager 不负责以下内容：
 - GUI 组件状态
 - Client 脚本解释
 - 协议 topic 广播
-- 协议 direct route 投递
 - 协议 capability 投递
+- 协议 response 处理器投递
 - 协议任务队列调度细节
 
 这些职责属于 function、client 或 protocol 层，不属于 core 宿主层。
@@ -151,8 +151,8 @@ CoreManager 可以创建并持有 `ProtocolRuntime`，但不作为协议中心�
 协议相关职责属于 protocol 层：
 
 - topic 注册与订阅
-- direct route 注册
 - capability route 注册
+- response handler 注册
 - envelope 生命周期
 - dead letter
 - storm guard

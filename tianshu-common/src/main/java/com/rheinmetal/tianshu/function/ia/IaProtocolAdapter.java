@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationResultPaylo
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationResultPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionControlPayload;
@@ -20,6 +21,7 @@ import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
+import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -103,6 +105,20 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
         );
     }
 
+    public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
+        subscribeTopic(
+                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
+                PayloadType.ASR_SPEECH_ACTIVITY,
+                AsrSpeechActivityPayload.class,
+                BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
     public TianshuEnvelope respondArbitrationResult(TianshuEnvelope parent, DialogueArbitrationResultPayload payload) {
         return respondTo(parent, PayloadType.DIALOGUE_ARBITRATION_RESULT, payload);
     }
@@ -114,6 +130,14 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     @Override
     public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
         return publishTopic(parent, ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, payload);
+    }
+
+    @Override
+    public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
+        if (parent == null) {
+            return publishTopic(ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, payload);
+        }
+        return publishTopic(parent, ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, payload);
     }
 
     @Override

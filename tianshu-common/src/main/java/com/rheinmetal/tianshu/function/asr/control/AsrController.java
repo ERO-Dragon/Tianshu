@@ -144,7 +144,7 @@ public final class AsrController {
         sessionManager.beginRecognitionSession(sessionId);
         stateMachine.moveTo(AsrState.CAPTURING);
         env.info("ASR 开始语音输入，sessionId=" + sessionId);
-        audioCapture.startPttCapture();
+        audioCapture.startPttCapture(sessionId);
     }
 
     private void endPtt() {
@@ -184,7 +184,7 @@ public final class AsrController {
             stateMachine.moveTo(AsrState.ERROR);
             return;
         }
-        audioCapture.startStreamCapture(chunk -> recognition.acceptAudioChunk(chunk, activeSessionId));
+        audioCapture.startStreamCapture(activeSessionId, chunk -> recognition.acceptAudioChunk(chunk, activeSessionId));
         stateMachine.moveTo(AsrState.STREAMING);
         env.info("ASR 开始连续语音输入，mode=" + mode + ", sessionId=" + activeSessionId);
     }

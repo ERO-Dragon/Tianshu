@@ -13,11 +13,11 @@ public final class DialogueSessionControlPolicy {
         if (terminal(session.state())) {
             return DialogueSessionControlDecision.deny("SESSION_TERMINAL", "Dialogue session is already terminal");
         }
-        if (session.leaseExpireAtMillis() <= nowMillis) {
-            return DialogueSessionControlDecision.deny("SESSION_LEASE_EXPIRED", "Dialogue session lease has expired");
+        if (session.processingDeadlineMillis() <= nowMillis) {
+            return DialogueSessionControlDecision.deny("SESSION_PROCESSING_DEADLINE_EXPIRED", "Dialogue session processing deadline has expired");
         }
-        if (effectiveAction == DialogueSessionControlAction.RENEW && session.state() != DialogueSessionState.ACTIVE && session.state() != DialogueSessionState.CLAIMED) {
-            return DialogueSessionControlDecision.deny("SESSION_RENEW_NOT_ALLOWED", "Dialogue session cannot be renewed in current state");
+        if (effectiveAction == DialogueSessionControlAction.EXTEND_PROCESSING && session.state() != DialogueSessionState.ACTIVE && session.state() != DialogueSessionState.CLAIMED) {
+            return DialogueSessionControlDecision.deny("SESSION_PROCESSING_EXTENSION_NOT_ALLOWED", "Dialogue session processing cannot be extended in current state");
         }
         if (effectiveAction == DialogueSessionControlAction.INTERRUPT_ACK && session.state() != DialogueSessionState.ACTIVE && session.state() != DialogueSessionState.INTERRUPTING) {
             return DialogueSessionControlDecision.deny("SESSION_INTERRUPT_NOT_ALLOWED", "Dialogue session cannot be interrupted in current state");

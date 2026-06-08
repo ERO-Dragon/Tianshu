@@ -13,12 +13,12 @@ final class IrVoiceTriggerIndexer {
         }
         List<IrCompiledVoiceTrigger> compiled = new ArrayList<>(registrations.size());
         for (VoiceTriggerRegistration registration : registrations) {
-            List<IrCompiledVoiceWord> hotwords = compileWords(registration.hotwords());
+            List<IrCompiledVoiceWord> wakeWords = compileWords(registration.wakeWords());
             List<IrCompiledVoiceWord> extraWords = compileWords(registration.extraWords());
-            if (hotwords.isEmpty() && extraWords.isEmpty()) {
+            if (wakeWords.isEmpty() && extraWords.isEmpty()) {
                 continue;
             }
-            compiled.add(new IrCompiledVoiceTrigger(registration.moduleId(), hotwords, extraWords, hotwords.size() + extraWords.size(), registration.priority(), registration.deliveryTarget()));
+            compiled.add(new IrCompiledVoiceTrigger(registration.moduleId(), wakeWords, extraWords, wakeWords.size() + extraWords.size(), registration.priority(), registration.deliveryTarget()));
         }
         return List.copyOf(compiled);
     }

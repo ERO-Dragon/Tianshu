@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionEventType;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
@@ -63,6 +64,11 @@ class DialogueEventPublisherTest {
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
             eventCount++;
+            return null;
+        }
+
+        @Override
+        public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
             return null;
         }
 

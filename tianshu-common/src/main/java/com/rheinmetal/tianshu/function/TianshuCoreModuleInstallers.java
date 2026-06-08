@@ -11,6 +11,7 @@ import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextResolver;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityCoreAdapter;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
+import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
@@ -75,6 +76,7 @@ public final class TianshuCoreModuleInstallers {
                 worldStateProvider,
                 runtimeFactTextResolver,
                 promptLanguageProvider,
+                DialogueContextProvider.EMPTY,
                 AXOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP,
                 irInstaller
@@ -96,11 +98,45 @@ public final class TianshuCoreModuleInstallers {
             AXChatOutputSink axChatOutputSink,
             TianshuFunctionModuleInstaller irInstaller
     ) {
+        return clientCore(
+                env,
+                config,
+                audioBridge,
+                protocolRuntime,
+                voiceInputGate,
+                interruptionSignal,
+                axWorldIdentityProvider,
+                worldStateProvider,
+                runtimeFactTextResolver,
+                promptLanguageProvider,
+                DialogueContextProvider.EMPTY,
+                axOutputSettings,
+                axChatOutputSink,
+                irInstaller
+        );
+    }
+
+    public static List<TianshuFunctionModuleInstaller> clientCore(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            IAudioBridge audioBridge,
+            ProtocolRuntime protocolRuntime,
+            BooleanSupplier voiceInputGate,
+            LongSupplier interruptionSignal,
+            AXWorldIdentityProvider axWorldIdentityProvider,
+            WorldStateProvider worldStateProvider,
+            RuntimeFactTextResolver runtimeFactTextResolver,
+            AXPromptLanguageProvider promptLanguageProvider,
+            DialogueContextProvider dialogueContextProvider,
+            AXOutputSettings axOutputSettings,
+            AXChatOutputSink axChatOutputSink,
+            TianshuFunctionModuleInstaller irInstaller
+    ) {
         TianshuFunctionModuleInstaller effectiveIrInstaller = irInstaller == null
                 ? moduleHostInstaller(protocolRuntime)
                 : irInstaller;
         return List.of(
-                new IaModuleInstaller(protocolRuntime),
+                new IaModuleInstaller(protocolRuntime, dialogueContextProvider),
                 effectiveIrInstaller,
                 new LlmModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
                 new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, axOutputSettings, axChatOutputSink),

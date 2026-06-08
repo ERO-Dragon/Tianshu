@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.registry;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueInterruptPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueLeasePolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +46,6 @@ class DialogueParticipantRegistryTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, List.of(), List.of(), List.of(), "ROUTE", DialogueInterruptPolicy.ALLOW_AFTER_LEASE, DialogueLeasePolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 }

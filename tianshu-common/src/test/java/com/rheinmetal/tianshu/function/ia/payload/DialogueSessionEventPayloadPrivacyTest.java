@@ -21,7 +21,7 @@ class DialogueSessionEventPayloadPrivacyTest {
         assertFalse(fields.contains("prompt"));
         assertFalse(fields.contains("response"));
         assertFalse(fields.contains("contextSnapshot"));
-        assertFalse(fields.contains("matchedHotwords"));
+        assertFalse(fields.contains("matchedWakeWords"));
         assertFalse(fields.contains("matchedItemIds"));
         assertFalse(fields.contains("matchedEntityRefs"));
     }

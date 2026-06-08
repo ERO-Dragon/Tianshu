@@ -159,7 +159,7 @@ voice trigger 命中由 [IrVoiceTriggerMatcher](file:///d:/Minecraft/Tianshu/tia
 
 当前匹配特征：
 
-- hotwords 和 extraWords 等权
+- wakeWords 和 extraWords 等权
 - 输入做归一化后再做包含匹配
 - confidence 仅作观测分数，不作为是否转发的唯一依据
 
@@ -173,7 +173,7 @@ voice trigger 命中由 [IrVoiceTriggerMatcher](file:///d:/Minecraft/Tianshu/tia
 
 - `sourceText`
 - `moduleId`
-- `matchedHotwords`
+- `matchedWakeWords`
 - `matchedExtraWords`
 - `matchedItemNames`
 - `matchedItemIds`

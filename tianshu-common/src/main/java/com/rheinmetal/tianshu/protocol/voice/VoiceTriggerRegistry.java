@@ -55,7 +55,7 @@ public final class VoiceTriggerRegistry {
     public synchronized List<String> asrHotwords() {
         Set<String> words = new LinkedHashSet<>();
         for (VoiceTriggerRegistration registration : registrations.values()) {
-            words.addAll(registration.hotwords());
+            words.addAll(registration.wakeWords());
             words.addAll(registration.extraWords());
         }
         return List.copyOf(words);
@@ -72,13 +72,13 @@ public final class VoiceTriggerRegistry {
         }
         List<VoiceTriggerMatch> matches = new ArrayList<>();
         for (VoiceTriggerRegistration registration : registrations.values()) {
-            List<String> matchedHotwords = TextListNormalizer.collectMatches(normalizedText, registration.hotwords());
+            List<String> matchedWakeWords = TextListNormalizer.collectMatches(normalizedText, registration.wakeWords());
             List<String> matchedExtraWords = TextListNormalizer.collectMatches(normalizedText, registration.extraWords());
-            if (matchedHotwords.isEmpty() && matchedExtraWords.isEmpty()) {
+            if (matchedWakeWords.isEmpty() && matchedExtraWords.isEmpty()) {
                 continue;
             }
-            double confidence = confidence(registration, matchedHotwords, matchedExtraWords);
-            matches.add(new VoiceTriggerMatch(registration.moduleId(), matchedHotwords, matchedExtraWords, confidence));
+            double confidence = confidence(registration, matchedWakeWords, matchedExtraWords);
+            matches.add(new VoiceTriggerMatch(registration.moduleId(), matchedWakeWords, matchedExtraWords, confidence));
         }
         return List.copyOf(matches);
     }
@@ -94,9 +94,9 @@ public final class VoiceTriggerRegistry {
 
     private boolean sharesWord(VoiceTriggerRegistration left, VoiceTriggerRegistration right) {
         Set<String> rightWords = new LinkedHashSet<>();
-        rightWords.addAll(right.hotwords());
+        rightWords.addAll(right.wakeWords());
         rightWords.addAll(right.extraWords());
-        for (String word : left.hotwords()) {
+        for (String word : left.wakeWords()) {
             if (rightWords.contains(word)) return true;
         }
         for (String word : left.extraWords()) {
@@ -109,7 +109,7 @@ public final class VoiceTriggerRegistry {
         Map<String, List<String>> ownersByWord = new LinkedHashMap<>();
         for (VoiceTriggerRegistration registration : registrations) {
             Set<String> words = new LinkedHashSet<>();
-            words.addAll(registration.hotwords());
+            words.addAll(registration.wakeWords());
             words.addAll(registration.extraWords());
             for (String word : words) {
                 ownersByWord.computeIfAbsent(word, ignored -> new ArrayList<>()).add(registration.moduleId());
@@ -131,9 +131,9 @@ public final class VoiceTriggerRegistry {
         }
     }
 
-    private static double confidence(VoiceTriggerRegistration registration, List<String> matchedHotwords, List<String> matchedExtraWords) {
-        int total = Math.max(1, registration.hotwords().size() + registration.extraWords().size());
-        double score = matchedHotwords.size() * 2.0D + matchedExtraWords.size();
+    private static double confidence(VoiceTriggerRegistration registration, List<String> matchedWakeWords, List<String> matchedExtraWords) {
+        int total = Math.max(1, registration.wakeWords().size() + registration.extraWords().size());
+        double score = matchedWakeWords.size() * 2.0D + matchedExtraWords.size();
         return Math.min(1.0D, score / Math.max(2.0D, total));
     }
 }

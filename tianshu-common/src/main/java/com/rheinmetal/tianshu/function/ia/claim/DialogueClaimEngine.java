@@ -5,117 +5,83 @@ import com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaim;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimConditionType;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimOperator;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
+import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
 
 public final class DialogueClaimEngine {
-    public List<DialogueClaim> collectLocalClaims(List<DialogueParticipantDescriptor> participants, DialogueArbitrationRequestPayload request) {
+    public List<DialogueClaim> collectLocalClaims(List<DialogueParticipantDescriptor> participants, DialogueArbitrationInput input) {
         if (participants == null || participants.isEmpty()) {
             return List.of();
         }
         List<DialogueClaim> claims = new ArrayList<>();
-        List<DialogueParticipantDescriptor> fallbackParticipants = new ArrayList<>();
         for (DialogueParticipantDescriptor participant : participants) {
             if (participant == null) {
                 continue;
             }
             DialogueClaimProfile profile = participant.claimProfile();
-            if (profile.mode() == DialogueClaimMode.FALLBACK_ONLY) {
-                fallbackParticipants.add(participant);
+            if (profile.mode() == DialogueClaimMode.DEFAULT_OWNER || profile.mode() == DialogueClaimMode.DISABLED) {
                 continue;
             }
-            if (profile.mode() == DialogueClaimMode.DISABLED) {
-                continue;
-            }
-            DialogueClaim claim = score(participant, profile, request);
-            if (claim.score() > 0.0D || claim.confidence() > 0.0D) {
-                claims.add(claim);
-            }
+            collectClaim(participant, profile, input).ifPresent(claims::add);
         }
-        if (!claims.isEmpty()) {
-            return List.copyOf(claims);
-        }
-        return fallbackParticipants.stream()
-                .map(this::fallbackClaim)
-                .toList();
+        return List.copyOf(claims);
     }
 
-    private DialogueClaim score(DialogueParticipantDescriptor participant, DialogueClaimProfile profile, DialogueArbitrationRequestPayload request) {
-        double score = 0.0D;
-        double confidence = 0.0D;
-        boolean exclusive = false;
+    private java.util.Optional<DialogueClaim> collectClaim(DialogueParticipantDescriptor participant, DialogueClaimProfile profile, DialogueArbitrationInput input) {
+        List<DialogueClaimRule> matchedRules = new ArrayList<>();
         StringJoiner reason = new StringJoiner(",");
         for (DialogueClaimRule rule : profile.rules()) {
-            if (!matchesRule(rule, request)) {
+            if (!matchesRule(rule, input)) {
                 continue;
             }
-            score += rule.score();
-            confidence += rule.confidence();
-            exclusive = exclusive || rule.exclusive();
+            matchedRules.add(rule);
             if (!rule.ruleId().isBlank()) {
                 reason.add(rule.ruleId());
             }
         }
-        if (score > 0.0D && request.interactionHints().crosshairHit()) {
-            score += 0.05D;
+        if (matchedRules.isEmpty()) {
+            return java.util.Optional.empty();
         }
-        if (score > 0.0D && request.interactionHints().interactionKeyDown()) {
-            score += 0.05D;
-        }
-        String reasonText = reason.length() == 0 ? "rule_score" : "rule_score:" + reason;
-        return new DialogueClaim(participant.participantId(), score, confidence, participant.priority(), exclusive, reasonText);
+        DialogueClaimRule bestRule = matchedRules.stream().max(ruleComparator()).orElseThrow();
+        String reasonText = reason.length() == 0 ? "hard_claim" : "hard_claim:" + reason;
+        return java.util.Optional.of(new DialogueClaim(participant.participantId(), bestRule.strength(), bestRule.decay(), participant.priority(), reasonText));
     }
 
-    private DialogueClaim fallbackClaim(DialogueParticipantDescriptor participant) {
-        return new DialogueClaim(participant.participantId(), 0.1D, 0.1D, participant.priority(), false, "fallback");
-    }
-
-    private boolean matchesRule(DialogueClaimRule rule, DialogueArbitrationRequestPayload request) {
+    private boolean matchesRule(DialogueClaimRule rule, DialogueArbitrationInput input) {
         if (rule.conditions().isEmpty()) {
             return false;
         }
         if (rule.operator() == DialogueClaimOperator.ANY) {
-            return rule.conditions().stream().anyMatch(condition -> matchesCondition(condition, request));
+            return rule.conditions().stream().anyMatch(condition -> matchesCondition(condition, input));
         }
-        return rule.conditions().stream().allMatch(condition -> matchesCondition(condition, request));
+        return rule.conditions().stream().allMatch(condition -> matchesCondition(condition, input));
     }
 
-    private boolean matchesCondition(DialogueClaimCondition condition, DialogueArbitrationRequestPayload request) {
-        DialogueInteractionHints hints = request.interactionHints();
-        DialogueContextSnapshot context = request.contextSnapshot();
+    private boolean matchesCondition(DialogueClaimCondition condition, DialogueArbitrationInput input) {
+        DialogueInteractionHints hints = input.interactionHints();
+        DialogueContextSnapshot context = input.contextSnapshot();
         return switch (condition.type()) {
-            case HOTWORD -> matchesAny(condition.values(), request.matchedHotwords());
-            case MATCHED_ITEM -> matchesAny(condition.values(), request.matchedItemIds());
+            case WAKE_WORD -> matchesAny(condition.values(), input.matchedWakeWords());
             case HELD_ITEM -> matchesAny(condition.values(), List.of(hints.heldItemId()));
-            case MATCHED_ENTITY -> matchesAny(condition.values(), matchedEntityTypes(request));
+            case EQUIPPED_ITEM -> matchesAny(condition.values(), context.equippedItemIds());
             case CROSSHAIR_ENTITY -> matchesAny(condition.values(), crosshairEntityTypes(context));
             case CROSSHAIR_HIT -> hints.crosshairHit();
             case INTERACTION_KEY -> hints.interactionKeyDown();
             case SNEAKING -> hints.sneaking();
             case INTERACTION_TAG -> matchesAny(condition.values(), hints.tags());
-            case CONTEXT_ITEM -> matchesAny(condition.values(), context.itemIds());
             case CONTEXT_FACT -> matchesContextFact(condition, context.facts());
         };
-    }
-
-    private static List<String> matchedEntityTypes(DialogueArbitrationRequestPayload request) {
-        List<String> values = new ArrayList<>(request.matchedEntityRefs());
-        request.contextSnapshot().entityRefs().stream()
-                .map(DialogueEntityRef::entityTypeId)
-                .filter(value -> value != null && !value.isBlank())
-                .forEach(values::add);
-        return values;
     }
 
     private static List<String> crosshairEntityTypes(DialogueContextSnapshot context) {
@@ -164,5 +130,12 @@ public final class DialogueClaimEngine {
 
     private static String normalize(String value) {
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static Comparator<DialogueClaimRule> ruleComparator() {
+        return Comparator
+                .comparing(DialogueClaimRule::strength)
+                .thenComparing(rule -> rule.decay() == null ? 0.0D : -rule.decay().perSecond())
+                .thenComparing(DialogueClaimRule::ruleId, Comparator.reverseOrder());
     }
 }

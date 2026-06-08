@@ -4,13 +4,13 @@
 
 仲裁机关模块（Interaction Arbiter）是天枢语音对话链路中的开放交互仲裁机构，负责在 IR 完成文本修复、指令识别和上下文预处理之后，判断一次自然语言对话应由哪个参与方接管。
 
-仲裁机关不是协议中心，也不是 LLM 模块。它位于 IR 之后、LLM/TTS 之前，是对话会话所有权、参与方选择、抢占与释放的业务仲裁层。
+仲裁机关不是协议中心，也不是 LLM 模块。它位于 IR 之后、LLM/TTS 之前，是对话轮次所有权、参与方选择、释放和当前轮处理期限的业务仲裁层。
 
 它的核心目标是：
 
 - 允许天枢助手、NPC、女仆、机械装置、其他模组实体或物品交互模块竞争一次对话的处理权。
 - 让外部模块通过适配天枢协议参与对话，而不是直接监听 ASR 或绕过 IR/LLM。
-- 统一管理对话会话的 owner、生命周期、抢占策略和释放策略。
+- 统一管理每轮对话 owner、生命周期、attention 衰减、释放策略和当前轮处理期限。
 - 只广播会话状态，不广播 ASR 文本、IR 文本、LLM prompt 或 LLM response。
 - 与协议中心保持职责分离，复用协议中心的路由、能力、线程调度和资源仲裁能力。
 
@@ -44,7 +44,7 @@ LLM / TTS / 游戏动作
 - 对话参与方注册
 - 对话请求仲裁
 - 会话 owner 管理
-- 抢占、续租、释放
+- 每轮仲裁、处理期限延长、释放
 - 会话状态事件发布
 - 对话内容的授权定向投递
 
@@ -77,8 +77,8 @@ IR 负责：
 
 - ASR 文本归一化
 - MC 词汇修复
-- 物品、实体、环境上下文增强
-- voice trigger 匹配
+- 文本侧物品识别
+- wake word 匹配
 - 普通指令触发
 - 生成可供仲裁机关使用的对话候选输入
 
@@ -126,11 +126,11 @@ TTS 是输出能力，不是仲裁方。
 - 注册对话仲裁 capability。
 - 接收 IR 之后的对话仲裁请求。
 - 维护可参与对话的 participant 注册表。
-- 基于上下文、优先级、置信度、距离、准星目标、手持物、实体状态等信息选择 owner。
+- 基于 wake word、手持物、身上装备、准星目标、交互状态、优先级和 attention 衰减选择 owner。
 - 创建 dialogue session。
-- 维护 session owner、turn id、lease、状态和释放原因。
-- 处理 owner 续租、主动释放、超时释放。
-- 处理更高优先级参与方的抢占申请。
+- 维护 session owner、turn id、processing deadline、状态和释放原因。
+- 处理 owner 处理期限延长、主动释放、超时释放。
+- 每轮重新仲裁；上一轮 owner 只通过按秒衰减的 attention 影响无硬 claim 的模糊追问，不形成硬抢占窗口。
 - 向 owner 定向投递对话输入。
 - 发布会话状态事件。
 - 拒绝非 owner 对当前会话内容链路的访问。
@@ -169,8 +169,13 @@ ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE
 |---|---|
 | `DIALOGUE_ARBITRATE` | IR 或受信模块请求仲裁机关对一次对话输入进行 owner 仲裁。 |
 | `DIALOGUE_PARTICIPANT_REGISTER` | 模块注册自己为可参与对话的候选方。 |
-| `DIALOGUE_SESSION_CONTROL` | 当前 owner 对会话进行续租、释放、打断确认等控制。 |
+| `DIALOGUE_SESSION_CONTROL` | 当前 owner 对会话进行处理期限延长、释放、打断确认等控制。 |
 | `DIALOGUE_LLM_USAGE_AUTHORIZE` | LLM 模块查询某个 requester 是否有权基于当前 dialogue session 发起对话型 LLM 使用。仲裁机关只返回允许或拒绝结论，不代理、不转发、不排队任何 LLM 请求。 |
+
+`DIALOGUE_ARBITRATE` 同时接受 `COMMAND` 和 `REQUEST`，但两者语义不同：
+
+- `COMMAND` 是标准对话链路。IR 把修复、结构化后的候选输入提交给仲裁机关后即完成职责；仲裁机关负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。IR 不等待、也不消费 `DialogueArbitrationResultPayload`。
+- `REQUEST` 只用于确实需要同步获知仲裁结论的诊断、测试或受信模块查询场景。调用方必须为原请求 `envelopeId` 注册 `DIALOGUE_ARBITRATION_RESULT` 响应处理器，并在最终响应、过期、取消或模块停止时清理。
 
 仲裁机关的对外协议不应追求“先能跑”的临时收敛，而应从一开始建立稳定边界：仲裁、参与方注册、会话控制、状态事件、权限校验都属于同一套体系。即使某些能力在代码实现中分阶段完成，协议模型也应按成熟形态设计，避免后续反复破坏 payload、capability 和 session 语义。
 
@@ -184,6 +189,7 @@ PayloadType.DIALOGUE_ARBITRATION_RESULT
 PayloadType.DIALOGUE_PARTICIPANT_REGISTER
 PayloadType.DIALOGUE_SESSION_CONTROL
 PayloadType.DIALOGUE_SESSION_EVENT
+PayloadType.DIALOGUE_OWNER_PREVIEW
 PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST
 PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT
 ```
@@ -196,9 +202,10 @@ PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT
 
 ```text
 ProtocolTopics.DIALOGUE_SESSION_EVENTS
+ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 ```
 
-该 topic 只发布会话状态事件，不发布对话正文。
+`DIALOGUE_SESSION_EVENTS` 只发布会话状态事件，不发布对话正文。`DIALOGUE_OWNER_PREVIEW` 只发布“当前如果说话会被哪个模块承接”的最新 owner，不发布正文、上下文细节或 attention 数值。
 
 允许发布的事件包括：
 
@@ -210,6 +217,8 @@ ProtocolTopics.DIALOGUE_SESSION_EVENTS
 - `conversation.session_finished`
 - `conversation.rejected`
 - `conversation.expired`
+
+`DIALOGUE_OWNER_PREVIEW` 只在 preview owner 变化时发布，用于 UI 低频状态提示。
 
 ## 6. 广播策略
 
@@ -225,7 +234,7 @@ ProtocolTopics.DIALOGUE_SESSION_EVENTS
 - 状态类型
 - 状态时间
 - 释放原因
-- 抢占原因
+- owner 变化原因
 - 是否成功接管
 - 面向 UI 的非敏感显示名
 
@@ -259,7 +268,7 @@ ProtocolTopics.DIALOGUE_SESSION_EVENTS
 
 - 仲裁逻辑可以读取完成 owner 判断所需的信息。
 - 参与方注册表只保存参与方能力描述，不保存玩家输入正文。
-- 会话存储只保存 session 状态、owner、turn、lease、释放原因等必要字段，不长期保存完整对话正文。
+- 会话存储只保存 session 状态、owner、turn、processing deadline、释放原因等必要字段，不长期保存完整对话正文。
 - 状态广播只发布 session 状态，不附带正文、prompt、response、完整上下文。
 - owner 定向投递只包含处理当前 turn 所需的输入和上下文。
 - 非 owner 只能获得会话状态，不能获得本轮正文。
@@ -278,13 +287,11 @@ DialogueArbitrationRequestPayload(
     sourceModuleId,
     playerId,
     turnId,
+    sourceSessionId,
     repairedText,
     normalizedText,
-    matchedHotwords,
+    matchedWakeWords,
     matchedItemIds,
-    matchedEntityRefs,
-    interactionHints,
-    contextSnapshot,
     timestampMillis,
     expireAtMillis
 )
@@ -298,17 +305,19 @@ DialogueArbitrationRequestPayload(
 | `sourceModuleId` | 请求来源，通常是 IR。 |
 | `playerId` | 玩家标识。 |
 | `turnId` | 上游 turn 编号。 |
+| `sourceSessionId` | 上游 ASR/输入会话 ID，用于关联“开始说话时冻结的上下文快照”。 |
 | `repairedText` | IR 修复后的文本，仅允许进入仲裁机关和候选 owner 判断，不做公共广播。 |
 | `normalizedText` | 归一化文本。 |
-| `matchedHotwords` | IR 命中的热词。 |
+| `matchedWakeWords` | IR 命中的 wake word。 |
 | `matchedItemIds` | IR 增强识别出的物品。 |
-| `matchedEntityRefs` | 快照化实体引用，不传活对象。 |
-| `interactionHints` | 手持物、准星、按键、距离等交互提示。 |
-| `contextSnapshot` | 已脱敏、快照化的上下文。 |
 | `timestampMillis` | 请求创建时间。 |
 | `expireAtMillis` | 请求过期时间。 |
 
-实际代码中，payload 不应直接携带 Minecraft 活对象，只能携带 common 可理解的 ID、快照和引用描述。
+仲裁请求 payload 只承载 IR 的文本侧结果：修复文本、归一化文本、命中的 wake word 和识别出的物品 ID。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 自己通过 `DialogueContextProvider` 捕获，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。
+
+IA 会订阅 `INPUT.ASR_SPEECH_ACTIVITY / ASR_SPEECH_ACTIVITY`。当 ASR 发布 `speaking=true` 时，IA 立即按 `sourceSessionId` 冻结一份上下文快照；当后续 IR 提交带有相同 `sourceSessionId` 的文本仲裁请求时，IA 优先消费这份冻结快照。`speaking=false` 不会立刻删除快照，因为最终文本通常在用户说完后才进入 IR；快照会短时间保留，直到被仲裁消费或过期清理。这样 claim 判断使用的是“用户开始说话时”的手持、装备、准星和按键状态，而不是 ASR 识别完成后的状态。
+
+实际代码中，payload 不应直接携带 Minecraft 活对象。平台侧采集器只能把世界状态转换成 common 可理解的 ID、快照和引用描述；采集失败时应降级为空 `DialogueContextFrame`，不能阻断仲裁。
 
 ## 8. 仲裁结果契约
 
@@ -322,9 +331,8 @@ DialogueArbitrationResultPayload(
     ownerModuleId,
     ownerParticipantId,
     routeCapability,
-    routeTopic,
     reason,
-    leaseExpireAtMillis
+    processingDeadlineMillis
 )
 ```
 
@@ -337,10 +345,9 @@ DialogueArbitrationResultPayload(
 | `accepted` | 是否成功找到 owner。 |
 | `ownerModuleId` | 接管模块 ID。 |
 | `ownerParticipantId` | 接管参与方 ID。 |
-| `routeCapability` | 定向投递给 owner 的 capability。 |
-| `routeTopic` | 如需要流式或状态订阅，可给出受控 topic。 |
-| `reason` | 接管、拒绝或抢占原因。 |
-| `leaseExpireAtMillis` | 当前 owner 租约过期时间。 |
+| `routeCapability` | 定向投递给 owner 的 capability。能力名由参与方自定义，但必须接收标准 `DIALOGUE_DELIVERY / DialogueDeliveryPayload / COMMAND`。 |
+| `reason` | 接管、拒绝或 owner 变化原因。 |
+| `processingDeadlineMillis` | 当前轮处理期限。该期限只保护本轮异步处理，不影响下一轮 owner 归属。 |
 
 ## 9. 参与方模型
 
@@ -358,18 +365,19 @@ DialogueParticipantDescriptor(
     supportedEntityTypes,
     supportedItemIds,
     routeCapability,
-    interruptPolicy,
-    leasePolicy
+    turnProcessingPolicy
 )
 ```
 
-参与方声明自己能处理什么，但具体如何判断是否要接管，可以由参与方自行提供策略。
+参与方注册时，仲裁机关会校验 `routeCapability` 对应的能力是否已经注册，且是否满足统一对话投递契约。IA 只投递 `DialogueDeliveryPayload`，不识别也不适配各模组内部 payload；外部模组需要在自己的 adapter 内把 `DialogueDeliveryPayload` 转换成内部业务模型。
 
-推荐拆成两层：
+参与方声明自己在什么条件下应该接管。IA 不向参与方发起逐轮评分请求，而是在注册时保存参与方的 claim profile，并在每轮仲裁时用 IR 文本结果和 IA 自己捕获的游戏状态快照做硬命中判断。
+
+参与方模型由两层组成：
 
 ```text
-静态描述：模块启动时注册，说明能力范围
-动态评分：每次仲裁时基于上下文返回 claim 分数
+静态描述：模块启动时注册，说明身份、优先级、投递入口和处理期限
+claim profile：模块启动时注册，说明 wake word、手持物、装备、准星实体、交互状态等硬命中条件
 ```
 
 ### 9.1 静态描述
@@ -379,37 +387,45 @@ DialogueParticipantDescriptor(
 - 模块 ID
 - 参与方 ID
 - 显示名称
-- 支持实体类型
-- 支持物品 ID
-- 支持交互类型
+- 兼容字段中的 wake word、实体类型、物品 ID
 - 基础优先级
 - route capability
+- 当前轮处理期限策略
 
-### 9.2 动态评分
+### 9.2 Claim Profile
 
-动态评分适合表达：
+claim profile 适合表达：
 
+- 玩家说出了某个 wake word。
 - 玩家是否正看着该实体
 - 玩家是否拿着指定物品
-- 当前实体是否允许说话
-- 当前机器是否正在运行
-- 当前模块是否忙碌
-- 当前上下文是否像是在对自己说话
+- 玩家身上是否装备了指定物品
+- 玩家是否命中了准星目标
+- 玩家是否按住交互键或处于潜行状态
+- 平台上下文是否带有某个简化 fact
 
 概念模型：
 
 ```java
-DialogueClaim(
-    participantId,
-    score,
-    confidence,
-    priority,
-    exclusive,
-    reason
+DialogueClaimRule(
+    ruleId,
+    operator,
+    conditions,
+    strength,
+    decay
 )
 ```
 
-仲裁机关根据所有 claim 结果选择 owner。
+其中：
+
+| 字段 | 含义 |
+|---|---|
+| `operator` | `ANY` 或 `ALL`，由外部模组决定多个条件的组合方式。 |
+| `conditions` | `WAKE_WORD`、`HELD_ITEM`、`EQUIPPED_ITEM`、`CROSSHAIR_ENTITY`、`CROSSHAIR_HIT`、`INTERACTION_KEY`、`SNEAKING`、`INTERACTION_TAG`、`CONTEXT_FACT`。 |
+| `strength` | 硬 claim 强度，当前固定为 `NORMAL` 或 `STRONG` 两档，避免无限参数调优。 |
+| `decay` | 本轮命中后形成的 attention 衰减速度，当前固定为 `FAST` 或 `SLOW` 两档。 |
+
+兼容字段 `supportedIntents` 当前会被转换成 `WAKE_WORD + STRONG + SLOW`；`supportedItemIds` 会转换成 `HELD_ITEM/EQUIPPED_ITEM + NORMAL + FAST`；`supportedEntityTypes` 会转换成 `CROSSHAIR_ENTITY + NORMAL + SLOW`。新接入建议直接使用 `DialogueClaimProfile.rules(...)`。
 
 ## 10. 会话所有权
 
@@ -425,7 +441,7 @@ session 至少包含：
 - `turnId`
 - `createdAtMillis`
 - `lastActiveAtMillis`
-- `leaseExpireAtMillis`
+- `processingDeadlineMillis`
 - `releaseReason`
 
 推荐状态：
@@ -444,11 +460,11 @@ REJECTED
 
 当前 owner 拥有：
 
-- 接收本 session 后续 turn 的权限。
-- 调用 LLM 生成本 session 回答的权限。
-- 调用 TTS 输出本 session 结果的权限。
+- 接收本轮 `DialogueDeliveryPayload` 的权限。
+- 调用 LLM 生成本轮回答的权限。
+- 调用 TTS 输出本轮结果的权限。
 - 主动释放 session 的权限。
-- 请求续租的权限。
+- 延长当前轮处理期限的权限。
 
 非 owner 不应获得本 session 的对话正文。
 
@@ -460,37 +476,40 @@ session 可以因为以下原因释放：
 - 玩家取消输入。
 - 输入超时。
 - owner 处理失败。
-- 更高优先级参与方抢占。
+- 新一轮仲裁选择了其他 owner。
 - 玩家切换目标。
 - 世界或玩家生命周期结束。
 
-## 11. 抢占策略
+## 11. 每轮仲裁与 Attention 衰减策略
 
-仲裁机关支持抢占，但抢占必须是显式策略，不应成为默认副作用。
+玩家在游戏中会频繁切换目标和意图，因此 IA 不使用硬归属窗口保护下一轮 owner。每个新的 IR 输入都重新仲裁；上一轮 owner 只在本轮没有任何硬 claim 时，通过按秒衰减的 attention 承接模糊追问。当前硬 claim 永远优先于历史 attention，避免“上一轮聊机械动力，下一轮明确叫 AX 做备忘录”时被旧 owner 抢走。
 
-建议维度：
+核心维度：
 
 | 维度 | 说明 |
 |---|---|
 | `priority` | 参与方基础优先级。 |
-| `score` | 当前上下文评分。 |
-| `exclusive` | 是否声明独占。 |
-| `interruptPolicy` | 是否允许打断当前 owner。 |
-| `leasePolicy` | 当前 owner 是否仍在租约内。 |
-| `playerAction` | 玩家是否做了明确切换动作。 |
+| `claim strength` | 当前硬命中强度，固定为 `NORMAL` / `STRONG`。 |
+| `attention` | 上一轮硬命中后留下的隐性关注值。 |
+| `decay` | attention 按秒线性衰减速度，固定为 `FAST` / `SLOW`。 |
+| `default owner baseline` | 默认 owner 的基准线，attention 衰减到该值以下后回到默认 owner，当前由 AX 注册。 |
 
-抢占发生时，仲裁机关应：
+仲裁规则：
 
-1. 向旧 owner 发送中断通知。
-2. 更新 session owner 或创建新 session。
-3. 发布 `conversation.interrupted` 和 `conversation.owner_changed` 状态事件。
-4. 将后续输入定向投递给新 owner。
+1. 每轮输入都创建新的 claimed session。
+2. 如果本轮存在硬 claim，IA 只在这些硬 claim 之间按 `strength`、`priority` 和稳定 tie-break 选择 owner。
+3. 如果本轮没有硬 claim，IA 才检查上一轮 owner 的 attention 是否仍高于 AX baseline。
+4. attention 高于 default owner baseline 时继续交给上一轮 owner；否则选择 `DEFAULT_OWNER` participant，当前由 AX 注册。
+5. 新 owner 与上一轮 active session 不同时，IA 释放旧 session 并发布 `conversation.owner_changed`、`conversation.released` / `conversation.session_finished` 等状态事件。
+6. 当前轮 processing deadline 只用于回收超时异步处理，不参与下一轮归属判断。
+
+attention 是隐性状态，不向用户暴露具体数值。面向 UI 的状态只发布“当前如果说话，会被哪个模块承接”的 owner preview。
 
 ## 12. 线程与调度策略
 
 仲裁机关不创建自己的线程池。
 
-所有跨模块请求、评分、仲裁和状态事件都应通过协议中心的执行模型完成。
+所有跨模块请求、claim 判断、仲裁和状态事件都应通过协议中心的执行模型完成。
 
 建议策略：
 
@@ -502,8 +521,9 @@ session 可以因为以下原因释放：
 | LLM 调用 | `IO` | 由 LLM 模块自身管理。 |
 | TTS 调用 | `AUDIO_IO` / `IO` | 由 TTS 模块自身管理。 |
 | UI 状态展示 | `MAIN` | 只投递状态，不做重逻辑。 |
+| owner preview refresh | `SCHEDULED` | 通过协议中心定时 lane 刷新 attention 衰减后的当前预览，只在 owner 变化时发布。 |
 
-仲裁机关只表达任务意图和边界，不直接控制底层线程。
+仲裁机关只表达任务意图和边界，不直接控制底层线程。IA 内部需要延迟或定时执行时，也应使用 `ProtocolRuntime.executors().schedule(...)` 这类协议中心执行入口，不能自建私有线程池或绕开模块宿主生命周期。
 
 ## 13. common 与 Minecraft 解耦
 
@@ -547,7 +567,7 @@ common DTO 可以表达：
 - 玩家靠近某个方块实体。
 - 玩家说出某类热词。
 
-但最终接入天枢时，应统一转化为 participant 注册和 claim 评分。
+但最终接入天枢时，应统一转化为 participant 注册和 claim profile。IA 负责用每轮输入和当前游戏快照判断这些 profile 是否硬命中。
 
 接入原则：
 
@@ -561,7 +581,7 @@ common DTO 可以表达：
 由仲裁机关决定 owner
 ```
 
-外部模组不应直接监听 ASR，不应直接绕过仲裁机关抢占会话。
+外部模组不应直接监听 ASR，不应直接绕过仲裁机关接管会话。
 
 ## 15. 安全边界
 
@@ -578,7 +598,7 @@ common DTO 可以表达：
 - 非 owner 只能接收状态事件。
 - 状态事件不携带敏感正文和完整上下文。
 - 外部模块请求 LLM 必须走 LLM 模块的外部模块线或授权 capability。
-- 对话型 LLM 请求必须携带 dialogue session 授权上下文，由 LLM 模块在入口向仲裁机关查询 `DIALOGUE_LLM_USAGE_AUTHORIZE` 或等价服务；只有当前 session owner、session 处于可用状态且 lease 未过期时才能放行。
+- 对话型 LLM 请求必须携带 dialogue session 授权上下文，由 LLM 模块在入口向仲裁机关查询 `DIALOGUE_LLM_USAGE_AUTHORIZE` 或等价服务；只有当前 session owner、session 处于可用状态且 processing deadline 未过期时才能放行。
 - 推荐采用直接 session owner 校验，而不是随机 key 或 token 授权。LLM 模块提交对话型请求时携带 `sessionId`、`requesterModuleId`、`requesterParticipantId` 和 `turnId`，仲裁机关根据 Session Store 与 Access Control 返回允许或拒绝。该校验是普通内存状态查询，性能开销低，且不会引入 token 泄露、缓存失效和撤销复杂度。
 - 仲裁机关只校验对话型 LLM 使用权限，不代理 LLM 请求，不生成 prompt，不管理 LLM server 内部队列。
 - 外部模块请求 TTS 必须走 TTS 模块的授权 capability。
@@ -594,9 +614,9 @@ common DTO 可以表达：
 | 子系统 | 职责 |
 |---|---|
 | Participant Registry | 管理参与方注册、注销、能力描述、可见性和生命周期绑定。 |
-| Claim Engine | 收集候选参与方声明，计算 score、priority、confidence 和 exclusive 语义。 |
-| Arbitration Policy | 根据租约、抢占策略、玩家动作、模块优先级和上下文决定 owner。 |
-| Session Store | 维护 session 状态、owner、turn、lease、释放原因和审计信息。 |
+| Claim Engine | 根据 participant 的 claim profile 和当前输入快照收集硬 claim。 |
+| Arbitration Policy | 按硬 claim、priority、attention 衰减和默认 owner 决定本轮 owner。 |
+| Session Store | 维护 session 状态、owner、turn、processing deadline、释放原因和审计信息。 |
 | Access Control | 校验模块是否有权读取正文、控制 session、调用 LLM/TTS 或接收事件。 |
 | Message Gateway | 对入站和出站正文消息做授权检查和定向投递，拒绝旁路访问。 |
 | Event Publisher | 发布不含正文的会话状态事件。 |
@@ -641,11 +661,11 @@ IR 输出 DialogueArbitrationRequest
   ↓
 读取 participant 注册表快照
   ↓
-向候选参与方收集 claim 或使用本地策略评分
+根据 participant claim profile 收集本轮硬 claim
   ↓
 选择最高优先级 owner
   ↓
-创建或复用 session
+创建新的 claimed session
   ↓
 发布 conversation.claimed / session_started
   ↓
@@ -664,7 +684,7 @@ owner 释放或 session 超时
 
 1. **只仲裁对话所有权，不处理具体回答。**
 2. **只广播状态，不广播正文。**
-3. **位于 IR 之后，继承 IR 的文本修复和上下文增强结果。**
+3. **位于 IR 之后，继承 IR 的文本修复和 wake word 结果，并由 IA 捕获游戏状态快照。**
 4. **通过协议中心运行，不另起调度体系。**
 5. **common 主体不依赖 Minecraft 活对象。**
 6. **外部模组自定义交互方式，但统一适配为 participant / claim。**

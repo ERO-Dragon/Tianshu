@@ -9,35 +9,33 @@ public record VoiceTriggerPayload(
         String sourceText,
         String normalizedText,
         String moduleId,
-        List<String> matchedHotwords,
+        List<String> matchedWakeWords,
         List<String> matchedCommandWords,
         String sourceChannel,
         double confidence,
         List<String> matchedItemNames,
         List<String> matchedItemIds,
-        List<String> matchedEntityRefs,
         long timestamp,
         long sessionId,
         int turnId
 ) implements ITianshuPayload {
-    public VoiceTriggerPayload(String sourceText, String moduleId, List<String> matchedHotwords, List<String> matchedExtraWords, List<String> matchedItemNames, List<String> matchedItemIds, double confidence) {
-        this(sourceText, normalizeText(sourceText), moduleId, matchedHotwords, matchedExtraWords, "", confidence, matchedItemNames, matchedItemIds, List.of(), System.currentTimeMillis(), 0L, 0);
+    public VoiceTriggerPayload(String sourceText, String moduleId, List<String> matchedWakeWords, List<String> matchedExtraWords, List<String> matchedItemNames, List<String> matchedItemIds, double confidence) {
+        this(sourceText, normalizeText(sourceText), moduleId, matchedWakeWords, matchedExtraWords, "", confidence, matchedItemNames, matchedItemIds, System.currentTimeMillis(), 0L, 0);
     }
 
     public VoiceTriggerPayload {
         if (sourceText == null) sourceText = "";
         sourceText = sourceText.trim();
         if (normalizedText == null || normalizedText.isBlank()) normalizedText = normalizeText(sourceText);
-        VoiceTriggerMatch match = new VoiceTriggerMatch(moduleId, matchedHotwords, matchedCommandWords, confidence);
+        VoiceTriggerMatch match = new VoiceTriggerMatch(moduleId, matchedWakeWords, matchedCommandWords, confidence);
         moduleId = match.moduleId();
-        matchedHotwords = match.matchedHotwords();
+        matchedWakeWords = match.matchedWakeWords();
         matchedCommandWords = match.matchedExtraWords();
         if (sourceChannel == null) sourceChannel = "";
         sourceChannel = sourceChannel.trim();
         confidence = match.confidence();
         matchedItemNames = normalize(matchedItemNames);
         matchedItemIds = normalize(matchedItemIds);
-        matchedEntityRefs = normalize(matchedEntityRefs);
         if (timestamp <= 0L) timestamp = System.currentTimeMillis();
     }
 

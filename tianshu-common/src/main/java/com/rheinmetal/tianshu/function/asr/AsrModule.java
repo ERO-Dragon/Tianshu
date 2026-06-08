@@ -18,6 +18,7 @@ import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
 import com.rheinmetal.tianshu.function.asr.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.asr.state.AsrStateMachine;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
+import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -88,7 +89,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         adapter.subscribeRuntimeInterrupt(this::handleRuntimeInterrupt);
         AsrStateMachine stateMachine = new AsrStateMachine();
         AsrSessionManager sessionManager = new AsrSessionManager();
-        audioCapture = new AudioCaptureService(audioBridge, env);
+        audioCapture = new AudioCaptureService(audioBridge, env, this::publishSpeechActivity);
         reconfigureAudioPipeline();
         AsrRecognitionService recognition = new AsrRecognitionService(env, config, this::asrEngine, adapter);
         controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition);
@@ -168,6 +169,14 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     private boolean canAcceptVoiceInput() {
         return config.isAsrEnabled() && voiceInputAcceptance.getAsBoolean();
+    }
+
+    private void publishSpeechActivity(boolean speaking, long sessionId, long occurredAtMillis) {
+        AsrProtocolAdapter currentAdapter = adapter;
+        if (currentAdapter == null || sessionId <= 0L) {
+            return;
+        }
+        currentAdapter.publishSpeechActivity(new AsrSpeechActivityPayload(speaking, sessionId, occurredAtMillis));
     }
 
     private void handleRuntimeInterrupt(com.rheinmetal.tianshu.protocol.TianshuEnvelope envelope, ProtocolContext context) {

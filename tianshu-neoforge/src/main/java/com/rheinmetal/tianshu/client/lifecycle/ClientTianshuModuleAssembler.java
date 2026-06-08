@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
+import com.rheinmetal.tianshu.platform.provider.NeoForgeDialogueContextProvider;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 
@@ -73,6 +74,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 worldStateProvider,
                 new MinecraftRuntimeFactTextResolver(),
                 new MinecraftAXPromptLanguageProvider(),
+                new NeoForgeDialogueContextProvider(),
                 axOutputSettings,
                 axChatOutputSink,
                 new ClientIrModuleInstaller(protocolRuntime)

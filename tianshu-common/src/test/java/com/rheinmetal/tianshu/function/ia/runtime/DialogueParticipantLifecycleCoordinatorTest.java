@@ -2,12 +2,12 @@ package com.rheinmetal.tianshu.function.ia.runtime;
 
 import com.rheinmetal.tianshu.function.ia.event.DialogueEventPublisher;
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
-import com.rheinmetal.tianshu.function.ia.model.DialogueInterruptPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueLeasePolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
@@ -77,7 +77,7 @@ class DialogueParticipantLifecycleCoordinatorTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, 1, List.of(), List.of(), List.of(), "ROUTE", DialogueInterruptPolicy.ALLOW_AFTER_LEASE, DialogueLeasePolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, 1, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private static final class RecordingPort implements DialogueProtocolPort {
@@ -86,6 +86,11 @@ class DialogueParticipantLifecycleCoordinatorTest {
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
             events.add(payload);
+            return null;
+        }
+
+        @Override
+        public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
             return null;
         }
 

@@ -26,11 +26,11 @@ class IrDialogueArbitrationRequestMapperTest {
         assertEquals(IrProtocolAdapter.MODULE_ID, payload.sourceModuleId());
         assertEquals("asr:voice", payload.playerId());
         assertEquals("7", payload.turnId());
+        assertEquals(9L, payload.sourceSessionId());
         assertEquals("看看 minecraft:diamond_sword", payload.repairedText());
         assertEquals("看看钻石剑", payload.normalizedText());
-        assertEquals(List.of("看看"), payload.matchedHotwords());
+        assertEquals(List.of("看看"), payload.matchedWakeWords());
         assertEquals(List.of("minecraft:diamond_sword"), payload.matchedItemIds());
-        assertEquals(List.of("module.someone"), payload.matchedEntityRefs());
         assertTrue(payload.expireAtMillis() > payload.timestampMillis());
     }
 

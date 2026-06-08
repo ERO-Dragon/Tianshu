@@ -29,7 +29,7 @@ class DialogueLlmUsageAuthorizationPolicyTest {
     }
 
     @Test
-    void deniesExpiredSessionLease() {
+    void deniesExpiredSessionProcessingDeadline() {
         DialogueLlmUsageAuthorizationPolicy policy = new DialogueLlmUsageAuthorizationPolicy(new DialogueAccessController());
 
         DialogueAccessDecision decision = policy.authorize(session(DialogueSessionState.ACTIVE, "turn", 100L), "module.owner", "participant.owner", "turn", 100L);
@@ -58,7 +58,7 @@ class DialogueLlmUsageAuthorizationPolicyTest {
         assertEquals("TURN_MISMATCH", decision.reasonCode());
     }
 
-    private DialogueSession session(DialogueSessionState state, String turnId, long leaseExpireAtMillis) {
-        return new DialogueSession("session", "player", "module.owner", "participant.owner", state, turnId, 100L, 100L, leaseExpireAtMillis, null);
+    private DialogueSession session(DialogueSessionState state, String turnId, long processingDeadlineMillis) {
+        return new DialogueSession("session", "player", "module.owner", "participant.owner", state, turnId, 100L, 100L, processingDeadlineMillis, null);
     }
 }

@@ -24,13 +24,6 @@ public final class DialogueSessionStore {
         return claimed;
     }
 
-    public DialogueSession claimExisting(DialogueSession session, String turnId, DialogueParticipantDescriptor owner, long nowMillis) {
-        DialogueSession claimed = session.claim(owner, turnId, nowMillis);
-        sessions.put(claimed.sessionId(), claimed);
-        activeSessionByPlayer.put(claimed.playerId(), claimed.sessionId());
-        return claimed;
-    }
-
     public Optional<DialogueSession> find(String sessionId) {
         return Optional.ofNullable(sessions.get(sanitize(sessionId)));
     }
@@ -51,8 +44,8 @@ public final class DialogueSessionStore {
         return update(sessionId, session -> session.activate(nowMillis));
     }
 
-    public DialogueSession renew(String sessionId, long nowMillis, long leaseExpireAtMillis) {
-        return update(sessionId, session -> session.renew(nowMillis, leaseExpireAtMillis));
+    public DialogueSession extendProcessing(String sessionId, long nowMillis, long processingDeadlineMillis) {
+        return update(sessionId, session -> session.extendProcessing(nowMillis, processingDeadlineMillis));
     }
 
     public DialogueSession interrupting(String sessionId, long nowMillis) {
@@ -127,7 +120,7 @@ public final class DialogueSessionStore {
 
     public List<DialogueSession> expireOverdue(long nowMillis) {
         return sessions.values().stream()
-                .filter(session -> activeState(session.state()) && session.leaseExpireAtMillis() <= nowMillis)
+                .filter(session -> activeState(session.state()) && session.processingDeadlineMillis() <= nowMillis)
                 .map(session -> expireIfPresent(session.sessionId(), nowMillis))
                 .flatMap(Optional::stream)
                 .toList();

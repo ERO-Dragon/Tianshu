@@ -20,7 +20,7 @@ public final class DialogueLifecycleSweeper {
 
     public List<DialogueSession> sweep(TianshuEnvelope parent, long nowMillis) {
         List<DialogueSession> expired = sessionStore.expireOverdue(nowMillis);
-        expired.forEach(session -> eventPublisher.publish(parent, session, DialogueSessionEventType.CONVERSATION_EXPIRED, session.releaseReason(), "LEASE_EXPIRED", nowMillis));
+        expired.forEach(session -> eventPublisher.publish(parent, session, DialogueSessionEventType.CONVERSATION_EXPIRED, session.releaseReason(), "PROCESSING_DEADLINE_EXPIRED", nowMillis));
         return expired;
     }
 }

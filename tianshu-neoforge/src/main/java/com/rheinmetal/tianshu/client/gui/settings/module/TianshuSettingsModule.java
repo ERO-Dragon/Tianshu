@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.client.gui.settings.module;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.gui.settings.protocol.SettingsEventPublisher;
-import com.rheinmetal.tianshu.client.gui.settings.protocol.SettingsProtocolAdapter;
 import com.rheinmetal.tianshu.client.gui.settings.registry.BuiltinSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.registry.ModuleSettingsRegistrySource;
@@ -31,7 +30,7 @@ public final class TianshuSettingsModule {
     }
 
     public TianshuSettingsModule(TianshuCoreManager coreManager, TianshuSettingsRegistrySource registrySource) {
-        this.coordinator = new SettingsCoordinator(new SettingsSessionRegistry(), eventPublisher(coreManager));
+        this.coordinator = new SettingsCoordinator(new SettingsSessionRegistry(), SettingsEventPublisher.NOOP);
         this.registrySource = registrySource == null ? (registry, context) -> {} : registrySource;
         this.rendererProvider = new VanillaModuleSettingsRendererProvider();
     }
@@ -47,10 +46,6 @@ public final class TianshuSettingsModule {
 
     public void openScreen() {
         Minecraft.getInstance().setScreen(createScreen());
-    }
-
-    private static SettingsEventPublisher eventPublisher(TianshuCoreManager coreManager) {
-        return coreManager == null ? SettingsEventPublisher.NOOP : new SettingsProtocolAdapter(coreManager.protocolRuntime());
     }
 
     private static TianshuSettingsRegistrySource registrySource(TianshuCoreManager coreManager, boolean includeBuiltinExamples) {

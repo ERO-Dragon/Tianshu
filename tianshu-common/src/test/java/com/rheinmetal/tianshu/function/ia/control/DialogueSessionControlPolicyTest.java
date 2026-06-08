@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class DialogueSessionControlPolicyTest {
     @Test
-    void allowsOwnerControlForActiveSessionBeforeLeaseExpires() {
+    void allowsOwnerControlForActiveSessionBeforeProcessingDeadline() {
         DialogueSessionControlPolicy policy = new DialogueSessionControlPolicy();
 
         DialogueSessionControlDecision decision = policy.decide(session(DialogueSessionState.ACTIVE, 1_000L, null), DialogueSessionControlAction.RELEASE, 100L);
@@ -24,30 +24,30 @@ class DialogueSessionControlPolicyTest {
     void deniesTerminalSessionControl() {
         DialogueSessionControlPolicy policy = new DialogueSessionControlPolicy();
 
-        DialogueSessionControlDecision decision = policy.decide(session(DialogueSessionState.RELEASED, 1_000L, DialogueReleaseReason.OWNER_COMPLETED), DialogueSessionControlAction.RENEW, 100L);
+        DialogueSessionControlDecision decision = policy.decide(session(DialogueSessionState.RELEASED, 1_000L, DialogueReleaseReason.OWNER_COMPLETED), DialogueSessionControlAction.EXTEND_PROCESSING, 100L);
 
         assertFalse(decision.allowed());
         assertEquals("SESSION_TERMINAL", decision.reasonCode());
     }
 
     @Test
-    void deniesExpiredLeaseControl() {
+    void deniesExpiredProcessingDeadlineControl() {
         DialogueSessionControlPolicy policy = new DialogueSessionControlPolicy();
 
         DialogueSessionControlDecision decision = policy.decide(session(DialogueSessionState.ACTIVE, 100L, null), DialogueSessionControlAction.RELEASE, 100L);
 
         assertFalse(decision.allowed());
-        assertEquals("SESSION_LEASE_EXPIRED", decision.reasonCode());
+        assertEquals("SESSION_PROCESSING_DEADLINE_EXPIRED", decision.reasonCode());
     }
 
     @Test
-    void deniesRenewWhenInterrupting() {
+    void deniesProcessingExtensionWhenInterrupting() {
         DialogueSessionControlPolicy policy = new DialogueSessionControlPolicy();
 
-        DialogueSessionControlDecision decision = policy.decide(session(DialogueSessionState.INTERRUPTING, 1_000L, null), DialogueSessionControlAction.RENEW, 100L);
+        DialogueSessionControlDecision decision = policy.decide(session(DialogueSessionState.INTERRUPTING, 1_000L, null), DialogueSessionControlAction.EXTEND_PROCESSING, 100L);
 
         assertFalse(decision.allowed());
-        assertEquals("SESSION_RENEW_NOT_ALLOWED", decision.reasonCode());
+        assertEquals("SESSION_PROCESSING_EXTENSION_NOT_ALLOWED", decision.reasonCode());
     }
 
     @Test
@@ -60,7 +60,7 @@ class DialogueSessionControlPolicyTest {
         assertEquals("SESSION_INTERRUPT_NOT_ALLOWED", decision.reasonCode());
     }
 
-    private DialogueSession session(DialogueSessionState state, long leaseExpireAtMillis, DialogueReleaseReason releaseReason) {
-        return new DialogueSession("session", "player", "module.owner", "participant.owner", state, "turn", 100L, 100L, leaseExpireAtMillis, releaseReason);
+    private DialogueSession session(DialogueSessionState state, long processingDeadlineMillis, DialogueReleaseReason releaseReason) {
+        return new DialogueSession("session", "player", "module.owner", "participant.owner", state, "turn", 100L, 100L, processingDeadlineMillis, releaseReason);
     }
 }

@@ -18,7 +18,7 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile;
 import com.rheinmetal.tianshu.function.tts.synthesis.DefaultTtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
+import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
@@ -63,8 +63,8 @@ public final class TtsModule implements TianshuManagedModule {
         context.services().register(TtsVoiceLibraryService.class, voiceLibraryService);
         adapter.registerSpeakCapability(this::handleSpeak);
         adapter.registerAlertCapability(this::handleAlert);
-        adapter.registerStopCapability(this::handleStop);
         adapter.registerControlCapability(this::handleControl);
+        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
     }
 
     @Override
@@ -141,17 +141,6 @@ public final class TtsModule implements TianshuManagedModule {
         ttsRuntime.submit(request, () -> context.complete(envelope.envelopeId()), failure -> failProtocol(context, envelope.envelopeId(), "TTS_ALERT_FAILED", failure));
     }
 
-    private void handleStop(TianshuEnvelope envelope, ProtocolContext context) {
-        String reason = "protocol stop";
-        if (envelope.payload() instanceof CancelPayload payload && payload.message() != null && !payload.message().isBlank()) {
-            reason = payload.message();
-        }
-        TtsControlResult result = ttsRuntime == null
-                ? moduleService.stopAll(reason)
-                : ttsRuntime.stopAll(reason);
-        completeOrFailControl(context, envelope.envelopeId(), result);
-    }
-
     private void handleControl(TianshuEnvelope envelope, ProtocolContext context) {
         if (!(envelope.payload() instanceof TtsControlPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "TTS control payload is invalid", null);
@@ -179,6 +168,25 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         context.fail(envelope.envelopeId(), "UNSUPPORTED_TTS_CONTROL", payload.action().name(), null);
+    }
+
+    private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof AsrSpeechActivityPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "ASR speech activity payload is invalid", null);
+            return;
+        }
+        if (payload.speaking()) {
+            TtsControlResult result = ttsRuntime == null
+                    ? moduleService.stopAll("user started speaking")
+                    : ttsRuntime.stopAll("user started speaking");
+            if (result == null || result.accepted()) {
+                context.complete(envelope.envelopeId());
+                return;
+            }
+            failProtocol(context, envelope.envelopeId(), "TTS_CONTROL_FAILED", result.failure());
+            return;
+        }
+        context.complete(envelope.envelopeId());
     }
 
     private TtsRequestSource resolveSource(String value) {

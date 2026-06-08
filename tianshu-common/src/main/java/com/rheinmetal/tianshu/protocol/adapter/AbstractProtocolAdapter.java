@@ -57,12 +57,12 @@ public abstract class AbstractProtocolAdapter {
         return defaults;
     }
 
-    protected final void registerVoiceTrigger(List<String> hotwords, List<String> extraWords) {
-        registerVoiceTrigger(hotwords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false);
+    protected final void registerVoiceTrigger(List<String> wakeWords, List<String> extraWords) {
+        registerVoiceTrigger(wakeWords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false);
     }
 
-    protected final void registerVoiceTrigger(List<String> hotwords, List<String> commandWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
-        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, hotwords, commandWords, category, priority, scope, dialogueEligible));
+    protected final void registerVoiceTrigger(List<String> wakeWords, List<String> commandWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
+        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, wakeWords, commandWords, category, priority, scope, dialogueEligible));
     }
 
     protected final ProtocolTaskHandle submitTask(ExecutionLane lane, Runnable task) {
@@ -93,14 +93,18 @@ public abstract class AbstractProtocolAdapter {
         runtime.registerModule(moduleDescriptor(List.of(capability), effective), Objects.requireNonNull(handler, "handler"));
     }
 
-    protected final void registerDirectRoute(String routeId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {
-        registerDirectRoute(routeId, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, CompletionPolicy.AUTO_COMPLETE_ON_RETURN, handler, defaults);
+    protected final void registerResponseHandler(String requestEnvelopeId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {
+        registerResponseHandler(requestEnvelopeId, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, CompletionPolicy.AUTO_COMPLETE_ON_RETURN, handler, defaults);
     }
 
-    protected final void registerDirectRoute(String routeId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy, EnvelopeHandler handler, AdapterDefaults options) {
+    protected final void registerResponseHandler(String requestEnvelopeId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy, EnvelopeHandler handler, AdapterDefaults options) {
         AdapterDefaults effective = options(options);
-        CapabilityDescriptor capability = capabilityDescriptor(routeId, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, completionPolicy);
-        runtime.registerDirectRoute(routeId, moduleDescriptor(List.of(), effective), capability, Objects.requireNonNull(handler, "handler"));
+        CapabilityDescriptor capability = capabilityDescriptor("response:" + requireText(requestEnvelopeId, "requestEnvelopeId") + ":" + payloadType, payloadType, payloadClass, brokerType, acceptedPacketTypes, minPriority, completionPolicy);
+        runtime.registerResponseHandler(requestEnvelopeId, moduleDescriptor(List.of(), effective), capability, Objects.requireNonNull(handler, "handler"));
+    }
+
+    protected final void unregisterResponseHandlers(String requestEnvelopeId) {
+        runtime.unregisterResponseHandlers(requestEnvelopeId);
     }
 
     protected final void subscribeTopic(String topicId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, EnvelopeHandler handler) {
@@ -218,35 +222,6 @@ public abstract class AbstractProtocolAdapter {
                 .payload(payload), options);
     }
 
-    protected final TianshuEnvelope submitDirect(String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
-        return submitDirect(routeId, packetType, payloadType, payload, defaults);
-    }
-
-    protected final TianshuEnvelope submitDirect(String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
-        return submit(EnvelopeBuilder.create()
-                .sourceId(sourceId)
-                .targetMode(TargetMode.DIRECT)
-                .target(routeId)
-                .packetType(packetType)
-                .payloadType(payloadType)
-                .payload(payload), options);
-    }
-
-    protected final TianshuEnvelope submitDirect(TianshuEnvelope parent, String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload) {
-        return submitDirect(parent, routeId, packetType, payloadType, payload, defaults);
-    }
-
-    protected final TianshuEnvelope submitDirect(TianshuEnvelope parent, String routeId, PacketType packetType, PayloadType payloadType, ITianshuPayload payload, AdapterDefaults options) {
-        Objects.requireNonNull(parent, "parent");
-        return submit(EnvelopeBuilder.childOf(parent)
-                .sourceId(sourceId)
-                .targetMode(TargetMode.DIRECT)
-                .target(routeId)
-                .packetType(packetType)
-                .payloadType(payloadType)
-                .payload(payload), options);
-    }
-
     protected final TianshuEnvelope respondTo(TianshuEnvelope parent, PayloadType payloadType, ITianshuPayload payload) {
         return respondTo(parent, payloadType, payload, defaults);
     }
@@ -265,11 +240,39 @@ public abstract class AbstractProtocolAdapter {
         return submit(EnvelopeBuilder.cancelEnvelope(sourceId, targetEnvelope, reasonCode, message), options);
     }
 
+    protected final TianshuEnvelope buildRequestCapability(String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
+        return build(EnvelopeBuilder.requestCapability(sourceId, capabilityId, payloadType, payload), defaults);
+    }
+
+    protected final TianshuEnvelope buildRequestCapability(TianshuEnvelope parent, String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
+        Objects.requireNonNull(parent, "parent");
+        return build(EnvelopeBuilder.childOf(parent)
+                .sourceId(sourceId)
+                .targetMode(TargetMode.CAPABILITY)
+                .target(capabilityId)
+                .packetType(PacketType.REQUEST)
+                .payloadType(payloadType)
+                .ackPolicy(AckPolicy.EXPECT_SUCCESS_OR_FAILURE)
+                .payload(payload), defaults);
+    }
+
+    protected final TianshuEnvelope submitPrepared(TianshuEnvelope envelope) {
+        Objects.requireNonNull(envelope, "envelope");
+        runtime.submit(envelope);
+        return envelope;
+    }
+
     protected final TianshuEnvelope submit(EnvelopeBuilder builder, AdapterDefaults options) {
+        TianshuEnvelope envelope = build(builder, options);
+        runtime.submit(envelope);
+        return envelope;
+    }
+
+    protected final TianshuEnvelope build(EnvelopeBuilder builder, AdapterDefaults options) {
         Objects.requireNonNull(builder, "builder");
         AdapterDefaults effective = options(options);
         long now = System.currentTimeMillis();
-        TianshuEnvelope envelope = builder
+        return builder
                 .sourceId(sourceId)
                 .priority(effective.priority())
                 .threadPolicy(effective.threadPolicy())
@@ -279,8 +282,6 @@ public abstract class AbstractProtocolAdapter {
                 .deadline(now + effective.deadlineMs())
                 .expireAt(now + effective.expireMs())
                 .build();
-        runtime.submit(envelope);
-        return envelope;
     }
 
     private CapabilityDescriptor capabilityDescriptor(String capabilityId, PayloadType payloadType, Class<? extends ITianshuPayload> payloadClass, BrokerType brokerType, Set<PacketType> acceptedPacketTypes, Priority minPriority, CompletionPolicy completionPolicy) {

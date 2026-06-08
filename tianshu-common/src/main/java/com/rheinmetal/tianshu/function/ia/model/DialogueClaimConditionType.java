@@ -1,15 +1,13 @@
 package com.rheinmetal.tianshu.function.ia.model;
 
 public enum DialogueClaimConditionType {
-    HOTWORD,
-    MATCHED_ITEM,
+    WAKE_WORD,
     HELD_ITEM,
-    MATCHED_ENTITY,
+    EQUIPPED_ITEM,
     CROSSHAIR_ENTITY,
     CROSSHAIR_HIT,
     INTERACTION_KEY,
     SNEAKING,
     INTERACTION_TAG,
-    CONTEXT_ITEM,
     CONTEXT_FACT
 }

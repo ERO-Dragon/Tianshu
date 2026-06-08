@@ -69,8 +69,8 @@ module.my_feature
 
 - 注册模块服务到 `ModuleServiceRegistry`
 - 注册协议 capability
-- 注册协议 direct route
 - 注册 topic 订阅
+- 注册请求 response handler
 - 注册语音触发词
 - 建立轻量适配器关系
 
@@ -289,8 +289,8 @@ context.services().require(MyService.class);
 
 - 注册 module descriptor
 - 注册 topic
-- 注册 direct route
 - 订阅 topic
+- 注册请求 response handler
 - submit envelope
 - submit protocol task
 - 使用 voice trigger registry
@@ -319,7 +319,7 @@ context.services().require(MyService.class);
 语音触发注册发生在模块自己的协议适配器或语音适配逻辑中，用于告诉 `VoiceTriggerRegistry`：
 
 ```text
-这些 hotwords / extraWords 和我这个 moduleId 有关。
+这些 wakeWords / extraWords 和我这个 moduleId 有关。
 ```
 
 因此：
@@ -423,7 +423,7 @@ CoreManager 封版后，新功能优先通过以下方式扩展：
 
 1. 新增 function 模块
 2. 新增模块服务
-3. 新增协议 route / topic / capability
+3. 新增协议 capability / topic / response handler
 4. 新增平台侧 assembler 注入
 5. 扩展协议侧窄接口
 

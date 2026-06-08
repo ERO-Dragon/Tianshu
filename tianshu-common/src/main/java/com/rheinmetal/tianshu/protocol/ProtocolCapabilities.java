@@ -1,23 +1,12 @@
 package com.rheinmetal.tianshu.protocol;
 
 public final class ProtocolCapabilities {
-    public static final String ASR_RECOGNIZE = "ASR_RECOGNIZE";
     public static final String IR_PARSE = "IR_PARSE";
-    public static final String IR_EXECUTE = "IR_EXECUTE";
     public static final String LLM_REQUEST = "LLM.REQUEST";
     public static final String LLM_CACHE_MANAGE = "LLM.CACHE_MANAGE";
     public static final String TTS_SPEAK = "TTS_SPEAK";
     public static final String TTS_ALERT = "TTS_ALERT";
-    public static final String TTS_STOP = "TTS_STOP";
     public static final String TTS_CONTROL = "TTS_CONTROL";
-    public static final String UI_TOAST = "UI_TOAST";
-    public static final String CORE_CAPABILITY_PROBE = "CORE.CAPABILITY_PROBE";
-    public static final String INTEGRATION_MODULE_REGISTER = "INTEGRATION.MODULE_REGISTER";
-    public static final String INTEGRATION_MODULE_UNREGISTER = "INTEGRATION.MODULE_UNREGISTER";
-    public static final String STATE_SUMMARY_SUBMIT = "STATE_SUMMARY.SUBMIT";
-    public static final String STATE_SUMMARY_QUERY = "STATE_SUMMARY.QUERY";
-    public static final String GUI_CONTRIBUTION_REGISTER = "GUI.CONTRIBUTION_REGISTER";
-    public static final String GUI_ACTION_EVENT = "GUI.ACTION_EVENT";
     public static final String DIALOGUE_ARBITRATE = "DIALOGUE.ARBITRATE";
     public static final String DIALOGUE_PARTICIPANT_REGISTER = "DIALOGUE.PARTICIPANT_REGISTER";
     public static final String DIALOGUE_PARTICIPANT_UNREGISTER = "DIALOGUE.PARTICIPANT_UNREGISTER";

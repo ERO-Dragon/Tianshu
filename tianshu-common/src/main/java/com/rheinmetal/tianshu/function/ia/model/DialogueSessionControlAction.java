@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.model;
 
 public enum DialogueSessionControlAction {
-    RENEW,
+    EXTEND_PROCESSING,
     RELEASE,
     INTERRUPT_ACK,
     CANCEL

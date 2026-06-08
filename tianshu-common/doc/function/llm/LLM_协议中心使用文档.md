@@ -42,10 +42,15 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
         LLMPromptRequestPayload.MessageItemPayload.system("你是铁匠NPC"),
         LLMPromptRequestPayload.MessageItemPayload.user("我需要一把剑")
     )))
+).withDialogueAuthorization(
+    delivery.sessionId(),
+    "module.blacksmith",
+    "blacksmith.default",
+    delivery.turnId()
 );
 
 TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
-        "module.example",
+        "module.blacksmith",
         ProtocolCapabilities.LLM_REQUEST,
         PayloadType.LLM_PROMPT_REQUEST,
         payload
@@ -54,7 +59,9 @@ TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
 protocolRuntime.submit(envelope);
 ```
 
-结果由 LLM adapter 通过 direct response 返回给原 envelope source：
+`lane=CHAT` 是对话型请求入口。调用方必须是 IA 当前 session owner，并携带 dialogue 授权上下文：`dialogueSessionId`、`requesterModuleId`、`requesterParticipantId`、`dialogueTurnId`。推荐从 `DialogueDeliveryPayload` 调用 `withDialogueAuthorization(...)` 补齐这些字段。LLM adapter 会在推理前向 `ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE` 查询 IA；裸 `lane=CHAT` 请求会被拒绝。`requesterModuleId` 必须和请求 envelope 的 `sourceId` 一致，不能代替其他模块发起对话型 LLM 请求。
+
+结果由 LLM adapter 通过协议响应返回。调用方需要为原请求 `envelopeId` 登记响应处理器，并在处理器中接收 `LLMPromptResultPayload`：
 
 ```java
 if (response.payload() instanceof LLMPromptResultPayload result) {
@@ -95,6 +102,11 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
             1000
         )
     )
+).withDialogueAuthorization(
+    delivery.sessionId(),
+    ownerModuleId,
+    ownerParticipantId,
+    delivery.turnId()
 );
 ```
 
@@ -115,7 +127,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
     0,
     false,
     chunks
-);
+).withDialogueAuthorization(delivery.sessionId(), ownerModuleId, ownerParticipantId, delivery.turnId());
 ```
 
 接收规则：
@@ -123,6 +135,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 - `LLMPromptStreamChunkPayload.finished=false`：增量 token，按 `index` 顺序拼接。
 - `LLMPromptStreamChunkPayload.finished=true`：流式输出结束。
 - `LLMPromptResultPayload.status=COMPLETED`：最终完整文本和最终 `ragHits`。
+- 这些 payload 都是原请求的 `PacketType.RESPONSE`，由协议中心按 `parentId = requestEnvelopeId` 路由给请求方登记的响应处理器。
 - 协议 envelope 只在 stream end 和最终 result 都发出后完成。
 
 ## 6. 后台任务
@@ -147,6 +160,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 ```
 
 `TASK + stream=true` 支持流式后台任务。此时 envelope 完成必须以 libs 返回的 `CompletableFuture` 完成为准，不能在提交任务成功时提前完成。
+`lane=TASK` 不代表 IA 对话 owner，不需要 dialogue 授权上下文，也不能用于回答当前 IA delivery。
 
 ## 7. 缓存管理
 
@@ -184,4 +198,3 @@ LLMCacheManagePayload.evictContent(
 - stream token 和最终 result 不做 `trim`，避免破坏代码块、换行和缩进。
 - `thinking=false` 会明确传给 sampler，避免模型模板默认进入 thinking。
 - LLM 未加载时返回 `LLM_SERVICE_NOT_READY`；调用方应把它视为可恢复状态，引导用户到【织言】页面加载模型。
-

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.ia.payload;
 
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 import java.util.List;
@@ -13,7 +14,7 @@ public record DialogueDeliveryPayload(
         String turnId,
         String repairedText,
         String normalizedText,
-        List<String> matchedHotwords,
+        List<String> matchedWakeWords,
         List<String> matchedItemIds,
         List<String> matchedEntityRefs,
         DialogueInteractionHints interactionHints,
@@ -28,7 +29,7 @@ public record DialogueDeliveryPayload(
         turnId = sanitize(turnId);
         repairedText = sanitize(repairedText);
         normalizedText = sanitize(normalizedText);
-        matchedHotwords = copyTextList(matchedHotwords);
+        matchedWakeWords = copyTextList(matchedWakeWords);
         matchedItemIds = copyTextList(matchedItemIds);
         matchedEntityRefs = copyTextList(matchedEntityRefs);
         interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
@@ -37,21 +38,25 @@ public record DialogueDeliveryPayload(
         expireAtMillis = Math.max(0L, expireAtMillis);
     }
 
-    public static DialogueDeliveryPayload from(String sessionId, DialogueArbitrationRequestPayload request) {
+    public static DialogueDeliveryPayload from(String sessionId, DialogueArbitrationInput input) {
         return new DialogueDeliveryPayload(
                 sessionId,
-                request.requestId(),
-                request.playerId(),
-                request.turnId(),
-                request.repairedText(),
-                request.normalizedText(),
-                request.matchedHotwords(),
-                request.matchedItemIds(),
-                request.matchedEntityRefs(),
-                request.interactionHints(),
-                request.contextSnapshot(),
-                request.timestampMillis(),
-                request.expireAtMillis()
+                input.requestId(),
+                input.playerId(),
+                input.turnId(),
+                input.repairedText(),
+                input.normalizedText(),
+                input.matchedWakeWords(),
+                input.matchedItemIds(),
+                input.contextSnapshot().entityRefs().stream()
+                        .map(ref -> ref.entityTypeId())
+                        .filter(value -> value != null && !value.isBlank())
+                        .distinct()
+                        .toList(),
+                input.interactionHints(),
+                input.contextSnapshot(),
+                input.timestampMillis(),
+                input.expireAtMillis()
         );
     }
 

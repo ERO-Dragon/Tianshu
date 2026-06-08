@@ -9,9 +9,8 @@ public record DialogueArbitrationResultPayload(
         String ownerModuleId,
         String ownerParticipantId,
         String routeCapability,
-        String routeTopic,
         String reason,
-        long leaseExpireAtMillis
+        long processingDeadlineMillis
 ) implements ITianshuPayload {
     public DialogueArbitrationResultPayload {
         requestId = sanitize(requestId);
@@ -19,9 +18,8 @@ public record DialogueArbitrationResultPayload(
         ownerModuleId = sanitize(ownerModuleId);
         ownerParticipantId = sanitize(ownerParticipantId);
         routeCapability = sanitize(routeCapability);
-        routeTopic = sanitize(routeTopic);
         reason = sanitize(reason);
-        leaseExpireAtMillis = Math.max(0L, leaseExpireAtMillis);
+        processingDeadlineMillis = Math.max(0L, processingDeadlineMillis);
     }
 
     private static String sanitize(String value) {

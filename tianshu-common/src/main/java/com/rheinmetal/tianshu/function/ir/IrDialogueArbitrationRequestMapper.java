@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ir.enhance.IrItemEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
@@ -18,8 +16,7 @@ final class IrDialogueArbitrationRequestMapper {
         String requestId = UUID.randomUUID().toString();
         String playerId = resolvePlayerId(voiceInput);
         String turnId = Integer.toString(voiceInput == null ? 0 : voiceInput.turnId());
-        List<String> matchedHotwords = matchBatch == null ? java.util.List.<String>of() : matchBatch.matches().stream().<String>flatMap(match -> match.matchedHotwords().stream()).distinct().toList();
-        List<String> matchedEntityRefs = matchBatch == null ? List.of() : matchBatch.matches().stream().map(IrVoiceMatch::moduleId).filter(value -> value != null && !value.isBlank()).distinct().toList();
+        List<String> matchedWakeWords = matchBatch == null ? java.util.List.<String>of() : matchBatch.matches().stream().<String>flatMap(match -> match.matchedWakeWords().stream()).distinct().toList();
         List<String> matchedItemIds = itemEnhancement == null ? List.of() : itemEnhancement.matchedItemIds();
         String repairedText = resolveRepairedText(voiceInput, preparedInput, itemEnhancement);
         String normalizedText = preparedInput == null ? (voiceInput == null ? "" : voiceInput.text()) : preparedInput.filteredText();
@@ -28,13 +25,11 @@ final class IrDialogueArbitrationRequestMapper {
                 IrProtocolAdapter.MODULE_ID,
                 playerId,
                 turnId,
+                voiceInput == null ? 0L : voiceInput.sessionId(),
                 repairedText,
                 normalizedText,
-                matchedHotwords,
+                matchedWakeWords,
                 matchedItemIds,
-                matchedEntityRefs,
-                DialogueInteractionHints.empty(),
-                DialogueContextSnapshot.empty(playerId),
                 nowMillis,
                 nowMillis + DEFAULT_EXPIRE_MILLIS
         );

@@ -31,6 +31,9 @@ public class AudioManager implements IAudioBridge {
 
     private ByteArrayOutputStream audioBuffer;
     private Consumer<byte[]> streamChunkConsumer;
+    private final Object streamBufferLock = new Object();
+    private final ByteArrayOutputStream streamTempBuffer = new ByteArrayOutputStream();
+    private int streamChunkCounter = 0;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(2);
 
@@ -100,29 +103,21 @@ public class AudioManager implements IAudioBridge {
                 LOGGER.info("底层麦克风常驻线程启动");
 
                 byte[] rawBuffer = new byte[1600];
-                ByteArrayOutputStream streamTempBuffer = new ByteArrayOutputStream();
-                int streamChunkCounter = 0;
-
                 while (isHardwareRunning.get()) {
                     int bytesRead = targetDataLine.read(rawBuffer, 0, rawBuffer.length);
                     if (bytesRead <= 0)
                         continue;
 
-                    if (isStreaming.get() && streamChunkConsumer != null) {
-                        streamTempBuffer.write(rawBuffer, 0, bytesRead);
-                        streamChunkCounter += bytesRead;
-                        if (streamChunkCounter >= 3200) {
-                            streamChunkConsumer.accept(streamTempBuffer.toByteArray());
-                            streamTempBuffer.reset();
-                            streamChunkCounter = 0;
+                    Consumer<byte[]> chunkConsumer = streamChunkConsumer;
+                    if (isStreaming.get() && chunkConsumer != null) {
+                        byte[] chunk = appendStreamChunk(rawBuffer, bytesRead);
+                        if (chunk.length > 0) {
+                            chunkConsumer.accept(chunk);
                         }
                     } else if (isRecording.get()) {
                         audioBuffer.write(rawBuffer, 0, bytesRead);
                     } else {
-                        if (streamTempBuffer.size() > 0) {
-                            streamTempBuffer.reset();
-                            streamChunkCounter = 0;
-                        }
+                        resetStreamBuffer();
                     }
                 }
             } catch (Exception e) {
@@ -179,8 +174,48 @@ public class AudioManager implements IAudioBridge {
     @Override
     public void stopStreamRecording() {
         isStreaming.set(false);
+        Consumer<byte[]> consumer = streamChunkConsumer;
+        byte[] tail = drainStreamBuffer();
         this.streamChunkConsumer = null;
+        if (consumer != null && tail.length > 0) {
+            consumer.accept(tail);
+        }
         LOGGER.info("流式模式停止");
+    }
+
+    private byte[] appendStreamChunk(byte[] rawBuffer, int bytesRead) {
+        synchronized (streamBufferLock) {
+            streamTempBuffer.write(rawBuffer, 0, bytesRead);
+            streamChunkCounter += bytesRead;
+            if (streamChunkCounter < 3200) {
+                return new byte[0];
+            }
+            return drainStreamBufferLocked();
+        }
+    }
+
+    private byte[] drainStreamBuffer() {
+        synchronized (streamBufferLock) {
+            return drainStreamBufferLocked();
+        }
+    }
+
+    private byte[] drainStreamBufferLocked() {
+        if (streamTempBuffer.size() == 0) {
+            streamChunkCounter = 0;
+            return new byte[0];
+        }
+        byte[] chunk = streamTempBuffer.toByteArray();
+        streamTempBuffer.reset();
+        streamChunkCounter = 0;
+        return chunk;
+    }
+
+    private void resetStreamBuffer() {
+        synchronized (streamBufferLock) {
+            streamTempBuffer.reset();
+            streamChunkCounter = 0;
+        }
     }
 
     public synchronized void playAudio(byte[] audioData) {

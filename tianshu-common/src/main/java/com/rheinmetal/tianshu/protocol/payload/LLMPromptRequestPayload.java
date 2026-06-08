@@ -14,12 +14,30 @@ public record LLMPromptRequestPayload(
         String lane,
         Integer taskPriority,
         Boolean taskPreemptible,
-        List<ChunkPayload> chunks
+        List<ChunkPayload> chunks,
+        String dialogueSessionId,
+        String requesterModuleId,
+        String requesterParticipantId,
+        String dialogueTurnId
 ) implements ITianshuPayload {
 
     public static final LLMPromptRequestPayload EMPTY = new LLMPromptRequestPayload(
             "llm.request", 0, 0.7f, false, false, "CHAT", 0, false, List.of()
     );
+
+    public LLMPromptRequestPayload(
+            String requestId,
+            Integer maxTokens,
+            Float temperature,
+            Boolean stream,
+            Boolean thinking,
+            String lane,
+            Integer taskPriority,
+            Boolean taskPreemptible,
+            List<ChunkPayload> chunks
+    ) {
+        this(requestId, maxTokens, temperature, stream, thinking, lane, taskPriority, taskPreemptible, chunks, "", "", "", "");
+    }
 
     public LLMPromptRequestPayload {
         requestId = normalize(requestId);
@@ -31,10 +49,40 @@ public record LLMPromptRequestPayload(
         taskPriority = clampPriority(taskPriority);
         taskPreemptible = taskPreemptible != null ? taskPreemptible : false;
         chunks = chunks != null ? List.copyOf(chunks) : List.of();
+        dialogueSessionId = clean(dialogueSessionId);
+        requesterModuleId = clean(requesterModuleId);
+        requesterParticipantId = clean(requesterParticipantId);
+        dialogueTurnId = clean(dialogueTurnId);
+    }
+
+    public LLMPromptRequestPayload withDialogueAuthorization(String sessionId, String moduleId, String participantId, String turnId) {
+        return new LLMPromptRequestPayload(
+                requestId,
+                maxTokens,
+                temperature,
+                stream,
+                thinking,
+                lane,
+                taskPriority,
+                taskPreemptible,
+                chunks,
+                sessionId,
+                moduleId,
+                participantId,
+                turnId
+        );
+    }
+
+    public boolean hasDialogueAuthorizationContext() {
+        return !dialogueSessionId.isBlank() && !requesterModuleId.isBlank() && !requesterParticipantId.isBlank();
     }
 
     private static String normalize(String value) {
         return value == null || value.isBlank() ? "llm.request" : value.trim();
+    }
+
+    private static String clean(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static Float normalizeTemperature(Float value) {

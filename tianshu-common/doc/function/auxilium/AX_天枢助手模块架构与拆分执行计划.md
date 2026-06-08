@@ -112,7 +112,7 @@ module.tts
 - 接收 LLM 流式输出；
 - 处理助手输出、记忆候选和 RAG 命中反馈；
 - 在授权场景下调用 TTS 播报结果；
-- 主动释放、续租或结束仲裁会话。
+- 主动释放、延长当前轮处理期限或结束仲裁会话。
 
 ### 4.2 辅星不负责什么
 
@@ -131,7 +131,7 @@ module.tts
 - 广播 RAG 检索命中；
 - 直接读取 Minecraft 活对象；
 - 绕过协议中心调用其他模块能力；
-- 绕过仲裁机关抢占会话。
+- 绕过仲裁机关接管会话。
 
 ### 4.3 LLM 模块负责什么
 
@@ -157,7 +157,7 @@ LLM 模块拆分后只负责基础能力：
 - 判断本轮 owner；
 - 创建和维护 dialogue session；
 - 向 owner 定向投递正文；
-- 处理抢占、释放、续租和超时；
+- 处理每轮 owner 变化、释放、处理期限延长和超时；
 - 发布不含正文的状态事件；
 - 拒绝非 owner 访问正文链路。
 
@@ -232,7 +232,7 @@ LLM output
 
 ```text
 AX_PARTICIPANT_REGISTER
-AX_DIALOGUE_DELIVERY
+AX.DIALOGUE_INPUT
 AX_SESSION_CONTROL
 AX_STATUS
 ```
@@ -247,16 +247,16 @@ AX 通过 IA 的 session control 控制会话
 
 也就是说，助手模块的对外能力应尽量收敛，不额外建立独立的公开聊天入口。
 
-### 6.1 不推荐继续使用 LLM_CHAT 表达助手入口
+### 6.1 不恢复旧助手聊天能力
 
-`LLM_CHAT` 容易混淆基础推理和辅星业务。
+历史上的助手聊天入口容易混淆基础推理和辅星业务。当前设计不再恢复这个公开能力，AX 通过 `ProtocolCapabilities.LLM_REQUEST` 调用基础 LLM，并用 `LLMPromptRequestPayload.lane=CHAT` 表达对话型推理。
 
 拆分后建议：
 
 ```text
-LLM_*       表示基础推理能力
-AX_* 表示辅星业务能力
-DIALOGUE_*  表示仲裁机关对话会话能力
+LLM.REQUEST / LLM.CACHE_MANAGE 表示基础 LLM 能力
+AX.*                         表示辅星业务能力
+DIALOGUE.*                   表示仲裁机关对话会话能力
 ```
 
 ## 7. IA 接入方式
@@ -270,9 +270,8 @@ participantId = tianshu.AX
 moduleId = module.ax
 displayName = 辅星
 priority = 默认助手优先级
-routeCapability = AX_DIALOGUE_DELIVERY
-interruptPolicy = 可被明确高优先级参与方抢占
-leasePolicy = 普通对话租约
+routeCapability = AX.DIALOGUE_INPUT
+turnProcessingPolicy = 普通对话当前轮处理期限
 ```
 
 仲裁流程：
@@ -286,11 +285,11 @@ IA 收集参与方 claim
   ↓
 IA 选中辅星为 owner
   ↓
-IA 定向投递正文到 AX_DIALOGUE_DELIVERY
+IA 定向投递正文到 AX.DIALOGUE_INPUT
   ↓
 辅星处理输入并调用 LLM
   ↓
-辅星输出完成后释放或续租 session
+辅星输出完成后释放 session，长任务可延长当前轮处理期限
 ```
 
 辅星只能处理 IA 定向投递给自己的正文。非 owner 状态下不得消费对话正文。
@@ -563,8 +562,8 @@ LlmEngineProvider
 2. 从 `LlmModule` 中移除 AX memory 初始化；
 3. 从 `LlmModule` 中移除 runtime fact 初始化；
 4. `LlmModule` 只注册基础 LLM 服务；
-5. 将原 `LLM_CHAT` 的助手语义迁移到 AX 模块或 IA 投递链路；
-6. 保留 LLM task / invocation 能力。
+5. 将原助手聊天语义迁移到 AX 模块或 IA 投递链路；
+6. 保留 `LLM.REQUEST` / `LLM.CACHE_MANAGE` 基础能力。
 
 验收：
 
@@ -602,7 +601,7 @@ LlmEngineProvider
 2. IA 选中 AX 后定向投递正文；
 3. AXDialogueGateway 校验 owner 和 session；
 4. AX 调用 LLM；
-5. AX 根据处理结果续租或释放 session；
+5. AX 根据处理结果释放 session，长任务可延长当前轮处理期限；
 6. AX 可选调用 TTS；
 7. 非 owner 状态下拒绝正文输入。
 

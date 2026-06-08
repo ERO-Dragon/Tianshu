@@ -9,7 +9,7 @@ public record DialogueSession(
         String turnId,
         long createdAtMillis,
         long lastActiveAtMillis,
-        long leaseExpireAtMillis,
+        long processingDeadlineMillis,
         DialogueReleaseReason releaseReason
 ) {
     public DialogueSession {
@@ -21,11 +21,11 @@ public record DialogueSession(
         turnId = sanitize(turnId);
         createdAtMillis = Math.max(0L, createdAtMillis);
         lastActiveAtMillis = Math.max(createdAtMillis, lastActiveAtMillis);
-        leaseExpireAtMillis = Math.max(lastActiveAtMillis, leaseExpireAtMillis);
+        processingDeadlineMillis = Math.max(lastActiveAtMillis, processingDeadlineMillis);
     }
 
     public boolean activeAt(long nowMillis) {
-        return (state == DialogueSessionState.CLAIMED || state == DialogueSessionState.ACTIVE || state == DialogueSessionState.INTERRUPTING) && leaseExpireAtMillis > nowMillis;
+        return (state == DialogueSessionState.CLAIMED || state == DialogueSessionState.ACTIVE || state == DialogueSessionState.INTERRUPTING) && processingDeadlineMillis > nowMillis;
     }
 
     public boolean ownedBy(String moduleId, String participantId) {
@@ -33,23 +33,23 @@ public record DialogueSession(
     }
 
     public DialogueSession claim(DialogueParticipantDescriptor owner, String turnId, long nowMillis) {
-        return new DialogueSession(sessionId, playerId, owner.moduleId(), owner.participantId(), DialogueSessionState.CLAIMED, turnId, createdAtMillis, nowMillis, owner.leasePolicy().leaseExpireAt(nowMillis), null);
+        return new DialogueSession(sessionId, playerId, owner.moduleId(), owner.participantId(), DialogueSessionState.CLAIMED, turnId, createdAtMillis, nowMillis, owner.turnProcessingPolicy().processingDeadlineAt(nowMillis), null);
     }
 
     public DialogueSession activate(long nowMillis) {
-        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, DialogueSessionState.ACTIVE, turnId, createdAtMillis, nowMillis, leaseExpireAtMillis, null);
+        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, DialogueSessionState.ACTIVE, turnId, createdAtMillis, nowMillis, processingDeadlineMillis, null);
     }
 
-    public DialogueSession renew(long nowMillis, long leaseExpireAtMillis) {
-        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, DialogueSessionState.ACTIVE, turnId, createdAtMillis, nowMillis, leaseExpireAtMillis, null);
+    public DialogueSession extendProcessing(long nowMillis, long processingDeadlineMillis) {
+        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, DialogueSessionState.ACTIVE, turnId, createdAtMillis, nowMillis, processingDeadlineMillis, null);
     }
 
     public DialogueSession interrupting(long nowMillis) {
-        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, DialogueSessionState.INTERRUPTING, turnId, createdAtMillis, nowMillis, leaseExpireAtMillis, null);
+        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, DialogueSessionState.INTERRUPTING, turnId, createdAtMillis, nowMillis, processingDeadlineMillis, null);
     }
 
     public DialogueSession terminal(DialogueSessionState state, DialogueReleaseReason reason, long nowMillis) {
-        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, state, turnId, createdAtMillis, nowMillis, leaseExpireAtMillis, reason);
+        return new DialogueSession(sessionId, playerId, ownerModuleId, ownerParticipantId, state, turnId, createdAtMillis, nowMillis, processingDeadlineMillis, reason);
     }
 
     private static String requireText(String value, String name) {

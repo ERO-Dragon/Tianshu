@@ -11,7 +11,7 @@ public record DialogueLlmUsageAuthorizationResultPayload(
         String ownerParticipantId,
         String reasonCode,
         String message,
-        long leaseExpireAtMillis
+        long processingDeadlineMillis
 ) implements ITianshuPayload {
     public DialogueLlmUsageAuthorizationResultPayload {
         sessionId = sanitize(sessionId);
@@ -21,7 +21,7 @@ public record DialogueLlmUsageAuthorizationResultPayload(
         ownerParticipantId = sanitize(ownerParticipantId);
         reasonCode = sanitize(reasonCode);
         message = sanitize(message);
-        leaseExpireAtMillis = Math.max(0L, leaseExpireAtMillis);
+        processingDeadlineMillis = Math.max(0L, processingDeadlineMillis);
     }
 
     private static String sanitize(String value) {

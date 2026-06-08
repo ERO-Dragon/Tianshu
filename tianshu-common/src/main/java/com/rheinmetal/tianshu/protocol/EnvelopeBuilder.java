@@ -5,6 +5,9 @@ import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
 import java.util.UUID;
 
 public final class EnvelopeBuilder {
+    private static final String RESPONSE_TARGET = "core.response";
+    private static final String CANCEL_TARGET = "core.cancel";
+
     private String envelopeId;
     private String traceId;
     private String parentId;
@@ -70,8 +73,8 @@ public final class EnvelopeBuilder {
     public static EnvelopeBuilder responseTo(String sourceId, TianshuEnvelope parent, PayloadType payloadType, ITianshuPayload payload) {
         return childOf(parent)
             .sourceId(sourceId)
-            .targetMode(TargetMode.DIRECT)
-            .target(parent.header().sourceId())
+            .targetMode(TargetMode.CAPABILITY)
+            .target(RESPONSE_TARGET)
             .packetType(PacketType.RESPONSE)
             .payloadType(payloadType)
             .ackPolicy(AckPolicy.NONE)
@@ -81,8 +84,8 @@ public final class EnvelopeBuilder {
     public static EnvelopeBuilder cancelEnvelope(String sourceId, TianshuEnvelope targetEnvelope, String reasonCode, String message) {
         return childOf(targetEnvelope)
             .sourceId(sourceId)
-            .targetMode(TargetMode.DIRECT)
-            .target(targetEnvelope.header().sourceId())
+            .targetMode(TargetMode.CAPABILITY)
+            .target(CANCEL_TARGET)
             .packetType(PacketType.CANCEL)
             .payloadType(PayloadType.CANCEL)
             .priority(Priority.CRITICAL)

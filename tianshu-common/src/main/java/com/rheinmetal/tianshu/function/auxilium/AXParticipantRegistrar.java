@@ -2,9 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.ia.IaModuleService;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.function.ia.model.DialogueInterruptPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueLeasePolicy;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
 
 import java.util.List;
 import java.util.Objects;
@@ -32,10 +31,9 @@ public final class AXParticipantRegistrar {
                 List.of(),
                 List.of(),
                 List.of(),
-                DialogueClaimProfile.FALLBACK_ONLY,
-                AXProtocolAdapter.DIALOGUE_DELIVERY_CAPABILITY,
-                DialogueInterruptPolicy.ALLOW_AFTER_LEASE,
-                DialogueLeasePolicy.DEFAULT
+                DialogueClaimProfile.DEFAULT_OWNER,
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                DialogueTurnProcessingPolicy.DEFAULT
         ));
     }
 

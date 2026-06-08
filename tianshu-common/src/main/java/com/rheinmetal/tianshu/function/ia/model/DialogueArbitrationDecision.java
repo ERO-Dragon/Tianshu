@@ -4,8 +4,7 @@ public record DialogueArbitrationDecision(
         boolean accepted,
         DialogueParticipantDescriptor owner,
         DialogueClaim claim,
-        String reason,
-        boolean ownerChanged
+        String reason
 ) {
     public DialogueArbitrationDecision {
         if (accepted && owner == null) {
@@ -14,11 +13,11 @@ public record DialogueArbitrationDecision(
         reason = reason == null ? "" : reason.trim();
     }
 
-    public static DialogueArbitrationDecision accepted(DialogueParticipantDescriptor owner, DialogueClaim claim, String reason, boolean ownerChanged) {
-        return new DialogueArbitrationDecision(true, owner, claim, reason, ownerChanged);
+    public static DialogueArbitrationDecision accepted(DialogueParticipantDescriptor owner, DialogueClaim claim, String reason) {
+        return new DialogueArbitrationDecision(true, owner, claim, reason);
     }
 
     public static DialogueArbitrationDecision rejected(String reason) {
-        return new DialogueArbitrationDecision(false, null, null, reason, false);
+        return new DialogueArbitrationDecision(false, null, null, reason);
     }
 }

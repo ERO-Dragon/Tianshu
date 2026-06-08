@@ -70,7 +70,8 @@ public final class AXTurnOrchestrator {
         AXContextSnapshot context = contextCollector.collect(scope, request);
         appendTurn(scope, "user", request.userText());
 
-        LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context);
+        LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context)
+                .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));
         llmClient.submit(deliveryEnvelope, llmPayload, new PendingTurn(deliveryEnvelope, delivery, scope, outputTurn));
     }
@@ -98,8 +99,8 @@ public final class AXTurnOrchestrator {
         if (delivery.contextSnapshot() != null && !delivery.contextSnapshot().dimensionId().isBlank()) {
             appendLine(builder, "dimension=" + delivery.contextSnapshot().dimensionId());
         }
-        if (!delivery.matchedHotwords().isEmpty()) {
-            appendLine(builder, "matchedHotwords=" + String.join(", ", delivery.matchedHotwords()));
+        if (!delivery.matchedWakeWords().isEmpty()) {
+            appendLine(builder, "matchedWakeWords=" + String.join(", ", delivery.matchedWakeWords()));
         }
         if (!delivery.matchedItemIds().isEmpty()) {
             appendLine(builder, "matchedItems=" + String.join(", ", delivery.matchedItemIds()));
@@ -186,6 +187,15 @@ public final class AXTurnOrchestrator {
             }
             outputTurn.fail(payload == null ? "LLM returned no result" : payload.errorMessage());
             sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
+        }
+
+        @Override
+        public void onCancelled(AXTurnCancellation cancellation) {
+            AXTurnCancellation effective = cancellation == null
+                    ? AXTurnCancellation.playerInterrupted("AX turn cancelled")
+                    : cancellation;
+            outputTurn.fail(effective.message());
+            sessionController.release(deliveryEnvelope, delivery, effective.releaseReason());
         }
     }
 }

@@ -16,12 +16,13 @@ import com.rheinmetal.tianshu.protocol.broker.BrokerSubmitResult;
 import com.rheinmetal.tianshu.protocol.broker.ProtocolBroker;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleRegistry;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
+import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
 import com.rheinmetal.tianshu.protocol.summary.StateSummaryRegistry;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
-import com.rheinmetal.tianshu.protocol.registry.DirectRouteRegistry;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleRegistry;
+import com.rheinmetal.tianshu.protocol.registry.ResponseHandlerRegistry;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicRegistry;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
@@ -37,7 +38,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
 
     private final ModuleRegistry moduleRegistry = new ModuleRegistry();
     private final CapabilityRegistry capabilityRegistry = new CapabilityRegistry();
-    private final DirectRouteRegistry directRouteRegistry = new DirectRouteRegistry();
+    private final ResponseHandlerRegistry responseHandlerRegistry = new ResponseHandlerRegistry();
     private final TopicRegistry topicRegistry = new TopicRegistry();
     private final TopicSubscriptionRegistry topicSubscriptionRegistry = new TopicSubscriptionRegistry();
     private final EnvelopeLifecycleStore lifecycleStore = new EnvelopeLifecycleStore();
@@ -66,9 +67,13 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
         topicRegistry.register(descriptor);
     }
 
-    public void registerDirectRoute(String routeId, ModuleDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor capabilityDescriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
+    public void registerResponseHandler(String requestEnvelopeId, ModuleDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor capabilityDescriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
         moduleRegistry.register(descriptor);
-        directRouteRegistry.register(routeId, descriptor, capabilityDescriptor, handler);
+        responseHandlerRegistry.register(requestEnvelopeId, descriptor, capabilityDescriptor, handler);
+    }
+
+    public void unregisterResponseHandlers(String requestEnvelopeId) {
+        responseHandlerRegistry.unregisterRequest(requestEnvelopeId);
     }
 
     public void subscribeTopic(ModuleDescriptor moduleDescriptor, TopicSubscriptionDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
@@ -82,7 +87,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
         }
         String normalizedModuleId = moduleId.trim();
         capabilityRegistry.unregisterModule(normalizedModuleId);
-        directRouteRegistry.unregisterModule(normalizedModuleId);
+        responseHandlerRegistry.unregisterModule(normalizedModuleId);
         topicSubscriptionRegistry.unregisterModule(normalizedModuleId);
         voiceTriggerRegistry.unregisterModule(normalizedModuleId);
         moduleRegistry.unregisterModule(normalizedModuleId);
@@ -101,6 +106,10 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
         GuardResult guardResult = stormGuard.check(envelope, depth, topicLimit);
         if (!guardResult.accepted()) {
             deadLetterQueue.add(envelope, guardResult.code(), guardResult.message(), DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        if (envelope.header().packetType() == PacketType.CANCEL) {
+            handleCancelEnvelope(envelope);
             return;
         }
         List<HandlerRegistration> registrations = resolveHandlers(envelope);
@@ -153,7 +162,10 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
             deadLetterQueue.add(envelope, validation.code(), validation.message(), DeadLetterPolicy.LOG_ONLY);
             return;
         }
-        ProtocolBroker broker = brokerRegistry.brokerFor(envelope.header().target(), registration.capabilityDescriptor().requiredBrokerType(), registration.moduleDescriptor().queueCapacity(), registration.moduleDescriptor().maxConcurrency());
+        String brokerTarget = envelope.header().packetType() == PacketType.RESPONSE
+                ? registration.capabilityDescriptor().capabilityId()
+                : envelope.header().target();
+        ProtocolBroker broker = brokerRegistry.brokerFor(brokerTarget, registration.capabilityDescriptor().requiredBrokerType(), registration.moduleDescriptor().queueCapacity(), registration.moduleDescriptor().maxConcurrency());
         BrokerSubmitResult result = broker.submit(envelope, registration, this);
         if (result.rejected()) {
             deadLetterQueue.add(envelope, result.code(), result.message(), DeadLetterPolicy.LOG_ONLY);
@@ -161,8 +173,8 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     }
 
     private List<HandlerRegistration> resolveHandlers(TianshuEnvelope envelope) {
-        if (envelope.header().targetMode() == TargetMode.DIRECT) {
-            return directRouteRegistry.findDirect(envelope.header().target());
+        if (envelope.header().packetType() == PacketType.RESPONSE) {
+            return responseHandlerRegistry.findResponse(envelope.parentId(), envelope.header().payloadType());
         }
         if (envelope.header().targetMode() == TargetMode.CAPABILITY) {
             return capabilityRegistry.findCapability(envelope.header().target());
@@ -172,6 +184,23 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
             return topicSubscriptionRegistry.findTopic(envelope.header().target());
         }
         return List.of();
+    }
+
+    private void handleCancelEnvelope(TianshuEnvelope envelope) {
+        if (!(envelope.payload() instanceof CancelPayload payload)) {
+            deadLetterQueue.add(envelope, "INVALID_CANCEL_PAYLOAD", "Cancel envelope payload is invalid", DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        if (payload.targetEnvelopeId() == null || payload.targetEnvelopeId().isBlank()) {
+            deadLetterQueue.add(envelope, "INVALID_CANCEL_TARGET", "Cancel target envelope id is blank", DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        if (lifecycleStore.findEnvelope(payload.targetEnvelopeId()).isEmpty()) {
+            deadLetterQueue.add(envelope, "CANCEL_TARGET_NOT_FOUND", "Cancel target envelope does not exist", DeadLetterPolicy.LOG_ONLY);
+            return;
+        }
+        lifecycleStore.findEnvelope(payload.targetEnvelopeId()).ifPresent(target -> cancel(target, payload.reasonCode(), payload.message()));
+        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "CANCEL_DISPATCHED", "Cancel applied to " + payload.targetEnvelopeId());
     }
 
     public void handleFailure(TianshuEnvelope envelope, String reasonCode, String message, Throwable throwable) {
@@ -224,7 +253,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     public BrokerRegistry brokers() { return brokerRegistry; }
     public ModuleRegistry modules() { return moduleRegistry; }
     public CapabilityRegistry capabilities() { return capabilityRegistry; }
-    public DirectRouteRegistry directRoutes() { return directRouteRegistry; }
+    public ResponseHandlerRegistry responseHandlers() { return responseHandlerRegistry; }
     public TopicRegistry topics() { return topicRegistry; }
     public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
     public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }

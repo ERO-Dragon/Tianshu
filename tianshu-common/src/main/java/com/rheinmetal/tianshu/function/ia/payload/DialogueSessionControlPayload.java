@@ -10,7 +10,7 @@ public record DialogueSessionControlPayload(
         String requesterParticipantId,
         DialogueSessionControlAction action,
         DialogueReleaseReason reason,
-        long requestedLeaseMillis,
+        long requestedProcessingMillis,
         long timestampMillis
 ) implements ITianshuPayload {
     public DialogueSessionControlPayload {
@@ -18,7 +18,7 @@ public record DialogueSessionControlPayload(
         requesterModuleId = requireText(requesterModuleId, "requesterModuleId");
         requesterParticipantId = sanitize(requesterParticipantId);
         action = action == null ? DialogueSessionControlAction.RELEASE : action;
-        requestedLeaseMillis = Math.max(0L, requestedLeaseMillis);
+        requestedProcessingMillis = Math.max(0L, requestedProcessingMillis);
         timestampMillis = Math.max(0L, timestampMillis);
     }
 

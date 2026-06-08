@@ -1,9 +1,12 @@
 package com.rheinmetal.tianshu.function.ia.policy;
 
+import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionDecay;
+import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionState;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaim;
-import com.rheinmetal.tianshu.function.ia.model.DialogueInterruptPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueLeasePolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimStrength;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,35 +17,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueArbitrationPolicyTest {
     @Test
-    void selectsHighestScoreBeforePriority() {
+    void strongHardClaimBeatsNormalHardClaim() {
         DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
-        DialogueParticipantDescriptor low = descriptor("low", 1);
-        DialogueParticipantDescriptor high = descriptor("high", 2);
+        DialogueParticipantDescriptor normal = descriptor("normal", 10);
+        DialogueParticipantDescriptor strong = descriptor("strong", 1);
 
         var decision = policy.decide(
-                List.of(low, high),
-                List.of(new DialogueClaim("low", 1.0D, 1.0D, 1, false, ""), new DialogueClaim("high", 0.2D, 0.2D, 2, false, "")),
-                Optional.empty(),
-                100L,
-                false
+                List.of(normal, strong, defaultOwner()),
+                List.of(
+                        claim("normal", DialogueClaimStrength.NORMAL, 10),
+                        claim("strong", DialogueClaimStrength.STRONG, 1)
+                ),
+                Optional.empty()
         );
 
         assertTrue(decision.accepted());
-        assertEquals("low", decision.owner().participantId());
+        assertEquals("strong", decision.owner().participantId());
+        assertEquals("HARD_CLAIM", decision.reason());
     }
 
     @Test
-    void usesPriorityAsTieBreakerAfterScoreAndConfidence() {
+    void priorityBreaksTiesWithinSameHardClaimStrength() {
         DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
         DialogueParticipantDescriptor low = descriptor("low", 1);
         DialogueParticipantDescriptor high = descriptor("high", 2);
 
         var decision = policy.decide(
-                List.of(low, high),
-                List.of(new DialogueClaim("low", 0.8D, 0.7D, 1, false, ""), new DialogueClaim("high", 0.8D, 0.7D, 2, false, "")),
-                Optional.empty(),
-                100L,
-                false
+                List.of(low, high, defaultOwner()),
+                List.of(
+                        claim("low", DialogueClaimStrength.NORMAL, 1),
+                        claim("high", DialogueClaimStrength.NORMAL, 2)
+                ),
+                Optional.empty()
         );
 
         assertTrue(decision.accepted());
@@ -50,16 +56,66 @@ class DialogueArbitrationPolicyTest {
     }
 
     @Test
-    void rejectsWhenNoClaimExists() {
+    void currentHardClaimBeatsHistoricalAttention() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        DialogueParticipantDescriptor oldOwner = descriptor("old", 1);
+        DialogueParticipantDescriptor newOwner = descriptor("new", 1);
+        DialogueAttentionState attention = new DialogueAttentionState("player", "module.old", "old", 1.0D, DialogueAttentionDecay.SLOW, 100L);
+
+        var decision = policy.decide(
+                List.of(oldOwner, newOwner, defaultOwner()),
+                List.of(claim("new", DialogueClaimStrength.NORMAL, 1)),
+                Optional.of(attention)
+        );
+
+        assertTrue(decision.accepted());
+        assertEquals("new", decision.owner().participantId());
+        assertEquals("HARD_CLAIM", decision.reason());
+    }
+
+    @Test
+    void historicalAttentionContinuesOnlyWhenNoHardClaimExists() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        DialogueParticipantDescriptor owner = descriptor("owner", 1);
+        DialogueAttentionState attention = new DialogueAttentionState("player", "module.owner", "owner", 0.7D, DialogueAttentionDecay.SLOW, 100L);
+
+        var decision = policy.decide(List.of(owner, defaultOwner()), List.of(), Optional.of(attention));
+
+        assertTrue(decision.accepted());
+        assertEquals("owner", decision.owner().participantId());
+        assertEquals("ATTENTION_CONTINUED", decision.reason());
+    }
+
+    @Test
+    void defaultOwnerHandlesWhenNoHardClaimOrAttentionExists() {
         DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
 
-        var decision = policy.decide(List.of(descriptor("p", 1)), List.of(), Optional.empty(), 100L, false);
+        var decision = policy.decide(List.of(descriptor("regular", 1), defaultOwner()), List.of(), Optional.empty());
+
+        assertTrue(decision.accepted());
+        assertEquals("default", decision.owner().participantId());
+        assertEquals("DEFAULT_OWNER", decision.reason());
+    }
+
+    @Test
+    void rejectsWhenNoParticipantCanClaimOrDefaultOwner() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+
+        var decision = policy.decide(List.of(descriptor("regular", 1)), List.of(), Optional.empty());
 
         assertTrue(!decision.accepted());
-        assertEquals("NO_CLAIM", decision.reason());
+        assertEquals("NO_OWNER", decision.reason());
+    }
+
+    private DialogueClaim claim(String participantId, DialogueClaimStrength strength, int priority) {
+        return new DialogueClaim(participantId, strength, DialogueAttentionDecay.FAST, priority, "");
     }
 
     private DialogueParticipantDescriptor descriptor(String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, List.of(), List.of(), List.of(), "ROUTE", DialogueInterruptPolicy.ALLOW_AFTER_LEASE, DialogueLeasePolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, List.of(), List.of(), List.of(), DialogueClaimProfile.DISABLED, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+    }
+
+    private DialogueParticipantDescriptor defaultOwner() {
+        return new DialogueParticipantDescriptor("default", "module.default", "default", 0, List.of(), List.of(), List.of(), DialogueClaimProfile.DEFAULT_OWNER, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 }

@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
+import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -42,6 +43,10 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishFinalText(AsrTextPayload payload) {
         return publishTopic(ProtocolTopics.INPUT_ASR_FINAL_TEXT, PayloadType.ASR_TEXT, payload);
+    }
+
+    public TianshuEnvelope publishSpeechActivity(AsrSpeechActivityPayload payload) {
+        return publishTopic(ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY, PayloadType.ASR_SPEECH_ACTIVITY, payload);
     }
 
     public ProtocolTaskHandle submitRecognitionTask(String taskName, Runnable task) {

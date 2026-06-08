@@ -24,7 +24,7 @@ public final class AXAccessController {
         if (envelope.header().targetMode() != TargetMode.CAPABILITY) {
             return false;
         }
-        if (!AXProtocolAdapter.DIALOGUE_DELIVERY_CAPABILITY.equals(envelope.header().target())) {
+        if (!AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY.equals(envelope.header().target())) {
             return false;
         }
         if (payload.expireAtMillis() > 0L && payload.expireAtMillis() < System.currentTimeMillis()) {

@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.session;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueInterruptPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueLeasePolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
@@ -79,6 +78,6 @@ class DialogueSessionStoreTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, "owner", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueInterruptPolicy.ALLOW_AFTER_LEASE, new DialogueLeasePolicy(1_000L, 2_000L, true));
+        return new DialogueParticipantDescriptor(participantId, moduleId, "owner", 1, List.of(), List.of(), List.of(), "ROUTE", new DialogueTurnProcessingPolicy(1_000L, 2_000L, true));
     }
 }

@@ -10,7 +10,7 @@ import java.util.List;
 
 public record VoiceTriggerRegistryPayload(
         String moduleId,
-        List<String> hotwords,
+        List<String> wakeWords,
         List<String> commandWords,
         VoiceCommandCategory category,
         int priority,
@@ -18,18 +18,18 @@ public record VoiceTriggerRegistryPayload(
         boolean dialogueEligible,
         VoiceTriggerDeliveryTarget deliveryTarget
 ) implements ITianshuPayload {
-    public VoiceTriggerRegistryPayload(String moduleId, List<String> hotwords, List<String> extraWords) {
-        this(moduleId, hotwords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false, null);
+    public VoiceTriggerRegistryPayload(String moduleId, List<String> wakeWords, List<String> extraWords) {
+        this(moduleId, wakeWords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false, null);
     }
 
-    public VoiceTriggerRegistryPayload(String moduleId, List<String> hotwords, List<String> extraWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
-        this(moduleId, hotwords, extraWords, category, priority, scope, dialogueEligible, null);
+    public VoiceTriggerRegistryPayload(String moduleId, List<String> wakeWords, List<String> extraWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
+        this(moduleId, wakeWords, extraWords, category, priority, scope, dialogueEligible, null);
     }
 
     public VoiceTriggerRegistryPayload {
-        VoiceTriggerRegistration registration = new VoiceTriggerRegistration(moduleId, hotwords, commandWords, category, priority, scope, dialogueEligible, deliveryTarget);
+        VoiceTriggerRegistration registration = new VoiceTriggerRegistration(moduleId, wakeWords, commandWords, category, priority, scope, dialogueEligible, deliveryTarget);
         moduleId = registration.moduleId();
-        hotwords = registration.hotwords();
+        wakeWords = registration.wakeWords();
         commandWords = registration.commandWords();
         category = registration.category();
         priority = registration.priority();
@@ -43,6 +43,6 @@ public record VoiceTriggerRegistryPayload(
     }
 
     public VoiceTriggerRegistration toRegistration() {
-        return new VoiceTriggerRegistration(moduleId, hotwords, commandWords, category, priority, scope, dialogueEligible, deliveryTarget);
+        return new VoiceTriggerRegistration(moduleId, wakeWords, commandWords, category, priority, scope, dialogueEligible, deliveryTarget);
     }
 }

@@ -18,12 +18,12 @@ final class IrVoiceTriggerMatcher {
         }
         List<IrVoiceMatch> matches = new ArrayList<>();
         for (IrCompiledVoiceTrigger trigger : index) {
-            List<String> matchedHotwords = collectTokenMatches(tokenText, trigger.hotwords());
+            List<String> matchedWakeWords = collectTokenMatches(tokenText, trigger.wakeWords());
             List<String> matchedExtraWords = collectTokenMatches(tokenText, trigger.extraWords());
-            if (matchedHotwords.isEmpty() && matchedExtraWords.isEmpty()) {
+            if (matchedWakeWords.isEmpty() && matchedExtraWords.isEmpty()) {
                 continue;
             }
-            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedHotwords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedHotwords, matchedExtraWords), trigger.priority(), trigger.deliveryTarget()));
+            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedWakeWords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedWakeWords, matchedExtraWords), trigger.priority(), trigger.deliveryTarget()));
         }
         matches.sort(Comparator
                 .comparingDouble(IrVoiceMatch::confidence).reversed()
@@ -45,8 +45,8 @@ final class IrVoiceTriggerMatcher {
         return matches;
     }
 
-    private double voiceTriggerConfidence(IrCompiledVoiceTrigger trigger, List<String> matchedHotwords, List<String> matchedExtraWords) {
-        int matched = matchedHotwords.size() + matchedExtraWords.size();
+    private double voiceTriggerConfidence(IrCompiledVoiceTrigger trigger, List<String> matchedWakeWords, List<String> matchedExtraWords) {
+        int matched = matchedWakeWords.size() + matchedExtraWords.size();
         return Math.min(1.0D, matched / (double) trigger.totalWords());
     }
 }

@@ -153,10 +153,12 @@ ASR 的运行时能力定义在模块本地。
 
 - 封装 `IAudioBridge`
 - 区分 PTT 录音与流式录音
+- 在高通滤波 / RNNoise 等 `AudioFrameProcessor` 之后执行轻量语音活动检测
+- 只在有效语音活动状态变化时发布 `INPUT.ASR_SPEECH_ACTIVITY`
 - 统一清理录音状态
-- 预留音频预处理入口
+- 保持 PTT 与流式输入共享同一条处理后音频链路
 
-它已经为未来 RNNoise / VAD 预留了 `AudioFrameProcessor` 扩展点。
+`ASR_SPEECH_ACTIVITY` 表示处理后音频中检测到用户正在说话，不表示按键按下、麦克风开始采集或流式 session 已启动。这样 IA、TTS、AX 等下游模块可以把它当作真实说话活动信号。
 
 ## 4. 当前链路
 
@@ -183,7 +185,7 @@ ASR 的运行时能力定义在模块本地。
 适用于 PTT 收束后的单次识别。
 
 ```text
-采集音频 -> complete recognition -> AsrRecognitionResult -> final text topic
+采集音频 -> 高通/RNNoise -> 语音活动检测 -> 累计处理后音频 -> complete recognition -> AsrRecognitionResult -> final text topic
 ```
 
 #### 流式识别
@@ -191,7 +193,7 @@ ASR 的运行时能力定义在模块本地。
 适用于连续输入与边说边识别场景。
 
 ```text
-streaming session -> chunk feed -> endpoint / flush -> normalized text -> final text topic
+streaming session -> 高通/RNNoise -> 语音活动检测 -> chunk feed -> endpoint / flush -> normalized text -> final text topic
 ```
 
 ## 5. 协议输出
@@ -230,7 +232,7 @@ ASR 能力状态当前是模块可观测、可管理的。
    - 识别结果走协议中心，而不是直接耦合下游模块。
 
 5. **保留音频管线扩展位**
-   - RNNoise / VAD 后续可以在采集到识别之间插入。
+   - 高通、RNNoise、轻量活动检测位于采集到识别之间；后续可以替换为更完整的 VAD 后端。
 
 6. **流式会话必须可隔离**
    - 不能让旧 command、旧 session、旧结果串到新流里。
@@ -240,7 +242,7 @@ ASR 能力状态当前是模块可观测、可管理的。
 ASR 模块后续最值得继续做的方向有：
 
 - 把流式 runtime 再进一步明确成单一会话对象，减少共享状态
-- 为 RNNoise / VAD 实现更完整的音频 pipeline
+- 为 RNNoise / VAD 实现更完整的后端，并替换当前轻量活动检测器
 - 检查 ASR final text 到 IR / LLM / TTS 的端到端时序语义
 - 当 client / GUI 重构完成后，再把新的输入语义接上去
 

@@ -68,7 +68,6 @@ TTS 模块当前主要由以下部分组成：
 
 - `TTS_SPEAK`
 - `TTS_ALERT`
-- `TTS_STOP`
 - `TTS_CONTROL`
 
 其中 `preview` 不属于公开协议能力。试听是 TTS 自己的服务能力，由 GUI 或模块内调用 `TtsModuleService.preview(...)` 完成。
@@ -237,7 +236,7 @@ stream chunk
 控制链路用于停止、打断和重载。
 
 ```text
-TTS_STOP / TTS_CONTROL / TtsModuleService
+TTS_CONTROL / TtsModuleService
   -> TtsRuntime
   -> TtsSessionManager
   -> TtsSynthesisEngine / TtsPlaybackController
@@ -397,7 +396,7 @@ TTS 当前架构最重要的原则是：
    - TTS 作为 managed module 接入 CoreManager 生命周期，而不是由外层散装启动。
 
 2. **协议面收敛**
-   - 公开协议只保留 speak、alert、stop、control。
+   - 公开协议只保留 speak、alert、control；停止播报走 `TTS_CONTROL`。
 
 3. **试听内聚**
    - preview 是 TTS 服务能力，不是公开协议能力。

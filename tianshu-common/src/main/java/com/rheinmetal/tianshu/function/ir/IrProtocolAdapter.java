@@ -65,7 +65,7 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
         return commandCapability(parent, target.capabilityId(), PayloadType.VOICE_TRIGGER, payload);
     }
 
-    public TianshuEnvelope requestDialogueArbitration(TianshuEnvelope parent, DialogueArbitrationRequestPayload payload) {
-        return requestCapability(parent, ProtocolCapabilities.DIALOGUE_ARBITRATE, PayloadType.DIALOGUE_ARBITRATION_REQUEST, payload);
+    public TianshuEnvelope commandDialogueArbitration(TianshuEnvelope parent, DialogueArbitrationRequestPayload payload) {
+        return commandCapability(parent, ProtocolCapabilities.DIALOGUE_ARBITRATE, PayloadType.DIALOGUE_ARBITRATION_REQUEST, payload);
     }
 }

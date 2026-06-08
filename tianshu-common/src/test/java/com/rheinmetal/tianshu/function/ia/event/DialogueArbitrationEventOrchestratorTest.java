@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionEventType;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -24,7 +24,7 @@ class DialogueArbitrationEventOrchestratorTest {
         DialogueArbitrationEventOrchestrator orchestrator = orchestrator(port);
         DialogueSession session = session("session", "module.owner", "participant.owner");
 
-        orchestrator.publishAccepted(null, Optional.empty(), session, false, "OWNER_CLAIMED", 200L);
+        orchestrator.publishAccepted(null, session, false, "OWNER_CLAIMED", 200L);
 
         assertEquals(2, port.events.size());
         assertEquals(DialogueSessionEventType.CONVERSATION_SESSION_STARTED, port.events.get(0).eventType());
@@ -32,21 +32,19 @@ class DialogueArbitrationEventOrchestratorTest {
     }
 
     @Test
-    void publishesInterruptedThenOwnerChangedForPreemption() {
+    void publishesOwnerChangedForNewAcceptedOwner() {
         RecordingPort port = new RecordingPort();
         DialogueArbitrationEventOrchestrator orchestrator = orchestrator(port);
-        DialogueSession previous = session("session", "module.old", "participant.old");
         DialogueSession current = session("session", "module.new", "participant.new");
 
-        orchestrator.publishAccepted(null, Optional.of(previous), current, true, "OWNER_PREEMPTED", 200L);
+        orchestrator.publishAccepted(null, current, true, "OWNER_CHANGED", 200L);
 
-        assertEquals(2, port.events.size());
-        assertEquals(DialogueSessionEventType.CONVERSATION_INTERRUPTED, port.events.get(0).eventType());
-        assertEquals("module.old", port.events.get(0).ownerModuleId());
+        assertEquals(3, port.events.size());
+        assertEquals(DialogueSessionEventType.CONVERSATION_OWNER_CHANGED, port.events.get(0).eventType());
+        assertEquals("module.new", port.events.get(0).ownerModuleId());
         assertEquals(DialogueReleaseReason.PREEMPTED, port.events.get(0).releaseReason());
-        assertEquals(DialogueSessionEventType.CONVERSATION_OWNER_CHANGED, port.events.get(1).eventType());
-        assertEquals("module.new", port.events.get(1).ownerModuleId());
-        assertEquals(DialogueReleaseReason.PREEMPTED, port.events.get(1).releaseReason());
+        assertEquals(DialogueSessionEventType.CONVERSATION_SESSION_STARTED, port.events.get(1).eventType());
+        assertEquals(DialogueSessionEventType.CONVERSATION_CLAIMED, port.events.get(2).eventType());
     }
 
     private DialogueArbitrationEventOrchestrator orchestrator(RecordingPort port) {
@@ -63,6 +61,11 @@ class DialogueArbitrationEventOrchestratorTest {
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
             events.add(payload);
+            return null;
+        }
+
+        @Override
+        public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
             return null;
         }
 

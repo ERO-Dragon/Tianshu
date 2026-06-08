@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.ia.payload;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 import java.util.List;
@@ -11,13 +9,11 @@ public record DialogueArbitrationRequestPayload(
         String sourceModuleId,
         String playerId,
         String turnId,
+        long sourceSessionId,
         String repairedText,
         String normalizedText,
-        List<String> matchedHotwords,
+        List<String> matchedWakeWords,
         List<String> matchedItemIds,
-        List<String> matchedEntityRefs,
-        DialogueInteractionHints interactionHints,
-        DialogueContextSnapshot contextSnapshot,
         long timestampMillis,
         long expireAtMillis
 ) implements ITianshuPayload {
@@ -26,13 +22,11 @@ public record DialogueArbitrationRequestPayload(
         sourceModuleId = requireText(sourceModuleId, "sourceModuleId");
         playerId = requireText(playerId, "playerId");
         turnId = sanitize(turnId);
+        sourceSessionId = Math.max(0L, sourceSessionId);
         repairedText = sanitize(repairedText);
         normalizedText = sanitize(normalizedText);
-        matchedHotwords = copyTextList(matchedHotwords);
+        matchedWakeWords = copyTextList(matchedWakeWords);
         matchedItemIds = copyTextList(matchedItemIds);
-        matchedEntityRefs = copyTextList(matchedEntityRefs);
-        interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
-        contextSnapshot = contextSnapshot == null ? DialogueContextSnapshot.empty(playerId) : contextSnapshot;
         timestampMillis = Math.max(0L, timestampMillis);
         expireAtMillis = Math.max(0L, expireAtMillis);
     }

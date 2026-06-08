@@ -37,8 +37,7 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.function.ia.IaModuleService;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -153,9 +152,8 @@ public final class AXModule implements TianshuManagedModule {
                 outputProcessor
         );
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator);
-        adapter.registerDialogueDeliveryCapability(dialogueGateway::handleDelivery);
-        adapter.registerLlmPromptStreamChunkRoute(this::handleLlmStreamChunk);
-        adapter.registerLlmPromptResultRoute(this::handleLlmResult);
+        adapter.registerDialogueInputCapability(dialogueGateway::handleDelivery);
+        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
         context.services().find(IaModuleService.class).ifPresent(service -> participantRegistrar = new AXParticipantRegistrar(service));
         if (participantRegistrar != null) {
             participantRegistrar.register();
@@ -202,33 +200,15 @@ public final class AXModule implements TianshuManagedModule {
         factCollector.registerProvider(new RecentChatRuntimeFactProvider(worldStateProvider));
     }
 
-    private void handleLlmStreamChunk(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof LLMPromptStreamChunkPayload payload)) {
-            if (context != null) {
-                context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX LLM stream payload is invalid", null);
-            }
+    private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof AsrSpeechActivityPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX ASR speech activity payload is invalid", null);
             return;
         }
-        if (llmClient != null) {
-            llmClient.handleStreamChunk(envelope.parentId(), payload);
+        if (payload.speaking() && llmClient != null) {
+            llmClient.cancelAll(AXTurnCancellation.playerInterrupted("user started speaking"));
         }
-        if (context != null) {
-            context.complete(envelope.envelopeId());
-        }
+        context.complete(envelope.envelopeId());
     }
 
-    private void handleLlmResult(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof LLMPromptResultPayload payload)) {
-            if (context != null) {
-                context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX LLM result payload is invalid", null);
-            }
-            return;
-        }
-        if (llmClient != null) {
-            llmClient.handleResult(envelope.parentId(), payload);
-        }
-        if (context != null) {
-            context.complete(envelope.envelopeId());
-        }
-    }
 }

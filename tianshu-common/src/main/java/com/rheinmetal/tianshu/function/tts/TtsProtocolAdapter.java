@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
+import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
@@ -56,20 +56,6 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void registerStopCapability(EnvelopeHandler handler) {
-        registerCapability(
-                ProtocolCapabilities.TTS_STOP,
-                PayloadType.CANCEL,
-                CancelPayload.class,
-                BrokerType.LATEST_ONLY,
-                EnumSet.of(PacketType.COMMAND, PacketType.CANCEL),
-                Priority.CRITICAL,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
     public void registerControlCapability(EnvelopeHandler handler) {
         registerCapability(
                 ProtocolCapabilities.TTS_CONTROL,
@@ -84,7 +70,21 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
+    public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
+        subscribeTopic(
+                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
+                PayloadType.ASR_SPEECH_ACTIVITY,
+                AsrSpeechActivityPayload.class,
+                BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
     public TianshuEnvelope publishPlaybackStatus(TtsPlaybackStatusPayload payload) {
-        return publishTopic(ProtocolTopics.TTS_PLAYBACK, PayloadType.STATUS, payload);
+        return publishTopic(ProtocolTopics.TTS_PLAYBACK, PayloadType.TTS_PLAYBACK_STATUS, payload);
     }
 }

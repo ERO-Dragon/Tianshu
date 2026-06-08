@@ -2,7 +2,7 @@
 
 ## 1. 文档定位
 
-AX 已从 LLM 模块中拆出。AX 是对话业务模块，LLM 是推理能力模块。本文记录拆分后的 AX 如何使用 IA 仲裁和 LLM task 能力完成多 NPC、多模组、多世界对话。
+AX 已从 LLM 模块中拆出。AX 是对话业务模块，LLM 是推理能力模块。本文记录拆分后的 AX 如何使用 IA 仲裁和 LLM 协议能力完成多 NPC、多模组、多世界对话。
 
 ## 2. 边界
 
@@ -10,7 +10,7 @@ AX 已从 LLM 模块中拆出。AX 是对话业务模块，LLM 是推理能力�
 |---|---|
 | AX | 助手/NPC 身份、提示词、对话上下文、记忆策略、LLM 请求组装、输出归属 |
 | IA | 对话仲裁、参与者管理、LLM 使用授权、delivery 所有权 |
-| LLM | 独立推理服务管理、task 调度、HTTP 调用、结果回传 |
+| LLM | 独立推理服务管理、CHAT/TASK 调度、HTTP 调用、协议响应回传 |
 | UI/TTS | 根据 AX/dialogue 语义展示或播放，不直接消费底层 LLM 全局流 |
 
 AX 不再访问 LLM 内部引擎，也不应依赖旧的 `LLM_STREAM` 公共广播。AX 通过协议能力请求 LLM：
@@ -19,9 +19,9 @@ AX 不再访问 LLM 内部引擎，也不应依赖旧的 `LLM_STREAM` 公共广�
 AX
   -> IA 请求对话/LLM 使用授权
   -> 收到 delivery / authorization
-  -> 构造 LlmTaskRequestPayload（module.ax / tianshu.AX + usageKind=INTERACTIVE + IA 授权上下文）
-  -> requestCapability(LLM_TASK_REQUEST)
-  -> 接收 LLM_TASK_STREAM_CHUNK / LLM_TASK_RESULT
+  -> 构造 LLMPromptRequestPayload（lane=CHAT，requester=module.ax）
+  -> requestCapability(ProtocolCapabilities.LLM_REQUEST)
+  -> 通过请求响应处理器接收 LLM_PROMPT_STREAM_CHUNK / LLM_PROMPT_RESULT
   -> 以 AX 自己的对话语义输出给 UI/TTS
 ```
 
@@ -39,17 +39,17 @@ AX
 
 ## 4. LLM 请求组装
 
-AX 构造 `LlmTaskRequestPayload` 前，应先完成业务语义裁剪，并带上 IA 授权 delivery 的租约信息：
+AX 构造 `LLMPromptRequestPayload` 前，应先完成业务语义裁剪，并保留 IA delivery/session 的本地上下文：
 
 1. System prompt：NPC 身份、说话风格、世界规则、当前对话目标。
 2. Recent context：有限窗口内的近期对话。
 3. Dynamic facts：本 tick 或本轮对话相关的玩家状态、环境状态、事件事实。
 4. Memory hints：由 AX 记忆策略选择的长期记忆摘要或索引结果。
 5. Output constraints：长度、语气、是否允许动作建议、是否需要 JSON 等格式约束。
-6. Routing：`moduleId=module.ax`、`agentId=tianshu.AX`，world 由 LLM/common 自动补齐。
-7. Authorization context：`authorization.sessionId`、`authorization.turnId`。`moduleId/agentId` 作为 requester 身份传给 LLM。
+6. Routing：协议请求来源为 `module.ax`，业务 agent/world 归属由 AX 自己的上下文维护。
+7. Authorization context：`sessionId`、`turnId` 等 IA delivery 信息保留在 AX pending turn 中，用于输出阶段校验，不作为 LLM 公共 payload 字段强塞给 LLM。
 
-LLM 模块不会信任 AX 传入 owner 或 lease；`INTERACTIVE` 请求会由 LLM gateway 统一向 IA 查询授权，IA 根据 session store 判断是否放行。
+LLM 模块不会信任 AX 传入 owner 或处理期限。IA owner 判定在 delivery 前完成，AX 在输出阶段继续检查本轮 delivery 是否仍有效。
 
 ## 5. Dynamic facts 与长期记忆
 
@@ -71,9 +71,9 @@ AX 接收 LLM stream chunk 后，应做最小业务处理再输出：
 - 检查本轮输出是否已经取消。
 - 按 NPC/agent 归属转发到 UI/TTS。
 - 必要时过滤不可见的模型元信息。
-- 结束 chunk 到达后关闭本轮输出。
+- 最终 `LLM_PROMPT_RESULT` 到达后关闭本轮输出并清理响应处理器。
 
-AX 不应让 UI/TTS 直接订阅底层 LLM task stream。否则多个 NPC 并发时会丢失说话者、音色、位置和权限。
+AX 不应让 UI/TTS 直接订阅底层 LLM stream。否则多个 NPC 并发时会丢失说话者、音色、位置和权限。
 
 ## 7. 失败与取消
 

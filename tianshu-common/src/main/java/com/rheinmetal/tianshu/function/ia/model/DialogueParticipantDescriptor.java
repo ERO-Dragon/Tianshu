@@ -12,8 +12,7 @@ public record DialogueParticipantDescriptor(
         List<String> supportedItemIds,
         DialogueClaimProfile claimProfile,
         String routeCapability,
-        DialogueInterruptPolicy interruptPolicy,
-        DialogueLeasePolicy leasePolicy
+        DialogueTurnProcessingPolicy turnProcessingPolicy
 ) {
     public DialogueParticipantDescriptor(
             String participantId,
@@ -24,8 +23,7 @@ public record DialogueParticipantDescriptor(
             List<String> supportedEntityTypes,
             List<String> supportedItemIds,
             String routeCapability,
-            DialogueInterruptPolicy interruptPolicy,
-            DialogueLeasePolicy leasePolicy
+            DialogueTurnProcessingPolicy turnProcessingPolicy
     ) {
         this(
                 participantId,
@@ -37,8 +35,7 @@ public record DialogueParticipantDescriptor(
                 supportedItemIds,
                 DialogueClaimProfile.legacy(supportedIntents, supportedEntityTypes, supportedItemIds),
                 routeCapability,
-                interruptPolicy,
-                leasePolicy
+                turnProcessingPolicy
         );
     }
 
@@ -51,8 +48,7 @@ public record DialogueParticipantDescriptor(
         supportedItemIds = copyTextList(supportedItemIds);
         claimProfile = claimProfile == null ? DialogueClaimProfile.legacy(supportedIntents, supportedEntityTypes, supportedItemIds) : claimProfile;
         routeCapability = requireText(routeCapability, "routeCapability");
-        interruptPolicy = interruptPolicy == null ? DialogueInterruptPolicy.ALLOW_AFTER_LEASE : interruptPolicy;
-        leasePolicy = leasePolicy == null ? DialogueLeasePolicy.DEFAULT : leasePolicy;
+        turnProcessingPolicy = turnProcessingPolicy == null ? DialogueTurnProcessingPolicy.DEFAULT : turnProcessingPolicy;
     }
 
     private static List<String> copyTextList(List<String> values) {

@@ -8,25 +8,21 @@ public record DialogueClaimCondition(
         String factKey
 ) {
     public DialogueClaimCondition {
-        type = type == null ? DialogueClaimConditionType.HOTWORD : type;
+        type = type == null ? DialogueClaimConditionType.WAKE_WORD : type;
         values = copyTextList(values);
         factKey = sanitize(factKey);
     }
 
-    public static DialogueClaimCondition hotword(String... values) {
-        return new DialogueClaimCondition(DialogueClaimConditionType.HOTWORD, List.of(values), "");
+    public static DialogueClaimCondition wakeWord(String... values) {
+        return new DialogueClaimCondition(DialogueClaimConditionType.WAKE_WORD, List.of(values), "");
     }
 
     public static DialogueClaimCondition heldItem(String... values) {
         return new DialogueClaimCondition(DialogueClaimConditionType.HELD_ITEM, List.of(values), "");
     }
 
-    public static DialogueClaimCondition matchedItem(String... values) {
-        return new DialogueClaimCondition(DialogueClaimConditionType.MATCHED_ITEM, List.of(values), "");
-    }
-
-    public static DialogueClaimCondition matchedEntity(String... values) {
-        return new DialogueClaimCondition(DialogueClaimConditionType.MATCHED_ENTITY, List.of(values), "");
+    public static DialogueClaimCondition equippedItem(String... values) {
+        return new DialogueClaimCondition(DialogueClaimConditionType.EQUIPPED_ITEM, List.of(values), "");
     }
 
     public static DialogueClaimCondition crosshairEntity(String... values) {
@@ -47,10 +43,6 @@ public record DialogueClaimCondition(
 
     public static DialogueClaimCondition interactionTag(String... values) {
         return new DialogueClaimCondition(DialogueClaimConditionType.INTERACTION_TAG, List.of(values), "");
-    }
-
-    public static DialogueClaimCondition contextItem(String... values) {
-        return new DialogueClaimCondition(DialogueClaimConditionType.CONTEXT_ITEM, List.of(values), "");
     }
 
     public static DialogueClaimCondition contextFact(String factKey, String... values) {

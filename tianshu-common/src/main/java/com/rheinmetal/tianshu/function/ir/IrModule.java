@@ -95,7 +95,7 @@ public final class IrModule implements TianshuManagedModule {
             return;
         }
         if (decision.kind() == IrRouteKind.DIALOGUE_ARBITRATION) {
-            requestDialogueArbitration(envelope, voiceInput, prepared, itemEnhancement, batch);
+            submitDialogueArbitration(envelope, voiceInput, prepared, itemEnhancement, batch);
             publishDialogueRouted(envelope, voiceInput);
             return;
         }
@@ -123,9 +123,9 @@ public final class IrModule implements TianshuManagedModule {
         voiceTriggerIndex = indexer.compile(indexedRegistrations);
     }
 
-    private void requestDialogueArbitration(TianshuEnvelope envelope, IrInputText voiceInput, IrPreparedInput prepared,
-                                            IrItemEnhancementResult itemEnhancement, IrMatchBatch batch) {
-        adapter.requestDialogueArbitration(envelope, dialogueMapper.map(
+    private void submitDialogueArbitration(TianshuEnvelope envelope, IrInputText voiceInput, IrPreparedInput prepared,
+                                           IrItemEnhancementResult itemEnhancement, IrMatchBatch batch) {
+        adapter.commandDialogueArbitration(envelope, dialogueMapper.map(
                 voiceInput,
                 prepared,
                 itemEnhancement,
@@ -138,13 +138,12 @@ public final class IrModule implements TianshuManagedModule {
                 input.rawText(),
                 input.text(),
                 match.moduleId(),
-                match.matchedHotwords(),
+                match.matchedWakeWords(),
                 match.matchedExtraWords(),
                 input.source(),
                 match.confidence(),
                 itemEnhancement == null ? List.of() : itemEnhancement.matchedItemNames(),
                 itemEnhancement == null ? List.of() : itemEnhancement.matchedItemIds(),
-                List.of(),
                 input.createdAt(),
                 input.sessionId(),
                 input.turnId()
@@ -217,4 +216,5 @@ public final class IrModule implements TianshuManagedModule {
                 .max()
                 .orElse(0.0D);
     }
+
 }

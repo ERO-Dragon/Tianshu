@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.function.ia.gateway;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.function.ia.model.DialogueInterruptPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueLeasePolicy;
+import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessPolicy;
@@ -27,7 +27,7 @@ class DialogueMessageGatewayTest {
         DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
         DialogueSession session = session();
         DialogueParticipantDescriptor owner = owner();
-        DialogueArbitrationRequestPayload request = request();
+        DialogueArbitrationInput request = request();
 
         DialogueAccessDecision decision = gateway.deliverToOwner(null, session, owner, request);
 
@@ -40,7 +40,7 @@ class DialogueMessageGatewayTest {
         RecordingPort port = new RecordingPort();
         DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
         DialogueSession session = session();
-        DialogueParticipantDescriptor owner = new DialogueParticipantDescriptor("other", "module.other", "other", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueInterruptPolicy.ALLOW_AFTER_LEASE, DialogueLeasePolicy.DEFAULT);
+        DialogueParticipantDescriptor owner = new DialogueParticipantDescriptor("other", "module.other", "other", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
 
         DialogueAccessDecision decision = gateway.deliverToOwner(null, session, owner, request());
 
@@ -61,8 +61,9 @@ class DialogueMessageGatewayTest {
         assertEquals("DELIVERY_DENIED", decision.reasonCode());
     }
 
-    private DialogueArbitrationRequestPayload request() {
-        return new DialogueArbitrationRequestPayload("r", "module.ir", "player", "1", "text", "text", List.of(), List.of(), List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"), 100L, 200L);
+    private DialogueArbitrationInput request() {
+        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("r", "module.ir", "player", "1", 9L, "text", "text", List.of(), List.of(), 100L, 200L);
+        return DialogueArbitrationInput.from(request, DialogueContextFrame.empty("player"));
     }
 
     private DialogueSession session() {
@@ -70,7 +71,7 @@ class DialogueMessageGatewayTest {
     }
 
     private DialogueParticipantDescriptor owner() {
-        return new DialogueParticipantDescriptor("participant.owner", "module.owner", "owner", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueInterruptPolicy.ALLOW_AFTER_LEASE, DialogueLeasePolicy.DEFAULT);
+        return new DialogueParticipantDescriptor("participant.owner", "module.owner", "owner", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private static final class DenyingPolicy implements DialogueAccessPolicy {
@@ -95,6 +96,11 @@ class DialogueMessageGatewayTest {
 
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload payload) {
+            return null;
+        }
+
+        @Override
+        public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
             return null;
         }
 

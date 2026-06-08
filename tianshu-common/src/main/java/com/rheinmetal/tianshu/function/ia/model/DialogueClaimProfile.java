@@ -7,7 +7,7 @@ public record DialogueClaimProfile(
         DialogueClaimMode mode,
         List<DialogueClaimRule> rules
 ) {
-    public static final DialogueClaimProfile FALLBACK_ONLY = new DialogueClaimProfile(DialogueClaimMode.FALLBACK_ONLY, List.of());
+    public static final DialogueClaimProfile DEFAULT_OWNER = new DialogueClaimProfile(DialogueClaimMode.DEFAULT_OWNER, List.of());
     public static final DialogueClaimProfile DISABLED = new DialogueClaimProfile(DialogueClaimMode.DISABLED, List.of());
 
     public DialogueClaimProfile {
@@ -26,34 +26,37 @@ public record DialogueClaimProfile(
     public static DialogueClaimProfile legacy(List<String> supportedIntents, List<String> supportedEntityTypes, List<String> supportedItemIds) {
         List<DialogueClaimRule> legacyRules = new ArrayList<>();
         if (notEmpty(supportedIntents)) {
-            legacyRules.add(DialogueClaimRule.any(
-                    "legacy.hotword",
-                    0.35D,
-                    0.35D,
-                    new DialogueClaimCondition(DialogueClaimConditionType.HOTWORD, supportedIntents, "")
+            legacyRules.add(new DialogueClaimRule(
+                    "legacy.wake_word",
+                    DialogueClaimOperator.ANY,
+                    List.of(new DialogueClaimCondition(DialogueClaimConditionType.WAKE_WORD, supportedIntents, "")),
+                    DialogueClaimStrength.STRONG,
+                    DialogueAttentionDecay.SLOW
             ));
         }
         if (notEmpty(supportedItemIds)) {
-            legacyRules.add(DialogueClaimRule.any(
+            legacyRules.add(new DialogueClaimRule(
                     "legacy.item",
-                    0.3D,
-                    0.25D,
-                    new DialogueClaimCondition(DialogueClaimConditionType.MATCHED_ITEM, supportedItemIds, ""),
-                    new DialogueClaimCondition(DialogueClaimConditionType.HELD_ITEM, supportedItemIds, ""),
-                    new DialogueClaimCondition(DialogueClaimConditionType.CONTEXT_ITEM, supportedItemIds, "")
+                    DialogueClaimOperator.ANY,
+                    List.of(
+                            new DialogueClaimCondition(DialogueClaimConditionType.HELD_ITEM, supportedItemIds, ""),
+                            new DialogueClaimCondition(DialogueClaimConditionType.EQUIPPED_ITEM, supportedItemIds, "")
+                    ),
+                    DialogueClaimStrength.NORMAL,
+                    DialogueAttentionDecay.FAST
             ));
         }
         if (notEmpty(supportedEntityTypes)) {
-            legacyRules.add(DialogueClaimRule.any(
+            legacyRules.add(new DialogueClaimRule(
                     "legacy.entity",
-                    0.25D,
-                    0.25D,
-                    new DialogueClaimCondition(DialogueClaimConditionType.MATCHED_ENTITY, supportedEntityTypes, ""),
-                    new DialogueClaimCondition(DialogueClaimConditionType.CROSSHAIR_ENTITY, supportedEntityTypes, "")
+                    DialogueClaimOperator.ANY,
+                    List.of(new DialogueClaimCondition(DialogueClaimConditionType.CROSSHAIR_ENTITY, supportedEntityTypes, "")),
+                    DialogueClaimStrength.NORMAL,
+                    DialogueAttentionDecay.SLOW
             ));
         }
         if (legacyRules.isEmpty()) {
-            return FALLBACK_ONLY;
+            return DISABLED;
         }
         return rules(legacyRules);
     }
