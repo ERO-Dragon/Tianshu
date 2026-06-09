@@ -29,6 +29,8 @@ public class LLMRequest {
 }
 ```
 
+`LLMRequest.thinking` 只表示是否让模型生成 thinking。跨模块协议里的 `LLMPromptRequestPayload.includeThinkingContent` 是对外响应展示开关，不属于 `LLMRequest` 内部请求结构；它由 `LlmProtocolAdapter` 在协议响应出口处理。
+
 ### 2.1 Chunk 分块
 
 ```java
@@ -133,7 +135,18 @@ CompletableFuture<String> future = service.submitTaskStream(request, token -> {
 }, ragHits);
 ```
 
+跨模块调用 `LLM_REQUEST` 时，TASK 会先进入 `LlmTaskAdmissionController`，再由 LLM 模块按优先级送入 `LLMService.submitTask*()`：
+
+- CHAT 不进入 TASK admission 队列，仍直接走聊天通道，并由 IA 授权约束。
+- TASK admission 默认只启动一个 active TASK；其余任务进入等待队列，容量来自 `ITianshuConfig.getLlmTaskAdmissionQueueSize()`。
+- 如果当前 active TASK 的 `task_preemptible=true`，更高有效优先级的任务会立即送入 libs，由 libs 执行 TASK 抢占/取消/挂起语义。
+- 等待队列按有效优先级降序、同优先级 FIFO；有效优先级 = `task_priority + 等待期间新 TASK 请求次数 * getLlmTaskAgingBoostPerRequest()`。
+- 队列满时，高有效优先级任务可替换等待队列中的最低有效优先级任务；被抢占后未终态的旧 TASK 仍计入 in-flight 边界，避免继续 drain 等待队列导致隐形扩容。
+- libs 的 `taskMaxQueueSize` 在天枢侧对应 `getLlmTaskHotSuspendSlots()`，语义是热挂起保存槽，不是外部排队容量。
+
 协议层只有在该 future 完成后才发送 stream end 和最终 result，并完成对应 envelope。
+当 libs 因 CHAT 优先调度暂停 TASK 时，future 保持未完成，协议层保持响应处理器有效；恢复后继续把后续 token 发给同一个请求方。
+当 TASK 被取消、中断或终止型抢占时，协议层返回 `LLMPromptResultPayload.status=CANCELLED`，流式任务的 `text` 携带已发送的可见 partial text。
 
 ---
 
@@ -215,6 +228,7 @@ config/Tianshu/module/llm/<worldId>/cache
 | `temperature` | 0.7 |
 | `stream` | false |
 | `thinking` | false |
+| 协议 `includeThinkingContent` | false |
 | `lane` | "CHAT" |
 | `task_priority` | 0 |
 | `task_preemptible` | false |
@@ -255,6 +269,7 @@ LLMRequest
 - chunks 按请求数组顺序处理；message chunk 会按内部 message 顺序追加，rag chunk 的检索结果会在出现位置注入为 system message，因此多 chunk 的 prompt 组装顺序保持请求声明顺序
 - RAG 注入会按 `memory_rag_token_budget` 做预算裁剪，返回的 `ragHits` 与实际注入给模型的内容保持一致
 - `thinking=false` 会显式传给 libs 的 `SamplerConfig.enableThinking=false`，避免模型模板默认进入 thinking
+- 协议层默认隐藏 libs 规范化后的 `<think>...</think>` 内容；只有 `LLMPromptRequestPayload.includeThinkingContent=true` 时才随 stream/result 暴露
 
 ---
 
@@ -322,4 +337,8 @@ service.chatStream(request, token -> publish(token));
 | 持久缓存 | 按 worldId 分目录，带版本和 namespace 校验，namespace 绑定模型组合 |
 | 磁盘写入 | 相同 uid/content 已缓存时跳过 embedding 和写盘；manifest 只有 uid 集合变化时才更新 |
 | TASK 生命周期 | 以 libs 返回的 CompletableFuture 完成为准，不在协议 handler 返回时提前完成 |
+| TASK 接收队列 | LLM 模块通过 admission controller 管理；默认单 active，可抢占 active 允许更高有效优先级任务进入 libs |
+| TASK 暂停 | 暂停不结束协议流；恢复后继续向同一个响应处理器发送 chunk |
+| TASK 终止取消 | 取消、中断或终止型抢占返回 `CANCELLED`，流式结果保留 partial text |
 | 文本保真 | LLM result 和 stream token 不 trim，避免破坏代码块/换行/空格 |
+| Thinking 暴露 | `thinking` 控制生成；协议 `includeThinkingContent` 控制是否向调用方暴露 `<think>...</think>` |

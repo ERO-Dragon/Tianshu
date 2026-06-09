@@ -50,7 +50,7 @@ public final class LlmModule implements TianshuManagedModule {
         this.runtime = runtime;
         this.scopeProvider = new DefaultWorldScopeProvider(worldIdentityProvider == null ? new DefaultWorldIdentityProvider(env) : worldIdentityProvider);
         this.engineProvider = new LlmEngineProvider(env, config);
-        this.adapter = new LlmProtocolAdapter(runtime, null);
+        this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
     }
 
     @Override

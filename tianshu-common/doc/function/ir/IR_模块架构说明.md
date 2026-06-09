@@ -127,10 +127,12 @@ IR 的物品增强通过 [IrItemEnhancer](file:///d:/Minecraft/Tianshu/tianshu-c
 
 增强结果由 [IrItemEnhancementResult](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/IrItemEnhancementResult.java) 承载，主要包含：
 
-- `repairedText`
-- `matchedItemNames`
-- `matchedItemIds`
+- `repairedText`：修复后的自然语言文本，只表达玩家原话的同音/错词修正，不写入 `minecraft:*` 这类结构化 ID。
+- `matchedItemNames`：命中物品的人类可读显示名，用于 UI、上下文提示或模块内部提示。
+- `matchedItemIds`：命中物品的结构化 ID，用于机器路由、上下文判断和后续业务处理。
 - `matched`
+
+例如 ASR 原文为 `下届合金能做什么` 时，`repairedText` 应为 `下界合金能做什么`；如果命中物品，结构化 ID 应进入 `matchedItemIds`，而不是把正文改成 `minecraft:netherite_ingot 能做什么`。
 
 ### 5.1 common 默认增强器
 

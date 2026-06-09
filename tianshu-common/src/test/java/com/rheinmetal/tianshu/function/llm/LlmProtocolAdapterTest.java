@@ -19,6 +19,8 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
@@ -26,9 +28,12 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -66,6 +71,365 @@ class LlmProtocolAdapterTest {
         client.taskFuture.complete("done");
         assertEquals(1, context.completed.get());
         assertEquals(0, context.failed.get());
+    }
+
+    @Test
+    void taskAdmissionQueuesSecondTaskUntilActiveTaskCompletes() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(1));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 0)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-queued", 0)), context);
+
+        assertEquals(1, client.taskCalls.get());
+        assertEquals(0, context.completed.get());
+        client.taskFuture.complete("first");
+
+        await(() -> client.taskCalls.get() == 2);
+        assertEquals(1, context.completed.get());
+        client.taskFutures.get(1).complete("second");
+
+        await(() -> context.completed.get() == 2);
+        assertEquals(0, context.failed.get());
+    }
+
+    @Test
+    void taskAdmissionRejectsWhenActiveAndWaitingQueueAreFull() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(1));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 0)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-queued", 0)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-rejected", 0)), context);
+
+        assertEquals(1, client.taskCalls.get());
+        assertEquals(1, context.failed.get());
+        assertEquals(0, context.completed.get());
+    }
+
+    @Test
+    void taskAdmissionKeepsHigherPriorityWaitingTaskWhenQueueIsFull() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(1));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 0)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-low", 0)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-high", 10)), context);
+
+        assertEquals(1, client.taskCalls.get());
+        assertEquals(1, context.failed.get());
+        client.taskFuture.complete("first");
+
+        await(() -> client.taskCalls.get() == 2);
+        client.taskFutures.get(1).complete("third");
+
+        await(() -> context.completed.get() == 2);
+        assertEquals(1, context.failed.get());
+    }
+
+    @Test
+    void taskAdmissionStartsHigherPriorityTaskImmediatelyWhenActiveTaskIsPreemptible() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(1));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 0, true)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-preempting", 10, false)), context);
+
+        assertEquals(2, client.taskCalls.get());
+        assertEquals(List.of(0, 10), List.copyOf(client.taskPriorities));
+        assertEquals(0, context.completed.get());
+        assertEquals(0, context.failed.get());
+    }
+
+    @Test
+    void taskAdmissionDoesNotPreemptNonPreemptibleActiveTask() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(1));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 0, false)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-waiting", 10, false)), context);
+
+        assertEquals(1, client.taskCalls.get());
+        client.taskFuture.complete("first");
+
+        await(() -> client.taskCalls.get() == 2);
+        assertEquals(List.of(0, 10), List.copyOf(client.taskPriorities));
+    }
+
+    @Test
+    void taskAdmissionAgingLetsOldWaitingTaskPreemptBeforeNewerTask() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(2, 10));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 5, true)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-old-waiting", 0, false)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-newer", 4, false)), context);
+
+        assertEquals(2, client.taskCalls.get());
+        assertEquals(List.of(5, 0), List.copyOf(client.taskPriorities));
+        assertEquals(0, context.failed.get());
+    }
+
+    @Test
+    void taskAdmissionDoesNotDrainWaitingQueueUntilAllInFlightPreemptedTasksFinish() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(2));
+        RecordingContext context = new RecordingContext();
+
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-active", 0, true)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-preempting", 10, false)), context);
+        adapter.handleLLMRequest(llmEnvelope(taskPayload("task-waiting", 1, false)), context);
+
+        assertEquals(2, client.taskCalls.get());
+        client.taskFutures.get(1).complete("second");
+
+        await(() -> context.completed.get() == 1);
+        assertEquals(2, client.taskCalls.get());
+
+        client.taskFuture.complete("first");
+
+        await(() -> client.taskCalls.get() == 3);
+        assertEquals(List.of(0, 10, 1), List.copyOf(client.taskPriorities));
+    }
+
+    @Test
+    void taskResponseStripsThinkingContentByDefault() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-think-hidden", 0, 0.7f, false, true, "TASK", 0, false,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        client.taskFuture.complete("<think>hidden reasoning</think>visible answer");
+
+        await(() -> result.get() != null);
+        assertEquals("visible answer", result.get().text());
+    }
+
+    @Test
+    void taskResponseCanIncludeThinkingContent() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-think-visible", 0, 0.7f, false, true, true, "TASK", 0, false,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        client.taskFuture.complete("<think>hidden reasoning</think>visible answer");
+
+        await(() -> result.get() != null);
+        assertEquals("<think>hidden reasoning</think>visible answer", result.get().text());
+    }
+
+    @Test
+    void taskStreamResponseStripsThinkingContentAcrossChunksByDefault() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-think-stream-hidden", 0, 0.7f, true, true, "TASK", 0, false,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+        List<String> chunks = registerStreamChunkCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        await(() -> client.taskStreamTokens.get() != null);
+        client.taskStreamTokens.get().accept("<thi");
+        client.taskStreamTokens.get().accept("nk>hidden");
+        client.taskStreamTokens.get().accept("</thi");
+        client.taskStreamTokens.get().accept("nk>visible ");
+        client.taskStreamTokens.get().accept("answer");
+        client.taskFuture.complete("<think>hidden</think>visible answer");
+
+        await(() -> result.get() != null);
+        assertEquals(List.of("visible ", "answer"), List.copyOf(chunks));
+        assertEquals("visible answer", result.get().text());
+    }
+
+    @Test
+    void taskStreamKeepsResponseOpenAcrossTaskSuspension() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-task-suspend", 0, 0.7f, true, false, "TASK", 0, true,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+        List<String> chunks = registerStreamChunkCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        await(() -> client.taskStreamTokens.get() != null);
+        client.taskStreamTokens.get().accept("before ");
+
+        await(() -> chunks.size() == 1);
+        assertEquals(List.of("before "), List.copyOf(chunks));
+        assertEquals(null, result.get());
+        assertEquals(0, context.completed.get());
+        assertEquals(0, context.failed.get());
+        assertEquals(0, context.cancelled.get());
+
+        client.taskStreamTokens.get().accept("after");
+        client.taskFuture.complete("before after");
+
+        await(() -> result.get() != null);
+        assertEquals(List.of("before ", "after"), List.copyOf(chunks));
+        assertEquals("before after", result.get().text());
+        assertEquals(1, context.completed.get());
+        assertEquals(0, context.failed.get());
+        assertEquals(0, context.cancelled.get());
+    }
+
+    @Test
+    void taskStreamCancellationReturnsCancelledResultWithPartialText() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-task-cancel", 0, 0.7f, true, false, "TASK", 0, true,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+        List<String> chunks = registerStreamChunkCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        await(() -> client.taskStreamTokens.get() != null);
+        client.taskStreamTokens.get().accept("partial ");
+        client.taskFuture.completeExceptionally(new CancellationException("preempted by higher priority task"));
+
+        await(() -> result.get() != null);
+        assertEquals(List.of("partial "), List.copyOf(chunks));
+        assertEquals(true, result.get().isCancelled());
+        assertEquals("partial ", result.get().text());
+        assertEquals(0, context.completed.get());
+        assertEquals(0, context.failed.get());
+        assertEquals(1, context.cancelled.get());
+    }
+
+    @Test
+    void taskCancellationReturnsCancelledResult() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-task-cancel-non-stream", 0, 0.7f, false, false, "TASK", 0, true,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        client.taskFuture.completeExceptionally(new CancellationException("cancelled"));
+
+        await(() -> result.get() != null);
+        assertEquals(true, result.get().isCancelled());
+        assertEquals("", result.get().text());
+        assertEquals(0, context.completed.get());
+        assertEquals(0, context.failed.get());
+        assertEquals(1, context.cancelled.get());
     }
 
     @Test
@@ -202,6 +566,19 @@ class LlmProtocolAdapterTest {
                 .build();
     }
 
+    private LLMPromptRequestPayload taskPayload(String requestId, int priority) {
+        return taskPayload(requestId, priority, false);
+    }
+
+    private LLMPromptRequestPayload taskPayload(String requestId, int priority, boolean preemptible) {
+        return new LLMPromptRequestPayload(
+                requestId, 0, 0.7f, false, false, "TASK", priority, preemptible,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        );
+    }
+
     private void registerDialogueAuthorization(ProtocolRuntime runtime, boolean allowed) {
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
@@ -245,30 +622,111 @@ class LlmProtocolAdapterTest {
         });
     }
 
+    private AtomicReference<LLMPromptResultPayload> registerResultCapture(ProtocolRuntime runtime, String requestEnvelopeId) {
+        AtomicReference<LLMPromptResultPayload> result = new AtomicReference<>();
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        CapabilityDescriptor capability = new CapabilityDescriptor(
+                "test.llm.response",
+                PayloadType.LLM_PROMPT_RESULT,
+                LLMPromptResultPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE
+        );
+        ModuleDescriptor module = new ModuleDescriptor(
+                "module.test.response",
+                List.of(),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        );
+        runtime.registerResponseHandler(requestEnvelopeId, module, capability, (envelope, context) -> {
+            if (envelope.payload() instanceof LLMPromptResultPayload payload) {
+                result.set(payload);
+            }
+            context.complete(envelope.envelopeId());
+        });
+        return result;
+    }
+
+    private List<String> registerStreamChunkCapture(ProtocolRuntime runtime, String requestEnvelopeId) {
+        List<String> chunks = new CopyOnWriteArrayList<>();
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        CapabilityDescriptor capability = new CapabilityDescriptor(
+                "test.llm.stream.response",
+                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                LLMPromptStreamChunkPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE
+        );
+        ModuleDescriptor module = new ModuleDescriptor(
+                "module.test.stream.response",
+                List.of(),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        );
+        runtime.registerResponseHandler(requestEnvelopeId, module, capability, (envelope, context) -> {
+            if (envelope.payload() instanceof LLMPromptStreamChunkPayload payload && !payload.finished()) {
+                chunks.add(payload.text());
+            }
+            context.complete(envelope.envelopeId());
+        });
+        return chunks;
+    }
+
     private static final class PendingInferenceClient implements LlmInferenceClient {
         private final CompletableFuture<String> taskFuture = new CompletableFuture<>();
+        private final List<CompletableFuture<String>> taskFutures = new CopyOnWriteArrayList<>();
+        private final List<Integer> taskPriorities = new CopyOnWriteArrayList<>();
         private final AtomicInteger chatCalls = new AtomicInteger();
+        private final AtomicInteger taskCalls = new AtomicInteger();
+        private final AtomicReference<Consumer<String>> taskStreamTokens = new AtomicReference<>();
 
         @Override public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) { chatCalls.incrementAndGet(); return "chat"; }
         @Override public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) { onToken.accept("chat"); }
-        @Override public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible) { return taskFuture; }
-        @Override public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) { return taskFuture; }
+        @Override public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible) { taskCalls.incrementAndGet(); taskPriorities.add(priority); return nextTaskFuture(); }
+        @Override public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) { taskCalls.incrementAndGet(); taskPriorities.add(priority); taskStreamTokens.set(onToken); return nextTaskFuture(); }
         @Override public float[] embed(String text) { return new float[]{1f}; }
         @Override public float[][] embed(List<String> texts) { return texts.stream().map(ignored -> new float[]{1f}).toArray(float[][]::new); }
         @Override public List<RagSearchResult> search(String queryText, List<String> texts, int topK, float threshold) { return List.of(); }
         @Override public boolean isReady() { return true; }
         @Override public boolean hasChatQueueCapacity() { return true; }
         @Override public boolean hasTaskQueueCapacity() { return true; }
+
+        private CompletableFuture<String> nextTaskFuture() {
+            if (taskFutures.isEmpty()) {
+                taskFutures.add(taskFuture);
+                return taskFuture;
+            }
+            CompletableFuture<String> future = new CompletableFuture<>();
+            taskFutures.add(future);
+            return future;
+        }
     }
 
     private static final class RecordingContext implements ProtocolContext {
         private final AtomicInteger completed = new AtomicInteger();
         private final AtomicInteger failed = new AtomicInteger();
+        private final AtomicInteger cancelled = new AtomicInteger();
 
         @Override public void submit(TianshuEnvelope envelope) {}
         @Override public void complete(String envelopeId) { completed.incrementAndGet(); }
         @Override public void fail(String envelopeId, String reasonCode, String message, Throwable throwable) { failed.incrementAndGet(); }
-        @Override public void cancel(String envelopeId, String reasonCode, String message) {}
+        @Override public void cancel(String envelopeId, String reasonCode, String message) { cancelled.incrementAndGet(); }
         @Override public boolean isCancelled(String envelopeId) { return false; }
         @Override public void onCancel(String envelopeId, Consumer<TianshuEnvelope> callback) {}
     }

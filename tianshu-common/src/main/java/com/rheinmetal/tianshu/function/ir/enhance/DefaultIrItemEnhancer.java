@@ -30,8 +30,12 @@ public final class DefaultIrItemEnhancer implements IrItemEnhancer {
             if (unit == null || unit.targetRealItemId == null || unit.targetRealItemId.isBlank()) {
                 continue;
             }
-            matchedIds.add(unit.targetRealItemId.trim());
-            matchedNames.add(unit.targetRealItemId.trim());
+            String itemId = unit.targetRealItemId.trim();
+            matchedIds.add(itemId);
+            String displayName = commandService.resolveDisplayName(itemId);
+            if (!displayName.isBlank()) {
+                matchedNames.add(displayName);
+            }
         }
         String repairedText = parseResult.getHealedRawText();
         if (repairedText == null || repairedText.isBlank()) {

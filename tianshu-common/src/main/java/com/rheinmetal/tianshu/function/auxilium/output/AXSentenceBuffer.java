@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class AXSentenceBuffer {
-    private final TtsSentenceSegmenter segmenter = new TtsSentenceSegmenter();
+    private final TtsSentenceSegmenter segmenter = new TtsSentenceSegmenter(12, 24, 180);
     private final StringBuilder buffer = new StringBuilder();
 
     List<String> append(String text) {

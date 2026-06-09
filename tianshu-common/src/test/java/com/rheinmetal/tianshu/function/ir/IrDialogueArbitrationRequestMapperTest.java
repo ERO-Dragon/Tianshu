@@ -17,7 +17,7 @@ class IrDialogueArbitrationRequestMapperTest {
         IrDialogueArbitrationRequestMapper mapper = new IrDialogueArbitrationRequestMapper();
         IrInputText input = new IrInputText("给我看看钻石剑", "给我看看钻石剑", 7, 9L, "asr:voice", 100L);
         IrPreparedInput prepared = new IrPreparedInput(input, "给我看看钻石剑", "看看钻石剑", List.of("给我"), List.of());
-        IrItemEnhancementResult enhancement = new IrItemEnhancementResult("看看 minecraft:diamond_sword", List.of("钻石剑"), List.of("minecraft:diamond_sword"), true);
+        IrItemEnhancementResult enhancement = new IrItemEnhancementResult("看看钻石剑", List.of("钻石剑"), List.of("minecraft:diamond_sword"), true);
         IrMatchBatch batch = new IrMatchBatch(input, List.of(new IrVoiceMatch("module.someone", List.of("看看"), List.of("钻石剑"), 0.8D)));
 
         var payload = mapper.map(input, prepared, enhancement, batch);
@@ -27,7 +27,7 @@ class IrDialogueArbitrationRequestMapperTest {
         assertEquals("asr:voice", payload.playerId());
         assertEquals("7", payload.turnId());
         assertEquals(9L, payload.sourceSessionId());
-        assertEquals("看看 minecraft:diamond_sword", payload.repairedText());
+        assertEquals("看看钻石剑", payload.repairedText());
         assertEquals("看看钻石剑", payload.normalizedText());
         assertEquals(List.of("看看"), payload.matchedWakeWords());
         assertEquals(List.of("minecraft:diamond_sword"), payload.matchedItemIds());

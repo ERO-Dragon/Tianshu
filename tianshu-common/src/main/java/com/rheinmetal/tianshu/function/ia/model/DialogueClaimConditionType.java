@@ -5,6 +5,7 @@ public enum DialogueClaimConditionType {
     HELD_ITEM,
     EQUIPPED_ITEM,
     CROSSHAIR_ENTITY,
+    NEAREST_ENTITY_WITHIN,
     CROSSHAIR_HIT,
     INTERACTION_KEY,
     SNEAKING,

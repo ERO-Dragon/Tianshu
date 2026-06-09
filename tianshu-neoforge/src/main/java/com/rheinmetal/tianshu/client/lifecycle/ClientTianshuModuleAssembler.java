@@ -46,7 +46,8 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 axWorldIdentityProvider,
                 worldStateProvider,
                 AXOutputSettings.DEFAULT,
-                AXChatOutputSink.NOOP
+                AXChatOutputSink.NOOP,
+                new NeoForgeDialogueContextProvider()
         );
     }
 
@@ -62,6 +63,35 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink
     ) {
+        this(
+                env,
+                config,
+                audioBridge,
+                protocolRuntime,
+                voiceInputGate,
+                interruptionSignal,
+                axWorldIdentityProvider,
+                worldStateProvider,
+                axOutputSettings,
+                axChatOutputSink,
+                new NeoForgeDialogueContextProvider()
+        );
+    }
+
+    public ClientTianshuModuleAssembler(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            IAudioBridge audioBridge,
+            ProtocolRuntime protocolRuntime,
+            BooleanSupplier voiceInputGate,
+            LongSupplier interruptionSignal,
+            AXWorldIdentityProvider axWorldIdentityProvider,
+            WorldStateProvider worldStateProvider,
+            AXOutputSettings axOutputSettings,
+            AXChatOutputSink axChatOutputSink,
+            NeoForgeDialogueContextProvider dialogueContextProvider
+    ) {
+        NeoForgeDialogueContextProvider effectiveDialogueContextProvider = dialogueContextProvider == null ? new NeoForgeDialogueContextProvider() : dialogueContextProvider;
         List<TianshuFunctionModuleInstaller> installers = new java.util.ArrayList<>();
         installers.addAll(TianshuCoreModuleInstallers.clientCore(
                 env,
@@ -74,7 +104,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 worldStateProvider,
                 new MinecraftRuntimeFactTextResolver(),
                 new MinecraftAXPromptLanguageProvider(),
-                new NeoForgeDialogueContextProvider(),
+                effectiveDialogueContextProvider,
                 axOutputSettings,
                 axChatOutputSink,
                 new ClientIrModuleInstaller(protocolRuntime)

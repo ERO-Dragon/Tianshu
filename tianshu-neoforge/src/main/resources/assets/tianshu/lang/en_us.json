@@ -389,6 +389,7 @@
   "tianshu.gui.ax.row.config_path": "Config File",
   "tianshu.gui.ax.mode.disabled": "Disabled",
   "tianshu.gui.ax.mode.ui_only": "UI Only",
+  "tianshu.gui.ax.mode.tts_only": "TTS Only",
   "tianshu.gui.ax.mode.ui_and_tts": "UI + TTS",
   "tianshu.gui.ax.message.saved": "Auxilium output settings saved"
 }

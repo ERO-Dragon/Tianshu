@@ -76,6 +76,7 @@ public final class DialogueClaimEngine {
             case HELD_ITEM -> matchesAny(condition.values(), List.of(hints.heldItemId()));
             case EQUIPPED_ITEM -> matchesAny(condition.values(), context.equippedItemIds());
             case CROSSHAIR_ENTITY -> matchesAny(condition.values(), crosshairEntityTypes(context));
+            case NEAREST_ENTITY_WITHIN -> matchesNearestEntityWithin(condition, context);
             case CROSSHAIR_HIT -> hints.crosshairHit();
             case INTERACTION_KEY -> hints.interactionKeyDown();
             case SNEAKING -> hints.sneaking();
@@ -90,6 +91,15 @@ public final class DialogueClaimEngine {
                 .map(DialogueEntityRef::entityTypeId)
                 .filter(value -> value != null && !value.isBlank())
                 .toList();
+    }
+
+    private static boolean matchesNearestEntityWithin(DialogueClaimCondition condition, DialogueContextSnapshot context) {
+        if (condition.maxDistance() <= 0.0D || condition.values().isEmpty()) {
+            return false;
+        }
+        return context.entityRefs().stream()
+                .filter(ref -> ref.distance() <= condition.maxDistance())
+                .anyMatch(ref -> matchesAny(condition.values(), List.of(ref.entityTypeId())));
     }
 
     private static boolean matchesContextFact(DialogueClaimCondition condition, Map<String, String> facts) {

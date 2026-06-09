@@ -30,6 +30,7 @@ import com.rheinmetal.tianshu.platform.NeoForgeAXWorldIdentityProvider;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.platform.provider.NeoForgeEnvironmentProvider;
 import com.rheinmetal.tianshu.platform.provider.NeoForgeInventoryProvider;
+import com.rheinmetal.tianshu.platform.provider.NeoForgeDialogueContextProvider;
 import com.rheinmetal.tianshu.platform.provider.NeoForgePlayerStateProvider;
 import com.rheinmetal.tianshu.platform.provider.NeoForgeSocialDataProvider;
 import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
@@ -80,6 +81,7 @@ public class TianshuClient {
     private static IPlayerStateProvider playerStateProvider;
     private static ISocialDataProvider socialDataProvider;
     private static WorldStateProvider worldStateProvider;
+    private static NeoForgeDialogueContextProvider dialogueContextProvider;
 
     private static AsrInputService asrInputService() {
         return coreManager.requireService(AsrInputService.class);
@@ -134,6 +136,7 @@ public class TianshuClient {
         environmentProvider = new NeoForgeEnvironmentProvider();
         playerStateProvider = new NeoForgePlayerStateProvider();
         socialDataProvider = new NeoForgeSocialDataProvider();
+        dialogueContextProvider = new NeoForgeDialogueContextProvider();
 
         worldStateProvider = new WorldStateProvider(
                 playerStateProvider,
@@ -152,7 +155,8 @@ public class TianshuClient {
                 new NeoForgeAXWorldIdentityProvider(),
                 worldStateProvider,
                 axOutputConfig,
-                axChatHudState
+                axChatHudState,
+                dialogueContextProvider
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();
         integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
@@ -212,6 +216,9 @@ public class TianshuClient {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || config == null) return;
+        if (dialogueContextProvider != null) {
+            dialogueContextProvider.tick();
+        }
 
         if (!config.isAiEnabled()) {
             if (isVoiceKeyPressed) {

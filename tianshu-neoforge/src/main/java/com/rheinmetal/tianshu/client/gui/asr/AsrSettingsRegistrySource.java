@@ -394,7 +394,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 addHotword(entries, MODULE_ID, "hotwords.kind.wake_word", word);
             }
             for (VoiceTriggerRegistration registration : registrations) {
-                addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.hotword", registration.hotwords());
+                addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.hotword", registration.wakeWords());
                 addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.extra_word", registration.extraWords());
             }
             Map<String, Integer> counts = new LinkedHashMap<>();

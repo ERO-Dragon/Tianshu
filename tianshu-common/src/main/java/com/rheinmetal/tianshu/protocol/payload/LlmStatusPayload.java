@@ -4,8 +4,10 @@ import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 public record LlmStatusPayload(String requestId, String traceId, String lane, String status, long occurredAtMillis) implements ITianshuPayload {
     public static final String ACCEPTED = "ACCEPTED";
+    public static final String QUEUED = "QUEUED";
     public static final String STREAMING = "STREAMING";
     public static final String COMPLETED = "COMPLETED";
+    public static final String CANCELLED = "CANCELLED";
     public static final String FAILED = "FAILED";
 
     public LlmStatusPayload {
@@ -19,7 +21,7 @@ public record LlmStatusPayload(String requestId, String traceId, String lane, St
     private static String normalizeStatus(String value) {
         String normalized = value == null ? "" : value.trim().toUpperCase();
         return switch (normalized) {
-            case ACCEPTED, STREAMING, COMPLETED, FAILED -> normalized;
+            case ACCEPTED, QUEUED, STREAMING, COMPLETED, CANCELLED, FAILED -> normalized;
             default -> FAILED;
         };
     }

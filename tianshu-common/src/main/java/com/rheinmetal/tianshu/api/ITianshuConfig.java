@@ -226,7 +226,19 @@ public interface ITianshuConfig {
         return 2;
     }
 
-    default int getLlmTaskMaxQueueSize() {
+    default int getLlmTaskAdmissionQueueSize() {
+        return Math.max(0, getLlmMaxQueueSize());
+    }
+
+    default int getLlmTaskAgingBoostPerRequest() {
+        return 1;
+    }
+
+    default int getLlmLibsChatQueueSize() {
+        return 1;
+    }
+
+    default int getLlmTaskHotSuspendSlots() {
         return 1;
     }
 

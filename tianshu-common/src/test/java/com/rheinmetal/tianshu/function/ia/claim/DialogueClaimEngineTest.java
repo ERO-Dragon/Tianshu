@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.function.ia.model.DialogueClaimStrength;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -138,6 +139,35 @@ class DialogueClaimEngineTest {
         assertEquals(1, claims.size());
         assertEquals("armor", claims.get(0).participantId());
         assertEquals(DialogueClaimStrength.NORMAL, claims.get(0).strength());
+    }
+
+    @Test
+    void nearestEntityWithinClaimsByEntityTypeAndKeepsEntityReferenceForDelivery() {
+        DialogueClaimEngine engine = new DialogueClaimEngine();
+        DialogueParticipantDescriptor maid = descriptor(
+                "maid",
+                2,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("maid.nearest", DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")))
+        );
+        DialogueEntityRef nearestMaid = new DialogueEntityRef("maid-uuid", "touhou_little_maid:maid", "酒狐", 4.0D, false);
+        DialogueContextSnapshot context = new DialogueContextSnapshot(
+                "player",
+                "minecraft:overworld",
+                List.of(nearestMaid),
+                List.of(),
+                java.util.Map.of()
+        );
+        DialogueArbitrationInput input = request(List.of(), List.of(), DialogueInteractionHints.empty(), context);
+
+        List<DialogueClaim> claims = engine.collectLocalClaims(List.of(maid), input);
+        DialogueDeliveryPayload delivery = DialogueDeliveryPayload.from("session", input);
+
+        assertEquals(1, claims.size());
+        assertEquals("maid", claims.get(0).participantId());
+        assertEquals("hard_claim:maid.nearest", claims.get(0).reason());
+        assertEquals(1, delivery.matchedEntityRefs().size());
+        assertEquals("maid-uuid", delivery.matchedEntityRefs().get(0).entityId());
+        assertEquals("touhou_little_maid:maid", delivery.matchedEntityRefs().get(0).entityTypeId());
     }
 
     private DialogueParticipantDescriptor descriptor(String participantId, int priority, List<String> wakeWords, List<String> entityTypes, List<String> itemIds) {

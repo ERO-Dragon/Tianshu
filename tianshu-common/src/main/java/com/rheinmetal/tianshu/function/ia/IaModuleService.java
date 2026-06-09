@@ -15,12 +15,20 @@ public final class IaModuleService {
     private final DialogueDiagnosticsView diagnosticsView;
     private final DialogueParticipantLifecycleCoordinator participantLifecycleCoordinator;
     private final DialogueParticipantContractValidator participantContractValidator;
+    private final Runnable participantChangeListener;
 
     public IaModuleService(DialogueParticipantRegistry participantRegistry, DialogueDiagnosticsView diagnosticsView, DialogueParticipantLifecycleCoordinator participantLifecycleCoordinator, DialogueParticipantContractValidator participantContractValidator) {
+        this(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, () -> {
+        });
+    }
+
+    public IaModuleService(DialogueParticipantRegistry participantRegistry, DialogueDiagnosticsView diagnosticsView, DialogueParticipantLifecycleCoordinator participantLifecycleCoordinator, DialogueParticipantContractValidator participantContractValidator, Runnable participantChangeListener) {
         this.participantRegistry = Objects.requireNonNull(participantRegistry, "participantRegistry");
         this.diagnosticsView = Objects.requireNonNull(diagnosticsView, "diagnosticsView");
         this.participantLifecycleCoordinator = Objects.requireNonNull(participantLifecycleCoordinator, "participantLifecycleCoordinator");
         this.participantContractValidator = Objects.requireNonNull(participantContractValidator, "participantContractValidator");
+        this.participantChangeListener = participantChangeListener == null ? () -> {
+        } : participantChangeListener;
     }
 
     public void registerParticipant(DialogueParticipantDescriptor descriptor) {
@@ -29,14 +37,17 @@ public final class IaModuleService {
             throw new IllegalArgumentException(validation.code() + ": " + validation.message());
         }
         participantRegistry.register(descriptor);
+        participantChangeListener.run();
     }
 
     public void unregisterParticipant(String moduleId, String participantId) {
         participantLifecycleCoordinator.unregisterParticipant(null, moduleId, participantId, System.currentTimeMillis());
+        participantChangeListener.run();
     }
 
     public void unregisterModule(String moduleId) {
         participantLifecycleCoordinator.unregisterModule(null, moduleId, System.currentTimeMillis());
+        participantChangeListener.run();
     }
 
     public DialogueDiagnosticsSnapshot snapshot() {

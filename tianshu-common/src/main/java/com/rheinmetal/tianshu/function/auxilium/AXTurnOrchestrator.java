@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
-import com.rheinmetal.tianshu.function.auxilium.input.AXInputSource;
 import com.rheinmetal.tianshu.function.auxilium.input.AXNormalizedInput;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.memory.ConversationTurn;
@@ -23,6 +23,7 @@ import java.util.Objects;
 
 public final class AXTurnOrchestrator {
     private final AXScopeProvider scopeProvider;
+    private final AXDialogueInputMapper dialogueInputMapper;
     private final AXInputNormalizer inputNormalizer;
     private final AXRuntimeMaintenanceCoordinator maintenanceCoordinator;
     private final AXContextCollector contextCollector;
@@ -34,6 +35,7 @@ public final class AXTurnOrchestrator {
 
     public AXTurnOrchestrator(
             AXScopeProvider scopeProvider,
+            AXDialogueInputMapper dialogueInputMapper,
             AXInputNormalizer inputNormalizer,
             AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
             AXContextCollector contextCollector,
@@ -44,6 +46,7 @@ public final class AXTurnOrchestrator {
             AXOutputProcessor outputProcessor
     ) {
         this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
+        this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
         this.inputNormalizer = Objects.requireNonNull(inputNormalizer, "inputNormalizer");
         this.maintenanceCoordinator = maintenanceCoordinator;
         this.contextCollector = Objects.requireNonNull(contextCollector, "contextCollector");
@@ -56,7 +59,7 @@ public final class AXTurnOrchestrator {
 
     public void startTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
         AXScope scope = currentScope();
-        AXRequest rawRequest = requestFromDelivery(delivery);
+        AXRequest rawRequest = dialogueInputMapper.map(delivery);
         AXNormalizedInput input = inputNormalizer.normalize(rawRequest);
         if (input.empty()) {
             sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
@@ -79,67 +82,6 @@ public final class AXTurnOrchestrator {
     private AXScope currentScope() {
         AXScope scope = scopeProvider.currentScope();
         return scope == null ? AXScope.unknown() : scope;
-    }
-
-    private AXRequest requestFromDelivery(DialogueDeliveryPayload delivery) {
-        String userText = !delivery.normalizedText().isBlank() ? delivery.normalizedText() : delivery.repairedText();
-        return new AXRequest(requestKey(delivery), userText, providedContext(delivery), AXInputSource.FORWARDED);
-    }
-
-    private String requestKey(DialogueDeliveryPayload delivery) {
-        String turnId = delivery.turnId() == null || delivery.turnId().isBlank() ? "turn" : delivery.turnId();
-        return "AX." + delivery.sessionId() + "." + turnId;
-    }
-
-    private String providedContext(DialogueDeliveryPayload delivery) {
-        StringBuilder builder = new StringBuilder();
-        if (!delivery.playerId().isBlank()) {
-            appendLine(builder, "playerId=" + delivery.playerId());
-        }
-        if (delivery.contextSnapshot() != null && !delivery.contextSnapshot().dimensionId().isBlank()) {
-            appendLine(builder, "dimension=" + delivery.contextSnapshot().dimensionId());
-        }
-        if (!delivery.matchedWakeWords().isEmpty()) {
-            appendLine(builder, "matchedWakeWords=" + String.join(", ", delivery.matchedWakeWords()));
-        }
-        if (!delivery.matchedItemIds().isEmpty()) {
-            appendLine(builder, "matchedItems=" + String.join(", ", delivery.matchedItemIds()));
-        }
-        if (!delivery.matchedEntityRefs().isEmpty()) {
-            appendLine(builder, "matchedEntities=" + String.join(", ", delivery.matchedEntityRefs()));
-        }
-        if (delivery.interactionHints() != null) {
-            if (!delivery.interactionHints().heldItemId().isBlank()) {
-                appendLine(builder, "heldItem=" + delivery.interactionHints().heldItemId());
-            }
-            if (delivery.interactionHints().crosshairHit()) {
-                appendLine(builder, "crosshairHit=true");
-            }
-            if (delivery.interactionHints().interactionKeyDown()) {
-                appendLine(builder, "interactionKeyDown=true");
-            }
-            if (delivery.interactionHints().targetDistance() > 0.0D) {
-                appendLine(builder, "targetDistance=" + delivery.interactionHints().targetDistance());
-            }
-        }
-        if (delivery.contextSnapshot() != null && !delivery.contextSnapshot().facts().isEmpty()) {
-            delivery.contextSnapshot().facts().forEach((key, value) -> {
-                if (key != null && !key.isBlank() && value != null && !value.isBlank()) {
-                    appendLine(builder, key.trim() + "=" + value.trim());
-                }
-            });
-        }
-        return builder.toString().trim();
-    }
-
-    private void appendLine(StringBuilder builder, String line) {
-        if (line == null || line.isBlank()) {
-            return;
-        }
-        if (builder.length() > 0) {
-            builder.append('\n');
-        }
-        builder.append(line);
     }
 
     private void appendTurn(AXScope scope, String role, String content) {
@@ -179,7 +121,8 @@ public final class AXTurnOrchestrator {
         @Override
         public void onResult(LLMPromptResultPayload payload) {
             if (payload != null && payload.isCompleted()) {
-                String text = payload.text().isBlank() ? streamed.toString() : payload.text();
+                String text = finalText(payload);
+                appendFinalSuffix(text);
                 outputTurn.complete(text);
                 appendTurn(scope, "AX", text);
                 sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
@@ -196,6 +139,24 @@ public final class AXTurnOrchestrator {
                     : cancellation;
             outputTurn.fail(effective.message());
             sessionController.release(deliveryEnvelope, delivery, effective.releaseReason());
+        }
+
+        private String finalText(LLMPromptResultPayload payload) {
+            String resultText = payload == null ? "" : payload.text();
+            return resultText == null || resultText.isBlank() ? streamed.toString() : resultText;
+        }
+
+        private void appendFinalSuffix(String text) {
+            if (text == null || text.isBlank() || streamed.isEmpty()) {
+                return;
+            }
+            String current = streamed.toString();
+            if (!text.startsWith(current) || text.length() <= current.length()) {
+                return;
+            }
+            String suffix = text.substring(current.length());
+            streamed.append(suffix);
+            outputTurn.append(suffix);
         }
     }
 }

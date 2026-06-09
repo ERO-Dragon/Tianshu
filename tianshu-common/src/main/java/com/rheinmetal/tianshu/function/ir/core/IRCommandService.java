@@ -86,6 +86,20 @@ public final class IRCommandService {
         }
     }
 
+    public String resolveDisplayName(String realItemId) {
+        lifecycleLock.readLock().lock();
+        try {
+            Integer internalId = IRBaseUtils.forwardLookupMap.get(realItemId);
+            if (internalId == null || internalId < 0 || internalId >= IRBaseUtils.localizedNameArray.length) {
+                return "";
+            }
+            String displayName = IRBaseUtils.localizedNameArray[internalId];
+            return displayName == null ? "" : displayName;
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
+    }
+
     public Set<Integer> resolveInternalIds(Collection<String> realItemIds) {
         lifecycleLock.readLock().lock();
         try {

@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.protocol.payload;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 import java.util.List;
-import java.util.Objects;
 
 public record LLMPromptRequestPayload(
         String requestId,
@@ -11,6 +10,7 @@ public record LLMPromptRequestPayload(
         Float temperature,
         Boolean stream,
         Boolean thinking,
+        Boolean includeThinkingContent,
         String lane,
         Integer taskPriority,
         Boolean taskPreemptible,
@@ -34,9 +34,43 @@ public record LLMPromptRequestPayload(
             String lane,
             Integer taskPriority,
             Boolean taskPreemptible,
+            List<ChunkPayload> chunks,
+            String dialogueSessionId,
+            String requesterModuleId,
+            String requesterParticipantId,
+            String dialogueTurnId
+    ) {
+        this(requestId, maxTokens, temperature, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks,
+                dialogueSessionId, requesterModuleId, requesterParticipantId, dialogueTurnId);
+    }
+
+    public LLMPromptRequestPayload(
+            String requestId,
+            Integer maxTokens,
+            Float temperature,
+            Boolean stream,
+            Boolean thinking,
+            String lane,
+            Integer taskPriority,
+            Boolean taskPreemptible,
             List<ChunkPayload> chunks
     ) {
-        this(requestId, maxTokens, temperature, stream, thinking, lane, taskPriority, taskPreemptible, chunks, "", "", "", "");
+        this(requestId, maxTokens, temperature, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks, "", "", "", "");
+    }
+
+    public LLMPromptRequestPayload(
+            String requestId,
+            Integer maxTokens,
+            Float temperature,
+            Boolean stream,
+            Boolean thinking,
+            Boolean includeThinkingContent,
+            String lane,
+            Integer taskPriority,
+            Boolean taskPreemptible,
+            List<ChunkPayload> chunks
+    ) {
+        this(requestId, maxTokens, temperature, stream, thinking, includeThinkingContent, lane, taskPriority, taskPreemptible, chunks, "", "", "", "");
     }
 
     public LLMPromptRequestPayload {
@@ -45,6 +79,7 @@ public record LLMPromptRequestPayload(
         temperature = normalizeTemperature(temperature);
         stream = stream != null ? stream : false;
         thinking = thinking != null ? thinking : false;
+        includeThinkingContent = includeThinkingContent != null ? includeThinkingContent : false;
         lane = normalizeLane(lane);
         taskPriority = clampPriority(taskPriority);
         taskPreemptible = taskPreemptible != null ? taskPreemptible : false;
@@ -62,6 +97,7 @@ public record LLMPromptRequestPayload(
                 temperature,
                 stream,
                 thinking,
+                includeThinkingContent,
                 lane,
                 taskPriority,
                 taskPreemptible,
@@ -70,6 +106,25 @@ public record LLMPromptRequestPayload(
                 moduleId,
                 participantId,
                 turnId
+        );
+    }
+
+    public LLMPromptRequestPayload withIncludeThinkingContent(boolean includeThinkingContent) {
+        return new LLMPromptRequestPayload(
+                requestId,
+                maxTokens,
+                temperature,
+                stream,
+                thinking,
+                includeThinkingContent,
+                lane,
+                taskPriority,
+                taskPreemptible,
+                chunks,
+                dialogueSessionId,
+                requesterModuleId,
+                requesterParticipantId,
+                dialogueTurnId
         );
     }
 

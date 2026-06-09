@@ -306,10 +306,10 @@ DialogueArbitrationRequestPayload(
 | `playerId` | 玩家标识。 |
 | `turnId` | 上游 turn 编号。 |
 | `sourceSessionId` | 上游 ASR/输入会话 ID，用于关联“开始说话时冻结的上下文快照”。 |
-| `repairedText` | IR 修复后的文本，仅允许进入仲裁机关和候选 owner 判断，不做公共广播。 |
+| `repairedText` | IR 修复后的自然语言文本，例如同音错词修正；不携带物品资源 ID，仅允许进入仲裁机关和候选 owner 判断，不做公共广播。 |
 | `normalizedText` | 归一化文本。 |
 | `matchedWakeWords` | IR 命中的 wake word。 |
-| `matchedItemIds` | IR 增强识别出的物品。 |
+| `matchedItemIds` | IR 增强识别出的结构化物品 ID。 |
 | `timestampMillis` | 请求创建时间。 |
 | `expireAtMillis` | 请求过期时间。 |
 
@@ -401,6 +401,7 @@ claim profile 适合表达：
 - 玩家是否拿着指定物品
 - 玩家身上是否装备了指定物品
 - 玩家是否命中了准星目标
+- 玩家附近最近的白名单实体是否在指定半径内
 - 玩家是否按住交互键或处于潜行状态
 - 平台上下文是否带有某个简化 fact
 
@@ -421,11 +422,13 @@ DialogueClaimRule(
 | 字段 | 含义 |
 |---|---|
 | `operator` | `ANY` 或 `ALL`，由外部模组决定多个条件的组合方式。 |
-| `conditions` | `WAKE_WORD`、`HELD_ITEM`、`EQUIPPED_ITEM`、`CROSSHAIR_ENTITY`、`CROSSHAIR_HIT`、`INTERACTION_KEY`、`SNEAKING`、`INTERACTION_TAG`、`CONTEXT_FACT`。 |
+| `conditions` | `WAKE_WORD`、`HELD_ITEM`、`EQUIPPED_ITEM`、`CROSSHAIR_ENTITY`、`NEAREST_ENTITY_WITHIN`、`CROSSHAIR_HIT`、`INTERACTION_KEY`、`SNEAKING`、`INTERACTION_TAG`、`CONTEXT_FACT`。 |
 | `strength` | 硬 claim 强度，当前固定为 `NORMAL` 或 `STRONG` 两档，避免无限参数调优。 |
 | `decay` | 本轮命中后形成的 attention 衰减速度，当前固定为 `FAST` 或 `SLOW` 两档。 |
 
 兼容字段 `supportedIntents` 当前会被转换成 `WAKE_WORD + STRONG + SLOW`；`supportedItemIds` 会转换成 `HELD_ITEM/EQUIPPED_ITEM + NORMAL + FAST`；`supportedEntityTypes` 会转换成 `CROSSHAIR_ENTITY + NORMAL + SLOW`。新接入建议直接使用 `DialogueClaimProfile.rules(...)`。
+
+`NEAREST_ENTITY_WITHIN` 由模块声明实体类型 ID 白名单和半径，例如 `DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")`。平台层只按所有参与方汇总出的实体类型白名单扫描，扫描结果只保留最近的白名单实体，并在 delivery 的 `matchedEntityRefs/contextSnapshot.entityRefs` 中返回结构化 `DialogueEntityRef`，其中包含实体 UUID/ref id、实体类型 ID、显示名和距离。NeoForge 侧不每 tick 全量扫描；白名单为空时不扫描，未命中时低频扫描，命中后按较短间隔刷新缓存，IA 冻结快照时只读取缓存。
 
 ## 10. 会话所有权
 

@@ -9,13 +9,20 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 public final class AXLlmClient {
     private final AXProtocolAdapter adapter;
+    private final LongSupplier nowMillis;
     private final Map<String, PendingRequest> handlers = new ConcurrentHashMap<>();
 
     public AXLlmClient(AXProtocolAdapter adapter) {
+        this(adapter, System::currentTimeMillis);
+    }
+
+    AXLlmClient(AXProtocolAdapter adapter, LongSupplier nowMillis) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.nowMillis = nowMillis == null ? System::currentTimeMillis : nowMillis;
     }
 
     public TianshuEnvelope submit(TianshuEnvelope parent, LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
@@ -32,7 +39,7 @@ public final class AXLlmClient {
             return false;
         }
         PendingRequest request = handlers.get(requestEnvelopeId);
-        if (request == null || request.expired()) {
+        if (request == null || request.expired(nowMillis.getAsLong())) {
             handlers.remove(requestEnvelopeId);
             adapter.unregisterLlmResponses(requestEnvelopeId);
             if (request != null) {
@@ -49,7 +56,7 @@ public final class AXLlmClient {
             return false;
         }
         PendingRequest request = handlers.remove(requestEnvelopeId);
-        if (request == null || request.expired()) {
+        if (request == null || request.expired(nowMillis.getAsLong())) {
             adapter.unregisterLlmResponses(requestEnvelopeId);
             if (request != null) {
                 request.handler().onCancelled(AXTurnCancellation.expired("AX LLM request expired"));
@@ -72,13 +79,19 @@ public final class AXLlmClient {
         handlers.clear();
     }
 
+    public void cancelChatRequests(AXTurnCancellation cancellation) {
+        cancelRequestsByLane("CHAT", cancellation == null
+                ? AXTurnCancellation.playerInterrupted("AX chat request cancelled")
+                : cancellation);
+    }
+
     public void clear() {
         cancelAll(AXTurnCancellation.moduleUnloaded("AX module stopped"));
     }
 
     public void sweepExpired() {
         handlers.entrySet().removeIf(entry -> {
-            boolean expired = entry.getValue().expired();
+            boolean expired = entry.getValue().expired(nowMillis.getAsLong());
             if (expired) {
                 adapter.unregisterLlmResponses(entry.getKey());
                 entry.getValue().handler().onCancelled(AXTurnCancellation.expired("AX LLM request expired"));
@@ -90,7 +103,7 @@ public final class AXLlmClient {
     private TianshuEnvelope submit(TianshuEnvelope envelope, AXLlmRequestHandler handler) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(handler, "handler");
-        handlers.put(envelope.envelopeId(), new PendingRequest(handler, envelope.header().expireAt()));
+        handlers.put(envelope.envelopeId(), new PendingRequest(handler, envelope.header().expireAt(), payloadLane(envelope)));
         adapter.registerLlmPromptStreamChunkResponse(envelope.envelopeId(), this::handleStreamChunkResponse);
         adapter.registerLlmPromptResultResponse(envelope.envelopeId(), this::handleResultResponse);
         sweepExpired();
@@ -123,9 +136,42 @@ public final class AXLlmClient {
         }
     }
 
-    private record PendingRequest(AXLlmRequestHandler handler, long expireAtMillis) {
-        private boolean expired() {
-            return expireAtMillis > 0L && expireAtMillis < System.currentTimeMillis();
+    private void cancelRequestsByLane(String lane, AXTurnCancellation cancellation) {
+        String expectedLane = lane == null ? "" : lane.trim().toUpperCase();
+        if (expectedLane.isBlank()) {
+            return;
+        }
+        AXTurnCancellation effective = cancellation == null
+                ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
+                : cancellation;
+        handlers.entrySet().removeIf(entry -> {
+            PendingRequest request = entry.getValue();
+            if (request == null || !expectedLane.equals(request.lane())) {
+                return false;
+            }
+            request.handler().onCancelled(effective);
+            adapter.unregisterLlmResponses(entry.getKey());
+            return true;
+        });
+    }
+
+    private String payloadLane(TianshuEnvelope envelope) {
+        if (envelope != null && envelope.payload() instanceof LLMPromptRequestPayload payload) {
+            return payload.lane();
+        }
+        return "CHAT";
+    }
+
+    private record PendingRequest(AXLlmRequestHandler handler, long expireAtMillis, String lane) {
+        private PendingRequest {
+            lane = lane == null || lane.isBlank() ? "CHAT" : lane.trim().toUpperCase();
+        }
+
+        private boolean expired(long nowMillis) {
+            if ("TASK".equals(lane)) {
+                return false;
+            }
+            return expireAtMillis > 0L && expireAtMillis < nowMillis;
         }
     }
 }

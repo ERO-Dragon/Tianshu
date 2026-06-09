@@ -5,6 +5,7 @@ import java.util.Locale;
 public enum AXOutputMode {
     DISABLED(false, false),
     UI_ONLY(true, false),
+    TTS_ONLY(false, true),
     UI_AND_TTS(true, true);
 
     private final boolean uiEnabled;

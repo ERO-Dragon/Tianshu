@@ -26,6 +26,14 @@
 
 LLM 模块注册 capability 时使用 `CompletionPolicy.MANUAL_COMPLETE`。调用方不能把 handler 返回当成推理完成；必须以协议响应 payload 或 envelope lifecycle 完成为准。
 
+`LLMPromptRequestPayload.thinking` 和 `includeThinkingContent` 是两个不同边界：
+
+- `thinking=false`：关闭模型 thinking 生成，LLM adapter 会把该意图传给 libs sampler。
+- `thinking=true + includeThinkingContent=false`：允许模型内部 thinking，但协议响应会隐藏规范化后的 `<think>...</think>` 内容。
+- `thinking=true + includeThinkingContent=true`：协议响应保留规范化后的 `<think>...</think>` 内容，适合调试、评估或专门展示推理过程的工具。
+
+`includeThinkingContent` 默认是 `false`。普通 UI、TTS 和聊天调用方不需要额外清洗 think 内容；如果 libs 在 thinking 关闭时已经去掉空的 think 包裹，协议层不会要求调用方再做重复处理。
+
 ## 3. 普通聊天
 
 ```java
@@ -137,6 +145,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 - `LLMPromptResultPayload.status=COMPLETED`：最终完整文本和最终 `ragHits`。
 - 这些 payload 都是原请求的 `PacketType.RESPONSE`，由协议中心按 `parentId = requestEnvelopeId` 路由给请求方登记的响应处理器。
 - 协议 envelope 只在 stream end 和最终 result 都发出后完成。
+- 当 `includeThinkingContent=false` 时，stream chunk 和最终 result 会在 LLM adapter 出口一致隐藏 `<think>...</think>` 内容；只包含 hidden thinking 的 chunk 不会发送。
 
 ## 6. 后台任务
 
@@ -161,6 +170,23 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 
 `TASK + stream=true` 支持流式后台任务。此时 envelope 完成必须以 libs 返回的 `CompletableFuture` 完成为准，不能在提交任务成功时提前完成。
 `lane=TASK` 不代表 IA 对话 owner，不需要 dialogue 授权上下文，也不能用于回答当前 IA delivery。
+
+TASK 的接收队列由 LLM 模块自己管理，而不是依赖 libs 的 `taskMaxQueueSize`：
+
+- `LlmTaskAdmissionController` 控制外部 TASK 的接收、等待和启动；默认保持单 active，但当当前 active TASK 标记为 `taskPreemptible=true` 且出现更高有效优先级任务时，会把抢占候选送入 libs，由 libs 执行 TASK 抢占/取消/挂起语义。
+- 等待队列按有效优先级降序、同优先级 FIFO 排序；有效优先级 = `taskPriority + 等待期间新 TASK 请求次数 * getLlmTaskAgingBoostPerRequest()`。
+- 队列满时，只有更高有效优先级的新任务可以替换等待队列中的最低有效优先级任务。
+- 被抢占后仍未终态的旧 TASK 会继续计入 admission 的 in-flight 边界；只有所有已送入 libs 的 TASK future 终态后，等待队列才会自动启动下一个任务，避免隐形扩容。
+- 被 admission 队列拒绝或替换的请求返回 `LLMPromptResultPayload.status=FAILED`，错误码为 `LLM_TASK_QUEUE_FULL`。
+- 被排队但尚未送入 libs 的请求会通过 `LLM.STATUS` 发布 `QUEUED`；真正启动流式 TASK 时再发布 `STREAMING`。
+- libs 的 `taskMaxQueueSize` 只表示热挂起 KV/context 保存槽数量，天枢默认保持为 1；它不再承担外部 TASK 接收容量控制。
+
+TASK 暂停和终止语义：
+
+- libs 因 `taskSuspendOnChat=true` 暂停 TASK 时，`CompletableFuture` 不完成，LLM adapter 不发送 stream end / final result，也不完成 envelope。
+- 暂停期间已发送的 stream chunk 保留；恢复后后续 chunk 仍通过同一个请求的响应处理器继续发送。
+- TASK 被取消、线程中断或被更高优先级任务终止抢占时，LLM adapter 会发送 stream end，并返回 `LLMPromptResultPayload.status=CANCELLED`。
+- `CANCELLED` result 的 `text` 是已经对外发送过的可见 partial text；调用方应把它当成终止态清理响应处理器，而不是当作普通失败重试。
 
 ## 7. 缓存管理
 
@@ -197,4 +223,6 @@ LLMCacheManagePayload.evictContent(
 - 请求完成由 `ProtocolContext.complete/fail` 管理，异步任务不能提前 complete。
 - stream token 和最终 result 不做 `trim`，避免破坏代码块、换行和缩进。
 - `thinking=false` 会明确传给 sampler，避免模型模板默认进入 thinking。
+- `includeThinkingContent=false` 只控制协议响应是否暴露 `<think>...</think>` 内容，不改变模型是否生成 thinking。
+- TASK 暂停不产生协议终止态；只有取消、抢占或异常终止才会结束响应流。
 - LLM 未加载时返回 `LLM_SERVICE_NOT_READY`；调用方应把它视为可恢复状态，引导用户到【织言】页面加载模型。

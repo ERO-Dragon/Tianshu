@@ -26,13 +26,13 @@ JavaLlamaServer service = JavaLlamaServer.builder()
     .modelProfile("auto")                 // 可选：auto / qwen3 / qwen3.5 / deepseek-r1 / generic
     .chatContext(16000)
     .chatThreads(4)
-    .chatMaxQueueSize(4)
+    .chatMaxQueueSize(1)
     .gpuLayers(999)
     .cacheTypeK(KvCacheType.F16)          // 可选：F16 / Q8_0
     .cacheTypeV(KvCacheType.F16)          // 可选：F16 / Q8_0
     .taskContext(16000)                   // 可选；不设置时等于 chatContext
     .taskThreads(2)
-    .taskMaxQueueSize(1)
+    .taskMaxQueueSize(1)                 // TASK 热挂起槽数量；控制最多保留多少个 TASK KV/context
     .taskSuspendOnChat(true)
     .embeddingModel("models/bge.gguf")    // 可选：不配置则 embed/search 不可用
     .embeddingContextSize(16000)
@@ -72,6 +72,16 @@ CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler
 CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> tokenConsumer);
 ```
 
+### 2.1.1 推理输出归一化（内部行为）
+
+libs 不新增或改变上述调用方法；所有归一化都发生在内部 token 输出边界，对 `chat` / `chatStream` / `task` / `taskStream` 统一生效。
+
+- 不同开源模型可能使用不同的思考包裹格式，例如 `<think>`、`<reasoning>`、`<thought>`、`<analysis>`、`<|begin_of_thought|>` 等。
+- libs 会把已知思考包裹统一归一化为 `<think>...</think>` 后返回，便于上层只处理一种格式。
+- 空思考块会被清洗掉，例如 `<think></think>`、`<think>\n\n</think>` 或 no-think 标记块，不再返回给上层。
+- 流式输出不会缓冲完整思考段。内部只暂存可能组成标签的短尾部，以及开标签后的空白前缀；一旦出现非空思考内容，会立即流式输出规范化后的 `<think>` 和后续内容。
+- `enableThinking` / `ThinkingMode` 仍然只是生成前的模板控制；输出归一化是生成后的统一兼容层，二者互不改变对外 API。
+
 ### 2.2 向量
 
 ```java
@@ -109,7 +119,11 @@ List<RagSearchResult> search(String queryText, List<String> texts);
 - CHAT 通道优先级高于 TASK
 - CHAT 请求会挂起正在执行的 TASK 任务（`taskSuspendOnChat=true`）
 - TASK 任务在 `preemptible=true` 时可被更高优先级 TASK 抢占
-- task lane 容量表示已接收任务数，包含排队、执行和挂起中的任务
+- `taskMaxQueueSize` 不限制 TASK 接收数量，而是限制最多保留多少个热挂起 TASK 的 KV/context。
+- 天枢主模块不再把外部 TASK 接收容量交给 libs；跨模块 TASK 先进入 LLM 模块自己的 admission queue，再按有效优先级送入 libs。当前天枢默认只向 libs 保持 `chatMaxQueueSize=1`、`taskMaxQueueSize=1`；当 active TASK 可抢占且出现更高有效优先级任务时，admission 会允许该任务进入 libs 触发 TASK 抢占语义。
+- 热挂起（HOT）：保留当前 `LlamaCppContext` / sampler / processor，恢复最快，连续性最好。
+- 冷挂起（COLD）：当热挂起槽已满时，关闭 KV/context，只保留 prompt、模型原始已生成文本和归一化输出状态，并回到 TASK 队列。恢复时通过 replay `prompt + rawGeneratedText` 重建上下文，再继续生成。
+- COLD 恢复语义上会接上已生成内容，但不承诺与 HOT 恢复保持逐 token / bit-level 完全一致；若需要最高连续性，应增大 `taskMaxQueueSize` 以保留更多 HOT 挂起任务。
 
 ---
 
@@ -192,8 +206,8 @@ boolean hasTaskQueueCapacity();
 boolean hasQueueCapacity(); // 等价于 hasChatQueueCapacity()
 int getChatQueueSize();
 
-// hasTaskQueueCapacity 检查的是 task lane 可接收任务数，
-// 包含排队、执行和挂起中的任务，不只是队列长度。
+// hasTaskQueueCapacity 对 TASK 逻辑队列通常返回 true；
+// taskMaxQueueSize 表示热挂起 KV/context 保存槽，不再表示最大接收任务数。
 
 // 关闭服务
 void shutdown();

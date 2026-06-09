@@ -24,7 +24,8 @@ public final class AXChatHudRenderer {
     }
 
     public void render(GuiGraphics graphics, float partialTick) {
-        if (state == null || config == null || config.outputMode() == AXOutputMode.DISABLED) {
+        AXOutputMode outputMode = config == null ? AXOutputMode.DISABLED : config.outputMode();
+        if (state == null || outputMode == null || !outputMode.uiEnabled()) {
             return;
         }
         AXChatHudState.Snapshot snapshot = state.snapshot();

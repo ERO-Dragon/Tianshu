@@ -165,7 +165,7 @@ DialogueDeliveryPayload(
     String normalizedText,
     List<String> matchedWakeWords,
     List<String> matchedItemIds,
-    List<String> matchedEntityRefs,
+    List<DialogueEntityRef> matchedEntityRefs,
     DialogueInteractionHints interactionHints,
     DialogueContextSnapshot contextSnapshot,
     long timestampMillis,
@@ -173,11 +173,11 @@ DialogueDeliveryPayload(
 )
 ```
 
-owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如何处理。
+owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如何处理。`repairedText` 是 IR 修复后的自然语言正文，例如 `下届合金能做什么` 修复为 `下界合金能做什么`；物品资源 ID 只通过 `matchedItemIds` 提供，不应混入正文。
 
 非 owner 不会收到该 payload。
 
-其中 `repairedText`、`normalizedText`、`matchedWakeWords`、`matchedItemIds` 来自 IR 的文本侧结果。`matchedWakeWords` 在 IA 仲裁语义中只表示 wake word，不参与模糊评分。`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过平台 `DialogueContextProvider` 捕获的仲裁快照；语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会提供手持物、身上装备、准星实体、维度或按键状态。
+其中 `repairedText`、`normalizedText`、`matchedWakeWords`、`matchedItemIds` 来自 IR 的文本侧结果。`matchedWakeWords` 在 IA 仲裁语义中只表示 wake word，不参与模糊评分。`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过平台 `DialogueContextProvider` 捕获的仲裁快照；`matchedEntityRefs` 使用 `DialogueEntityRef`，会同时包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会提供手持物、身上装备、准星实体、维度或按键状态。
 
 ## 5. 处理 delivery
 

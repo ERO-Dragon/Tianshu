@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputSource;
 import com.rheinmetal.tianshu.function.auxilium.input.AXNormalizedInput;
-import com.rheinmetal.tianshu.protocol.payload.LlmPromptPayload;
 
 public record AXRequest(String requestKey, String userText, String providedContext, AXInputSource source) {
     public AXRequest(String requestKey, String userText, String providedContext) {
@@ -14,13 +13,6 @@ public record AXRequest(String requestKey, String userText, String providedConte
         userText = userText == null ? "" : userText.trim();
         providedContext = providedContext == null ? "" : providedContext.trim();
         source = source == null ? AXInputSource.UNKNOWN : source;
-    }
-
-    public static AXRequest fromPayload(String requestKey, LlmPromptPayload payload) {
-        if (payload == null) {
-            return new AXRequest(requestKey, "", "");
-        }
-        return new AXRequest(requestKey, payload.text(), payload.context());
     }
 
     public static AXRequest fromNormalizedInput(AXNormalizedInput input) {

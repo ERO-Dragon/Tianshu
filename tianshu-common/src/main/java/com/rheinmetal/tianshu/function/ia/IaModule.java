@@ -111,7 +111,7 @@ public final class IaModule implements TianshuManagedModule {
         this.participantContractValidator = new DialogueParticipantContractValidator(runtime.capabilities());
         this.contextProvider = contextProvider == null ? DialogueContextProvider.EMPTY : contextProvider;
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
-        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator);
+        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::updateContextParticipants);
     }
 
     @Override
@@ -171,6 +171,7 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         participantRegistry.register(payload.descriptor());
+        updateContextParticipants();
         refreshOwnerPreviews(envelope, System.currentTimeMillis());
         context.complete(envelope.envelopeId());
     }
@@ -186,6 +187,7 @@ public final class IaModule implements TianshuManagedModule {
         } else {
             participantLifecycleCoordinator.unregisterParticipant(envelope, payload.moduleId(), payload.participantId(), now);
         }
+        updateContextParticipants();
         refreshOwnerPreviews(envelope, now);
         context.complete(envelope.envelopeId());
     }
@@ -207,7 +209,7 @@ public final class IaModule implements TianshuManagedModule {
         List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
         Optional<DialogueSession> activeSession = sessionStore.activeForPlayer(payload.playerId(), now);
         Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(payload.playerId(), participants, now);
-        DialogueArbitrationInput input = DialogueArbitrationInput.from(payload, contextFor(payload, now));
+        DialogueArbitrationInput input = DialogueArbitrationInput.from(payload, contextFor(payload, participants, now));
         DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, claimEngine.collectLocalClaims(participants, input), attentionState);
         if (!decision.accepted()) {
             publishOwnerPreviewIfChanged(envelope, emptyPreview(payload.playerId(), now));
@@ -241,26 +243,33 @@ public final class IaModule implements TianshuManagedModule {
         }
         long now = payload.occurredAtMillis() > 0L ? payload.occurredAtMillis() : System.currentTimeMillis();
         if (payload.speaking()) {
-            contextFreezeStore.freeze(payload.sessionId(), captureContext(""), now);
+            contextFreezeStore.freeze(payload.sessionId(), captureContext("", participantRegistry.snapshot()), now);
         } else {
             contextFreezeStore.markEnded(payload.sessionId(), now);
         }
         context.complete(envelope.envelopeId());
     }
 
-    private DialogueContextFrame contextFor(DialogueArbitrationRequestPayload payload, long now) {
+    private DialogueContextFrame contextFor(DialogueArbitrationRequestPayload payload, List<DialogueParticipantDescriptor> participants, long now) {
         contextFreezeStore.sweep(now);
         return contextFreezeStore.consume(payload.sourceSessionId(), now)
                 .map(frame -> withPlayerId(frame, payload.playerId()))
-                .orElseGet(() -> captureContext(payload.playerId()));
+                .orElseGet(() -> captureContext(payload.playerId(), participants));
     }
 
-    private DialogueContextFrame captureContext(String playerId) {
+    private DialogueContextFrame captureContext(String playerId, List<DialogueParticipantDescriptor> participants) {
         try {
-            DialogueContextFrame frame = contextProvider.capture(playerId);
+            DialogueContextFrame frame = contextProvider.capture(playerId, participants);
             return frame == null ? DialogueContextFrame.empty(playerId) : frame;
         } catch (RuntimeException ignored) {
             return DialogueContextFrame.empty(playerId);
+        }
+    }
+
+    private void updateContextParticipants() {
+        try {
+            contextProvider.updateParticipants(participantRegistry.snapshot());
+        } catch (RuntimeException ignored) {
         }
     }
 

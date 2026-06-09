@@ -112,6 +112,8 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前如果说话将被哪个 IA owner 承接。 |
 
+`LLM.STATUS` 当前状态值保持轻量：`ACCEPTED`、`QUEUED`、`STREAMING`、`COMPLETED`、`CANCELLED`、`FAILED`。其中 `QUEUED` 表示 TASK 已进入 LLM 模块自己的 admission queue，但尚未送入 libs。
+
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 
 ### 3.3 协议响应 Response

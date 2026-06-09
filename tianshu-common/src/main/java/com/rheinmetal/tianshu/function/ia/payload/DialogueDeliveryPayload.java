@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.payload;
 
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
@@ -16,7 +17,7 @@ public record DialogueDeliveryPayload(
         String normalizedText,
         List<String> matchedWakeWords,
         List<String> matchedItemIds,
-        List<String> matchedEntityRefs,
+        List<DialogueEntityRef> matchedEntityRefs,
         DialogueInteractionHints interactionHints,
         DialogueContextSnapshot contextSnapshot,
         long timestampMillis,
@@ -31,7 +32,7 @@ public record DialogueDeliveryPayload(
         normalizedText = sanitize(normalizedText);
         matchedWakeWords = copyTextList(matchedWakeWords);
         matchedItemIds = copyTextList(matchedItemIds);
-        matchedEntityRefs = copyTextList(matchedEntityRefs);
+        matchedEntityRefs = copyEntityRefs(matchedEntityRefs);
         interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
         contextSnapshot = contextSnapshot == null ? DialogueContextSnapshot.empty(playerId) : contextSnapshot;
         timestampMillis = Math.max(0L, timestampMillis);
@@ -48,11 +49,7 @@ public record DialogueDeliveryPayload(
                 input.normalizedText(),
                 input.matchedWakeWords(),
                 input.matchedItemIds(),
-                input.contextSnapshot().entityRefs().stream()
-                        .map(ref -> ref.entityTypeId())
-                        .filter(value -> value != null && !value.isBlank())
-                        .distinct()
-                        .toList(),
+                input.contextSnapshot().entityRefs(),
                 input.interactionHints(),
                 input.contextSnapshot(),
                 input.timestampMillis(),
@@ -62,6 +59,12 @@ public record DialogueDeliveryPayload(
 
     private static List<String> copyTextList(List<String> values) {
         return values == null ? List.of() : List.copyOf(values.stream().filter(value -> value != null && !value.isBlank()).map(String::trim).toList());
+    }
+
+    private static List<DialogueEntityRef> copyEntityRefs(List<DialogueEntityRef> values) {
+        return values == null ? List.of() : List.copyOf(values.stream()
+                .filter(ref -> ref != null && !ref.entityId().isBlank() && !ref.entityTypeId().isBlank())
+                .toList());
     }
 
     private static String requireText(String value, String name) {

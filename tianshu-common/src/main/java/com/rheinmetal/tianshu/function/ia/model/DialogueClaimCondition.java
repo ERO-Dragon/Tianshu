@@ -5,12 +5,18 @@ import java.util.List;
 public record DialogueClaimCondition(
         DialogueClaimConditionType type,
         List<String> values,
-        String factKey
+        String factKey,
+        double maxDistance
 ) {
     public DialogueClaimCondition {
         type = type == null ? DialogueClaimConditionType.WAKE_WORD : type;
         values = copyTextList(values);
         factKey = sanitize(factKey);
+        maxDistance = Math.max(0.0D, maxDistance);
+    }
+
+    public DialogueClaimCondition(DialogueClaimConditionType type, List<String> values, String factKey) {
+        this(type, values, factKey, 0.0D);
     }
 
     public static DialogueClaimCondition wakeWord(String... values) {
@@ -27,6 +33,10 @@ public record DialogueClaimCondition(
 
     public static DialogueClaimCondition crosshairEntity(String... values) {
         return new DialogueClaimCondition(DialogueClaimConditionType.CROSSHAIR_ENTITY, List.of(values), "");
+    }
+
+    public static DialogueClaimCondition nearestEntityWithin(double maxDistance, String... values) {
+        return new DialogueClaimCondition(DialogueClaimConditionType.NEAREST_ENTITY_WITHIN, List.of(values), "", maxDistance);
     }
 
     public static DialogueClaimCondition crosshairHit() {

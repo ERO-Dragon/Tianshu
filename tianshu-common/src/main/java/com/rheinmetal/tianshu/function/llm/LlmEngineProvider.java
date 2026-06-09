@@ -36,10 +36,10 @@ public final class LlmEngineProvider {
                 .modelProfile("auto")
                 .chatContext(config.getLlmChatContextSize())
                 .chatThreads(chatThreads)
-                .chatMaxQueueSize(config.getLlmMaxQueueSize())
+                .chatMaxQueueSize(positiveOrOne(config.getLlmLibsChatQueueSize()))
                 .taskContext(config.getLlmTaskContextSize())
                 .taskThreads(taskThreads)
-                .taskMaxQueueSize(config.getLlmTaskMaxQueueSize())
+                .taskMaxQueueSize(positiveOrOne(config.getLlmTaskHotSuspendSlots()))
                 .taskSuspendOnChat(config.isLlmTaskSuspendOnChatEnabled())
                 .requestTimeoutSeconds(config.getLlmRequestTimeoutSeconds())
                 .cacheTypeK(parseCacheType(config.getLlmCacheTypeK(), KvCacheType.Q8_0))
@@ -64,6 +64,10 @@ public final class LlmEngineProvider {
             return 0;
         }
         return Math.max(1, Math.round(999f * clamped / 100f));
+    }
+
+    private int positiveOrOne(int value) {
+        return Math.max(1, value);
     }
 
     private KvCacheType parseCacheType(String value, KvCacheType fallback) {

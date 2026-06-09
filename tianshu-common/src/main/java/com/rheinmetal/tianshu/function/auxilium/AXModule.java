@@ -25,6 +25,7 @@ import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextResolver;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.context.AXMemoryWindowPolicy;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenanceCoordinator;
@@ -142,6 +143,7 @@ public final class AXModule implements TianshuManagedModule {
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
         AXTurnOrchestrator turnOrchestrator = new AXTurnOrchestrator(
                 scopeProvider,
+                new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 maintenanceCoordinator,
                 contextCollector,
@@ -206,7 +208,7 @@ public final class AXModule implements TianshuManagedModule {
             return;
         }
         if (payload.speaking() && llmClient != null) {
-            llmClient.cancelAll(AXTurnCancellation.playerInterrupted("user started speaking"));
+            llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
         }
         context.complete(envelope.envelopeId());
     }

@@ -2,6 +2,14 @@ package com.rheinmetal.tianshu.function.ir.enhance;
 
 import java.util.List;
 
+/**
+ * Item enhancement output keeps natural language and structured identifiers separate.
+ *
+ * @param repairedText natural-language repaired text for downstream dialogue, never a resource-id replacement surface
+ * @param matchedItemNames human-readable matched item names
+ * @param matchedItemIds structured item ids for machine routing and context
+ * @param matched whether any item was matched
+ */
 public record IrItemEnhancementResult(String repairedText, List<String> matchedItemNames, List<String> matchedItemIds, boolean matched) {
     public IrItemEnhancementResult {
         if (repairedText == null) {
