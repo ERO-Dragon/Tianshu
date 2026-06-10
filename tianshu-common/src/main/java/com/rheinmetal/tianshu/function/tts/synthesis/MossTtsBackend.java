@@ -86,7 +86,11 @@ public final class MossTtsBackend implements TtsBackend {
                 if (pcm.length > 0) {
                     sink.accept(pcm);
                 }
-                env.info("MOSS-TTS sub-chunk " + (chunkIndex + 1) + "/" + totalChunks + " completed");
+                if (totalChunks > 0) {
+                    env.info("MOSS-TTS sub-chunk " + (chunkIndex + 1) + "/" + totalChunks + " completed");
+                } else {
+                    env.info("MOSS-TTS stream chunk " + (chunkIndex + 1) + " completed");
+                }
             });
             if (interrupted) {
                 env.info("MOSS-TTS synthesis interrupted: " + request.text());

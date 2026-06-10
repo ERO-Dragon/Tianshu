@@ -1,12 +1,13 @@
 package com.rheinmetal.tianshu.protocol.broker;
 
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutionPolicy;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 
 public final class ServerPacketBroker extends AbstractQueueBroker {
     private volatile boolean serverAuthorized;
 
-    public ServerPacketBroker(String brokerId, int queueCapacity, ProtocolExecutorManager executorManager) {
-        super(brokerId, queueCapacity, 1, executorManager);
+    public ServerPacketBroker(String brokerId, int queueCapacity, ProtocolExecutorManager executorManager, ProtocolExecutionPolicy executionPolicy) {
+        super(brokerId, queueCapacity, 1, executorManager, executionPolicy);
     }
 
     public void setServerAuthorized(boolean serverAuthorized) {

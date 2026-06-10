@@ -8,6 +8,7 @@ import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.utils.PathUtils;
 
@@ -19,10 +20,16 @@ import java.util.Optional;
 public final class SherpaOnnxTtsConfigFactory {
     private final IGameEnvironment env;
     private final ITianshuConfig config;
+    private final InferenceResourcePolicy resourcePolicy;
 
     public SherpaOnnxTtsConfigFactory(IGameEnvironment env, ITianshuConfig config) {
+        this(env, config, InferenceResourcePolicy.systemDefault());
+    }
+
+    public SherpaOnnxTtsConfigFactory(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
         this.config = config;
+        this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
     }
 
     public Optional<ResolvedConfig> build(TtsResolvedModel model) {
@@ -78,7 +85,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setKokoro(kokoroBuilder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info.getEngineType(), false))
                 .setDebug(false)
                 .build();
         return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
@@ -105,7 +112,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setMatcha(matchaBuilder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info.getEngineType(), false))
                 .setDebug(false)
                 .build();
         return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
@@ -143,7 +150,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setZipvoice(zipVoiceBuilder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info.getEngineType(), true))
                 .setDebug(false)
                 .build();
         return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
@@ -176,7 +183,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setVits(vitsBuilder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info.getEngineType(), false))
                 .setDebug(false)
                 .build();
         List<String> effectiveRuleFsts = info.ruleFsts;
@@ -210,7 +217,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setVits(vitsBuilder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor("piper", false))
                 .setDebug(false)
                 .build();
         return OfflineTtsConfig.builder()
@@ -238,7 +245,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setVits(vitsBuilder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor("melo", false))
                 .setDebug(false)
                 .build();
         StringBuilder ruleFsts = new StringBuilder();
@@ -363,6 +370,10 @@ public final class SherpaOnnxTtsConfigFactory {
             return modelPath.getFileName().toString();
         }
         return "PiperTTS";
+    }
+
+    private int threadsFor(String engineType, boolean zipVoice) {
+        return resourcePolicy.sherpaTtsThreads(engineType, zipVoice);
     }
 
     private File findFile(File dir, String keyword, String extension) {

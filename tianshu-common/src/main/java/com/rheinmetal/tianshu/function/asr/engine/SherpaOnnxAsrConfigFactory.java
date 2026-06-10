@@ -16,6 +16,7 @@ import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig;
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.ModelSettings;
 
@@ -29,9 +30,15 @@ import java.util.function.Consumer;
 
 public final class SherpaOnnxAsrConfigFactory {
     private final IGameEnvironment env;
+    private final InferenceResourcePolicy resourcePolicy;
 
     public SherpaOnnxAsrConfigFactory(IGameEnvironment env) {
+        this(env, InferenceResourcePolicy.systemDefault());
+    }
+
+    public SherpaOnnxAsrConfigFactory(IGameEnvironment env, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
+        this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
     }
 
     public Optional<ResolvedConfig> build(AsrModelInfo info, Path modelDir, Path hotwordsFile) {
@@ -90,7 +97,7 @@ public final class SherpaOnnxAsrConfigFactory {
         OnlineModelConfig modelConfig = OnlineModelConfig.builder()
                 .setTransducer(transducer)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build();
         OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder()
@@ -116,7 +123,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-transducer", OfflineModelConfig.builder()
                 .setTransducer(transducer)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build(), builder -> configureOfflineTransducerHotwords(builder, modelDir, hotwordsFile));
     }
@@ -131,7 +138,7 @@ public final class SherpaOnnxAsrConfigFactory {
             return buildOffline("offline-paraformer", OfflineModelConfig.builder()
                     .setParaformer(paraformer)
                     .setTokens(tokens)
-                    .setNumThreads(2)
+                    .setNumThreads(threadsFor(info))
                     .setDebug(true)
                     .build());
         }
@@ -152,7 +159,7 @@ public final class SherpaOnnxAsrConfigFactory {
         OnlineModelConfig modelConfig = OnlineModelConfig.builder()
                 .setParaformer(paraformer)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build();
         OnlineRecognizerConfig config = OnlineRecognizerConfig.builder()
@@ -174,7 +181,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-zipformer-ctc", OfflineModelConfig.builder()
                 .setZipformerCtc(ctc)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -191,7 +198,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-wenet-ctc", OfflineModelConfig.builder()
                 .setWenetCtc(ctc)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -208,7 +215,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-nemo-ctc", OfflineModelConfig.builder()
                 .setNemo(nemo)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -229,7 +236,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-whisper", OfflineModelConfig.builder()
                 .setWhisper(whisper)
                 .setTokens(tokens)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -246,7 +253,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .build();
         return buildOffline("offline-sensevoice", OfflineModelConfig.builder()
                 .setSenseVoice(senseVoice)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -268,7 +275,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setItn(true);
         return buildOffline("offline-funasr-nano", OfflineModelConfig.builder()
                 .setFunAsrNano(builder.build())
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -283,7 +290,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .build();
         return buildOffline("offline-dolphin", OfflineModelConfig.builder()
                 .setDolphin(dolphin)
-                .setNumThreads(2)
+                .setNumThreads(threadsFor(info))
                 .setDebug(true)
                 .build());
     }
@@ -332,6 +339,14 @@ public final class SherpaOnnxAsrConfigFactory {
             return Optional.empty();
         }
         return Optional.of(hotwordsFile.toAbsolutePath().normalize());
+    }
+
+    private int threadsFor(AsrModelInfo info) {
+        return resourcePolicy.sherpaAsrThreads(
+                info != null && info.isStreamingModel(),
+                info == null ? "" : info.architecture(),
+                info == null ? "" : info.name
+        );
     }
 
     private String resolveLanguage(AsrModelInfo info) {

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPhase;
+import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 
 public record TtsRuntimeSnapshot(
         boolean bound,
@@ -9,7 +9,7 @@ public record TtsRuntimeSnapshot(
         boolean ready,
         boolean synthesisReady,
         boolean autoregressive,
-        TtsPlaybackPhase playbackPhase,
+        TtsPlaybackState playbackState,
         String activeRequestId,
         String activeSource,
         Priority activePriority,
@@ -18,7 +18,7 @@ public record TtsRuntimeSnapshot(
         long updatedAtMillis
 ) {
     public TtsRuntimeSnapshot {
-        playbackPhase = playbackPhase == null ? TtsPlaybackPhase.ACCEPTED : playbackPhase;
+        playbackState = playbackState == null ? TtsPlaybackState.IDLE : playbackState;
         activeRequestId = activeRequestId == null ? "" : activeRequestId.trim();
         activeSource = activeSource == null ? "" : activeSource.trim();
         activePriority = activePriority == null ? Priority.NORMAL : activePriority;
@@ -28,6 +28,6 @@ public record TtsRuntimeSnapshot(
     }
 
     public static TtsRuntimeSnapshot unbound() {
-        return new TtsRuntimeSnapshot(false, false, false, false, false, TtsPlaybackPhase.ACCEPTED, "", "", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", System.currentTimeMillis());
+        return new TtsRuntimeSnapshot(false, false, false, false, false, TtsPlaybackState.IDLE, "", "", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", System.currentTimeMillis());
     }
 }

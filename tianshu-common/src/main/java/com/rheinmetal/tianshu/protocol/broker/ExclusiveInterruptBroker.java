@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.protocol.broker;
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutionPolicy;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -10,8 +11,8 @@ import java.util.ArrayList;
 import java.util.Map;
 
 public final class ExclusiveInterruptBroker extends AbstractQueueBroker {
-    public ExclusiveInterruptBroker(String brokerId, int queueCapacity, ProtocolExecutorManager executorManager) {
-        super(brokerId, queueCapacity, 1, executorManager);
+    public ExclusiveInterruptBroker(String brokerId, int queueCapacity, ProtocolExecutorManager executorManager, ProtocolExecutionPolicy executionPolicy) {
+        super(brokerId, queueCapacity, 1, executorManager, executionPolicy);
     }
 
     @Override

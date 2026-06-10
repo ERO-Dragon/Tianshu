@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.libs.llm.KvCacheType;
 
@@ -14,11 +15,17 @@ public final class LlmEngineProvider {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
+    private final InferenceResourcePolicy resourcePolicy;
     private JavaLlamaServer aiService;
 
     public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config) {
+        this(env, config, InferenceResourcePolicy.systemDefault());
+    }
+
+    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
         this.config = config;
+        this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
     }
 
     private JavaLlamaServer createAiService() {
@@ -28,10 +35,10 @@ public final class LlmEngineProvider {
             return null;
         }
 
-        int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
-        int chatThreads = Math.max(1, processors - 1);
-        int taskThreads = Math.max(1, processors / 2);
-        int gpuLayers = gpuLayersFromPercent(config.getLlmGpuLayerPercent());
+        int processors = resourcePolicy.processors();
+        int chatThreads = resourcePolicy.llmGpuHelperThreads();
+        int taskThreads = resourcePolicy.llmGpuHelperThreads();
+        int gpuLayers = resourcePolicy.fullGpuLayers();
 
         JavaLlamaServer.Builder builder = JavaLlamaServer.builder()
                 .model(modelPath.toString())
@@ -53,20 +60,12 @@ public final class LlmEngineProvider {
         if (embeddingPath != null) {
             builder.embeddingModel(embeddingPath.toString())
                     .embeddingContextSize(config.getLlmEmbeddingContextSize())
-                    .embeddingThreads(Math.max(1, processors / 2))
+                    .embeddingThreads(Math.max(1, Math.min(processors, resourcePolicy.llmGpuHelperThreads())))
                     .embeddingAlias(blankToNull(config.getLlmEmbeddingModelName()))
                     .embeddingGpuLayers(gpuLayers);
         }
 
         return builder.build();
-    }
-
-    private int gpuLayersFromPercent(int percent) {
-        int clamped = Math.max(0, Math.min(100, percent));
-        if (clamped == 0) {
-            return 0;
-        }
-        return Math.max(1, Math.round(999f * clamped / 100f));
     }
 
     private int positiveOrOne(int value) {

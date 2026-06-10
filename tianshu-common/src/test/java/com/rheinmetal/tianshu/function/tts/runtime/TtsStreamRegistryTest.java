@@ -2,39 +2,47 @@ package com.rheinmetal.tianshu.function.tts.runtime;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TtsStreamRegistryTest {
     @Test
     void appendIgnoresNullChunk() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
 
-        Optional<String> segment = registry.append(null);
+        List<String> segments = registry.append(null);
 
-        assertFalse(segment.isPresent());
+        assertEquals(List.of(), segments);
         assertEquals(0, registry.activeStreamCount());
     }
 
     @Test
     void lastChunkFlushesAndRemovesStream() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
-        TtsStreamChunk chunk = new TtsStreamChunk("stream-1", "env-1", "trace-1", "你好世界", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true);
+        TtsStreamChunk chunk = new TtsStreamChunk("stream-1", "env-1", "trace-1", "hello world", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true);
 
-        Optional<String> segment = registry.append(chunk);
+        List<String> segments = registry.append(chunk);
 
-        assertTrue(segment.isPresent());
-        assertEquals("你好世界", segment.get());
+        assertEquals(List.of("hello world"), segments);
+        assertEquals(0, registry.activeStreamCount());
+    }
+
+    @Test
+    void lastChunkReturnsBoundarySegmentsAndTailInOrder() {
+        TtsStreamRegistry registry = new TtsStreamRegistry();
+        TtsStreamChunk chunk = new TtsStreamChunk("stream-1", "env-1", "trace-1", "This sentence is definitely long enough! Tail", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true);
+
+        List<String> segments = registry.append(chunk);
+
+        assertEquals(List.of("This sentence is definitely long enough!", "Tail"), segments);
         assertEquals(0, registry.activeStreamCount());
     }
 
     @Test
     void cancelClearsBufferedStream() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
-        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "还没有结束", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "partial text", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
 
         registry.cancel("stream-1");
 
@@ -44,8 +52,8 @@ class TtsStreamRegistryTest {
     @Test
     void clearRemovesAllBufferedStreams() {
         TtsStreamRegistry registry = new TtsStreamRegistry();
-        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "第一段", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
-        registry.append(new TtsStreamChunk("stream-2", "env-2", "trace-2", "第二段", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "first partial", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        registry.append(new TtsStreamChunk("stream-2", "env-2", "trace-2", "second partial", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
 
         registry.clear();
 

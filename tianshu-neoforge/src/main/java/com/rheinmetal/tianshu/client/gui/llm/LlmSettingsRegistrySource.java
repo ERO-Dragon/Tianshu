@@ -97,7 +97,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final LlmModelService modelService;
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedModelName;
-        private final MutableSettingsValue<Double> gpuLayerPercent;
         private final MutableSettingsValue<Boolean> downloadExpanded;
         private final MutableSettingsValue<String> recommendationFilter;
         private final MutableSettingsValue<String> scaleFilter;
@@ -111,7 +110,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.modelService = coreManager.requireService(LlmModelService.class);
             this.enabled = new MutableSettingsValue<>(config::isLlmEnabled, config::setLlmEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
-            this.gpuLayerPercent = new MutableSettingsValue<>(() -> (double) config.getLlmGpuLayerPercent(), ignored -> {}, value -> value != null && value >= 0 && value <= 100);
             this.downloadExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
             this.recommendationFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.scaleFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
@@ -151,8 +149,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildLoadOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
-            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, Component::literal, enabled::get)
-                    .slider("llm.efficiency", llm("option.efficiency"), gpuLayerPercent, 0, 100, enabled::get);
+            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, Component::literal, enabled::get);
         }
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -177,17 +174,13 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
-                    || selectedModelName.dirty()
-                    || gpuLayerPercent.dirty();
+                    || selectedModelName.dirty();
         }
 
         @Override
         public SettingsValidationResult validate() {
             if (!selectedModelName.valid()) {
                 return SettingsValidationResult.failure(llm("validation.invalid_model"));
-            }
-            if (!gpuLayerPercent.valid()) {
-                return SettingsValidationResult.failure(llm("validation.invalid_efficiency"));
             }
             return SettingsValidationResult.successful();
         }
@@ -197,8 +190,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             enabled.save();
             config.setCustomLlmName(selectedModelName.get());
             selectedModelName.save();
-            config.setLlmGpuLayerPercent(gpuLayerPercent.get().intValue());
-            gpuLayerPercent.save();
             config.save();
             if (!enabled.get()) {
                 moduleService.unload();
@@ -210,7 +201,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         public void reset() {
             enabled.reset();
             selectedModelName.reset();
-            gpuLayerPercent.reset();
         }
 
         private List<String> downloadedModelNames() {
@@ -285,7 +275,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 return;
             }
             config.setCustomLlmName(info.name);
-            config.setLlmGpuLayerPercent(gpuLayerPercent.get().intValue());
             config.save();
             LlmControlResult result = moduleService.load();
             context.showStatus(result.accepted() ? llm("message.load_started") : Component.literal(result.message()), 3000);

@@ -30,11 +30,10 @@ public final class AudioCaptureService {
     public void startPttCapture(long sessionId) {
         stopStreamCapture();
         frameProcessor.reset();
-        speechActivityDetector.start(sessionId);
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         pttBuffer = buffer;
         audioBridge.startStreamRecording(chunk -> {
-            byte[] processed = processChunk(chunk);
+            byte[] processed = processChunk(chunk, false);
             if (processed != null && processed.length > 0) {
                 synchronized (buffer) {
                     buffer.write(processed, 0, processed.length);
@@ -45,7 +44,6 @@ public final class AudioCaptureService {
 
     public byte[] stopPttCapture() {
         audioBridge.stopStreamRecording();
-        speechActivityDetector.stop();
         ByteArrayOutputStream buffer = pttBuffer;
         pttBuffer = null;
         if (buffer == null) {
@@ -60,7 +58,7 @@ public final class AudioCaptureService {
         frameProcessor.reset();
         speechActivityDetector.start(sessionId);
         audioBridge.startStreamRecording(chunk -> {
-            byte[] processed = processChunk(chunk);
+            byte[] processed = processChunk(chunk, true);
             if (processed != null && processed.length > 0) {
                 consumer.accept(processed);
             }
@@ -96,9 +94,9 @@ public final class AudioCaptureService {
         }
     }
 
-    private byte[] processChunk(byte[] chunk) {
+    private byte[] processChunk(byte[] chunk, boolean detectSpeechActivity) {
         byte[] processed = frameProcessor.process(chunk);
-        if (processed != null && processed.length > 0) {
+        if (detectSpeechActivity && processed != null && processed.length > 0) {
             speechActivityDetector.accept(processed);
         }
         return processed;

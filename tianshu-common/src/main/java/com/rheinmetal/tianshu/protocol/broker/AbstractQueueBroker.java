@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
-import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutionPolicy;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
@@ -23,13 +23,15 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
     protected final PriorityBlockingQueue<BrokerTask> queue = new PriorityBlockingQueue<>();
     protected final Map<String, BrokerTask> running = new ConcurrentHashMap<>();
     protected final ProtocolExecutorManager executorManager;
+    protected final ProtocolExecutionPolicy executionPolicy;
     protected final AtomicBoolean draining = new AtomicBoolean(false);
 
-    protected AbstractQueueBroker(String brokerId, int queueCapacity, int maxConcurrency, ProtocolExecutorManager executorManager) {
+    protected AbstractQueueBroker(String brokerId, int queueCapacity, int maxConcurrency, ProtocolExecutorManager executorManager, ProtocolExecutionPolicy executionPolicy) {
         this.brokerId = brokerId;
         this.queueCapacity = Math.max(1, queueCapacity);
         this.maxConcurrency = Math.max(1, maxConcurrency);
         this.executorManager = executorManager;
+        this.executionPolicy = executionPolicy == null ? new ProtocolExecutionPolicy() : executionPolicy;
     }
 
     @Override
@@ -72,7 +74,7 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
         return ProtocolTaskSpec.builder()
             .moduleId(task.registration().capabilityDescriptor().capabilityId())
             .envelopeId(task.envelope().envelopeId())
-            .lane(ExecutionLane.CPU)
+            .lane(executionPolicy.resolveLane(task.envelope(), task.registration()))
             .priority(task.envelope().header().priority())
             .maxConcurrency(maxConcurrency)
             .queueCapacity(queueCapacity)

@@ -5,10 +5,12 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.sentencepiece.SentencePieceProcessor;
 
@@ -36,11 +38,15 @@ public class MossTtsService implements AutoCloseable {
     private static final String TTS_REPO_ID = "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX";
     private static final String CODEC_REPO_ID = "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX";
     private static final String REVISION = "main";
+    static final String SAMPLE_MODE_GREEDY = "greedy";
+    static final String SAMPLE_MODE_FIXED = "fixed";
+    static final String SAMPLE_MODE_FULL = "full";
     private static final Gson GSON = new Gson();
 
     private final IGameEnvironment env;
     private final HuggingFaceDownloader downloader;
     private final Path modelRootDir;
+    private final InferenceResourcePolicy resourcePolicy;
     private final Path ttsDir;
     private final Path codecDir;
     private final Random random = new Random(1234L);
@@ -53,9 +59,14 @@ public class MossTtsService implements AutoCloseable {
     private final Map<String, OrtSession> sessions = new HashMap<>();
 
     public MossTtsService(IGameEnvironment env, HuggingFaceDownloader downloader, Path modelRootDir) {
+        this(env, downloader, modelRootDir, InferenceResourcePolicy.systemDefault());
+    }
+
+    public MossTtsService(IGameEnvironment env, HuggingFaceDownloader downloader, Path modelRootDir, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
         this.downloader = downloader;
         this.modelRootDir = modelRootDir;
+        this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
         this.ttsDir = modelRootDir;
         this.codecDir = modelRootDir;
     }
@@ -65,7 +76,6 @@ public class MossTtsService implements AutoCloseable {
             downloadModels();
         }
         loadManifestAndMeta();
-        applyStableLowLatencyGenerationProfile();
         initOrtEnvironment();
         initTokenizer();
         initSessions();
@@ -96,27 +106,42 @@ public class MossTtsService implements AutoCloseable {
 
     private JsonObject getGenerationDefaults() {
         JsonObject generationDefaults = getOrCreateObject(manifest, "generation_defaults");
-        ensureNumber(generationDefaults, "max_new_frames", 1600);
-        ensureBoolean(generationDefaults, "do_sample", false);
-        ensureString(generationDefaults, "sample_mode", "greedy");
-        ensureNumber(generationDefaults, "text_temperature", 1.0f);
-        ensureNumber(generationDefaults, "text_top_k", 2);
-        ensureNumber(generationDefaults, "text_top_p", 1.0f);
-        ensureNumber(generationDefaults, "audio_temperature", 1.0f);
-        ensureNumber(generationDefaults, "audio_top_k", 50);
-        ensureNumber(generationDefaults, "audio_top_p", 1.0f);
-        ensureNumber(generationDefaults, "audio_repetition_penalty", 1.0f);
+        normalizeGenerationDefaults(generationDefaults);
         return generationDefaults;
     }
 
-    private void applyStableLowLatencyGenerationProfile() {
-        JsonObject generationDefaults = getGenerationDefaults();
-        generationDefaults.addProperty("do_sample", false);
-        generationDefaults.addProperty("sample_mode", "greedy");
-        env.info("MOSS-TTS generation profile: stable low-latency greedy mode enabled");
+    static JsonObject normalizeGenerationDefaults(JsonObject generationDefaults) {
+        ensureNumber(generationDefaults, "max_new_frames", 375);
+        ensureBoolean(generationDefaults, "do_sample", true);
+        ensureString(generationDefaults, "sample_mode", SAMPLE_MODE_FIXED);
+        ensureNumber(generationDefaults, "text_temperature", 1.0f);
+        ensureNumber(generationDefaults, "text_top_k", 50);
+        ensureNumber(generationDefaults, "text_top_p", 1.0f);
+        ensureNumber(generationDefaults, "audio_temperature", 0.8f);
+        ensureNumber(generationDefaults, "audio_top_k", 25);
+        ensureNumber(generationDefaults, "audio_top_p", 0.95f);
+        ensureNumber(generationDefaults, "audio_repetition_penalty", 1.2f);
+        String sampleMode = normalizeSampleMode(
+                generationDefaults.get("sample_mode").getAsString(),
+                generationDefaults.get("do_sample").getAsBoolean()
+        );
+        generationDefaults.addProperty("sample_mode", sampleMode);
+        generationDefaults.addProperty("do_sample", !SAMPLE_MODE_GREEDY.equals(sampleMode));
+        return generationDefaults;
     }
 
-    private JsonObject getOrCreateObject(JsonObject object, String name) {
+    static String normalizeSampleMode(String rawSampleMode, boolean doSample) {
+        String normalized = rawSampleMode == null ? "" : rawSampleMode.trim().toLowerCase();
+        if (SAMPLE_MODE_GREEDY.equals(normalized)) {
+            return SAMPLE_MODE_GREEDY;
+        }
+        if (SAMPLE_MODE_FIXED.equals(normalized) || SAMPLE_MODE_FULL.equals(normalized)) {
+            return doSample ? normalized : SAMPLE_MODE_GREEDY;
+        }
+        return doSample ? SAMPLE_MODE_FIXED : SAMPLE_MODE_GREEDY;
+    }
+
+    private static JsonObject getOrCreateObject(JsonObject object, String name) {
         JsonElement element = object.get(name);
         if (element != null && element.isJsonObject()) {
             return element.getAsJsonObject();
@@ -126,19 +151,19 @@ public class MossTtsService implements AutoCloseable {
         return child;
     }
 
-    private void ensureBoolean(JsonObject object, String name, boolean value) {
+    private static void ensureBoolean(JsonObject object, String name, boolean value) {
         if (!object.has(name) || object.get(name).isJsonNull()) {
             object.addProperty(name, value);
         }
     }
 
-    private void ensureString(JsonObject object, String name, String value) {
+    private static void ensureString(JsonObject object, String name, String value) {
         if (!object.has(name) || object.get(name).isJsonNull()) {
             object.addProperty(name, value);
         }
     }
 
-    private void ensureNumber(JsonObject object, String name, Number value) {
+    private static void ensureNumber(JsonObject object, String name, Number value) {
         if (!object.has(name) || object.get(name).isJsonNull()) {
             object.addProperty(name, value);
         }
@@ -190,11 +215,7 @@ public class MossTtsService implements AutoCloseable {
     }
 
     private int resolveInferenceThreads() {
-        int availableProcessors = Runtime.getRuntime().availableProcessors();
-        if (availableProcessors <= 0) {
-            return 2;
-        }
-        return Math.max(2, Math.min(4, availableProcessors));
+        return resourcePolicy.mossTtsThreads();
     }
 
     public int[] encodeText(String text) {
@@ -207,16 +228,14 @@ public class MossTtsService implements AutoCloseable {
             throw new IOException("参考音频文件不存在: " + wavPath);
         }
 
-        float[][] pcmChannels = readWavAsFloatChannels(wavPath);
-        float[][] mono = new float[1][];
-        mono[0] = pcmChannels.length > 0 ? pcmChannels[0] : new float[0];
-
         int targetSampleRate = getSampleRate();
-        mono = resampleIfNeeded(mono, (int) readWavSampleRate(wavPath), targetSampleRate);
+        float[][] pcmChannels = readWavAsFloatChannels(wavPath);
+        float[][] promptChannels = prepareCodecChannels(pcmChannels, codecChannels());
+        promptChannels = resampleIfNeeded(promptChannels, (int) readWavSampleRate(wavPath), targetSampleRate);
 
         float[][][] waveform = new float[1][][];
-        waveform[0] = mono;
-        int waveformLength = mono[0].length;
+        waveform[0] = promptChannels;
+        int waveformLength = promptChannels.length == 0 ? 0 : promptChannels[0].length;
 
         try (OnnxTensor waveformTensor = OnnxTensor.createTensor(ortEnvironment, waveform);
              OnnxTensor lengthsTensor = OnnxTensor.createTensor(ortEnvironment,
@@ -246,6 +265,65 @@ public class MossTtsService implements AutoCloseable {
             }
             return promptAudioCodes;
         }
+    }
+
+    public List<String> listBuiltinVoiceNames() {
+        JsonArray voices = manifest != null && manifest.has("builtin_voices")
+                ? manifest.getAsJsonArray("builtin_voices")
+                : new JsonArray();
+        List<String> names = new ArrayList<>(voices.size());
+        for (JsonElement element : voices) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject voice = element.getAsJsonObject();
+            if (voice.has("voice") && !voice.get("voice").isJsonNull()) {
+                names.add(voice.get("voice").getAsString());
+            }
+        }
+        return names;
+    }
+
+    public List<List<Integer>> resolveBuiltinVoicePromptAudioCodes(String voiceName) {
+        if (manifest == null || !manifest.has("builtin_voices")) {
+            throw new IllegalStateException("MOSS manifest 未加载内置音色");
+        }
+        String requestedVoice = voiceName == null || voiceName.isBlank() ? "Junhao" : voiceName.trim();
+        for (JsonElement element : manifest.getAsJsonArray("builtin_voices")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject voice = element.getAsJsonObject();
+            String currentName = voice.has("voice") && !voice.get("voice").isJsonNull()
+                    ? voice.get("voice").getAsString()
+                    : "";
+            if (requestedVoice.equalsIgnoreCase(currentName)) {
+                return parsePromptAudioCodes(voice.getAsJsonArray("prompt_audio_codes"));
+            }
+        }
+        throw new IllegalArgumentException("未知 MOSS 内置音色: " + requestedVoice + ", 可用音色: " + listBuiltinVoiceNames());
+    }
+
+    private List<List<Integer>> parsePromptAudioCodes(JsonArray rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new IllegalArgumentException("MOSS 内置音色缺少 prompt_audio_codes");
+        }
+        List<List<Integer>> result = new ArrayList<>(rows.size());
+        for (JsonElement rowElement : rows) {
+            if (!rowElement.isJsonArray()) {
+                continue;
+            }
+            JsonArray rowArray = rowElement.getAsJsonArray();
+            List<Integer> row = new ArrayList<>(rowArray.size());
+            for (JsonElement tokenElement : rowArray) {
+                row.add(tokenElement.getAsInt());
+            }
+            result.add(row);
+        }
+        if (result.isEmpty()) {
+            throw new IllegalArgumentException("MOSS 内置音色 prompt_audio_codes 为空");
+        }
+        return result;
     }
 
     private float[][] readWavAsFloatChannels(Path wavPath) throws Exception {
@@ -295,19 +373,37 @@ public class MossTtsService implements AutoCloseable {
         }
     }
 
-    private float[][] resampleIfNeeded(float[][] mono, int sourceRate, int targetRate) {
-        if (sourceRate == targetRate) return mono;
+    private float[][] prepareCodecChannels(float[][] source, int targetChannels) {
+        int channels = Math.max(1, targetChannels);
+        int samples = source != null && source.length > 0 ? source[0].length : 0;
+        float[][] result = new float[channels][samples];
+        if (source == null || source.length == 0) {
+            return result;
+        }
+        for (int channel = 0; channel < channels; channel++) {
+            float[] sourceChannel = source[Math.min(channel, source.length - 1)];
+            System.arraycopy(sourceChannel, 0, result[channel], 0, Math.min(samples, sourceChannel.length));
+        }
+        return result;
+    }
+
+    private float[][] resampleIfNeeded(float[][] channels, int sourceRate, int targetRate) {
+        if (sourceRate == targetRate) return channels;
         double ratio = (double) targetRate / sourceRate;
-        int newLength = (int) (mono[0].length * ratio);
-        float[][] result = new float[1][newLength];
-        for (int i = 0; i < newLength; i++) {
-            double srcPos = i / ratio;
-            int srcIdx = (int) srcPos;
-            if (srcIdx + 1 < mono[0].length) {
-                float frac = (float) (srcPos - srcIdx);
-                result[0][i] = mono[0][srcIdx] * (1 - frac) + mono[0][srcIdx + 1] * frac;
-            } else if (srcIdx < mono[0].length) {
-                result[0][i] = mono[0][srcIdx];
+        int sourceLength = channels.length == 0 ? 0 : channels[0].length;
+        int newLength = (int) (sourceLength * ratio);
+        float[][] result = new float[channels.length][newLength];
+        for (int channel = 0; channel < channels.length; channel++) {
+            float[] source = channels[channel];
+            for (int i = 0; i < newLength; i++) {
+                double srcPos = i / ratio;
+                int srcIdx = (int) srcPos;
+                if (srcIdx + 1 < source.length) {
+                    float frac = (float) (srcPos - srcIdx);
+                    result[channel][i] = source[srcIdx] * (1 - frac) + source[srcIdx + 1] * frac;
+                } else if (srcIdx < source.length) {
+                    result[channel][i] = source[srcIdx];
+                }
             }
         }
         return result;
@@ -382,6 +478,10 @@ public class MossTtsService implements AutoCloseable {
     }
 
     public List<List<Integer>> generateAudioFrames(RequestRows requestRows) throws Exception {
+        return generateAudioFrames(requestRows, null);
+    }
+
+    private List<List<Integer>> generateAudioFrames(RequestRows requestRows, FrameCallback frameCallback) throws Exception {
         JsonObject generationDefaults = getGenerationDefaults();
         JsonObject ttsConfig = manifest.getAsJsonObject("tts_config");
         JsonObject ttsOnnx = ttsMeta.getAsJsonObject("onnx");
@@ -404,12 +504,15 @@ public class MossTtsService implements AutoCloseable {
             prefillInputs.put("input_ids", inputIdsTensor);
             prefillInputs.put("attention_mask", attentionMaskTensor);
 
-            OrtSession.Result prefillResult = sessions.get("prefill").run(prefillInputs);
             float[][] globalHidden;
             Map<String, OnnxTensor> pastByName;
-            try (prefillResult) {
-                globalHidden = extractLastHidden((float[][][]) prefillResult.get("global_hidden").get().getValue());
-                pastByName = extractPastByName(prefillResult, ttsOnnx.getAsJsonArray("prefill_output_names"), "present_", "past_");
+            OrtSession.Result prefillResult = sessions.get("prefill").run(prefillInputs);
+            OnnxValue globalHiddenValue = prefillResult.get("global_hidden").orElseThrow();
+            try {
+                globalHidden = extractLastHidden((float[][][]) globalHiddenValue.getValue());
+                pastByName = retainPastByName(prefillResult, ttsOnnx.getAsJsonArray("prefill_output_names"), "present_", "past_");
+            } finally {
+                closeValue(globalHiddenValue);
             }
 
             int pastValidLength = sumAttentionMask(requestRows.attentionMask[0]);
@@ -466,6 +569,9 @@ public class MossTtsService implements AutoCloseable {
                     }
 
                     generatedFrames.add(frame);
+                    if (frameCallback != null) {
+                        frameCallback.onFrame(generatedFrames, stepIndex, frame);
+                    }
                     DecodeStepResult decodeStep = runDecodeStep(frame, pastValidLength, pastByName, rowWidth, ttsConfig, ttsOnnx);
                     globalHidden = decodeStep.globalHidden;
                     pastValidLength += 1;
@@ -595,12 +701,15 @@ public class MossTtsService implements AutoCloseable {
                 }
             }
 
-            OrtSession.Result result = sessions.get("decode").run(inputs);
             float[][] globalHidden;
             Map<String, OnnxTensor> nextPastByName;
-            try (result) {
-                globalHidden = extractLastHidden((float[][][]) result.get("global_hidden").get().getValue());
-                nextPastByName = extractPastByName(result, ttsOnnx.getAsJsonArray("decode_output_names"), "present_", "past_");
+            OrtSession.Result result = sessions.get("decode").run(inputs);
+            OnnxValue globalHiddenValue = result.get("global_hidden").orElseThrow();
+            try {
+                globalHidden = extractLastHidden((float[][][]) globalHiddenValue.getValue());
+                nextPastByName = retainPastByName(result, ttsOnnx.getAsJsonArray("decode_output_names"), "present_", "past_");
+            } finally {
+                closeValue(globalHiddenValue);
             }
             return new DecodeStepResult(globalHidden, nextPastByName);
         }
@@ -899,6 +1008,100 @@ public class MossTtsService implements AutoCloseable {
         return new DecodeResult(mergedChannels, totalAudioLength);
     }
 
+    private final class StreamingCodecDecoder implements AutoCloseable {
+        private final Map<String, OnnxTensor> stateFeeds;
+        private final Map<String, String> outputToInputName;
+        private final List<List<Integer>> pendingFrames = new ArrayList<>();
+        private int nextFrameBudget = 2;
+        private boolean closed;
+
+        private StreamingCodecDecoder() throws OrtException {
+            if (!sessions.containsKey("codec_decode_step")) {
+                throw new IllegalStateException("codec_decode_step session 未加载，无法流式解码");
+            }
+            if (!codecMeta.has("streaming_decode")) {
+                throw new IllegalStateException("codec_meta 中没有 streaming_decode 配置");
+            }
+            this.stateFeeds = createStreamingDecodeState();
+            this.outputToInputName = buildStreamingOutputToInputMapping();
+        }
+
+        private DecodeResult acceptFrame(List<Integer> frame, boolean force) throws Exception {
+            if (frame != null && !frame.isEmpty()) {
+                pendingFrames.add(List.copyOf(frame));
+            }
+            if (!force && pendingFrames.size() < nextFrameBudget) {
+                return new DecodeResult(new float[0][], 0);
+            }
+            return decodePending(force);
+        }
+
+        private DecodeResult flush() throws Exception {
+            return acceptFrame(null, true);
+        }
+
+        private DecodeResult decodePending(boolean force) throws Exception {
+            if (pendingFrames.isEmpty()) {
+                return new DecodeResult(new float[0][], 0);
+            }
+            int frameCount = force ? pendingFrames.size() : Math.min(nextFrameBudget, pendingFrames.size());
+            List<List<Integer>> frameChunk = new ArrayList<>(pendingFrames.subList(0, frameCount));
+            pendingFrames.subList(0, frameCount).clear();
+            DecodeResult decoded = decodeFrameChunk(frameChunk);
+            if (!force) {
+                nextFrameBudget = nextFrameBudget == 2 ? 4 : 8;
+            }
+            return decoded;
+        }
+
+        private DecodeResult decodeFrameChunk(List<List<Integer>> frameChunk) throws Exception {
+            int frameCount = frameChunk.size();
+            int codeWidth = frameChunk.get(0).size();
+            int[][][] audioCodes = new int[1][frameCount][codeWidth];
+            for (int i = 0; i < frameCount; i++) {
+                for (int j = 0; j < frameChunk.get(i).size(); j++) {
+                    audioCodes[0][i][j] = frameChunk.get(i).get(j);
+                }
+            }
+
+            try (OnnxTensor audioCodesTensor = OnnxTensor.createTensor(ortEnvironment, audioCodes);
+                 OnnxTensor audioLengthsTensor = OnnxTensor.createTensor(ortEnvironment,
+                         IntBuffer.wrap(new int[]{frameCount}), new long[]{1})) {
+                Map<String, OnnxTensor> inputs = new HashMap<>();
+                inputs.put("audio_codes", audioCodesTensor);
+                inputs.put("audio_code_lengths", audioLengthsTensor);
+                inputs.putAll(stateFeeds);
+
+                OrtSession.Result result = sessions.get("codec_decode_step").run(inputs);
+                try (result) {
+                    float[][][] audio = (float[][][]) result.get("audio").get().getValue();
+                    int audioLength = ((int[]) result.get("audio_lengths").get().getValue())[0];
+                    DecodeResult decoded = new DecodeResult(sliceChannelMajorAudio(audio, 0, audioLength), audioLength);
+
+                    JsonArray stepOutputNames = codecMeta.getAsJsonObject("onnx").getAsJsonArray("decode_step_output_names");
+                    for (int i = 2; i < stepOutputNames.size(); i++) {
+                        String outputName = stepOutputNames.get(i).getAsString();
+                        Object value = result.get(outputName).get().getValue();
+                        String inputName = outputToInputName.getOrDefault(outputName, outputName);
+                        OnnxTensor newTensor = cloneTensor(value);
+                        OnnxTensor old = stateFeeds.put(inputName, newTensor);
+                        closeValue(old);
+                    }
+                    return decoded;
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            closeTensors(stateFeeds);
+        }
+    }
+
     private Map<String, OnnxTensor> createStreamingDecodeState() throws OrtException {
         JsonObject streamingDecode = codecMeta.getAsJsonObject("streaming_decode");
         Map<String, OnnxTensor> state = new HashMap<>();
@@ -1028,33 +1231,80 @@ public class MossTtsService implements AutoCloseable {
         void onChunkAudio(float[][] audio, int chunkIndex, int totalChunks);
     }
 
+    private interface FrameCallback {
+        void onFrame(List<List<Integer>> generatedFrames, int stepIndex, List<Integer> frame) throws Exception;
+    }
+
     public void synthesizeStreaming(String text, List<List<Integer>> promptAudioCodes, StreamingAudioCallback callback) throws Exception {
         List<String> chunks = splitVoiceCloneText(text);
         if (chunks.isEmpty()) {
             return;
         }
-        int totalChunks = chunks.size();
-        for (int i = 0; i < totalChunks; i++) {
-            float[][] chunkAudio = synthesizeSingleChunk(chunks.get(i), promptAudioCodes);
-            if (chunkAudio == null || chunkAudio.length == 0 || chunkAudio[0].length == 0) {
-                continue;
-            }
-            callback.onChunkAudio(chunkAudio, i, totalChunks);
+        int emittedAudioChunkIndex = 0;
+        for (String chunk : chunks) {
+            emittedAudioChunkIndex = synthesizeSingleChunkStreaming(chunk, promptAudioCodes, callback, emittedAudioChunkIndex);
         }
     }
 
-    private float[][] synthesizeSingleChunk(String text, List<List<Integer>> promptAudioCodes) throws Exception {
+    private int synthesizeSingleChunkStreaming(
+            String text,
+            List<List<Integer>> promptAudioCodes,
+            StreamingAudioCallback callback,
+            int firstAudioChunkIndex
+    ) throws Exception {
         int[] textTokenIds = encodeText(text);
         if (textTokenIds == null || textTokenIds.length == 0) {
-            return new float[][]{new float[0]};
+            return firstAudioChunkIndex;
         }
         RequestRows requestRows = buildVoiceCloneRequestRows(promptAudioCodes, textTokenIds);
-        List<List<Integer>> generatedFrames = generateAudioFrames(requestRows);
-        if (generatedFrames.isEmpty()) {
-            return new float[][]{new float[0]};
+        int[] chunkIndex = new int[]{firstAudioChunkIndex};
+        try (StreamingCodecDecoder decoder = new StreamingCodecDecoder()) {
+            generateAudioFrames(requestRows, (generatedFrames, stepIndex, frame) -> {
+                DecodeResult decoded = decoder.acceptFrame(frame, false);
+                if (decoded.audioLength > 0) {
+                    callback.onChunkAudio(decoded.channels, chunkIndex[0]++, -1);
+                }
+            });
+            DecodeResult tail = decoder.flush();
+            if (tail.audioLength > 0) {
+                callback.onChunkAudio(tail.channels, chunkIndex[0]++, -1);
+            }
         }
+        return chunkIndex[0];
+    }
+
+    private float[][] synthesizeSingleChunk(String text, List<List<Integer>> promptAudioCodes) throws Exception {
+        return synthesizeSingleChunkDetailed(text, promptAudioCodes).channels;
+    }
+
+    public SynthesisResult synthesizeSingleChunkDetailed(String text, List<List<Integer>> promptAudioCodes) throws Exception {
+        long startNanos = System.nanoTime();
+        int[] textTokenIds = encodeText(text);
+        if (textTokenIds == null || textTokenIds.length == 0) {
+            return new SynthesisResult(new float[][]{new float[0]}, 0, 0, 0, 0, 0);
+        }
+        RequestRows requestRows = buildVoiceCloneRequestRows(promptAudioCodes, textTokenIds);
+        long generateStartNanos = System.nanoTime();
+        List<List<Integer>> generatedFrames = generateAudioFrames(requestRows);
+        long generateMillis = elapsedMillis(generateStartNanos);
+        if (generatedFrames.isEmpty()) {
+            return new SynthesisResult(new float[][]{new float[0]}, textTokenIds.length, 0, elapsedMillis(startNanos), generateMillis, 0);
+        }
+        long decodeStartNanos = System.nanoTime();
         DecodeResult decodeResult = decodeFullAudioSafe(generatedFrames);
-        return decodeResult.channels;
+        long decodeMillis = elapsedMillis(decodeStartNanos);
+        return new SynthesisResult(
+                decodeResult.channels,
+                textTokenIds.length,
+                generatedFrames.size(),
+                elapsedMillis(startNanos),
+                generateMillis,
+                decodeMillis
+        );
+    }
+
+    private static long elapsedMillis(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
     private boolean isSentenceEnding(String text) {
@@ -1140,6 +1390,13 @@ public class MossTtsService implements AutoCloseable {
         return 24000;
     }
 
+    private int codecChannels() {
+        if (codecMeta != null && codecMeta.has("codec_config")) {
+            return Math.max(1, codecMeta.getAsJsonObject("codec_config").get("channels").getAsInt());
+        }
+        return 1;
+    }
+
     private int sampleAssistantTextToken(float[] textLogits, JsonObject generationDefaults, JsonObject ttsConfig) {
         int assistantSlotTokenId = ttsConfig.get("audio_assistant_slot_token_id").getAsInt();
         int audioEndTokenId = ttsConfig.get("audio_end_token_id").getAsInt();
@@ -1192,7 +1449,7 @@ public class MossTtsService implements AutoCloseable {
         return total;
     }
 
-    private Map<String, OnnxTensor> extractPastByName(
+    private Map<String, OnnxTensor> retainPastByName(
             OrtSession.Result result,
             JsonArray outputNames,
             String sourcePrefix,
@@ -1201,8 +1458,11 @@ public class MossTtsService implements AutoCloseable {
         Map<String, OnnxTensor> nextPast = new HashMap<>();
         for (int i = 1; i < outputNames.size(); i++) {
             String outputName = outputNames.get(i).getAsString();
-            Object value = result.get(outputName).get().getValue();
-            nextPast.put(outputName.replace(sourcePrefix, targetPrefix), cloneTensor(value));
+            OnnxValue value = result.get(outputName).orElseThrow();
+            if (!(value instanceof OnnxTensor tensor)) {
+                throw new IllegalArgumentException("Unexpected past tensor output type for " + outputName + ": " + value.getClass());
+            }
+            nextPast.put(outputName.replace(sourcePrefix, targetPrefix), tensor);
         }
         return nextPast;
     }
@@ -1316,10 +1576,32 @@ public class MossTtsService implements AutoCloseable {
         if (value instanceof float[][] tensor2d) {
             return OnnxTensor.createTensor(ortEnvironment, tensor2d);
         }
+        if (value instanceof int[] tensor1d) {
+            return OnnxTensor.createTensor(ortEnvironment, IntBuffer.wrap(tensor1d), new long[]{tensor1d.length});
+        }
+        if (value instanceof int[][] tensor2d) {
+            return OnnxTensor.createTensor(ortEnvironment, tensor2d);
+        }
+        if (value instanceof int[][][] tensor3d) {
+            return OnnxTensor.createTensor(ortEnvironment, tensor3d);
+        }
         throw new IllegalArgumentException("Unsupported tensor clone type: " + value.getClass());
     }
 
+    private void closeValue(OnnxValue value) {
+        if (value == null) {
+            return;
+        }
+        try {
+            value.close();
+        } catch (Exception ignored) {
+        }
+    }
+
     private void closeTensors(Map<String, OnnxTensor> tensors) {
+        if (tensors == null) {
+            return;
+        }
         for (OnnxTensor tensor : tensors.values()) {
             try {
                 tensor.close();
@@ -1454,14 +1736,89 @@ public class MossTtsService implements AutoCloseable {
         public final int[] textTokenIds;
         public final List<List<Integer>> generatedFrames;
         public final float[][] waveformChannels;
+        public final float[][] channels;
         public final Path outputPath;
+        public final int textTokenCount;
+        public final int generatedFrameCount;
+        public final long totalMillis;
+        public final long generateMillis;
+        public final long decodeMillis;
 
         public SynthesisResult(String text, int[] textTokenIds, List<List<Integer>> generatedFrames, float[][] waveformChannels, Path outputPath) {
+            this(
+                    text,
+                    textTokenIds,
+                    generatedFrames,
+                    waveformChannels,
+                    outputPath,
+                    0,
+                    0,
+                    0
+            );
+        }
+
+        public SynthesisResult(float[][] channels, int textTokenCount, int generatedFrameCount, long totalMillis, long generateMillis, long decodeMillis) {
+            this(
+                    "",
+                    new int[textTokenCount],
+                    List.of(),
+                    channels,
+                    null,
+                    totalMillis,
+                    generateMillis,
+                    decodeMillis,
+                    textTokenCount,
+                    generatedFrameCount
+            );
+        }
+
+        public SynthesisResult(
+                String text,
+                int[] textTokenIds,
+                List<List<Integer>> generatedFrames,
+                float[][] waveformChannels,
+                Path outputPath,
+                long totalMillis,
+                long generateMillis,
+                long decodeMillis
+        ) {
+            this(
+                    text,
+                    textTokenIds,
+                    generatedFrames,
+                    waveformChannels,
+                    outputPath,
+                    totalMillis,
+                    generateMillis,
+                    decodeMillis,
+                    textTokenIds == null ? 0 : textTokenIds.length,
+                    generatedFrames == null ? 0 : generatedFrames.size()
+            );
+        }
+
+        private SynthesisResult(
+                String text,
+                int[] textTokenIds,
+                List<List<Integer>> generatedFrames,
+                float[][] waveformChannels,
+                Path outputPath,
+                long totalMillis,
+                long generateMillis,
+                long decodeMillis,
+                int textTokenCount,
+                int generatedFrameCount
+        ) {
             this.text = text;
             this.textTokenIds = textTokenIds;
             this.generatedFrames = generatedFrames;
             this.waveformChannels = waveformChannels;
+            this.channels = waveformChannels;
             this.outputPath = outputPath;
+            this.textTokenCount = textTokenCount;
+            this.generatedFrameCount = generatedFrameCount;
+            this.totalMillis = totalMillis;
+            this.generateMillis = generateMillis;
+            this.decodeMillis = decodeMillis;
         }
     }
 }

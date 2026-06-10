@@ -8,6 +8,7 @@ public enum TtsFailureCode {
     PLAYBACK_FAILED,
     REQUEST_NOT_FOUND,
     INVALID_REQUEST,
+    QUEUE_FULL,
     CANCELLED,
     UNKNOWN
 }

@@ -3,25 +3,25 @@ package com.rheinmetal.tianshu.function.tts.runtime;
 import com.rheinmetal.tianshu.function.tts.text.TtsSentenceSegmenter;
 import com.rheinmetal.tianshu.function.tts.text.TtsStreamBuffer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class TtsStreamRegistry {
     private final Map<String, TtsStreamBuffer> streams = new ConcurrentHashMap<>();
 
-    public Optional<String> append(TtsStreamChunk chunk) {
+    public List<String> append(TtsStreamChunk chunk) {
         if (chunk == null) {
-            return Optional.empty();
+            return List.of();
         }
         TtsStreamBuffer buffer = streams.computeIfAbsent(chunk.streamId(), ignored -> new TtsStreamBuffer(new TtsSentenceSegmenter()));
-        Optional<String> segment = buffer.append(chunk.text());
+        List<String> segments = new ArrayList<>(buffer.appendSegments(chunk.text()));
         if (chunk.last()) {
-            Optional<String> tail = buffer.flush();
+            buffer.flush().ifPresent(segments::add);
             streams.remove(chunk.streamId());
-            return tail.isPresent() ? tail : segment;
         }
-        return segment;
+        return List.copyOf(segments);
     }
 
     public void cancel(String streamId) {

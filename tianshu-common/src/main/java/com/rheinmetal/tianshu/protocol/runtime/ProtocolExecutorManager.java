@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -19,11 +20,14 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class ProtocolExecutorManager implements AutoCloseable {
     private final MainThreadExecutor mainThreadExecutor;
     private final Map<ExecutionLane, ThreadPoolExecutor> executors = new EnumMap<>(ExecutionLane.class);
+    private final Map<String, TaskGroup> taskGroups = new java.util.concurrent.ConcurrentHashMap<>();
     private final ScheduledThreadPoolExecutor scheduledExecutor;
 
     public ProtocolExecutorManager(MainThreadExecutor mainThreadExecutor) {
@@ -53,22 +57,20 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         Callable<T> effectiveTask = Objects.requireNonNull(task, "task");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
-        Runnable wrapped = () -> runManaged(handle, effectiveTask);
         if (effective.lane() == ExecutionLane.MAIN) {
             handle.setState(ProtocolTaskState.QUEUED);
-            mainThreadExecutor.execute(wrapped);
+            mainThreadExecutor.execute(() -> runManaged(handle, effectiveTask, null));
             return handle;
         }
-        ThreadPoolExecutor executor = executorFor(effective.lane());
-        try {
-            handle.setState(ProtocolTaskState.QUEUED);
-            Future<?> future = executor.submit(wrapped);
-            handle.setFuture(future);
-            return handle;
-        } catch (RejectedExecutionException exception) {
+        if (effective.lane() == ExecutionLane.SCHEDULED) {
             handle.setState(ProtocolTaskState.REJECTED);
             return handle;
         }
+        TaskGroup group = taskGroups.computeIfAbsent(effective.concurrencyKey(), TaskGroup::new);
+        if (!group.offer(new QueuedTask<>(handle, effectiveTask))) {
+            handle.setState(ProtocolTaskState.REJECTED);
+        }
+        return handle;
     }
 
     public ProtocolTaskHandle schedule(ProtocolTaskSpec spec, Runnable task, Duration delay) {
@@ -79,7 +81,7 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         Runnable wrapped = () -> runManaged(handle, () -> {
             task.run();
             return null;
-        });
+        }, null);
         try {
             handle.setState(ProtocolTaskState.QUEUED);
             ScheduledFuture<?> future = scheduledExecutor.schedule(wrapped, delayMillis, TimeUnit.MILLISECONDS);
@@ -106,8 +108,11 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         return new ProtocolExecutorSnapshot(lanes, running, queued);
     }
 
-    private <T> void runManaged(ManagedTaskHandle handle, Callable<T> task) {
+    private <T> void runManaged(ManagedTaskHandle handle, Callable<T> task, Runnable onFinish) {
         if (handle.state() == ProtocolTaskState.CANCELLED) {
+            if (onFinish != null) {
+                onFinish.run();
+            }
             return;
         }
         handle.setState(ProtocolTaskState.RUNNING);
@@ -119,6 +124,10 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         } catch (Exception exception) {
             if (handle.state() != ProtocolTaskState.CANCELLED) {
                 handle.setState(ProtocolTaskState.FAILED);
+            }
+        } finally {
+            if (onFinish != null) {
+                onFinish.run();
             }
         }
     }
@@ -155,6 +164,100 @@ public final class ProtocolExecutorManager implements AutoCloseable {
             thread.setDaemon(true);
             return thread;
         };
+    }
+
+    private final class TaskGroup {
+        private final String key;
+        private final PriorityBlockingQueue<QueuedTask<?>> queue = new PriorityBlockingQueue<>();
+        private final AtomicBoolean draining = new AtomicBoolean(false);
+        private int running;
+
+        private TaskGroup(String key) {
+            this.key = key;
+        }
+
+        private boolean offer(QueuedTask<?> task) {
+            synchronized (this) {
+                if (queue.size() >= task.handle.spec.queueCapacity()) {
+                    return false;
+                }
+                task.handle.setState(ProtocolTaskState.QUEUED);
+                queue.offer(task);
+            }
+            drain();
+            return true;
+        }
+
+        private void drain() {
+            if (!draining.compareAndSet(false, true)) {
+                return;
+            }
+            try {
+                while (true) {
+                    QueuedTask<?> task;
+                    synchronized (this) {
+                        task = queue.peek();
+                        if (task == null || running >= task.handle.spec.maxConcurrency()) {
+                            break;
+                        }
+                        queue.poll();
+                        running++;
+                    }
+                    submitToLane(task);
+                }
+            } finally {
+                draining.set(false);
+                boolean shouldDrainAgain;
+                synchronized (this) {
+                    shouldDrainAgain = !queue.isEmpty() && running < queue.peek().handle.spec.maxConcurrency();
+                    if (running == 0 && queue.isEmpty()) {
+                        taskGroups.remove(key, this);
+                    }
+                }
+                if (shouldDrainAgain) {
+                    drain();
+                }
+            }
+        }
+
+        private <T> void submitToLane(QueuedTask<T> task) {
+            ThreadPoolExecutor executor = executorFor(task.handle.spec.lane());
+            try {
+                Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable, this::finishOne));
+                task.handle.setFuture(future);
+            } catch (RejectedExecutionException exception) {
+                task.handle.setState(ProtocolTaskState.REJECTED);
+                finishOne();
+            }
+        }
+
+        private void finishOne() {
+            synchronized (this) {
+                running = Math.max(0, running - 1);
+            }
+            drain();
+        }
+    }
+
+    private static final class QueuedTask<T> implements Comparable<QueuedTask<?>> {
+        private static final AtomicLong SEQUENCE = new AtomicLong();
+        private final ManagedTaskHandle handle;
+        private final Callable<T> callable;
+        private final long sequence = SEQUENCE.incrementAndGet();
+
+        private QueuedTask(ManagedTaskHandle handle, Callable<T> callable) {
+            this.handle = handle;
+            this.callable = callable;
+        }
+
+        @Override
+        public int compareTo(QueuedTask<?> other) {
+            int priorityCompare = Integer.compare(other.handle.spec.priority().weight(), handle.spec.priority().weight());
+            if (priorityCompare != 0) {
+                return priorityCompare;
+            }
+            return Long.compare(sequence, other.sequence);
+        }
     }
 
     @Override

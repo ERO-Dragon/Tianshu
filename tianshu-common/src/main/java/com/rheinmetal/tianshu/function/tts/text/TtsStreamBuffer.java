@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.text;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public final class TtsStreamBuffer {
@@ -15,6 +17,27 @@ public final class TtsStreamBuffer {
             return Optional.empty();
         }
         buffer.append(text);
+        return drainNext();
+    }
+
+    public synchronized List<String> appendSegments(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        buffer.append(text);
+        return drainAvailable();
+    }
+
+    public synchronized List<String> drainAvailable() {
+        List<String> segments = new ArrayList<>();
+        Optional<String> segment;
+        while ((segment = drainNext()).isPresent()) {
+            segments.add(segment.get());
+        }
+        return List.copyOf(segments);
+    }
+
+    private Optional<String> drainNext() {
         TtsSentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary(buffer.toString());
         if (!boundary.shouldFlush()) {
             return Optional.empty();

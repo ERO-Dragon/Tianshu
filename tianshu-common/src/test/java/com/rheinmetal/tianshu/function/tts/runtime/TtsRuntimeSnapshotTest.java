@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPhase;
+import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,7 +15,7 @@ class TtsRuntimeSnapshotTest {
         assertFalse(snapshot.bound());
         assertFalse(snapshot.running());
         assertFalse(snapshot.ready());
-        assertEquals(TtsPlaybackPhase.ACCEPTED, snapshot.playbackPhase());
+        assertEquals(TtsPlaybackState.IDLE, snapshot.playbackState());
         assertEquals(Priority.NORMAL, snapshot.activePriority());
         assertEquals(TtsFailureCode.UNKNOWN, snapshot.lastFailureCode());
         assertEquals("", snapshot.activeRequestId());
@@ -26,7 +26,7 @@ class TtsRuntimeSnapshotTest {
     void constructorNormalizesNullableValues() {
         TtsRuntimeSnapshot snapshot = new TtsRuntimeSnapshot(true, true, false, false, false, null, null, null, null, null, null, 0L);
 
-        assertEquals(TtsPlaybackPhase.ACCEPTED, snapshot.playbackPhase());
+        assertEquals(TtsPlaybackState.IDLE, snapshot.playbackState());
         assertEquals(Priority.NORMAL, snapshot.activePriority());
         assertEquals(TtsFailureCode.UNKNOWN, snapshot.lastFailureCode());
         assertEquals("", snapshot.lastFailureMessage());
