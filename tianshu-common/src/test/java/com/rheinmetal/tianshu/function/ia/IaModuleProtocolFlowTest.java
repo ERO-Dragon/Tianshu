@@ -1,7 +1,9 @@
 package com.rheinmetal.tianshu.function.ia;
 
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
+import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
@@ -13,6 +15,7 @@ import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueVoiceTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
@@ -38,6 +41,8 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -61,6 +66,151 @@ class IaModuleProtocolFlowTest {
         if (runtime != null) {
             runtime.close();
         }
+    }
+
+    @Test
+    void voiceTriggersRegisteredBeforePrepareAreSynchronizedWhenRuntimeContextArrives() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(java.nio.file.Path.of("build/test-voice-resources-before-prepare"));
+        VoiceResourceManager voiceResources = new VoiceResourceManager(new TestLlmSupport.FakeGameEnvironment(), config);
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        ModuleServiceRegistry services = new ModuleServiceRegistry();
+        ModuleRuntimeState runtimeState = new ModuleRuntimeState();
+        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        ia.register(new ModuleRegistrationContext(runtime, services));
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+
+        services.require(IaModuleService.class).registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                        "maid.wake",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("酒狐")
+                ))
+        ));
+        assertTrue(voiceResources.voiceTriggers().asrHotwords().isEmpty());
+
+        ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
+
+        assertEquals(List.of("酒狐"), voiceResources.voiceTriggers().asrHotwords());
+    }
+
+    @Test
+    void voiceTriggersFollowRuntimeParticipantUpdatesAndUnregisters() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(java.nio.file.Path.of("build/test-voice-resources-runtime-update"));
+        VoiceResourceManager voiceResources = new VoiceResourceManager(new TestLlmSupport.FakeGameEnvironment(), config);
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        ModuleServiceRegistry services = new ModuleServiceRegistry();
+        ModuleRuntimeState runtimeState = new ModuleRuntimeState();
+        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        ia.register(new ModuleRegistrationContext(runtime, services));
+        ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+        IaModuleService service = services.require(IaModuleService.class);
+
+        service.registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                        "maid.wake",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("酒狐")
+                ))
+        ));
+        assertEquals(List.of("酒狐"), voiceResources.voiceTriggers().asrHotwords());
+
+        service.registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                        "maid.wake.updated",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("女仆")
+                ))
+        ));
+        assertEquals(List.of("女仆"), voiceResources.voiceTriggers().asrHotwords());
+
+        service.unregisterModule("module.maid");
+
+        assertTrue(voiceResources.voiceTriggers().asrHotwords().isEmpty());
+    }
+
+    @Test
+    void participantVoiceTriggerGroupKeepsExtraWordsOutOfIaClaims() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(java.nio.file.Path.of("build/test-voice-trigger-group"));
+        VoiceResourceManager voiceResources = new VoiceResourceManager(new TestLlmSupport.FakeGameEnvironment(), config);
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        ModuleServiceRegistry services = new ModuleServiceRegistry();
+        ModuleRuntimeState runtimeState = new ModuleRuntimeState();
+        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        ia.register(new ModuleRegistrationContext(runtime, services));
+        ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
+        RecordingHandler maidDelivery = new RecordingHandler();
+        RecordingHandler axDelivery = new RecordingHandler();
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", maidDelivery);
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
+        subscribeSessionEvents(new RecordingHandler());
+        IaModuleService service = services.require(IaModuleService.class);
+
+        service.registerParticipant(participantWithVoiceTriggers(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                        "maid.wake",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("maid")
+                )),
+                DialogueVoiceTriggerGroup.of(List.of("maid"), List.of("farm"))
+        ));
+        service.registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+
+        assertEquals(List.of("maid", "farm"), voiceResources.voiceTriggers().asrHotwords());
+
+        runtime.submit(EnvelopeBuilder.commandToCapability(
+                "module.ir",
+                ProtocolCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                request("req-extra", "player", "turn-extra", 910L, "farm please", List.of(), List.of())
+        ).build());
+
+        axDelivery.awaitPayload(DialogueDeliveryPayload.class);
+        assertTrue(maidDelivery.envelopes().isEmpty());
+    }
+
+    @Test
+    void participantRegistrationPublishesWakeWordsToSharedVoiceResources() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(java.nio.file.Path.of("build/test-voice-resources"));
+        VoiceResourceManager voiceResources = new VoiceResourceManager(new TestLlmSupport.FakeGameEnvironment(), config);
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        ModuleServiceRegistry services = new ModuleServiceRegistry();
+        ModuleRuntimeState runtimeState = new ModuleRuntimeState();
+        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        ia.register(new ModuleRegistrationContext(runtime, services));
+        ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+
+        registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                        "maid.wake",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("酒狐")
+                ))
+        ));
+
+        await(() -> !voiceResources.voiceTriggers().asrHotwords().isEmpty());
+        assertEquals(List.of("酒狐"), voiceResources.voiceTriggers().asrHotwords());
     }
 
     @Test
@@ -230,6 +380,22 @@ class IaModuleProtocolFlowTest {
                 List.of(),
                 List.of(),
                 profile,
+                routeCapability,
+                DialogueTurnProcessingPolicy.DEFAULT
+        );
+    }
+
+    private DialogueParticipantDescriptor participantWithVoiceTriggers(String participantId, String moduleId, String routeCapability, int priority, DialogueClaimProfile profile, DialogueVoiceTriggerGroup voiceTriggerGroup) {
+        return new DialogueParticipantDescriptor(
+                participantId,
+                moduleId,
+                participantId,
+                priority,
+                List.of(),
+                List.of(),
+                List.of(),
+                profile,
+                voiceTriggerGroup,
                 routeCapability,
                 DialogueTurnProcessingPolicy.DEFAULT
         );

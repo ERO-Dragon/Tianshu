@@ -14,12 +14,13 @@ public final class VoiceTriggerRegistry {
     private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
     public VoiceTriggerRegistrationResult register(VoiceTriggerRegistration registration) {
+        VoiceTriggerRegistrationResult result;
         synchronized (this) {
             registrations.put(registration.moduleId(), registration);
-            VoiceTriggerRegistrationResult result = VoiceTriggerRegistrationResult.accepted(registration.moduleId(), conflictsFor(registration));
-            notifyChanged();
-            return result;
+            result = VoiceTriggerRegistrationResult.accepted(registration.moduleId(), conflictsFor(registration));
         }
+        notifyChanged();
+        return result;
     }
 
     public void unregisterModule(String moduleId) {

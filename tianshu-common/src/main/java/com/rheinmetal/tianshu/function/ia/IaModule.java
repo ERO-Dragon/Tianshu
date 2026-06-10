@@ -16,11 +16,15 @@ import com.rheinmetal.tianshu.function.ia.gateway.DialogueMessageGateway;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationDecision;
 import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionState;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimConditionType;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionControlAction;
 import com.rheinmetal.tianshu.function.ia.model.DialogueSessionEventType;
+import com.rheinmetal.tianshu.function.ia.model.DialogueVoiceTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationRequestPayload;
@@ -49,9 +53,16 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
+import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
+import com.rheinmetal.tianshu.protocol.voice.VoiceCommandScope;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -83,6 +94,7 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueDiagnosticsView diagnosticsView;
     private final IaModuleService moduleService;
     private final Map<String, DialogueOwnerPreviewPayload> ownerPreviews = new ConcurrentHashMap<>();
+    private final Set<String> voiceTriggerSyncedModules = ConcurrentHashMap.newKeySet();
     private volatile ProtocolTaskHandle ownerPreviewRefreshTask;
     private volatile boolean ownerPreviewRefreshActive;
     private ModuleRuntimeContext runtimeContext;
@@ -111,7 +123,7 @@ public final class IaModule implements TianshuManagedModule {
         this.participantContractValidator = new DialogueParticipantContractValidator(runtime.capabilities());
         this.contextProvider = contextProvider == null ? DialogueContextProvider.EMPTY : contextProvider;
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
-        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::updateContextParticipants);
+        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
     }
 
     @Override
@@ -135,6 +147,7 @@ public final class IaModule implements TianshuManagedModule {
     @Override
     public void prepare(ModuleRuntimeContext context) {
         runtimeContext = context;
+        syncVoiceTriggersFromParticipants();
         context.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         startOwnerPreviewRefresh();
     }
@@ -143,12 +156,14 @@ public final class IaModule implements TianshuManagedModule {
     public void stop() {
         stopOwnerPreviewRefresh();
         long now = System.currentTimeMillis();
+        clearSyncedVoiceTriggers();
         participantLifecycleCoordinator.unregisterModule(null, moduleId(), now);
     }
 
     @Override
     public void destroy() {
         stopOwnerPreviewRefresh();
+        clearSyncedVoiceTriggers();
         participantRegistry.clear();
         sessionStore.clear();
         attentionMemory.clear();
@@ -171,7 +186,7 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         participantRegistry.register(payload.descriptor());
-        updateContextParticipants();
+        handleParticipantsChanged();
         refreshOwnerPreviews(envelope, System.currentTimeMillis());
         context.complete(envelope.envelopeId());
     }
@@ -187,7 +202,7 @@ public final class IaModule implements TianshuManagedModule {
         } else {
             participantLifecycleCoordinator.unregisterParticipant(envelope, payload.moduleId(), payload.participantId(), now);
         }
-        updateContextParticipants();
+        handleParticipantsChanged();
         refreshOwnerPreviews(envelope, now);
         context.complete(envelope.envelopeId());
     }
@@ -270,6 +285,129 @@ public final class IaModule implements TianshuManagedModule {
         try {
             contextProvider.updateParticipants(participantRegistry.snapshot());
         } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void handleParticipantsChanged() {
+        syncVoiceTriggersFromParticipants();
+        updateContextParticipants();
+    }
+
+    private void syncVoiceTriggersFromParticipants() {
+        VoiceResourceAccess resources = runtimeContext == null ? null : runtimeContext.voiceResources();
+        if (resources == null || resources.voiceTriggers() == null) {
+            return;
+        }
+        Map<String, VoiceTriggerWords> desiredTriggers = voiceTriggersByModule(participantRegistry.snapshot());
+        for (String syncedModule : Set.copyOf(voiceTriggerSyncedModules)) {
+            if (!desiredTriggers.containsKey(syncedModule)) {
+                resources.voiceTriggers().unregisterModule(syncedModule);
+                voiceTriggerSyncedModules.remove(syncedModule);
+            }
+        }
+        for (Map.Entry<String, VoiceTriggerWords> entry : desiredTriggers.entrySet()) {
+            VoiceTriggerWords words = entry.getValue();
+            resources.voiceTriggers().register(new VoiceTriggerRegistration(
+                    entry.getKey(),
+                    words.wakeWords(),
+                    words.extraWords(),
+                    VoiceCommandCategory.GENERAL,
+                    words.priority(),
+                    VoiceCommandScope.CLIENT,
+                    true
+            ));
+            voiceTriggerSyncedModules.add(entry.getKey());
+        }
+    }
+
+    private void clearSyncedVoiceTriggers() {
+        VoiceResourceAccess resources = runtimeContext == null ? null : runtimeContext.voiceResources();
+        if (resources == null || resources.voiceTriggers() == null) {
+            voiceTriggerSyncedModules.clear();
+            return;
+        }
+        for (String moduleId : Set.copyOf(voiceTriggerSyncedModules)) {
+            resources.voiceTriggers().unregisterModule(moduleId);
+        }
+        voiceTriggerSyncedModules.clear();
+    }
+
+    private List<String> extractWakeWords(DialogueParticipantDescriptor descriptor) {
+        if (descriptor.claimProfile() == null || descriptor.claimProfile().mode() != DialogueClaimMode.RULES) {
+            return List.of();
+        }
+        List<String> words = new ArrayList<>();
+        descriptor.claimProfile().rules().forEach(rule -> {
+            if (rule == null || rule.conditions().isEmpty()) {
+                return;
+            }
+            for (DialogueClaimCondition condition : rule.conditions()) {
+                if (condition != null && condition.type() == DialogueClaimConditionType.WAKE_WORD) {
+                    words.addAll(condition.values());
+                }
+            }
+        });
+        return words.stream()
+                .filter(word -> word != null && !word.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private Map<String, VoiceTriggerWords> voiceTriggersByModule(List<DialogueParticipantDescriptor> participants) {
+        if (participants == null || participants.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, VoiceTriggerAccumulator> accumulators = new LinkedHashMap<>();
+        for (DialogueParticipantDescriptor participant : participants) {
+            if (participant == null || participant.moduleId().isBlank()) {
+                continue;
+            }
+            VoiceTriggerWords words = triggerWordsFor(participant);
+            if (words.empty()) {
+                continue;
+            }
+            accumulators.computeIfAbsent(participant.moduleId(), ignored -> new VoiceTriggerAccumulator())
+                    .add(words, participant.priority());
+        }
+        Map<String, VoiceTriggerWords> result = new LinkedHashMap<>();
+        for (Map.Entry<String, VoiceTriggerAccumulator> entry : accumulators.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().toWords());
+        }
+        return result;
+    }
+
+    private VoiceTriggerWords triggerWordsFor(DialogueParticipantDescriptor participant) {
+        List<String> claimWakeWords = extractWakeWords(participant);
+        DialogueVoiceTriggerGroup group = participant.voiceTriggerGroup();
+        LinkedHashSet<String> wakeWords = new LinkedHashSet<>(claimWakeWords);
+        LinkedHashSet<String> extraWords = new LinkedHashSet<>();
+        if (group != null) {
+            wakeWords.addAll(group.wakeWords());
+            extraWords.addAll(group.extraWords());
+        }
+        return new VoiceTriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords), participant.priority());
+    }
+
+    private static final class VoiceTriggerAccumulator {
+        private final LinkedHashSet<String> wakeWords = new LinkedHashSet<>();
+        private final LinkedHashSet<String> extraWords = new LinkedHashSet<>();
+        private int priority;
+
+        private void add(VoiceTriggerWords words, int participantPriority) {
+            wakeWords.addAll(words.wakeWords());
+            extraWords.addAll(words.extraWords());
+            priority = Math.max(priority, participantPriority);
+        }
+
+        private VoiceTriggerWords toWords() {
+            return new VoiceTriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords), priority);
+        }
+    }
+
+    private record VoiceTriggerWords(List<String> wakeWords, List<String> extraWords, int priority) {
+        private boolean empty() {
+            return wakeWords.isEmpty() && extraWords.isEmpty();
         }
     }
 

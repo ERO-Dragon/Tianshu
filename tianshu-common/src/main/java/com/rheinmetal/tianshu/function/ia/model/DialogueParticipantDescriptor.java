@@ -11,6 +11,7 @@ public record DialogueParticipantDescriptor(
         List<String> supportedEntityTypes,
         List<String> supportedItemIds,
         DialogueClaimProfile claimProfile,
+        DialogueVoiceTriggerGroup voiceTriggerGroup,
         String routeCapability,
         DialogueTurnProcessingPolicy turnProcessingPolicy
 ) {
@@ -34,6 +35,34 @@ public record DialogueParticipantDescriptor(
                 supportedEntityTypes,
                 supportedItemIds,
                 DialogueClaimProfile.legacy(supportedIntents, supportedEntityTypes, supportedItemIds),
+                DialogueVoiceTriggerGroup.of(supportedIntents, List.of()),
+                routeCapability,
+                turnProcessingPolicy
+        );
+    }
+
+    public DialogueParticipantDescriptor(
+            String participantId,
+            String moduleId,
+            String displayName,
+            int priority,
+            List<String> supportedIntents,
+            List<String> supportedEntityTypes,
+            List<String> supportedItemIds,
+            DialogueClaimProfile claimProfile,
+            String routeCapability,
+            DialogueTurnProcessingPolicy turnProcessingPolicy
+    ) {
+        this(
+                participantId,
+                moduleId,
+                displayName,
+                priority,
+                supportedIntents,
+                supportedEntityTypes,
+                supportedItemIds,
+                claimProfile,
+                DialogueVoiceTriggerGroup.EMPTY,
                 routeCapability,
                 turnProcessingPolicy
         );
@@ -47,6 +76,7 @@ public record DialogueParticipantDescriptor(
         supportedEntityTypes = copyTextList(supportedEntityTypes);
         supportedItemIds = copyTextList(supportedItemIds);
         claimProfile = claimProfile == null ? DialogueClaimProfile.legacy(supportedIntents, supportedEntityTypes, supportedItemIds) : claimProfile;
+        voiceTriggerGroup = voiceTriggerGroup == null ? DialogueVoiceTriggerGroup.EMPTY : voiceTriggerGroup;
         routeCapability = requireText(routeCapability, "routeCapability");
         turnProcessingPolicy = turnProcessingPolicy == null ? DialogueTurnProcessingPolicy.DEFAULT : turnProcessingPolicy;
     }

@@ -328,6 +328,7 @@ context.services().require(MyService.class);
 - 模块注册语音触发词，不代表 CoreManager 需要知道这些词。
 - 模块修改自己的热词配置后，应主动重新注册语音触发词。
 - `VoiceTriggerRegistry` 根据 `moduleId` 覆盖旧注册。
+- 如果模块已经通过 IA 的 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明 wakeWords / extraWords，就不要再用同一个 `moduleId` 直接注册第二份 `VoiceTriggerRegistration`；两者最终进入同一个共享注册表，后注册者会覆盖先注册者。
 - 后续热词文件物化由语音资源层处理。
 - ASR 引擎是否重载或重启由 ASR 模块负责。
 

@@ -364,6 +364,8 @@ DialogueParticipantDescriptor(
     supportedIntents,
     supportedEntityTypes,
     supportedItemIds,
+    claimProfile,
+    voiceTriggerGroup,
     routeCapability,
     turnProcessingPolicy
 )
@@ -378,6 +380,7 @@ DialogueParticipantDescriptor(
 ```text
 静态描述：模块启动时注册，说明身份、优先级、投递入口和处理期限
 claim profile：模块启动时注册，说明 wake word、手持物、装备、准星实体、交互状态等硬命中条件
+voice trigger group：模块启动或配置变化时注册，说明该 moduleId 的 wakeWords / extraWords 共享热词组
 ```
 
 ### 9.1 静态描述
@@ -388,6 +391,7 @@ claim profile：模块启动时注册，说明 wake word、手持物、装备、
 - 参与方 ID
 - 显示名称
 - 兼容字段中的 wake word、实体类型、物品 ID
+- `voiceTriggerGroup` 中的 wakeWords / extraWords。wakeWords 可与 claim profile 的 `WAKE_WORD` 条件保持一致；extraWords 只用于 ASR 热词和 IR 辅助修复，不进入 IA 仲裁。
 - 基础优先级
 - route capability
 - 当前轮处理期限策略
@@ -427,6 +431,8 @@ DialogueClaimRule(
 | `decay` | 本轮命中后形成的 attention 衰减速度，当前固定为 `FAST` 或 `SLOW` 两档。 |
 
 兼容字段 `supportedIntents` 当前会被转换成 `WAKE_WORD + STRONG + SLOW`；`supportedItemIds` 会转换成 `HELD_ITEM/EQUIPPED_ITEM + NORMAL + FAST`；`supportedEntityTypes` 会转换成 `CROSSHAIR_ENTITY + NORMAL + SLOW`。新接入建议直接使用 `DialogueClaimProfile.rules(...)`。
+
+IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `voiceTriggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `voiceTriggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 ASR/IR 对专有名词的识别和修复，但不会让该模块在 IA 中产生 claim。
 
 `NEAREST_ENTITY_WITHIN` 由模块声明实体类型 ID 白名单和半径，例如 `DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")`。平台层只按所有参与方汇总出的实体类型白名单扫描，扫描结果只保留最近的白名单实体，并在 delivery 的 `matchedEntityRefs/contextSnapshot.entityRefs` 中返回结构化 `DialogueEntityRef`，其中包含实体 UUID/ref id、实体类型 ID、显示名和距离。NeoForge 侧不每 tick 全量扫描；白名单为空时不扫描，未命中时低频扫描，命中后按较短间隔刷新缓存，IA 冻结快照时只读取缓存。
 

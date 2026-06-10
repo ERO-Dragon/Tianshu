@@ -52,10 +52,10 @@ public class TianshuCoreManager {
     public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
         this.env = env;
         this.config = config;
-        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread);
         this.moduleHost = new TianshuModuleHost(env);
         this.moduleServices = new ModuleServiceRegistry();
         this.voiceResourceManager = new VoiceResourceManager(env, config);
+        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread, voiceResourceManager.voiceTriggers());
         this.runtimeState = new ModuleRuntimeState();
         this.state = runtimeState.readiness();
         this.interruptionService = new RuntimeInterruptionService(protocolRuntime.runtimeInterrupts());

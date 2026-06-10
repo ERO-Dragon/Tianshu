@@ -46,7 +46,7 @@ public final class CoreModuleLifecycleCoordinator {
         this.runtimeState = runtimeState;
         this.readinessState = readinessState;
         this.moduleBuilder = moduleBuilder;
-        this.protocolRuntime.voiceTriggers().addChangeListener(() -> this.voiceResourceManager.materialize(this.protocolRuntime.voiceTriggers()));
+        this.voiceResourceManager.voiceTriggers().addChangeListener(this.voiceResourceManager::materialize);
     }
 
     public boolean isInitialized() {
@@ -155,7 +155,7 @@ public final class CoreModuleLifecycleCoordinator {
                 moduleHost.registerAll(registrationContext, runtimeState.capabilities());
             }
 
-            voiceResourceManager.materialize(protocolRuntime.voiceTriggers());
+            voiceResourceManager.materialize();
             ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, voiceResourceManager, runtimeState);
             moduleHost.prepareAll(runtimeContext);
             moduleHost.startAll(runtimeContext);

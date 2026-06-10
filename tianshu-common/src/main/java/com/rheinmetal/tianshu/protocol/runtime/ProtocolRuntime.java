@@ -45,7 +45,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     private final CancellationRegistry cancellationRegistry = new CancellationRegistry(lifecycleStore);
     private final DeadLetterQueue deadLetterQueue = new DeadLetterQueue(512, lifecycleStore);
     private final StormGuard stormGuard = new StormGuard(200, 32);
-    private final VoiceTriggerRegistry voiceTriggerRegistry = new VoiceTriggerRegistry();
+    private final VoiceTriggerRegistry voiceTriggerRegistry;
     private final IntegrationModuleRegistry integrationModuleRegistry = new IntegrationModuleRegistry();
     private final StateSummaryRegistry stateSummaryRegistry = new StateSummaryRegistry();
     private final ProtocolExecutorManager executorManager;
@@ -53,6 +53,11 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     private final ProtocolContext context;
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor) {
+        this(mainThreadExecutor, new VoiceTriggerRegistry());
+    }
+
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry) {
+        this.voiceTriggerRegistry = voiceTriggerRegistry == null ? new VoiceTriggerRegistry() : voiceTriggerRegistry;
         this.executorManager = new ProtocolExecutorManager(mainThreadExecutor);
         this.brokerRegistry = new BrokerRegistry(mainThreadExecutor, executorManager);
         this.context = new RuntimeContext();

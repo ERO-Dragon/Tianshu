@@ -69,7 +69,7 @@ public final class AsrEngineBootstrap {
             return false;
         }
 
-        Path hotwordsFile = resolveHotwordsFile(context, modelInfo);
+        Path hotwordsFile = AsrHotwordSupport.fromModel(modelInfo).reloadRequired() ? resolveHotwordsFile(context, modelInfo) : null;
         boolean initialized = engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile);
         if (!initialized) {
             env.error("ASR 引擎初始化失败，模型类型可能尚未适配", null);

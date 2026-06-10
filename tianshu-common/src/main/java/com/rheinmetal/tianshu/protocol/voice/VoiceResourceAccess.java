@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.function.Consumer;
 
 public interface VoiceResourceAccess {
+    VoiceTriggerRegistry voiceTriggers();
+
     VoiceResourceSnapshot snapshot();
 
     Path resolveHotwordsFile(String language);

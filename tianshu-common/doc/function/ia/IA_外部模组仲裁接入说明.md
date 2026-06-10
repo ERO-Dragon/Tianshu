@@ -76,6 +76,8 @@ DialogueParticipantDescriptor(
     List<String> supportedIntents,
     List<String> supportedEntityTypes,
     List<String> supportedItemIds,
+    DialogueClaimProfile claimProfile,
+    DialogueVoiceTriggerGroup voiceTriggerGroup,
     String routeCapability,
     DialogueTurnProcessingPolicy turnProcessingPolicy
 )
@@ -92,8 +94,12 @@ DialogueParticipantDescriptor(
 | `supportedIntents` | 兼容字段，当前按 wake word 处理，例如 `酒狐`、`maid`、`create`。新接入建议使用 `DialogueClaimProfile.rules(...)` 显式声明规则。 |
 | `supportedEntityTypes` | 支持的实体类型 ID。 |
 | `supportedItemIds` | 支持的物品 ID。 |
+| `claimProfile` | 参与 IA 仲裁的硬命中规则。只有 `WAKE_WORD` 条件会作为仲裁 wake word；`extraWords` 不参与 IA claim。 |
+| `voiceTriggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
 | `routeCapability` | IA 选中该 participant 后投递正文的 capability。能力名由模块自定义，但能力契约必须接收标准 `DialogueDeliveryPayload`。 |
 | `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理的最大时间，不决定下一轮归属。 |
+
+如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `VoiceTriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `VoiceTriggerRegistration`。
 
 注册方式可以有两种。
 

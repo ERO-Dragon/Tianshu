@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.ir;
 
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
@@ -9,6 +10,7 @@ import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
@@ -35,6 +37,7 @@ public final class IrModule implements TianshuManagedModule {
     private volatile List<VoiceTriggerRegistration> indexedRegistrations = List.of();
     private volatile List<IrCompiledVoiceTrigger> voiceTriggerIndex = List.of();
     private ModuleProtocolAccess protocol;
+    private VoiceResourceAccess voiceResources;
 
     public IrModule(ProtocolRuntime runtime) {
         this(runtime, IrNamedObjectEnhancer.noop());
@@ -59,9 +62,21 @@ public final class IrModule implements TianshuManagedModule {
     @Override
     public void register(ModuleRegistrationContext context) {
         protocol = context.protocol();
-        refreshVoiceTriggerIndex(protocol.voiceTriggers().registrations());
         adapter.subscribeAsrFinalText(this::handleAsrFinalText);
         adapter.registerParseCapability(this::handleParseRequest);
+    }
+
+    @Override
+    public void prepare(ModuleRuntimeContext context) {
+        voiceResources = context == null ? null : context.voiceResources();
+        refreshVoiceTriggerIndex(currentVoiceTriggerRegistrations());
+    }
+
+    @Override
+    public void destroy() {
+        voiceResources = null;
+        indexedRegistrations = List.of();
+        voiceTriggerIndex = List.of();
     }
 
     private void handleAsrFinalText(TianshuEnvelope envelope, ProtocolContext context) {
@@ -112,7 +127,7 @@ public final class IrModule implements TianshuManagedModule {
     }
 
     private List<IrCompiledVoiceTrigger> ensureVoiceTriggerIndex() {
-        List<VoiceTriggerRegistration> registrations = protocol.voiceTriggers().registrations();
+        List<VoiceTriggerRegistration> registrations = currentVoiceTriggerRegistrations();
         if (registrations.equals(indexedRegistrations)) {
             return voiceTriggerIndex;
         }
@@ -127,6 +142,14 @@ public final class IrModule implements TianshuManagedModule {
     private void refreshVoiceTriggerIndex(List<VoiceTriggerRegistration> registrations) {
         indexedRegistrations = registrations == null || registrations.isEmpty() ? List.of() : List.copyOf(registrations);
         voiceTriggerIndex = indexer.compile(indexedRegistrations);
+    }
+
+    private List<VoiceTriggerRegistration> currentVoiceTriggerRegistrations() {
+        VoiceResourceAccess resources = voiceResources;
+        if (resources != null && resources.voiceTriggers() != null) {
+            return resources.voiceTriggers().registrations();
+        }
+        return protocol == null ? List.of() : protocol.voiceTriggers().registrations();
     }
 
     private void submitDialogueArbitration(TianshuEnvelope envelope, IrInputText voiceInput, IrPreparedInput prepared,

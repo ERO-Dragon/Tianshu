@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.function.asr.audio.AsrAudioPipelineFactory;
 import com.rheinmetal.tianshu.function.asr.control.AsrController;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngineBootstrap;
+import com.rheinmetal.tianshu.function.asr.engine.AsrHotwordSupport;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputGateway;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
@@ -225,6 +226,11 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (snapshot == null || destroyed || snapshot.version() <= appliedVoiceResourceVersion) {
             return;
         }
+        if (!currentModelHotwordsRequireReload()) {
+            appliedVoiceResourceVersion = snapshot.version();
+            env.info("ASR model does not require hotword reload, applied voice resource version=" + snapshot.version());
+            return;
+        }
         submitVoiceResourceReload(snapshot.version());
     }
 
@@ -309,5 +315,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             }
             env.warn("ASR 语音热词资源重载未产生可用引擎，version=" + snapshotVersion);
         }
+    }
+
+    private boolean currentModelHotwordsRequireReload() {
+        return AsrHotwordSupport.fromModelPath(config.getAsrModelPath()).reloadRequired();
     }
 }
