@@ -6,6 +6,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class LLMRequest {
+    public static final int MIN_TASK_PRIORITY = 0;
+    public static final int MAX_TASK_PRIORITY = 1000;
+
 
     private Integer maxTokens = 0;
     private Float temperature = 0.7f;
@@ -92,7 +95,7 @@ public class LLMRequest {
     }
 
     public void setTaskPriority(Integer taskPriority) {
-        this.taskPriority = taskPriority != null ? clamp(taskPriority, -1000, 1000) : 0;
+        this.taskPriority = taskPriority != null ? clamp(taskPriority, MIN_TASK_PRIORITY, MAX_TASK_PRIORITY) : MIN_TASK_PRIORITY;
     }
 
     public void setTaskPreemptible(Boolean taskPreemptible) {

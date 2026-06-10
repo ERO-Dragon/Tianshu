@@ -13,7 +13,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public final class IRCommandService {
     private final ReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
     private volatile CommandParser parser;
-    private volatile int indexedItemCount;
+    private volatile int indexedObjectCount;
 
     public void rebuild(Map<String, List<String>> rawDict) {
         lifecycleLock.writeLock().lock();
@@ -21,7 +21,7 @@ public final class IRCommandService {
             if (rawDict == null || rawDict.isEmpty()) { clearInternal(); return; }
             IndexBuilder.build(rawDict);
             parser = new CommandParser();
-            indexedItemCount = rawDict.size();
+            indexedObjectCount = rawDict.size();
         } finally {
             lifecycleLock.writeLock().unlock();
         }
@@ -36,7 +36,7 @@ public final class IRCommandService {
             }
             applySnapshot(snapshot);
             parser = new CommandParser();
-            indexedItemCount = snapshot.reverseLookupArray.length;
+            indexedObjectCount = snapshot.reverseLookupArray.length;
         } finally {
             lifecycleLock.writeLock().unlock();
         }
@@ -52,11 +52,11 @@ public final class IRCommandService {
     }
 
     public boolean isReady() {
-        return parser != null && indexedItemCount > 0;
+        return parser != null && indexedObjectCount > 0;
     }
 
-    public int getIndexedItemCount() {
-        return indexedItemCount;
+    public int getIndexedObjectCount() {
+        return indexedObjectCount;
     }
 
     public IRParseResult parse(String rawText, ItemContextProvider contextProvider, boolean isFastIR) {
@@ -79,7 +79,7 @@ public final class IRCommandService {
     public int resolveInternalId(String realItemId) {
         lifecycleLock.readLock().lock();
         try {
-            Integer internalId = IRBaseUtils.forwardLookupMap.get(realItemId);
+            Integer internalId = resolveInternalIdUnchecked(realItemId, true);
             return internalId == null ? -1 : internalId;
         } finally {
             lifecycleLock.readLock().unlock();
@@ -87,9 +87,17 @@ public final class IRCommandService {
     }
 
     public String resolveDisplayName(String realItemId) {
+        return resolveDisplayName(realItemId, true);
+    }
+
+    public String resolveEntityDisplayName(String entityTypeId) {
+        return resolveDisplayName(entityTypeId, false);
+    }
+
+    private String resolveDisplayName(String rawId, boolean itemPreferred) {
         lifecycleLock.readLock().lock();
         try {
-            Integer internalId = IRBaseUtils.forwardLookupMap.get(realItemId);
+            Integer internalId = resolveInternalIdUnchecked(rawId, itemPreferred);
             if (internalId == null || internalId < 0 || internalId >= IRBaseUtils.localizedNameArray.length) {
                 return "";
             }
@@ -108,7 +116,7 @@ public final class IRCommandService {
             }
             Set<Integer> resolved = new HashSet<>(realItemIds.size());
             for (String realItemId : realItemIds) {
-                Integer internalId = IRBaseUtils.forwardLookupMap.get(realItemId);
+                Integer internalId = resolveInternalIdUnchecked(realItemId, true);
                 if (internalId != null) {
                     resolved.add(internalId);
                 }
@@ -117,6 +125,22 @@ public final class IRCommandService {
         } finally {
             lifecycleLock.readLock().unlock();
         }
+    }
+
+    private Integer resolveInternalIdUnchecked(String rawId, boolean itemPreferred) {
+        if (rawId == null || rawId.isBlank()) {
+            return null;
+        }
+        String normalized = rawId.trim();
+        Integer direct = IRBaseUtils.forwardLookupMap.get(normalized);
+        if (direct != null) {
+            return direct;
+        }
+        Integer preferred = IRBaseUtils.forwardLookupMap.get(itemPreferred ? IRObjectId.item(normalized) : IRObjectId.entity(normalized));
+        if (preferred != null) {
+            return preferred;
+        }
+        return IRBaseUtils.forwardLookupMap.get(itemPreferred ? IRObjectId.entity(normalized) : IRObjectId.item(normalized));
     }
 
     public IRSnapshot snapshot(String fingerprint) {
@@ -148,7 +172,7 @@ public final class IRCommandService {
 
     private void clearInternal() {
         parser = null;
-        indexedItemCount = 0;
+        indexedObjectCount = 0;
         IndexBuilder.INDEX_POOL = new int[0];
         IndexBuilder.writeOffset = 0;
         IndexBuilder.indexDirectory = new Long2LongOpenHashMap();

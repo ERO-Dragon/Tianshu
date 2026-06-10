@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.ir;
 
 import com.rheinmetal.tianshu.client.language.ClientLanguagePolicy;
+import com.rheinmetal.tianshu.function.ir.core.IRObjectId;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -35,7 +36,7 @@ final class ClientItemDictionaryBuilder {
             }
             
             if (!aliases.isEmpty()) {
-                dictionary.put(realItemId, aliases);
+                dictionary.put(IRObjectId.item(realItemId), aliases);
             }
         }
         return dictionary;

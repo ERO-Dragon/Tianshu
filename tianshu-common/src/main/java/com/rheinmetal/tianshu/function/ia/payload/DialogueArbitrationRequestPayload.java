@@ -14,9 +14,14 @@ public record DialogueArbitrationRequestPayload(
         String normalizedText,
         List<String> matchedWakeWords,
         List<String> matchedItemIds,
+        List<String> matchedEntityTypeIds,
         long timestampMillis,
         long expireAtMillis
 ) implements ITianshuPayload {
+    public DialogueArbitrationRequestPayload(String requestId, String sourceModuleId, String playerId, String turnId, long sourceSessionId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, long timestampMillis, long expireAtMillis) {
+        this(requestId, sourceModuleId, playerId, turnId, sourceSessionId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, List.of(), timestampMillis, expireAtMillis);
+    }
+
     public DialogueArbitrationRequestPayload {
         requestId = requireText(requestId, "requestId");
         sourceModuleId = requireText(sourceModuleId, "sourceModuleId");
@@ -27,6 +32,7 @@ public record DialogueArbitrationRequestPayload(
         normalizedText = sanitize(normalizedText);
         matchedWakeWords = copyTextList(matchedWakeWords);
         matchedItemIds = copyTextList(matchedItemIds);
+        matchedEntityTypeIds = copyTextList(matchedEntityTypeIds);
         timestampMillis = Math.max(0L, timestampMillis);
         expireAtMillis = Math.max(0L, expireAtMillis);
     }

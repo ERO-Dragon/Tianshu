@@ -8,9 +8,6 @@ public final class IrRoutingPolicy {
         if (input == null || input.blank()) {
             return IrRoutingDecision.noMatch("EMPTY_INPUT");
         }
-        if (matchBatch != null && matchBatch.matched()) {
-            return IrRoutingDecision.directVoiceTrigger(matchBatch);
-        }
         return IrRoutingDecision.dialogueArbitration(matchBatch);
     }
 }

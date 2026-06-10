@@ -31,6 +31,10 @@ public record DialogueClaimCondition(
         return new DialogueClaimCondition(DialogueClaimConditionType.EQUIPPED_ITEM, List.of(values), "");
     }
 
+    public static DialogueClaimCondition mentionedEntity(String... values) {
+        return new DialogueClaimCondition(DialogueClaimConditionType.MENTIONED_ENTITY, List.of(values), "");
+    }
+
     public static DialogueClaimCondition crosshairEntity(String... values) {
         return new DialogueClaimCondition(DialogueClaimConditionType.CROSSHAIR_ENTITY, List.of(values), "");
     }

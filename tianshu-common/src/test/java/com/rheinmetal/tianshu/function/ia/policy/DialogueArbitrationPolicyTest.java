@@ -107,6 +107,38 @@ class DialogueArbitrationPolicyTest {
         assertEquals("NO_OWNER", decision.reason());
     }
 
+    @Test
+    void ignoresClaimsFromUnregisteredParticipants() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+
+        var decision = policy.decide(
+                List.of(defaultOwner()),
+                List.of(claim("missing", DialogueClaimStrength.STRONG, 999)),
+                Optional.empty()
+        );
+
+        assertTrue(decision.accepted());
+        assertEquals("default", decision.owner().participantId());
+        assertEquals("DEFAULT_OWNER", decision.reason());
+    }
+
+    @Test
+    void stableParticipantIdTieBreakChoosesLexicographicallyEarlierId() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+
+        var decision = policy.decide(
+                List.of(descriptor("alpha", 1), descriptor("beta", 1), defaultOwner()),
+                List.of(
+                        claim("alpha", DialogueClaimStrength.NORMAL, 1),
+                        claim("beta", DialogueClaimStrength.NORMAL, 1)
+                ),
+                Optional.empty()
+        );
+
+        assertTrue(decision.accepted());
+        assertEquals("alpha", decision.owner().participantId());
+    }
+
     private DialogueClaim claim(String participantId, DialogueClaimStrength strength, int priority) {
         return new DialogueClaim(participantId, strength, DialogueAttentionDecay.FAST, priority, "");
     }

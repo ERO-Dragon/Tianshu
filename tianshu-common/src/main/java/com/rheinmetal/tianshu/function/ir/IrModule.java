@@ -6,13 +6,12 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrParsePayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.VoiceTriggerPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.function.ir.enhance.IrItemEnhancementResult;
-import com.rheinmetal.tianshu.function.ir.enhance.IrItemEnhancer;
+import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
+import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
 import com.rheinmetal.tianshu.function.ir.input.IrInputMapper;
 import com.rheinmetal.tianshu.function.ir.input.IrInputPreprocessor;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
@@ -26,7 +25,8 @@ import java.util.List;
 public final class IrModule implements TianshuManagedModule {
     private final IrProtocolAdapter adapter;
     private final IrInputPreprocessor preprocessor;
-    private final IrItemEnhancer itemEnhancer;
+    private final IrNamedObjectEnhancer namedObjectEnhancer;
+    private final IrWakeWordEnhancer wakeWordEnhancer;
     private final IrVoiceTriggerIndexer indexer;
     private final IrVoiceTriggerMatcher matcher;
     private final IrRoutingPolicy routingPolicy;
@@ -37,13 +37,14 @@ public final class IrModule implements TianshuManagedModule {
     private ModuleProtocolAccess protocol;
 
     public IrModule(ProtocolRuntime runtime) {
-        this(runtime, IrItemEnhancer.noop());
+        this(runtime, IrNamedObjectEnhancer.noop());
     }
 
-    public IrModule(ProtocolRuntime runtime, IrItemEnhancer itemEnhancer) {
+    public IrModule(ProtocolRuntime runtime, IrNamedObjectEnhancer namedObjectEnhancer) {
         this.adapter = new IrProtocolAdapter(runtime);
         this.preprocessor = new IrInputPreprocessor();
-        this.itemEnhancer = itemEnhancer == null ? IrItemEnhancer.noop() : itemEnhancer;
+        this.namedObjectEnhancer = namedObjectEnhancer == null ? IrNamedObjectEnhancer.noop() : namedObjectEnhancer;
+        this.wakeWordEnhancer = new IrWakeWordEnhancer();
         this.indexer = new IrVoiceTriggerIndexer();
         this.matcher = new IrVoiceTriggerMatcher();
         this.routingPolicy = new IrRoutingPolicy();
@@ -85,24 +86,29 @@ public final class IrModule implements TianshuManagedModule {
             return;
         }
         IrPreparedInput prepared = preprocessor.prepare(input);
-        IrItemEnhancementResult itemEnhancement = itemEnhancer.enhance(prepared);
-        IrInputText voiceInput = prepared.voiceInput();
+        IrNamedObjectEnhancementResult namedObjectEnhancement = namedObjectEnhancer.enhance(prepared);
         List<IrCompiledVoiceTrigger> index = ensureVoiceTriggerIndex();
+        IrInputText voiceInput = wakeWordEnhancer.enhance(inputWithNamedObjectRepair(prepared, namedObjectEnhancement), index);
         IrMatchBatch batch = matcher.match(voiceInput, index);
         IrRoutingDecision decision = routingPolicy.decide(voiceInput, batch);
         if (decision.kind() == IrRouteKind.NO_MATCH) {
             publishNoMatch(envelope, voiceInput, decision.reason());
             return;
         }
-        if (decision.kind() == IrRouteKind.DIALOGUE_ARBITRATION) {
-            submitDialogueArbitration(envelope, voiceInput, prepared, itemEnhancement, batch);
-            publishDialogueRouted(envelope, voiceInput);
-            return;
+        submitDialogueArbitration(envelope, voiceInput, prepared, namedObjectEnhancement, batch);
+        publishDialogueRouted(envelope, voiceInput, batch);
+    }
+
+    private IrInputText inputWithNamedObjectRepair(IrPreparedInput prepared, IrNamedObjectEnhancementResult namedObjectEnhancement) {
+        IrInputText voiceInput = prepared == null ? null : prepared.voiceInput();
+        if (voiceInput == null) {
+            return new IrInputText("", "", 0, 0L, "", System.currentTimeMillis());
         }
-        for (IrVoiceMatch match : batch.matches()) {
-            dispatch(envelope, voiceInput, match, itemEnhancement);
+        String repaired = namedObjectEnhancement == null ? "" : namedObjectEnhancement.repairedText();
+        if (repaired == null || repaired.isBlank()) {
+            return voiceInput;
         }
-        publishMatched(envelope, voiceInput, batch.matches());
+        return new IrInputText(repaired, voiceInput.rawText(), voiceInput.turnId(), voiceInput.sessionId(), voiceInput.source(), voiceInput.createdAt());
     }
 
     private List<IrCompiledVoiceTrigger> ensureVoiceTriggerIndex() {
@@ -124,53 +130,22 @@ public final class IrModule implements TianshuManagedModule {
     }
 
     private void submitDialogueArbitration(TianshuEnvelope envelope, IrInputText voiceInput, IrPreparedInput prepared,
-                                           IrItemEnhancementResult itemEnhancement, IrMatchBatch batch) {
+                                           IrNamedObjectEnhancementResult namedObjectEnhancement, IrMatchBatch batch) {
         adapter.commandDialogueArbitration(envelope, dialogueMapper.map(
                 voiceInput,
                 prepared,
-                itemEnhancement,
+                namedObjectEnhancement,
                 batch
         ));
     }
 
-    private void dispatch(TianshuEnvelope envelope, IrInputText input, IrVoiceMatch match, IrItemEnhancementResult itemEnhancement) {
-        adapter.dispatchVoiceTrigger(envelope, match.deliveryTarget(), new VoiceTriggerPayload(
-                input.rawText(),
-                input.text(),
-                match.moduleId(),
-                match.matchedWakeWords(),
-                match.matchedExtraWords(),
-                input.source(),
-                match.confidence(),
-                itemEnhancement == null ? List.of() : itemEnhancement.matchedItemNames(),
-                itemEnhancement == null ? List.of() : itemEnhancement.matchedItemIds(),
-                input.createdAt(),
-                input.sessionId(),
-                input.turnId()
-        ));
-    }
-
-    private void publishMatched(TianshuEnvelope envelope, IrInputText input, List<IrVoiceMatch> matches) {
-        adapter.publishResult(envelope, new IrResultPayload(
-                true,
-                input.text(),
-                "VOICE_TRIGGER",
-                targetSummary(matches),
-                maxConfidence(matches),
-                false,
-                "MATCHED",
-                input.turnId(),
-                input.sessionId()
-        ));
-    }
-
-    private void publishDialogueRouted(TianshuEnvelope envelope, IrInputText input) {
+    private void publishDialogueRouted(TianshuEnvelope envelope, IrInputText input, IrMatchBatch batch) {
         adapter.publishResult(envelope, new IrResultPayload(
                 true,
                 "",
                 "DIALOGUE_ARBITRATION",
-                "",
-                0.0D,
+                targetSummary(batch == null ? List.of() : batch.matches()),
+                maxConfidence(batch == null ? List.of() : batch.matches()),
                 true,
                 "DIALOGUE_ROUTED",
                 input.turnId(),
@@ -185,7 +160,7 @@ public final class IrModule implements TianshuManagedModule {
         adapter.publishResult(envelope, new IrResultPayload(
                 false,
                 text,
-                "VOICE_TRIGGER",
+                "DIALOGUE_ARBITRATION",
                 "",
                 0.0D,
                 false,

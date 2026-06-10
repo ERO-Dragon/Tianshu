@@ -239,7 +239,7 @@ public interface ITianshuConfig {
     }
 
     default int getLlmTaskHotSuspendSlots() {
-        return 1;
+        return 0;
     }
 
     default boolean isLlmTaskSuspendOnChatEnabled() {

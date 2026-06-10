@@ -11,6 +11,6 @@ public final class ClientIrModuleInstaller extends IrModuleInstaller {
 
     @Override
     protected IrModule createModule() {
-        return new IrModule(protocolRuntime, new ClientIrItemEnhancer());
+        return new IrModule(protocolRuntime, new ClientIrNamedObjectEnhancer());
     }
 }

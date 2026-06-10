@@ -8,10 +8,6 @@ public record IrRoutingDecision(IrRouteKind kind, IrMatchBatch matchBatch, Strin
         reason = reason == null ? "" : reason.trim();
     }
 
-    public static IrRoutingDecision directVoiceTrigger(IrMatchBatch matchBatch) {
-        return new IrRoutingDecision(IrRouteKind.DIRECT_VOICE_TRIGGER, matchBatch, "VOICE_TRIGGER_MATCHED");
-    }
-
     public static IrRoutingDecision dialogueArbitration(IrMatchBatch matchBatch) {
         return new IrRoutingDecision(IrRouteKind.DIALOGUE_ARBITRATION, matchBatch, "OPEN_DIALOGUE_INPUT");
     }

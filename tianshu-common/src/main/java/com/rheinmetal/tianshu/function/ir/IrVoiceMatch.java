@@ -1,16 +1,10 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerDeliveryTarget;
-
 import java.util.List;
 
-public record IrVoiceMatch(String moduleId, List<String> matchedWakeWords, List<String> matchedExtraWords, double confidence, int priority, VoiceTriggerDeliveryTarget deliveryTarget) {
+public record IrVoiceMatch(String moduleId, List<String> matchedWakeWords, List<String> matchedExtraWords, double confidence, int priority) {
     public IrVoiceMatch(String moduleId, List<String> matchedWakeWords, List<String> matchedExtraWords, double confidence) {
-        this(moduleId, matchedWakeWords, matchedExtraWords, confidence, 0, null);
-    }
-
-    public IrVoiceMatch(String moduleId, List<String> matchedWakeWords, List<String> matchedExtraWords, double confidence, int priority) {
-        this(moduleId, matchedWakeWords, matchedExtraWords, confidence, priority, null);
+        this(moduleId, matchedWakeWords, matchedExtraWords, confidence, 0);
     }
 
     public IrVoiceMatch {
@@ -19,7 +13,6 @@ public record IrVoiceMatch(String moduleId, List<String> matchedWakeWords, List<
         matchedWakeWords = normalize(matchedWakeWords);
         matchedExtraWords = normalize(matchedExtraWords);
         confidence = Math.max(0.0D, Math.min(1.0D, confidence));
-        deliveryTarget = deliveryTarget == null ? VoiceTriggerDeliveryTarget.defaultFor(moduleId) : deliveryTarget;
     }
 
     private static List<String> normalize(List<String> values) {

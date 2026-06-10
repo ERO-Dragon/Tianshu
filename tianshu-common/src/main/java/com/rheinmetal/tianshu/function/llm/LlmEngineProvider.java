@@ -9,6 +9,9 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 
 public final class LlmEngineProvider {
+    static final int MIN_TASK_HOT_SUSPEND_SLOTS = 0;
+    static final int MAX_TASK_HOT_SUSPEND_SLOTS = 5;
+
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private JavaLlamaServer aiService;
@@ -39,7 +42,7 @@ public final class LlmEngineProvider {
                 .chatMaxQueueSize(positiveOrOne(config.getLlmLibsChatQueueSize()))
                 .taskContext(config.getLlmTaskContextSize())
                 .taskThreads(taskThreads)
-                .taskMaxQueueSize(positiveOrOne(config.getLlmTaskHotSuspendSlots()))
+                .taskMaxQueueSize(taskHotSuspendSlots(config.getLlmTaskHotSuspendSlots()))
                 .taskSuspendOnChat(config.isLlmTaskSuspendOnChatEnabled())
                 .requestTimeoutSeconds(config.getLlmRequestTimeoutSeconds())
                 .cacheTypeK(parseCacheType(config.getLlmCacheTypeK(), KvCacheType.Q8_0))
@@ -68,6 +71,10 @@ public final class LlmEngineProvider {
 
     private int positiveOrOne(int value) {
         return Math.max(1, value);
+    }
+
+    static int taskHotSuspendSlots(int value) {
+        return Math.max(MIN_TASK_HOT_SUSPEND_SLOTS, Math.min(MAX_TASK_HOT_SUSPEND_SLOTS, value));
     }
 
     private KvCacheType parseCacheType(String value, KvCacheType fallback) {

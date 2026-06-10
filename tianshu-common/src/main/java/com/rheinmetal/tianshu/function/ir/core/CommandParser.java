@@ -10,6 +10,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,41 +74,62 @@ public final class CommandParser {
         }
 
         String healedRawText = rawText;
+        List<String> matchedItemRealIds = List.of();
+        List<String> matchedEntityTypeIds = List.of();
         ReviewHint reviewHint = ReviewHint.EMPTY;
 
         if (results.isEmpty()) {
             if (isFastIR) {
                 FastIRFallbackResult fallback = processFastIRFallback(rawText, contextInternalIds, sharedLcsWorkspace);
                 healedRawText = fallback.healedText;
+                matchedItemRealIds = fallback.matchedItemRealIds;
+                matchedEntityTypeIds = fallback.matchedEntityTypeIds;
                 reviewHint = fallback.reviewHint;
                 if (fallback.interceptedUnit != null) {
                     results.add(fallback.interceptedUnit);
                 }
             } else {
                 ScoredCandidate best = findBestCandidateForIntercept(rawText, contextInternalIds, sharedLcsWorkspace);
-                if (best != null) {
+                if (best != null && isItemCandidate(best)) {
                     double threshold = FINALIR_FIXED_THRESHOLD;
                     if (best.score >= threshold) {
-                        String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
+                        String targetRealItemId = IRObjectId.raw(IRBaseUtils.reverseLookupArray[best.internalId]);
                         results.add(new ParseUnit(Intent.UNKNOWN, targetRealItemId, false));
                     }
                 }
             }
         } else if (isFastIR) {
-            healedRawText = healRawTextFromRanked(rawText, executeRankQuery(rawText, contextInternalIds, sharedLcsWorkspace));
+            RepairResult repairResult = repairRawTextFromRanked(rawText, executeRankQuery(rawText, contextInternalIds, sharedLcsWorkspace));
+            healedRawText = repairResult.text;
+            matchedItemRealIds = repairResult.matchedItemRealIds;
+            matchedEntityTypeIds = repairResult.matchedEntityTypeIds;
         }
 
-        return new IRParseResult(true, rawText, healedRawText, results, reviewHint.bestCandidateText, reviewHint.bestCandidateRealItemId, reviewHint.bestScore, reviewHint.entityRatio, reviewHint.interceptThreshold, reviewHint.candidateIntentType);
+        if (!results.isEmpty()) {
+            LinkedHashSet<String> mergedIds = new LinkedHashSet<>(matchedItemRealIds);
+            for (ParseUnit unit : results) {
+                if (unit != null && unit.targetRealItemId != null && !unit.targetRealItemId.isBlank()) {
+                    mergedIds.add(unit.targetRealItemId);
+                }
+            }
+            matchedItemRealIds = List.copyOf(mergedIds);
+        }
+
+        return new IRParseResult(true, rawText, healedRawText, results, matchedItemRealIds, matchedEntityTypeIds, reviewHint.bestCandidateText, IRObjectId.raw(reviewHint.bestCandidateRealItemId), reviewHint.bestScore, reviewHint.entityRatio, reviewHint.interceptThreshold, reviewHint.candidateIntentType);
     }
 
     private static final class FastIRFallbackResult {
         final ParseUnit interceptedUnit;
         final String healedText;
+        final List<String> matchedItemRealIds;
+        final List<String> matchedEntityTypeIds;
         final ReviewHint reviewHint;
 
-        FastIRFallbackResult(ParseUnit interceptedUnit, String healedText, ReviewHint reviewHint) {
+        FastIRFallbackResult(ParseUnit interceptedUnit, String healedText, List<String> matchedItemRealIds, List<String> matchedEntityTypeIds, ReviewHint reviewHint) {
             this.interceptedUnit = interceptedUnit;
             this.healedText = healedText;
+            this.matchedItemRealIds = matchedItemRealIds == null ? List.of() : matchedItemRealIds;
+            this.matchedEntityTypeIds = matchedEntityTypeIds == null ? List.of() : matchedEntityTypeIds;
             this.reviewHint = reviewHint;
         }
     }
@@ -140,18 +162,18 @@ public final class CommandParser {
         if (ranked.length > 0) {
             ScoredCandidate best = ranked[0];
             String targetText = IRBaseUtils.localizedNameArray[best.internalId];
-            String targetRealItemId = IRBaseUtils.reverseLookupArray[best.internalId];
+            String targetObjectId = IRBaseUtils.reverseLookupArray[best.internalId];
             double threshold = computeInterceptThreshold(rawText, best);
             double entityRatio = computeEntityRatio(rawText, best);
-            reviewHint = new ReviewHint(targetText, targetRealItemId, best.score, entityRatio, threshold, Intent.UNKNOWN.name());
-            if (best.score >= threshold) {
-                interceptedUnit = new ParseUnit(Intent.UNKNOWN, targetRealItemId, false);
+            reviewHint = new ReviewHint(targetText, targetObjectId, best.score, entityRatio, threshold, Intent.UNKNOWN.name());
+            if (isItemCandidate(best) && best.score >= threshold && !isGenericContainedQuery(IRBaseUtils.tokenize(rawText), ranked)) {
+                interceptedUnit = new ParseUnit(Intent.UNKNOWN, IRObjectId.raw(targetObjectId), false);
             }
         }
 
-        String healedText = healRawTextFromRanked(rawText, ranked);
+        RepairResult repairResult = repairRawTextFromRanked(rawText, ranked);
 
-        return new FastIRFallbackResult(interceptedUnit, healedText, reviewHint);
+        return new FastIRFallbackResult(interceptedUnit, repairResult.text, repairResult.matchedItemRealIds, repairResult.matchedEntityTypeIds, reviewHint);
     }
 
     private ScoredCandidate[] executeRankQuery(String rawText, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
@@ -209,63 +231,131 @@ public final class CommandParser {
         return ranked.length > 0 ? ranked[0] : null;
     }
 
-    private String healRawTextFromRanked(String rawText, ScoredCandidate[] ranked) {
+    private RepairResult repairRawTextFromRanked(String rawText, ScoredCandidate[] ranked) {
         if (ranked.length == 0) {
-            return rawText;
+            return new RepairResult(rawText, List.of());
         }
 
-        StringBuilder builder = new StringBuilder(rawText);
-        int offsetAccum = 0;
+        List<RepairProposal> proposals = collectRepairProposals(rawText, ranked);
+        if (proposals.isEmpty()) {
+            return new RepairResult(rawText, List.of());
+        }
 
+        proposals.sort(Comparator
+                .comparingDouble((RepairProposal p) -> p.overlap).reversed()
+                .thenComparing(Comparator.comparingInt((RepairProposal p) -> p.target.length()).reversed())
+                .thenComparing(Comparator.comparingDouble((RepairProposal p) -> p.candidateScore).reversed())
+                .thenComparingInt(p -> p.start));
+
+        boolean[] occupied = new boolean[rawText.length()];
+        List<RepairProposal> selected = new ArrayList<>();
+        for (RepairProposal proposal : proposals) {
+            if (overlapsOccupied(occupied, proposal.start, proposal.end)) {
+                continue;
+            }
+            markOccupied(occupied, proposal.start, proposal.end);
+            selected.add(proposal);
+        }
+        if (selected.isEmpty()) {
+            return new RepairResult(rawText, List.of());
+        }
+        selected.sort(Comparator.comparingInt(p -> p.start));
+
+        StringBuilder builder = new StringBuilder(rawText.length());
+        LinkedHashSet<String> matchedIds = new LinkedHashSet<>();
+        int cursor = 0;
+        for (RepairProposal proposal : selected) {
+            if (proposal.start > cursor) {
+                builder.append(rawText, cursor, proposal.start);
+            }
+            builder.append(proposal.target);
+            matchedIds.add(IRBaseUtils.reverseLookupArray[proposal.internalId]);
+            cursor = proposal.end;
+        }
+        if (cursor < rawText.length()) {
+            builder.append(rawText, cursor, rawText.length());
+        }
+        return RepairResult.from(builder.toString(), matchedIds);
+    }
+
+    private List<RepairProposal> collectRepairProposals(String rawText, ScoredCandidate[] ranked) {
+        List<RepairProposal> proposals = new ArrayList<>();
         int limit = Math.min(HEAL_MAX_CANDIDATES, ranked.length);
         for (int ci = 0; ci < limit; ci++) {
             ScoredCandidate sc = ranked[ci];
-            if (sc.score < FASTIR_HEAL_THRESHOLD) {
-                break;
-            }
-
             String target = IRBaseUtils.localizedNameArray[sc.internalId];
             if (target == null || target.isEmpty()) {
                 continue;
             }
 
-            int minLen = Math.max(2, target.length() - 1);
-            int maxLen = Math.min(rawText.length(), target.length() + 1);
-
-            String[] targetPinyinTokens = IRBaseUtils.tokenize(target);
-            String targetPinyinJoined = IRBaseUtils.joinTokens(targetPinyinTokens);
-
-            int bestStart = -1;
-            int bestEnd = -1;
-            double bestOverlap = 0.0d;
-
-            for (int windowLen = minLen; windowLen <= maxLen; windowLen++) {
-                for (int start = 0; start <= rawText.length() - windowLen; start++) {
-                    int end = start + windowLen;
-                    String slice = rawText.substring(start, end);
-                    String[] slicePinyinTokens = IRBaseUtils.tokenize(slice);
-                    if (slicePinyinTokens.length == 0) {
-                        continue;
-                    }
-                    String slicePinyinJoined = IRBaseUtils.joinTokens(slicePinyinTokens);
-                    double overlap = computeCharOverlapRatio(slicePinyinJoined, targetPinyinJoined);
-                    if (overlap > bestOverlap) {
-                        bestOverlap = overlap;
-                        bestStart = start;
-                        bestEnd = end;
-                    }
-                }
+            RepairProposal proposal = findBestRepairProposal(rawText, sc.internalId, target, sc.score);
+            if (proposal != null) {
+                proposals.add(proposal);
             }
+        }
+        return proposals;
+    }
 
-            if (bestOverlap > HEAL_PINYIN_OVERLAP_THRESHOLD && bestStart >= 0) {
-                int adjustedStart = bestStart + offsetAccum;
-                int adjustedEnd = bestEnd + offsetAccum;
-                builder.replace(adjustedStart, adjustedEnd, target);
-                offsetAccum += target.length() - (bestEnd - bestStart);
+    private RepairProposal findBestRepairProposal(String rawText, int internalId, String target, double candidateScore) {
+        int minLen = Math.max(2, target.length() - 1);
+        int maxLen = Math.min(rawText.length(), target.length() + 1);
+
+        String[] targetPinyinTokens = IRBaseUtils.tokenize(target);
+        String targetPinyinJoined = IRBaseUtils.joinTokens(targetPinyinTokens);
+        LcsWorkspace windowLcsWorkspace = new LcsWorkspace();
+
+        int bestStart = -1;
+        int bestEnd = -1;
+        double bestOverlap = 0.0d;
+        int bestLengthDiff = Integer.MAX_VALUE;
+
+        for (int windowLen = minLen; windowLen <= maxLen; windowLen++) {
+            for (int start = 0; start <= rawText.length() - windowLen; start++) {
+                int end = start + windowLen;
+                String slice = rawText.substring(start, end);
+                String[] slicePinyinTokens = IRBaseUtils.tokenize(slice);
+                if (slicePinyinTokens.length == 0) {
+                    continue;
+                }
+                String slicePinyinJoined = IRBaseUtils.joinTokens(slicePinyinTokens);
+                double overlap = computeWindowSimilarity(slicePinyinJoined, targetPinyinJoined, windowLcsWorkspace);
+                int lengthDiff = Math.abs(windowLen - target.length());
+                if (overlap > bestOverlap
+                        || (Double.compare(overlap, bestOverlap) == 0 && lengthDiff < bestLengthDiff)
+                        || (Double.compare(overlap, bestOverlap) == 0 && lengthDiff == bestLengthDiff && (bestStart < 0 || start < bestStart))) {
+                    bestOverlap = overlap;
+                    bestStart = start;
+                    bestEnd = end;
+                    bestLengthDiff = lengthDiff;
+                }
             }
         }
 
-        return builder.toString();
+        if (bestOverlap > HEAL_PINYIN_OVERLAP_THRESHOLD && bestStart >= 0) {
+            return new RepairProposal(internalId, bestStart, bestEnd, target, bestOverlap, candidateScore);
+        }
+        return null;
+    }
+
+    private double computeWindowSimilarity(String slicePinyinJoined, String targetPinyinJoined, LcsWorkspace lcsWorkspace) {
+        double lcsRatio = computeLcsRatio(slicePinyinJoined, targetPinyinJoined, lcsWorkspace);
+        double overlapRatio = computeCharOverlapRatio(slicePinyinJoined, targetPinyinJoined);
+        return (lcsRatio * 0.7d) + (overlapRatio * 0.3d);
+    }
+
+    private boolean overlapsOccupied(boolean[] occupied, int start, int end) {
+        for (int i = start; i < end && i < occupied.length; i++) {
+            if (occupied[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void markOccupied(boolean[] occupied, int start, int end) {
+        for (int i = start; i < end && i < occupied.length; i++) {
+            occupied[i] = true;
+        }
     }
 
     private ParseUnit parseSingleSubQuery(SubQuery subQuery, Set<Integer> contextInternalIds, LcsWorkspace lcsWorkspace) {
@@ -303,9 +393,67 @@ public final class CommandParser {
         if (top2 != null && top1.score - top2.score < 0.1d) {
             return null;
         }
+        if (isGenericContainedQuery(variant.baseTokens, ranked)) {
+            return null;
+        }
 
-        String targetRealItemId = IRBaseUtils.reverseLookupArray[top1.internalId];
+        ScoredCandidate selected = selectCandidateByRepairEvidence(subQuery.rawChunk, ranked, top1);
+        if (!isItemCandidate(selected)) {
+            return null;
+        }
+        String targetRealItemId = IRObjectId.raw(IRBaseUtils.reverseLookupArray[selected.internalId]);
         return new ParseUnit(subQuery.intent, targetRealItemId, subQuery.negFlag);
+    }
+
+    private boolean isItemCandidate(ScoredCandidate candidate) {
+        return candidate != null && IRObjectId.isItem(IRBaseUtils.reverseLookupArray[candidate.internalId]);
+    }
+
+    private ScoredCandidate selectCandidateByRepairEvidence(String rawText, ScoredCandidate[] ranked, ScoredCandidate fallback) {
+        List<RepairProposal> proposals = collectRepairProposals(rawText, ranked);
+        if (proposals.isEmpty()) {
+            return fallback;
+        }
+        proposals.sort(Comparator
+                .comparingDouble((RepairProposal p) -> p.overlap).reversed()
+                .thenComparing(Comparator.comparingInt((RepairProposal p) -> p.target.length()).reversed())
+                .thenComparing(Comparator.comparingDouble((RepairProposal p) -> p.candidateScore).reversed())
+                .thenComparingInt(p -> p.start));
+        int selectedInternalId = proposals.get(0).internalId;
+        for (ScoredCandidate candidate : ranked) {
+            if (candidate.internalId == selectedInternalId) {
+                return candidate;
+            }
+        }
+        return fallback;
+    }
+
+    private boolean isGenericContainedQuery(String[] queryTokens, ScoredCandidate[] ranked) {
+        if (queryTokens.length == 0) {
+            return false;
+        }
+        String queryJoined = IRBaseUtils.joinTokens(queryTokens);
+        int containedLongerCandidates = 0;
+        for (ScoredCandidate candidate : ranked) {
+            String[] candidateTokens = IRBaseUtils.primaryAliasTokensArray[candidate.internalId];
+            if (candidateTokens == null || candidateTokens.length == 0) {
+                continue;
+            }
+            String candidateJoined = IRBaseUtils.joinTokens(candidateTokens);
+            if (!candidateJoined.contains(queryJoined)) {
+                continue;
+            }
+            if (candidateTokens.length == queryTokens.length) {
+                return false;
+            }
+            if (candidateTokens.length > queryTokens.length) {
+                containedLongerCandidates++;
+            }
+            if (containedLongerCandidates >= 2) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<SubQuery> splitToSubQueries(String rawText) {
@@ -613,6 +761,53 @@ public final class CommandParser {
         private ScoredCandidate(int internalId, double score) {
             this.internalId = internalId;
             this.score = score;
+        }
+    }
+
+    private static final class RepairProposal {
+        final int internalId;
+        final int start;
+        final int end;
+        final String target;
+        final double overlap;
+        final double candidateScore;
+
+        private RepairProposal(int internalId, int start, int end, String target, double overlap, double candidateScore) {
+            this.internalId = internalId;
+            this.start = start;
+            this.end = end;
+            this.target = target;
+            this.overlap = overlap;
+            this.candidateScore = candidateScore;
+        }
+    }
+
+    private static final class RepairResult {
+        final String text;
+        final List<String> matchedItemRealIds;
+        final List<String> matchedEntityTypeIds;
+
+        private RepairResult(String text, List<String> matchedItemRealIds) {
+            this(text, matchedItemRealIds, List.of());
+        }
+
+        private RepairResult(String text, List<String> matchedItemRealIds, List<String> matchedEntityTypeIds) {
+            this.text = text;
+            this.matchedItemRealIds = matchedItemRealIds == null ? List.of() : matchedItemRealIds;
+            this.matchedEntityTypeIds = matchedEntityTypeIds == null ? List.of() : matchedEntityTypeIds;
+        }
+
+        private static RepairResult from(String text, LinkedHashSet<String> objectIds) {
+            LinkedHashSet<String> itemIds = new LinkedHashSet<>();
+            LinkedHashSet<String> entityTypeIds = new LinkedHashSet<>();
+            for (String objectId : objectIds) {
+                if (IRObjectId.isEntity(objectId)) {
+                    entityTypeIds.add(IRObjectId.raw(objectId));
+                } else {
+                    itemIds.add(IRObjectId.raw(objectId));
+                }
+            }
+            return new RepairResult(text, List.copyOf(itemIds), List.copyOf(entityTypeIds));
         }
     }
 

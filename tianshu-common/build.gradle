@@ -30,6 +30,8 @@ dependencies {
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'com.google.code.gson:gson:2.10.1'
+    testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'
     testRuntimeOnly files({
         fileTree(layout.buildDirectory.dir('extracted/tianshu-libs-jarjar').get().asFile) {
             include '*.jar'
@@ -40,6 +42,8 @@ dependencies {
 test {
     useJUnitPlatform()
     dependsOn extractTianshuLibsJarJar
+    systemProperty 'tianshu.llm.smoke', System.getProperty('tianshu.llm.smoke', 'false')
+    systemProperty 'tianshu.llm.smoke.model', System.getProperty('tianshu.llm.smoke.model', '')
 }
 
 tasks.withType(JavaCompile).configureEach {

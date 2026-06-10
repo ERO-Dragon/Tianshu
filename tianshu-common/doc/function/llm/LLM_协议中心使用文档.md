@@ -174,12 +174,12 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 TASK 的接收队列由 LLM 模块自己管理，而不是依赖 libs 的 `taskMaxQueueSize`：
 
 - `LlmTaskAdmissionController` 控制外部 TASK 的接收、等待和启动；默认保持单 active，但当当前 active TASK 标记为 `taskPreemptible=true` 且出现更高有效优先级任务时，会把抢占候选送入 libs，由 libs 执行 TASK 抢占/取消/挂起语义。
-- 等待队列按有效优先级降序、同优先级 FIFO 排序；有效优先级 = `taskPriority + 等待期间新 TASK 请求次数 * getLlmTaskAgingBoostPerRequest()`。
+- 等待队列按有效优先级降序、同优先级 FIFO 排序；`taskPriority` 公开范围为 `0..1000`，有效优先级 = `taskPriority + 等待期间新 TASK 请求次数 * getLlmTaskAgingBoostPerRequest()`。
 - 队列满时，只有更高有效优先级的新任务可以替换等待队列中的最低有效优先级任务。
 - 被抢占后仍未终态的旧 TASK 会继续计入 admission 的 in-flight 边界；只有所有已送入 libs 的 TASK future 终态后，等待队列才会自动启动下一个任务，避免隐形扩容。
 - 被 admission 队列拒绝或替换的请求返回 `LLMPromptResultPayload.status=FAILED`，错误码为 `LLM_TASK_QUEUE_FULL`。
 - 被排队但尚未送入 libs 的请求会通过 `LLM.STATUS` 发布 `QUEUED`；真正启动流式 TASK 时再发布 `STREAMING`。
-- libs 的 `taskMaxQueueSize` 只表示热挂起 KV/context 保存槽数量，天枢默认保持为 1；它不再承担外部 TASK 接收容量控制。
+- libs 的 `taskMaxQueueSize` 只表示热挂起 KV/context 保存槽数量，不再承担外部 TASK 接收容量控制。天枢默认传 `0`，即 TASK 挂起默认走 COLD、优先节省 KV/context 存储资源；配置值会按 libs 支持范围归一到 `0..5`。
 
 TASK 暂停和终止语义：
 

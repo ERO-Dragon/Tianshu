@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.function.ir.enhance.IrItemEnhancementResult;
+import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
 import com.rheinmetal.tianshu.function.ir.input.IrPreparedInput;
 import org.junit.jupiter.api.Test;
@@ -13,23 +13,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IrDialogueArbitrationRequestMapperTest {
     @Test
-    void mapsPreparedInputAndEnhancementIntoDialogueRequest() {
+    void mapsFinalRepairedInputAndTextFeaturesIntoDialogueRequest() {
         IrDialogueArbitrationRequestMapper mapper = new IrDialogueArbitrationRequestMapper();
-        IrInputText input = new IrInputText("给我看看钻石剑", "给我看看钻石剑", 7, 9L, "asr:voice", 100L);
-        IrPreparedInput prepared = new IrPreparedInput(input, "给我看看钻石剑", "看看钻石剑", List.of("给我"), List.of());
-        IrItemEnhancementResult enhancement = new IrItemEnhancementResult("看看钻石剑", List.of("钻石剑"), List.of("minecraft:diamond_sword"), true);
-        IrMatchBatch batch = new IrMatchBatch(input, List.of(new IrVoiceMatch("module.someone", List.of("看看"), List.of("钻石剑"), 0.8D)));
+        IrInputText sourceInput = new IrInputText("give me dimond sword", "give me dimond sword", 7, 9L, "asr:voice", 100L);
+        IrPreparedInput prepared = new IrPreparedInput(sourceInput, "give me dimond sword", "dimond sword", List.of("give me"), List.of());
+        IrNamedObjectEnhancementResult enhancement = new IrNamedObjectEnhancementResult("give me diamond sword", List.of("diamond sword"), List.of("minecraft:diamond_sword"), true);
+        IrInputText repairedInput = new IrInputText(enhancement.repairedText(), sourceInput.rawText(), sourceInput.turnId(), sourceInput.sessionId(), sourceInput.source(), sourceInput.createdAt());
+        IrMatchBatch batch = new IrMatchBatch(repairedInput, List.of(new IrVoiceMatch("module.someone", List.of("assistant"), List.of("diamond sword"), 0.8D)));
 
-        var payload = mapper.map(input, prepared, enhancement, batch);
+        var payload = mapper.map(repairedInput, prepared, enhancement, batch);
 
         assertFalse(payload.requestId().isBlank());
         assertEquals(IrProtocolAdapter.MODULE_ID, payload.sourceModuleId());
         assertEquals("asr:voice", payload.playerId());
         assertEquals("7", payload.turnId());
         assertEquals(9L, payload.sourceSessionId());
-        assertEquals("看看钻石剑", payload.repairedText());
-        assertEquals("看看钻石剑", payload.normalizedText());
-        assertEquals(List.of("看看"), payload.matchedWakeWords());
+        assertEquals("give me diamond sword", payload.repairedText());
+        assertEquals("dimond sword", payload.normalizedText());
+        assertEquals(List.of("assistant"), payload.matchedWakeWords());
         assertEquals(List.of("minecraft:diamond_sword"), payload.matchedItemIds());
         assertTrue(payload.expireAtMillis() > payload.timestampMillis());
     }
@@ -37,11 +38,11 @@ class IrDialogueArbitrationRequestMapperTest {
     @Test
     void mapsMissingSourceToLocalPlayerId() {
         IrDialogueArbitrationRequestMapper mapper = new IrDialogueArbitrationRequestMapper();
-        IrInputText input = new IrInputText("你好", "你好", 1, 0L, "", 100L);
+        IrInputText input = new IrInputText("hello", "hello", 1, 0L, "", 100L);
 
         var payload = mapper.map(input, null, null, null);
 
         assertEquals("local", payload.playerId());
-        assertEquals("你好", payload.repairedText());
+        assertEquals("hello", payload.repairedText());
     }
 }

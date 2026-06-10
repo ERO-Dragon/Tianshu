@@ -75,6 +75,7 @@ public final class DialogueClaimEngine {
             case WAKE_WORD -> matchesAny(condition.values(), input.matchedWakeWords());
             case HELD_ITEM -> matchesAny(condition.values(), List.of(hints.heldItemId()));
             case EQUIPPED_ITEM -> matchesAny(condition.values(), context.equippedItemIds());
+            case MENTIONED_ENTITY -> matchesAny(condition.values(), input.matchedEntityTypeIds());
             case CROSSHAIR_ENTITY -> matchesAny(condition.values(), crosshairEntityTypes(context));
             case NEAREST_ENTITY_WITHIN -> matchesNearestEntityWithin(condition, context);
             case CROSSHAIR_HIT -> hints.crosshairHit();

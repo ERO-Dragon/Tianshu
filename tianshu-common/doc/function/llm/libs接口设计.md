@@ -26,12 +26,13 @@ JavaLlamaServer service = JavaLlamaServer.builder()
     .modelProfile("auto")                 // 可选：auto / qwen3 / qwen3.5 / deepseek-r1 / generic
     .chatContext(16000)
     .chatThreads(4)
-    .chatMaxQueueSize(1)
+    .chatMaxQueueSize(4)
     .gpuLayers(999)
     .cacheTypeK(KvCacheType.F16)          // 可选：F16 / Q8_0
     .cacheTypeV(KvCacheType.F16)          // 可选：F16 / Q8_0
     .taskContext(16000)                   // 可选；不设置时等于 chatContext
     .taskThreads(2)
+    // taskMaxQueueSize range: 0..5; 0 means no HOT KV/context slot, suspended TASKs go COLD.
     .taskMaxQueueSize(1)                 // TASK 热挂起槽数量；控制最多保留多少个 TASK KV/context
     .taskSuspendOnChat(true)
     .embeddingModel("models/bge.gguf")    // 可选：不配置则 embed/search 不可用
@@ -119,8 +120,7 @@ List<RagSearchResult> search(String queryText, List<String> texts);
 - CHAT 通道优先级高于 TASK
 - CHAT 请求会挂起正在执行的 TASK 任务（`taskSuspendOnChat=true`）
 - TASK 任务在 `preemptible=true` 时可被更高优先级 TASK 抢占
-- `taskMaxQueueSize` 不限制 TASK 接收数量，而是限制最多保留多少个热挂起 TASK 的 KV/context。
-- 天枢主模块不再把外部 TASK 接收容量交给 libs；跨模块 TASK 先进入 LLM 模块自己的 admission queue，再按有效优先级送入 libs。当前天枢默认只向 libs 保持 `chatMaxQueueSize=1`、`taskMaxQueueSize=1`；当 active TASK 可抢占且出现更高有效优先级任务时，admission 会允许该任务进入 libs 触发 TASK 抢占语义。
+- TASK 逻辑队列按 priority + FIFO 排序；`taskMaxQueueSize` 不限制 TASK 接收数量，而是限制最多保留多少个热挂起 TASK 的 KV/context。
 - 热挂起（HOT）：保留当前 `LlamaCppContext` / sampler / processor，恢复最快，连续性最好。
 - 冷挂起（COLD）：当热挂起槽已满时，关闭 KV/context，只保留 prompt、模型原始已生成文本和归一化输出状态，并回到 TASK 队列。恢复时通过 replay `prompt + rawGeneratedText` 重建上下文，再继续生成。
 - COLD 恢复语义上会接上已生成内容，但不承诺与 HOT 恢复保持逐 token / bit-level 完全一致；若需要最高连续性，应增大 `taskMaxQueueSize` 以保留更多 HOT 挂起任务。

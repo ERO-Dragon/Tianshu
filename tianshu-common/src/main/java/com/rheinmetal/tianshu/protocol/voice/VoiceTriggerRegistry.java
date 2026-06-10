@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.protocol.voice;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -97,10 +98,10 @@ public final class VoiceTriggerRegistry {
         rightWords.addAll(right.wakeWords());
         rightWords.addAll(right.extraWords());
         for (String word : left.wakeWords()) {
-            if (rightWords.contains(word)) return true;
+            if (overlapsAny(word, rightWords)) return true;
         }
         for (String word : left.extraWords()) {
-            if (rightWords.contains(word)) return true;
+            if (overlapsAny(word, rightWords)) return true;
         }
         return false;
     }
@@ -122,7 +123,73 @@ public final class VoiceTriggerRegistry {
                 conflicts.add(conflict);
             }
         }
+        conflicts.addAll(collectContainmentConflicts(registrations));
         return List.copyOf(conflicts);
+    }
+
+    private List<VoiceTriggerConflict> collectContainmentConflicts(List<VoiceTriggerRegistration> registrations) {
+        if (registrations == null || registrations.size() < 2) {
+            return List.of();
+        }
+        List<VoiceTriggerConflict> conflicts = new ArrayList<>();
+        Set<String> emitted = new HashSet<>();
+        for (int i = 0; i < registrations.size(); i++) {
+            VoiceTriggerRegistration left = registrations.get(i);
+            for (int j = i + 1; j < registrations.size(); j++) {
+                VoiceTriggerRegistration right = registrations.get(j);
+                for (String leftWord : triggerWords(left)) {
+                    for (String rightWord : triggerWords(right)) {
+                        if (!containsEither(leftWord, rightWord) || sameNormalized(leftWord, rightWord)) {
+                            continue;
+                        }
+                        String label = conflictLabel(leftWord, rightWord);
+                        String key = TextListNormalizer.normalizeText(label) + "|" + left.moduleId() + "|" + right.moduleId();
+                        if (emitted.add(key)) {
+                            conflicts.add(new VoiceTriggerConflict(label, List.of(left.moduleId(), right.moduleId())));
+                        }
+                    }
+                }
+            }
+        }
+        return conflicts;
+    }
+
+    private static List<String> triggerWords(VoiceTriggerRegistration registration) {
+        if (registration == null) {
+            return List.of();
+        }
+        Set<String> words = new LinkedHashSet<>();
+        words.addAll(registration.wakeWords());
+        words.addAll(registration.extraWords());
+        return List.copyOf(words);
+    }
+
+    private static boolean overlapsAny(String word, Set<String> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+        return candidates.stream().anyMatch(candidate -> sameNormalized(word, candidate) || containsEither(word, candidate));
+    }
+
+    private static boolean containsEither(String left, String right) {
+        String normalizedLeft = TextListNormalizer.normalizeText(left);
+        String normalizedRight = TextListNormalizer.normalizeText(right);
+        return !normalizedLeft.isBlank()
+                && !normalizedRight.isBlank()
+                && (normalizedLeft.contains(normalizedRight) || normalizedRight.contains(normalizedLeft));
+    }
+
+    private static boolean sameNormalized(String left, String right) {
+        return TextListNormalizer.normalizeText(left).equals(TextListNormalizer.normalizeText(right));
+    }
+
+    private static String conflictLabel(String left, String right) {
+        String normalizedLeft = TextListNormalizer.normalizeText(left);
+        String normalizedRight = TextListNormalizer.normalizeText(right);
+        if (normalizedLeft.length() <= normalizedRight.length()) {
+            return left + " / " + right;
+        }
+        return right + " / " + left;
     }
 
     private void notifyChanged() {

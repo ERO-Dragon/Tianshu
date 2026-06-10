@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.ir;
 
 import com.rheinmetal.tianshu.function.ir.core.IRBaseUtils;
+import com.rheinmetal.tianshu.function.ir.core.IRObjectId;
 import com.rheinmetal.tianshu.function.ir.core.ItemContextProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -54,7 +55,7 @@ final class ClientItemContextCollector implements ItemContextProvider {
         if (itemKey == null) {
             return;
         }
-        Integer internalId = IRBaseUtils.forwardLookupMap.get(itemKey.toString());
+        Integer internalId = IRBaseUtils.forwardLookupMap.get(IRObjectId.item(itemKey.toString()));
         if (internalId != null) {
             contextIds.add(internalId);
         }

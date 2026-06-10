@@ -11,15 +11,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class IrRoutingPolicyTest {
     @Test
-    void routesMatchedVoiceTriggerDirectly() {
+    void routesMatchedVoiceTriggerToDialogueArbitration() {
         IrRoutingPolicy policy = new IrRoutingPolicy();
         IrInputText input = new IrInputText("打开设置", "打开设置", 1, 0L, "asr", 100L);
         IrMatchBatch batch = new IrMatchBatch(input, List.of(new IrVoiceMatch("module.settings", List.of("设置"), List.of(), 1.0D)));
 
         IrRoutingDecision decision = policy.decide(input, batch);
 
-        assertEquals(IrRouteKind.DIRECT_VOICE_TRIGGER, decision.kind());
-        assertEquals("VOICE_TRIGGER_MATCHED", decision.reason());
+        assertEquals(IrRouteKind.DIALOGUE_ARBITRATION, decision.kind());
+        assertEquals("OPEN_DIALOGUE_INPUT", decision.reason());
     }
 
     @Test

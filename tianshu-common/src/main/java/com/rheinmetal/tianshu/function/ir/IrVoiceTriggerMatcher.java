@@ -23,7 +23,7 @@ final class IrVoiceTriggerMatcher {
             if (matchedWakeWords.isEmpty() && matchedExtraWords.isEmpty()) {
                 continue;
             }
-            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedWakeWords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedWakeWords, matchedExtraWords), trigger.priority(), trigger.deliveryTarget()));
+            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedWakeWords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedWakeWords, matchedExtraWords), trigger.priority()));
         }
         matches.sort(Comparator
                 .comparingDouble(IrVoiceMatch::confidence).reversed()

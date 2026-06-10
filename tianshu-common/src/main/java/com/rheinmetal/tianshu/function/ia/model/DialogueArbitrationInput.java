@@ -54,6 +54,10 @@ public record DialogueArbitrationInput(
         return request.matchedItemIds();
     }
 
+    public List<String> matchedEntityTypeIds() {
+        return request.matchedEntityTypeIds();
+    }
+
     public long timestampMillis() {
         return request.timestampMillis();
     }

@@ -2,201 +2,134 @@
 
 ## 1. 模块定位
 
-IR 模块是天枢语音指令链路中的语音触发与物品增强编排层，负责把 ASR 文本或兼容的 IR 解析输入，转换为可用于模块触发的标准语义，并向命中的模块转发 `VOICE_TRIGGER` 信封。
+IR 模块是天枢语音/文本链路中的输入修复与文本特征提取层。它接收 ASR final text 或兼容的 `IR_PARSE` 输入，输出 IA 仲裁所需的文本侧结果：
 
-IR 不承担协议中心职责，不作为业务路由大脑，也不直接执行具体游戏动作。它的职责是：
+- 修复后的自然语言正文。
+- 归一化/过滤后的文本视图。
+- 命中的 wake word。
+- 命中的物品结构化 ID。
+- 用于调试和观测的 `IR_RESULT`。
 
-- 统一输入
-- 做第一阶段文本预处理
-- 做物品增强与同音词修复桥接
-- 做 voice trigger 命中
-- 发送带上下文的触发包
-- 发布 IR 结果观测事件
+IR 不决定本轮对话归属，不向业务模块直投玩家正文，也不执行具体游戏动作。当前对话 owner 由 IA 统一仲裁；IR 的职责是在进入 IA 前，把文本整理成稳定、可判断、可传递的候选输入。
 
 ## 2. 当前边界
 
 IR 当前主要由以下部分组成：
 
-- [IrModule](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrModule.java)
-- [IrModuleInstaller](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrModuleInstaller.java)
-- [IrProtocolAdapter](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrProtocolAdapter.java)
-- [IrVoiceTriggerIndexer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrVoiceTriggerIndexer.java)
-- [IrVoiceTriggerMatcher](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrVoiceTriggerMatcher.java)
-- [IrCompiledVoiceTrigger](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrCompiledVoiceTrigger.java)
-- [IrCompiledVoiceWord](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrCompiledVoiceWord.java)
-- [IrMatchBatch](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrMatchBatch.java)
-- [IrVoiceMatch](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrVoiceMatch.java)
-- [input/IrInputText](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrInputText.java)
-- [input/IrInputMapper](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrInputMapper.java)
-- [input/IrInputPreprocessor](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrInputPreprocessor.java)
-- [input/IrPreparedInput](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrPreparedInput.java)
-- [enhance/IrItemEnhancer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/IrItemEnhancer.java)
-- [enhance/IrItemEnhancementResult](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/IrItemEnhancementResult.java)
-- [enhance/DefaultIrItemEnhancer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/DefaultIrItemEnhancer.java)
+- `IrModule`：主编排入口。
+- `IrProtocolAdapter`：协议收发封装。
+- `IrInputMapper` / `IrInputPreprocessor`：输入映射与预处理。
+- `IrItemEnhancer` / `IrItemEnhancementResult`：物品名称修复与物品 ID 提取。
+- `IrWakeWordEnhancer`：基于已注册 wake word 的保守修复。
+- `IrVoiceTriggerIndexer` / `IrVoiceTriggerMatcher`：wake word / extra word 命中特征提取。
+- `IrDialogueArbitrationRequestMapper`：将 IR 结果映射为 `DialogueArbitrationRequestPayload`。
+- `IrRoutingPolicy`：决定非空输入进入 IA 仲裁，空输入拒绝。
 
-## 3. 模块职责划分
-
-### 3.1 IrModule
-
-`IrModule` 是 IR 的主编排入口。
-
-它负责：
-
-- 接收模块注册上下文
-- 订阅 `INPUT_ASR_FINAL_TEXT`
-- 注册 `IR_PARSE` 兼容能力
-- 维护 voice trigger 注册表快照
-- 调度输入预处理、物品增强和 voice 匹配
-- 命中后转发 `VOICE_TRIGGER`
-- 发布 `IR_RESULT`
-
-它不负责：
-
-- 管理协议中心底层路由
-- 决定具体模块的业务执行逻辑
-- 直接处理 ASR 模型
-- 直接处理 TTS、LLM 或其他模块内部状态
-
-### 3.2 IrModuleInstaller
-
-`IrModuleInstaller` 是模块安装入口。
-
-它的作用是把 IR 作为一个可装配单元交给模块宿主，避免外层直接散装创建模块实例。
-
-NeoForge 侧可通过自己的 installer 注入客户端增强能力，common 侧则保持基础能力。
-
-### 3.3 IrProtocolAdapter
-
-`IrProtocolAdapter` 是 IR 的协议收发封装层。
-
-它负责：
-
-- 订阅 ASR 最终文本
-- 注册 `IR_PARSE` capability
-- 发布 `IR_RESULT`
-- 发送 `VOICE_TRIGGER`
-
-IR 主流程不直接拼接信封细节，而是通过适配器统一完成协议交互。
-
-## 4. 输入与预处理阶段
-
-IR 的第一阶段不是直接 voice 匹配，而是先做输入分流。
-
-### 4.1 统一输入
-
-不同入口会先映射成 [IrInputText](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrInputText.java)。
-
-当前入口包括：
-
-- ASR final text
-- `IR_PARSE` 兼容输入
-
-对应映射由 [IrInputMapper](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrInputMapper.java) 负责。
-
-### 4.2 第一阶段预处理
-
-[IrInputPreprocessor](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrInputPreprocessor.java) 会把输入拆成两个视图：
-
-- `voiceText`
-  - 保留完整句子
-  - 只做同音词修复的输入视图
-  - 用于 voice trigger 匹配
-
-- `filteredText`
-  - 去掉 `FILLER_WORDS`
-  - 去掉 `ENTITY_BOUNDARY_WORDS`
-  - 用于物品增强和结构切分
-
-预处理结果由 [IrPreparedInput](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/input/IrPreparedInput.java) 承载。
-
-### 4.3 预处理语义
-
-当前语义是：
+IR 与 IA 的边界是：
 
 ```text
-原始输入
-  ├─ 完整替换视图 → voice 匹配
-  └─ 过滤视图      → 物品增强
+ASR / IR_PARSE
+  ↓
+IR 修复文本并提取文本特征
+  ↓
+DialogueArbitrationRequestPayload
+  ↓
+IA 仲裁 owner 并定向投递 DialogueDeliveryPayload
 ```
 
-也就是说，过滤词不会污染 voice trigger 命中判断。
+## 3. 输入与预处理
 
-## 5. 物品增强阶段
+不同入口会先映射成 `IrInputText`：
 
-IR 的物品增强通过 [IrItemEnhancer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/IrItemEnhancer.java) 抽象完成。
+- ASR final text。
+- `IR_PARSE` 兼容输入。
 
-增强结果由 [IrItemEnhancementResult](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/IrItemEnhancementResult.java) 承载，主要包含：
+`IrInputPreprocessor` 会产生两个文本视图：
 
-- `repairedText`：修复后的自然语言文本，只表达玩家原话的同音/错词修正，不写入 `minecraft:*` 这类结构化 ID。
-- `matchedItemNames`：命中物品的人类可读显示名，用于 UI、上下文提示或模块内部提示。
-- `matchedItemIds`：命中物品的结构化 ID，用于机器路由、上下文判断和后续业务处理。
-- `matched`
+- `voiceText`：保留完整句子，用于 wake word 修复和匹配。
+- `filteredText`：去掉填充词、边界词等噪声，用于物品增强和结构化提取。
 
-例如 ASR 原文为 `下届合金能做什么` 时，`repairedText` 应为 `下界合金能做什么`；如果命中物品，结构化 ID 应进入 `matchedItemIds`，而不是把正文改成 `minecraft:netherite_ingot 能做什么`。
+`normalizedText` 在 IA payload 中使用 `filteredText`，表示 IR 处理后的归一化文本视图；它不是 ASR 原文。ASR 原文通过 `IrInputText.rawText()` 保留在 IR 内部输入模型中。
 
-### 5.1 common 默认增强器
+## 4. 物品增强
 
-[DefaultIrItemEnhancer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/enhance/DefaultIrItemEnhancer.java) 是 common 层默认实现，主要用于在已有 `IRCommandService` 的情况下执行物品增强。
+物品增强通过 `IrItemEnhancer` 抽象完成。增强结果由 `IrItemEnhancementResult` 承载：
 
-### 5.2 NeoForge 客户端增强器
+- `repairedText`：修复后的自然语言正文。
+- `matchedItemNames`：命中物品的显示名，主要用于 UI、上下文提示或调试。
+- `matchedItemIds`：命中物品的结构化 ID，用于 IA claim 判断和 owner 模块处理。
+- `matched`：是否命中。
 
-NeoForge 侧的 [ClientIrItemEnhancer](file:///d:/Minecraft/Tianshu/tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/client/ir/ClientIrItemEnhancer.java) 会把 `filteredText` 送入客户端物品解析链路，再把命中的物品 ID 和显示名转换成 IR 结构需要的数据。
+`repairedText` 只做自然语言修复，不把正文改成资源 ID。
 
-这样可以把 MC 客户端侧的物品字典、上下文和本地化信息保留在客户端侧，不把 Minecraft 依赖泄漏到 common 主体里。
+示例：
 
-## 6. voice trigger 匹配阶段
+```text
+ASR 原文：下届合金能做什么
+repairedText：下界合金能做什么
+matchedItemIds：minecraft:netherite_ingot
+```
 
-voice trigger 命中由 [IrVoiceTriggerMatcher](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrVoiceTriggerMatcher.java) 完成。
+NeoForge 侧可通过客户端增强器接入 Minecraft 物品字典、上下文和本地化信息；common 层只接收修复结果和结构化 ID，不依赖 Minecraft 活对象。
 
-它匹配的对象是：
+## 5. Wake Word 修复与匹配
 
-- `voiceText`
-- 协议中心里的 voice trigger 注册表快照
+IR 会从协议中心的 `VoiceTriggerRegistry` 读取当前注册的 wake word / extra word，并编译为轻量索引。
 
-为了避免每次输入都重新计算热词，IR 会先将注册表编译成索引：
+处理顺序是：
 
-- [IrVoiceTriggerIndexer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrVoiceTriggerIndexer.java)
-- [IrCompiledVoiceTrigger](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrCompiledVoiceTrigger.java)
-- [IrCompiledVoiceWord](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrCompiledVoiceWord.java)
+```text
+物品修复后的文本
+  ↓
+IrWakeWordEnhancer 修复 wake word
+  ↓
+IrVoiceTriggerMatcher 提取 matchedWakeWords / matchedExtraWords
+```
 
-当前匹配特征：
+`IrWakeWordEnhancer` 只修复注册表中的 wake word，不修复 extra word。它使用拼音 token 相似度做保守修复，阈值比物品修复更严格，并跳过分数接近的重叠歧义候选，避免把普通正文误改成唤醒词。
 
-- wakeWords 和 extraWords 等权
-- 输入做归一化后再做包含匹配
-- confidence 仅作观测分数，不作为是否转发的唯一依据
+示例：
 
-匹配结果会封装成 [IrMatchBatch](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrMatchBatch.java) 和 [IrVoiceMatch](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrVoiceMatch.java)。
+```text
+注册 wake word：酒狐
+输入：九狐帮我种地
+修复后：酒狐帮我种地
+matchedWakeWords：酒狐
+```
 
-## 7. 命中后的转发
+Wake word 命中不代表 IR 直接把正文投给某个模块。命中的 wake word 会进入 `DialogueArbitrationRequestPayload.matchedWakeWords`，由 IA 的 claim engine 结合 participant claim profile、priority、attention 衰减和上下文快照决定 owner。
 
-当 voice trigger 命中后，IR 会通过 [IrProtocolAdapter](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrProtocolAdapter.java) 向目标模块发送 `VOICE_TRIGGER`。
+## 6. 仲裁请求映射
 
-对应 payload 为 [VoiceTriggerPayload](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/protocol/payload/VoiceTriggerPayload.java)，当前包含：
+IR 对非空输入统一提交 IA 仲裁：
 
-- `sourceText`
-- `moduleId`
-- `matchedWakeWords`
-- `matchedExtraWords`
-- `matchedItemNames`
-- `matchedItemIds`
-- `confidence`
+```text
+ProtocolCapabilities.DIALOGUE_ARBITRATE
+PayloadType.DIALOGUE_ARBITRATION_REQUEST
+DialogueArbitrationRequestPayload
+```
 
-这意味着目标模块收到的不是简单“触发通知”，而是带上下文的触发包。
+payload 中来自 IR 的字段包括：
 
-## 8. 结果观测
+- `repairedText`：最终修复后的自然语言正文，包含物品修复和 wake word 修复。
+- `normalizedText`：预处理后的过滤文本视图。
+- `matchedWakeWords`：IR 命中的 wake word。
+- `matchedItemIds`：IR 提取出的物品结构化 ID。
+- `sourceSessionId` / `turnId`：用于 IA 关联 ASR 说话开始时冻结的上下文快照。
 
-IR 还会发布 [IrResultPayload](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/protocol/payload/IrResultPayload.java) 作为观测事件。
+IR 不提供手持物、身上装备、准星实体、附近实体、按键状态或维度信息。这些游戏上下文由 IA 通过平台 `DialogueContextProvider` 捕获。
 
-它的用途主要是：
+## 7. 结果观测
 
-- 记录是否命中
-- 记录命中的模块
-- 记录置信度
-- 记录原始输入和命中原因
+IR 会发布 `IR_RESULT` 作为观测事件。它用于调试和链路可视化，不是业务执行结果，也不是 owner 授权结果。
 
-`IR_RESULT` 更偏调试和观测，不是业务执行的最终结果。
+当前语义：
 
-## 9. 典型执行顺序
+- 非空输入进入 IA 后，`intentType = DIALOGUE_ARBITRATION`，`reason = DIALOGUE_ROUTED`。
+- 空输入不会进入 IA，`reason = EMPTY_INPUT`。
+- `targetCapability` 仅作为观测摘要，记录 IR 文本特征命中的 module id 列表；最终 owner 仍以 IA 的 session/delivery 为准。
+
+## 8. 典型执行顺序
 
 ```text
 原始输入
@@ -208,32 +141,28 @@ IrInputPreprocessor
   └─ filteredText
         ↓
 IrItemEnhancer
-  ├─ matchedItemNames
+  ├─ repairedText
   └─ matchedItemIds
         ↓
-IrVoiceTriggerIndexer / IrVoiceTriggerMatcher
+IrWakeWordEnhancer
         ↓
-VOICE_TRIGGER
+IrVoiceTriggerMatcher
+  ├─ matchedWakeWords
+  └─ matchedExtraWords
         ↓
-IR_RESULT
+DialogueArbitrationRequestPayload
+        ↓
+IA
 ```
 
-## 10. 模块边界总结
+## 9. 模块边界总结
 
 IR 当前的角色可以概括为：
 
-- 不是业务大脑
-- 不是协议中心
-- 不是 ASR
-- 不是 LLM
-- 不是 TTS
-- 也不是具体模块执行器
+- 不是业务 owner。
+- 不是 IA。
+- 不是协议中心。
+- 不是 ASR / LLM / TTS。
+- 不向外部业务模块直投玩家正文。
 
-它是一个把语音输入整理成可触发模块事件的编排层。
-
-如果后续继续演进，优先方向应当是：
-
-1. 继续稳定输入预处理与物品增强边界
-2. 继续收敛增强器策略
-3. 继续验证热词动态更新和客户端上下文桥接
-4. 继续保持 IR 只负责触发，不负责业务裁决
+IR 是输入修复和文本特征提取层；IA 是对话归属仲裁层。后续新增文本特征时，应优先保持这个边界：IR 只产出可仲裁的文本侧事实，owner 选择和正文投递仍由 IA 完成。

@@ -32,6 +32,9 @@ public final class AXDialogueInputMapper {
         if (!delivery.matchedItemIds().isEmpty()) {
             appendLine(builder, "matchedItems=" + String.join(", ", delivery.matchedItemIds()));
         }
+        if (!delivery.matchedEntityTypeIds().isEmpty()) {
+            appendLine(builder, "matchedEntityTypes=" + String.join(", ", delivery.matchedEntityTypeIds()));
+        }
         if (!delivery.matchedEntityRefs().isEmpty()) {
             appendLine(builder, "matchedEntities=" + delivery.matchedEntityRefs().stream()
                     .map(this::entitySummary)

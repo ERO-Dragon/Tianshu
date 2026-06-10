@@ -9,14 +9,14 @@ import org.slf4j.Logger;
 
 import java.io.InputStream;
 
-public final class ItemCommandReloadListener implements ResourceManagerReloadListener {
+public final class NamedObjectReloadListener implements ResourceManagerReloadListener {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation KEYWORDS_ID = ResourceLocation.fromNamespaceAndPath("tianshu", "ir-intent-keywords.json");
 
     @Override
     public void onResourceManagerReload(ResourceManager resourceManager) {
         reloadKeywords(resourceManager);
-        ClientItemCommandManager.rebuildIndex("client resource reload");
+        ClientNamedObjectIndexManager.rebuildIndex("client resource reload");
     }
 
     private void reloadKeywords(ResourceManager resourceManager) {

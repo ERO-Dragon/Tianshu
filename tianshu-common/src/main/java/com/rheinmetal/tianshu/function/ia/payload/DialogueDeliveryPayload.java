@@ -17,12 +17,17 @@ public record DialogueDeliveryPayload(
         String normalizedText,
         List<String> matchedWakeWords,
         List<String> matchedItemIds,
+        List<String> matchedEntityTypeIds,
         List<DialogueEntityRef> matchedEntityRefs,
         DialogueInteractionHints interactionHints,
         DialogueContextSnapshot contextSnapshot,
         long timestampMillis,
         long expireAtMillis
 ) implements ITianshuPayload {
+    public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis) {
+        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, List.of(), matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis);
+    }
+
     public DialogueDeliveryPayload {
         sessionId = requireText(sessionId, "sessionId");
         requestId = requireText(requestId, "requestId");
@@ -32,6 +37,7 @@ public record DialogueDeliveryPayload(
         normalizedText = sanitize(normalizedText);
         matchedWakeWords = copyTextList(matchedWakeWords);
         matchedItemIds = copyTextList(matchedItemIds);
+        matchedEntityTypeIds = copyTextList(matchedEntityTypeIds);
         matchedEntityRefs = copyEntityRefs(matchedEntityRefs);
         interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
         contextSnapshot = contextSnapshot == null ? DialogueContextSnapshot.empty(playerId) : contextSnapshot;
@@ -49,6 +55,7 @@ public record DialogueDeliveryPayload(
                 input.normalizedText(),
                 input.matchedWakeWords(),
                 input.matchedItemIds(),
+                input.matchedEntityTypeIds(),
                 input.contextSnapshot().entityRefs(),
                 input.interactionHints(),
                 input.contextSnapshot(),

@@ -21,7 +21,7 @@ public class LLMRequest {
 
     // 任务调度
     public String lane;               // "CHAT" / "TASK"
-    public Integer task_priority;     // -1000 ~ 1000
+    public Integer task_priority;     // 0 ~ 1000
     public Boolean task_preemptible;
 
     // 核心数据
@@ -230,7 +230,7 @@ config/Tianshu/module/llm/<worldId>/cache
 | `thinking` | false |
 | 协议 `includeThinkingContent` | false |
 | `lane` | "CHAT" |
-| `task_priority` | 0 |
+| `task_priority` | 0，范围 `0..1000` |
 | `task_preemptible` | false |
 | `use_cache` | true |
 | `include_rag_hits` | true |

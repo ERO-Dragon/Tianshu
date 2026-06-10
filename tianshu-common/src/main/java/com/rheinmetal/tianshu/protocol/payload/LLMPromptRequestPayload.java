@@ -20,6 +20,8 @@ public record LLMPromptRequestPayload(
         String requesterParticipantId,
         String dialogueTurnId
 ) implements ITianshuPayload {
+    public static final int MIN_TASK_PRIORITY = 0;
+    public static final int MAX_TASK_PRIORITY = 1000;
 
     public static final LLMPromptRequestPayload EMPTY = new LLMPromptRequestPayload(
             "llm.request", 0, 0.7f, false, false, "CHAT", 0, false, List.of()
@@ -153,8 +155,8 @@ public record LLMPromptRequestPayload(
     }
 
     private static Integer clampPriority(Integer value) {
-        if (value == null) return 0;
-        return Math.max(-1000, Math.min(1000, value));
+        if (value == null) return MIN_TASK_PRIORITY;
+        return Math.max(MIN_TASK_PRIORITY, Math.min(MAX_TASK_PRIORITY, value));
     }
 
     public record ChunkPayload(

@@ -9,6 +9,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class LlmTaskAdmissionController {
+    static final int MIN_TASK_PRIORITY = 0;
+    static final int MAX_TASK_PRIORITY = 1000;
+
     private final Object lock = new Object();
     private final AtomicLong sequence = new AtomicLong();
     private final int maxWaitingTasks;
@@ -34,7 +37,7 @@ final class LlmTaskAdmissionController {
 
     AdmissionResult submit(int priority, boolean preemptible, TaskLauncher launcher, TaskRejectionHandler onRejected) {
         Objects.requireNonNull(launcher, "launcher");
-        AdmissionTask incoming = new AdmissionTask(priority, preemptible, sequence.incrementAndGet(), launcher, onRejected);
+        AdmissionTask incoming = new AdmissionTask(normalizePriority(priority), preemptible, sequence.incrementAndGet(), launcher, onRejected);
         AdmissionTask toLaunch = null;
         List<AdmissionTask> rejected = new ArrayList<>();
         AdmissionState state;
@@ -113,6 +116,10 @@ final class LlmTaskAdmissionController {
         return currentActive != null
                 && candidate != null
                 && candidate.effectivePriority(agingBoostPerRequest) > currentActive.priority();
+    }
+
+    private static int normalizePriority(int priority) {
+        return Math.max(MIN_TASK_PRIORITY, Math.min(MAX_TASK_PRIORITY, priority));
     }
 
     private AdmissionTask bestPreemptionCandidate(AdmissionTask incoming) {

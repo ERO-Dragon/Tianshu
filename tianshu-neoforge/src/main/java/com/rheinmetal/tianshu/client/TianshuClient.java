@@ -17,9 +17,9 @@ import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsContri
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.tts.TtsSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.integration.TianshuIntegrationRegisterEvent;
-import com.rheinmetal.tianshu.client.ir.ClientItemCommandManager;
+import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.lifecycle.ClientTianshuModuleAssembler;
-import com.rheinmetal.tianshu.client.ir.ItemCommandReloadListener;
+import com.rheinmetal.tianshu.client.ir.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
@@ -170,7 +170,7 @@ public class TianshuClient {
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
-            ClientItemCommandManager.ensureIndex("client login");
+            ClientNamedObjectIndexManager.ensureIndex("client login");
             ensureOnnxRuntimeLoaded();
             coreManager.initWorkers();
         });
@@ -209,7 +209,7 @@ public class TianshuClient {
     }
 
     public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
-        event.registerReloadListener(new ItemCommandReloadListener());
+        event.registerReloadListener(new NamedObjectReloadListener());
     }
 
     @SubscribeEvent
