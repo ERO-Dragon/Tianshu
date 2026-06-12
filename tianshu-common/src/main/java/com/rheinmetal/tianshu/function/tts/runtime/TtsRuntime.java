@@ -636,7 +636,16 @@ public final class TtsRuntime implements TtsPlaybackListener {
         if (!running.get() || session == null || session.isTerminal()) {
             return TtsPlaybackState.IDLE;
         }
-        return session.request().source() == TtsRequestSource.ALERT ? TtsPlaybackState.ALERTING : TtsPlaybackState.SPEAKING;
+        return alerting(session.request()) ? TtsPlaybackState.ALERTING : TtsPlaybackState.SPEAKING;
+    }
+
+    private boolean alerting(TtsRequest request) {
+        if (request == null) {
+            return false;
+        }
+        return request.source() == TtsRequestSource.ALERT
+                || request.playbackPolicy() == TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY
+                || request.playbackPolicy() == TtsPlaybackPolicy.CANCEL_SESSION_AND_PLAY;
     }
 
     private void complete(Runnable onComplete) {

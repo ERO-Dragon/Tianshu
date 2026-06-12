@@ -148,6 +148,8 @@ class TtsRuntimePolicyTest {
         assertEquals(List.of("speak-1", "interrupt", "speak-2"), engine.invokedRequestIds());
         assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("speak-2") && session.state() == TtsSessionState.CANCELLED));
         assertTrue(playbackStates.contains(TtsPlaybackState.SPEAKING));
+        assertTrue(playbackStates.contains(TtsPlaybackState.ALERTING));
+        assertEquals(TtsPlaybackState.IDLE, playbackStates.get(playbackStates.size() - 1));
     }
 
     @Test
