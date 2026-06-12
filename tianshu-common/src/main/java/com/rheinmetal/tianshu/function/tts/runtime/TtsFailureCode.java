@@ -9,6 +9,8 @@ public enum TtsFailureCode {
     REQUEST_NOT_FOUND,
     INVALID_REQUEST,
     QUEUE_FULL,
+    EXPIRED,
+    VOICE_CLONE_UNAVAILABLE,
     CANCELLED,
     UNKNOWN
 }

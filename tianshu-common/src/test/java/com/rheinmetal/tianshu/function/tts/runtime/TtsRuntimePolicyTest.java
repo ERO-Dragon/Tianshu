@@ -89,7 +89,7 @@ class TtsRuntimePolicyTest {
     }
 
     @Test
-    void interruptLowerPriorityCancelsWhenIncomingPriorityIsHighEnough() throws Exception {
+    void cancelSentenceAndPlayCancelsActiveRegardlessOfPriority() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
@@ -98,17 +98,38 @@ class TtsRuntimePolicyTest {
 
         runtime.submit(request("low", TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("high", TtsPlaybackPolicy.INTERRUPT_LOWER_PRIORITY, Priority.HIGH), null, null);
+        runtime.submit(request("incoming", TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY, Priority.LOW), null, null);
         TtsSession low = awaitSession(statuses, "low", TtsSessionState.CANCELLED);
         engine.release();
         assertTrue(engine.awaitInvocationCount(2));
 
         assertEquals(TtsSessionState.CANCELLED, low.state());
-        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().equals("high")));
+        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().equals("incoming")));
     }
 
     @Test
-    void alertInterruptsOnlyActiveSpeechAndPreservesQueuedSpeech() throws Exception {
+    void queuedHighPriorityRequestDoesNotCancelActiveSpeechButRunsBeforeNormalQueue() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        FakeAudioBridge audioBridge = new FakeAudioBridge();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, audioBridge, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.submit(request("queued", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("urgent-queued", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.QUEUE, Priority.HIGH), null, null);
+
+        assertFalse(awaitOptionalState(statuses, "running", TtsSessionState.CANCELLED, 150));
+        engine.release();
+        assertTrue(engine.awaitInvocationCount(3));
+
+        assertEquals(List.of("running", "urgent-queued", "queued"), engine.invokedRequestIds());
+        assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("running") && session.state() == TtsSessionState.CANCELLED));
+    }
+
+    @Test
+    void cancelSentenceAndPlayOnlyCancelsActiveSpeechAndPreservesQueuedSpeech() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
@@ -119,15 +140,14 @@ class TtsRuntimePolicyTest {
         runtime.submit(request("speak-1", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
         runtime.submit(request("speak-2", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
-        runtime.submit(request("alert", TtsRequestSource.ALERT, TtsPlaybackPolicy.INTERRUPT_LOWER_PRIORITY, Priority.HIGH), null, null);
+        runtime.submit(request("interrupt", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY, Priority.HIGH), null, null);
         TtsSession interrupted = awaitSession(statuses, "speak-1", TtsSessionState.CANCELLED);
 
         assertEquals(TtsSessionState.CANCELLED, interrupted.state());
         assertTrue(engine.awaitInvocationCount(3));
-        assertEquals(List.of("speak-1", "alert", "speak-2"), engine.invokedRequestIds());
+        assertEquals(List.of("speak-1", "interrupt", "speak-2"), engine.invokedRequestIds());
         assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("speak-2") && session.state() == TtsSessionState.CANCELLED));
         assertTrue(playbackStates.contains(TtsPlaybackState.SPEAKING));
-        assertTrue(playbackStates.contains(TtsPlaybackState.ALERTING));
     }
 
     @Test
@@ -191,11 +211,76 @@ class TtsRuntimePolicyTest {
         assertEquals(List.of("running", "high", "low"), engine.invokedRequestIds());
     }
 
-    private TtsRuntime runtime(BlockingSynthesisEngine engine, FakeAudioBridge audioBridge, List<TtsSession> statuses) {
+    @Test
+    void cancelSessionAndPlayCancelsActiveGroupAndKeepsOtherQueuedSessions() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        FakeAudioBridge audioBridge = new FakeAudioBridge();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, audioBridge, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("speak-1", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.submit(request("speak-2", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("other-queued", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("session-replacement", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SESSION_AND_PLAY, Priority.HIGH), null, null);
+
+        assertTrue(awaitOptionalState(statuses, "speak-1", TtsSessionState.CANCELLED, 500));
+        assertTrue(awaitOptionalState(statuses, "speak-2", TtsSessionState.CANCELLED, 500));
+        engine.release();
+        assertTrue(engine.awaitInvocationCount(3));
+
+        assertEquals(List.of("speak-1", "session-replacement", "other-queued"), engine.invokedRequestIds());
+        assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("other-queued") && session.state() == TtsSessionState.CANCELLED));
+    }
+
+    @Test
+    void insertAfterSessionUsesRuntimePlacementPriority() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        FakeAudioBridge audioBridge = new FakeAudioBridge();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, audioBridge, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.submit(request("queued", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("inserted", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.INSERT_AFTER_SESSION, Priority.LOW), null, null);
+
+        engine.release();
+        assertTrue(engine.awaitInvocationCount(3));
+
+        assertEquals(List.of("running", "inserted", "queued"), engine.invokedRequestIds());
+        assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("running") && session.state() == TtsSessionState.CANCELLED));
+    }
+
+    @Test
+    void insertAfterSentenceWaitsForCurrentSentenceWithoutPausingSynthesis() throws Exception {
+        ChunkedSynthesisEngine engine = new ChunkedSynthesisEngine();
+        FakeAudioBridge audioBridge = new FakeAudioBridge();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, audioBridge, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        assertTrue(engine.awaitFirstChunk("running"));
+        TtsOperationResult result = runtime.submit(request("insert-after-sentence", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.INSERT_AFTER_SENTENCE, Priority.HIGH), null, null);
+
+        assertTrue(result.accepted());
+        assertFalse(awaitOptionalState(statuses, "running", TtsSessionState.CANCELLED, 150));
+        assertFalse(engine.awaitInvocationCount(2, 150));
+        engine.releaseRemainder();
+        assertTrue(engine.awaitInvocationCount(2));
+        audioBridge.finishCallback();
+        assertTrue(awaitOptionalState(statuses, "running", TtsSessionState.COMPLETED, 500));
+        assertEquals(List.of(1, 2, 9), audioBridge.playedMarkers());
+    }
+
+    private TtsRuntime runtime(TtsSynthesisEngine engine, FakeAudioBridge audioBridge, List<TtsSession> statuses) {
         return runtime(engine, audioBridge, statuses, new ArrayList<>());
     }
 
-    private TtsRuntime runtime(BlockingSynthesisEngine engine, FakeAudioBridge audioBridge, List<TtsSession> statuses, List<TtsPlaybackState> playbackStates) {
+    private TtsRuntime runtime(TtsSynthesisEngine engine, FakeAudioBridge audioBridge, List<TtsSession> statuses, List<TtsPlaybackState> playbackStates) {
         return new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, statuses::add, playbackStates::add);
     }
 
@@ -206,6 +291,7 @@ class TtsRuntimePolicyTest {
     private static TtsRequest request(String requestId, TtsRequestSource source, TtsPlaybackPolicy policy, Priority priority) {
         return new TtsRequest(
                 requestId,
+                groupId(requestId),
                 requestId,
                 requestId,
                 "hello " + requestId,
@@ -215,6 +301,13 @@ class TtsRuntimePolicyTest {
                 TtsVoiceProfile.defaults(),
                 false
         );
+    }
+
+    private static String groupId(String requestId) {
+        if (requestId.startsWith("speak-") || requestId.equals("interrupt")) {
+            return "chat-session";
+        }
+        return requestId;
     }
 
     private static TtsSession awaitSession(List<TtsSession> statuses, String requestId, TtsSessionState state) throws InterruptedException {
@@ -230,6 +323,19 @@ class TtsRuntimePolicyTest {
             Thread.sleep(10L);
         }
         throw new AssertionError("TTS session state not observed: " + requestId + " -> " + state);
+    }
+
+    private static boolean awaitOptionalState(List<TtsSession> statuses, String requestId, TtsSessionState state, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            synchronized (statuses) {
+                if (statuses.stream().anyMatch(session -> session.request().requestId().equals(requestId) && session.state() == state)) {
+                    return true;
+                }
+            }
+            Thread.sleep(10L);
+        }
+        return false;
     }
 
     private static final class BlockingSynthesisEngine implements TtsSynthesisEngine {
@@ -321,8 +427,100 @@ class TtsRuntimePolicyTest {
         }
     }
 
+    private static final class ChunkedSynthesisEngine implements TtsSynthesisEngine {
+        private final CountDownLatch runningFirstChunk = new CountDownLatch(1);
+        private final CountDownLatch releaseRemainder = new CountDownLatch(1);
+        private final AtomicInteger invocations = new AtomicInteger();
+        private final List<String> invokedRequestIds = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public boolean initialize() {
+            return true;
+        }
+
+        @Override
+        public boolean isInitialized() {
+            return true;
+        }
+
+        @Override
+        public boolean isAutoregressive() {
+            return false;
+        }
+
+        @Override
+        public int sampleRate() {
+            return 24000;
+        }
+
+        @Override
+        public TtsBackendSnapshot backendSnapshot() {
+            return TtsBackendSnapshot.unavailable();
+        }
+
+        @Override
+        public boolean useModel(String modelName) {
+            return true;
+        }
+
+        @Override
+        public void synthesize(TtsRequest request, com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink sink) {
+            invokedRequestIds.add(request.requestId());
+            invocations.incrementAndGet();
+            if (request.requestId().equals("running")) {
+                sink.accept(new byte[]{1});
+                runningFirstChunk.countDown();
+                try {
+                    releaseRemainder.await(2L, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+                sink.accept(new byte[]{2});
+                return;
+            }
+            sink.accept(new byte[]{9});
+        }
+
+        @Override
+        public void interrupt() {
+            releaseRemainder.countDown();
+        }
+
+        @Override
+        public void shutdown() {
+            releaseRemainder.countDown();
+        }
+
+        boolean awaitFirstChunk(String requestId) throws InterruptedException {
+            if (!"running".equals(requestId)) {
+                return false;
+            }
+            return runningFirstChunk.await(2L, TimeUnit.SECONDS);
+        }
+
+        boolean awaitInvocationCount(int expected) throws InterruptedException {
+            return awaitInvocationCount(expected, 2000L);
+        }
+
+        boolean awaitInvocationCount(int expected, long timeoutMillis) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + timeoutMillis;
+            while (System.currentTimeMillis() < deadline) {
+                if (invocations.get() >= expected) {
+                    return true;
+                }
+                Thread.sleep(10L);
+            }
+            return invocations.get() >= expected;
+        }
+
+        void releaseRemainder() {
+            releaseRemainder.countDown();
+        }
+    }
+
     private static final class FakeAudioBridge implements IAudioBridge {
         private Runnable callback;
+        private final List<Integer> playedMarkers = Collections.synchronizedList(new ArrayList<>());
 
         @Override
         public void ensureHardwareRunning() {
@@ -355,6 +553,9 @@ class TtsRuntimePolicyTest {
 
         @Override
         public void feedTtsAudio(byte[] audio) {
+            if (audio != null && audio.length > 0) {
+                playedMarkers.add((int) audio[0]);
+            }
         }
 
         @Override
@@ -415,6 +616,12 @@ class TtsRuntimePolicyTest {
 
         @Override
         public void shutdown() {
+        }
+
+        List<Integer> playedMarkers() {
+            synchronized (playedMarkers) {
+                return List.copyOf(playedMarkers);
+            }
         }
 
         void finishCallback() {

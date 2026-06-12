@@ -185,9 +185,9 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
             options.select("tts.download.modelType", tts("option.model_type"), filterValues(info -> List.of(modelTypeValue(info))), modelTypeFilter, this::modelTypeOptionLabel)
-                    .select("tts.download.performance", tts("option.performance"), tierValues(this::performanceTier), performanceFilter, this::tierOptionLabel)
-                    .select("tts.download.quality", tts("option.quality"), tierValues(this::qualityTier), qualityFilter, this::tierOptionLabel)
-                    .select("tts.download.recommended", tts("option.recommended"), tierValues(this::recommendedTier), recommendedFilter, this::tierOptionLabel)
+                    .select("tts.download.performance", tts("option.performance"), scoreFilterValues(this::performanceScore), performanceFilter, this::scoreFilterLabel)
+                    .select("tts.download.quality", tts("option.quality"), scoreFilterValues(this::qualityScore), qualityFilter, this::scoreFilterLabel)
+                    .select("tts.download.recommended", tts("option.recommended"), scoreFilterValues(this::recommendedScore), recommendedFilter, this::scoreFilterLabel)
                     .select("tts.download.voiceClone", tts("option.voice_clone"), List.of(ALL, SUPPORTS, UNSUPPORTED), voiceCloneFilter, this::voiceCloneOptionLabel)
                     .select("tts.download.sort", tts("option.sort"), List.of(SortMode.values()), sortMode, SortMode::label);
         }
@@ -401,7 +401,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return common("dash");
             }
-            return tts("model.meta", modelTypeLabel(info), languageLabel(info), tierLabel(performanceTier(info)), tierLabel(qualityTier(info)), tierLabel(recommendedTier(info)));
+            return tts("model.meta", modelTypeLabel(info), languageLabel(info), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getSynthesisQualityScore()), scoreLabel(info.getRecommendationScore()));
         }
 
         private Component selectedModelInstallStatus() {
@@ -541,7 +541,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return common("dash");
             }
-            return tts("download.meta", modelTypeLabel(info), languageLabel(info), tierLabel(performanceTier(info)), tierLabel(qualityTier(info)), tierLabel(recommendedTier(info)), common(info.supportsVoiceClone() ? "yes" : "no"));
+            return tts("download.meta", modelTypeLabel(info), languageLabel(info), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getSynthesisQualityScore()), scoreLabel(info.getRecommendationScore()), common(info.supportsVoiceClone() ? "yes" : "no"));
         }
 
         private Component selectedDownloadFiles() {
@@ -563,11 +563,11 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             SortMode mode = sortMode.get();
             if (mode == SortMode.QUALITY) {
                 return Comparator.comparingInt(this::qualityScore).reversed()
-                        .thenComparingInt(this::performanceScore)
+                        .thenComparing(Comparator.comparingInt(this::performanceScore).reversed())
                         .thenComparing(TtsModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
             }
             if (mode == SortMode.PERFORMANCE) {
-                return Comparator.comparingInt(this::performanceScore)
+                return Comparator.comparingInt(this::performanceScore).reversed()
                         .thenComparing(Comparator.comparingInt(this::qualityScore).reversed())
                         .thenComparing(TtsModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
             }
@@ -576,16 +576,16 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             }
             return Comparator.comparingInt(this::recommendedScore).reversed()
                     .thenComparing(Comparator.comparingInt(this::qualityScore).reversed())
-                    .thenComparingInt(this::performanceScore)
+                    .thenComparing(Comparator.comparingInt(this::performanceScore).reversed())
                     .thenComparing(TtsModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
         }
 
         private boolean matchesFilters(TtsModelInfo info) {
             return info != null
                     && matches(modelTypeFilter.get(), List.of(modelTypeValue(info)))
-                    && matches(performanceFilter.get(), List.of(performanceTier(info)))
-                    && matches(qualityFilter.get(), List.of(qualityTier(info)))
-                    && matches(recommendedFilter.get(), List.of(recommendedTier(info)))
+                    && matchesScore(performanceFilter.get(), info.getPerformanceScore())
+                    && matchesScore(qualityFilter.get(), info.getSynthesisQualityScore())
+                    && matchesScore(recommendedFilter.get(), info.getRecommendationScore())
                     && matchesVoiceClone(info);
         }
 
@@ -610,7 +610,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return Component.empty();
             }
-            return tts("download.card", info.getDisplayName(), languageLabel(info), modelTypeLabel(info), tierLabel(performanceTier(info)), tierLabel(qualityTier(info)), tierLabel(recommendedTier(info)), common(info.supportsVoiceClone() ? "yes" : "no"), common(isDownloaded(info) ? "downloaded" : "not_downloaded"));
+            return tts("download.card", info.getDisplayName(), languageLabel(info), modelTypeLabel(info), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getSynthesisQualityScore()), scoreLabel(info.getRecommendationScore()), common(info.supportsVoiceClone() ? "yes" : "no"), common(isDownloaded(info) ? "downloaded" : "not_downloaded"));
         }
 
         private List<String> filterValues(java.util.function.Function<TtsModelInfo, List<String>> mapper) {
@@ -626,14 +626,11 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             return List.copyOf(values);
         }
 
-        private List<String> tierValues(java.util.function.Function<TtsModelInfo, String> mapper) {
+        private List<String> scoreFilterValues(java.util.function.ToIntFunction<TtsModelInfo> mapper) {
             Set<String> values = new LinkedHashSet<>();
             values.add(ALL);
             for (TtsModelInfo info : catalog) {
-                String value = mapper.apply(info);
-                if (value != null && !value.isBlank()) {
-                    values.add(value.toUpperCase(Locale.ROOT));
-                }
+                values.add(String.valueOf(mapper.applyAsInt(info)));
             }
             return List.copyOf(values);
         }
@@ -666,21 +663,8 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             return "moss".equalsIgnoreCase(info.getEngineType()) ? "moss" : "sherpa_onnx";
         }
 
-        private Component tierOptionLabel(String value) {
-            if (ALL.equals(value)) {
-                return common("all");
-            }
-            return tierLabel(value);
-        }
-
-        private Component tierLabel(String tier) {
-            if ("HIGH".equalsIgnoreCase(tier)) {
-                return common("high");
-            }
-            if ("LOW".equalsIgnoreCase(tier)) {
-                return common("low");
-            }
-            return common("mid");
+        private Component scoreFilterLabel(String value) {
+            return ALL.equals(value) ? common("all") : tts("score.at_least", value);
         }
 
         private Component voiceCloneOptionLabel(String value) {
@@ -707,66 +691,31 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                     .toList());
         }
 
-        private String performanceTier(TtsModelInfo info) {
-            if (info == null) {
-                return "MID";
+        private boolean matchesScore(String filter, int score) {
+            if (filter == null || ALL.equals(filter)) {
+                return true;
             }
-            return switch (info.getPerformance()) {
-                case TtsModelInfo.PERF_LOW -> "LOW";
-                case TtsModelInfo.PERF_HIGH -> "HIGH";
-                default -> "MID";
-            };
+            try {
+                return score >= Integer.parseInt(filter);
+            } catch (NumberFormatException e) {
+                return true;
+            }
         }
 
-        private String qualityTier(TtsModelInfo info) {
-            if (info == null) {
-                return "MID";
-            }
-            if ("premium".equalsIgnoreCase(info.getTier())) {
-                return "HIGH";
-            }
-            if (info.getRating() >= 5) {
-                return "HIGH";
-            }
-            if (info.getRating() >= 3) {
-                return "MID";
-            }
-            return "LOW";
-        }
-
-        private String recommendedTier(TtsModelInfo info) {
-            if (info == null) {
-                return "MID";
-            }
-            if (info.pinned || info.getRating() >= 5) {
-                return "HIGH";
-            }
-            if (info.getRating() >= 3) {
-                return "MID";
-            }
-            return "LOW";
+        private String scoreLabel(int score) {
+            return score + "/10";
         }
 
         private int qualityScore(TtsModelInfo info) {
-            return tierScore(qualityTier(info));
+            return info == null ? 0 : info.getSynthesisQualityScore();
         }
 
         private int recommendedScore(TtsModelInfo info) {
-            return tierScore(recommendedTier(info));
+            return info == null ? 0 : info.getRecommendationScore();
         }
 
         private int performanceScore(TtsModelInfo info) {
-            return tierScore(performanceTier(info));
-        }
-
-        private int tierScore(String tier) {
-            if ("HIGH".equalsIgnoreCase(tier)) {
-                return 3;
-            }
-            if ("LOW".equalsIgnoreCase(tier)) {
-                return 1;
-            }
-            return 2;
+            return info == null ? 0 : info.getPerformanceScore();
         }
 
         private Component selectedVoiceStatus() {

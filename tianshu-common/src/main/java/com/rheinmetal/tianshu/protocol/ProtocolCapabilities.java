@@ -5,7 +5,7 @@ public final class ProtocolCapabilities {
     public static final String LLM_REQUEST = "LLM.REQUEST";
     public static final String LLM_CACHE_MANAGE = "LLM.CACHE_MANAGE";
     public static final String TTS_SPEAK = "TTS_SPEAK";
-    public static final String TTS_ALERT = "TTS_ALERT";
+    public static final String TTS_SYNTHESIZE = "TTS_SYNTHESIZE";
     public static final String TTS_CONTROL = "TTS_CONTROL";
     public static final String DIALOGUE_ARBITRATE = "DIALOGUE.ARBITRATE";
     public static final String DIALOGUE_PARTICIPANT_REGISTER = "DIALOGUE.PARTICIPANT_REGISTER";

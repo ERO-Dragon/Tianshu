@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -15,21 +16,27 @@ public class VoiceNotificationService {
     }
 
     public void speakAlert(String text) {
-        submitAlert(text, false);
+        submitAlert(text, TtsPlaybackPlacement.INSERT_AFTER_SENTENCE, Priority.HIGH);
     }
 
     public void speakAlertWithInterrupt(String text) {
-        submitAlert(text, true);
+        submitAlert(text, TtsPlaybackPlacement.CANCEL_SENTENCE_AND_PLAY, Priority.CRITICAL);
     }
 
-    private void submitAlert(String text, boolean interruptCurrent) {
+    private void submitAlert(String text, TtsPlaybackPlacement placement, Priority priority) {
         runtime.submit(EnvelopeBuilder.commandToCapability(
                         TtsProtocolAdapter.SOURCE_ID,
-                        ProtocolCapabilities.TTS_ALERT,
+                        ProtocolCapabilities.TTS_SPEAK,
                         PayloadType.TTS_TEXT,
-                        new TtsSpeakPayload(text, 0, 0L, interruptCurrent, "alert")
+                        new TtsSpeakPayload(
+                                text,
+                                0,
+                                0L,
+                                placement,
+                                "alert"
+                        )
                 )
-                .priority(interruptCurrent ? Priority.CRITICAL : Priority.HIGH)
+                .priority(priority)
                 .build());
     }
 }

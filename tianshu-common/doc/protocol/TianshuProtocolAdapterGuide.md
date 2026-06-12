@@ -50,6 +50,15 @@ public TianshuEnvelope speak(TtsSpeakPayload payload) {
 }
 ```
 
+`TTS_SPEAK` 是本地播放入口。Payload 使用 `TtsPlaybackPlacement` 表达本次播报如何插入本地播放流：
+
+- `DROP_IF_BUSY`：忙碌时丢弃本次请求。
+- `QUEUE_AFTER_SESSION`：普通排队，排到当前本地播放会话之后。
+- `INSERT_AFTER_SESSION`：插到当前会话之后。
+- `INSERT_AFTER_SENTENCE`：插到当前句子之后。
+- `CANCEL_SENTENCE_AND_PLAY`：取消当前播放句子并播放新请求。
+- `CANCEL_SESSION_AND_PLAY`：取消当前会话剩余句子并播放新请求。
+
 适合：
 
 - TTS 播报；
@@ -75,8 +84,11 @@ public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
 
 - `LLM.REQUEST`
 - `LLM.CACHE_MANAGE`
+- `TTS_SYNTHESIZE`
 - `DIALOGUE.LLM_USAGE_AUTHORIZE`
 - `IR_PARSE`
+
+`TTS_SYNTHESIZE` 用于“只合成音频，不由 TTS 本地播放”的场景。调用方发送 `TtsSynthesisRequestPayload` 后，通过响应处理器接收一个或多个 `TtsAudioPayload / TTS_AUDIO` 响应包，之后自行决定 2D、3D、实体或方块声源播放方式。需要取消时复用 `TTS_CONTROL`：`STOP + targetRequestId` 取消指定播放或纯合成请求，空 target 表示全部停止。
 
 如果调用方需要结果，应先构建请求信封，为该请求 `envelopeId` 登记响应处理器，再提交请求。对于 IA 仲裁这类主链路投递，普通调用方不需要结果时应使用 `COMMAND`；只有明确需要 `DIALOGUE_ARBITRATION_RESULT` 的诊断、测试或同步查询场景才使用 `REQUEST`。
 

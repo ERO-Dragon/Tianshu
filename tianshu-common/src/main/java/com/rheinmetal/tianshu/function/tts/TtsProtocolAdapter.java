@@ -11,10 +11,11 @@ import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -42,14 +43,14 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void registerAlertCapability(EnvelopeHandler handler) {
+    public void registerSynthesizeCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.TTS_ALERT,
+                ProtocolCapabilities.TTS_SYNTHESIZE,
                 PayloadType.TTS_TEXT,
-                TtsSpeakPayload.class,
-                BrokerType.EXCLUSIVE_INTERRUPT,
-                EnumSet.of(PacketType.COMMAND),
-                Priority.HIGH,
+                TtsSynthesisRequestPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.REQUEST),
+                Priority.LOW,
                 CompletionPolicy.MANUAL_COMPLETE,
                 handler,
                 defaults()
@@ -70,21 +71,11 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
-                PayloadType.ASR_SPEECH_ACTIVITY,
-                AsrSpeechActivityPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
     public TianshuEnvelope publishPlaybackStatus(TtsPlaybackStatusPayload payload) {
         return publishTopic(ProtocolTopics.TTS_PLAYBACK, PayloadType.TTS_PLAYBACK_STATUS, payload);
+    }
+
+    public TianshuEnvelope respondAudio(TianshuEnvelope parent, TtsAudioPayload payload) {
+        return respondTo(parent, PayloadType.TTS_AUDIO, payload);
     }
 }

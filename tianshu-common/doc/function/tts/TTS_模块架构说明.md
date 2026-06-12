@@ -1,239 +1,77 @@
 # TTS 模块架构说明
 
+本文面向维护 TTS 模块的开发者。外部模块调用方式见 [TTS_协议中心使用文档.md](TTS_协议中心使用文档.md)。
+
 ## 1. 模块定位
 
-TTS 模块是天枢语音输出链路的核心模块，负责把结构化文本请求转换为可播放语音，并把播报状态反馈给协议中心和上层业务。
+TTS 模块负责把结构化文本请求转换为语音输出。它已经从旧式工作线程和散装引擎调用收口为 common 层的宿主化模块，统一接入：
 
-TTS 当前已经从旧式工作线程和散装引擎调用中收口为 common 层的宿主化模块。它面向 `TianshuManagedModule` 生命周期、协议中心、统一线程执行器和平台音频桥工作，不直接依赖 Minecraft GUI，也不把内部运行时状态暴露给外部模块。
+- `TianshuManagedModule` 生命周期
+- 协议中心能力和 topic
+- `ProtocolExecutorManager` 线程资源
+- 平台 `IAudioBridge`
+- TTS 模型解析和后端合成层
 
-TTS 模块的主题不是“播放一段声音”这么简单，而是稳定处理以下问题：
+TTS 不直接依赖 Minecraft GUI，也不把内部 session 状态作为公共 API 暴露给其他模块。
 
-- 文本请求如何进入语音合成链路
-- 普通播报、提醒播报、预览试听和流式文本如何区分
-- 多个播报请求冲突时如何调度
-- 运行时中断、停止、替换和排队如何保持一致
-- 模型、后端、合成、播放和状态反馈如何分层
-- GUI 如何通过服务边界调用 TTS，而不是直接触碰内部 runtime
+## 2. 模块边界
 
-## 2. 当前边界
+核心类分层如下：
 
-TTS 模块当前主要由以下部分组成：
+| 层 | 类 | 职责 |
+|---|---|---|
+| 模块装配 | `TtsModule` | 接入宿主生命周期，注册协议能力，装配 runtime、模型服务和后端。 |
+| 协议边界 | `TtsProtocolAdapter` | 注册 `TTS_SPEAK`、`TTS_SYNTHESIZE`、`TTS_CONTROL`，发布播放状态，发送音频响应。 |
+| 本地服务 | `TtsModuleService` | 面向 GUI 和本地调用方提供 snapshot、preview、stop、reload 等服务。 |
+| 运行时 | `TtsRuntime` | 处理请求校验、播放策略、合成调度、控制动作、失败结果和状态发布。 |
+| 会话管理 | `TtsSessionManager` | 管理本地播放 session、分组取消、终态保护和 active 定位。 |
+| 流式文本 | `TtsStreamRegistry` / `TtsStreamBuffer` | 聚合上游文本 chunk，按句提交给 runtime。 |
+| 合成层 | `TtsSynthesisEngine` / `TtsBackend` | 统一调用 Sherpa ONNX、MOSS 等后端。 |
+| 播放层 | `TtsPlaybackController` | 将 PCM 交给 `IAudioBridge`，处理播放、取消和完成回调。 |
+| 模型资源 | `TtsModelService` / `TtsVoiceLibraryService` | 解析模型、音色样本和后续资源管理入口。 |
+| 音色克隆 | `TtsVoiceCloneRegistry` | 受控加载 voice library 内的参考音频，并用 `voiceId` 暴露给 speak/synthesize。 |
 
-- [TtsModule](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsModule.java)
-- [TtsProtocolAdapter](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsProtocolAdapter.java)
-- [TtsModuleService](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsModuleService.java)
-- [TtsModelService](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsModelService.java)
-- [VoiceNotificationService](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/VoiceNotificationService.java)
-- [TtsVoiceLibraryService](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsVoiceLibraryService.java)
-- [TtsRuntime](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/runtime/TtsRuntime.java)
-- [TtsSessionManager](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/runtime/TtsSessionManager.java)
-- [TtsStreamRegistry](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/runtime/TtsStreamRegistry.java)
-- [TtsStreamBuffer](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/text/TtsStreamBuffer.java)
-- [DefaultTtsSynthesisEngine](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/DefaultTtsSynthesisEngine.java)
-- [SherpaOnnxTtsBackend](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/SherpaOnnxTtsBackend.java)
-- [MossTtsBackend](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/MossTtsBackend.java)
-- [TtsPlaybackController](file:///d:/Minecraft/Tianshu/tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/playback/TtsPlaybackController.java)
+## 3. 公开协议面
 
-## 3. 模块职责划分
+TTS 公开协议保持收敛：
 
-### 3.1 TtsModule
+- `TTS_SPEAK`：本地合成并播放。
+- `TTS_SYNTHESIZE`：只合成音频，通过响应返回。
+- `TTS_CONTROL`：停止、取消来源、重载模型、导入和加载音色。
+- `TTS.PLAYBACK`：模块级播放状态 topic。
 
-`TtsModule` 是 TTS 的模块装配根。
+旧的 `TTS_ALERT` 不保留。提醒、预警和插话都是 `TTS_SPEAK` 的不同 `TtsPlaybackPlacement`。
 
-它负责：
+preview 不属于公开协议能力。玩家设置页或本地 UI 应通过 `TtsModuleService.preview(...)` 调用，避免把 GUI 动作扩散成跨模块协议。
 
-- 作为 `TianshuManagedModule` 接入模块宿主生命周期
-- 在 register 阶段注册 TTS 服务
-- 在 prepare 阶段创建合成引擎和运行时
-- 在 start / stop / destroy 阶段启动、停止和释放运行时资源
-- 注册 TTS 协议能力
-- 把协议 payload 转换成运行时请求
-- 发布播放状态和播放完成事件
+## 4. 运行时链路
 
-它不负责：
-
-- 模型目录解析细节
-- 后端初始化细节
-- 文本归一化细节
-- 会话终态保护细节
-- GUI 展示和玩家设置布局
-
-这些职责分别下沉到模型服务、合成层、文本层、运行时层和 client GUI 层。
-
-### 3.2 TtsProtocolAdapter
-
-`TtsProtocolAdapter` 是 TTS 对协议中心的公开入口。
-
-当前公开能力保持收敛，只包含：
-
-- `TTS_SPEAK`
-- `TTS_ALERT`
-- `TTS_CONTROL`
-
-其中 `preview` 不属于公开协议能力。试听是 TTS 自己的服务能力，由 GUI 或模块内调用 `TtsModuleService.preview(...)` 完成。
-
-这个边界可以避免把面向玩家设置页或模块内部工具操作扩散成跨模块协议能力。
-
-### 3.3 TtsModuleService
-
-`TtsModuleService` 是 TTS 面向本地调用方的服务边界，也是未来 GUI 对接 TTS 的主要入口。
-
-它提供：
-
-- `snapshot()`：读取运行时摘要
-- `modelSnapshot()`：读取模型摘要
-- `backendSnapshot()`：读取后端摘要
-- `preview(...)`：试听文本
-- `stopPreview(...)`：停止试听
-- `stopAll(...)`：停止当前播报
-- `reloadModel()`：重载语音模型
-- `ready()`：判断 TTS 是否可用
-
-GUI、client 操作和其他本地集成点应该优先通过这个服务与 TTS 交互，而不是直接访问 `TtsRuntime`、`TtsSessionManager`、合成引擎或后端对象。
-
-### 3.4 TtsRuntime
-
-`TtsRuntime` 是 TTS 的运行时核心。
-
-它负责：
-
-- 接收普通请求和流式请求
-- 检查运行状态
-- 创建和登记会话
-- 执行播放策略
-- 调度合成任务
-- 连接合成输出与音频播放
-- 维护播放状态摘要
-- 记录最后失败信息
-- 执行 stop / reload 等控制动作
-
-运行时不是对外状态模型。外部只能通过快照和服务方法观察必要信息。
-
-### 3.5 TtsSessionManager
-
-`TtsSessionManager` 负责维护当前 TTS 会话集合。
-
-它的重点是会话一致性，而不是对外展示状态。
-
-它需要保证：
-
-- 活跃会话可定位
-- 排队会话可管理
-- 终态会话不会被重复改写
-- stopAll 能同时处理运行中和等待中的会话
-- 替换、打断和取消不会造成会话串线
-
-### 3.6 TtsModelService
-
-`TtsModelService` 是模型解析和模型资源管理边界。
-
-它负责：
-
-- 根据配置解析当前 TTS 模型目录
-- 匹配模型 catalog
-- 判断模型目录是否存在
-- 判断模型目录是否有内容
-- 提供模型摘要
-- 执行模型下载、暂停、恢复、取消和删除等资源操作
-
-当前 GUI 第一阶段不应该把完整模型下载管理直接塞进玩家设置页。模型管理可以后续作为单独的资源管理区展开。
-
-### 3.7 TtsSynthesisEngine 与 Backend
-
-合成层分为两层：
+### 本地播放
 
 ```text
-TtsRuntime
-  -> TtsSynthesisEngine
-  -> TtsBackend
-```
-
-`TtsSynthesisEngine` 负责选择、初始化和调用具体后端。
-
-`TtsBackend` 负责具体合成实现，例如：
-
-- Sherpa ONNX 类模型
-- MOSS 类模型
-- 后续可能接入的其他本地或远程合成后端
-
-后端细节不应出现在玩家 GUI 中。玩家只需要知道语音是否可用、当前语音是什么、能不能试听。
-
-### 3.8 TtsPlaybackController
-
-`TtsPlaybackController` 是播放边界。
-
-它负责把合成产生的 PCM 音频交给平台音频桥，并将播放开始、完成、失败等结果反馈给运行时。
-
-播放控制层不决定协议语义，也不决定模型选择。它只负责“如何可靠播放”。
-
-## 4. 当前链路
-
-### 4.1 普通播报链路
-
-普通播报适用于聊天助手回复、系统提示等场景。
-
-```text
-外部模块
-  -> TTS_SPEAK
-  -> TtsProtocolAdapter
+TTS_SPEAK
   -> TtsModule
-  -> TtsRuntime
+  -> TtsRuntime.submit
+  -> TtsSessionManager
   -> TtsSynthesisEngine
   -> TtsPlaybackController
   -> IAudioBridge
 ```
 
-### 4.2 提醒播报链路
+本地播放优先于纯合成 task。进入本地播放时，runtime 会抢占当前纯合成任务，避免实时播报被后台 NPC 配音或其他低时效合成拖住。
 
-提醒播报适用于优先级更高的警告或系统提醒。
-
-```text
-提醒来源
-  -> TTS_ALERT
-  -> TtsProtocolAdapter
-  -> TtsRuntime
-  -> 播放策略
-  -> 合成与播放
-```
-
-提醒请求可以通过更高优先级和不同播放策略影响当前播报。
-
-### 4.3 试听链路
-
-试听不走公开协议能力。
+### 纯合成
 
 ```text
-GUI / 本地调用方
-  -> TtsModuleService.preview(...)
-  -> TtsRuntime
-  -> TtsRequestSource.PREVIEW
-  -> 合成与播放
+TTS_SYNTHESIZE
+  -> TtsRuntime.synthesize
+  -> TtsSynthesisEngine
+  -> TtsAudioPayload response
 ```
 
-试听默认使用替换当前试听的策略，避免玩家连续点击后产生多段试听排队。
+纯合成不会播放音频。它只返回 PCM chunk，调用方自行决定 2D、3D、实体声源、方块声源或跨端同步。
 
-### 4.4 流式文本链路
-
-流式文本用于上游文本逐段生成、TTS 逐步接收的场景。
-
-```text
-stream chunk
-  -> TtsStreamRegistry
-  -> TtsStreamBuffer
-  -> final chunk flush
-  -> TtsRuntime.submit(...)
-```
-
-流式链路需要保证：
-
-- 非 final chunk 只进入缓冲
-- final chunk 触发完整文本提交
-- streamId 缺失时有稳定兜底身份
-- 空文本和无效 chunk 会给出结构化失败
-
-### 4.5 控制链路
-
-控制链路用于停止、打断和重载。
+### 控制
 
 ```text
 TTS_CONTROL / TtsModuleService
@@ -242,101 +80,104 @@ TTS_CONTROL / TtsModuleService
   -> TtsSynthesisEngine / TtsPlaybackController
 ```
 
-当前控制结果使用 `TtsControlResult` 表达，避免调用方只能从异常或日志中猜测结果。
+控制结果使用 `TtsControlResult`，普通提交结果使用 `TtsOperationResult`，失败原因使用 `TtsFailure` 和 `TtsFailureCode`。
 
-## 5. 协议边界
+## 5. 播放策略模型
 
-TTS 的公开协议边界保持业务语义收敛。
+对外策略是 `TtsPlaybackPlacement`，运行时策略是 `TtsPlaybackPolicy`。二者保持一一映射，不再额外叠加 `queueIfBusy` 这类布尔开关。
 
-公开协议适合表达：
+当前运行时支持：
 
-- 请朗读一段文本
-- 请播报一条提醒
-- 请停止某类播报
-- 请执行明确控制动作
+- `DROP_IF_BUSY`
+- `QUEUE`
+- `INSERT_AFTER_SESSION`
+- `INSERT_AFTER_SENTENCE`
+- `CANCEL_SENTENCE_AND_PLAY`
+- `CANCEL_SESSION_AND_PLAY`
+- `REPLACE_CURRENT`
+- `LATEST_ONLY`
 
-公开协议不适合表达：
+其中 `REPLACE_CURRENT` 和 `LATEST_ONLY` 是内部服务和兼容策略，不建议作为新的跨模块业务语义继续扩散。
 
-- GUI 分类注册
-- 玩家试听按钮
-- 内部 backend 状态
-- 内部 session 状态
-- 模型下载细节
+TTS 不再提供“暂停当前句子并插话后恢复”的策略。需要立即插话时使用 `CANCEL_SENTENCE_AND_PLAY` 或 `CANCEL_SESSION_AND_PLAY`；需要保留原播报时使用 `INSERT_AFTER_SENTENCE` 或 `INSERT_AFTER_SESSION`。
 
-因此 `preview` 被放在 `TtsModuleService`，而不是 `ProtocolCapabilities`。
+## 6. 音色克隆缓存
 
-## 6. GUI 边界
+音色克隆入口统一由 `TTS_CONTROL` 管理。外部模块只注册 `voiceId`，后续 `TTS_SPEAK` 和 `TTS_SYNTHESIZE` 通过 `voiceStyle=voiceId` 引用，不直接携带参考音频。
 
-TTS 的 GUI 属于 NeoForge client 层，不属于 common 模块。
+当前有两种音色来源：
 
-common 只提供服务和快照：
+- `LOAD_VOICE`：加载 `config.getVoiceLibraryPath()` 目录内已经存在的参考音频。
+- `IMPORT_VOICE`：由资源拥有者读取 jar/resource 中的音频为 `byte[]`，TTS 校验后写入 voice library 的 owner 子目录，并立刻加载。
+
+`TtsVoiceCloneRegistry` 是音色样本和 clone profile 的唯一管理入口。它负责：
+
+- 限制 `LOAD_VOICE` 只能读取 voice library 内文件。
+- 限制 `IMPORT_VOICE` 的大小，根据音频头和 `voiceId` 生成安全文件名。
+- 使用协议信封 `sourceId` 作为 owner，把导入样本写到 owner 子目录。
+- 在加载时解析为内部 profile。
+
+- `samplePath`：保留给 MOSS 等需要后端自行编码 prompt 的实现。
+- `referenceAudio(float[])`、`referenceSampleRate`、`referenceText`：供 ZipVoice 通过 Sherpa `GenerationConfig` 直接使用。
+
+MOSS 后端可以继续在 backend 内按 `samplePath + mtime + size` 缓存 prompt codes；ZipVoice 不需要每次读文件，直接使用 profile 中已解码的 float 数组。
+
+## 7. 线程和调度
+
+TTS 不自行创建散装线程，所有后台工作进入 `ProtocolExecutorManager`：
+
+| 工作 | Lane | 说明 |
+|---|---|---|
+| 快速 TTS 合成 | `TTS_FAST` | 非自回归或较轻量后端，最大并发 1。 |
+| 自回归 TTS 合成 | `TTS_AUTOREGRESSIVE` | MOSS 等较重后端，最大并发 1。 |
+| 音频播放 IO | `AUDIO_IO` | 串行写入平台音频桥。 |
+| 模型加载 | `MODEL_LOAD` | 后续模型重载、资源准备使用。 |
+
+合成和播放分离：合成任务可以在当前音频仍播放时预合成后续句子，播放层通过 `TtsPlaybackController` 串行写入音频桥。
+
+## 8. 状态暴露
+
+内部 session 状态用于 runtime 调度：
+
+- `CREATED`
+- `QUEUED`
+- `SYNTHESIZING`
+- `PLAYING`
+- `DRAINING`
+- `COMPLETED`
+- `CANCELLED`
+- `FAILED`
+
+外部 topic 只暴露模块级状态：
+
+- `IDLE`
+- `SPEAKING`
+- `ALERTING`
+
+这条边界很重要：GUI 和其他模块不应该依赖内部 session 阶段，否则后续 runtime 调度策略会被公共 API 锁死。
+
+## 9. GUI 边界
+
+common 层只提供服务和快照：
 
 - `TtsModuleService`
 - `TtsRuntimeSnapshot`
 - `TtsModelSnapshot`
 - `TtsBackendSnapshot`
 
-client GUI 应该使用设置框架声明模板，而不是自己创建 Minecraft 控件。
-
-推荐边界是：
-
-```text
-TtsSettingsRegistrySource
-  -> TtsModuleService
-  -> snapshot / preview / stop / reload
-```
-
-GUI 不应该直接访问：
+NeoForge GUI 应通过服务层读取摘要、试听、停止和重载，不直接访问：
 
 - `TtsRuntime`
 - `TtsSession`
-- `TtsSessionState`
+- `TtsSessionManager`
 - `TtsSynthesisEngine`
 - `TtsBackend`
 
-面向玩家的 GUI 也不应该展示专业运行时字段。内部字段需要映射成人类可理解的信息，例如：
+玩家界面应展示“语音服务可用性、当前语音、试听、停止、重载”等玩家能理解的概念，不展示内部枚举和后端细节。
 
-| 内部状态 | 玩家显示 |
-|---|---|
-| runtime 未绑定 | 语音服务未启动 |
-| model 无内容 | 语音模型未安装 |
-| backend 未初始化 | 语音暂不可用 |
-| ready | 可用 |
-| synthesis failed | 语音生成失败 |
-| playback failed | 播放失败 |
+## 10. 失败模型
 
-## 7. 播放策略
-
-TTS 运行时支持多种播放策略，用于处理多个播报请求之间的冲突。
-
-当前核心策略包括：
-
-- `QUEUE`：按顺序排队播放
-- `DROP_IF_BUSY`：忙碌时丢弃新请求
-- `REPLACE_CURRENT`：替换当前请求
-- `LATEST_ONLY`：只保留最新请求
-- `INTERRUPT_LOWER_PRIORITY`：打断低优先级请求
-
-这些策略属于业务运行时语义，不应该直接暴露到玩家 GUI。
-
-玩家只需要看到简单动作：
-
-- 试听语音
-- 停止播报
-- 重载语音
-
-## 8. 错误和结果模型
-
-TTS 当前使用结构化结果表达运行情况。
-
-主要对象包括：
-
-- `TtsOperationResult`
-- `TtsControlResult`
-- `TtsFailure`
-- `TtsFailureCode`
-
-常见失败码包括：
+常见失败码：
 
 - `RUNTIME_NOT_RUNNING`
 - `EMPTY_TEXT`
@@ -345,87 +186,33 @@ TTS 当前使用结构化结果表达运行情况。
 - `PLAYBACK_FAILED`
 - `REQUEST_NOT_FOUND`
 - `INVALID_REQUEST`
+- `QUEUE_FULL`
+- `EXPIRED`
 - `CANCELLED`
 - `UNKNOWN`
 
-这些失败码用于模块间稳定传递和测试断言。玩家 GUI 应该把失败码翻译成简单提示，而不是直接显示枚举名称。
+失败码用于模块间稳定传递和测试断言。玩家 GUI 应翻译成简短提示，不直接显示枚举名。
 
-## 9. 运行时状态暴露原则
+## 11. 测试重点
 
-TTS 内部有会话状态，但外部不应该依赖这些内部状态。
-
-内部可以使用：
-
-- `TtsSessionState`
-- session id
-- request id
-- source
-- priority
-- backend type
-
-外部应该优先使用：
-
-- `TtsPlaybackPhase`
-- 服务快照
-- 操作结果
-- 控制结果
-
-这条边界的目的，是防止 GUI 或其他模块把 TTS 内部调度状态当成公共 API，从而限制后续 runtime 演进。
-
-## 10. 测试覆盖
-
-当前 TTS 已经补充了围绕运行时核心语义的测试。
-
-重点覆盖：
+当前 TTS 测试应持续覆盖：
 
 - session 终态保护
-- stopAll 对运行中和排队会话的一致处理
-- stream chunk 的缓冲与 final flush
-- runtime 未运行时的结构化拒绝
-- 空文本和 null chunk 的结构化失败
-- `DROP_IF_BUSY`、`REPLACE_CURRENT`、`LATEST_ONLY`、`INTERRUPT_LOWER_PRIORITY`、`QUEUE` 等播放策略
-- `TtsModuleService` 的 preview、stopPreview、stopAll、reloadModel 边界
+- stopAll / stopCurrent / stopRequest / stopSource
+- 纯合成 task TTL、取消和本地播放抢占
+- stream chunk 缓冲和 final flush
+- `DROP_IF_BUSY`、普通排队、插队、取消句子、取消会话、流式会话取消屏障
+- 合成和播放分离后的长短句交叉
+- TTS topic 的三态发布
+- `TtsModuleService` 的 preview、stopPreview、stopAll、reloadModel
 
-这些测试的价值不是验证某个 mock 是否被调用，而是锁定运行时调度、控制和失败语义。
+测试目标不是验证 mock 调用次数，而是锁定调度、取消、恢复、失败语义和协议边界。
 
-## 11. 当前设计原则
+## 12. 设计原则
 
-TTS 当前架构最重要的原则是：
-
-1. **模块宿主化**
-   - TTS 作为 managed module 接入 CoreManager 生命周期，而不是由外层散装启动。
-
-2. **协议面收敛**
-   - 公开协议只保留 speak、alert、control；停止播报走 `TTS_CONTROL`。
-
-3. **试听内聚**
-   - preview 是 TTS 服务能力，不是公开协议能力。
-
-4. **运行时内聚**
-   - 调度、session、stream、控制和失败语义由 `TtsRuntime` 统一处理。
-
-5. **状态有限暴露**
-   - 外部只能看到必要快照和公共播放阶段，不依赖内部 session 状态。
-
-6. **GUI 不穿透 runtime**
-   - GUI 通过 `TtsModuleService` 与 TTS 交互。
-
-7. **玩家 GUI 面向玩家**
-   - 玩家设置页只展示启用、当前语音、试听、停止和简单可用性提示。
-
-## 12. 后续可继续推进的方向
-
-TTS 后续最值得推进的方向包括：
-
-- 在 client GUI 中接入玩家向语音播报设置页
-- 增加独立的 TTS 启用开关，并让聊天助手和提醒播报统一尊重该开关
-- 把模型选择整理成玩家语音预设，而不是直接暴露技术模型名
-- 为 TTS 模型下载管理设计独立的资源管理区
-- 补充更多端到端测试，覆盖 LLM 流式输出到 TTS 播放的完整链路
-- 根据实际使用反馈继续完善播放打断、淡出和优先级策略
-
-## 13. 结论
-
-TTS 模块当前已经从旧式 TTS 工作器和散乱调用方式，进入到宿主化模块、协议适配器、运行时调度、服务边界和结构化失败结果并存的架构阶段。
-
-它的基础能力已经比较完整，下一步重点不是继续堆内部状态，而是把玩家可感知的语音播报设置以简洁方式接入 GUI，同时保持 common 层和 client GUI 层的边界清晰。
+- TTS 是宿主化模块，不在外层散装启动。
+- 公开协议面只保留本地播放、纯合成和控制。
+- 播放策略用枚举表达，不用多个布尔值拼装。
+- 合成和播放分层，外部需要 3D 声源时走纯合成。
+- GUI 通过服务边界接入，不穿透 runtime。
+- 内部状态有限暴露，topic 只发布模块级状态。

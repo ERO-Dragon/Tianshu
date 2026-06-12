@@ -10,10 +10,12 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -58,7 +60,7 @@ class TtsRuntimeControlTest {
     @Test
     void submitStreamBuffersPartialTextUntilFinalChunk() throws Exception {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
         runtime.prepare();
 
@@ -73,9 +75,131 @@ class TtsRuntimeControlTest {
     }
 
     @Test
+    void synthesizeFullReturnsAudioWithoutCreatingPlaybackSession() throws Exception {
+        CountingSynthesisEngine engine = new CountingSynthesisEngine();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        runtime.prepare();
+        List<byte[]> chunks = Collections.synchronizedList(new ArrayList<>());
+        List<Boolean> lastFlags = Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.CountDownLatch completed = new java.util.concurrent.CountDownLatch(1);
+
+        TtsOperationResult result = runtime.synthesize(
+                request("synth-only"),
+                false,
+                (chunkIndex, audio, last) -> {
+                    chunks.add(audio);
+                    lastFlags.add(last);
+                },
+                completed::countDown,
+                null
+        );
+
+        assertTrue(result.accepted());
+        assertTrue(completed.await(2L, TimeUnit.SECONDS));
+        assertEquals(1, chunks.size());
+        assertEquals(2, chunks.get(0).length);
+        assertEquals(List.of(true), lastFlags);
+        assertTrue(statuses.isEmpty());
+        assertEquals(1, engine.invocations.get());
+    }
+
+    @Test
+    void localSpeakPreemptsActiveSynthesisTask() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        runtime.prepare();
+        AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
+        CountDownLatch failed = new CountDownLatch(1);
+
+        runtime.synthesize(
+                request("synthesis-task"),
+                false,
+                30_000L,
+                null,
+                null,
+                failure -> {
+                    taskFailure.set(failure);
+                    failed.countDown();
+                }
+        );
+        assertTrue(engine.awaitStarted());
+
+        TtsOperationResult speakResult = runtime.submit(request("local-speak"), null, null);
+
+        assertTrue(speakResult.accepted());
+        assertTrue(failed.await(2L, TimeUnit.SECONDS));
+        assertEquals(TtsFailureCode.CANCELLED, taskFailure.get().code());
+        assertTrue(engine.awaitInvocations(2));
+        assertTrue(awaitState(statuses, "local-speak", TtsSessionState.COMPLETED));
+    }
+
+    @Test
+    void queuedSynthesisTaskExpiresBeforeItStarts() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        TtsRuntime runtime = runtime(engine, Collections.synchronizedList(new ArrayList<>()));
+        runtime.prepare();
+        AtomicReference<TtsFailure> expiredFailure = new AtomicReference<>();
+        CountDownLatch expired = new CountDownLatch(1);
+
+        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.synthesize(
+                request("short-lived-task"),
+                false,
+                1_000L,
+                null,
+                null,
+                failure -> {
+                    expiredFailure.set(failure);
+                    expired.countDown();
+                }
+        );
+
+        Thread.sleep(1_150L);
+        engine.release();
+
+        assertTrue(expired.await(2L, TimeUnit.SECONDS));
+        assertEquals(TtsFailureCode.EXPIRED, expiredFailure.get().code());
+    }
+
+    @Test
+    void stopRequestCancelsQueuedSynthesisTask() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        TtsRuntime runtime = runtime(engine, Collections.synchronizedList(new ArrayList<>()));
+        runtime.prepare();
+        AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
+        CountDownLatch failed = new CountDownLatch(1);
+
+        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.synthesize(
+                request("queued-task"),
+                false,
+                30_000L,
+                null,
+                null,
+                failure -> {
+                    taskFailure.set(failure);
+                    failed.countDown();
+                }
+        );
+
+        TtsControlResult result = runtime.stopRequest("queued-task", "cancel queued synthesis");
+        engine.release();
+
+        assertTrue(result.accepted());
+        assertEquals(1, result.affectedSessions());
+        assertTrue(failed.await(2L, TimeUnit.SECONDS));
+        assertEquals(TtsFailureCode.CANCELLED, taskFailure.get().code());
+        assertFalse(engine.awaitInvocations(2, 150));
+    }
+
+    @Test
     void stopAllCancelsQueuedAndRunningSessions() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
-        List<TtsSession> statuses = new ArrayList<>();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
         runtime.prepare();
 
@@ -92,12 +216,93 @@ class TtsRuntimeControlTest {
         assertTrue(awaitState(statuses, "queued", TtsSessionState.CANCELLED));
     }
 
+    @Test
+    void stopRequestCancelsAllDerivedStreamSessions() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("stream-1:part-a"), null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.submit(request("stream-1:part-b"), null, null);
+
+        TtsControlResult result = runtime.stopRequest("stream-1", "stop stream");
+        engine.release();
+
+        assertTrue(result.accepted());
+        assertEquals(2, result.affectedSessions());
+        assertTrue(awaitState(statuses, "stream-1:part-a", TtsSessionState.CANCELLED));
+        assertTrue(awaitState(statuses, "stream-1:part-b", TtsSessionState.CANCELLED));
+    }
+
+    @Test
+    void stopRequestBlocksLaterChunksFromSameStreamUntilEnd() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("stream-1:part-a"), null, null);
+        assertTrue(engine.awaitStarted());
+
+        TtsControlResult stop = runtime.stopRequest("stream-1", "stop stream");
+        TtsOperationResult ignored = runtime.submitStream(chunk("stream-1", "second sentence.", false), null, null);
+        TtsOperationResult end = runtime.submitStream(chunk("stream-1", "", true), null, null);
+        engine.release();
+
+        assertTrue(stop.accepted());
+        assertTrue(ignored.accepted());
+        assertTrue(end.accepted());
+        assertEquals(1, engine.invocations.get());
+        assertTrue(statuses.stream().anyMatch(session ->
+                session.request().requestId().startsWith("stream-1:")
+                        && session.state() == TtsSessionState.CANCELLED));
+    }
+
+    @Test
+    void stopCurrentCancelsOnlyActiveSessionAndKeepsQueue() throws Exception {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        runtime.prepare();
+
+        runtime.submit(request("running"), null, null);
+        assertTrue(engine.awaitStarted());
+        runtime.submit(request("queued"), null, null);
+
+        TtsControlResult result = runtime.stopCurrent("stop current");
+        engine.release();
+
+        assertTrue(result.accepted());
+        assertEquals(TtsControlAction.STOP_CURRENT, result.action());
+        assertEquals(1, result.affectedSessions());
+        assertTrue(awaitState(statuses, "running", TtsSessionState.CANCELLED));
+        assertTrue(engine.awaitInvocations(2));
+        assertTrue(awaitState(statuses, "queued", TtsSessionState.COMPLETED));
+    }
+
+    @Test
+    void synthesisFailureMarksSessionFailedAndCallsFailureHandler() throws Exception {
+        FailingSynthesisEngine engine = new FailingSynthesisEngine();
+        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        runtime.prepare();
+        AtomicReference<TtsFailure> failureRef = new AtomicReference<>();
+
+        TtsOperationResult result = runtime.submit(request("failing"), null, failureRef::set);
+
+        assertTrue(result.accepted());
+        assertTrue(awaitState(statuses, "failing", TtsSessionState.FAILED));
+        assertEquals(TtsFailureCode.SYNTHESIS_FAILED, failureRef.get().code());
+    }
+
     private TtsRuntime runtime(TtsSynthesisEngine engine, List<TtsSession> statuses) {
         return new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, new FakeAudioBridge(), statuses::add, ignored -> {});
     }
 
     private static TtsRequest request(String requestId) {
-        return new TtsRequest(requestId, requestId, requestId, "hello", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
+        return new TtsRequest(requestId, requestId, requestId, requestId, "hello", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
     }
 
     private static TtsStreamChunk chunk(String streamId, String text, boolean last) {
@@ -167,7 +372,11 @@ class TtsRuntimeControlTest {
         }
 
         boolean awaitInvocations(int expected) throws InterruptedException {
-            long deadline = System.currentTimeMillis() + 2000L;
+            return awaitInvocations(expected, 2000L);
+        }
+
+        boolean awaitInvocations(int expected, long timeoutMillis) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + timeoutMillis;
             while (System.currentTimeMillis() < deadline) {
                 if (invocations.get() >= expected) {
                     return true;
@@ -205,6 +414,14 @@ class TtsRuntimeControlTest {
 
         void release() {
             release.countDown();
+        }
+    }
+
+    private static final class FailingSynthesisEngine extends CountingSynthesisEngine {
+        @Override
+        public void synthesize(TtsRequest request, com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink sink) {
+            invocations.incrementAndGet();
+            throw new IllegalStateException("boom");
         }
     }
 

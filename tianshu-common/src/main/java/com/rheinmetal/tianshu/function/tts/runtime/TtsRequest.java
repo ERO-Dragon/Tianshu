@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record TtsRequest(
         String requestId,
+        String groupId,
         String envelopeId,
         String traceId,
         String text,
@@ -17,6 +18,7 @@ public record TtsRequest(
 ) {
     public TtsRequest {
         requestId = normalize(requestId, UUID.randomUUID().toString());
+        groupId = normalize(groupId, requestId);
         envelopeId = normalize(envelopeId, requestId);
         traceId = normalize(traceId, requestId);
         text = text == null ? "" : text.trim();
@@ -27,7 +29,9 @@ public record TtsRequest(
     }
 
     public boolean interruptive() {
-        return playbackPolicy == TtsPlaybackPolicy.REPLACE_CURRENT || playbackPolicy == TtsPlaybackPolicy.INTERRUPT_LOWER_PRIORITY;
+        return playbackPolicy == TtsPlaybackPolicy.REPLACE_CURRENT
+                || playbackPolicy == TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY
+                || playbackPolicy == TtsPlaybackPolicy.CANCEL_SESSION_AND_PLAY;
     }
 
     private static String normalize(String value, String fallback) {

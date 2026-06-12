@@ -19,17 +19,33 @@ public class TtsModelInfo {
     public static final String PERF_LOW = "low";
     public static final String PERF_MEDIUM = "medium";
     public static final String PERF_HIGH = "high";
+    private static final int DEFAULT_SCORE = 6;
 
     public String author;
     public String name;
     public String id;
     public long size;
+    /**
+     * Legacy recommendation flag. New TTS catalog entries should use the 10-point
+     * recommendationScore field instead.
+     */
     public boolean pinned;
+    /**
+     * Legacy 5-star quality hint. New TTS catalog entries should use
+     * synthesisQualityScore instead.
+     */
     public int rating;
+    /**
+     * Legacy performance cost class. New TTS catalog entries should use the
+     * 10-point performanceScore field, where higher means more performance-friendly.
+     */
     public String performance;
     public boolean needVocoder;
     public List<String> lang;
     public String engine;
+    /**
+     * Legacy coarse tier. New TTS catalog entries should use explicit scores.
+     */
     public String tier;
     public List<String> modelFiles;
     public String dataDir;
@@ -42,6 +58,9 @@ public class TtsModelInfo {
     public String description;
     public Boolean supportsVoiceClone;
     public String defaultVoiceSample;
+    public Integer synthesisQualityScore;
+    public Integer performanceScore;
+    public Integer recommendationScore;
 
     public String getEngineType() {
         if (engine != null && !engine.isBlank()) return engine;
@@ -82,16 +101,77 @@ public class TtsModelInfo {
 
     public int getRating() {
         if (rating > 0) return Math.min(5, Math.max(1, rating));
+        int quality = getSynthesisQualityScore();
+        if (quality >= 9) return 5;
+        if (quality >= 7) return 4;
+        if (quality >= 5) return 3;
+        if (quality >= 3) return 2;
         return pinned ? 5 : 0;
     }
 
     public String getPerformance() {
         if (performance != null && !performance.isBlank()) return performance;
+        int score = getPerformanceScore();
+        if (score >= 8) return PERF_LOW;
+        if (score <= 4) return PERF_HIGH;
+        return PERF_MEDIUM;
+    }
+
+    public int getSynthesisQualityScore() {
+        return clampScore(synthesisQualityScore, legacyQualityScore());
+    }
+
+    public int getQualityScore() {
+        return getSynthesisQualityScore();
+    }
+
+    public int getPerformanceScore() {
+        return clampScore(performanceScore, legacyPerformanceScore());
+    }
+
+    public int getRecommendationScore() {
+        return clampScore(recommendationScore, legacyRecommendationScore());
+    }
+
+    public int getValueScore() {
+        return getRecommendationScore() * 100 + getSynthesisQualityScore() * 10 + getPerformanceScore();
+    }
+
+    private int legacyQualityScore() {
+        if ("premium".equalsIgnoreCase(tier)) return 8;
+        if (rating >= 5) return 9;
+        if (rating >= 4) return 8;
+        if (rating >= 3) return 6;
+        if (rating > 0) return 4;
+        return DEFAULT_SCORE;
+    }
+
+    private int legacyPerformanceScore() {
+        if (performance != null && !performance.isBlank()) {
+            if (PERF_LOW.equalsIgnoreCase(performance)) return 9;
+            if (PERF_MEDIUM.equalsIgnoreCase(performance)) return 6;
+            if (PERF_HIGH.equalsIgnoreCase(performance)) return 4;
+        }
         return switch (getEngineType()) {
-            case "moss" -> PERF_HIGH;
-            case "matcha" -> PERF_MEDIUM;
-            default -> PERF_LOW;
+            case "moss" -> 4;
+            case "matcha", "zipvoice" -> 6;
+            default -> 8;
         };
+    }
+
+    private int legacyRecommendationScore() {
+        if (pinned) return 9;
+        if (rating >= 5) return 9;
+        if (rating >= 4) return 8;
+        if (rating >= 3) return 6;
+        return DEFAULT_SCORE;
+    }
+
+    private int clampScore(Integer score, int fallback) {
+        int value = score == null ? fallback : score;
+        if (value < 1) return 1;
+        if (value > 10) return 10;
+        return value;
     }
 
     public String getPerformanceLabel() {
@@ -113,7 +193,7 @@ public class TtsModelInfo {
         return !supportsVoiceClone() && voicesFile != null && !voicesFile.isBlank();
     }
 
-    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/sherpa-onnx-tts-models.json";
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/tts-model.json";
     private static final Gson GSON = new Gson();
     private static List<TtsModelInfo> cachedCatalog = null;
 

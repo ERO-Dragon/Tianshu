@@ -62,8 +62,7 @@ public final class MossTtsBackend implements TtsBackend {
     public void synthesize(TtsRequest request, TtsAudioSink sink) {
         MossTtsService current = service;
         if (!initialized || current == null) {
-            env.error("MOSS-TTS backend is not initialized", null);
-            return;
+            throw new IllegalStateException("MOSS-TTS backend is not initialized");
         }
         interrupted = false;
         setVoiceSamplePath(request.voiceProfile().voiceSample());
@@ -78,20 +77,12 @@ public final class MossTtsBackend implements TtsBackend {
                 env.info("MOSS-TTS synthesis interrupted after prompt preparation: " + request.text());
                 return;
             }
-            current.synthesizeStreaming(request.text(), promptAudioCodes, (audio, chunkIndex, totalChunks) -> {
-                if (interrupted) {
-                    return;
-                }
-                byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
-                if (pcm.length > 0) {
-                    sink.accept(pcm);
-                }
-                if (totalChunks > 0) {
-                    env.info("MOSS-TTS sub-chunk " + (chunkIndex + 1) + "/" + totalChunks + " completed");
-                } else {
-                    env.info("MOSS-TTS stream chunk " + (chunkIndex + 1) + " completed");
-                }
-            });
+            TtsSynthesisMode mode = sink.preferredSynthesisMode();
+            if (mode == TtsSynthesisMode.STREAMING) {
+                synthesizeStreaming(current, request, promptAudioCodes, sink);
+            } else {
+                synthesizeFull(current, request, promptAudioCodes, sink);
+            }
             if (interrupted) {
                 env.info("MOSS-TTS synthesis interrupted: " + request.text());
             } else {
@@ -99,7 +90,69 @@ public final class MossTtsBackend implements TtsBackend {
             }
         } catch (Throwable t) {
             env.error("MOSS-TTS synthesis failed: " + request.text(), t);
+            throw new IllegalStateException("MOSS-TTS synthesis failed", t);
         }
+    }
+
+    private void synthesizeStreaming(MossTtsService current, TtsRequest request, List<List<Integer>> promptAudioCodes, TtsAudioSink sink) throws Exception {
+        long startedNanos = System.nanoTime();
+        long[] firstAudioMillis = {0L};
+        long[] audioMillis = {0L};
+        current.synthesizeStreaming(request.text(), promptAudioCodes, (audio, chunkIndex, totalChunks) -> {
+            if (interrupted) {
+                return;
+            }
+            byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
+            if (pcm.length > 0) {
+                if (firstAudioMillis[0] == 0L) {
+                    firstAudioMillis[0] = elapsedMillis(startedNanos);
+                }
+                audioMillis[0] += pcmMillis(pcm);
+                sink.accept(pcm);
+            }
+            if (totalChunks > 0) {
+                env.info("MOSS-TTS sub-chunk " + (chunkIndex + 1) + "/" + totalChunks + " completed");
+            } else {
+                env.info("MOSS-TTS stream chunk " + (chunkIndex + 1) + " completed");
+            }
+        });
+        sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
+                TtsSynthesisMode.STREAMING,
+                request.text().length(),
+                audioMillis[0],
+                elapsedMillis(startedNanos),
+                firstAudioMillis[0]
+        ));
+    }
+
+    private void synthesizeFull(MossTtsService current, TtsRequest request, List<List<Integer>> promptAudioCodes, TtsAudioSink sink) throws Exception {
+        long startedNanos = System.nanoTime();
+        float[][] audio = current.synthesizeToWaveform(request.text(), promptAudioCodes);
+        if (interrupted) {
+            return;
+        }
+        byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
+        if (pcm.length > 0) {
+            sink.accept(pcm);
+        }
+        sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
+                TtsSynthesisMode.FULL,
+                request.text().length(),
+                pcmMillis(pcm),
+                elapsedMillis(startedNanos),
+                elapsedMillis(startedNanos)
+        ));
+    }
+
+    private long pcmMillis(byte[] pcm) {
+        if (pcm == null || pcm.length == 0 || sampleRate <= 0) {
+            return 0L;
+        }
+        return (pcm.length / 2L) * 1000L / sampleRate;
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
     }
 
     @Override

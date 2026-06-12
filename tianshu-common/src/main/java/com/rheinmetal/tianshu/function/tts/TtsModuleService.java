@@ -130,6 +130,7 @@ public final class TtsModuleService {
                 requestId,
                 requestId,
                 requestId,
+                requestId,
                 text,
                 TtsRequestSource.PREVIEW,
                 TtsPlaybackPolicy.REPLACE_CURRENT,
@@ -143,6 +144,7 @@ public final class TtsModuleService {
     private TtsOperationResult submitPreview(TtsRuntime current, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
         String requestId = "tts-preview:" + UUID.randomUUID();
         TtsRequest request = new TtsRequest(
+                requestId,
                 requestId,
                 requestId,
                 requestId,
@@ -187,6 +189,14 @@ public final class TtsModuleService {
             return runtimeUnavailable(TtsControlAction.STOP_ALL);
         }
         return current.stopAll(reason == null || reason.isBlank() ? "tts stopped" : reason);
+    }
+
+    public TtsControlResult stopCurrent(String reason) {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            return runtimeUnavailable(TtsControlAction.STOP_CURRENT);
+        }
+        return current.stopCurrent(reason == null || reason.isBlank() ? "tts current stopped" : reason);
     }
 
     public TtsControlResult reloadModel() {

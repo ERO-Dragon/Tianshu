@@ -2,8 +2,11 @@ package com.rheinmetal.tianshu.function.tts.runtime;
 
 public enum TtsPlaybackPolicy {
     QUEUE,
+    INSERT_AFTER_SESSION,
+    INSERT_AFTER_SENTENCE,
+    CANCEL_SENTENCE_AND_PLAY,
+    CANCEL_SESSION_AND_PLAY,
     REPLACE_CURRENT,
-    INTERRUPT_LOWER_PRIORITY,
     DROP_IF_BUSY,
     LATEST_ONLY;
 

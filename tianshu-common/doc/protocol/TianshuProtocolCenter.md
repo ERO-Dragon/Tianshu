@@ -75,8 +75,8 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `IR_PARSE` | `IR_PARSE` | 文本或语音意图解析。 |
 | `LLM.REQUEST` | `LLM_PROMPT_REQUEST` | LLM 主请求入口，支持流式响应。 |
 | `LLM.CACHE_MANAGE` | `LLM_CACHE_MANAGE` | LLM 缓存管理入口。 |
-| `TTS_SPEAK` | `TTS_TEXT` | 普通语音播报。 |
-| `TTS_ALERT` | `TTS_TEXT` | 高优先级提醒播报。 |
+| `TTS_SPEAK` | `TTS_TEXT` | 统一本地语音播报入口。Payload 用 `TtsPlaybackPlacement` 声明排队、丢弃、插入或取消式抢占策略，并携带音色参数。 |
+| `TTS_SYNTHESIZE` | `TTS_TEXT` | 只执行语音合成，通过协议响应返回 `TTS_AUDIO`，由调用方自行决定播放方式；可通过 `TTS_CONTROL` 按 requestId 取消。 |
 | `TTS_CONTROL` | `CUSTOM` | TTS 控制命令，承载停止、重载以及后续音色/克隆控制。 |
 | `DIALOGUE.ARBITRATE` | `DIALOGUE_ARBITRATION_REQUEST` | IA 仲裁入口。 |
 | `DIALOGUE.PARTICIPANT_REGISTER` | `DIALOGUE_PARTICIPANT_REGISTER` | 对话参与者注册。 |

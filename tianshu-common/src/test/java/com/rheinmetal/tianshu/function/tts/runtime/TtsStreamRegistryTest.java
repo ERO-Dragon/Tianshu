@@ -47,6 +47,22 @@ class TtsStreamRegistryTest {
         registry.cancel("stream-1");
 
         assertEquals(0, registry.activeStreamCount());
+        assertEquals(1, registry.cancelBarrierCount());
+    }
+
+    @Test
+    void cancelBarrierDropsLaterChunksUntilStreamEnds() {
+        TtsStreamRegistry registry = new TtsStreamRegistry();
+
+        registry.cancel("stream-1");
+        List<String> ignored = registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "should be ignored.", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), false));
+        List<String> ended = registry.append(new TtsStreamChunk("stream-1", "env-1", "trace-1", "", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true));
+        List<String> next = registry.append(new TtsStreamChunk("stream-1", "env-2", "trace-2", "new turn.", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), true));
+
+        assertEquals(List.of(), ignored);
+        assertEquals(List.of(), ended);
+        assertEquals(List.of("new turn."), next);
+        assertEquals(0, registry.cancelBarrierCount());
     }
 
     @Test

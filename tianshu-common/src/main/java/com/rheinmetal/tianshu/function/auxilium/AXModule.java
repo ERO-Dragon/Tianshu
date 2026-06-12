@@ -39,6 +39,7 @@ import com.rheinmetal.tianshu.function.ia.IaModuleService;
 import com.rheinmetal.tianshu.provider.WorldStateProvider;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -207,8 +208,15 @@ public final class AXModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX ASR speech activity payload is invalid", null);
             return;
         }
-        if (payload.speaking() && llmClient != null) {
-            llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
+        if (payload.speaking()) {
+            if (llmClient != null) {
+                llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
+            }
+            adapter.controlTts(new TtsControlPayload(
+                    TtsControlPayload.Action.STOP_CURRENT,
+                    "",
+                    "user started speaking"
+            ));
         }
         context.complete(envelope.envelopeId());
     }

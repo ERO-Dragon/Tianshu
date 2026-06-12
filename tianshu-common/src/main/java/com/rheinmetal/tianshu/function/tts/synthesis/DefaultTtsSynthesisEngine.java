@@ -114,13 +114,11 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
     @Override
     public synchronized void synthesize(TtsRequest request, TtsAudioSink sink) {
         if (!initialize()) {
-            env.warn("TTS 引擎不可用，跳过合成: " + request.text());
-            return;
+            throw new IllegalStateException("TTS synthesis engine is unavailable");
         }
         TtsBackend backend = activeBackend;
         if (backend == null) {
-            env.warn("TTS 引擎未激活，跳过合成: " + request.text());
-            return;
+            throw new IllegalStateException("TTS backend is not active");
         }
         backend.synthesize(request, sink);
     }

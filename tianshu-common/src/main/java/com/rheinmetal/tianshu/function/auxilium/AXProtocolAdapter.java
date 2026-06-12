@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -108,6 +109,10 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope speakTts(TianshuEnvelope parent, TtsSpeakPayload payload) {
         return commandCapability(parent, ProtocolCapabilities.TTS_SPEAK, PayloadType.TTS_TEXT, payload);
+    }
+
+    public TianshuEnvelope controlTts(TtsControlPayload payload) {
+        return commandCapability(ProtocolCapabilities.TTS_CONTROL, PayloadType.CUSTOM, payload);
     }
 
     public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.payload.DialogueSessionControlPayload payload) {

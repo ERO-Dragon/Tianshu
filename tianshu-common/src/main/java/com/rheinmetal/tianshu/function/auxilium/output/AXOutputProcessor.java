@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.output;
 
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 
 import java.util.Objects;
@@ -96,7 +97,7 @@ public final class AXOutputProcessor {
                     sentence,
                     context.ttsTurnId(),
                     context.ttsSessionId(),
-                    false,
+                    TtsPlaybackPlacement.QUEUE_AFTER_SESSION,
                     settings.ttsVoiceStyle()
             );
             if (parent == null) {

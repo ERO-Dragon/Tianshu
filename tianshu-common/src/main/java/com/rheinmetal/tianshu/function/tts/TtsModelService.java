@@ -158,14 +158,24 @@ public class TtsModelService {
                 info == null ? modelDir.getFileName().toString() : info.getDisplayName(),
                 info == null ? "" : info.id,
                 info == null ? "legacy" : info.getEngineType(),
-                info == null ? "" : info.getTier(),
-                info == null ? "" : info.getPerformance(),
+                info == null ? "" : scoreTier(info.getRecommendationScore()),
+                info == null ? "" : scoreTier(info.getPerformanceScore()),
                 info != null && info.supportsVoiceClone(),
                 info != null && info.supportsSpeakerSelection(),
                 downloadPaused,
                 modelDir.toString(),
                 System.currentTimeMillis()
         );
+    }
+
+    private String scoreTier(int score) {
+        if (score >= 8) {
+            return "HIGH";
+        }
+        if (score <= 4) {
+            return "LOW";
+        }
+        return "MID";
     }
 
     public boolean hasModelContent(TtsModelInfo info) {
