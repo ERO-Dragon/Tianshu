@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.client.gui.settings.api.SettingsButtonStyle;
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.screen.TianshuSettingsScreen;
 import com.rheinmetal.tianshu.client.gui.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsValidationResult;
@@ -83,8 +84,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 .<LlmModelInfo>list("llm.download.models", llm("section.download_models"), () -> true, draft.downloadExpanded::get, list -> list
                         .items(draft::downloadableModels)
                         .label(draft::downloadModelLabel)
-                        .selected(draft::selectedDownloadModel)
-                        .onSelect(draft::selectDownloadModel)
                         .itemActions((model, actions) -> draft.buildDownloadItemActions(context, model, actions))
                         .emptyText(llm("download.empty")))
                 .status("llm.download.status", llm("section.download_status"), () -> true, draft.downloadExpanded::get, draft::buildDownloadStatus);
@@ -101,7 +100,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<String> recommendationFilter;
         private final MutableSettingsValue<String> scaleFilter;
         private final MutableSettingsValue<String> downloadStateFilter;
-        private volatile LlmModelInfo selectedDownloadModel;
 
         private LlmSettingsDraft(ClientConfig config, TianshuCoreManager coreManager) {
             this.config = config;
@@ -114,7 +112,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.recommendationFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.scaleFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.downloadStateFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
-            this.selectedDownloadModel = resolveModel(selectedModelName.get());
         }
 
         private void buildDeviceStatus(com.rheinmetal.tianshu.client.gui.settings.api.StatusTemplate status) {
@@ -179,8 +176,12 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         @Override
         public SettingsValidationResult validate() {
-            if (!selectedModelName.valid()) {
+            LlmModelInfo selected = resolveModel(selectedModelName.get());
+            if (enabled.get() && (!selectedModelName.valid() || selected == null)) {
                 return SettingsValidationResult.failure(llm("validation.invalid_model"));
+            }
+            if (enabled.get() && selected != null && !modelService.hasModelContent(selected)) {
+                return SettingsValidationResult.failure(llm("validation.model_not_installed"));
             }
             return SettingsValidationResult.successful();
         }
@@ -213,7 +214,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private String currentModelName() {
             String configured = config.getCustomLlmName();
-            if (configured != null && !configured.isBlank()) {
+            if (configured != null && !configured.isBlank() && modelService.hasModelContent(resolveModel(configured))) {
                 return configured;
             }
             List<String> names = downloadedModelNames();
@@ -352,44 +353,34 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     common(downloaded ? "downloaded" : "not_downloaded").getString());
         }
 
-        private LlmModelInfo selectedDownloadModel() {
-            return selectedDownloadModel;
-        }
-
-        private void selectDownloadModel(LlmModelInfo info) {
-            selectedDownloadModel = info;
-        }
-
         private void buildDownloadItemActions(ModuleSettingsContext context, LlmModelInfo info, com.rheinmetal.tianshu.client.gui.settings.api.ItemActionTemplate<LlmModelInfo> actions) {
-            actions.button("llm.download.item.use", llm("action.use_as_selected"), SettingsButtonStyle.NORMAL, this::useDownloadModel, Objects::nonNull)
-                    .button("llm.download.item.start", llm("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> model != null && !modelService.isDownloading() && !modelService.hasModelContent(model))
+            actions.button("llm.download.item.start", llm("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> model != null && !modelService.isDownloading() && !modelService.hasModelContent(model))
                     .button("llm.download.item.cancel", llm("action.cancel"), SettingsButtonStyle.DANGER, model -> cancelDownload(context), this::isActiveDownload)
                     .button("llm.download.item.delete", llm("action.delete"), SettingsButtonStyle.DANGER, model -> deleteModel(context, model), model -> model != null && !modelService.isDownloading() && modelService.hasModelContent(model));
         }
 
-        private void useDownloadModel(LlmModelInfo info) {
-            if (info != null && info.name != null && !info.name.isBlank()) {
-                selectedDownloadModel = info;
-                selectedModelName.set(info.name);
-            }
-        }
-
         private void startDownload(ModuleSettingsContext context, LlmModelInfo info) {
             if (info == null || modelService.isDownloading()) return;
-            selectedDownloadModel = info;
             modelService.downloadModel(info, new LlmModelService.DownloadProgressCallback() {
                 @Override
                 public void onProgress(String label, int percent) {
+                    runOnClient(() -> refreshSettingsScreen());
                 }
 
                 @Override
                 public void onComplete() {
-                    runOnClient(() -> context.showStatus(llm("message.download_complete"), 3000));
+                    runOnClient(() -> {
+                        context.showStatus(llm("message.download_complete"), 3000);
+                        refreshSettingsScreen();
+                    });
                 }
 
                 @Override
                 public void onError(String message) {
-                    runOnClient(() -> context.showStatus(message == null || message.isBlank() ? llm("status.download_failed") : Component.literal(message), 4000));
+                    runOnClient(() -> {
+                        context.showStatus(message == null || message.isBlank() ? llm("status.download_failed") : Component.literal(message), 4000);
+                        refreshSettingsScreen();
+                    });
                 }
             });
         }
@@ -408,6 +399,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null || modelService.isDownloading()) return;
             if (modelService.deleteModel(info)) {
                 context.showStatus(llm("message.deleted", info.getDisplayName()), 3000);
+                if (info.name != null && info.name.equalsIgnoreCase(selectedModelName.get())) {
+                    selectedModelName.set(currentModelName());
+                }
             } else {
                 context.showStatus(llm("message.delete_failed"), 3000);
             }
@@ -426,6 +420,12 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void runOnClient(Runnable runnable) {
             Minecraft.getInstance().execute(runnable);
+        }
+
+        private void refreshSettingsScreen() {
+            if (Minecraft.getInstance().screen instanceof TianshuSettingsScreen settingsScreen) {
+                settingsScreen.rebuildCurrentPage();
+            }
         }
 
         private Component filterLabel(String value) {

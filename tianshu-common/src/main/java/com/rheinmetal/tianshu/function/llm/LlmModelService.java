@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -113,6 +114,11 @@ public final class LlmModelService {
                         .build(),
                 () -> runDownload(info, callback)
         );
+        if (activeDownloadTask.state() == ProtocolTaskState.REJECTED) {
+            downloading.set(false);
+            updateDownload(false, info.name, "Download queue is full", 0, "Download queue is full");
+            if (callback != null) callback.onError("Download queue is full");
+        }
     }
 
     public void cancelDownload() {

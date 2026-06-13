@@ -219,7 +219,7 @@ public class AsrModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                () -> runDraftPreview(info, modelDir, callback)
+                () -> runModelPreview(info, modelDir, callback)
         );
     }
 
@@ -254,7 +254,7 @@ public class AsrModelService {
         } catch (Throwable ignored) {}
     }
 
-    private void runDraftPreview(AsrModelInfo info, Path modelDir, PreviewCallback callback) {
+    private void runModelPreview(AsrModelInfo info, Path modelDir, PreviewCallback callback) {
         AsrEngine previewEngine = new AsrEngine(env);
         try {
             if (!previewEngine.initialize(info, modelDir, null)) {
@@ -265,8 +265,8 @@ public class AsrModelService {
             }
             runPreview(previewEngine, callback, false);
         } catch (Exception e) {
-            env.error("ASR 草稿模型试听失败", e);
-            callback.onError("ASR 草稿模型试听失败: " + e.getMessage());
+            env.error("ASR 识别模型试听失败", e);
+            callback.onError("ASR 识别模型试听失败: " + e.getMessage());
             previewRunning.set(false);
             callback.onFinish();
         } finally {
