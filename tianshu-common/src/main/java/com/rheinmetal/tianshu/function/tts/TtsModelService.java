@@ -8,7 +8,9 @@ import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -34,11 +36,18 @@ public class TtsModelService {
         void onError(String message);
     }
 
+    public record DownloadStatus(boolean downloading, boolean paused, String activeModelName, String label, int progress) {
+        public static DownloadStatus idle() {
+            return new DownloadStatus(false, false, "", "", 0);
+        }
+    }
+
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final ProtocolExecutorManager executorManager;
     private volatile boolean downloadCancelled = false;
     private volatile boolean downloadPaused = false;
+    private volatile DownloadStatus downloadStatus = DownloadStatus.idle();
 
     public TtsModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
         this.env = env;
@@ -81,6 +90,33 @@ public class TtsModelService {
     public ModelSettings.TtsSettings loadSettings(TtsModelInfo info) {
         Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
         return modelDir == null ? new ModelSettings.TtsSettings() : ModelSettings.loadTtsSettings(modelDir);
+    }
+
+    public Path resolveVoiceSamplePath(TtsModelInfo info, String sampleNameOrPath) {
+        if (info == null) {
+            return null;
+        }
+        String normalized = sampleNameOrPath == null ? "" : sampleNameOrPath.trim();
+        if (normalized.isBlank()) {
+            normalized = info.defaultVoiceSample == null ? "" : info.defaultVoiceSample.trim();
+        }
+        if (normalized.isBlank()) {
+            return null;
+        }
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null) {
+            return null;
+        }
+        Path fileName = Path.of(normalized).getFileName();
+        if (fileName == null) {
+            return null;
+        }
+        Path resolved = modelDir.resolve(fileName.toString()).normalize();
+        Path root = modelDir.normalize();
+        if (resolved.startsWith(root) && Files.isRegularFile(resolved)) {
+            return resolved;
+        }
+        return null;
     }
 
     public void saveSettings(TtsModelInfo info, ModelSettings.TtsSettings settings) {
@@ -232,7 +268,8 @@ public class TtsModelService {
         }
         downloadCancelled = false;
         downloadPaused = false;
-        executorManager.submit(
+        downloadStatus = new DownloadStatus(true, false, safeModelName(info), "Preparing", 0);
+        ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.tts")
                         .lane(ExecutionLane.IO)
@@ -242,6 +279,16 @@ public class TtsModelService {
                         .build(),
                 () -> runDownloadModel(info, proxyUrl, callback)
         );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            downloadCancelled = false;
+            downloadPaused = false;
+            downloadStatus = new DownloadStatus(false, false, "", "TTS model download queue is full", 0);
+            notifyError(callback, "TTS model download queue is full");
+        }
+    }
+
+    public DownloadStatus downloadStatus() {
+        return downloadStatus;
     }
 
     public boolean isDownloadPaused() {
@@ -250,15 +297,21 @@ public class TtsModelService {
 
     public void pauseDownload() {
         downloadPaused = true;
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(current.downloading(), true, current.activeModelName(), current.label(), current.progress());
     }
 
     public void resumeDownload() {
         downloadPaused = false;
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(current.downloading(), false, current.activeModelName(), current.label(), current.progress());
     }
 
     public void cancelDownload() {
         downloadCancelled = true;
         downloadPaused = false;
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(false, false, "", "Cancelling", 0);
     }
 
     private void runDownloadModel(TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
@@ -281,6 +334,7 @@ public class TtsModelService {
             }
             ModelSettings.saveTtsSettings(modelDir, ModelSettings.loadTtsSettings(modelDir));
             notifyProgress(callback, "完成", 100);
+            downloadStatus = new DownloadStatus(false, false, "", "Complete", 100);
             if (callback != null) {
                 callback.onComplete();
             }
@@ -400,15 +454,23 @@ public class TtsModelService {
     }
 
     private void notifyProgress(DownloadProgressCallback callback, String label, int percent) {
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(current.downloading(), current.paused(), current.activeModelName(), label == null ? "" : label, Math.max(0, Math.min(100, percent)));
         if (callback != null) {
             callback.onProgress(label, percent);
         }
     }
 
     private void notifyError(DownloadProgressCallback callback, String message) {
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(false, false, "", message == null ? "" : message, current.progress());
         if (callback != null) {
             callback.onError(message);
         }
+    }
+
+    private String safeModelName(TtsModelInfo info) {
+        return info == null || info.name == null ? "" : info.name;
     }
 
     private String buildDownloadUrl(String downloadUrl, String proxyUrl) {

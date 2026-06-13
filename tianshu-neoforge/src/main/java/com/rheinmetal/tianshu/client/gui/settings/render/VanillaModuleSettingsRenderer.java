@@ -171,7 +171,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 item = layout.row();
                 buttonX = x + SettingsLayoutMetrics.INDENT;
             }
-            Button button = Button.builder(styledButtonLabel(entry), clicked -> entry.action().run())
+            Button button = Button.builder(styledButtonLabel(entry), clicked -> runActionAndRefresh(entry.action()))
                     .pos(buttonX, item.screenY())
                     .size(buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT)
                     .build();
@@ -205,13 +205,13 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             int rowWidth = Math.min(360, width - SettingsLayoutMetrics.INDENT);
             int actionWidth = actions.isEmpty() ? 0 : actions.size() * ITEM_ACTION_WIDTH + Math.max(0, actions.size() - 1) * SettingsLayoutMetrics.GAP;
             int bodyWidth = Math.max(80, rowWidth - actionWidth - (actions.isEmpty() ? 0 : SettingsLayoutMetrics.GAP));
-            addIfVisible(Button.builder(label, button -> group.onSelect().accept(value))
+            addIfVisible(Button.builder(label, button -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value)))
                     .pos(rowX, item.screenY())
                     .size(bodyWidth, SettingsLayoutMetrics.CONTROL_HEIGHT)
                     .build(), item, groupActive);
             int buttonX = rowX + bodyWidth + SettingsLayoutMetrics.GAP;
             for (SettingsTemplateModel.ItemActionEntry<T> action : actions) {
-                Button button = Button.builder(styledItemButtonLabel(action), clicked -> safeAccept(action.action(), value))
+                Button button = Button.builder(styledItemButtonLabel(action), clicked -> runActionAndRefresh(() -> safeAccept(action.action(), value)))
                         .pos(buttonX, item.screenY())
                         .size(ITEM_ACTION_WIDTH, SettingsLayoutMetrics.CONTROL_HEIGHT)
                         .build();
@@ -278,6 +278,20 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private void safeRun(Runnable action) {
         if (action != null) {
             action.run();
+        }
+    }
+
+    private void runActionAndRefresh(Runnable action) {
+        try {
+            safeRun(action);
+        } catch (RuntimeException exception) {
+            if (screen != null) {
+                screen.showActionFailure(exception);
+            }
+        } finally {
+            if (screen != null) {
+                screen.rebuildCurrentPage();
+            }
         }
     }
 

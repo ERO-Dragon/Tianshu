@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.client.gui.settings.api.TextBlockLevel;
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.settings.screen.TianshuSettingsScreen;
 import com.rheinmetal.tianshu.client.gui.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsValidationResult;
@@ -87,7 +88,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
                         .toggle("asr.vad", asr("option.vad"), draft.vadEnabled, draft.enabled::get))
                 .status("asr.status", asr("section.status"), status -> status
-                        .row("asr.status.model", asr("row.draft_model"), draft::selectedModelStatus)
+                        .row("asr.status.model", asr("row.model"), draft::selectedModelStatus)
                         .row("asr.status.download", asr("row.download_status"), draft::downloadStatus)
                         .row("asr.status.preview.state", asr("row.preview_state"), draft::previewStateStatus)
                         .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus))
@@ -113,14 +114,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 .<AsrModelInfo>list("asr.download.models", asr("section.download_models"), () -> true, draft.downloadExpanded::get, list -> list
                         .items(() -> draft.filteredModels())
                         .label(draft::modelLabel)
-                        .selected(draft::selectedDownloadModel)
-                        .onSelect(draft::selectDownloadModel)
                         .itemActions((model, actions) -> draft.buildDownloadItemActions(context, model, actions))
-                        .emptyText(asr("download.empty")))
-                .status("asr.download.model.status", asr("section.selected_download_model"), () -> true, draft.downloadExpanded::get, status -> status
-                        .row("asr.download.model.name", asr("row.name"), draft::selectedDownloadName)
-                        .row("asr.download.model.meta", asr("row.tags"), draft::selectedDownloadMeta)
-                        .row("asr.download.model.files", asr("row.files"), draft::selectedDownloadFiles));
+                        .emptyText(asr("download.empty")));
     }
 
     private static final class AsrSettingsDraft implements com.rheinmetal.tianshu.client.gui.settings.session.ModuleSettingsSession {
@@ -149,7 +144,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final List<AsrModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloading = new AtomicBoolean(false);
-        private volatile AsrModelInfo selectedDownloadModel;
+        private volatile AsrModelInfo activeDownloadModel;
         private volatile Component downloadLabel = asr("status.idle");
         private volatile int downloadProgress = 0;
         private volatile Component previewStateText = asr("status.idle");
@@ -176,7 +171,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.qualityFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.recommendedFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.sortMode = new MutableSettingsValue<>(() -> SortMode.RECOMMENDED, ignored -> {}, Objects::nonNull);
-            this.selectedDownloadModel = resolveModel(selectedModelName.get());
+            restoreDownloadState();
         }
 
         private void buildMainOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -199,8 +194,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildDownloadItemActions(ModuleSettingsContext context, AsrModelInfo info, com.rheinmetal.tianshu.client.gui.settings.api.ItemActionTemplate<AsrModelInfo> actions) {
-            actions.button("asr.download.item.select", asr("action.use_as_draft"), SettingsButtonStyle.NORMAL, this::useDownloadModel, Objects::nonNull)
-                    .button("asr.download.item.start", asr("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> model != null && !downloading.get() && !isDownloaded(model))
+            actions.button("asr.download.item.start", asr("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> model != null && !downloading.get() && !isDownloaded(model))
                     .button("asr.download.item.pause", asr("action.pause"), model -> pauseDownload(), model -> isActiveDownload(model) && !asrModelService().isDownloadPaused())
                     .button("asr.download.item.resume", asr("action.resume"), model -> resumeDownload(), model -> isActiveDownload(model) && asrModelService().isDownloadPaused())
                     .button("asr.download.item.cancel", asr("action.cancel"), SettingsButtonStyle.DANGER, model -> cancelDownload(), this::isActiveDownload)
@@ -231,6 +225,10 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             }
             if (enabled.get() && (!selectedModelName.valid() || resolveModel(selectedModelName.get()) == null)) {
                 return SettingsValidationResult.failure(asr("validation.invalid_model"));
+            }
+            AsrModelInfo selected = resolveModel(selectedModelName.get());
+            if (enabled.get() && selected != null && !isDownloaded(selected)) {
+                return SettingsValidationResult.failure(asr("validation.model_not_installed"));
             }
             return SettingsValidationResult.successful();
         }
@@ -305,25 +303,27 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private String currentModelName() {
             String custom = config.getCustomAsrName();
-            if (custom != null && !custom.isBlank() && resolveModel(custom) != null) {
-                return custom;
+            if (custom != null && !custom.isBlank()) {
+                AsrModelInfo customModel = resolveModel(custom);
+                if (customModel != null && isDownloaded(customModel)) {
+                    return custom;
+                }
             }
             Path modelPath = config.getAsrModelPath();
             if (modelPath != null && modelPath.getFileName() != null) {
                 String pathName = modelPath.getFileName().toString();
-                if (resolveModel(pathName) != null) {
+                AsrModelInfo pathModel = resolveModel(pathName);
+                if (pathModel != null && isDownloaded(pathModel)) {
                     return pathName;
                 }
             }
-            return catalog.stream()
-                    .map(AsrModelInfo::localKey)
-                    .filter(name -> name != null && !name.isBlank())
-                    .findFirst()
-                    .orElse("");
+            List<String> names = modelNames();
+            return names.isEmpty() ? "" : names.get(0);
         }
 
         private List<String> modelNames() {
             return catalog.stream()
+                    .filter(this::isDownloaded)
                     .sorted(Comparator.comparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER))
                     .map(AsrModelInfo::localKey)
                     .filter(name -> name != null && !name.isBlank())
@@ -493,7 +493,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null || downloading.get()) {
                 return;
             }
-            selectedDownloadModel = info;
+            activeDownloadModel = info;
             downloading.set(true);
             downloadLabel = asr("status.download_preparing");
             downloadProgress = 0;
@@ -503,6 +503,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                     runOnClient(() -> {
                         downloadLabel = label == null ? asr("status.downloading") : Component.literal(label);
                         downloadProgress = percent;
+                        refreshSettingsScreen();
                     });
                 }
 
@@ -510,10 +511,12 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 public void onComplete() {
                     runOnClient(() -> {
                         downloading.set(false);
+                        activeDownloadModel = null;
                         downloadLabel = asr("status.download_complete");
                         downloadProgress = 100;
                         context.showStatus(asr("message.download_complete"), 3000);
                         coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                        refreshSettingsScreen();
                     });
                 }
 
@@ -521,11 +524,37 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 public void onError(String message) {
                     runOnClient(() -> {
                         downloading.set(false);
+                        activeDownloadModel = null;
                         downloadLabel = message == null ? asr("status.download_failed") : Component.literal(message);
                         context.showStatus(downloadLabel, 4000);
+                        refreshSettingsScreen();
                     });
                 }
             });
+        }
+
+        private void restoreDownloadState() {
+            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
+            if (status == null) {
+                activeDownloadModel = null;
+                downloading.set(false);
+                return;
+            }
+            if (!status.downloading()) {
+                activeDownloadModel = null;
+                downloading.set(false);
+                if (status.label() != null && !status.label().isBlank()) {
+                    downloadLabel = Component.literal(status.label());
+                    downloadProgress = Math.max(0, Math.min(100, status.progress()));
+                }
+                return;
+            }
+            activeDownloadModel = resolveModel(status.activeModelKey());
+            downloading.set(true);
+            downloadLabel = status.paused()
+                    ? asr("status.paused")
+                    : status.label() == null || status.label().isBlank() ? asr("status.downloading") : Component.literal(status.label());
+            downloadProgress = Math.max(0, Math.min(100, status.progress()));
         }
 
         private void pauseDownload() {
@@ -541,19 +570,23 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private void cancelDownload() {
             asrModelService().cancelDownload();
             downloading.set(false);
+            activeDownloadModel = null;
             downloadLabel = asr("status.cancelling");
             downloadProgress = 0;
         }
 
         private boolean isActiveDownload(AsrModelInfo info) {
-            return info != null && downloading.get() && sameModel(info, selectedDownloadModel);
+            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
+            if (status != null && status.downloading()) {
+                return info != null && sameModel(info, resolveModel(status.activeModelKey()));
+            }
+            return info != null && downloading.get() && sameModel(info, activeDownloadModel);
         }
 
         private void deleteModel(ModuleSettingsContext context, AsrModelInfo info) {
             if (info == null || downloading.get()) {
                 return;
             }
-            selectedDownloadModel = info;
             asrModelService().deleteModel(info);
             downloadLabel = asr("message.deleted", info.getDisplayName());
             context.showStatus(downloadLabel, 3000);
@@ -568,45 +601,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 return false;
             }
             return left.localKey().equalsIgnoreCase(right.localKey());
-        }
-
-        private AsrModelInfo selectedDownloadModel() {
-            return selectedDownloadModel;
-        }
-
-        private void selectDownloadModel(AsrModelInfo info) {
-            selectedDownloadModel = info;
-        }
-
-        private void useDownloadModel(AsrModelInfo info) {
-            if (info != null && !info.localKey().isBlank()) {
-                selectedDownloadModel = info;
-                selectedModelName.set(info.localKey());
-            }
-        }
-
-        private Component selectedDownloadName() {
-            return selectedDownloadModel == null ? common("not_selected") : Component.literal(selectedDownloadModel.getDisplayName());
-        }
-
-        private Component selectedDownloadMeta() {
-            AsrModelInfo info = selectedDownloadModel;
-            if (info == null) {
-                return common("dash");
-            }
-            return asr("download.meta", tagLabel(info), languageLabel(info), scoreLabel(info.getRecognitionQualityScore()), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getRecommendationScore()));
-        }
-
-        private Component selectedDownloadFiles() {
-            AsrModelInfo info = selectedDownloadModel;
-            if (info == null) {
-                return common("dash");
-            }
-            if (isDownloaded(info)) {
-                return asr("download.files_complete");
-            }
-            List<String> missing = AsrModelManager.findMissingFiles(info, config.getAsrBasePath().resolve("model"));
-            return missing.isEmpty() ? common("not_downloaded") : asr("download.missing_files", missing.size());
         }
 
         private List<AsrModelInfo> filteredModels() {
@@ -751,6 +745,12 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void runOnClient(Runnable runnable) {
             Minecraft.getInstance().execute(runnable);
+        }
+
+        private void refreshSettingsScreen() {
+            if (Minecraft.getInstance().screen instanceof TianshuSettingsScreen settingsScreen) {
+                settingsScreen.rebuildCurrentPage();
+            }
         }
     }
 

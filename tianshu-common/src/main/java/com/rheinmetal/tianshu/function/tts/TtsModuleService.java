@@ -77,7 +77,7 @@ public final class TtsModuleService {
         return submitPreview(current, text, voiceProfile, onComplete, onFailure);
     }
 
-    public TtsOperationResult previewDraftModel(String modelName, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
+    public TtsOperationResult previewModel(String modelName, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
         TtsRuntime current = runtime.get();
         TtsModelService models = modelService.get();
         if (current == null) {
@@ -91,7 +91,7 @@ public final class TtsModuleService {
             return TtsOperationResult.rejected(failure);
         }
         if (modelName == null || modelName.isBlank()) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS draft model is empty");
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS preview model is empty");
             notifyFailure(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
@@ -100,18 +100,18 @@ public final class TtsModuleService {
             notifyFailure(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
-        TtsModelInfo draft = models.findModelByName(modelName);
-        if (draft == null || !models.hasModelContent(draft)) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS draft model is not installed");
+        TtsModelInfo previewModel = models.findModelByName(modelName);
+        if (previewModel == null || !models.hasModelContent(previewModel)) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS preview model is not installed");
             notifyFailure(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
         synchronized (previewModelLock) {
             String originalModel = models.currentConfiguredModelName();
-            TtsControlResult switchResult = current.useModel(draft.name);
+            TtsControlResult switchResult = current.useModel(previewModel.name);
             if (!switchResult.accepted()) {
                 TtsFailure failure = switchResult.failure() == null
-                        ? TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS draft model reload failed")
+                        ? TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS preview model reload failed")
                         : switchResult.failure();
                 notifyFailure(onFailure, failure);
                 return TtsOperationResult.rejected(failure);

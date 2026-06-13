@@ -354,8 +354,14 @@ public final class TtsModule implements TianshuManagedModule {
                 );
             }
         }
-        if (info != null && info.supportsVoiceClone() && settings.selectedVoiceSample != null && !settings.selectedVoiceSample.isBlank() && voiceLibraryService != null) {
-            java.nio.file.Path resolved = voiceLibraryService.resolveVoiceSamplePath(settings.selectedVoiceSample);
+        if (info != null && info.supportsVoiceClone()) {
+            java.nio.file.Path resolved = null;
+            if (settings.selectedVoiceSample != null && !settings.selectedVoiceSample.isBlank() && voiceLibraryService != null) {
+                resolved = voiceLibraryService.resolveVoiceSamplePath(settings.selectedVoiceSample);
+            }
+            if (resolved == null && modelService != null) {
+                resolved = modelService.resolveVoiceSamplePath(info, settings.selectedVoiceSample);
+            }
             voiceSample = resolved == null ? "" : resolved.toString();
         }
         return new TtsVoiceProfile(voiceStyle, voiceId, (float) settings.speed, settings.speakerId, voiceSample);

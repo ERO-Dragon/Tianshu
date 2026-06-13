@@ -10,9 +10,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
-import java.util.HashMap;
 import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
 
 public final class TtsPlaybackController {
@@ -24,7 +22,6 @@ public final class TtsPlaybackController {
     private final TtsPlaybackListener listener;
     private final ProtocolExecutorManager executorManager;
     private final Set<TtsSession> openSessions = new LinkedHashSet<>();
-    private final Map<TtsSession, PlaybackSlot> slots = new HashMap<>();
     private TtsSession activeSession;
 
     public TtsPlaybackController(IAudioBridge audioBridge, IGameEnvironment env, TtsPlaybackListener listener, ProtocolExecutorManager executorManager) {
@@ -39,7 +36,6 @@ public final class TtsPlaybackController {
             return;
         }
         openSessions.add(session);
-        slots.put(session, new PlaybackSlot(session, sampleRate));
         session.transition(TtsSessionState.PLAYING);
         submitPlaybackTask(session, "start", () -> {
             markActive(session);
@@ -50,10 +46,6 @@ public final class TtsPlaybackController {
 
     public synchronized boolean feed(TtsSession session, byte[] audio) {
         if (audio == null || audio.length == 0 || !openSessions.contains(session) || session.isTerminal()) {
-            return false;
-        }
-        PlaybackSlot slot = slots.get(session);
-        if (slot == null) {
             return false;
         }
         return submitPlaybackTask(session, "feed", () -> feedOrDrop(session, audio));
@@ -71,7 +63,6 @@ public final class TtsPlaybackController {
         if (activeSession != null) {
             activeSession.cancel(reason);
             openSessions.remove(activeSession);
-            removeSlot(activeSession);
         }
         activeSession = null;
         stopAudioBridge();
@@ -83,7 +74,6 @@ public final class TtsPlaybackController {
         }
         session.cancel(reason);
         openSessions.remove(session);
-        removeSlot(session);
         if (activeSession == session) {
             activeSession = null;
             stopAudioBridge();
@@ -95,7 +85,6 @@ public final class TtsPlaybackController {
             session.cancel(reason);
         }
         openSessions.clear();
-        slots.clear();
         activeSession = null;
         stopAudioBridge();
     }
@@ -118,7 +107,6 @@ public final class TtsPlaybackController {
 
     public synchronized void clearIfActive(TtsSession session) {
         openSessions.remove(session);
-        removeSlot(session);
         if (activeSession == session) {
             activeSession = null;
         }
@@ -153,8 +141,7 @@ public final class TtsPlaybackController {
 
     private void feedOrDrop(TtsSession session, byte[] audio) {
         synchronized (this) {
-            PlaybackSlot slot = slots.get(session);
-            if (slot == null || session.isTerminal() || !openSessions.contains(session)) {
+            if (session.isTerminal() || !openSessions.contains(session)) {
                 return;
             }
             if (activeSession != session) {
@@ -166,21 +153,15 @@ public final class TtsPlaybackController {
 
     private void finishOrDefer(TtsSession session) {
         synchronized (this) {
-            PlaybackSlot slot = slots.get(session);
-            if (slot == null || session.isTerminal() || !openSessions.contains(session)) {
+            if (session.isTerminal() || !openSessions.contains(session)) {
                 return;
             }
             if (activeSession != session) {
-                slot.finishRequested = true;
                 return;
             }
             session.transition(TtsSessionState.DRAINING);
         }
         audioBridge.finishTtsPlayback();
-    }
-
-    private synchronized void removeSlot(TtsSession session) {
-        slots.remove(session);
     }
 
     private ProtocolTaskSpec playbackTaskSpec(TtsSession session, String action) {
@@ -194,14 +175,5 @@ public final class TtsPlaybackController {
                 .maxConcurrency(1)
                 .queueCapacity(256)
                 .build();
-    }
-
-    private static final class PlaybackSlot {
-        private final TtsSession session;
-        private boolean finishRequested;
-
-        private PlaybackSlot(TtsSession session, int sampleRate) {
-            this.session = session;
-        }
     }
 }

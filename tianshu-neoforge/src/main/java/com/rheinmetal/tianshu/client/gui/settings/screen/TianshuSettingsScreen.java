@@ -144,6 +144,13 @@ public final class TianshuSettingsScreen extends Screen {
         addRenderableWidget(widget);
     }
 
+    public void showActionFailure(RuntimeException exception) {
+        Component message = exception == null || exception.getMessage() == null || exception.getMessage().isBlank()
+                ? Component.translatable("tianshu.gui.settings.status.action_failed")
+                : Component.translatable("tianshu.gui.settings.status.action_failed_with_reason", exception.getMessage());
+        context.showStatus(message, 4000);
+    }
+
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         SettingsScreenLayout layout = chrome.layout(width, height);

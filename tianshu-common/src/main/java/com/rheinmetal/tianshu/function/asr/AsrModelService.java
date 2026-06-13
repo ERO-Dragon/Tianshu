@@ -10,7 +10,9 @@ import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,6 +27,12 @@ public class AsrModelService {
         void onProgress(String label, int percent);
         void onComplete();
         void onError(String message);
+    }
+
+    public record DownloadStatus(boolean downloading, boolean paused, String activeModelKey, String label, int progress) {
+        public static DownloadStatus idle() {
+            return new DownloadStatus(false, false, "", "", 0);
+        }
     }
 
     public interface PreviewCallback {
@@ -42,6 +50,7 @@ public class AsrModelService {
     private final Supplier<AsrEngine> engineSupplier;
     private final BooleanSupplier readySupplier;
     private final AtomicBoolean previewRunning = new AtomicBoolean(false);
+    private volatile DownloadStatus downloadStatus = DownloadStatus.idle();
 
     public AsrModelService(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, ProtocolExecutorManager executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
         this.env = env;
@@ -88,7 +97,8 @@ public class AsrModelService {
             callback.onError("ASR 模型信息为空");
             return;
         }
-        executorManager.submit(
+        downloadStatus = new DownloadStatus(true, downloadCoordinator.isPaused(), info.localKey(), "Preparing", 0);
+        ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.asr")
                         .lane(ExecutionLane.IO)
@@ -101,24 +111,36 @@ public class AsrModelService {
                         downloadCoordinator.download(info, resolveModelDir(info), githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
                             @Override
                             public void onProgress(String label, int percent) {
+                                downloadStatus = new DownloadStatus(true, downloadCoordinator.isPaused(), info.localKey(), label == null ? "" : label, Math.max(0, Math.min(100, percent)));
                                 callback.onProgress(label, percent);
                             }
 
                             @Override
                             public void onComplete() {
+                                downloadStatus = new DownloadStatus(false, false, "", "Complete", 100);
                                 callback.onComplete();
                             }
 
                             @Override
                             public void onError(String message) {
+                                downloadStatus = new DownloadStatus(false, false, "", message == null ? "" : message, 0);
                                 callback.onError(message);
                             }
                         });
                     } catch (Exception e) {
+                        downloadStatus = new DownloadStatus(false, false, "", e.getMessage() == null ? "ASR model download failed" : e.getMessage(), 0);
                         callback.onError(e.getMessage() == null ? "ASR 模型下载失败" : e.getMessage());
                     }
                 }
         );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            downloadStatus = new DownloadStatus(false, false, "", "ASR model download queue is full", 0);
+            callback.onError("ASR model download queue is full");
+        }
+    }
+
+    public DownloadStatus downloadStatus() {
+        return downloadStatus;
     }
 
     public void downloadModelSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
@@ -146,14 +168,20 @@ public class AsrModelService {
 
     public void pauseDownload() {
         downloadCoordinator.pause();
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(current.downloading(), true, current.activeModelKey(), current.label(), current.progress());
     }
 
     public void resumeDownload() {
         downloadCoordinator.resume();
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(current.downloading(), false, current.activeModelKey(), current.label(), current.progress());
     }
 
     public void cancelDownload() {
         downloadCoordinator.cancel();
+        DownloadStatus current = downloadStatus;
+        downloadStatus = new DownloadStatus(false, false, "", "Cancelling", 0);
     }
 
     public void preview(PreviewCallback callback) {
