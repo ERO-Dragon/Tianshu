@@ -28,7 +28,12 @@ public final class AsrEngineBootstrap {
 
     public AsrEngine initialize(ModuleRuntimeContext context, String moduleId, boolean notifyPlayer) {
         Path modelPath = config.getAsrModelPath();
+        if (modelPath == null || modelPath.getFileName() == null || modelPath.getFileName().toString().isBlank()) {
+            markFailed(context, moduleId, "ASR model is not configured");
+            return null;
+        }
         if (modelPath == null || !Files.isDirectory(modelPath)) {
+            markFailed(context, moduleId, "ASR model is not installed");
             env.info("ASR 模型目录不存在，静默等待");
             return null;
         }

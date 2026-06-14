@@ -146,7 +146,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                     .sorted(Comparator.comparing(info -> info.name, String.CASE_INSENSITIVE_ORDER))
                     .toList();
             this.enabled = new MutableSettingsValue<>(config::isTtsEnabled, config::setTtsEnabled);
-            this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, value -> value != null && !value.isBlank());
+            this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             ModelSettings.TtsSettings settings = modelSettings(resolveModel(this.selectedModelName.get()));
             this.previewText = new MutableSettingsValue<>(config::getTtsPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
             this.speed = new MutableSettingsValue<>(() -> settings.speed, ignored -> {}, value -> value != null && value >= 0.1D && value <= 5.0D);
@@ -162,7 +162,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildMainOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
-            options.select("tts.model", tts("option.model"), modelNames(), selectedModelName, Component::literal, enabled::get)
+            options.select("tts.model", tts("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .text("tts.preview.text", tts("option.preview_text"), previewText, enabled::get)
                     .slider("tts.speed", tts("option.speed"), speed, 0.5D, 2.0D, enabled::get);
         }
@@ -201,7 +201,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsValidationResult validate() {
             TtsModelInfo selected = resolveModel(selectedModelName.get());
-            if (enabled.get() && (!selectedModelName.valid() || selected == null)) {
+            if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || selected == null)) {
                 return SettingsValidationResult.failure(tts("validation.invalid_model"));
             }
             if (enabled.get() && selected != null && !isDownloaded(selected)) {
@@ -242,27 +242,35 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private List<String> modelNames() {
-            return catalog.stream()
+            List<String> downloaded = catalog.stream()
                     .filter(this::isDownloaded)
                     .map(info -> info.name)
                     .filter(name -> name != null && !name.isBlank())
                     .distinct()
                     .toList();
+            List<String> values = new ArrayList<>(downloaded.size() + 2);
+            values.add("");
+            String configured = config.getCustomTtsName();
+            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && downloaded.stream().noneMatch(name -> name.equalsIgnoreCase(configured))) {
+                values.add(configured.trim());
+            }
+            values.addAll(downloaded);
+            return values;
         }
 
         private String currentModelName() {
             String configured = config.getCustomTtsName();
             if (configured != null && !configured.isBlank()) {
                 TtsModelInfo configuredModel = resolveModel(configured);
-                if (configuredModel != null && isDownloaded(configuredModel)) {
+                if (configuredModel != null) {
                     return configured;
                 }
             }
-            TtsModelInfo current = ttsModelService().resolveCurrentModelInfo();
-            if (current != null && current.name != null && !current.name.isBlank() && isDownloaded(current)) {
-                return current.name;
-            }
-            return modelNames().isEmpty() ? "" : modelNames().get(0);
+            return "";
+        }
+
+        private Component modelOptionLabel(String modelName) {
+            return modelName == null || modelName.isBlank() ? common("not_selected") : Component.literal(modelName);
         }
 
         private TtsModelInfo resolveModel(String name) {

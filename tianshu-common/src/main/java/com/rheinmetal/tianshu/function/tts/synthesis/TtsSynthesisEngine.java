@@ -16,6 +16,10 @@ public interface TtsSynthesisEngine {
 
     boolean useModel(String modelName);
 
+    default void clearModel() {
+        shutdown();
+    }
+
     void synthesize(TtsRequest request, TtsAudioSink sink);
 
     void interrupt();

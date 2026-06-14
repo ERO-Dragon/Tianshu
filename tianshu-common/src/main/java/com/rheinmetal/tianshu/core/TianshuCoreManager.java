@@ -187,6 +187,14 @@ public class TianshuCoreManager {
         state.setPhase(RuntimeEnginePhase.DESTROYED);
     }
 
+    public void stopRuntimeSession() {
+        env.info("Core manager: stopping runtime session");
+        interruptionService.interruptOngoingProcessing(RuntimeInterruptPayload.Reason.CLIENT_SHUTDOWN, "client_world_unload");
+        lifecycleCoordinator.stopSession();
+        state.reset();
+        state.setPhase(RuntimeEnginePhase.IDLE);
+    }
+
     public void onEnvSetupFinished() {
         env.info("环境配置完成，刷新模块生命周期");
         if (lifecycleCoordinator.isInitialized()) {

@@ -80,8 +80,6 @@ public final class TestLlmSupport {
         @Override public void setAiEnabled(boolean enabled) { this.aiEnabled = enabled; }
         @Override public TriggerMode getTriggerMode() { return TriggerMode.ALWAYS; }
         @Override public void setTriggerMode(TriggerMode mode) {}
-        @Override public String getWakeWord() { return ""; }
-        @Override public void setWakeWord(String word) {}
         @Override public int getAsrPort() { return 0; }
         @Override public int getLlmPort() { return 0; }
         @Override public int getTtsPort() { return 0; }

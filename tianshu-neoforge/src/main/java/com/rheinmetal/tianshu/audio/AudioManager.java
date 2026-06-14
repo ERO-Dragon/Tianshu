@@ -78,33 +78,34 @@ public class AudioManager implements IAudioBridge {
 
     @Override
     public void ensureHardwareRunning() {
-        if (isHardwareRunning.get())
+        if (!isHardwareRunning.compareAndSet(false, true))
             return;
-        isHardwareRunning.set(true);
 
         executorService.submit(() -> {
+            TargetDataLine captureLine = null;
             try {
                 AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
                 DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
                 Mixer.Info bestMixer = currentMicMixer != null ? currentMicMixer : findRealPhysicalMic(info);
 
                 if (bestMixer != null) {
-                    targetDataLine = (TargetDataLine) AudioSystem.getMixer(bestMixer).getLine(info);
+                    captureLine = (TargetDataLine) AudioSystem.getMixer(bestMixer).getLine(info);
+                    targetDataLine = captureLine;
                     LOGGER.info("常驻模式劫持物理麦克风: {}", bestMixer.getName());
                 }
-                if (targetDataLine == null) {
+                if (captureLine == null) {
                     LOGGER.error("找不到可用的物理麦克风！");
                     isHardwareRunning.set(false);
                     return;
                 }
 
-                targetDataLine.open(format);
-                targetDataLine.start();
+                captureLine.open(format);
+                captureLine.start();
                 LOGGER.info("底层麦克风常驻线程启动");
 
                 byte[] rawBuffer = new byte[1600];
                 while (isHardwareRunning.get()) {
-                    int bytesRead = targetDataLine.read(rawBuffer, 0, rawBuffer.length);
+                    int bytesRead = captureLine.read(rawBuffer, 0, rawBuffer.length);
                     if (bytesRead <= 0)
                         continue;
 
@@ -123,9 +124,17 @@ public class AudioManager implements IAudioBridge {
             } catch (Exception e) {
                 LOGGER.error("底层麦克风线程异常", e);
             } finally {
-                if (targetDataLine != null) {
-                    targetDataLine.stop();
-                    targetDataLine.close();
+                if (captureLine != null) {
+                    try {
+                        captureLine.stop();
+                    } catch (Exception ignored) {
+                    }
+                    try {
+                        captureLine.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (targetDataLine == captureLine) {
                     targetDataLine = null;
                 }
                 isHardwareRunning.set(false);

@@ -29,7 +29,6 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -95,7 +94,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 .enable("asr.hotwords.expand", asr("hotwords.expand"), draft.hotwordsExpanded::get, draft.hotwordsExpanded::set)
                 .status("asr.hotwords.asr", asr("section.hotwords"), () -> true, draft.hotwordsExpanded::get, status -> status
                         .row("asr.hotwords.modname", asr("row.mod_name"), () -> asr("hotwords.tianshu"))
-                        .row("asr.hotwords.wakeword", asr("row.wake_word"), draft::asrWakeWordStatus))
+                        .row("asr.hotwords.count", asr("row.hotword_count"), draft::hotwordCountStatus))
                 .status("asr.hotwords.summary", asr("section.hotword_summary"), () -> true, draft.hotwordsExpanded::get, status -> status
                         .row("asr.hotwords.count", asr("row.hotword_count"), draft::hotwordCountStatus)
                         .row("asr.hotwords.duplicates", asr("row.hotword_duplicates"), draft::duplicateHotwordStatus)
@@ -129,7 +128,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedMic;
         private final MutableSettingsValue<TriggerMode> triggerMode;
-        private final MutableSettingsValue<String> wakeWord;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<Boolean> highPassFilterEnabled;
         private final MutableSettingsValue<Boolean> vadEnabled;
@@ -159,8 +157,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
             this.selectedMic = new MutableSettingsValue<>(this::currentMicName, ignored -> {}, Objects::nonNull);
             this.triggerMode = new MutableSettingsValue<>(config::getTriggerMode, config::setTriggerMode, Objects::nonNull);
-            this.wakeWord = new MutableSettingsValue<>(config::getWakeWord, config::setWakeWord, value -> value != null && !value.isBlank());
-            this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, value -> value != null && !value.isBlank());
+            this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.highPassFilterEnabled = new MutableSettingsValue<>(config::isAsrHighPassFilterEnabled, config::setAsrHighPassFilterEnabled);
             this.vadEnabled = new MutableSettingsValue<>(config::isAsrVadEnabled, config::setAsrVadEnabled);
             this.hotwordsExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
@@ -177,8 +174,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private void buildMainOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get)
-                    .select("asr.trigger", asr("option.trigger"), List.of(TriggerMode.values()), triggerMode, this::triggerLabel, enabled::get)
-                    .text("asr.wakeWord", asr("option.wake_word"), wakeWord, () -> enabled.get() && triggerMode.get() == TriggerMode.WAKE_WORD);
+                    .select("asr.trigger", asr("option.trigger"), List.of(TriggerMode.values()), triggerMode, this::triggerLabel, enabled::get);
         }
 
         private void buildDownloadAdvancedOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -211,7 +207,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return enabled.dirty()
                     || selectedMic.dirty()
                     || triggerMode.dirty()
-                    || wakeWord.dirty()
                     || selectedModelName.dirty()
                     || highPassFilterEnabled.dirty()
                     || vadEnabled.dirty()
@@ -220,10 +215,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         @Override
         public SettingsValidationResult validate() {
-            if (enabled.get() && triggerMode.get() == TriggerMode.WAKE_WORD && !wakeWord.valid()) {
-                return SettingsValidationResult.failure(asr("validation.wake_word_empty"));
-            }
-            if (enabled.get() && (!selectedModelName.valid() || resolveModel(selectedModelName.get()) == null)) {
+            if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || resolveModel(selectedModelName.get()) == null)) {
                 return SettingsValidationResult.failure(asr("validation.invalid_model"));
             }
             AsrModelInfo selected = resolveModel(selectedModelName.get());
@@ -238,7 +230,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             AsrSettingsSnapshot before = AsrSettingsSnapshot.from(config);
             enabled.save();
             triggerMode.save();
-            wakeWord.save();
             highPassFilterEnabled.save();
             vadEnabled.save();
             githubProxyUrl.save();
@@ -258,7 +249,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             enabled.reset();
             selectedMic.reset();
             triggerMode.reset();
-            wakeWord.reset();
             selectedModelName.reset();
             highPassFilterEnabled.reset();
             vadEnabled.reset();
@@ -290,9 +280,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (mode == TriggerMode.ALWAYS) {
                 return asr("trigger.always");
             }
-            if (mode == TriggerMode.WAKE_WORD) {
-                return asr("trigger.wake_word");
-            }
             return Component.literal(String.valueOf(mode));
         }
 
@@ -305,30 +292,29 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             String custom = config.getCustomAsrName();
             if (custom != null && !custom.isBlank()) {
                 AsrModelInfo customModel = resolveModel(custom);
-                if (customModel != null && isDownloaded(customModel)) {
+                if (customModel != null) {
                     return custom;
                 }
             }
-            Path modelPath = config.getAsrModelPath();
-            if (modelPath != null && modelPath.getFileName() != null) {
-                String pathName = modelPath.getFileName().toString();
-                AsrModelInfo pathModel = resolveModel(pathName);
-                if (pathModel != null && isDownloaded(pathModel)) {
-                    return pathName;
-                }
-            }
-            List<String> names = modelNames();
-            return names.isEmpty() ? "" : names.get(0);
+            return "";
         }
 
         private List<String> modelNames() {
-            return catalog.stream()
+            List<String> downloaded = catalog.stream()
                     .filter(this::isDownloaded)
                     .sorted(Comparator.comparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER))
                     .map(AsrModelInfo::localKey)
                     .filter(name -> name != null && !name.isBlank())
                     .distinct()
                     .toList();
+            List<String> values = new ArrayList<>(downloaded.size() + 2);
+            values.add("");
+            String configured = config.getCustomAsrName();
+            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && downloaded.stream().noneMatch(name -> name.equalsIgnoreCase(configured))) {
+                values.add(configured.trim());
+            }
+            values.addAll(downloaded);
+            return values;
         }
 
         private AsrModelInfo resolveModel(String name) {
@@ -336,6 +322,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private Component modelOptionLabel(String name) {
+            if (name == null || name.isBlank()) {
+                return common("not_selected");
+            }
             AsrModelInfo info = resolveModel(name);
             return info == null ? Component.literal(name == null ? "" : name) : Component.literal(info.getDisplayName());
         }
@@ -343,7 +332,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private Component selectedModelStatus() {
             AsrModelInfo info = resolveModel(selectedModelName.get());
             if (info == null) {
-                return asr("status.invalid_model");
+                return common("not_selected");
             }
             return asr("model.selected", info.getDisplayName(), common(isDownloaded(info) ? "downloaded" : "not_downloaded"));
         }
@@ -361,11 +350,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private Component previewResultStatus() {
             return previewResultText;
-        }
-
-        private Component asrWakeWordStatus() {
-            String word = wakeWord.get();
-            return (word == null || word.isBlank()) ? asr("status.not_configured") : Component.literal(word);
         }
 
         private Component hotwordCountStatus() {
@@ -388,11 +372,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             VoiceTriggerRegistry registry = coreManager.protocolRuntime().voiceTriggers();
             List<VoiceTriggerRegistration> registrations = registry.registrations();
             List<HotwordEntry> entries = new ArrayList<>();
-            addHotword(entries, MODULE_ID, "hotwords.kind.mod_name", "Tianshu");
-            String word = wakeWord.get();
-            if (word != null && !word.isBlank()) {
-                addHotword(entries, MODULE_ID, "hotwords.kind.wake_word", word);
-            }
             for (VoiceTriggerRegistration registration : registrations) {
                 addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.hotword", registration.wakeWords());
                 addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.extra_word", registration.extraWords());

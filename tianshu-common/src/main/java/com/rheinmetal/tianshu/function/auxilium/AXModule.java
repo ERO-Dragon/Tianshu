@@ -53,6 +53,7 @@ public final class AXModule implements TianshuManagedModule {
     private final WorldStateProvider worldStateProvider;
     private final RuntimeFactTextResolver runtimeFactTextResolver;
     private final AXPromptLanguageProvider promptLanguageProvider;
+    private final AXAssistantSettings assistantSettings;
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
     private final AXProtocolAdapter adapter;
@@ -74,7 +75,7 @@ public final class AXModule implements TianshuManagedModule {
     }
 
     public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AXWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider, RuntimeFactTextResolver runtimeFactTextResolver, AXPromptLanguageProvider promptLanguageProvider) {
-        this(env, config, runtime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
+        this(env, config, runtime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModule(
@@ -85,6 +86,7 @@ public final class AXModule implements TianshuManagedModule {
             WorldStateProvider worldStateProvider,
             RuntimeFactTextResolver runtimeFactTextResolver,
             AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
@@ -95,6 +97,7 @@ public final class AXModule implements TianshuManagedModule {
         this.worldStateProvider = worldStateProvider;
         this.runtimeFactTextResolver = runtimeFactTextResolver;
         this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage.EN_US) : promptLanguageProvider;
+        this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
         this.adapter = new AXProtocolAdapter(runtime);
@@ -157,7 +160,7 @@ public final class AXModule implements TianshuManagedModule {
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator);
         adapter.registerDialogueInputCapability(dialogueGateway::handleDelivery);
         adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
-        context.services().find(IaModuleService.class).ifPresent(service -> participantRegistrar = new AXParticipantRegistrar(service));
+        context.services().find(IaModuleService.class).ifPresent(service -> participantRegistrar = new AXParticipantRegistrar(service, assistantSettings));
         if (participantRegistrar != null) {
             participantRegistrar.register();
         }

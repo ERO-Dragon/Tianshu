@@ -21,9 +21,6 @@ public interface ITianshuConfig {
     TriggerMode getTriggerMode();
     void setTriggerMode(TriggerMode mode);
 
-    String getWakeWord();
-    void setWakeWord(String word);
-
     int getAsrPort();
     int getLlmPort();
     int getTtsPort();

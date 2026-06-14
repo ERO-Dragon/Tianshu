@@ -30,7 +30,7 @@ public final class DialogueClaimEngine {
                 continue;
             }
             DialogueClaimProfile profile = participant.claimProfile();
-            if (profile.mode() == DialogueClaimMode.DEFAULT_OWNER || profile.mode() == DialogueClaimMode.DISABLED) {
+            if (profile.mode() == DialogueClaimMode.DISABLED) {
                 continue;
             }
             collectClaim(participant, profile, input).ifPresent(claims::add);

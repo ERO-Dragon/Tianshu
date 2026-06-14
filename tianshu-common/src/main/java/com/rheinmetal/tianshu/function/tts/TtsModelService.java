@@ -74,17 +74,17 @@ public class TtsModelService {
 
     public String currentConfiguredModelName() {
         String configured = config.getCustomTtsName();
-        if (configured != null && !configured.isBlank()) {
-            return configured.trim();
-        }
-        TtsModelInfo info = resolveCurrentModelInfo();
-        return info == null || info.name == null ? "" : info.name;
+        return configured == null ? "" : configured.trim();
     }
 
     public void useModel(String modelName) {
         if (modelName != null && !modelName.isBlank()) {
             config.setCustomTtsName(modelName.trim());
         }
+    }
+
+    public void clearModel() {
+        config.setCustomTtsName("");
     }
 
     public ModelSettings.TtsSettings loadSettings(TtsModelInfo info) {
@@ -133,10 +133,11 @@ public class TtsModelService {
     }
 
     public TtsModelInfo resolveCurrentModelInfo() {
-        Path modelPath = config.getTtsModelPath();
-        if (modelPath == null || modelPath.getFileName() == null) {
+        String configured = currentConfiguredModelName();
+        if (configured.isBlank()) {
             return null;
         }
+        Path modelPath = config.getTtsBasePath().resolve("model").resolve(configured);
         String dirName = modelPath.getFileName().toString();
         List<TtsModelInfo> matchedZipVoice = new ArrayList<>();
         for (TtsModelInfo info : catalog()) {
@@ -162,11 +163,15 @@ public class TtsModelService {
     }
 
     public Path resolveCurrentModelDir() {
+        String configured = currentConfiguredModelName();
+        if (configured.isBlank()) {
+            return null;
+        }
         TtsModelInfo info = resolveCurrentModelInfo();
         if (info != null) {
             return resolveModelDir(info);
         }
-        return config.getTtsModelPath();
+        return config.getTtsBasePath().resolve("model").resolve(configured);
     }
 
     public Path resolveModelDir(TtsModelInfo info) {

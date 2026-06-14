@@ -31,7 +31,6 @@ public final class LlmEngineProvider {
     private JavaLlamaServer createAiService() {
         Path modelPath = config.getLlmGgufFilePath();
         if (modelPath == null) {
-            env.warn("LLM model path not configured, AI service will not be available");
             return null;
         }
 

@@ -29,7 +29,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
 
     @Override
     protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        guiGraphics.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), 0x66000000);
+        guiGraphics.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), 0x18FFFFFF);
         int visible = Math.max(1, getHeight() / ITEM_HEIGHT);
         int start = Math.max(0, Math.min(scrollOffset, Math.max(0, categories.size() - visible)));
         for (int i = 0; i < visible && start + i < categories.size(); i++) {
@@ -38,7 +38,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
             boolean selected = category.moduleId().equals(selectedModuleId);
             boolean dirty = dirtyModules.test(category.moduleId());
             boolean hovered = mouseX >= getX() && mouseX <= getX() + getWidth() && mouseY >= itemY && mouseY <= itemY + ITEM_HEIGHT;
-            int bg = selected ? 0x663F76E4 : hovered ? 0x33FFFFFF : 0x00000000;
+            int bg = selected ? 0x80333333 : hovered ? 0x33000000 : 0x00000000;
             if (bg != 0) {
                 guiGraphics.fill(getX() + 2, itemY + 2, getX() + getWidth() - 2, itemY + ITEM_HEIGHT - 2, bg);
             }
@@ -47,7 +47,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
                 guiGraphics.fill(getX() + 4, itemY + 10, getX() + 7, itemY + 13, 0xFFFFCC33);
                 textX += 6;
             }
-            guiGraphics.drawString(Minecraft.getInstance().font, category.title(), textX, itemY + 8, selected ? 0xFFFFFF : 0xA0A0A0, false);
+            guiGraphics.drawString(Minecraft.getInstance().font, category.title(), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
         }
         drawScrollbar(guiGraphics, visible, start);
     }
@@ -64,7 +64,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
         int maxStart = Math.max(1, categories.size() - visible);
         int thumbY = trackTop + (trackHeight - thumbHeight) * start / maxStart;
         guiGraphics.fill(trackX, trackTop, trackX + 2, trackBottom, 0x66000000);
-        guiGraphics.fill(trackX, thumbY, trackX + 2, thumbY + thumbHeight, 0xAAFFFFFF);
+        guiGraphics.fill(trackX, thumbY, trackX + 2, thumbY + thumbHeight, 0xFFB0B0B0);
     }
 
     @Override

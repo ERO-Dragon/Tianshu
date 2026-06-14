@@ -5,12 +5,16 @@ public record SettingsScreenLayout(int leftX, int rightX, int contentTop, int co
         return Math.max(0, contentBottom - contentTop);
     }
 
+    public int headerHeight() {
+        return 28;
+    }
+
     public int viewportTop() {
-        return Math.min(contentBottom, contentTop + 38);
+        return Math.min(contentBottom, contentTop + headerHeight());
     }
 
     public int viewportBottom() {
-        return Math.max(viewportTop(), contentBottom - 8);
+        return Math.max(viewportTop(), contentBottom);
     }
 
     public int actionsY() {

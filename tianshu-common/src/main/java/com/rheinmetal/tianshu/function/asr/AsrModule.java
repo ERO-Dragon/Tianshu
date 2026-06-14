@@ -92,7 +92,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         AsrSessionManager sessionManager = new AsrSessionManager();
         audioCapture = new AudioCaptureService(audioBridge, env, this::publishSpeechActivity);
         reconfigureAudioPipeline();
-        AsrRecognitionService recognition = new AsrRecognitionService(env, config, this::asrEngine, adapter);
+        AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
         controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition);
         if (inputGateway == null) {
             inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
@@ -318,6 +318,10 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     private boolean currentModelHotwordsRequireReload() {
+        String modelName = config.getCustomAsrName();
+        if (modelName == null || modelName.isBlank()) {
+            return false;
+        }
         return AsrHotwordSupport.fromModelPath(config.getAsrModelPath()).reloadRequired();
     }
 }

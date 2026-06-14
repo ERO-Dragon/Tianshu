@@ -1,8 +1,6 @@
 package com.rheinmetal.tianshu.function.asr.recognition;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
@@ -16,7 +14,6 @@ import java.util.function.Supplier;
 
 public final class AsrRecognitionService {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
     private final Supplier<AsrEngine> engineSupplier;
     private final AsrProtocolAdapter adapter;
     private volatile AsrSpeechSegmenter speechSegmenter = AsrSpeechSegmenter.disabled();
@@ -24,9 +21,8 @@ public final class AsrRecognitionService {
     private volatile ProtocolTaskHandle streamingTask;
     private volatile ProtocolTaskHandle completeTask;
 
-    public AsrRecognitionService(IGameEnvironment env, ITianshuConfig config, Supplier<AsrEngine> engineSupplier, AsrProtocolAdapter adapter) {
+    public AsrRecognitionService(IGameEnvironment env, Supplier<AsrEngine> engineSupplier, AsrProtocolAdapter adapter) {
         this.env = env;
-        this.config = config;
         this.engineSupplier = engineSupplier;
         this.adapter = adapter;
     }
@@ -46,7 +42,7 @@ public final class AsrRecognitionService {
                 env.info("ASR 开始完整识别，音频长度=" + (audioData == null ? 0 : audioData.length) + " bytes");
                 String result = engine().recognizeComplete(audioData);
                 if (isMeaningfulText(result)) {
-                    onResult.accept(new AsrRecognitionResult(result, result, sessionId, inputMode, false));
+                    onResult.accept(new AsrRecognitionResult(result, result, sessionId, inputMode));
                 } else {
                     env.info("ASR 完整识别结果为空");
                 }
@@ -179,21 +175,7 @@ public final class AsrRecognitionService {
         if (!isMeaningfulText(text)) {
             return null;
         }
-        if (config.getTriggerMode() != TriggerMode.WAKE_WORD) {
-            return new AsrRecognitionResult(text, text, sessionId, inputMode, false);
-        }
-        String wakeWord = config.getWakeWord();
-        if (wakeWord == null || wakeWord.isBlank() || !text.contains(wakeWord)) {
-            env.info("ASR 断句完成，未命中唤醒词: " + wakeWord);
-            return null;
-        }
-        int index = text.indexOf(wakeWord) + wakeWord.length();
-        String realCommand = text.substring(index).trim();
-        if (!isMeaningfulText(realCommand)) {
-            env.info("ASR 命中唤醒词，但唤醒词后无有效命令");
-            return null;
-        }
-        return new AsrRecognitionResult(realCommand, text, sessionId, inputMode, true);
+        return new AsrRecognitionResult(text, text, sessionId, inputMode);
     }
 
     private void cancelCompleteTask() {

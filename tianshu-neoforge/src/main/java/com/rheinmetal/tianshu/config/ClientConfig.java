@@ -26,7 +26,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.IntValue LLM_GPU_LAYER_PERCENT;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
-    public static final ModConfigSpec.ConfigValue<String> WAKE_WORD;
     public static final ModConfigSpec.IntValue ASR_PORT;
     public static final ModConfigSpec.IntValue LLM_PORT;
     public static final ModConfigSpec.IntValue TTS_PORT;
@@ -46,7 +45,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         SELECTED_MIC_NAME = builder.define("selectedMicName", "");
         ASR_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         TRIGGER_MODE = builder.defineEnum("triggerMode", TriggerMode.PUSH_TO_TALK);
-        WAKE_WORD = builder.define("wakeWord", "天枢");
         ASR_HIGH_PASS_FILTER_ENABLED = builder.define("highPassFilterEnabled", true);
         ASR_RNNOISE_ENABLED = builder.define("rnnoiseEnabled", false);
         ASR_VAD_ENABLED = builder.define("vadEnabled", false);
@@ -103,16 +101,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setTriggerMode(TriggerMode mode) {
         TRIGGER_MODE.set(mode);
-    }
-
-    @Override
-    public String getWakeWord() {
-        return WAKE_WORD.get();
-    }
-
-    @Override
-    public void setWakeWord(String word) {
-        WAKE_WORD.set(word);
     }
 
     @Override
@@ -287,26 +275,26 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public Path getAsrModelPath() {
         String name = getCustomAsrName();
-        return getAsrBasePath().resolve("model").resolve(name != null && !name.isBlank() ? name : "Zipformer");
+        return getAsrBasePath().resolve("model").resolve(name == null ? "" : name.trim());
     }
 
     @Override
     public Path getLlmModelPath() {
         String name = getCustomLlmName();
-        return getLlmBasePath().resolve("model").resolve(name != null && !name.isBlank() ? name.trim() : getDefaultLlmModelName());
+        return getLlmBasePath().resolve("model").resolve(name == null ? "" : name.trim());
     }
 
     @Override
     public Path getTtsModelPath() {
         String name = getCustomTtsName();
-        return getTtsBasePath().resolve("model").resolve(name != null && !name.isBlank() ? name : "vits-zh-hf-keqing");
+        return getTtsBasePath().resolve("model").resolve(name == null ? "" : name.trim());
     }
 
     @Override
     public Path getLlmGgufFilePath() {
         String modelName = getCustomLlmName();
         if (modelName == null || modelName.isBlank()) {
-            modelName = getDefaultLlmModelName();
+            return null;
         }
         modelName = modelName.trim();
         Path modelDir = getLlmBasePath().resolve("model").resolve(modelName);
@@ -373,11 +361,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public int getLlmEmbeddingContextSize() {
         com.rheinmetal.tianshu.model.LlmModelInfo embedding = com.rheinmetal.tianshu.model.LlmModelManager.getDefaultEmbeddingModel(getClientLanguageTag());
         return embedding != null ? embedding.getContextSize() : 4096;
-    }
-
-    private String getDefaultLlmModelName() {
-        com.rheinmetal.tianshu.model.LlmModelInfo info = getDefaultLlmModelInfo();
-        return info != null && info.name != null && !info.name.isBlank() ? info.name : "model";
     }
 
     private com.rheinmetal.tianshu.model.LlmModelInfo getDefaultLlmModelInfo() {

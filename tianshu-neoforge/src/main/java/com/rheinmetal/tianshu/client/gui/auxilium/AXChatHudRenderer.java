@@ -15,10 +15,10 @@ public final class AXChatHudRenderer {
     private static final int TEXT_COLOR = 0xFFEAF7FF;
 
     private final AXChatHudState state;
-    private final AXClientOutputConfig config;
+    private final AXClientConfig config;
     private final AXHudLogoRenderer logoRenderer = new AXHudLogoRenderer();
 
-    public AXChatHudRenderer(AXChatHudState state, AXClientOutputConfig config) {
+    public AXChatHudRenderer(AXChatHudState state, AXClientConfig config) {
         this.state = state;
         this.config = config;
     }

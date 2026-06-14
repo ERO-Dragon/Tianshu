@@ -67,7 +67,7 @@ class IrModuleProtocolFlowTest {
                 "module.asr",
                 ProtocolTopics.INPUT_ASR_FINAL_TEXT,
                 PayloadType.ASR_TEXT,
-                new AsrTextPayload("九狐帮我种地", "九狐帮我种地", 42, 77L, "asr", false, 100L)
+                new AsrTextPayload("九狐帮我种地", "九狐帮我种地", 42, 77L, "asr", 100L)
         ).build());
 
         DialogueArbitrationRequestPayload request = arbitration.awaitPayload(DialogueArbitrationRequestPayload.class);

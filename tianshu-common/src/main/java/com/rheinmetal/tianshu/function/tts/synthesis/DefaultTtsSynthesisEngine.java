@@ -112,6 +112,12 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
     }
 
     @Override
+    public synchronized void clearModel() {
+        modelService.clearModel();
+        shutdown();
+    }
+
+    @Override
     public synchronized void synthesize(TtsRequest request, TtsAudioSink sink) {
         if (!initialize()) {
             throw new IllegalStateException("TTS synthesis engine is unavailable");

@@ -10,6 +10,11 @@ public record SettingsViewport(int top, int bottom, int scrollOffset) {
         return translated + height >= top && translated <= bottom;
     }
 
+    public boolean contains(int y, int height) {
+        int translated = translateY(y);
+        return translated >= top && translated + height <= bottom;
+    }
+
     public int height() {
         return Math.max(0, bottom - top);
     }

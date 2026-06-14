@@ -22,11 +22,11 @@ class LlmEngineProviderTest {
     }
 
     @Test
-    void aiServiceIsUnavailableWhenModelPathIsMissing() {
+    void aiServiceIsUnavailableWhenModelPathIsNotConfigured() {
         TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
         LlmEngineProvider provider = new LlmEngineProvider(env, new TestLlmSupport.FakeConfig(tempDir));
 
         assertFalse(provider.isAiServiceAvailable());
-        assertTrue(env.warnings.stream().anyMatch(message -> message.contains("LLM model path not configured")));
+        assertTrue(env.warnings.isEmpty());
     }
 }

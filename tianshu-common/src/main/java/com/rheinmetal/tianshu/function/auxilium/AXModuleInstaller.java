@@ -21,6 +21,7 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
     private final WorldStateProvider worldStateProvider;
     private final RuntimeFactTextResolver runtimeFactTextResolver;
     private final AXPromptLanguageProvider promptLanguageProvider;
+    private final AXAssistantSettings assistantSettings;
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
 
@@ -37,7 +38,7 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
     }
 
     public AXModuleInstaller(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime protocolRuntime, AXWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider, RuntimeFactTextResolver runtimeFactTextResolver, AXPromptLanguageProvider promptLanguageProvider) {
-        this(env, config, protocolRuntime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
+        this(env, config, protocolRuntime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModuleInstaller(
@@ -48,6 +49,7 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
             WorldStateProvider worldStateProvider,
             RuntimeFactTextResolver runtimeFactTextResolver,
             AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
@@ -58,12 +60,13 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
         this.worldStateProvider = worldStateProvider;
         this.runtimeFactTextResolver = runtimeFactTextResolver;
         this.promptLanguageProvider = promptLanguageProvider;
+        this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
     }
 
     @Override
     public void install(TianshuModuleHost moduleHost, ModuleServiceRegistry moduleServices) {
-        moduleHost.registerOptionalModule(new AXModule(env, config, protocolRuntime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, outputSettings, chatOutputSink));
+        moduleHost.registerOptionalModule(new AXModule(env, config, protocolRuntime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, assistantSettings, outputSettings, chatOutputSink));
     }
 }

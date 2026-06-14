@@ -23,6 +23,14 @@ public record DialogueClaimProfile(
         return rules(List.of(rules));
     }
 
+    public static DialogueClaimProfile defaultOwnerWithRules(List<DialogueClaimRule> rules) {
+        return new DialogueClaimProfile(DialogueClaimMode.DEFAULT_OWNER, rules);
+    }
+
+    public static DialogueClaimProfile defaultOwnerWithRules(DialogueClaimRule... rules) {
+        return defaultOwnerWithRules(List.of(rules));
+    }
+
     public static DialogueClaimProfile legacy(List<String> supportedIntents, List<String> supportedEntityTypes, List<String> supportedItemIds) {
         List<DialogueClaimRule> legacyRules = new ArrayList<>();
         if (notEmpty(supportedIntents)) {

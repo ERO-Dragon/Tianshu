@@ -20,7 +20,6 @@ public final class TtsModelResolver {
     public Optional<TtsResolvedModel> resolveCurrent() {
         Path modelDir = modelService.resolveCurrentModelDir();
         if (modelDir == null) {
-            env.warn("TTS 模型目录未配置");
             return Optional.empty();
         }
         if (!Files.isDirectory(modelDir)) {

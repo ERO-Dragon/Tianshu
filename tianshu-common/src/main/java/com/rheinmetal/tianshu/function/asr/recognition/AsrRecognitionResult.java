@@ -4,8 +4,7 @@ public record AsrRecognitionResult(
         String text,
         String rawText,
         long sessionId,
-        String inputMode,
-        boolean wakeWordMatched
+        String inputMode
 ) {
     public AsrRecognitionResult {
         if (text == null) text = "";

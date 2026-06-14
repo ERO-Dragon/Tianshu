@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
@@ -77,6 +78,7 @@ public final class TianshuCoreModuleInstallers {
                 runtimeFactTextResolver,
                 promptLanguageProvider,
                 DialogueContextProvider.EMPTY,
+                AXAssistantSettings.DEFAULT,
                 AXOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP,
                 irInstaller
@@ -110,6 +112,7 @@ public final class TianshuCoreModuleInstallers {
                 runtimeFactTextResolver,
                 promptLanguageProvider,
                 DialogueContextProvider.EMPTY,
+                AXAssistantSettings.DEFAULT,
                 axOutputSettings,
                 axChatOutputSink,
                 irInstaller
@@ -128,6 +131,7 @@ public final class TianshuCoreModuleInstallers {
             RuntimeFactTextResolver runtimeFactTextResolver,
             AXPromptLanguageProvider promptLanguageProvider,
             DialogueContextProvider dialogueContextProvider,
+            AXAssistantSettings axAssistantSettings,
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink,
             TianshuFunctionModuleInstaller irInstaller
@@ -139,7 +143,7 @@ public final class TianshuCoreModuleInstallers {
                 new IaModuleInstaller(protocolRuntime, dialogueContextProvider),
                 effectiveIrInstaller,
                 new LlmModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
-                new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, axOutputSettings, axChatOutputSink),
+                new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, axAssistantSettings, axOutputSettings, axChatOutputSink),
                 new TtsModuleInstaller(audioBridge, protocolRuntime, env, config),
                 new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal)
         );

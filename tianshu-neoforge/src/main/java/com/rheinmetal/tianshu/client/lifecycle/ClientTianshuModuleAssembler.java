@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.CompositeTianshuFunctionModuleAssembler;
 import com.rheinmetal.tianshu.function.TianshuCoreModuleInstallers;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
@@ -105,11 +106,16 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 new MinecraftRuntimeFactTextResolver(),
                 new MinecraftAXPromptLanguageProvider(),
                 effectiveDialogueContextProvider,
+                assistantSettings(axOutputSettings),
                 axOutputSettings,
                 axChatOutputSink,
                 new ClientIrModuleInstaller(protocolRuntime)
         ));
         this.delegate = new CompositeTianshuFunctionModuleAssembler(installers);
+    }
+
+    private static AXAssistantSettings assistantSettings(AXOutputSettings outputSettings) {
+        return outputSettings instanceof AXAssistantSettings assistantSettings ? assistantSettings : AXAssistantSettings.DEFAULT;
     }
 
     @Override

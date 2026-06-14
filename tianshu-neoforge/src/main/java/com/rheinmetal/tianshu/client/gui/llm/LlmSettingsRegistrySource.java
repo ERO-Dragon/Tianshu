@@ -146,7 +146,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildLoadOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
-            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, Component::literal, enabled::get);
+            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, this::modelOptionLabel, enabled::get);
         }
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -177,7 +177,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsValidationResult validate() {
             LlmModelInfo selected = resolveModel(selectedModelName.get());
-            if (enabled.get() && (!selectedModelName.valid() || selected == null)) {
+            if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || selected == null)) {
                 return SettingsValidationResult.failure(llm("validation.invalid_model"));
             }
             if (enabled.get() && selected != null && !modelService.hasModelContent(selected)) {
@@ -205,20 +205,31 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private List<String> downloadedModelNames() {
-            return modelService.downloadedModels().stream()
+            List<String> downloaded = modelService.downloadedModels().stream()
                     .map(info -> info.name)
                     .filter(name -> name != null && !name.isBlank())
                     .distinct()
                     .toList();
+            java.util.ArrayList<String> values = new java.util.ArrayList<>(downloaded.size() + 2);
+            values.add("");
+            String configured = config.getCustomLlmName();
+            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && downloaded.stream().noneMatch(name -> name.equalsIgnoreCase(configured))) {
+                values.add(configured.trim());
+            }
+            values.addAll(downloaded);
+            return values;
         }
 
         private String currentModelName() {
             String configured = config.getCustomLlmName();
-            if (configured != null && !configured.isBlank() && modelService.hasModelContent(resolveModel(configured))) {
+            if (configured != null && !configured.isBlank() && resolveModel(configured) != null) {
                 return configured;
             }
-            List<String> names = downloadedModelNames();
-            return names.isEmpty() ? "" : names.get(0);
+            return "";
+        }
+
+        private Component modelOptionLabel(String modelName) {
+            return modelName == null || modelName.isBlank() ? common("not_selected") : Component.literal(modelName);
         }
 
         private LlmModelInfo resolveModel(String name) {

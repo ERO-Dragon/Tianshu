@@ -143,6 +143,23 @@ public final class CoreModuleLifecycleCoordinator {
         }
     }
 
+    public void stopSession() {
+        ProtocolTaskHandle currentTask;
+        synchronized (lifecycleLock) {
+            if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING) {
+                return;
+            }
+            phase = CoreLifecyclePhase.DESTROYING;
+            currentTask = refreshTask;
+            if (currentTask != null && !currentTask.isDone()) {
+                currentTask.cancel("core_session_stop");
+            }
+            shutdownModulesLocked();
+            initialized = false;
+            phase = CoreLifecyclePhase.CREATED;
+        }
+    }
+
     private void runLifecycleLocked(boolean rebuild, CoreLifecyclePhase activePhase) {
         try {
             env.info("开始初始化模块生命周期...");

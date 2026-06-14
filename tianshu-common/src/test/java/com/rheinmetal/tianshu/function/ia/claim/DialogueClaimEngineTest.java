@@ -65,6 +65,26 @@ class DialogueClaimEngineTest {
     }
 
     @Test
+    void defaultOwnerCanAlsoCreateHardClaimWhenRulesMatch() {
+        DialogueClaimEngine engine = new DialogueClaimEngine();
+        DialogueParticipantDescriptor participant = descriptor(
+                "assistant",
+                1,
+                DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
+                        "assistant.wake_word",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("天枢")
+                ))
+        );
+
+        List<DialogueClaim> claims = engine.collectLocalClaims(List.of(participant), request(List.of("天枢"), List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
+
+        assertEquals(1, claims.size());
+        assertEquals("assistant", claims.get(0).participantId());
+        assertEquals("hard_claim:assistant.wake_word", claims.get(0).reason());
+    }
+
+    @Test
     void choosesStrongestMatchedRuleForParticipant() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
         DialogueParticipantDescriptor create = descriptor(

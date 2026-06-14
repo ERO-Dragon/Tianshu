@@ -198,7 +198,7 @@ public final class AsrController {
             return;
         }
         int turnId = sessionManager.nextTurnId();
-        adapter.publishFinalText(new AsrTextPayload(result.text(), result.rawText(), turnId, result.sessionId(), result.inputMode(), result.wakeWordMatched(), System.currentTimeMillis()));
+        adapter.publishFinalText(new AsrTextPayload(result.text(), result.rawText(), turnId, result.sessionId(), result.inputMode(), System.currentTimeMillis()));
         env.info("ASR 识别完成，turnId=" + turnId + ", sessionId=" + result.sessionId());
     }
 

@@ -9,7 +9,6 @@ public record AsrSettingsChangeSet(
         boolean micChanged,
         boolean modelChanged,
         boolean triggerChanged,
-        boolean wakeWordChanged,
         boolean audioPipelineChanged
 ) {
     public static AsrSettingsChangeSet between(AsrSettingsSnapshot before, AsrSettingsSnapshot after) {
@@ -21,7 +20,6 @@ public record AsrSettingsChangeSet(
                 !Objects.equals(before.selectedMicName(), after.selectedMicName()),
                 !Objects.equals(before.modelName(), after.modelName()),
                 before.triggerMode() != after.triggerMode(),
-                !Objects.equals(before.wakeWord(), after.wakeWord()),
                 before.highPassFilterEnabled() != after.highPassFilterEnabled()
                         || before.rnnoiseEnabled() != after.rnnoiseEnabled()
                         || before.vadEnabled() != after.vadEnabled()

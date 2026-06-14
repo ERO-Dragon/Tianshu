@@ -5,7 +5,7 @@ import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudRenderer;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudState;
-import com.rheinmetal.tianshu.client.gui.auxilium.AXClientOutputConfig;
+import com.rheinmetal.tianshu.client.gui.auxilium.AXClientConfig;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.llm.LlmSettingsRegistrySource;
@@ -55,6 +55,8 @@ import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
+import java.util.Optional;
+
 public class TianshuClient {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -64,11 +66,12 @@ public class TianshuClient {
     private static boolean isVoiceKeyPressed = false;
     private static TriggerMode lastTriggerMode = null;
     private static boolean isOnnxRuntimeLoaded = false;
+    private static boolean worldSessionStarted = false;
 
     private static NeoForgeEnvironment env;
     private static ClientConfig config;
     private static AudioManager audioManager;
-    private static AXClientOutputConfig axOutputConfig;
+    private static AXClientConfig axConfig;
     private static AXChatHudState axChatHudState;
     private static AXChatHudRenderer axChatHudRenderer;
     private static TianshuCoreManager coreManager;
@@ -83,8 +86,8 @@ public class TianshuClient {
     private static WorldStateProvider worldStateProvider;
     private static NeoForgeDialogueContextProvider dialogueContextProvider;
 
-    private static AsrInputService asrInputService() {
-        return coreManager.requireService(AsrInputService.class);
+    private static Optional<AsrInputService> asrInputService() {
+        return coreManager == null ? Optional.empty() : coreManager.findService(AsrInputService.class);
     }
 
     private static TianshuSettingsRegistrySource createSettingsRegistrySource() {
@@ -93,45 +96,39 @@ public class TianshuClient {
         TianshuSettingsRegistrySource asrSource = new AsrSettingsRegistrySource(coreManager, config, audioManager);
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config);
-        TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(axOutputConfig);
+        TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, axConfig);
         return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource);
     }
 
     private static void beginVoiceInput() {
-        asrInputService().beginVoiceInput();
+        asrInputService().ifPresent(AsrInputService::beginVoiceInput);
     }
 
     private static void endVoiceInput() {
-        asrInputService().endVoiceInput();
+        asrInputService().ifPresent(AsrInputService::endVoiceInput);
     }
 
     private static void commitVoiceInput() {
-        asrInputService().commitVoiceInput();
+        asrInputService().ifPresent(AsrInputService::commitVoiceInput);
     }
 
     private static void cancelVoiceInput() {
-        if (coreManager != null) {
-            coreManager.findService(AsrInputService.class).ifPresent(AsrInputService::cancelVoiceInput);
-        }
+        asrInputService().ifPresent(AsrInputService::cancelVoiceInput);
     }
 
     public static void init() {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
         config = new ClientConfig();
-        axOutputConfig = new AXClientOutputConfig(config.getRootPath().resolve("ax"));
+        axConfig = new AXClientConfig(config.getRootPath().resolve("ax"));
         axChatHudState = new AXChatHudState();
-        axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axOutputConfig);
+        axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axConfig);
 
         audioManager = new AudioManager();
         String selectedMicName = config.getSelectedMicName();
         if (selectedMicName != null && !selectedMicName.isBlank()) {
             audioManager.selectMic(selectedMicName);
         }
-        if (config.isAsrEnabled()) {
-            audioManager.ensureHardwareRunning();
-        }
-
         inventoryProvider = new NeoForgeInventoryProvider();
         environmentProvider = new NeoForgeEnvironmentProvider();
         playerStateProvider = new NeoForgePlayerStateProvider();
@@ -154,7 +151,7 @@ public class TianshuClient {
                 context.interruptionSignal(),
                 new NeoForgeAXWorldIdentityProvider(),
                 worldStateProvider,
-                axOutputConfig,
+                axConfig,
                 axChatHudState,
                 dialogueContextProvider
         ));
@@ -173,18 +170,17 @@ public class TianshuClient {
             ClientNamedObjectIndexManager.ensureIndex("client login");
             ensureOnnxRuntimeLoaded();
             coreManager.initWorkers();
+            worldSessionStarted = coreManager.isInitialized();
         });
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> {
             LOGGER.info("检测到客户端退出世界，开始清理...");
-            shutdownClient();
+            stopWorldSession();
         });
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             LOGGER.info("检测到 JVM 即将关闭，执行最终清理...");
-            if (integrationApi != null) TianshuIntegrationAccess.clear(integrationApi);
-            if (coreManager != null) coreManager.destroy();
-            if (audioManager != null) audioManager.shutdown();
+            shutdownClient();
         }, "Tianshu-Shutdown-Hook"));
     }
 
@@ -233,7 +229,14 @@ public class TianshuClient {
     }
 
     private static void handleVoiceKey() {
-        AsrInputService inputService = asrInputService();
+        Optional<AsrInputService> input = asrInputService();
+        if (input.isEmpty()) {
+            isVoiceKeyPressed = false;
+            wasAlwaysKeyTriggered = false;
+            lastTriggerMode = null;
+            return;
+        }
+        AsrInputService inputService = input.get();
         if (!inputService.canAcceptVoiceInput()) return;
 
         TriggerMode currentMode = config.getTriggerMode();
@@ -268,20 +271,6 @@ public class TianshuClient {
                 } else if (!isTriggered && isVoiceKeyPressed) {
                     isVoiceKeyPressed = false;
                     endVoiceInput();
-                }
-            }
-            case WAKE_WORD -> {
-                if (!isVoiceKeyPressed) {
-                    isVoiceKeyPressed = true;
-                    beginVoiceInput();
-                    LOGGER.info("启动热词模式");
-                }
-                boolean isDown = VOICE_KEY.isDown();
-                if (isDown && !wasAlwaysKeyTriggered) {
-                    wasAlwaysKeyTriggered = true;
-                    commitVoiceInput();
-                } else if (!isDown) {
-                    wasAlwaysKeyTriggered = false;
                 }
             }
         }
@@ -322,20 +311,46 @@ public class TianshuClient {
         }
     }
 
-    public static void shutdownClient() {
-        LOGGER.info("关闭天枢客户端资源");
-        if (integrationApi != null) {
-            TianshuIntegrationAccess.clear(integrationApi);
+    private static void stopWorldSession() {
+        if (!worldSessionStarted) {
+            isVoiceKeyPressed = false;
+            wasAlwaysKeyTriggered = false;
+            lastTriggerMode = null;
+            LOGGER.info("Ignoring world logout before Tianshu session start");
+            return;
         }
+        LOGGER.info("Stopping Tianshu world session");
         if (coreManager != null) {
-            coreManager.destroy();
+            coreManager.stopRuntimeSession();
         }
         if (audioManager != null) {
-            audioManager.shutdown();
+            audioManager.releaseCaptureHardware();
         }
         isVoiceKeyPressed = false;
         wasAlwaysKeyTriggered = false;
         lastTriggerMode = null;
+        worldSessionStarted = false;
+        LOGGER.info("Tianshu world session stopped");
+    }
+
+    public static void shutdownClient() {
+        LOGGER.info("关闭天枢客户端资源");
+        if (integrationApi != null) {
+            TianshuIntegrationAccess.clear(integrationApi);
+            integrationApi = null;
+        }
+        if (coreManager != null) {
+            coreManager.destroy();
+            coreManager = null;
+        }
+        if (audioManager != null) {
+            audioManager.shutdown();
+            audioManager = null;
+        }
+        isVoiceKeyPressed = false;
+        wasAlwaysKeyTriggered = false;
+        lastTriggerMode = null;
+        worldSessionStarted = false;
         LOGGER.info("天枢客户端资源清理完成");
     }
 }

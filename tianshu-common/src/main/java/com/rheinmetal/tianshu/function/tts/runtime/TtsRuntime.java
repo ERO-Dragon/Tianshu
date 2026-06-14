@@ -411,6 +411,10 @@ public final class TtsRuntime implements TtsPlaybackListener {
 
     public TtsControlResult useModel(String modelName) {
         TtsControlResult stopResult = stopAll("model switch");
+        if (modelName == null || modelName.isBlank()) {
+            synthesisEngine.clearModel();
+            return TtsControlResult.accepted(TtsControlAction.RELOAD_MODEL, stopResult.affectedSessions());
+        }
         boolean initialized = synthesisEngine.useModel(modelName);
         if (!initialized) {
             TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS synthesis engine model switch failed");

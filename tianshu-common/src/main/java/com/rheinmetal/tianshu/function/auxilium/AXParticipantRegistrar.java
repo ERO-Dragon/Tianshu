@@ -1,9 +1,13 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.ia.IaModuleService;
+import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionDecay;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.function.ia.model.DialogueVoiceTriggerGroup;
 
 import java.util.List;
 import java.util.Objects;
@@ -13,10 +17,12 @@ public final class AXParticipantRegistrar {
     public static final String PARTICIPANT_ID = "tianshu.AX";
     public static final String DISPLAY_NAME = "辅星";
     private final IaModuleService iaService;
+    private final AXAssistantSettings settings;
     private final AtomicBoolean registered = new AtomicBoolean(false);
 
-    public AXParticipantRegistrar(IaModuleService iaService) {
+    public AXParticipantRegistrar(IaModuleService iaService, AXAssistantSettings settings) {
         this.iaService = Objects.requireNonNull(iaService, "iaService");
+        this.settings = settings == null ? AXAssistantSettings.DEFAULT : settings;
     }
 
     public void register() {
@@ -31,7 +37,8 @@ public final class AXParticipantRegistrar {
                 List.of(),
                 List.of(),
                 List.of(),
-                DialogueClaimProfile.DEFAULT_OWNER,
+                claimProfile(),
+                voiceTriggerGroup(),
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 DialogueTurnProcessingPolicy.DEFAULT
         ));
@@ -42,5 +49,29 @@ public final class AXParticipantRegistrar {
             return;
         }
         iaService.unregisterParticipant(AXModule.MODULE_ID, PARTICIPANT_ID);
+    }
+
+    private DialogueClaimProfile claimProfile() {
+        List<String> wakeWords = wakeWords();
+        if (wakeWords.isEmpty()) {
+            return DialogueClaimProfile.DEFAULT_OWNER;
+        }
+        return DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
+                "ax.wake_word",
+                DialogueAttentionDecay.SLOW,
+                wakeWords.stream().map(DialogueClaimCondition::wakeWord).toArray(DialogueClaimCondition[]::new)
+        ));
+    }
+
+    private DialogueVoiceTriggerGroup voiceTriggerGroup() {
+        return DialogueVoiceTriggerGroup.of(wakeWords(), List.of());
+    }
+
+    private List<String> wakeWords() {
+        String wakeWord = settings.wakeWord();
+        if (wakeWord == null || wakeWord.isBlank()) {
+            return List.of();
+        }
+        return List.of(wakeWord.trim());
     }
 }

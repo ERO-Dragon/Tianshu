@@ -63,12 +63,11 @@ public class AsrModelService {
     }
 
     public AsrModelInfo resolveCurrentModelInfo() {
-        Path modelPath = config.getAsrModelPath();
-        if (modelPath == null || modelPath.getFileName() == null) {
+        String configured = config.getCustomAsrName();
+        if (configured == null || configured.isBlank()) {
             return null;
         }
-        String dirName = modelPath.getFileName().toString();
-        return AsrModelManager.getModelByLocalKey(dirName);
+        return AsrModelManager.getModelByLocalKey(configured.trim());
     }
 
     public Path resolveModelDir(AsrModelInfo info) {
