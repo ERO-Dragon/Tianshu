@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.gui.settings.model;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsButtonStyle;
+import com.rheinmetal.tianshu.client.gui.settings.api.SettingsListCard;
 import com.rheinmetal.tianshu.client.gui.settings.api.TextBlockLevel;
 
 import net.minecraft.network.chat.Component;
@@ -19,6 +20,8 @@ public sealed interface SettingsTemplateModel permits
         SettingsTemplateModel.StatusGroup,
         SettingsTemplateModel.ActionGroup,
         SettingsTemplateModel.ListGroup,
+        SettingsTemplateModel.CatalogGroup,
+        SettingsTemplateModel.Columns,
         SettingsTemplateModel.TextBlock,
         SettingsTemplateModel.Separator {
     String id();
@@ -41,7 +44,11 @@ public sealed interface SettingsTemplateModel permits
 
     record ActionGroup(String id, Component title, List<ActionEntry> entries, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
-    record ListGroup<T>(String id, Component title, Supplier<List<T>> items, Function<T, Component> labeler, Supplier<T> selected, Consumer<T> onSelect, Function<T, List<ItemActionEntry<T>>> itemActions, Component emptyText, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
+    record ListGroup<T>(String id, Component title, Supplier<List<T>> items, Function<T, Component> labeler, Function<T, SettingsListCard> carder, Supplier<T> selected, Consumer<T> onSelect, Function<T, List<ItemActionEntry<T>>> itemActions, Component emptyText, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
+
+    record CatalogGroup<T>(String id, Component title, List<OptionEntry> controls, ListGroup<T> list, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
+
+    record Columns(String id, List<Double> weights, List<List<SettingsTemplateModel>> columns, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
     record TextBlock(String id, Component text, TextBlockLevel level, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
@@ -71,5 +78,3 @@ public sealed interface SettingsTemplateModel permits
 
     record ItemActionEntry<T>(String id, Component label, SettingsButtonStyle style, Consumer<T> action, Predicate<T> enabled, Predicate<T> visible) {}
 }
-
-

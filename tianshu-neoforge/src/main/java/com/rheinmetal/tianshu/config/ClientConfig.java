@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.config;
 
 import com.rheinmetal.tianshu.constant.TriggerMode;
+import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.model.AsrModelManager;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -120,12 +122,13 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     @Override
     public String getCustomAsrName() {
-        return CUSTOM_ASR_NAME.get();
+        String configured = CUSTOM_ASR_NAME.get();
+        return normalizeAsrModelName(configured);
     }
 
     @Override
     public void setCustomAsrName(String name) {
-        CUSTOM_ASR_NAME.set(name);
+        CUSTOM_ASR_NAME.set(normalizeAsrModelName(name));
     }
 
     @Override
@@ -275,7 +278,18 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public Path getAsrModelPath() {
         String name = getCustomAsrName();
-        return getAsrBasePath().resolve("model").resolve(name == null ? "" : name.trim());
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return getAsrBasePath().resolve("model").resolve(name.trim());
+    }
+
+    private String normalizeAsrModelName(String name) {
+        if (name == null || name.isBlank()) {
+            return "";
+        }
+        AsrModelInfo info = AsrModelManager.getModelByLocalKey(name.trim());
+        return info == null ? "" : info.localKey();
     }
 
     @Override

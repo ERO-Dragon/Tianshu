@@ -66,18 +66,17 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null) {
             return;
         }
+        TtsSettingsDraft draft = new TtsSettingsDraft(config, coreManager, context);
+        context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
                 .title(TITLE)
                 .description(DESCRIPTION)
                 .order(30)
-                .panel(this::buildPanel)
+                .panel((panel, panelContext) -> buildPanel(panel, panelContext, draft))
                 .build());
     }
 
-    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context) {
-        TtsSettingsDraft draft = new TtsSettingsDraft(config, coreManager, context);
-        context.settingsSessions().registerOrReplace(draft);
-
+    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
         panel.enable("tts.enabled", tts("enabled"), draft.enabled)
                 .options("tts.main", tts("section.main"), draft::buildMainOptions)
                 .actions("tts.preview", tts("section.preview"), actions -> actions

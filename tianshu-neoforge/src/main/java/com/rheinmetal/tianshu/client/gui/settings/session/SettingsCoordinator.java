@@ -36,6 +36,10 @@ public final class SettingsCoordinator {
         return sessions.dirty(moduleId);
     }
 
+    public boolean canSave() {
+        return sessions.dirty();
+    }
+
     public boolean canReset(String moduleId) {
         return sessions.dirty(moduleId);
     }

@@ -42,6 +42,11 @@ public final class SettingsLayout {
         lastRow = null;
     }
 
+    public void advanceTo(int contentY) {
+        cursorY = Math.max(cursorY, contentY);
+        lastRow = null;
+    }
+
     public int cursorY() {
         return cursorY;
     }

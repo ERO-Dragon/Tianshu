@@ -29,7 +29,6 @@ final class SettingsNavigationWidget extends AbstractWidget {
 
     @Override
     protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        guiGraphics.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), 0x18FFFFFF);
         int visible = Math.max(1, getHeight() / ITEM_HEIGHT);
         int start = Math.max(0, Math.min(scrollOffset, Math.max(0, categories.size() - visible)));
         for (int i = 0; i < visible && start + i < categories.size(); i++) {

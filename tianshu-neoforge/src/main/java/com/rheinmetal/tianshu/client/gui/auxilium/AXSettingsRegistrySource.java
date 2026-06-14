@@ -32,17 +32,17 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
         if (registry == null || context == null || coreManager == null || config == null) {
             return;
         }
+        AXSettingsSession session = new AXSettingsSession(config, coreManager);
+        context.settingsSessions().registerOrReplace(session);
         registry.registerCategory(ModuleSettingsCategory.builder(AXModule.MODULE_ID)
                 .title(ax("title"))
                 .description(ax("description"))
                 .order(35)
-                .panel(this::buildPanel)
+                .panel((panel, panelContext) -> buildPanel(panel, panelContext, session))
                 .build());
     }
 
-    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context) {
-        AXSettingsSession session = new AXSettingsSession(config, coreManager);
-        context.settingsSessions().registerOrReplace(session);
+    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, AXSettingsSession session) {
         panel.options("ax.output", ax("section.output"), options -> options
                         .text("ax.identity.wake_word", ax("option.wake_word"), session.wakeWord)
                         .select("ax.output.mode", ax("option.output_mode"), List.of(AXOutputMode.values()), session.outputMode, this::modeLabel)

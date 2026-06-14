@@ -58,18 +58,17 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null) {
             return;
         }
+        LlmSettingsDraft draft = new LlmSettingsDraft(config, coreManager);
+        context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
                 .title(TITLE)
                 .description(DESCRIPTION)
                 .order(25)
-                .panel(this::buildPanel)
+                .panel((panel, panelContext) -> buildPanel(panel, panelContext, draft))
                 .build());
     }
 
-    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context) {
-        LlmSettingsDraft draft = new LlmSettingsDraft(config, coreManager);
-        context.settingsSessions().registerOrReplace(draft);
-
+    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled)
                 .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
                 .options("llm.load.settings", llm("section.load_settings"), draft.enabled::get, draft::buildLoadOptions)

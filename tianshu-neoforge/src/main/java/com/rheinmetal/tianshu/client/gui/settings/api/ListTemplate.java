@@ -14,6 +14,8 @@ public interface ListTemplate<T> {
 
     ListTemplate<T> label(Function<T, Component> labeler);
 
+    ListTemplate<T> card(Function<T, SettingsListCard> carder);
+
     ListTemplate<T> selected(Supplier<T> selected);
 
     ListTemplate<T> onSelect(Consumer<T> onSelect);
@@ -26,5 +28,4 @@ public interface ListTemplate<T> {
 
     ListTemplate<T> visible(BooleanSupplier visible);
 }
-
 

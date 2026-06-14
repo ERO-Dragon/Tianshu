@@ -29,6 +29,10 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 public final class SherpaOnnxAsrConfigFactory {
+    private static final String DECODING_GREEDY = "greedy_search";
+    private static final String DECODING_MODIFIED_BEAM_SEARCH = "modified_beam_search";
+    private static final boolean SHERPA_DEBUG_LOGGING = false;
+
     private final IGameEnvironment env;
     private final InferenceResourcePolicy resourcePolicy;
 
@@ -98,10 +102,10 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setTransducer(transducer)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build();
         OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder()
-                .setDecodingMethod("modified_beam_search")
+                .setDecodingMethod(DECODING_MODIFIED_BEAM_SEARCH)
                 .setOnlineModelConfig(modelConfig);
         configureOnlineTransducerHotwords(configBuilder, modelDir, hotwordsFile);
         return Optional.of(ResolvedConfig.online("online-transducer", configBuilder.build()));
@@ -124,8 +128,8 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setTransducer(transducer)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
-                .build(), builder -> configureOfflineTransducerHotwords(builder, modelDir, hotwordsFile));
+                .setDebug(SHERPA_DEBUG_LOGGING)
+                .build(), DECODING_MODIFIED_BEAM_SEARCH, builder -> configureOfflineTransducerHotwords(builder, modelDir, hotwordsFile));
     }
 
     private Optional<ResolvedConfig> buildOfflineParaformer(AsrModelInfo info, ModelFileResolver files) {
@@ -139,7 +143,7 @@ public final class SherpaOnnxAsrConfigFactory {
                     .setParaformer(paraformer)
                     .setTokens(tokens)
                     .setNumThreads(threadsFor(info))
-                    .setDebug(true)
+                    .setDebug(SHERPA_DEBUG_LOGGING)
                     .build());
         }
         return Optional.empty();
@@ -160,10 +164,10 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setParaformer(paraformer)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build();
         OnlineRecognizerConfig config = OnlineRecognizerConfig.builder()
-                .setDecodingMethod("modified_beam_search")
+                .setDecodingMethod(DECODING_GREEDY)
                 .setOnlineModelConfig(modelConfig)
                 .build();
         return Optional.of(ResolvedConfig.online("online-paraformer", config));
@@ -182,7 +186,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setZipformerCtc(ctc)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
@@ -199,7 +203,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setWenetCtc(ctc)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
@@ -216,7 +220,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setNemo(nemo)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
@@ -237,13 +241,14 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setWhisper(whisper)
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
     private Optional<ResolvedConfig> buildSenseVoice(AsrModelInfo info, ModelFileResolver files) {
         String model = files.requireAnyModel();
-        if (model == null) {
+        String tokens = files.require("tokens", ".txt");
+        if (model == null || tokens == null) {
             return Optional.empty();
         }
         OfflineSenseVoiceModelConfig senseVoice = OfflineSenseVoiceModelConfig.builder()
@@ -253,8 +258,9 @@ public final class SherpaOnnxAsrConfigFactory {
                 .build();
         return buildOffline("offline-sensevoice", OfflineModelConfig.builder()
                 .setSenseVoice(senseVoice)
+                .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
@@ -276,7 +282,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-funasr-nano", OfflineModelConfig.builder()
                 .setFunAsrNano(builder.build())
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
@@ -291,22 +297,23 @@ public final class SherpaOnnxAsrConfigFactory {
         return buildOffline("offline-dolphin", OfflineModelConfig.builder()
                 .setDolphin(dolphin)
                 .setNumThreads(threadsFor(info))
-                .setDebug(true)
+                .setDebug(SHERPA_DEBUG_LOGGING)
                 .build());
     }
 
     private Optional<ResolvedConfig> buildOffline(String kind, OfflineModelConfig modelConfig) {
-        return buildOffline(kind, modelConfig, builder -> {
+        return buildOffline(kind, modelConfig, DECODING_GREEDY, builder -> {
         });
     }
 
     private Optional<ResolvedConfig> buildOffline(
             String kind,
             OfflineModelConfig modelConfig,
+            String decodingMethod,
             Consumer<OfflineRecognizerConfig.Builder> recognizerCustomizer
     ) {
         OfflineRecognizerConfig.Builder builder = OfflineRecognizerConfig.builder()
-                .setDecodingMethod("modified_beam_search")
+                .setDecodingMethod(decodingMethod)
                 .setOfflineModelConfig(modelConfig);
         recognizerCustomizer.accept(builder);
         return Optional.of(ResolvedConfig.offline(kind, builder.build()));

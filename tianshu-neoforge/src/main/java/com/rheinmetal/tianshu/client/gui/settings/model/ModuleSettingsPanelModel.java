@@ -1,11 +1,13 @@
 package com.rheinmetal.tianshu.client.gui.settings.model;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.ActionTemplate;
+import com.rheinmetal.tianshu.client.gui.settings.api.ColumnTemplate;
 import com.rheinmetal.tianshu.client.gui.settings.api.ItemActionTemplate;
 import com.rheinmetal.tianshu.client.gui.settings.api.ListTemplate;
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate;
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsButtonStyle;
+import com.rheinmetal.tianshu.client.gui.settings.api.SettingsListCard;
 import com.rheinmetal.tianshu.client.gui.settings.api.StatusTemplate;
 import com.rheinmetal.tianshu.client.gui.settings.api.TextBlockLevel;
 import com.rheinmetal.tianshu.client.gui.settings.api.ToggleTemplate;
@@ -140,6 +142,50 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
     }
 
     @Override
+    public <T> ModuleSettingsPanel catalog(String id, Component title, Consumer<OptionTemplate> controls, Consumer<ListTemplate<T>> list) {
+        return catalog(id, title, ALWAYS_ENABLED, ALWAYS_VISIBLE, controls, list);
+    }
+
+    @Override
+    public <T> ModuleSettingsPanel catalog(String id, Component title, BooleanSupplier enabled, Consumer<OptionTemplate> controls, Consumer<ListTemplate<T>> list) {
+        return catalog(id, title, enabled, ALWAYS_VISIBLE, controls, list);
+    }
+
+    @Override
+    public <T> ModuleSettingsPanel catalog(String id, Component title, BooleanSupplier enabled, BooleanSupplier visible, Consumer<OptionTemplate> controls, Consumer<ListTemplate<T>> list) {
+        OptionGroup controlGroup = new OptionGroup(id + ".controls", title);
+        if (controls != null) {
+            controls.accept(controlGroup);
+        }
+        ListGroup<T> listGroup = new ListGroup<>(id + ".list", title);
+        if (list != null) {
+            list.accept(listGroup);
+        }
+        templates.add(new SettingsTemplateModel.CatalogGroup<>(id, title, controlGroup.entries(), listGroup.toModel(ALWAYS_ENABLED, ALWAYS_VISIBLE), enabled, visible));
+        return this;
+    }
+
+    @Override
+    public ModuleSettingsPanel columns(String id, List<Double> weights, Consumer<ColumnTemplate> builder) {
+        return columns(id, weights, ALWAYS_ENABLED, ALWAYS_VISIBLE, builder);
+    }
+
+    @Override
+    public ModuleSettingsPanel columns(String id, List<Double> weights, BooleanSupplier enabled, Consumer<ColumnTemplate> builder) {
+        return columns(id, weights, enabled, ALWAYS_VISIBLE, builder);
+    }
+
+    @Override
+    public ModuleSettingsPanel columns(String id, List<Double> weights, BooleanSupplier enabled, BooleanSupplier visible, Consumer<ColumnTemplate> builder) {
+        ColumnGroup group = new ColumnGroup(normalizeWeights(weights));
+        if (builder != null) {
+            builder.accept(group);
+        }
+        templates.add(new SettingsTemplateModel.Columns(id, group.weights(), group.columns(), enabled, visible));
+        return this;
+    }
+
+    @Override
     public ModuleSettingsPanel text(String id, Component text, TextBlockLevel level) {
         return text(id, text, level, ALWAYS_ENABLED, ALWAYS_VISIBLE);
     }
@@ -263,6 +309,10 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         private SettingsTemplateModel.OptionGroup toModel(BooleanSupplier enabled, BooleanSupplier visible) {
             return new SettingsTemplateModel.OptionGroup(id, title, List.copyOf(entries), enabled, visible);
         }
+
+        private List<SettingsTemplateModel.OptionEntry> entries() {
+            return List.copyOf(entries);
+        }
     }
 
     private static final class StatusGroup implements StatusTemplate {
@@ -348,6 +398,7 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         private BiConsumer<T, ItemActionTemplate<T>> itemActionsBuilder = (item, actions) -> {};
         private Supplier<List<T>> items = List::of;
         private Function<T, Component> labeler = item -> Component.literal(String.valueOf(item));
+        private Function<T, SettingsListCard> carder = null;
         private Supplier<T> selected = () -> null;
         private Consumer<T> onSelect = item -> {};
         private Component emptyText = Component.translatable("tianshu.gui.common.no_available_items");
@@ -368,6 +419,12 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         @Override
         public ListTemplate<T> label(Function<T, Component> labeler) {
             this.labeler = labeler;
+            return this;
+        }
+
+        @Override
+        public ListTemplate<T> card(Function<T, SettingsListCard> carder) {
+            this.carder = carder;
             return this;
         }
 
@@ -408,7 +465,7 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         }
 
         private SettingsTemplateModel.ListGroup<T> toModel(BooleanSupplier enabled, BooleanSupplier visible) {
-            return new SettingsTemplateModel.ListGroup<>(id, title, items, labeler, selected, onSelect, this::buildItemActions, emptyText, () -> enabled.getAsBoolean() && itemEnabled.getAsBoolean(), () -> visible.getAsBoolean() && itemVisible.getAsBoolean());
+            return new SettingsTemplateModel.ListGroup<>(id, title, items, labeler, carder, selected, onSelect, this::buildItemActions, emptyText, () -> enabled.getAsBoolean() && itemEnabled.getAsBoolean(), () -> visible.getAsBoolean() && itemVisible.getAsBoolean());
         }
 
         private List<SettingsTemplateModel.ItemActionEntry<T>> buildItemActions(T item) {
@@ -455,6 +512,45 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         List<SettingsTemplateModel.ItemActionEntry<T>> entries() {
             return List.copyOf(entries);
         }
+    }
+
+    private static final class ColumnGroup implements ColumnTemplate {
+        private final List<Double> weights;
+        private final List<ModuleSettingsPanelModel> columns;
+
+        private ColumnGroup(List<Double> weights) {
+            this.weights = weights;
+            this.columns = new ArrayList<>(weights.size());
+            for (int i = 0; i < weights.size(); i++) {
+                columns.add(new ModuleSettingsPanelModel());
+            }
+        }
+
+        @Override
+        public ColumnTemplate column(int index, Consumer<ModuleSettingsPanel> builder) {
+            if (index < 0 || index >= columns.size() || builder == null) {
+                return this;
+            }
+            builder.accept(columns.get(index));
+            return this;
+        }
+
+        private List<Double> weights() {
+            return weights;
+        }
+
+        private List<List<SettingsTemplateModel>> columns() {
+            return columns.stream()
+                    .map(ModuleSettingsPanelModel::templates)
+                    .toList();
+        }
+    }
+
+    private static List<Double> normalizeWeights(List<Double> weights) {
+        List<Double> normalized = weights == null ? List.of() : weights.stream()
+                .map(value -> value == null || value <= 0.0D ? 1.0D : value)
+                .toList();
+        return normalized.isEmpty() ? List.of(1.0D, 1.0D) : normalized;
     }
 
     @SuppressWarnings("unchecked")

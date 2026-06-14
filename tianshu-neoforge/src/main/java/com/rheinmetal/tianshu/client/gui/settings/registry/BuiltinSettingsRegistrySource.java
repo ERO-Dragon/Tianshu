@@ -21,15 +21,6 @@ public final class BuiltinSettingsRegistrySource implements TianshuSettingsRegis
 
     @Override
     public void contribute(TianshuSettingsRegistry registry, ModuleSettingsContext context) {
-        registry.registerCategory(ModuleSettingsCategory.builder("system.settings")
-                .title(demo("title"))
-                .description(demo("description"))
-                .order(0)
-                .panel(this::buildPanel)
-                .build());
-    }
-
-    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context) {
         DemoSettingsValues values = new DemoSettingsValues();
         ModuleSettingsSession session = new ModuleSettingsSessionBuilder("system.settings")
                 .values(values.enabled, values.toggleA, values.toggleB, values.mode, values.name, values.ratio)
@@ -37,6 +28,15 @@ public final class BuiltinSettingsRegistrySource implements TianshuSettingsRegis
                 .validationFailureMessage(demo("validation.invalid"))
                 .build();
         context.settingsSessions().registerOrReplace(session);
+        registry.registerCategory(ModuleSettingsCategory.builder("system.settings")
+                .title(demo("title"))
+                .description(demo("description"))
+                .order(0)
+                .panel((panel, panelContext) -> buildPanel(panel, panelContext, values, session))
+                .build());
+    }
+
+    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, DemoSettingsValues values, ModuleSettingsSession session) {
         panel.text("intro", demo("intro"), TextBlockLevel.INFO)
                 .enable("enabled", demo("enabled"), values.enabled)
                 .toggles("toggles", demo("toggles"), group -> group

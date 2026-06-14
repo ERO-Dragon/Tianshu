@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.client.gui.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
+import com.rheinmetal.tianshu.client.gui.settings.api.SettingsListCard;
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsButtonStyle;
-import com.rheinmetal.tianshu.client.gui.settings.api.TextBlockLevel;
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
@@ -27,7 +27,9 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -68,20 +70,24 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null || audioBridge == null) {
             return;
         }
+        AsrSettingsDraft draft = new AsrSettingsDraft(config, audioBridge, coreManager, context);
+        context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
                 .title(TITLE)
                 .description(DESCRIPTION)
                 .order(20)
-                .panel(this::buildPanel)
+                .panel((panel, panelContext) -> buildPanel(panel, panelContext, draft))
                 .build());
     }
 
-    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context) {
-        AsrSettingsDraft draft = new AsrSettingsDraft(config, audioBridge, coreManager, context);
-        context.settingsSessions().registerOrReplace(draft);
+    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
+        panel.columns("asr.layout", 0.42D, 0.58D, columns -> columns
+                .column(0, left -> buildSettingsColumn(left, context, draft))
+                .column(1, right -> buildLocalModelResourceColumn(right, context, draft)));
+    }
 
-        panel.text("asr.intro", asr("intro"), TextBlockLevel.INFO)
-                .enable("asr.enabled", asr("enabled"), draft.enabled)
+    private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
+        panel.enable("asr.enabled", asr("enabled"), draft.enabled)
                 .options("as.main", asr("section.main"), draft::buildMainOptions)
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
@@ -105,14 +111,14 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                         .emptyText(asr("hotwords.empty")))
                 .actions("asr.preview", asr("section.preview"), actions -> actions
                         .button("asr.preview.start", asr("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
-                        .button("asr.preview.stop", asr("action.preview_stop"), draft::stopPreview, draft::previewRunning))
-                .separator("asr.download.separator")
-                .enable("asr.download.expand", asr("download.expand"), draft.downloadExpanded::get, draft.downloadExpanded::set)
-                .options("asr.download.advanced", asr("section.download_advanced"), () -> true, draft.downloadExpanded::get, draft::buildDownloadAdvancedOptions)
-                .options("asr.download.filters", asr("section.download_filters"), () -> true, draft.downloadExpanded::get, draft::buildDownloadFilters)
-                .<AsrModelInfo>list("asr.download.models", asr("section.download_models"), () -> true, draft.downloadExpanded::get, list -> list
-                        .items(() -> draft.filteredModels())
-                        .label(draft::modelLabel)
+                        .button("asr.preview.stop", asr("action.preview_stop"), draft::stopPreview, draft::previewRunning));
+    }
+
+    private void buildLocalModelResourceColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
+        panel.options("asr.download.advanced", asr("section.download_advanced"), draft::buildDownloadAdvancedOptions)
+                .<AsrModelInfo>catalog("asr.download.catalog", asr("section.download_models"), draft::buildDownloadFilters, list -> list
+                        .items(draft::filteredModels)
+                        .card(draft::modelCard)
                         .itemActions((model, actions) -> draft.buildDownloadItemActions(context, model, actions))
                         .emptyText(asr("download.empty")));
     }
@@ -132,7 +138,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<Boolean> highPassFilterEnabled;
         private final MutableSettingsValue<Boolean> vadEnabled;
         private final MutableSettingsValue<Boolean> hotwordsExpanded;
-        private final MutableSettingsValue<Boolean> downloadExpanded;
         private final MutableSettingsValue<String> githubProxyUrl;
         private final MutableSettingsValue<String> languageFilter;
         private final MutableSettingsValue<String> performanceFilter;
@@ -161,7 +166,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.highPassFilterEnabled = new MutableSettingsValue<>(config::isAsrHighPassFilterEnabled, config::setAsrHighPassFilterEnabled);
             this.vadEnabled = new MutableSettingsValue<>(config::isAsrVadEnabled, config::setAsrVadEnabled);
             this.hotwordsExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
-            this.downloadExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
             this.githubProxyUrl = new MutableSettingsValue<>(config::getAsrGithubProxyUrl, config::setAsrGithubProxyUrl, Objects::nonNull);
             this.languageFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.performanceFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
@@ -494,7 +498,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                         downloadLabel = asr("status.download_complete");
                         downloadProgress = 100;
                         context.showStatus(asr("message.download_complete"), 3000);
-                        coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
                         refreshSettingsScreen();
                     });
                 }
@@ -567,6 +570,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 return;
             }
             asrModelService().deleteModel(info);
+            if (info.localKey().equalsIgnoreCase(selectedModelName.get())) {
+                selectedModelName.set("");
+            }
             downloadLabel = asr("message.deleted", info.getDisplayName());
             context.showStatus(downloadLabel, 3000);
             coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
@@ -630,11 +636,53 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return false;
         }
 
-        private Component modelLabel(AsrModelInfo info) {
+        private SettingsListCard modelCard(AsrModelInfo info) {
             if (info == null) {
-                return Component.empty();
+                return SettingsListCard.text(Component.empty());
             }
-            return asr("download.card", info.getDisplayName(), common(isDownloaded(info) ? "downloaded" : "not_downloaded"), tagLabel(info), languageLabel(info), scoreLabel(info.getRecognitionQualityScore()), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getRecommendationScore()));
+            Component title = Component.literal(info.getDisplayName());
+            Component status = isDownloaded(info) ? common("downloaded") : common("not_downloaded");
+            List<Component> details = List.of(
+                    asr("download.card.lang", languageLabelReadable(info)),
+                    asr("download.card.tags", tagLabel(info))
+            );
+            List<Component> badges = List.of(
+                    scoreBadge(info.getRecognitionQualityScore(), asr("badge.quality")),
+                    scoreBadge(info.getPerformanceScore(), asr("badge.performance")),
+                    scoreBadge(info.getRecommendationScore(), asr("badge.recommendation"))
+            );
+            return new SettingsListCard(title, status, details, badges);
+        }
+
+        private Component languageLabelReadable(AsrModelInfo info) {
+            List<String> tags = languageTags(info);
+            return tags.isEmpty() ? Component.literal("-") : readableLanguageNames(tags);
+        }
+
+        private Component readableLanguageNames(List<String> tags) {
+            MutableComponent names = Component.empty();
+            boolean first = true;
+            for (String tag : tags) {
+                if (!first) {
+                    names.append(Component.literal(", "));
+                }
+                names.append(asrLangReadableName(tag));
+                first = false;
+            }
+            return names.getString().isBlank() ? Component.literal("-") : names;
+        }
+
+        private Component asrLangReadableName(String code) {
+            if (code == null || code.isBlank()) {
+                return Component.literal("-");
+            }
+            String normalized = code.toLowerCase(Locale.ROOT);
+            String key = "tianshu.gui.asr.lang." + normalized;
+            return I18n.exists(key) ? Component.translatable(key) : Component.literal(code);
+        }
+
+        private Component scoreBadge(int score, Component label) {
+            return Component.translatable("tianshu.gui.settings.badge.score", label, score);
         }
 
         private boolean isDownloaded(AsrModelInfo info) {
@@ -667,7 +715,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private Component filterOptionLabel(String value) {
-            return ALL.equals(value) ? common("all") : Component.literal(value);
+            return ALL.equals(value) ? common("all") : asrLangReadableName(value);
         }
 
         private Component scoreFilterLabel(String value) {
@@ -683,15 +731,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             } catch (NumberFormatException e) {
                 return true;
             }
-        }
-
-        private String scoreLabel(int score) {
-            return score + "/10";
-        }
-
-        private String languageLabel(AsrModelInfo info) {
-            List<String> tags = languageTags(info);
-            return tags.isEmpty() ? "-" : String.join(",", tags);
         }
 
         private String tagLabel(AsrModelInfo info) {

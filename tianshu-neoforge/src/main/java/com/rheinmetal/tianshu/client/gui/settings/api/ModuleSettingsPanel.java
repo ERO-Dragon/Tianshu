@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.client.gui.settings.session.SettingsValue;
 
 import net.minecraft.network.chat.Component;
 
+import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -55,6 +56,30 @@ public interface ModuleSettingsPanel {
     <T> ModuleSettingsPanel list(String id, Component title, BooleanSupplier enabled, Consumer<ListTemplate<T>> builder);
 
     <T> ModuleSettingsPanel list(String id, Component title, BooleanSupplier enabled, BooleanSupplier visible, Consumer<ListTemplate<T>> builder);
+
+    <T> ModuleSettingsPanel catalog(String id, Component title, Consumer<OptionTemplate> controls, Consumer<ListTemplate<T>> list);
+
+    <T> ModuleSettingsPanel catalog(String id, Component title, BooleanSupplier enabled, Consumer<OptionTemplate> controls, Consumer<ListTemplate<T>> list);
+
+    <T> ModuleSettingsPanel catalog(String id, Component title, BooleanSupplier enabled, BooleanSupplier visible, Consumer<OptionTemplate> controls, Consumer<ListTemplate<T>> list);
+
+    ModuleSettingsPanel columns(String id, List<Double> weights, Consumer<ColumnTemplate> builder);
+
+    default ModuleSettingsPanel columns(String id, double leftWeight, double rightWeight, Consumer<ColumnTemplate> builder) {
+        return columns(id, List.of(leftWeight, rightWeight), builder);
+    }
+
+    ModuleSettingsPanel columns(String id, List<Double> weights, BooleanSupplier enabled, Consumer<ColumnTemplate> builder);
+
+    default ModuleSettingsPanel columns(String id, double leftWeight, double rightWeight, BooleanSupplier enabled, Consumer<ColumnTemplate> builder) {
+        return columns(id, List.of(leftWeight, rightWeight), enabled, builder);
+    }
+
+    ModuleSettingsPanel columns(String id, List<Double> weights, BooleanSupplier enabled, BooleanSupplier visible, Consumer<ColumnTemplate> builder);
+
+    default ModuleSettingsPanel columns(String id, double leftWeight, double rightWeight, BooleanSupplier enabled, BooleanSupplier visible, Consumer<ColumnTemplate> builder) {
+        return columns(id, List.of(leftWeight, rightWeight), enabled, visible, builder);
+    }
 
     ModuleSettingsPanel text(String id, Component text, TextBlockLevel level);
 

@@ -13,6 +13,14 @@ public record SettingsScreenLayout(int leftX, int rightX, int contentTop, int co
         return Math.min(contentBottom, contentTop + headerHeight());
     }
 
+    public int leftListTop() {
+        return viewportTop();
+    }
+
+    public int leftListHeight() {
+        return Math.max(0, contentBottom - leftListTop());
+    }
+
     public int viewportBottom() {
         return Math.max(viewportTop(), contentBottom);
     }

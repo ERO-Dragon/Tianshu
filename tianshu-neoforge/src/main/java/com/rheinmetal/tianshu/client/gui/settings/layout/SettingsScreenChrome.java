@@ -4,13 +4,14 @@ import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 
 public final class SettingsScreenChrome {
-    private static final int PANEL_BACKGROUND = 0x22FFFFFF;
-    private static final int PANEL_HEADER_BACKGROUND = 0x28000000;
+    private static final ResourceLocation LIST_BACKGROUND = ResourceLocation.withDefaultNamespace("textures/gui/menu_list_background.png");
+    private static final int HEADER_BACKGROUND = 0x66000000;
     private static final int PANEL_BORDER = 0x66000000;
-    private static final int ACTION_BACKGROUND = 0xAA000000;
 
     public SettingsScreenLayout layout(int screenWidth, int screenHeight) {
         int margin = Math.max(10, Math.min(20, screenWidth / 28));
@@ -32,11 +33,12 @@ public final class SettingsScreenChrome {
     }
 
     public void drawFrame(GuiGraphics guiGraphics, SettingsScreenLayout layout, ScrollState rightPanelScroll) {
-        drawPanel(guiGraphics, layout.leftX(), layout.contentTop(), layout.leftWidth(), layout.panelHeight());
-        drawPanel(guiGraphics, layout.rightX(), layout.contentTop(), layout.rightWidth(), layout.panelHeight());
-        guiGraphics.fill(layout.rightX(), layout.contentTop(), layout.rightX() + layout.rightWidth(), layout.viewportTop(), PANEL_HEADER_BACKGROUND);
+        drawListBackground(guiGraphics, layout.leftX(), layout.leftListTop(), layout.leftWidth(), layout.leftListHeight());
+        drawListBackground(guiGraphics, layout.rightX(), layout.viewportTop(), layout.rightWidth(), layout.viewportBottom() - layout.viewportTop());
+        guiGraphics.fill(layout.leftX(), layout.contentTop(), layout.leftX() + layout.leftWidth(), layout.leftListTop(), HEADER_BACKGROUND);
+        guiGraphics.fill(layout.rightX(), layout.contentTop(), layout.rightX() + layout.rightWidth(), layout.viewportTop(), HEADER_BACKGROUND);
+        guiGraphics.fill(layout.leftX(), layout.leftListTop(), layout.leftX() + layout.leftWidth(), layout.leftListTop() + 1, PANEL_BORDER);
         guiGraphics.fill(layout.rightX(), layout.viewportTop(), layout.rightX() + layout.rightWidth(), layout.viewportTop() + 1, PANEL_BORDER);
-        guiGraphics.fill(0, layout.actionsY() - 6, layout.rightX() + layout.rightWidth() + layout.leftX(), layout.actionsY() + 24, ACTION_BACKGROUND);
         drawScrollbar(guiGraphics, layout, rightPanelScroll);
     }
 
@@ -45,10 +47,7 @@ public final class SettingsScreenChrome {
         if (selected != null) {
             SettingsScreenLayout layout = layout(screenWidth, screenHeight);
             guiGraphics.drawString(font, leftTitle, layout.leftX() + 6, layout.contentTop() + 9, 0xFFFFFF, false);
-            guiGraphics.drawString(font, selected.title(), layout.rightX() + 8, layout.contentTop() + 6, 0xFFFFFF, false);
-            if (!selected.description().getString().isBlank()) {
-                guiGraphics.drawString(font, selected.description(), layout.rightX() + 8, layout.contentTop() + 17, 0xC0C0C0, false);
-            }
+            guiGraphics.drawString(font, selected.title(), layout.rightX() + 8, layout.contentTop() + 10, 0xFFFFFF, false);
         }
         if (!status.getString().isBlank()) {
             SettingsScreenLayout layout = layout(screenWidth, screenHeight);
@@ -62,8 +61,11 @@ public final class SettingsScreenChrome {
         drawScrollbar(guiGraphics, layout, rightPanelScroll);
     }
 
-    private void drawPanel(GuiGraphics guiGraphics, int x, int y, int width, int height) {
-        guiGraphics.fill(x, y, x + width, y + height, PANEL_BACKGROUND);
+    private void drawListBackground(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        Screen.renderMenuBackgroundTexture(guiGraphics, LIST_BACKGROUND, x, y, x, y, width, height);
     }
 
     private void drawScrollbar(GuiGraphics guiGraphics, SettingsScreenLayout layout, ScrollState scroll) {

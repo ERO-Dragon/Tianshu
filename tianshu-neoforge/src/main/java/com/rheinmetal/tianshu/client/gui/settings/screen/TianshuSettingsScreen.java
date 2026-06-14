@@ -34,6 +34,7 @@ public final class TianshuSettingsScreen extends Screen {
     private static final Component TITLE = Component.translatable("tianshu.gui.settings.title");
     private static final Component LEFT_TITLE = Component.translatable("tianshu.gui.settings.modules");
     private static final Component SAVE = Component.translatable("tianshu.gui.settings.action.save");
+    private static final Component CLOSE = Component.translatable("tianshu.gui.settings.action.close");
     private static final int SCROLL_STEP = 24;
 
     private final ModuleSettingsContext context;
@@ -43,6 +44,7 @@ public final class TianshuSettingsScreen extends Screen {
     private String selectedModuleId;
     private ScrollState rightPanelScroll = new ScrollState(0, 0, 0);
     private List<SettingsDecoration> rightPanelDecorations = List.of();
+    private Button saveButton;
 
     public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider) {
         super(TITLE);
@@ -83,7 +85,7 @@ public final class TianshuSettingsScreen extends Screen {
 
         SettingsScreenLayout layout = chrome.layout(width, height);
 
-        addRenderableWidget(new SettingsNavigationWidget(layout.leftX(), layout.contentTop(), layout.leftWidth(), layout.panelHeight(), categories, selectedModuleId, category -> {
+        addRenderableWidget(new SettingsNavigationWidget(layout.leftX(), layout.leftListTop(), layout.leftWidth(), layout.leftListHeight(), categories, selectedModuleId, category -> {
             selectedModuleId = category.moduleId();
             rightPanelScroll = rightPanelScroll.withOffset(0);
             rebuildCurrentPage();
@@ -114,16 +116,24 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     private void addBottomActions(SettingsScreenLayout layout) {
-        int buttonWidth = 86;
+        int buttonWidth = 98;
         int buttonHeight = 20;
+        int gap = 8;
         int y = layout.actionsY();
-        int x = layout.rightX() + (layout.rightWidth() - buttonWidth) / 2;
+        int totalWidth = buttonWidth * 2 + gap;
+        int x = (width - totalWidth) / 2;
 
-        Button saveButton = Button.builder(SAVE, button -> saveCurrent())
+        Button closeButton = Button.builder(CLOSE, button -> onClose())
                 .pos(x, y)
                 .size(buttonWidth, buttonHeight)
                 .build();
-        saveButton.active = coordinator().canSave(selectedModuleId);
+        addRenderableWidget(closeButton);
+
+        saveButton = Button.builder(SAVE, button -> saveAll())
+                .pos(x + buttonWidth + gap, y)
+                .size(buttonWidth, buttonHeight)
+                .build();
+        saveButton.active = coordinator().canSave();
         addRenderableWidget(saveButton);
     }
 
@@ -131,8 +141,8 @@ public final class TianshuSettingsScreen extends Screen {
         return context.settingsCoordinator();
     }
 
-    private void saveCurrent() {
-        SettingsSaveResult result = context.settingsCoordinator().save(selectedModuleId);
+    private void saveAll() {
+        SettingsSaveResult result = context.settingsCoordinator().saveAll();
         showSaveResult(result);
         rebuildCurrentPage();
     }
@@ -184,6 +194,7 @@ public final class TianshuSettingsScreen extends Screen {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         clearPointerFocus(mouseX, mouseY);
+        updateActionStates();
         renderMenuBackground(guiGraphics);
         SettingsScreenLayout layout = chrome.layout(width, height);
         chrome.drawFrame(guiGraphics, layout, rightPanelScroll);
@@ -192,6 +203,12 @@ public final class TianshuSettingsScreen extends Screen {
         drawRightPanelDecorationBorders(guiGraphics, layout);
         chrome.drawForeground(guiGraphics, font, width, height, TITLE, LEFT_TITLE, selectedCategory(), statusMessage());
         chrome.drawOverlay(guiGraphics, layout, rightPanelScroll);
+    }
+
+    private void updateActionStates() {
+        if (saveButton != null) {
+            saveButton.active = coordinator().canSave();
+        }
     }
 
     private void clearPointerFocus(int mouseX, int mouseY) {
