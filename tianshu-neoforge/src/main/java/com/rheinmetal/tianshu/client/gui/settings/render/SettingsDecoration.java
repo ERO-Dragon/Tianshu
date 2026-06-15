@@ -3,6 +3,10 @@ package com.rheinmetal.tianshu.client.gui.settings.render;
 import net.minecraft.client.gui.GuiGraphics;
 
 public record SettingsDecoration(int x, int y, int width, int height, int backgroundColor, int lightBorderColor, int darkBorderColor) {
+    public SettingsDecoration translated(int deltaY) {
+        return new SettingsDecoration(x, y + deltaY, width, height, backgroundColor, lightBorderColor, darkBorderColor);
+    }
+
     public void drawBackground(GuiGraphics guiGraphics) {
         if (width <= 0 || height <= 0) {
             return;

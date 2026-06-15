@@ -8,19 +8,19 @@ import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsScreenLayout;
 import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsViewport;
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsPanelModel;
-import com.rheinmetal.tianshu.client.gui.settings.registry.BuiltinSettingsRegistrySource;
-import com.rheinmetal.tianshu.client.gui.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.render.ModuleSettingsRenderer;
 import com.rheinmetal.tianshu.client.gui.settings.render.ModuleSettingsRendererProvider;
 import com.rheinmetal.tianshu.client.gui.settings.render.SettingsDecoration;
 import com.rheinmetal.tianshu.client.gui.settings.render.SettingsRenderResult;
+import com.rheinmetal.tianshu.client.gui.settings.render.SettingsScrollRegion;
 import com.rheinmetal.tianshu.client.gui.settings.render.VanillaModuleSettingsRendererProvider;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsCoordinator;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsSaveResult;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -29,6 +29,12 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 public final class TianshuSettingsScreen extends Screen {
     private static final Component TITLE = Component.translatable("tianshu.gui.settings.title");
@@ -44,7 +50,11 @@ public final class TianshuSettingsScreen extends Screen {
     private String selectedModuleId;
     private ScrollState rightPanelScroll = new ScrollState(0, 0, 0);
     private List<SettingsDecoration> rightPanelDecorations = List.of();
+    private List<SettingsScrollRegion> rightPanelScrollRegions = List.of();
+    private final Map<String, ScrollState> nestedScrollStates = new ConcurrentHashMap<>();
     private Button saveButton;
+    private SelectionPanel<?> selectionPanel;
+    private boolean rebuildQueued;
 
     public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider) {
         super(TITLE);
@@ -61,7 +71,7 @@ public final class TianshuSettingsScreen extends Screen {
 
     public static TianshuSettingsScreen createDefault() {
         ModuleSettingsContext context = new TianshuSettingsContext();
-        TianshuSettingsRegistrySource registrySource = CompositeSettingsRegistrySource.of(new BuiltinSettingsRegistrySource());
+        TianshuSettingsRegistrySource registrySource = (registry, settingsContext) -> {};
         return create(context, registrySource, new VanillaModuleSettingsRendererProvider());
     }
 
@@ -71,8 +81,10 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     public void rebuildCurrentPage() {
+        rebuildQueued = false;
         clearWidgets();
         rightPanelDecorations = List.of();
+        rightPanelScrollRegions = List.of();
         List<ModuleSettingsCategory> categories = registry.categories();
         if (categories.isEmpty()) {
             return;
@@ -98,8 +110,24 @@ public final class TianshuSettingsScreen extends Screen {
         SettingsRenderResult result = renderer.render(this, font, layout.rightX() + 6, layout.viewportTop() + 4, Math.max(1, layout.rightWidth() - 14), viewport, panel.templates());
         rightPanelScroll = rightPanelScroll.withMetrics(result.contentHeight(), viewport.height());
         rightPanelDecorations = result.decorations();
+        rightPanelScrollRegions = result.scrollRegions();
+        pruneNestedScrollStates(rightPanelScrollRegions);
 
         addBottomActions(layout);
+    }
+
+    public void requestRebuildCurrentPage() {
+        if (rebuildQueued) {
+            return;
+        }
+        rebuildQueued = true;
+        Minecraft.getInstance().execute(() -> {
+            if (Minecraft.getInstance().screen == this) {
+                rebuildCurrentPage();
+            } else {
+                rebuildQueued = false;
+            }
+        });
     }
 
     private void buildPanel(ModuleSettingsCategory selected, ModuleSettingsPanelModel panel) {
@@ -173,6 +201,30 @@ public final class TianshuSettingsScreen extends Screen {
         addRenderableWidget(widget);
     }
 
+    public int scrollOffsetFor(String regionId) {
+        if (regionId == null || regionId.isBlank()) {
+            return 0;
+        }
+        return nestedScrollStates.getOrDefault(regionId, new ScrollState(0, 0, 0)).offset();
+    }
+
+    public void registerScrollRegion(String regionId, int contentHeight, int viewportHeight) {
+        if (regionId == null || regionId.isBlank()) {
+            return;
+        }
+        nestedScrollStates.compute(regionId, (ignored, current) -> (current == null ? new ScrollState(0, contentHeight, viewportHeight) : current).withMetrics(contentHeight, viewportHeight));
+    }
+
+    public <T> void openSelectionPanel(Component title, List<T> values, T selected, Function<T, Component> labeler, Consumer<T> onSelect) {
+        selectionPanel = new SelectionPanel<>(title, values, selected, labeler, value -> {
+            if (onSelect != null) {
+                onSelect.accept(value);
+            }
+            selectionPanel = null;
+            rebuildCurrentPage();
+        });
+    }
+
     public void showActionFailure(RuntimeException exception) {
         Component message = exception == null || exception.getMessage() == null || exception.getMessage().isBlank()
                 ? Component.translatable("tianshu.gui.settings.status.action_failed")
@@ -182,6 +234,19 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (selectionPanel != null) {
+            selectionPanel.mouseScrolled(scrollY);
+            return true;
+        }
+        for (SettingsScrollRegion region : rightPanelScrollRegions) {
+            if (region.contains(mouseX, mouseY) && region.canScroll()) {
+                ScrollState current = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()));
+                nestedScrollStates.put(region.id(), current.withMetrics(region.contentHeight(), region.viewportHeight())
+                        .withOffset(current.offset() - (int) Math.signum(scrollY) * SCROLL_STEP));
+                rebuildCurrentPage();
+                return true;
+            }
+        }
         SettingsScreenLayout layout = chrome.layout(width, height);
         if (layout.containsRightPanel(mouseX, mouseY) && rightPanelScroll.canScroll()) {
             rightPanelScroll = rightPanelScroll.withOffset(rightPanelScroll.offset() - (int) Math.signum(scrollY) * SCROLL_STEP);
@@ -193,16 +258,66 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        clearPointerFocus(mouseX, mouseY);
+        int contentMouseX = selectionPanel == null ? mouseX : Integer.MIN_VALUE;
+        int contentMouseY = selectionPanel == null ? mouseY : Integer.MIN_VALUE;
+        clearPointerFocus(contentMouseX, contentMouseY);
         updateActionStates();
         renderMenuBackground(guiGraphics);
         SettingsScreenLayout layout = chrome.layout(width, height);
         chrome.drawFrame(guiGraphics, layout, rightPanelScroll);
         drawRightPanelDecorationBackgrounds(guiGraphics, layout);
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        super.render(guiGraphics, contentMouseX, contentMouseY, partialTick);
+        renderScrollRegionWidgets(guiGraphics, contentMouseX, contentMouseY, partialTick);
         drawRightPanelDecorationBorders(guiGraphics, layout);
         chrome.drawForeground(guiGraphics, font, width, height, TITLE, LEFT_TITLE, selectedCategory(), statusMessage());
         chrome.drawOverlay(guiGraphics, layout, rightPanelScroll);
+        if (selectionPanel != null) {
+            selectionPanel.render(guiGraphics, font, width, height, mouseX, mouseY);
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (selectionPanel != null && selectionPanel.mouseClicked(mouseX, mouseY)) {
+            return true;
+        }
+        for (SettingsScrollRegion region : rightPanelScrollRegions) {
+            if (!region.contains(mouseX, mouseY)) {
+                continue;
+            }
+            for (AbstractWidget widget : region.widgets()) {
+                if (widget.mouseClicked(mouseX, mouseY, button)) {
+                    return true;
+                }
+            }
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (selectionPanel != null) {
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (selectionPanel != null) {
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (selectionPanel != null && keyCode == 256) {
+            selectionPanel = null;
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     private void updateActionStates() {
@@ -224,6 +339,9 @@ public final class TianshuSettingsScreen extends Screen {
         for (SettingsDecoration decoration : rightPanelDecorations) {
             decoration.drawBackground(guiGraphics);
         }
+        for (SettingsScrollRegion region : rightPanelScrollRegions) {
+            drawScrollRegionDecorations(guiGraphics, region, true);
+        }
         guiGraphics.disableScissor();
     }
 
@@ -232,7 +350,57 @@ public final class TianshuSettingsScreen extends Screen {
         for (SettingsDecoration decoration : rightPanelDecorations) {
             decoration.drawBorder(guiGraphics);
         }
+        for (SettingsScrollRegion region : rightPanelScrollRegions) {
+            drawScrollRegionDecorations(guiGraphics, region, false);
+            drawScrollRegionScrollbar(guiGraphics, region);
+        }
         guiGraphics.disableScissor();
+    }
+
+    private void renderScrollRegionWidgets(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        for (SettingsScrollRegion region : rightPanelScrollRegions) {
+            guiGraphics.enableScissor(region.x(), region.y(), region.x() + region.width(), region.y() + region.height());
+            for (AbstractWidget widget : region.widgets()) {
+                widget.render(guiGraphics, mouseX, mouseY, partialTick);
+            }
+            guiGraphics.disableScissor();
+        }
+    }
+
+    private void drawScrollRegionDecorations(GuiGraphics guiGraphics, SettingsScrollRegion region, boolean background) {
+        guiGraphics.enableScissor(region.x(), region.y(), region.x() + region.width(), region.y() + region.height());
+        for (SettingsDecoration decoration : region.decorations()) {
+            if (background) {
+                decoration.drawBackground(guiGraphics);
+            } else {
+                decoration.drawBorder(guiGraphics);
+            }
+        }
+        guiGraphics.disableScissor();
+    }
+
+    private void drawScrollRegionScrollbar(GuiGraphics guiGraphics, SettingsScrollRegion region) {
+        if (!region.canScroll() || region.viewportHeight() <= 0) {
+            return;
+        }
+        ScrollState scroll = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()))
+                .withMetrics(region.contentHeight(), region.viewportHeight());
+        int scrollbarX = region.x() + region.width() - 4;
+        int trackTop = region.y();
+        int trackBottom = region.y() + region.height();
+        int trackHeight = Math.max(1, trackBottom - trackTop);
+        int thumbHeight = Math.max(16, trackHeight * scroll.viewportHeight() / Math.max(1, scroll.contentHeight()));
+        int thumbY = trackTop + (trackHeight - thumbHeight) * scroll.offset() / Math.max(1, scroll.maxOffset());
+        guiGraphics.fill(scrollbarX, trackTop, scrollbarX + 2, trackBottom, 0x66000000);
+        guiGraphics.fill(scrollbarX, thumbY, scrollbarX + 2, thumbY + thumbHeight, 0xFFB0B0B0);
+    }
+
+    private void pruneNestedScrollStates(List<SettingsScrollRegion> regions) {
+        Set<String> activeIds = new HashSet<>();
+        for (SettingsScrollRegion region : regions) {
+            activeIds.add(region.id());
+        }
+        nestedScrollStates.keySet().removeIf(id -> !activeIds.contains(id));
     }
 
     private ModuleSettingsCategory selectedCategory() {
@@ -254,5 +422,104 @@ public final class TianshuSettingsScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    private final class SelectionPanel<T> {
+        private static final int ENTRY_HEIGHT = 18;
+        private static final int PADDING = 6;
+        private static final int MAX_VISIBLE = 10;
+        private static final int WIDTH = 190;
+        private static final int BACKGROUND = 0xF0101010;
+        private static final int BORDER = 0xFF808080;
+        private static final int HOVER_BG = 0x40FFFFFF;
+        private static final int SELECTED_COLOR = 0xFFFFA0;
+        private static final int NORMAL_COLOR = 0xE0E0E0;
+
+        private final Component title;
+        private final List<T> values;
+        private final T selected;
+        private final Function<T, Component> labeler;
+        private final Consumer<T> onSelect;
+        private int scrollOffset;
+
+        private SelectionPanel(Component title, List<T> values, T selected, Function<T, Component> labeler, Consumer<T> onSelect) {
+            this.title = title == null ? Component.empty() : title;
+            this.values = values == null ? List.of() : List.copyOf(values);
+            this.selected = selected;
+            this.labeler = labeler == null ? value -> Component.literal(String.valueOf(value)) : labeler;
+            this.onSelect = onSelect == null ? value -> {} : onSelect;
+        }
+
+        private void render(GuiGraphics guiGraphics, Font font, int screenWidth, int screenHeight, int mouseX, int mouseY) {
+            int visibleCount = Math.min(MAX_VISIBLE, values.size());
+            int titleHeight = font.lineHeight + PADDING * 2;
+            int height = titleHeight + visibleCount * ENTRY_HEIGHT + PADDING;
+            int x = (screenWidth - WIDTH) / 2;
+            int y = (screenHeight - height) / 2;
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(0.0F, 0.0F, 400.0F);
+            try {
+                guiGraphics.fill(0, 0, screenWidth, screenHeight, 0x66000000);
+                guiGraphics.fill(x, y, x + WIDTH, y + height, BACKGROUND);
+                guiGraphics.renderOutline(x, y, WIDTH, height, BORDER);
+                guiGraphics.drawCenteredString(font, title, screenWidth / 2, y + PADDING, 0xFFFFFF);
+                int entryY = y + titleHeight;
+                clampScroll();
+                guiGraphics.enableScissor(x + 1, entryY, x + WIDTH - 1, y + height - 1);
+                try {
+                    for (int i = 0; i < visibleCount; i++) {
+                        int idx = i + scrollOffset;
+                        if (idx >= values.size()) {
+                            break;
+                        }
+                        T value = values.get(idx);
+                        Component label = labeler.apply(value);
+                        boolean selectedValue = value != null && value.equals(selected);
+                        int rowY = entryY + i * ENTRY_HEIGHT;
+                        boolean hovered = mouseX >= x && mouseX < x + WIDTH && mouseY >= rowY && mouseY < rowY + ENTRY_HEIGHT;
+                        if (hovered) {
+                            guiGraphics.fill(x + 1, rowY, x + WIDTH - 1, rowY + ENTRY_HEIGHT, HOVER_BG);
+                        }
+                        guiGraphics.drawString(font, label, x + PADDING + 4, rowY + (ENTRY_HEIGHT - font.lineHeight) / 2, selectedValue ? SELECTED_COLOR : NORMAL_COLOR, false);
+                    }
+                } finally {
+                    guiGraphics.disableScissor();
+                }
+            } finally {
+                guiGraphics.pose().popPose();
+            }
+        }
+
+        private boolean mouseClicked(double mouseX, double mouseY) {
+            Font font = Minecraft.getInstance().font;
+            int visibleCount = Math.min(MAX_VISIBLE, values.size());
+            int titleHeight = font.lineHeight + PADDING * 2;
+            int height = titleHeight + visibleCount * ENTRY_HEIGHT + PADDING;
+            int x = (TianshuSettingsScreen.this.width - WIDTH) / 2;
+            int y = (TianshuSettingsScreen.this.height - height) / 2;
+            int entryY = y + titleHeight;
+            if (mouseX >= x && mouseX < x + WIDTH && mouseY >= entryY && mouseY < y + height) {
+                int idx = (int) ((mouseY - entryY) / ENTRY_HEIGHT) + scrollOffset;
+                if (idx >= 0 && idx < values.size()) {
+                    onSelect.accept(values.get(idx));
+                }
+                return true;
+            }
+            if (mouseX < x || mouseX >= x + WIDTH || mouseY < y || mouseY >= y + height) {
+                selectionPanel = null;
+                return true;
+            }
+            return true;
+        }
+
+        private void mouseScrolled(double scrollY) {
+            scrollOffset -= (int) Math.signum(scrollY);
+            clampScroll();
+        }
+
+        private void clampScroll() {
+            int maxScroll = Math.max(0, values.size() - MAX_VISIBLE);
+            scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
+        }
     }
 }

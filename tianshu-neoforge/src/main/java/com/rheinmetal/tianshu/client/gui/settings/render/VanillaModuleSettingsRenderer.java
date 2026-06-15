@@ -9,9 +9,7 @@ import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsViewport;
 import com.rheinmetal.tianshu.client.gui.settings.model.SettingsTemplateModel;
 import com.rheinmetal.tianshu.client.gui.settings.screen.TianshuSettingsScreen;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
@@ -20,6 +18,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -28,6 +27,12 @@ import java.util.function.Supplier;
 
 final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private static final int ITEM_ACTION_WIDTH = 54;
+    private static final int ROW_LABEL_MIN_WIDTH = 88;
+    private static final ControlSizing SWITCH_CONTROL = new ControlSizing(48, 56, 60);
+    private static final ControlSizing SELECT_CONTROL = new ControlSizing(72, 96, 112);
+    private static final ControlSizing SLIDER_CONTROL = new ControlSizing(88, 112, 128);
+    private static final int COMPACT_OPTION_MIN_WIDTH = 58;
+    private static final int COMPACT_OPTION_MAX_WIDTH = 92;
     private static final int SECTION_BACKGROUND = 0x22000000;
     private static final int SECTION_BORDER_LIGHT = 0x33808080;
     private static final int SECTION_BORDER_DARK = 0x66000000;
@@ -41,7 +46,10 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private int width;
     private int gridColumn;
     private int gridColumnsOverride;
+    private int columnBottomTargetY = -1;
     private final List<SettingsDecoration> decorations = new ArrayList<>();
+    private final List<SettingsScrollRegion> scrollRegions = new ArrayList<>();
+    private List<AbstractWidget> activeScrollRegionWidgets;
 
     @Override
     public SettingsRenderResult render(TianshuSettingsScreen screen, Font font, int x, int y, int width, SettingsViewport viewport, List<SettingsTemplateModel> templates) {
@@ -53,12 +61,13 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         this.width = width;
         this.gridColumn = 0;
         this.decorations.clear();
+        this.scrollRegions.clear();
         for (SettingsTemplateModel template : safeList(templates)) {
             if (template != null) {
                 renderTemplate(template);
             }
         }
-        return new SettingsRenderResult(layout.contentHeight(), decorations);
+        return new SettingsRenderResult(layout.contentHeight(), decorations, scrollRegions);
     }
 
     private void renderTemplate(SettingsTemplateModel template) {
@@ -82,9 +91,11 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private void renderEnable(SettingsTemplateModel.Enable enable) {
         boolean active = safeBoolean(enable.enabled(), true);
         renderSection(active, () -> {
-            SettingsLayoutItem item = nextGridItem();
-            addIfVisible(CycleButton.onOffBuilder(safeBoolean(enable.getter(), false))
-                    .create(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.CONTROL_HEIGHT, safeComponent(enable.label(), Component.empty()), (button, selected) -> enable.setter().accept(selected)), item, active);
+                renderControlRow(safeComponent(enable.label(), Component.empty()), active, SWITCH_CONTROL, item -> {
+                    CycleButton<Boolean> button = booleanToggleBuilder(safeBoolean(enable.getter(), false))
+                        .create(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), (btn, selected) -> enable.setter().accept(selected));
+                    addIfVisible(button, item.row(), active);
+                });
         });
     }
 
@@ -96,9 +107,11 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 if (entry == null || !safeBoolean(entry.visible(), true)) {
                     continue;
                 }
-                SettingsLayoutItem item = nextGridItem();
-                addIfVisible(CycleButton.onOffBuilder(safeBoolean(entry.getter(), false))
-                        .create(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.CONTROL_HEIGHT, safeComponent(entry.label(), Component.empty()), (button, selected) -> entry.setter().accept(selected)), item, groupActive && safeBoolean(entry.enabled(), true));
+                renderControlRow(safeComponent(entry.label(), Component.empty()), groupActive && safeBoolean(entry.enabled(), true), SWITCH_CONTROL, item -> {
+                    CycleButton<Boolean> button = booleanToggleBuilder(safeBoolean(entry.getter(), false))
+                            .create(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), (btn, selected) -> entry.setter().accept(selected));
+                    addIfVisible(button, item.row(), groupActive && safeBoolean(entry.enabled(), true));
+                });
             }
         });
     }
@@ -112,8 +125,12 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     }
 
     private void renderOptionEntries(List<SettingsTemplateModel.OptionEntry> entries, boolean groupActive, boolean compact) {
+        if (compact) {
+            renderCompactOptionEntries(entries, groupActive);
+            return;
+        }
         int previousOverride = gridColumnsOverride;
-        gridColumnsOverride = compact ? compactGridColumns(entries) : 0;
+        gridColumnsOverride = 0;
         try {
             for (SettingsTemplateModel.OptionEntry entry : safeList(entries)) {
                 if (entry == null || !safeBoolean(entry.visible(), true)) {
@@ -132,10 +149,34 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         }
     }
 
+    private void renderCompactOptionEntries(List<SettingsTemplateModel.OptionEntry> entries, boolean groupActive) {
+        finishGridRow();
+        List<SettingsTemplateModel.OptionEntry> visibleEntries = safeList(entries).stream()
+                .filter(entry -> entry != null && safeBoolean(entry.visible(), true))
+                .toList();
+        if (visibleEntries.isEmpty()) {
+            return;
+        }
+        int buttonX = contentX();
+        SettingsLayoutItem item = layout.row();
+        int visibleCount = visibleEntries.size();
+        int buttonWidth = Math.max(1, (contentWidth() - SettingsLayoutMetrics.GAP * Math.max(0, visibleCount - 1)) / visibleCount);
+        for (SettingsTemplateModel.OptionEntry entry : visibleEntries) {
+            boolean active = groupActive && safeBoolean(entry.enabled(), true);
+            switch (entry) {
+                case SettingsTemplateModel.SelectEntry<?> select -> renderCompactSelect(select, active, item, buttonX, buttonWidth);
+                case SettingsTemplateModel.TextEntry text -> renderCompactTextEntry(text, active, item, buttonX, buttonWidth);
+                case SettingsTemplateModel.SliderEntry slider -> renderCompactSlider(slider, active, item, buttonX, buttonWidth);
+            }
+            buttonX += buttonWidth + SettingsLayoutMetrics.GAP;
+        }
+        layout.gap();
+    }
+
     private <T> void renderSelect(SettingsTemplateModel.SelectEntry<T> select, boolean active) {
-        SettingsLayoutItem item = nextGridItem();
         List<T> values = safeList(select.values());
         if (values.isEmpty()) {
+            SettingsLayoutItem item = nextGridItem();
             addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xA0A0A0 : 0x606060), item, false);
             return;
         }
@@ -145,23 +186,59 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         }
         final T currentValue = selected;
         Component selectedLabel = safeLabel(select.labeler(), currentValue);
-        Component buttonLabel = Component.translatable("tianshu.gui.settings.option.selected", safeComponent(select.label(), Component.empty()), selectedLabel);
-        Button button = Button.builder(buttonLabel, clicked -> openSelectionOverlay(select, currentValue))
-                .pos(itemX(item), item.screenY())
-                .size(itemWidth(item), SettingsLayoutMetrics.CONTROL_HEIGHT)
+        renderControlRow(safeComponent(select.label(), Component.empty()), active, SELECT_CONTROL, item -> {
+            Component buttonLabel = selectedLabel;
+            Button button = Button.builder(buttonLabel, clicked -> {
+                        if (values.size() == 2) {
+                            T nextValue = values.get(Objects.equals(values.get(0), currentValue) ? 1 : 0);
+                            select.setter().accept(nextValue);
+                            if (screen != null) {
+                                screen.requestRebuildCurrentPage();
+                            }
+                        } else {
+                            openSelectionPanel(select, currentValue);
+                        }
+                    })
+                    .pos(item.controlX(), item.screenY())
+                    .size(item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT)
+                    .build();
+            addIfVisible(button, item.row(), active);
+        });
+    }
+
+    private <T> void renderCompactSelect(SettingsTemplateModel.SelectEntry<T> select, boolean active, SettingsLayoutItem item, int buttonX, int buttonWidth) {
+        List<T> values = safeList(select.values());
+        if (values.isEmpty()) {
+            addIfVisible(new SettingsTextWidget(buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xA0A0A0 : 0x606060), item, false);
+            return;
+        }
+        T selected = safeGet(select.getter(), values.get(0));
+        if (!values.contains(selected)) {
+            selected = values.get(0);
+        }
+        final T currentValue = selected;
+        Component selectedLabel = safeLabel(select.labeler(), currentValue);
+        Button button = Button.builder(Component.translatable("tianshu.gui.settings.option.selected", safeComponent(select.label(), Component.empty()), selectedLabel), clicked -> {
+                    if (values.size() == 2) {
+                        T nextValue = values.get(Objects.equals(values.get(0), currentValue) ? 1 : 0);
+                        select.setter().accept(nextValue);
+                        if (screen != null) {
+                            screen.requestRebuildCurrentPage();
+                        }
+                    } else {
+                        openSelectionPanel(select, currentValue);
+                    }
+                })
+                .pos(buttonX, item.screenY())
+                .size(buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT)
                 .build();
         addIfVisible(button, item, active);
     }
 
-    private <T> void openSelectionOverlay(SettingsTemplateModel.SelectEntry<T> select, T current) {
-        Minecraft minecraft = Minecraft.getInstance();
-        Screen currentScreen = minecraft.screen;
-        minecraft.setScreen(new SettingsSelectionOverlay<>(currentScreen, safeComponent(select.label(), Component.empty()), safeList(select.values()), current, select.labeler(), value -> {
-            select.setter().accept(value);
-            if (currentScreen instanceof TianshuSettingsScreen settingsScreen) {
-                settingsScreen.rebuildCurrentPage();
-            }
-        }));
+    private <T> void openSelectionPanel(SettingsTemplateModel.SelectEntry<T> select, T current) {
+        if (screen != null) {
+            screen.openSelectionPanel(safeComponent(select.label(), Component.empty()), safeList(select.values()), current, select.labeler(), select.setter());
+        }
     }
 
     private void renderTextEntry(SettingsTemplateModel.TextEntry text, boolean active) {
@@ -177,10 +254,23 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         layout.gap();
     }
 
+    private void renderCompactTextEntry(SettingsTemplateModel.TextEntry text, boolean active, SettingsLayoutItem item, int buttonX, int buttonWidth) {
+        Component labelComponent = safeComponent(text.label(), Component.empty());
+        EditBox box = new EditBox(font, buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT, labelComponent);
+        box.setValue(safeGet(text.getter(), ""));
+        box.setResponder(value -> text.setter().accept(value));
+        addIfVisible(box, item, active);
+    }
+
     private void renderSlider(SettingsTemplateModel.SliderEntry slider, boolean active) {
-        SettingsLayoutItem item = nextGridItem();
         double value = safeGet(slider.getter(), slider.min());
-        addIfVisible(new SettingsSlider(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.CONTROL_HEIGHT, safeComponent(slider.label(), Component.empty()), value, slider.min(), slider.max(), slider.setter()), item, active);
+        renderControlRow(safeComponent(slider.label(), Component.empty()), active, SLIDER_CONTROL, item ->
+                addIfVisible(new SettingsSlider(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), value, slider.min(), slider.max(), slider.setter(), false), item.row(), active));
+    }
+
+    private void renderCompactSlider(SettingsTemplateModel.SliderEntry slider, boolean active, SettingsLayoutItem item, int buttonX, int buttonWidth) {
+        double value = safeGet(slider.getter(), slider.min());
+        addIfVisible(new SettingsSlider(buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT, safeComponent(slider.label(), Component.empty()), value, slider.min(), slider.max(), slider.setter()), item, active);
     }
 
     private void renderStatusGroup(SettingsTemplateModel.StatusGroup group) {
@@ -234,20 +324,66 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         boolean groupActive = safeBoolean(group.enabled(), true);
         renderSection(groupActive, () -> {
             renderGroupTitle(group.title(), groupActive);
-            renderListItems(group, groupActive);
+            renderListItems(group, groupActive, false);
         });
     }
 
     private <T> void renderCatalogGroup(SettingsTemplateModel.CatalogGroup<T> group) {
+        if (group.scrollable()) {
+            renderScrollableCatalogGroup(group);
+            return;
+        }
         boolean groupActive = safeBoolean(group.enabled(), true);
         renderSection(groupActive, () -> {
             renderGroupTitle(group.title(), groupActive);
             renderOptionEntries(group.controls(), groupActive, true);
-            renderListItems(group.list(), groupActive);
+            renderListItems(group.list(), groupActive, false);
         });
     }
 
-    private <T> void renderListItems(SettingsTemplateModel.ListGroup<T> group, boolean groupActive) {
+    private <T> void renderScrollableCatalogGroup(SettingsTemplateModel.CatalogGroup<T> group) {
+        boolean groupActive = safeBoolean(group.enabled(), true);
+        renderSection(groupActive, () -> {
+            renderGroupTitle(group.title(), groupActive);
+            renderOptionEntries(group.controls(), groupActive, true);
+            finishGridRow();
+            SettingsLayoutItem listSlot = layout.nextIntersecting(scrollableCatalogHeight());
+            if (!listSlot.visible()) {
+                return;
+            }
+            RendererState outerState = saveState();
+            List<SettingsDecoration> outerDecorations = new ArrayList<>(decorations);
+            decorations.clear();
+            int listX = contentX();
+            int listWidth = contentWidth();
+            int scrollOffset = screen == null ? 0 : screen.scrollOffsetFor(group.id());
+            SettingsViewport listViewport = new SettingsViewport(listSlot.screenY(), listSlot.screenY() + listSlot.height(), scrollOffset);
+            this.layout = new SettingsLayout(listSlot.screenY(), listViewport);
+            this.viewport = listViewport;
+            this.x = listX;
+            this.width = listWidth;
+            this.gridColumn = 0;
+            List<AbstractWidget> previousRegionWidgets = activeScrollRegionWidgets;
+            activeScrollRegionWidgets = new ArrayList<>();
+            try {
+                renderListItems(group.list(), groupActive, true);
+                int contentHeight = layout.contentHeight();
+                List<SettingsDecoration> regionDecorations = List.copyOf(decorations);
+                List<AbstractWidget> regionWidgets = List.copyOf(activeScrollRegionWidgets);
+                decorations.clear();
+                decorations.addAll(outerDecorations);
+                restoreState(outerState);
+                scrollRegions.add(new SettingsScrollRegion(group.id(), listX, listSlot.screenY(), listWidth, listSlot.height(), contentHeight, listSlot.height(), regionDecorations, regionWidgets));
+                if (screen != null) {
+                    screen.registerScrollRegion(group.id(), contentHeight, listSlot.height());
+                }
+            } finally {
+                activeScrollRegionWidgets = previousRegionWidgets;
+            }
+        });
+    }
+
+    private <T> void renderListItems(SettingsTemplateModel.ListGroup<T> group, boolean groupActive, boolean allowPartialVisibility) {
         List<T> items = safeList(safeGet(group.items(), List.of()));
         if (items.isEmpty()) {
             SettingsLayoutItem item = layout.row();
@@ -267,13 +403,13 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             if (group.carder() != null) {
                 SettingsListCard card = safeApply(group.carder(), value, SettingsListCard.text(Component.empty()));
                 int cardHeight = SettingsListCardWidget.heightFor(font, card, bodyWidth);
-                item = layout.next(cardHeight);
+                item = allowPartialVisibility ? layout.nextIntersecting(cardHeight) : layout.next(cardHeight);
                 listWidget = new SettingsListCardWidget(rowX, item.screenY(), bodyWidth, cardHeight, card, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value)));
             } else {
                 Component valueLabel = safeLabel(group.labeler(), value);
                 Component label = active ? Component.translatable("tianshu.gui.settings.list.selected", valueLabel) : valueLabel;
                 int itemHeight = Math.max(SettingsLayoutMetrics.CONTROL_HEIGHT, SettingsListItemWidget.heightFor(font, label, bodyWidth));
-                item = layout.next(itemHeight);
+                item = allowPartialVisibility ? layout.nextIntersecting(itemHeight) : layout.next(itemHeight);
                 listWidget = new SettingsListItemWidget(rowX, item.screenY(), bodyWidth, itemHeight, label, groupActive ? 0xD0D0D0 : 0x606060, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value)));
             }
             addIfVisible(listWidget, item, groupActive);
@@ -333,6 +469,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             double weight = weights.get(i) == null || weights.get(i) <= 0.0D ? 1.0D : weights.get(i);
             int columnWidth = i == count - 1 ? remainingWidth : Math.max(1, (int) Math.round(remainingWidth * (weight / remainingWeight)));
             restoreForColumn(state, columnX, columnWidth, startY);
+            columnBottomTargetY = maxEndY > startY ? Math.max(startY, maxEndY - SettingsLayoutMetrics.GROUP_GAP) : -1;
             for (SettingsTemplateModel template : safeList(columnTemplates.get(i))) {
                 if (template != null) {
                     renderTemplate(template);
@@ -344,8 +481,26 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             remainingWeight = Math.max(1.0D, remainingWeight - weight);
         }
         restoreState(state);
+        columnBottomTargetY = -1;
         layout.advanceTo(maxEndY);
         layout.groupGap();
+    }
+
+    private void renderControlRow(Component label, boolean active, ControlSizing sizing, java.util.function.Consumer<ControlRowItem> controlRenderer) {
+        finishGridRow();
+        int rowWidth = contentWidth();
+        int availableControlWidth = Math.max(1, rowWidth - ROW_LABEL_MIN_WIDTH - SettingsLayoutMetrics.GAP);
+        int controlWidth = sizing.resolve(availableControlWidth);
+        int rowLabelWidth = Math.max(1, rowWidth - controlWidth - SettingsLayoutMetrics.GAP);
+        int controlX = contentX() + rowWidth - controlWidth;
+        int rowHeight = SettingsLayoutMetrics.CONTROL_HEIGHT;
+        if (font.width(label) > rowLabelWidth) {
+            rowHeight = Math.max(rowHeight, SettingsLayoutMetrics.ROW_HEIGHT);
+        }
+        SettingsLayoutItem row = layout.next(rowHeight);
+        addIfVisible(new SettingsTextWidget(contentX(), row.screenY() + Math.max(0, (row.height() - SettingsLayoutMetrics.LABEL_HEIGHT) / 2), rowLabelWidth, SettingsLayoutMetrics.LABEL_HEIGHT, label, active ? 0xA0A0A0 : 0x606060), row, active);
+        controlRenderer.accept(new ControlRowItem(row, row.screenY(), controlX, controlWidth));
+        layout.gap();
     }
 
     private void renderGroupTitle(Component title, boolean active) {
@@ -436,8 +591,34 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         return Math.max(1, item.width());
     }
 
+    private CycleButton.Builder<Boolean> booleanToggleBuilder(boolean selected) {
+        return CycleButton.booleanBuilder(
+                        Component.translatable("tianshu.gui.common.on"),
+                        Component.translatable("tianshu.gui.common.off"))
+                .withInitialValue(selected)
+                .displayOnlyValue();
+    }
+
+    private record ControlRowItem(SettingsLayoutItem row, int screenY, int controlX, int controlWidth) {}
+
+    private record ControlSizing(int minWidth, int preferredWidth, int maxWidth) {
+        private int resolve(int availableWidth) {
+            int boundedPreferred = Math.max(minWidth, Math.min(preferredWidth, maxWidth));
+            int boundedAvailable = Math.max(1, Math.min(availableWidth, maxWidth));
+            return Math.max(Math.min(minWidth, maxWidth), Math.min(boundedPreferred, boundedAvailable));
+        }
+    }
+
+    private int scrollableCatalogHeight() {
+        int viewportBottomContentY = viewport.bottomContentY() - SettingsLayoutMetrics.SECTION_PADDING;
+        int columnBottomContentY = columnBottomTargetY > layout.cursorY() ? columnBottomTargetY : viewportBottomContentY;
+        int targetBottom = Math.min(columnBottomContentY, viewportBottomContentY);
+        int reservedBottomPadding = columnBottomTargetY > layout.cursorY() ? SettingsLayoutMetrics.SECTION_PADDING : 0;
+        return Math.max(1, targetBottom - layout.cursorY() - reservedBottomPadding);
+    }
+
     private RendererState saveState() {
-        return new RendererState(layout, x, width, gridColumn);
+        return new RendererState(layout, viewport, x, width, gridColumn, columnBottomTargetY);
     }
 
     private void restoreForColumn(RendererState state, int columnX, int columnWidth, int startY) {
@@ -449,12 +630,14 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
 
     private void restoreState(RendererState state) {
         this.layout = state.layout();
+        this.viewport = state.viewport();
         this.x = state.x();
         this.width = state.width();
         this.gridColumn = state.gridColumn();
+        this.columnBottomTargetY = state.columnBottomTargetY();
     }
 
-    private record RendererState(SettingsLayout layout, int x, int width, int gridColumn) {}
+    private record RendererState(SettingsLayout layout, SettingsViewport viewport, int x, int width, int gridColumn, int columnBottomTargetY) {}
 
     private Component styledButtonLabel(SettingsTemplateModel.ActionEntry entry) {
         Component label = safeComponent(entry.label(), Component.empty());
@@ -507,7 +690,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             }
         } finally {
             if (screen != null) {
-                screen.rebuildCurrentPage();
+                screen.requestRebuildCurrentPage();
             }
         }
     }
@@ -563,7 +746,11 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private void addIfVisible(AbstractWidget widget, SettingsLayoutItem item, boolean active) {
         if (item.visible()) {
             widget.active = active;
-            screen.addSettingsWidget(widget);
+            if (activeScrollRegionWidgets != null) {
+                activeScrollRegionWidgets.add(widget);
+            } else {
+                screen.addSettingsWidget(widget);
+            }
         }
     }
 }

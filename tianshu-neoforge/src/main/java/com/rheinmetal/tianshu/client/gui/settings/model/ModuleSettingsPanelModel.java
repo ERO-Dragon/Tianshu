@@ -161,7 +161,7 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         if (list != null) {
             list.accept(listGroup);
         }
-        templates.add(new SettingsTemplateModel.CatalogGroup<>(id, title, controlGroup.entries(), listGroup.toModel(ALWAYS_ENABLED, ALWAYS_VISIBLE), enabled, visible));
+        templates.add(new SettingsTemplateModel.CatalogGroup<>(id, title, controlGroup.entries(), listGroup.toModel(ALWAYS_ENABLED, ALWAYS_VISIBLE), enabled, visible, true));
         return this;
     }
 

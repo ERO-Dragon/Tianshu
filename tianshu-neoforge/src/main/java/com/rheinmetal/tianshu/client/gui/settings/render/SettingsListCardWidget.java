@@ -14,7 +14,7 @@ import java.util.List;
 
 final class SettingsListCardWidget extends AbstractWidget {
     private static final int PADDING_X = 7;
-    private static final int PADDING_Y = 5;
+    private static final int PADDING_Y = 7;
     private static final int LINE_HEIGHT = 9;
     private static final int TITLE_COLOR = 0xFFFFFF;
     private static final int STATUS_COLOR = 0xFFE0A8;
@@ -39,9 +39,9 @@ final class SettingsListCardWidget extends AbstractWidget {
     static int heightFor(Font font, SettingsListCard card, int width) {
         SettingsListCard safeCard = card == null ? SettingsListCard.text(Component.empty()) : card;
         int titleLines = Math.max(1, font.split(safeCard.title(), Math.max(1, width - PADDING_X * 2)).size());
-        int detailLines = Math.min(3, wrapDetails(font, safeCard, width).size());
+        int detailLines = Math.min(4, wrapDetails(font, safeCard, width).size());
         int badgeRows = safeCard.badges().isEmpty() ? 0 : 1;
-        return PADDING_Y * 2 + Math.min(2, titleLines) * LINE_HEIGHT + detailLines * LINE_HEIGHT + badgeRows * (LINE_HEIGHT + 2) + 3;
+        return PADDING_Y * 2 + Math.min(2, titleLines) * LINE_HEIGHT + detailLines * LINE_HEIGHT + badgeRows * (LINE_HEIGHT + 4) + 5;
     }
 
     private static List<FormattedCharSequence> wrapDetails(Font font, SettingsListCard card, int width) {
@@ -77,7 +77,7 @@ final class SettingsListCardWidget extends AbstractWidget {
             int statusX = Math.max(textX, contentRight - font.width(card.status()));
             guiGraphics.drawString(font, card.status(), statusX, getY() + PADDING_Y, STATUS_COLOR, false);
         }
-        int maxDetailLines = Math.max(0, Math.min(3, (bottom - textY - PADDING_Y - badgeHeight()) / LINE_HEIGHT));
+        int maxDetailLines = Math.max(0, Math.min(4, (bottom - textY - PADDING_Y - badgeHeight()) / LINE_HEIGHT));
         for (int i = 0; i < Math.min(maxDetailLines, detailLines.size()); i++) {
             guiGraphics.drawString(font, detailLines.get(i), textX, textY, DETAIL_COLOR, false);
             textY += LINE_HEIGHT;
@@ -106,10 +106,8 @@ final class SettingsListCardWidget extends AbstractWidget {
             if (badgeX + width > right) {
                 break;
             }
-            guiGraphics.fill(badgeX, y - 1, badgeX + width, y + LINE_HEIGHT, 0x22000000);
-            guiGraphics.fill(badgeX, y - 1, badgeX + width, y, 0x22FFFFFF);
-            guiGraphics.drawString(font, badge, badgeX + 5, y, BADGE_COLOR, false);
-            badgeX += width + 4;
+            guiGraphics.drawString(font, badge, badgeX, y, BADGE_COLOR, false);
+            badgeX += width + 8;
         }
     }
 

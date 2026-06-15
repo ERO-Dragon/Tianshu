@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 public class AsrModelManager {
@@ -56,11 +57,24 @@ public class AsrModelManager {
     }
 
     public static AsrModelInfo getModelByLocalKey(String localKey) {
-        if (localKey == null || localKey.isBlank()) return null;
+        String normalizedKey = normalizeLocalKey(localKey);
+        if (normalizedKey.isBlank()) return null;
         for (AsrModelInfo info : loadCatalog()) {
-            if (localKey.equals(info.localKey())) return info;
+            if (localKeysEqual(normalizedKey, info.localKey())) return info;
         }
         return null;
+    }
+
+    public static String normalizeLocalKey(String localKey) {
+        return localKey == null ? "" : localKey.trim();
+    }
+
+    public static boolean localKeysEqual(String left, String right) {
+        String normalizedLeft = normalizeLocalKey(left);
+        String normalizedRight = normalizeLocalKey(right);
+        return !normalizedLeft.isBlank()
+                && !normalizedRight.isBlank()
+                && normalizedLeft.toLowerCase(Locale.ROOT).equals(normalizedRight.toLowerCase(Locale.ROOT));
     }
 
     public static AsrModelInfo getModelByRemoteRepoId(String repoId) {

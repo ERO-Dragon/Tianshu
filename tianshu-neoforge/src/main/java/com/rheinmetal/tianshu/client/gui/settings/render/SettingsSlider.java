@@ -10,21 +10,30 @@ final class SettingsSlider extends AbstractSliderButton {
     private final double min;
     private final double max;
     private final Consumer<Double> onChange;
+    private final boolean showLabel;
     private double actualValue;
 
     SettingsSlider(int x, int y, int width, int height, Component label, double value, double min, double max, Consumer<Double> onChange) {
+        this(x, y, width, height, label, value, min, max, onChange, true);
+    }
+
+    SettingsSlider(int x, int y, int width, int height, Component label, double value, double min, double max, Consumer<Double> onChange, boolean showLabel) {
         super(x, y, width, height, Component.empty(), normalize(value, min, max));
-        this.label = label;
+        this.label = label == null ? Component.empty() : label;
         this.min = min;
         this.max = max;
         this.onChange = onChange;
+        this.showLabel = showLabel;
         this.actualValue = clamp(value, min, max);
         updateMessage();
     }
 
     @Override
     protected void updateMessage() {
-        setMessage(Component.literal(label.getString() + ": " + String.format("%.2f", actualValue)));
+        String valueLabel = String.format("%.2f", actualValue);
+        setMessage(showLabel && !label.getString().isBlank()
+                ? Component.literal(label.getString() + ": " + valueLabel)
+                : Component.literal(valueLabel));
     }
 
     @Override

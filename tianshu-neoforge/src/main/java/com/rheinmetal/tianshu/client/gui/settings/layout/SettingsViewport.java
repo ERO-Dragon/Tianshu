@@ -18,6 +18,10 @@ public record SettingsViewport(int top, int bottom, int scrollOffset) {
     public int height() {
         return Math.max(0, bottom - top);
     }
+
+    public int bottomContentY() {
+        return bottom + scrollOffset;
+    }
 }
 
 

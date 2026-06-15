@@ -23,9 +23,6 @@ import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsSnapshot;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
@@ -33,11 +30,9 @@ import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -92,26 +87,14 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
                         .toggle("asr.vad", asr("option.vad"), draft.vadEnabled, draft.enabled::get))
+                .actions("asr.preview", asr("section.preview"), actions -> actions
+                        .button("asr.preview.start", asr("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
+                        .button("asr.preview.stop", asr("action.preview_stop"), draft::stopPreview, draft::previewRunning))
                 .status("asr.status", asr("section.status"), status -> status
                         .row("asr.status.model", asr("row.model"), draft::selectedModelStatus)
                         .row("asr.status.download", asr("row.download_status"), draft::downloadStatus)
                         .row("asr.status.preview.state", asr("row.preview_state"), draft::previewStateStatus)
-                        .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus))
-                .enable("asr.hotwords.expand", asr("hotwords.expand"), draft.hotwordsExpanded::get, draft.hotwordsExpanded::set)
-                .status("asr.hotwords.asr", asr("section.hotwords"), () -> true, draft.hotwordsExpanded::get, status -> status
-                        .row("asr.hotwords.modname", asr("row.mod_name"), () -> asr("hotwords.tianshu"))
-                        .row("asr.hotwords.count", asr("row.hotword_count"), draft::hotwordCountStatus))
-                .status("asr.hotwords.summary", asr("section.hotword_summary"), () -> true, draft.hotwordsExpanded::get, status -> status
-                        .row("asr.hotwords.count", asr("row.hotword_count"), draft::hotwordCountStatus)
-                        .row("asr.hotwords.duplicates", asr("row.hotword_duplicates"), draft::duplicateHotwordStatus)
-                        .row("asr.hotwords.contains", asr("row.hotword_contains"), draft::containedHotwordStatus))
-                .<HotwordDiagnostic>list("asr.hotwords.words", asr("section.hotword_words"), () -> true, draft.hotwordsExpanded::get, list -> list
-                        .items(draft::hotwordDiagnostics)
-                        .label(HotwordDiagnostic::label)
-                        .emptyText(asr("hotwords.empty")))
-                .actions("asr.preview", asr("section.preview"), actions -> actions
-                        .button("asr.preview.start", asr("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
-                        .button("asr.preview.stop", asr("action.preview_stop"), draft::stopPreview, draft::previewRunning));
+                        .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus));
     }
 
     private void buildLocalModelResourceColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
@@ -137,19 +120,14 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<Boolean> highPassFilterEnabled;
         private final MutableSettingsValue<Boolean> vadEnabled;
-        private final MutableSettingsValue<Boolean> hotwordsExpanded;
         private final MutableSettingsValue<String> githubProxyUrl;
         private final MutableSettingsValue<String> languageFilter;
-        private final MutableSettingsValue<String> performanceFilter;
-        private final MutableSettingsValue<String> qualityFilter;
-        private final MutableSettingsValue<String> recommendedFilter;
-        private final MutableSettingsValue<SortMode> sortMode;
+        private final MutableSettingsValue<SortDirection> performanceDirection;
+        private final MutableSettingsValue<SortDirection> qualityDirection;
+        private final MutableSettingsValue<SortDirection> recommendationDirection;
         private final List<AsrModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
-        private final AtomicBoolean downloading = new AtomicBoolean(false);
-        private volatile AsrModelInfo activeDownloadModel;
-        private volatile Component downloadLabel = asr("status.idle");
-        private volatile int downloadProgress = 0;
+        private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
         private volatile Component previewStateText = asr("status.idle");
         private volatile Component previewResultText = common("dash");
 
@@ -165,14 +143,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.highPassFilterEnabled = new MutableSettingsValue<>(config::isAsrHighPassFilterEnabled, config::setAsrHighPassFilterEnabled);
             this.vadEnabled = new MutableSettingsValue<>(config::isAsrVadEnabled, config::setAsrVadEnabled);
-            this.hotwordsExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
             this.githubProxyUrl = new MutableSettingsValue<>(config::getAsrGithubProxyUrl, config::setAsrGithubProxyUrl, Objects::nonNull);
             this.languageFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
-            this.performanceFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
-            this.qualityFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
-            this.recommendedFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
-            this.sortMode = new MutableSettingsValue<>(() -> SortMode.RECOMMENDED, ignored -> {}, Objects::nonNull);
-            restoreDownloadState();
+            this.performanceDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
+            this.qualityDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
+            this.recommendationDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
         }
 
         private void buildMainOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -187,18 +162,17 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
             options.select("asr.download.lang", asr("option.language"), filterValues(this::languageTags), languageFilter, this::filterOptionLabel)
-                    .select("asr.download.performance", asr("option.performance"), scoreFilterValues(AsrModelInfo::getPerformanceScore), performanceFilter, this::scoreFilterLabel)
-                    .select("asr.download.quality", asr("option.quality"), scoreFilterValues(AsrModelInfo::getRecognitionQualityScore), qualityFilter, this::scoreFilterLabel)
-                    .select("asr.download.recommended", asr("option.recommended"), scoreFilterValues(AsrModelInfo::getRecommendationScore), recommendedFilter, this::scoreFilterLabel)
-                    .select("asr.download.sort", asr("option.sort"), List.of(SortMode.values()), sortMode, SortMode::label);
+                    .select("asr.download.performance", asr("option.performance"), List.of(SortDirection.values()), performanceDirection, SortDirection::label)
+                    .select("asr.download.quality", asr("option.quality"), List.of(SortDirection.values()), qualityDirection, SortDirection::label)
+                    .select("asr.download.recommended", asr("option.recommended"), List.of(SortDirection.values()), recommendationDirection, SortDirection::label);
         }
 
         private void buildDownloadItemActions(ModuleSettingsContext context, AsrModelInfo info, com.rheinmetal.tianshu.client.gui.settings.api.ItemActionTemplate<AsrModelInfo> actions) {
-            actions.button("asr.download.item.start", asr("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> model != null && !downloading.get() && !isDownloaded(model))
-                    .button("asr.download.item.pause", asr("action.pause"), model -> pauseDownload(), model -> isActiveDownload(model) && !asrModelService().isDownloadPaused())
-                    .button("asr.download.item.resume", asr("action.resume"), model -> resumeDownload(), model -> isActiveDownload(model) && asrModelService().isDownloadPaused())
-                    .button("asr.download.item.cancel", asr("action.cancel"), SettingsButtonStyle.DANGER, model -> cancelDownload(), this::isActiveDownload)
-                    .button("asr.download.item.delete", asr("action.delete"), SettingsButtonStyle.DANGER, model -> deleteModel(context, model), model -> model != null && !downloading.get() && isDownloaded(model));
+            actions.button("asr.download.item.start", asr("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> cardState(model).canStartDownload())
+                    .button("asr.download.item.pause", asr("action.pause"), this::pauseDownload, model -> cardState(model).canPauseDownload())
+                    .button("asr.download.item.resume", asr("action.resume"), this::resumeDownload, model -> cardState(model).canResumeDownload())
+                    .button("asr.download.item.cancel", asr("action.cancel"), SettingsButtonStyle.DANGER, this::cancelDownload, model -> cardState(model).canCancelDownload())
+                    .button("asr.download.item.delete", asr("action.delete"), SettingsButtonStyle.DANGER, model -> deleteModel(context, model), model -> cardState(model).canDeleteModel());
         }
 
         @Override
@@ -342,10 +316,16 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private Component downloadStatus() {
-            if (downloading.get()) {
-                return asr("download.progress", downloadLabel, downloadProgress);
+            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
+            if (status != null && status.downloading()) {
+                Component label = status.cancelling()
+                        ? asr("status.cancelling")
+                        : status.paused()
+                        ? asr("status.paused")
+                        : status.label() == null || status.label().isBlank() ? asr("status.downloading") : Component.literal(status.label());
+                return asr("download.progress", label, Math.max(0, Math.min(100, status.progress())));
             }
-            return downloadLabel;
+            return asr("status.idle");
         }
 
         private Component previewStateStatus() {
@@ -354,64 +334,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private Component previewResultStatus() {
             return previewResultText;
-        }
-
-        private Component hotwordCountStatus() {
-            List<HotwordDiagnostic> diagnostics = hotwordDiagnostics();
-            long warningCount = diagnostics.stream().filter(HotwordDiagnostic::warning).count();
-            return warningCount > 0 ? asr("hotwords.count_with_warnings", diagnostics.size(), warningCount) : asr("hotwords.count", diagnostics.size());
-        }
-
-        private Component duplicateHotwordStatus() {
-            long duplicateCount = hotwordDiagnostics().stream().filter(HotwordDiagnostic::duplicate).count();
-            return duplicateCount == 0 ? asr("hotwords.none_found") : asr("hotwords.duplicate_count", duplicateCount);
-        }
-
-        private Component containedHotwordStatus() {
-            long containedCount = hotwordDiagnostics().stream().filter(HotwordDiagnostic::contained).count();
-            return containedCount == 0 ? asr("hotwords.none_found") : asr("hotwords.contained_count", containedCount);
-        }
-
-        private List<HotwordDiagnostic> hotwordDiagnostics() {
-            VoiceTriggerRegistry registry = coreManager.protocolRuntime().voiceTriggers();
-            List<VoiceTriggerRegistration> registrations = registry.registrations();
-            List<HotwordEntry> entries = new ArrayList<>();
-            for (VoiceTriggerRegistration registration : registrations) {
-                addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.hotword", registration.wakeWords());
-                addRegisteredWords(entries, registration.moduleId(), "hotwords.kind.extra_word", registration.extraWords());
-            }
-            Map<String, Integer> counts = new LinkedHashMap<>();
-            for (HotwordEntry entry : entries) {
-                counts.merge(entry.normalized(), 1, Integer::sum);
-            }
-            List<HotwordDiagnostic> diagnostics = new ArrayList<>();
-            for (HotwordEntry entry : entries) {
-                boolean duplicate = counts.getOrDefault(entry.normalized(), 0) > 1;
-                boolean contained = entries.stream().anyMatch(other -> !other.normalized().equals(entry.normalized()) && other.normalized().contains(entry.normalized()));
-                diagnostics.add(new HotwordDiagnostic(entry.moduleId(), entry.kindKey(), entry.word(), duplicate, contained));
-            }
-            return diagnostics.stream()
-                    .sorted(Comparator.comparing(HotwordDiagnostic::warning).reversed()
-                            .thenComparing(HotwordDiagnostic::moduleId, String.CASE_INSENSITIVE_ORDER)
-                            .thenComparing(HotwordDiagnostic::word, String.CASE_INSENSITIVE_ORDER))
-                    .toList();
-        }
-
-        private void addRegisteredWords(List<HotwordEntry> entries, String moduleId, String kind, List<String> words) {
-            for (String word : words) {
-                addHotword(entries, moduleId, kind, word);
-            }
-        }
-
-        private void addHotword(List<HotwordEntry> entries, String moduleId, String kind, String word) {
-            String normalized = normalizeHotword(word);
-            if (!normalized.isBlank()) {
-                entries.add(new HotwordEntry(moduleId, kind, word.trim(), normalized));
-            }
-        }
-
-        private String normalizeHotword(String word) {
-            return word == null ? "" : word.trim().toLowerCase(Locale.ROOT).replace(" ", "");
         }
 
         private boolean canPreview() {
@@ -473,108 +395,84 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void startDownload(ModuleSettingsContext context, AsrModelInfo info) {
-            if (info == null || downloading.get()) {
+            if (info == null || downloadInProgress()) {
                 return;
             }
-            activeDownloadModel = info;
-            downloading.set(true);
-            downloadLabel = asr("status.download_preparing");
-            downloadProgress = 0;
-            asrModelService().downloadModel(info, githubProxyUrl.get(), new AsrModelService.DownloadProgressCallback() {
+            String modelKey = info.localKey();
+            asrModelService().downloadModel(modelKey, githubProxyUrl.get(), new AsrModelService.DownloadProgressCallback() {
                 @Override
                 public void onProgress(String label, int percent) {
-                    runOnClient(() -> {
-                        downloadLabel = label == null ? asr("status.downloading") : Component.literal(label);
-                        downloadProgress = percent;
-                        refreshSettingsScreen();
-                    });
+                    queueDownloadRefresh();
                 }
 
                 @Override
                 public void onComplete() {
                     runOnClient(() -> {
-                        downloading.set(false);
-                        activeDownloadModel = null;
-                        downloadLabel = asr("status.download_complete");
-                        downloadProgress = 100;
                         context.showStatus(asr("message.download_complete"), 3000);
-                        refreshSettingsScreen();
+                        queueDownloadRefresh();
                     });
                 }
 
                 @Override
                 public void onError(String message) {
                     runOnClient(() -> {
-                        downloading.set(false);
-                        activeDownloadModel = null;
-                        downloadLabel = message == null ? asr("status.download_failed") : Component.literal(message);
-                        context.showStatus(downloadLabel, 4000);
-                        refreshSettingsScreen();
+                        Component error = message == null ? asr("status.download_failed") : Component.literal(message);
+                        context.showStatus(error, 4000);
+                        queueDownloadRefresh();
+                    });
+                }
+
+                @Override
+                public void onCancelled() {
+                    runOnClient(() -> {
+                        context.showStatus(asr("status.idle"), 1500);
+                        queueDownloadRefresh();
                     });
                 }
             });
         }
 
-        private void restoreDownloadState() {
-            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
-            if (status == null) {
-                activeDownloadModel = null;
-                downloading.set(false);
+        private void pauseDownload(AsrModelInfo info) {
+            if (info == null) {
                 return;
             }
-            if (!status.downloading()) {
-                activeDownloadModel = null;
-                downloading.set(false);
-                if (status.label() != null && !status.label().isBlank()) {
-                    downloadLabel = Component.literal(status.label());
-                    downloadProgress = Math.max(0, Math.min(100, status.progress()));
-                }
+            String modelKey = info.localKey();
+            asrModelService().pauseDownload(modelKey);
+            queueDownloadRefresh();
+        }
+
+        private void resumeDownload(AsrModelInfo info) {
+            if (info == null) {
                 return;
             }
-            activeDownloadModel = resolveModel(status.activeModelKey());
-            downloading.set(true);
-            downloadLabel = status.paused()
-                    ? asr("status.paused")
-                    : status.label() == null || status.label().isBlank() ? asr("status.downloading") : Component.literal(status.label());
-            downloadProgress = Math.max(0, Math.min(100, status.progress()));
+            String modelKey = info.localKey();
+            asrModelService().resumeDownload(modelKey);
+            queueDownloadRefresh();
         }
 
-        private void pauseDownload() {
-            asrModelService().pauseDownload();
-            downloadLabel = asr("status.paused");
-        }
-
-        private void resumeDownload() {
-            asrModelService().resumeDownload();
-            downloadLabel = asr("status.downloading");
-        }
-
-        private void cancelDownload() {
-            asrModelService().cancelDownload();
-            downloading.set(false);
-            activeDownloadModel = null;
-            downloadLabel = asr("status.cancelling");
-            downloadProgress = 0;
-        }
-
-        private boolean isActiveDownload(AsrModelInfo info) {
-            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
-            if (status != null && status.downloading()) {
-                return info != null && sameModel(info, resolveModel(status.activeModelKey()));
+        private void cancelDownload(AsrModelInfo info) {
+            if (info == null) {
+                return;
             }
-            return info != null && downloading.get() && sameModel(info, activeDownloadModel);
+            String modelKey = info.localKey();
+            asrModelService().cancelDownload(modelKey);
+            queueDownloadRefresh();
+        }
+
+        private boolean downloadInProgress() {
+            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
+            return status != null && status.downloading();
         }
 
         private void deleteModel(ModuleSettingsContext context, AsrModelInfo info) {
-            if (info == null || downloading.get()) {
+            if (info == null || downloadInProgress()) {
                 return;
             }
             asrModelService().deleteModel(info);
             if (info.localKey().equalsIgnoreCase(selectedModelName.get())) {
                 selectedModelName.set("");
             }
-            downloadLabel = asr("message.deleted", info.getDisplayName());
-            context.showStatus(downloadLabel, 3000);
+            context.showStatus(asr("message.deleted", info.getDisplayName()), 3000);
             coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
         }
 
@@ -596,32 +494,19 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private Comparator<AsrModelInfo> modelComparator() {
-            SortMode mode = sortMode.get();
-            if (mode == SortMode.QUALITY) {
-                return Comparator.comparingInt(AsrModelInfo::getQualityScore).reversed()
-                        .thenComparing(Comparator.comparingInt(AsrModelInfo::getPerformanceScore).reversed())
-                        .thenComparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
-            }
-            if (mode == SortMode.PERFORMANCE) {
-                return Comparator.comparingInt(AsrModelInfo::getPerformanceScore).reversed()
-                        .thenComparing(Comparator.comparingInt(AsrModelInfo::getQualityScore).reversed())
-                        .thenComparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
-            }
-            if (mode == SortMode.NAME) {
-                return Comparator.comparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
-            }
-            return Comparator.comparingInt(AsrModelInfo::getValueScore).reversed()
-                    .thenComparing(Comparator.comparingInt(AsrModelInfo::getRecommendationScore).reversed())
-                    .thenComparing(Comparator.comparingInt(AsrModelInfo::getQualityScore).reversed())
-                    .thenComparing(Comparator.comparingInt(AsrModelInfo::getPerformanceScore).reversed())
+            return scoreComparator(AsrModelInfo::getRecommendationScore, recommendationDirection.get())
+                    .thenComparing(scoreComparator(AsrModelInfo::getRecognitionQualityScore, qualityDirection.get()))
+                    .thenComparing(scoreComparator(AsrModelInfo::getPerformanceScore, performanceDirection.get()))
                     .thenComparing(AsrModelInfo::getDisplayName, String.CASE_INSENSITIVE_ORDER);
         }
 
+        private Comparator<AsrModelInfo> scoreComparator(java.util.function.ToIntFunction<AsrModelInfo> mapper, SortDirection direction) {
+            Comparator<AsrModelInfo> comparator = Comparator.comparingInt(mapper);
+            return direction == SortDirection.ASC ? comparator : comparator.reversed();
+        }
+
         private boolean matchesFilters(AsrModelInfo info) {
-            return matches(languageFilter.get(), languageTags(info))
-                    && matchesScore(performanceFilter.get(), info.getPerformanceScore())
-                    && matchesScore(qualityFilter.get(), info.getRecognitionQualityScore())
-                    && matchesScore(recommendedFilter.get(), info.getRecommendationScore());
+            return matches(languageFilter.get(), languageTags(info));
         }
 
         private boolean matches(String filter, List<String> values) {
@@ -640,8 +525,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return SettingsListCard.text(Component.empty());
             }
-            Component title = Component.literal(info.getDisplayName());
-            Component status = isDownloaded(info) ? common("downloaded") : common("not_downloaded");
+            AsrModelCardState state = cardState(info);
+            Component title = Component.literal(modelTitle(info));
+            Component status = state.statusLabel();
             List<Component> details = List.of(
                     asr("download.card.lang", languageLabelReadable(info)),
                     asr("download.card.tags", tagLabel(info))
@@ -652,6 +538,16 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                     scoreBadge(info.getRecommendationScore(), asr("badge.recommendation"))
             );
             return new SettingsListCard(title, status, details, badges);
+        }
+
+        private String modelTitle(AsrModelInfo info) {
+            if (info == null) {
+                return "";
+            }
+            String title = info.getDisplayName();
+            title = title.replaceAll("(?i)\\s+int8\\b", "");
+            title = title.replaceAll("\\s{2,}", " ").trim();
+            return title.isBlank() ? info.getDisplayName() : title;
         }
 
         private Component languageLabelReadable(AsrModelInfo info) {
@@ -689,20 +585,21 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"));
         }
 
+        private AsrModelCardState cardState(AsrModelInfo info) {
+            AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
+            boolean downloading = status != null && status.downloading();
+            boolean activeDownload = downloading && info != null && sameModel(info, resolveModel(status.activeModelKey()));
+            boolean paused = activeDownload && status.paused();
+            boolean cancelling = activeDownload && status.cancelling();
+            boolean installed = info != null && isDownloaded(info);
+            return new AsrModelCardState(info, installed, downloading, activeDownload, paused, cancelling);
+        }
+
         private List<String> filterValues(java.util.function.Function<AsrModelInfo, List<String>> mapper) {
             Set<String> values = new LinkedHashSet<>();
             values.add(ALL);
             for (AsrModelInfo info : catalog) {
                 values.addAll(mapper.apply(info));
-            }
-            return List.copyOf(values);
-        }
-
-        private List<String> scoreFilterValues(java.util.function.ToIntFunction<AsrModelInfo> mapper) {
-            Set<String> values = new LinkedHashSet<>();
-            values.add(ALL);
-            for (AsrModelInfo info : catalog) {
-                values.add(String.valueOf(mapper.applyAsInt(info)));
             }
             return List.copyOf(values);
         }
@@ -718,24 +615,76 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return ALL.equals(value) ? common("all") : asrLangReadableName(value);
         }
 
-        private Component scoreFilterLabel(String value) {
-            return ALL.equals(value) ? common("all") : asr("score.at_least", value);
+        private Component tagLabel(AsrModelInfo info) {
+            List<String> tags = modelTags(info);
+            if (tags.isEmpty()) {
+                return Component.literal("-");
+            }
+            MutableComponent label = Component.empty();
+            boolean first = true;
+            for (String tag : tags) {
+                if (!first) {
+                    label.append(Component.literal(", "));
+                }
+                label.append(readableTagName(tag));
+                first = false;
+            }
+            return label;
         }
 
-        private boolean matchesScore(String filter, int score) {
-            if (filter == null || ALL.equals(filter)) {
-                return true;
+        private List<String> modelTags(AsrModelInfo info) {
+            if (info == null) {
+                return List.of();
             }
-            try {
-                return score >= Integer.parseInt(filter);
-            } catch (NumberFormatException e) {
-                return true;
+            LinkedHashSet<String> tags = new LinkedHashSet<>();
+            for (String tag : info.getTags()) {
+                String normalized = normalizeTag(tag);
+                if (!normalized.isBlank()) {
+                    tags.add(normalized);
+                }
             }
+            if (info.isStreamingModel() || containsToken(info.localKey(), "streaming") || containsToken(info.remoteRepoId(), "streaming")) {
+                tags.add("streaming");
+            }
+            if (containsToken(info.getDisplayName(), "int8") || containsToken(info.localKey(), "int8") || containsToken(info.remoteRepoId(), "int8") || info.getAllRequiredFiles().stream().anyMatch(file -> containsToken(file, "int8"))) {
+                tags.add("int8");
+            }
+            return List.copyOf(tags);
         }
 
-        private String tagLabel(AsrModelInfo info) {
-            List<String> tags = info == null ? List.of() : info.getTags();
-            return tags.isEmpty() ? "-" : String.join(", ", tags);
+        private String normalizeTag(String tag) {
+            return tag == null ? "" : tag.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        }
+
+        private boolean containsToken(String value, String token) {
+            return value != null && token != null && value.toLowerCase(Locale.ROOT).contains(token.toLowerCase(Locale.ROOT));
+        }
+
+        private Component readableTagName(String tag) {
+            String normalized = normalizeTag(tag);
+            if (normalized.isBlank()) {
+                return Component.literal("-");
+            }
+            String key = "tianshu.gui.asr.tag." + normalized;
+            if (I18n.exists(key)) {
+                return Component.translatable(key);
+            }
+            return Component.literal(prettyTag(normalized));
+        }
+
+        private String prettyTag(String tag) {
+            String[] parts = tag.split("_+");
+            StringBuilder builder = new StringBuilder();
+            for (String part : parts) {
+                if (part.isBlank()) {
+                    continue;
+                }
+                if (!builder.isEmpty()) {
+                    builder.append(' ');
+                }
+                builder.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+            }
+            return builder.isEmpty() ? tag : builder.toString();
         }
 
         private AsrModelService asrModelService() {
@@ -767,20 +716,28 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void refreshSettingsScreen() {
             if (Minecraft.getInstance().screen instanceof TianshuSettingsScreen settingsScreen) {
-                settingsScreen.rebuildCurrentPage();
+                settingsScreen.requestRebuildCurrentPage();
             }
+        }
+
+        private void queueDownloadRefresh() {
+            if (!downloadRefreshQueued.compareAndSet(false, true)) {
+                return;
+            }
+            runOnClient(() -> {
+                downloadRefreshQueued.set(false);
+                refreshSettingsScreen();
+            });
         }
     }
 
-    private enum SortMode {
-        RECOMMENDED("sort.recommended"),
-        QUALITY("sort.quality"),
-        PERFORMANCE("sort.performance"),
-        NAME("sort.name");
+    private enum SortDirection {
+        DESC("sort.desc"),
+        ASC("sort.asc");
 
         private final String key;
 
-        SortMode(String key) {
+        SortDirection(String key) {
             this.key = key;
         }
 
@@ -789,35 +746,36 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
     }
 
-    private record HotwordEntry(String moduleId, String kindKey, String word, String normalized) {
-        private HotwordEntry {
-            moduleId = moduleId == null || moduleId.isBlank() ? "unknown" : moduleId;
-            kindKey = kindKey == null || kindKey.isBlank() ? "hotwords.kind.hotword" : kindKey;
-            word = word == null ? "" : word.trim();
-            normalized = normalized == null ? "" : normalized;
+    private record AsrModelCardState(AsrModelInfo info, boolean installed, boolean anyDownloadActive, boolean activeDownload, boolean paused, boolean cancelling) {
+        private boolean canStartDownload() {
+            return info != null && !installed && !anyDownloadActive;
+        }
+
+        private boolean canPauseDownload() {
+            return activeDownload && !paused && !cancelling;
+        }
+
+        private boolean canResumeDownload() {
+            return activeDownload && paused && !cancelling;
+        }
+
+        private boolean canCancelDownload() {
+            return activeDownload && !cancelling;
+        }
+
+        private boolean canDeleteModel() {
+            return info != null && installed && !anyDownloadActive;
+        }
+
+        private Component statusLabel() {
+            if (activeDownload) {
+                if (cancelling) {
+                    return asr("status.cancelling");
+                }
+                return paused ? asr("status.paused") : asr("status.downloading");
+            }
+            return common(installed ? "downloaded" : "not_downloaded");
         }
     }
 
-    private record HotwordDiagnostic(String moduleId, String kindKey, String word, boolean duplicate, boolean contained) {
-        private boolean warning() {
-            return duplicate || contained;
-        }
-
-        private Component label() {
-            return asr("hotwords.diagnostic", marker(), moduleId, asr(kindKey), word);
-        }
-
-        private Component marker() {
-            if (duplicate && contained) {
-                return asr("hotwords.marker.duplicate_contained");
-            }
-            if (duplicate) {
-                return asr("hotwords.marker.duplicate");
-            }
-            if (contained) {
-                return asr("hotwords.marker.contained");
-            }
-            return asr("hotwords.marker.normal");
-        }
-    }
 }

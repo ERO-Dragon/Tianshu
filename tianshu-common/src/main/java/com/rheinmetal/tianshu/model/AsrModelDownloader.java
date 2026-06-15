@@ -35,6 +35,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class AsrModelDownloader {
@@ -45,8 +47,7 @@ public class AsrModelDownloader {
     private static final Gson GSON = new Gson();
 
     private final IGameEnvironment env;
-    private volatile boolean downloadPaused = false;
-    private volatile boolean downloadCancelled = false;
+    private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
 
     public interface DownloadProgressCallback {
         void onProgress(String label, int percent);
@@ -54,42 +55,44 @@ public class AsrModelDownloader {
         void onError(String message);
     }
 
+    @FunctionalInterface
+    public interface DownloadControl {
+        void awaitReady() throws IOException;
+    }
+
+    public static final class DownloadCancelledException extends IOException {
+        public DownloadCancelledException() {
+            super("Download was cancelled");
+        }
+    }
+
     public AsrModelDownloader(IGameEnvironment env) {
         this.env = env;
     }
 
-    public boolean isDownloadPaused() {
-        return downloadPaused;
-    }
-
-    public void pauseDownload() {
-        downloadPaused = true;
-    }
-
-    public void resumeDownload() {
-        downloadPaused = false;
-    }
-
-    public void cancelDownload() {
-        downloadCancelled = true;
-        downloadPaused = false;
-    }
-
     public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) {
         try {
-            downloadSync(info, targetDir, githubProxyUrl, callback);
+            downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
         } catch (Exception e) {
             callback.onError(e.getMessage() != null ? e.getMessage() : "ASR model download failed");
         }
     }
 
     public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
-        downloadCancelled = false;
-        downloadPaused = false;
-        doDownload(info, targetDir, githubProxyUrl, callback);
+        downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
     }
 
-    private void doDownload(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
+    public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+        doDownload(info, targetDir, githubProxyUrl, callback, control == null ? () -> {} : control);
+    }
+
+    public void cancelActiveTransfers() {
+        for (HttpURLConnection connection : activeConnections) {
+            connection.disconnect();
+        }
+    }
+
+    private void doDownload(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         Objects.requireNonNull(info, "info");
         Objects.requireNonNull(targetDir, "targetDir");
         List<String> requiredFiles = validateRequiredFiles(info);
@@ -98,10 +101,11 @@ public class AsrModelDownloader {
         Files.createDirectories(stagingDir);
         try {
             if (info.isHfDownload()) {
-                downloadFromHuggingFace(info, requiredFiles, stagingDir, callback);
+                downloadFromHuggingFace(info, requiredFiles, stagingDir, callback, control);
             } else {
-                downloadFromArchive(info, requiredFiles, stagingDir, targetDir, githubProxyUrl, callback);
+                downloadFromArchive(info, requiredFiles, stagingDir, targetDir, githubProxyUrl, callback, control);
             }
+            control.awaitReady();
             validateRequiredFiles(requiredFiles, stagingDir);
             deleteRecursivelyIfExists(targetDir);
             Files.move(stagingDir, targetDir, StandardCopyOption.REPLACE_EXISTING);
@@ -127,7 +131,7 @@ public class AsrModelDownloader {
         return files;
     }
 
-    private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback) throws Exception {
+    private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         callback.onProgress("Checking network", 2);
         String baseUrl = resolveHfBaseUrl();
         String repoId = info.remoteRepoId();
@@ -138,23 +142,25 @@ public class AsrModelDownloader {
 
         callback.onProgress("Resolving file list", 5);
         List<String> repoFiles = fetchFileTree(baseUrl, repoId, REVISION);
+        control.awaitReady();
         List<SourceTarget> downloads = resolveRequestedFiles(requiredFiles, repoFiles);
         env.info("ASR selected files: " + downloads.stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
 
         int total = downloads.size();
         for (int i = 0; i < total; i++) {
-            waitIfDownloadPaused();
+            control.awaitReady();
             SourceTarget item = downloads.get(i);
             Path localPath = stagingDir.resolve(item.targetPath()).normalize();
             ensureWithinTarget(localPath, stagingDir);
             String resolveUrl = buildResolveUrl(baseUrl, repoId, REVISION, item.sourcePath());
-            downloadSingleFile(resolveUrl, localPath, 3);
+            downloadSingleFile(resolveUrl, localPath, 3, control);
+            control.awaitReady();
             int percent = 5 + (int) (((i + 1) / (double) total) * 90);
             callback.onProgress("Downloading model files", percent);
         }
     }
 
-    private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
+    private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         callback.onProgress("Checking network", 2);
         boolean useProxy = shouldUseGithubProxy(githubProxyUrl);
         String finalUrl = buildGithubDownloadUrl(info.downloadUrl, githubProxyUrl, useProxy);
@@ -166,18 +172,21 @@ public class AsrModelDownloader {
         deleteRecursivelyIfExists(extractDir);
         try {
             callback.onProgress("Downloading archive", 5);
-            downloadSingleFileWithProgress(finalUrl, archivePath, 5, 60_000, (downloaded, total) -> {
+            downloadSingleFileWithProgress(finalUrl, archivePath, 5, 60_000, control, (downloaded, total) -> {
                 int percent = total > 0 ? Math.min(80, (int) (downloaded * 75 / total) + 5) : 40;
                 callback.onProgress("Downloading archive", percent);
             });
+            control.awaitReady();
 
             callback.onProgress("Extracting model", 82);
             Files.createDirectories(extractDir);
             extractArchive(archivePath, extractDir, info.downloadUrl);
+            control.awaitReady();
 
             callback.onProgress("Materializing model files", 92);
             List<String> archiveFiles = listRelativeFiles(extractDir);
             for (SourceTarget item : resolveRequestedFiles(requiredFiles, archiveFiles)) {
+                control.awaitReady();
                 Path source = extractDir.resolve(item.sourcePath()).normalize();
                 ensureWithinTarget(source, extractDir);
                 Path target = stagingDir.resolve(item.targetPath()).normalize();
@@ -325,7 +334,7 @@ public class AsrModelDownloader {
             }
             return result;
         } finally {
-            conn.disconnect();
+            closeConnection(conn);
         }
     }
 
@@ -360,13 +369,23 @@ public class AsrModelDownloader {
 
     private HttpURLConnection openConnection(String url) throws IOException {
         try {
-            return (HttpURLConnection) new URI(url).toURL().openConnection();
+            HttpURLConnection connection = (HttpURLConnection) new URI(url).toURL().openConnection();
+            activeConnections.add(connection);
+            return connection;
         } catch (URISyntaxException e) {
             throw new IOException("Invalid download URL: " + url, e);
         }
     }
 
-    private void downloadSingleFile(String url, Path target, int maxRetries) throws IOException {
+    private void closeConnection(HttpURLConnection connection) {
+        if (connection == null) {
+            return;
+        }
+        activeConnections.remove(connection);
+        connection.disconnect();
+    }
+
+    private void downloadSingleFile(String url, Path target, int maxRetries, DownloadControl control) throws IOException {
         Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
         Files.deleteIfExists(tmp);
@@ -386,22 +405,25 @@ public class AsrModelDownloader {
                     byte[] buf = new byte[8192];
                     int len;
                     while ((len = in.read(buf)) != -1) {
-                        if (downloadCancelled) throw new IOException("Download was cancelled");
-                        waitIfDownloadPaused();
+                        control.awaitReady();
                         out.write(buf, 0, len);
                     }
                 } finally {
-                    conn.disconnect();
+                    closeConnection(conn);
                 }
 
                 Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 env.info("Downloaded: " + target.getFileName());
                 return;
             } catch (IOException e) {
+                if (isDownloadCancelled(e)) {
+                    throw e;
+                }
                 lastException = e;
+                control.awaitReady();
                 env.warn("Download retry " + attempt + "/" + maxRetries + ": " + target.getFileName() + " - " + e.getMessage());
                 try {
-                    Thread.sleep(1000L * attempt);
+                    sleepWithControl(1000L * attempt, control);
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
                     throw new IOException("Download thread was interrupted", ignored);
@@ -411,10 +433,10 @@ public class AsrModelDownloader {
         throw new IOException("Download failed after " + maxRetries + " retries: " + url, lastException);
     }
 
-    private void downloadSingleFileWithProgress(String urlString, Path targetPath, int maxRetries, int timeoutMillis, ProgressListener listener) throws IOException {
+    private void downloadSingleFileWithProgress(String urlString, Path targetPath, int maxRetries, int timeoutMillis, DownloadControl control, ProgressListener listener) throws IOException {
         IOException last = null;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            waitIfDownloadPaused();
+            control.awaitReady();
             HttpURLConnection conn = null;
             Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".downloading");
             try {
@@ -432,8 +454,7 @@ public class AsrModelDownloader {
                     byte[] buffer = new byte[8192];
                     int read;
                     while ((read = in.read(buffer)) != -1) {
-                        if (downloadCancelled) throw new IOException("Download was cancelled");
-                        waitIfDownloadPaused();
+                        control.awaitReady();
                         out.write(buffer, 0, read);
                         downloaded += read;
                         listener.onProgress(downloaded, total);
@@ -442,11 +463,20 @@ public class AsrModelDownloader {
                 Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 return;
             } catch (IOException e) {
+                if (isDownloadCancelled(e)) {
+                    throw e;
+                }
                 last = e;
                 Files.deleteIfExists(tempPath);
-                if (downloadCancelled) throw e;
+                control.awaitReady();
+                try {
+                    sleepWithControl(1000L * attempt, control);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Download thread was interrupted", interrupted);
+                }
             } finally {
-                if (conn != null) conn.disconnect();
+                closeConnection(conn);
             }
         }
         throw last != null ? last : new IOException("Download failed");
@@ -534,19 +564,6 @@ public class AsrModelDownloader {
         }
     }
 
-    private void waitIfDownloadPaused() throws IOException {
-        while (downloadPaused) {
-            if (downloadCancelled) throw new IOException("Download was cancelled");
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Download thread was interrupted", e);
-            }
-        }
-        if (downloadCancelled) throw new IOException("Download was cancelled");
-    }
-
     private void deleteRecursivelyIfExists(Path path) throws IOException {
         if (Files.exists(path)) deleteRecursively(path);
     }
@@ -566,6 +583,32 @@ public class AsrModelDownloader {
             if (e.getCause() instanceof IOException ioException) throw ioException;
             throw e;
         }
+    }
+
+    private void sleepWithControl(long millis, DownloadControl control) throws IOException, InterruptedException {
+        if (millis <= 0L) {
+            return;
+        }
+        long deadline = System.currentTimeMillis() + millis;
+        while (true) {
+            control.awaitReady();
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0L) {
+                return;
+            }
+            Thread.sleep(Math.min(remaining, 200L));
+        }
+    }
+
+    private boolean isDownloadCancelled(IOException exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof DownloadCancelledException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private record SourceTarget(String sourcePath, String targetPath) {

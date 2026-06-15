@@ -18,6 +18,12 @@ public final class SettingsLayout {
         return item;
     }
 
+    public SettingsLayoutItem nextIntersecting(int height) {
+        SettingsLayoutItem item = new SettingsLayoutItem(cursorY, viewport.translateY(cursorY), height, viewport.intersects(cursorY, height));
+        cursorY += height;
+        return item;
+    }
+
     public SettingsLayoutItem row() {
         lastRow = next(SettingsLayoutMetrics.ROW_HEIGHT);
         return lastRow;
