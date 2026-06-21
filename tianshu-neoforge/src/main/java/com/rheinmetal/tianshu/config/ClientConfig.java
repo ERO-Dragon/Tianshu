@@ -26,6 +26,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue LLM_ENABLED;
     public static final ModConfigSpec.IntValue LLM_GPU_LAYER_PERCENT;
+    public static final ModConfigSpec.ConfigValue<String> LLM_GPU_DEVICE_ID;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.IntValue ASR_PORT;
@@ -61,6 +62,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         builder.comment("LLM 大语言模型设置").push("llm");
         LLM_ENABLED = builder.define("enabled", true);
         LLM_GPU_LAYER_PERCENT = builder.defineInRange("gpuLayerPercent", 100, 0, 100);
+        LLM_GPU_DEVICE_ID = builder.define("gpuDeviceId", "");
         builder.pop();
 
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
@@ -236,6 +238,16 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     }
 
     @Override
+    public String getLlmGpuDeviceId() {
+        return LLM_GPU_DEVICE_ID.get();
+    }
+
+    @Override
+    public void setLlmGpuDeviceId(String deviceId) {
+        LLM_GPU_DEVICE_ID.set(deviceId == null ? "" : deviceId.trim());
+    }
+
+    @Override
     public String getCustomTtsName() {
         return CUSTOM_TTS_NAME.get();
     }
@@ -368,7 +380,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     @Override
     public int getLlmTaskContextSize() {
-        return Math.max(getLlmContextSize(), 8192);
+        return getLlmContextSize();
     }
 
     @Override

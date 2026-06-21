@@ -107,12 +107,12 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `INPUT.ASR_FINAL_TEXT` | `ASR_TEXT` | ASR 最终识别文本。 |
 | `IR.RESULT` | `IR_RESULT` | IR 解析结果。 |
 | `SYSTEM.RUNTIME_INTERRUPT` | `CUSTOM` | 运行时中断。 |
-| `LLM.STATUS` | `LLM_STATUS` | LLM 请求的轻量状态。 |
+| `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前如果说话将被哪个 IA owner 承接。 |
 
-`LLM.STATUS` 当前状态值保持轻量：`ACCEPTED`、`QUEUED`、`STREAMING`、`COMPLETED`、`CANCELLED`、`FAILED`。其中 `QUEUED` 表示 TASK 已进入 LLM 模块自己的 admission queue，但尚未送入 libs。
+`LLM.STATUS` 只发布 libs `inferenceEventListener` 回调产生的真实推理事件，例如 `QUEUED`、`STARTED`、`PREFILL_STARTED`、`GENERATION_STARTED`、`SUSPENDED`、`COLD_RESUME_STARTED`、`COMPLETED`、`CANCELLED`、`FAILED`。协议层请求接收、admission 排队和响应完成状态由 response payload 与 envelope lifecycle 表达，不混入该 topic。
 
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 

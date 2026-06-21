@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.download.LlmModelDownloadCoordinator;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.LlmModelManager;
@@ -17,17 +18,25 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class LlmModelService {
+    private static final long PROGRESS_UPDATE_INTERVAL_MILLIS = 200L;
+
     public interface DownloadProgressCallback {
         void onProgress(String label, int percent);
         void onComplete();
         void onError(String message);
+
+        default void onCancelled() {
+        }
     }
 
-    public record DownloadSnapshot(boolean running, String modelName, String label, int percent, String errorMessage, long updatedAtMillis) {
+    public interface ModelDeleteCallback {
+        void onComplete(boolean deleted);
+    }
+
+    public record DownloadSnapshot(boolean running, boolean paused, boolean cancelling, String modelName, String label, int percent, String errorMessage, long updatedAtMillis) {
         public DownloadSnapshot {
             modelName = modelName == null ? "" : modelName.trim();
             label = label == null ? "" : label.trim();
@@ -37,22 +46,24 @@ public final class LlmModelService {
         }
 
         public static DownloadSnapshot idle() {
-            return new DownloadSnapshot(false, "", "空闲", 0, "", System.currentTimeMillis());
+            return new DownloadSnapshot(false, false, false, "", "空闲", 0, "", System.currentTimeMillis());
         }
     }
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final ProtocolExecutorManager executorManager;
-    private final AtomicBoolean downloading = new AtomicBoolean(false);
+    private final LlmModelDownloadCoordinator downloadCoordinator;
+    private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
-    private volatile LlmModelDownloader activeDownloader;
-    private volatile ProtocolTaskHandle activeDownloadTask;
+    private final AtomicReference<String> deletingModelName = new AtomicReference<>("");
 
     public LlmModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
         this.env = Objects.requireNonNull(env, "env");
         this.config = Objects.requireNonNull(config, "config");
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");
+        this.downloadCoordinator = new LlmModelDownloadCoordinator(env);
+        scheduleStartupCleanup();
     }
 
     public List<LlmModelInfo> allModels() {
@@ -99,12 +110,18 @@ public final class LlmModelService {
             if (callback != null) callback.onError("LLM 模型信息为空");
             return;
         }
-        if (!downloading.compareAndSet(false, true)) {
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null) {
+            if (callback != null) callback.onError("无法解析 LLM 模型目录");
+            return;
+        }
+        DownloadTask task = new DownloadTask(info.name, modelDir, hasModelContent(info), downloadCoordinator.newSession());
+        if (!activeDownload.compareAndSet(null, task)) {
             if (callback != null) callback.onError("已有 LLM 模型正在下载");
             return;
         }
-        updateDownload(true, info.name, "下载中", 0, "");
-        activeDownloadTask = executorManager.submit(
+        updateDownload(true, false, false, info.name, "下载中", 0, "");
+        ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.llm")
                         .lane(ExecutionLane.IO)
@@ -112,30 +129,57 @@ public final class LlmModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                () -> runDownload(info, callback)
+                () -> runDownload(task, info, callback)
         );
-        if (activeDownloadTask.state() == ProtocolTaskState.REJECTED) {
-            downloading.set(false);
-            updateDownload(false, info.name, "Download queue is full", 0, "Download queue is full");
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            activeDownload.compareAndSet(task, null);
+            updateDownload(false, false, false, info.name, "Download queue is full", 0, "Download queue is full");
             if (callback != null) callback.onError("Download queue is full");
         }
     }
 
+    public void pauseDownload() {
+        DownloadTask task = activeDownload.get();
+        DownloadSnapshot current = downloadSnapshot.get();
+        if (task == null || current.cancelling()) {
+            return;
+        }
+        task.session().pause();
+        updateDownload(true, true, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
+    }
+
+    public void resumeDownload() {
+        DownloadTask task = activeDownload.get();
+        DownloadSnapshot current = downloadSnapshot.get();
+        if (task == null || current.cancelling()) {
+            return;
+        }
+        task.session().resume();
+        updateDownload(true, false, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
+    }
+
     public void cancelDownload() {
-        LlmModelDownloader downloader = activeDownloader;
-        if (downloader != null) {
-            downloader.cancelDownload();
+        DownloadTask task = activeDownload.get();
+        DownloadSnapshot current = downloadSnapshot.get();
+        if (task == null) {
+            return;
         }
-        ProtocolTaskHandle task = activeDownloadTask;
-        if (task != null && !task.isDone()) {
-            task.cancel("llm model download cancelled");
-        }
-        downloading.set(false);
-        updateDownload(false, downloadSnapshot.get().modelName(), "下载已取消", downloadSnapshot.get().percent(), "");
+        task.session().cancel();
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.llm")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.llm:model.download.cancel")
+                        .maxConcurrency(1)
+                        .queueCapacity(4)
+                        .build(),
+                task.session()::cancelActiveTransfers
+        );
+        updateDownload(true, false, true, task.modelName(), "正在取消", current.percent(), "");
     }
 
     public boolean isDownloading() {
-        return downloading.get();
+        return activeDownload.get() != null;
     }
 
     public DownloadSnapshot downloadSnapshot() {
@@ -154,34 +198,75 @@ public final class LlmModelService {
         }
     }
 
-    private void runDownload(LlmModelInfo info, DownloadProgressCallback callback) {
-        LlmModelDownloader downloader = new LlmModelDownloader(env);
-        activeDownloader = downloader;
+    public void deleteModelAsync(LlmModelInfo info, ModelDeleteCallback callback) {
+        if (info == null || info.name == null || info.name.isBlank()) {
+            if (callback != null) callback.onComplete(false);
+            return;
+        }
+        String modelName = info.name.trim();
+        if (!deletingModelName.compareAndSet("", modelName)) {
+            if (callback != null) callback.onComplete(false);
+            return;
+        }
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.llm")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.llm:model.delete")
+                        .maxConcurrency(1)
+                        .queueCapacity(2)
+                        .build(),
+                () -> {
+                    boolean deleted;
+                    try {
+                        deleted = deleteModel(info);
+                    } finally {
+                        deletingModelName.compareAndSet(modelName, "");
+                    }
+                    if (callback != null) {
+                        callback.onComplete(deleted);
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            deletingModelName.compareAndSet(modelName, "");
+            if (callback != null) callback.onComplete(false);
+        }
+    }
+
+    public boolean isDeleting() {
+        return !deletingModelName.get().isBlank();
+    }
+
+    public boolean isDeletingModel(LlmModelInfo info) {
+        return info != null && info.name != null && info.name.equalsIgnoreCase(deletingModelName.get());
+    }
+
+    private void runDownload(DownloadTask task, LlmModelInfo info, DownloadProgressCallback callback) {
+        DownloadProgressEmitter progressEmitter = new DownloadProgressEmitter(task, callback);
         try {
-            downloader.download(info, resolveModelDir(info), new LlmModelDownloader.DownloadProgressCallback() {
+            task.session().download(info, task.modelDir(), new LlmModelDownloader.DownloadProgressCallback() {
                 @Override
                 public void onProgress(String label, int percent) {
-                    updateDownload(true, info.name, label, percent, "");
-                    if (callback != null) callback.onProgress(label, percent);
+                    progressEmitter.accept(label, percent);
                 }
 
                 @Override
                 public void onComplete() {
-                    downloading.set(false);
-                    updateDownload(false, info.name, "下载完成", 100, "");
-                    if (callback != null) callback.onComplete();
+                    finishDownloadComplete(task, callback);
                 }
 
                 @Override
                 public void onError(String message) {
-                    downloading.set(false);
-                    updateDownload(false, info.name, "下载失败", downloadSnapshot.get().percent(), message);
-                    if (callback != null) callback.onError(message);
+                    finishDownloadError(task, callback, message);
                 }
             });
-        } finally {
-            activeDownloader = null;
-            activeDownloadTask = null;
+        } catch (Exception e) {
+            if (task.session().isCancelled() || isDownloadCancelled(e)) {
+                finishDownloadCancelled(task, callback);
+            } else {
+                finishDownloadError(task, callback, e.getMessage() == null ? "LLM 模型下载失败" : e.getMessage());
+            }
         }
     }
 
@@ -189,8 +274,130 @@ public final class LlmModelService {
         return config.getLlmBasePath().resolve("model");
     }
 
-    private void updateDownload(boolean running, String modelName, String label, int percent, String errorMessage) {
-        downloadSnapshot.set(new DownloadSnapshot(running, modelName, label, percent, errorMessage, System.currentTimeMillis()));
+    private void scheduleStartupCleanup() {
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.llm")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.llm:model.cleanup")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                this::cleanupStaleIncompleteDownloads
+        );
+    }
+
+    private void cleanupStaleIncompleteDownloads() {
+        for (LlmModelInfo info : allModels()) {
+            Path modelDir = resolveModelDir(info);
+            if (modelDir == null || !isWithinModelBase(modelDir) || !Files.isDirectory(modelDir) || hasModelContent(info)) {
+                continue;
+            }
+            try {
+                deleteTemporaryDownloadFiles(modelDir);
+                deleteDirectoryIfEmpty(modelDir);
+            } catch (IOException e) {
+                env.warn("清理未完成的 LLM 模型下载失败: " + modelDir + " - " + e.getMessage());
+            }
+        }
+    }
+
+    private void deleteTemporaryDownloadFiles(Path modelDir) throws IOException {
+        try (var stream = Files.walk(modelDir)) {
+            for (Path path : stream.filter(Files::isRegularFile).toList()) {
+                String fileName = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
+                if (fileName.endsWith(".tmp") || fileName.endsWith(".downloading")) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
+    }
+
+    private void deleteDirectoryIfEmpty(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        try (var stream = Files.list(directory)) {
+            if (stream.findAny().isEmpty()) {
+                Files.deleteIfExists(directory);
+            }
+        }
+    }
+
+    private void updateDownload(boolean running, boolean paused, boolean cancelling, String modelName, String label, int percent, String errorMessage) {
+        downloadSnapshot.set(new DownloadSnapshot(running, paused, cancelling, modelName, label, percent, errorMessage, System.currentTimeMillis()));
+    }
+
+    private boolean isCurrentTask(DownloadTask task) {
+        return task != null && activeDownload.get() == task;
+    }
+
+    private boolean finishTask(DownloadTask task) {
+        return task != null && activeDownload.compareAndSet(task, null);
+    }
+
+    private void finishDownloadComplete(DownloadTask task, DownloadProgressCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        updateDownload(false, false, false, task.modelName(), "下载完成", 100, "");
+        if (callback != null) callback.onComplete();
+    }
+
+    private void finishDownloadCancelled(DownloadTask task, DownloadProgressCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        cleanupCancelledDownload(task);
+        updateDownload(false, false, false, task.modelName(), "下载已取消", downloadSnapshot.get().percent(), "");
+        if (callback != null) callback.onCancelled();
+    }
+
+    private void finishDownloadError(DownloadTask task, DownloadProgressCallback callback, String message) {
+        if (!finishTask(task)) {
+            return;
+        }
+        updateDownload(false, false, false, task.modelName(), "下载失败", downloadSnapshot.get().percent(), message);
+        if (callback != null) callback.onError(message);
+    }
+
+    private void cleanupCancelledDownload(DownloadTask task) {
+        if (task == null || task.hadModelContent()) {
+            return;
+        }
+        Path modelDir = task.modelDir();
+        if (modelDir == null || !isWithinModelBase(modelDir)) {
+            return;
+        }
+        try {
+            deleteRecursivelyIfExists(modelDir);
+        } catch (IOException e) {
+            env.warn("清理已取消的 LLM 模型目录失败: " + modelDir + " - " + e.getMessage());
+        }
+    }
+
+    private boolean isWithinModelBase(Path path) {
+        if (path == null) {
+            return false;
+        }
+        return path.toAbsolutePath().normalize().startsWith(modelBasePath().toAbsolutePath().normalize());
+    }
+
+    private boolean isDownloadCancelled(Exception exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof LlmModelDownloader.DownloadCancelledException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private void deleteRecursivelyIfExists(Path path) throws IOException {
+        if (path != null && Files.exists(path)) {
+            deleteRecursively(path);
+        }
     }
 
     private void deleteRecursively(Path path) throws IOException {
@@ -202,5 +409,50 @@ public final class LlmModelService {
             }
         }
         Files.deleteIfExists(path);
+    }
+
+    private record DownloadTask(
+            String modelName,
+            Path modelDir,
+            boolean hadModelContent,
+            LlmModelDownloadCoordinator.DownloadSession session
+    ) {
+        private DownloadTask {
+            modelName = modelName == null ? "" : modelName.trim();
+        }
+    }
+
+    private final class DownloadProgressEmitter {
+        private final DownloadTask task;
+        private final DownloadProgressCallback callback;
+        private String lastLabel = "";
+        private int lastPercent = -1;
+        private long lastEmittedAtMillis;
+
+        private DownloadProgressEmitter(DownloadTask task, DownloadProgressCallback callback) {
+            this.task = task;
+            this.callback = callback;
+        }
+
+        private void accept(String label, int percent) {
+            if (!isCurrentTask(task) || task.session().isCancelled()) {
+                return;
+            }
+            String safeLabel = label == null ? "" : label.trim();
+            int safePercent = Math.max(0, Math.min(100, percent));
+            long now = System.currentTimeMillis();
+            boolean changed = safePercent != lastPercent || !safeLabel.equals(lastLabel);
+            boolean shouldEmit = changed && (lastPercent < 0 || safePercent >= 100 || now - lastEmittedAtMillis >= PROGRESS_UPDATE_INTERVAL_MILLIS);
+            if (!shouldEmit) {
+                return;
+            }
+            lastLabel = safeLabel;
+            lastPercent = safePercent;
+            lastEmittedAtMillis = now;
+            updateDownload(true, task.session().isPaused(), false, task.modelName(), safeLabel, safePercent, "");
+            if (callback != null) {
+                callback.onProgress(safeLabel, safePercent);
+            }
+        }
     }
 }

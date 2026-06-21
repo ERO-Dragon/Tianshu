@@ -142,7 +142,7 @@ CompletableFuture<String> future = service.submitTaskStream(request, token -> {
 - 如果当前 active TASK 的 `task_preemptible=true`，更高有效优先级的任务会立即送入 libs，由 libs 执行 TASK 抢占/取消/挂起语义。
 - 等待队列按有效优先级降序、同优先级 FIFO；有效优先级 = `task_priority + 等待期间新 TASK 请求次数 * getLlmTaskAgingBoostPerRequest()`。
 - 队列满时，高有效优先级任务可替换等待队列中的最低有效优先级任务；被抢占后未终态的旧 TASK 仍计入 in-flight 边界，避免继续 drain 等待队列导致隐形扩容。
-- libs 的 `taskMaxQueueSize` 在天枢侧对应 `getLlmTaskHotSuspendSlots()`，语义是热挂起保存槽，不是外部排队容量。
+- libs 不再暴露热挂起窗口；TASK 挂起统一走 COLD replay，天枢侧只保留 admission 队列容量与优先级策略。
 
 协议层只有在该 future 完成后才发送 stream end 和最终 result，并完成对应 envelope。
 当 libs 因 CHAT 优先调度暂停 TASK 时，future 保持未完成，协议层保持响应处理器有效；恢复后继续把后续 token 发给同一个请求方。

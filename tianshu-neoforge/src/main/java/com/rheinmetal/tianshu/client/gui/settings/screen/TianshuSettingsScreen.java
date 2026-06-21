@@ -238,8 +238,9 @@ public final class TianshuSettingsScreen extends Screen {
             selectionPanel.mouseScrolled(scrollY);
             return true;
         }
+        SettingsScreenLayout layout = chrome.layout(width, height);
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
-            if (region.contains(mouseX, mouseY) && region.canScroll()) {
+            if (visibleRegionContains(layout, region, mouseX, mouseY) && region.canScroll()) {
                 ScrollState current = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()));
                 nestedScrollStates.put(region.id(), current.withMetrics(region.contentHeight(), region.viewportHeight())
                         .withOffset(current.offset() - (int) Math.signum(scrollY) * SCROLL_STEP));
@@ -247,7 +248,6 @@ public final class TianshuSettingsScreen extends Screen {
                 return true;
             }
         }
-        SettingsScreenLayout layout = chrome.layout(width, height);
         if (layout.containsRightPanel(mouseX, mouseY) && rightPanelScroll.canScroll()) {
             rightPanelScroll = rightPanelScroll.withOffset(rightPanelScroll.offset() - (int) Math.signum(scrollY) * SCROLL_STEP);
             rebuildCurrentPage();
@@ -281,8 +281,9 @@ public final class TianshuSettingsScreen extends Screen {
         if (selectionPanel != null && selectionPanel.mouseClicked(mouseX, mouseY)) {
             return true;
         }
+        SettingsScreenLayout layout = chrome.layout(width, height);
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
-            if (!region.contains(mouseX, mouseY)) {
+            if (!visibleRegionContains(layout, region, mouseX, mouseY)) {
                 continue;
             }
             for (AbstractWidget widget : region.widgets()) {
@@ -336,63 +337,103 @@ public final class TianshuSettingsScreen extends Screen {
 
     private void drawRightPanelDecorationBackgrounds(GuiGraphics guiGraphics, SettingsScreenLayout layout) {
         guiGraphics.enableScissor(layout.rightX() + 1, layout.viewportTop(), layout.rightX() + layout.rightWidth() - 1, layout.viewportBottom());
-        for (SettingsDecoration decoration : rightPanelDecorations) {
-            decoration.drawBackground(guiGraphics);
+        try {
+            for (SettingsDecoration decoration : rightPanelDecorations) {
+                decoration.drawBackground(guiGraphics);
+            }
+        } finally {
+            guiGraphics.disableScissor();
         }
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
             drawScrollRegionDecorations(guiGraphics, region, true);
         }
-        guiGraphics.disableScissor();
     }
 
     private void drawRightPanelDecorationBorders(GuiGraphics guiGraphics, SettingsScreenLayout layout) {
         guiGraphics.enableScissor(layout.rightX() + 1, layout.viewportTop(), layout.rightX() + layout.rightWidth() - 1, layout.viewportBottom());
-        for (SettingsDecoration decoration : rightPanelDecorations) {
-            decoration.drawBorder(guiGraphics);
+        try {
+            for (SettingsDecoration decoration : rightPanelDecorations) {
+                decoration.drawBorder(guiGraphics);
+            }
+        } finally {
+            guiGraphics.disableScissor();
         }
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
             drawScrollRegionDecorations(guiGraphics, region, false);
             drawScrollRegionScrollbar(guiGraphics, region);
         }
-        guiGraphics.disableScissor();
     }
 
     private void renderScrollRegionWidgets(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        SettingsScreenLayout layout = chrome.layout(width, height);
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
-            guiGraphics.enableScissor(region.x(), region.y(), region.x() + region.width(), region.y() + region.height());
-            for (AbstractWidget widget : region.widgets()) {
-                widget.render(guiGraphics, mouseX, mouseY, partialTick);
+            VisibleRegion visible = visibleRegion(layout, region);
+            if (visible == null) {
+                continue;
             }
-            guiGraphics.disableScissor();
+            guiGraphics.enableScissor(visible.left(), visible.top(), visible.right(), visible.bottom());
+            try {
+                for (AbstractWidget widget : region.widgets()) {
+                    widget.render(guiGraphics, mouseX, mouseY, partialTick);
+                }
+            } finally {
+                guiGraphics.disableScissor();
+            }
         }
     }
 
     private void drawScrollRegionDecorations(GuiGraphics guiGraphics, SettingsScrollRegion region, boolean background) {
-        guiGraphics.enableScissor(region.x(), region.y(), region.x() + region.width(), region.y() + region.height());
-        for (SettingsDecoration decoration : region.decorations()) {
-            if (background) {
-                decoration.drawBackground(guiGraphics);
-            } else {
-                decoration.drawBorder(guiGraphics);
-            }
+        SettingsScreenLayout layout = chrome.layout(width, height);
+        VisibleRegion visible = visibleRegion(layout, region);
+        if (visible == null) {
+            return;
         }
-        guiGraphics.disableScissor();
+        guiGraphics.enableScissor(visible.left(), visible.top(), visible.right(), visible.bottom());
+        try {
+            for (SettingsDecoration decoration : region.decorations()) {
+                if (background) {
+                    decoration.drawBackground(guiGraphics);
+                } else {
+                    decoration.drawBorder(guiGraphics);
+                }
+            }
+        } finally {
+            guiGraphics.disableScissor();
+        }
     }
 
     private void drawScrollRegionScrollbar(GuiGraphics guiGraphics, SettingsScrollRegion region) {
         if (!region.canScroll() || region.viewportHeight() <= 0) {
             return;
         }
+        SettingsScreenLayout layout = chrome.layout(width, height);
+        VisibleRegion visible = visibleRegion(layout, region);
+        if (visible == null) {
+            return;
+        }
         ScrollState scroll = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()))
                 .withMetrics(region.contentHeight(), region.viewportHeight());
-        int scrollbarX = region.x() + region.width() - 4;
-        int trackTop = region.y();
-        int trackBottom = region.y() + region.height();
+        int scrollbarX = visible.right() - 4;
+        int trackTop = visible.top();
+        int trackBottom = visible.bottom();
         int trackHeight = Math.max(1, trackBottom - trackTop);
         int thumbHeight = Math.max(16, trackHeight * scroll.viewportHeight() / Math.max(1, scroll.contentHeight()));
         int thumbY = trackTop + (trackHeight - thumbHeight) * scroll.offset() / Math.max(1, scroll.maxOffset());
         guiGraphics.fill(scrollbarX, trackTop, scrollbarX + 2, trackBottom, 0x66000000);
         guiGraphics.fill(scrollbarX, thumbY, scrollbarX + 2, thumbY + thumbHeight, 0xFFB0B0B0);
+    }
+
+    private boolean visibleRegionContains(SettingsScreenLayout layout, SettingsScrollRegion region, double mouseX, double mouseY) {
+        VisibleRegion visible = visibleRegion(layout, region);
+        return visible != null && visible.contains(mouseX, mouseY);
+    }
+
+    private VisibleRegion visibleRegion(SettingsScreenLayout layout, SettingsScrollRegion region) {
+        int left = Math.max(region.x(), layout.rightX() + 1);
+        int right = Math.min(region.x() + region.width(), layout.rightX() + layout.rightWidth() - 1);
+        int top = Math.max(region.y(), layout.viewportTop());
+        int bottom = Math.min(region.y() + region.height(), layout.viewportBottom());
+        return right > left && bottom > top ? new VisibleRegion(left, top, right, bottom) : null;
     }
 
     private void pruneNestedScrollStates(List<SettingsScrollRegion> regions) {
@@ -421,7 +462,13 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean isPauseScreen() {
-        return false;
+        return true;
+    }
+
+    private record VisibleRegion(int left, int top, int right, int bottom) {
+        private boolean contains(double mouseX, double mouseY) {
+            return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
+        }
     }
 
     private final class SelectionPanel<T> {

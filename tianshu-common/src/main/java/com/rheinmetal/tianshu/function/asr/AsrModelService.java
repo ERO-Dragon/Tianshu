@@ -34,6 +34,10 @@ public class AsrModelService {
         }
     }
 
+    public interface ModelDeleteCallback {
+        void onComplete(boolean deleted);
+    }
+
     public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelKey, String label, int progress) {
         public static DownloadStatus idle() {
             return new DownloadStatus(false, false, false, "", "", 0);
@@ -55,6 +59,7 @@ public class AsrModelService {
     private final Supplier<AsrEngine> engineSupplier;
     private final BooleanSupplier readySupplier;
     private final AtomicBoolean previewRunning = new AtomicBoolean(false);
+    private final AtomicBoolean deletingModel = new AtomicBoolean(false);
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
 
@@ -66,6 +71,7 @@ public class AsrModelService {
         this.engineSupplier = engineSupplier;
         this.readySupplier = readySupplier;
         this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
+        scheduleStartupCleanup();
     }
 
     public AsrModelInfo resolveCurrentModelInfo() {
@@ -81,20 +87,95 @@ public class AsrModelService {
         return config.getAsrBasePath().resolve("model").resolve(info.localKey());
     }
 
+    private Path modelBasePath() {
+        return config.getAsrBasePath().resolve("model");
+    }
+
+    private void scheduleStartupCleanup() {
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.asr")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.asr:model.cleanup")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                this::cleanupStaleDownloadArtifacts
+        );
+    }
+
+    private void cleanupStaleDownloadArtifacts() {
+        Path base = modelBasePath();
+        if (!Files.isDirectory(base)) {
+            return;
+        }
+        try (var stream = Files.list(base)) {
+            for (Path path : stream.toList()) {
+                String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
+                if (Files.isDirectory(path) && (name.endsWith("-staging") || name.endsWith("-extract"))) {
+                    deleteRecursively(path);
+                } else if (Files.isRegularFile(path) && (name.endsWith(".tmp") || name.endsWith(".downloading"))) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        } catch (IOException e) {
+            env.warn("Failed to clean stale ASR download artifacts: " + e.getMessage());
+        }
+    }
+
     public boolean hasModelContent(AsrModelInfo info) {
         Path modelDir = resolveModelDir(info);
         if (modelDir == null || !Files.exists(modelDir)) return false;
         return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"));
     }
 
-    public void deleteModel(AsrModelInfo info) {
+    public boolean deleteModel(AsrModelInfo info) {
         Path modelDir = resolveModelDir(info);
-        if (modelDir == null || !Files.exists(modelDir)) return;
+        if (modelDir == null || !Files.exists(modelDir)) return false;
         try {
             deleteRecursively(modelDir);
+            return true;
         } catch (IOException e) {
             env.error("Failed to delete ASR model", e);
+            return false;
         }
+    }
+
+    public void deleteModelAsync(AsrModelInfo info, ModelDeleteCallback callback) {
+        if (info == null) {
+            if (callback != null) callback.onComplete(false);
+            return;
+        }
+        if (!deletingModel.compareAndSet(false, true)) {
+            if (callback != null) callback.onComplete(false);
+            return;
+        }
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.asr")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.asr:model.delete")
+                        .maxConcurrency(1)
+                        .queueCapacity(2)
+                        .build(),
+                () -> {
+                    boolean deleted;
+                    try {
+                        deleted = deleteModel(info);
+                    } finally {
+                        deletingModel.set(false);
+                    }
+                    if (callback != null) callback.onComplete(deleted);
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            deletingModel.set(false);
+            if (callback != null) callback.onComplete(false);
+        }
+    }
+
+    public boolean isDeleting() {
+        return deletingModel.get();
     }
 
     public void downloadModel(String modelKey, String githubProxyUrl, DownloadProgressCallback callback) {

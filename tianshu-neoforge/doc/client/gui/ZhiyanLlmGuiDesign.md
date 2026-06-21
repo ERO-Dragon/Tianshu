@@ -592,8 +592,11 @@ tianshu.gui.llm.title = 【织言】大语言模型
 tianshu.gui.llm.description = 管理本地大语言模型
 tianshu.gui.llm.enabled = 启用状态
 tianshu.gui.llm.section.device = 设备能力
-tianshu.gui.llm.section.load = 模型加载设置
-tianshu.gui.llm.section.download = 模型下载
+tianshu.gui.llm.section.model_info = 当前模型
+tianshu.gui.llm.section.load_settings = 模型加载设置
+tianshu.gui.llm.section.load_control = 加载控制
+tianshu.gui.llm.section.load_status = 当前状态
+tianshu.gui.llm.section.download_models = LLM 模型目录
 tianshu.gui.llm.row.gpu = 显卡型号
 tianshu.gui.llm.row.vram = 显存
 tianshu.gui.llm.row.memory = 内存
@@ -605,8 +608,10 @@ tianshu.gui.llm.row.model_size = 模型大小
 tianshu.gui.llm.action.load = 加载
 tianshu.gui.llm.action.unload = 卸载
 tianshu.gui.llm.row.load_status = 状态
-tianshu.gui.llm.download.expand = 模型下载
-tianshu.gui.llm.download.status = 下载状态
+tianshu.gui.llm.row.download_status = 下载状态
+tianshu.gui.llm.download.card.scale = 规模：%s
+tianshu.gui.llm.download.card.size = 大小：%s
+tianshu.gui.llm.download.card.recommend = 推荐：%s
 ```
 
 ## 13. 设计原则总结

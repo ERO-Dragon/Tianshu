@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.client.gui.tts;
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsButtonStyle;
+import com.rheinmetal.tianshu.client.gui.settings.api.SettingsListCard;
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class TtsSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = "module.tts";
+    private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     private static final Component TITLE = tts("title");
     private static final Component DESCRIPTION = tts("description");
 
@@ -77,6 +79,12 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
     }
 
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
+        panel.columns("tts.layout", 0.42D, 0.58D, columns -> columns
+                .column(0, left -> buildSettingsColumn(left, context, draft))
+                .column(1, right -> buildDownloadColumn(right, context, draft)));
+    }
+
+    private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
         panel.enable("tts.enabled", tts("enabled"), draft.enabled)
                 .options("tts.main", tts("section.main"), draft::buildMainOptions)
                 .actions("tts.preview", tts("section.preview"), actions -> actions
@@ -94,14 +102,14 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                         .button("tts.voice.folder", tts("action.voice_folder"), draft::openVoiceLibraryFolder, draft.enabled::get))
                 .status("tts.voice.status", tts("section.voice_status"), () -> true, draft::supportsVoiceClone, status -> status
                         .row("tts.voice.selected", tts("row.voice_selected"), draft::selectedVoiceStatus)
-                        .row("tts.voice.path", tts("row.voice_library"), draft::voiceLibraryPathStatus))
-                .separator("tts.download.separator")
-                .enable("tts.download.expand", tts("download.expand"), draft.downloadExpanded::get, draft.downloadExpanded::set)
-                .options("tts.download.advanced", tts("section.download_advanced"), () -> true, draft.downloadExpanded::get, draft::buildDownloadAdvancedOptions)
-                .options("tts.download.filters", tts("section.download_filters"), () -> true, draft.downloadExpanded::get, draft::buildDownloadFilters)
-                .<TtsModelInfo>list("tts.download.models", tts("section.download_models"), () -> true, draft.downloadExpanded::get, list -> list
+                        .row("tts.voice.path", tts("row.voice_library"), draft::voiceLibraryPathStatus));
+    }
+
+    private void buildDownloadColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
+        panel.options("tts.download.advanced", tts("section.download_advanced"), draft::buildDownloadAdvancedOptions)
+                .<TtsModelInfo>catalog("tts.download.catalog", tts("section.download_models"), draft::buildDownloadFilters, list -> list
                         .items(draft::filteredModels)
-                        .label(draft::downloadModelLabel)
+                        .card(draft::downloadModelCard)
                         .itemActions((model, actions) -> draft.buildDownloadItemActions(context, model, actions))
                         .emptyText(tts("download.empty")));
     }
@@ -120,7 +128,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<String> previewText;
         private final MutableSettingsValue<Double> speed;
         private final MutableSettingsValue<String> selectedVoiceSample;
-        private final MutableSettingsValue<Boolean> downloadExpanded;
         private final MutableSettingsValue<String> githubProxyUrl;
         private final MutableSettingsValue<String> performanceFilter;
         private final MutableSettingsValue<String> qualityFilter;
@@ -129,10 +136,8 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<SortMode> sortMode;
         private final List<TtsModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
-        private final AtomicBoolean downloading = new AtomicBoolean(false);
-        private volatile TtsModelInfo activeDownloadModel;
-        private volatile Component downloadLabel = tts("status.idle");
-        private volatile int downloadProgress = 0;
+        private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
+        private volatile long lastDownloadRefreshMillis;
         private volatile Component previewStatus = tts("status.idle");
 
         private TtsSettingsDraft(ClientConfig config, TianshuCoreManager coreManager, ModuleSettingsContext context) {
@@ -150,14 +155,12 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             this.previewText = new MutableSettingsValue<>(config::getTtsPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
             this.speed = new MutableSettingsValue<>(() -> settings.speed, ignored -> {}, value -> value != null && value >= 0.1D && value <= 5.0D);
             this.selectedVoiceSample = new MutableSettingsValue<>(() -> normalizeVoiceSample(settings.selectedVoiceSample), ignored -> {});
-            this.downloadExpanded = new MutableSettingsValue<>(() -> false, ignored -> {});
             this.githubProxyUrl = new MutableSettingsValue<>(config::getTtsGithubProxyUrl, config::setTtsGithubProxyUrl, Objects::nonNull);
             this.performanceFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.qualityFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.recommendedFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.voiceCloneFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.sortMode = new MutableSettingsValue<>(() -> SortMode.RECOMMENDED, ignored -> {}, Objects::nonNull);
-            restoreDownloadState();
         }
 
         private void buildMainOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -418,45 +421,39 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private Component downloadStatus() {
-            if (downloading.get()) {
-                return tts("download.progress", downloadLabel, downloadProgress);
+            TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
+            if (status != null && status.downloading()) {
+                Component label = status.cancelling()
+                        ? tts("status.cancelling")
+                        : status.paused()
+                        ? tts("status.paused")
+                        : status.label() == null || status.label().isBlank() ? tts("status.downloading") : Component.literal(status.label());
+                return tts("download.progress", label, Math.max(0, Math.min(100, status.progress())));
             }
-            return downloadLabel;
+            return tts("status.idle");
         }
 
         private void buildDownloadItemActions(ModuleSettingsContext context, TtsModelInfo info, com.rheinmetal.tianshu.client.gui.settings.api.ItemActionTemplate<TtsModelInfo> actions) {
-            actions.button("tts.download.item.start", tts("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> model != null && !downloading.get() && !isDownloaded(model))
-                    .button("tts.download.item.pause", tts("action.pause"), model -> pauseDownload(), model -> isActiveDownload(model) && !ttsModelService().isDownloadPaused())
-                    .button("tts.download.item.resume", tts("action.resume"), model -> resumeDownload(), model -> isActiveDownload(model) && ttsModelService().isDownloadPaused())
-                    .button("tts.download.item.cancel", tts("action.cancel"), SettingsButtonStyle.DANGER, model -> cancelDownload(), this::isActiveDownload)
-                    .button("tts.download.item.delete", tts("action.delete"), SettingsButtonStyle.DANGER, model -> deleteModel(context, model), model -> model != null && !downloading.get() && isDownloaded(model));
+            actions.button("tts.download.item.start", tts("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> cardState(model).canStartDownload())
+                    .button("tts.download.item.pause", tts("action.pause"), this::pauseDownload, model -> cardState(model).canPauseDownload())
+                    .button("tts.download.item.resume", tts("action.resume"), this::resumeDownload, model -> cardState(model).canResumeDownload())
+                    .button("tts.download.item.cancel", tts("action.cancel"), SettingsButtonStyle.DANGER, this::cancelDownload, model -> cardState(model).canCancelDownload())
+                    .button("tts.download.item.delete", tts("action.delete"), SettingsButtonStyle.DANGER, model -> deleteModel(context, model), model -> cardState(model).canDeleteModel());
         }
 
         private void startDownload(ModuleSettingsContext context, TtsModelInfo info) {
-            if (info == null || downloading.get()) {
+            if (info == null || downloadInProgress()) {
                 return;
             }
-            activeDownloadModel = info;
-            downloading.set(true);
-            downloadLabel = tts("status.download_preparing");
-            downloadProgress = 0;
             ttsModelService().downloadModel(info, githubProxyUrl.get(), new TtsModelService.DownloadProgressCallback() {
                 @Override
                 public void onProgress(String label, int percent) {
-                    runOnClient(() -> {
-                        downloadLabel = label == null ? tts("status.downloading") : Component.literal(label);
-                        downloadProgress = Math.max(0, Math.min(100, percent));
-                        refreshSettingsScreen();
-                    });
+                    requestDownloadRefresh();
                 }
 
                 @Override
                 public void onComplete() {
                     runOnClient(() -> {
-                        downloading.set(false);
-                        activeDownloadModel = null;
-                        downloadLabel = tts("status.download_complete");
-                        downloadProgress = 100;
                         context.showStatus(tts("message.download_complete"), 3000);
                         coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
                         refreshSettingsScreen();
@@ -466,73 +463,80 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onError(String message) {
                     runOnClient(() -> {
-                        downloading.set(false);
-                        activeDownloadModel = null;
-                        downloadLabel = message == null ? tts("status.download_failed") : Component.literal(message);
+                        Component downloadLabel = message == null ? tts("status.download_failed") : Component.literal(message);
                         context.showStatus(downloadLabel, 4000);
+                        refreshSettingsScreen();
+                    });
+                }
+
+                @Override
+                public void onCancelled() {
+                    runOnClient(() -> {
+                        context.showStatus(tts("status.cancelled"), 1500);
                         refreshSettingsScreen();
                     });
                 }
             });
         }
 
-        private void restoreDownloadState() {
-            TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
-            if (status == null) {
-                this.activeDownloadModel = null;
-                this.downloading.set(false);
+        private void pauseDownload(TtsModelInfo info) {
+            if (!cardState(info).canPauseDownload()) {
                 return;
             }
-            if (!status.downloading()) {
-                this.activeDownloadModel = null;
-                this.downloading.set(false);
-                if (status.label() != null && !status.label().isBlank()) {
-                    this.downloadLabel = Component.literal(status.label());
-                    this.downloadProgress = Math.max(0, Math.min(100, status.progress()));
-                }
-                return;
-            }
-            this.activeDownloadModel = resolveModel(status.activeModelName());
-            this.downloading.set(true);
-            this.downloadLabel = status.paused()
-                    ? tts("status.paused")
-                    : status.label() == null || status.label().isBlank() ? tts("status.downloading") : Component.literal(status.label());
-            this.downloadProgress = Math.max(0, Math.min(100, status.progress()));
-        }
-
-        private void pauseDownload() {
             ttsModelService().pauseDownload();
-            downloadLabel = tts("status.paused");
+            refreshSettingsScreen();
         }
 
-        private void resumeDownload() {
-            ttsModelService().resumeDownload();
-            downloadLabel = tts("status.downloading");
-        }
-
-        private void cancelDownload() {
-            ttsModelService().cancelDownload();
-            downloading.set(false);
-            activeDownloadModel = null;
-            downloadLabel = tts("status.cancelling");
-            downloadProgress = 0;
-        }
-
-        private boolean isActiveDownload(TtsModelInfo info) {
-            TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
-            if (status != null && status.downloading()) {
-                return info != null && sameModel(info, resolveModel(status.activeModelName()));
+        private void resumeDownload(TtsModelInfo info) {
+            if (!cardState(info).canResumeDownload()) {
+                return;
             }
-            return info != null && downloading.get() && sameModel(info, activeDownloadModel);
+            ttsModelService().resumeDownload();
+            refreshSettingsScreen();
+        }
+
+        private void cancelDownload(TtsModelInfo info) {
+            if (!cardState(info).canCancelDownload()) {
+                return;
+            }
+            ttsModelService().cancelDownload();
+            refreshSettingsScreen();
+        }
+
+        private boolean downloadInProgress() {
+            TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
+            return status != null && status.downloading();
+        }
+
+        private TtsModelCardState cardState(TtsModelInfo info) {
+            TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
+            boolean downloading = status != null && status.downloading();
+            boolean activeDownload = downloading && info != null && sameModel(info, resolveModel(status.activeModelName()));
+            boolean paused = activeDownload && status.paused();
+            boolean cancelling = activeDownload && status.cancelling();
+            boolean installed = info != null && isDownloaded(info);
+            boolean operationActive = downloading || ttsModelService().isDeleting();
+            return new TtsModelCardState(info, installed, operationActive, activeDownload, paused, cancelling);
         }
 
         private void deleteModel(ModuleSettingsContext context, TtsModelInfo info) {
-            if (info == null || downloading.get()) {
+            if (info == null || downloadInProgress() || ttsModelService().isDeleting()) {
                 return;
             }
-            ttsModelService().deleteModel(info);
-            context.showStatus(tts("message.deleted", info.getDisplayName()), 3000);
-            coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+            String deletedModelName = info.name == null ? "" : info.name;
+            Component displayName = Component.literal(info.getDisplayName());
+            ttsModelService().deleteModelAsync(info, deleted -> runOnClient(() -> {
+                if (deleted) {
+                    if (!deletedModelName.isBlank() && deletedModelName.equalsIgnoreCase(selectedModelName.get())) {
+                        selectedModelName.set("");
+                    }
+                    context.showStatus(tts("message.deleted", displayName), 3000);
+                    coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                } else {
+                    context.showStatus(tts("message.delete_failed"), 3000);
+                }
+                refreshSettingsScreen();
+            }));
         }
 
         private boolean isDownloaded(TtsModelInfo info) {
@@ -593,11 +597,24 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             return filter == null || ALL.equals(filter) || (SUPPORTS.equals(filter) == info.supportsVoiceClone());
         }
 
-        private Component downloadModelLabel(TtsModelInfo info) {
+        private SettingsListCard downloadModelCard(TtsModelInfo info) {
             if (info == null) {
-                return Component.empty();
+                return SettingsListCard.text(Component.empty());
             }
-            return tts("download.card", info.getDisplayName(), languageLabel(info), sizeLabel(info.size), scoreLabel(info.getPerformanceScore()), scoreLabel(info.getSynthesisQualityScore()), scoreLabel(info.getRecommendationScore()), common(info.supportsVoiceClone() ? "yes" : "no"), common(isDownloaded(info) ? "downloaded" : "not_downloaded"));
+            TtsModelCardState state = cardState(info);
+            Component title = Component.literal(info.getDisplayName());
+            Component status = state.statusLabel();
+            List<Component> details = List.of(
+                    tts("download.card.language", languageLabel(info)),
+                    tts("download.card.size", sizeLabel(info.size)),
+                    tts("download.card.voice_clone", common(info.supportsVoiceClone() ? "yes" : "no"))
+            );
+            List<Component> badges = List.of(
+                    scoreBadge(info.getPerformanceScore(), tts("badge.performance")),
+                    scoreBadge(info.getSynthesisQualityScore(), tts("badge.quality")),
+                    scoreBadge(info.getRecommendationScore(), tts("badge.recommendation"))
+            );
+            return new SettingsListCard(title, status, details, badges);
         }
 
         private List<String> scoreFilterValues(java.util.function.ToIntFunction<TtsModelInfo> mapper) {
@@ -650,6 +667,10 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private String scoreLabel(int score) {
             return score + "/10";
+        }
+
+        private Component scoreBadge(int score, Component label) {
+            return Component.translatable("tianshu.gui.settings.badge.score", label, score);
         }
 
         private String sizeLabel(long bytes) {
@@ -732,10 +753,60 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             Minecraft.getInstance().execute(runnable);
         }
 
+        private void requestDownloadRefresh() {
+            long now = System.currentTimeMillis();
+            if (now - lastDownloadRefreshMillis < DOWNLOAD_REFRESH_INTERVAL_MILLIS) {
+                return;
+            }
+            if (!downloadRefreshQueued.compareAndSet(false, true)) {
+                return;
+            }
+            runOnClient(() -> {
+                try {
+                    lastDownloadRefreshMillis = System.currentTimeMillis();
+                    refreshSettingsScreen();
+                } finally {
+                    downloadRefreshQueued.set(false);
+                }
+            });
+        }
+
         private void refreshSettingsScreen() {
             if (Minecraft.getInstance().screen instanceof TianshuSettingsScreen settingsScreen) {
                 settingsScreen.rebuildCurrentPage();
             }
+        }
+    }
+
+    private record TtsModelCardState(TtsModelInfo info, boolean installed, boolean operationActive, boolean activeDownload, boolean paused, boolean cancelling) {
+        private boolean canStartDownload() {
+            return info != null && !installed && !operationActive;
+        }
+
+        private boolean canPauseDownload() {
+            return activeDownload && !paused && !cancelling;
+        }
+
+        private boolean canResumeDownload() {
+            return activeDownload && paused && !cancelling;
+        }
+
+        private boolean canCancelDownload() {
+            return activeDownload && !cancelling;
+        }
+
+        private boolean canDeleteModel() {
+            return info != null && installed && !operationActive;
+        }
+
+        private Component statusLabel() {
+            if (activeDownload) {
+                if (cancelling) {
+                    return tts("status.cancelling");
+                }
+                return paused ? tts("status.paused") : tts("status.downloading");
+            }
+            return common(installed ? "downloaded" : "not_downloaded");
         }
     }
 

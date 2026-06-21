@@ -14,13 +14,17 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
+import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
@@ -537,6 +541,34 @@ class LlmProtocolAdapterTest {
         assertEquals(1, context.failed.get());
     }
 
+    @Test
+    void inferenceStatusIsPublishedToLlmStatusTopic() {
+        ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
+        List<LlmStatusPayload> statuses = registerStatusCapture(runtime);
+
+        adapter.publishInferenceStatus(new LlmStatusPayload(
+                "task-1",
+                "STREAM_COMPLETION",
+                "TASK",
+                "COLD_RESUME_STARTED",
+                7,
+                "replaying",
+                123,
+                45,
+                "",
+                1_000L
+        ));
+
+        assertEquals(1, statuses.size());
+        LlmStatusPayload status = statuses.get(0);
+        assertEquals("task-1", status.taskId());
+        assertEquals("TASK", status.lane());
+        assertEquals("COLD_RESUME_STARTED", status.eventType());
+        assertEquals(123, status.replayCharacters());
+        assertEquals(45, status.generatedTokens());
+    }
+
     private void await(BooleanSupplier condition) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
@@ -686,6 +718,38 @@ class LlmProtocolAdapterTest {
             context.complete(envelope.envelopeId());
         });
         return chunks;
+    }
+
+    private List<LlmStatusPayload> registerStatusCapture(ProtocolRuntime runtime) {
+        List<LlmStatusPayload> statuses = new CopyOnWriteArrayList<>();
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        TopicSubscriptionDescriptor subscription = new TopicSubscriptionDescriptor(
+                ProtocolTopics.LLM_STATUS,
+                PayloadType.LLM_STATUS,
+                LlmStatusPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+        );
+        ModuleDescriptor module = new ModuleDescriptor(
+                "module.test.llm.status",
+                List.of(),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        );
+        runtime.subscribeTopic(module, subscription, (envelope, context) -> {
+            if (envelope.payload() instanceof LlmStatusPayload payload) {
+                statuses.add(payload);
+            }
+        });
+        return statuses;
     }
 
     private static final class PendingInferenceClient implements LlmInferenceClient {

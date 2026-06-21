@@ -19,6 +19,7 @@ public sealed interface SettingsTemplateModel permits
         SettingsTemplateModel.OptionGroup,
         SettingsTemplateModel.StatusGroup,
         SettingsTemplateModel.ActionGroup,
+        SettingsTemplateModel.CompoundGroup,
         SettingsTemplateModel.ListGroup,
         SettingsTemplateModel.CatalogGroup,
         SettingsTemplateModel.Columns,
@@ -43,6 +44,8 @@ public sealed interface SettingsTemplateModel permits
     record StatusGroup(String id, Component title, List<StatusEntry> entries, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
     record ActionGroup(String id, Component title, List<ActionEntry> entries, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
+
+    record CompoundGroup(String id, Component title, List<OptionEntry> options, List<ActionEntry> actions, List<StatusEntry> statuses, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
     record ListGroup<T>(String id, Component title, Supplier<List<T>> items, Function<T, Component> labeler, Function<T, SettingsListCard> carder, Supplier<T> selected, Consumer<T> onSelect, Function<T, List<ItemActionEntry<T>>> itemActions, Component emptyText, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 

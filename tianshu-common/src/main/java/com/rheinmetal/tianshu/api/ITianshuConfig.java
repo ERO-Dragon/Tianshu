@@ -82,6 +82,13 @@ public interface ITianshuConfig {
     default void setLlmGpuLayerPercent(int percent) {
     }
 
+    default String getLlmGpuDeviceId() {
+        return "";
+    }
+
+    default void setLlmGpuDeviceId(String deviceId) {
+    }
+
     String getCustomTtsName();
     void setCustomTtsName(String name);
 
@@ -233,10 +240,6 @@ public interface ITianshuConfig {
 
     default int getLlmLibsChatQueueSize() {
         return 1;
-    }
-
-    default int getLlmTaskHotSuspendSlots() {
-        return 0;
     }
 
     default boolean isLlmTaskSuspendOnChatEnabled() {

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.IOException;
@@ -219,17 +220,124 @@ public class TtsModelInfo {
         if (info == null || ttsBasePath == null) return false;
         String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
         Path dir = ttsBasePath.resolve("model").resolve(modelDirName);
-        if (!Files.isDirectory(dir)) return false;
+        return isModelDirectoryComplete(info, dir);
+    }
+
+    public static boolean isModelDirectoryComplete(TtsModelInfo info, Path dir) {
+        if (info == null || !Files.isDirectory(dir)) return false;
+        String engineType = info.getEngineType();
+        if ("moss".equals(engineType)) {
+            return mossManifestComplete(dir);
+        }
+        if ("zipvoice".equals(engineType)) {
+            return containsFile(dir, "tokens", ".txt")
+                    && directoryPresent(dir, info.dataDir)
+                    && filesPresent(dir, info.lexiconFiles)
+                    && containsDeclaredOrDiscoveredFile(dir, info.modelFiles, "text_encoder", ".onnx")
+                    && containsDeclaredOrDiscoveredFile(dir, info.modelFiles, "fm_decoder", ".onnx")
+                    && (Files.isRegularFile(dir.resolve("vocos_24khz.onnx")) || containsFile(dir, "vocoder", ".onnx"));
+        }
         if (info.modelFiles != null && !info.modelFiles.isEmpty()) {
-            return info.modelFiles.stream()
-                    .filter(f -> f != null && !f.isBlank())
-                    .anyMatch(f -> Files.isRegularFile(dir.resolve(f)));
+            if (!containsAnyDeclaredFile(dir, info.modelFiles)) {
+                return false;
+            }
+        } else if (!containsModelFile(dir)) {
+            return false;
         }
-        if ("moss".equals(info.getEngineType())) {
-            return Files.isRegularFile(dir.resolve("browser_poc_manifest.json"))
-                    || containsModelFile(dir);
+        if (!containsFile(dir, "tokens", ".txt")) {
+            return false;
         }
-        return containsModelFile(dir);
+        return filesPresent(dir, info.lexiconFiles)
+                && filesPresent(dir, info.ruleFsts)
+                && filePresent(dir, info.voicesFile)
+                && directoryPresent(dir, info.dataDir);
+    }
+
+    private static boolean containsAnyDeclaredFile(Path dir, List<String> files) {
+        return files.stream()
+                .filter(f -> f != null && !f.isBlank())
+                .anyMatch(f -> Files.isRegularFile(dir.resolve(f)));
+    }
+
+    private static boolean containsDeclaredOrDiscoveredFile(Path dir, List<String> files, String keyword, String extension) {
+        if (files != null) {
+            for (String file : files) {
+                if (file == null || file.isBlank()) {
+                    continue;
+                }
+                String lower = file.toLowerCase();
+                if (lower.startsWith(keyword.toLowerCase()) && lower.endsWith(extension) && Files.isRegularFile(dir.resolve(file))) {
+                    return true;
+                }
+            }
+        }
+        return containsFile(dir, keyword, extension);
+    }
+
+    private static boolean filesPresent(Path dir, List<String> files) {
+        if (files == null || files.isEmpty()) {
+            return true;
+        }
+        return files.stream()
+                .filter(f -> f != null && !f.isBlank())
+                .allMatch(f -> Files.isRegularFile(dir.resolve(f)));
+    }
+
+    private static boolean filePresent(Path dir, String file) {
+        return file == null || file.isBlank() || Files.isRegularFile(dir.resolve(file));
+    }
+
+    private static boolean directoryPresent(Path dir, String directory) {
+        return directory == null || directory.isBlank() || Files.isDirectory(dir.resolve(directory));
+    }
+
+    private static boolean mossManifestComplete(Path dir) {
+        Path manifest = findMossManifest(dir);
+        if (manifest == null) {
+            return false;
+        }
+        try {
+            JsonObject root = GSON.fromJson(Files.readString(manifest), JsonObject.class);
+            if (root == null || !root.has("model_files") || !root.get("model_files").isJsonObject()) {
+                return false;
+            }
+            JsonObject modelFiles = root.getAsJsonObject("model_files");
+            return manifestRelativeFilePresent(manifest, modelFiles, "tts_meta")
+                    && manifestRelativeFilePresent(manifest, modelFiles, "codec_meta");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static Path findMossManifest(Path dir) {
+        List<Path> candidates = List.of(
+                dir.resolve("browser_poc_manifest.json"),
+                dir.resolve("MOSS-TTS-Nano-100M-ONNX").resolve("browser_poc_manifest.json"),
+                dir.resolve("MOSS-TTS-Nano-ONNX-CPU").resolve("browser_poc_manifest.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static boolean manifestRelativeFilePresent(Path manifest, JsonObject modelFiles, String key) {
+        if (!modelFiles.has(key) || modelFiles.get(key).isJsonNull()) {
+            return false;
+        }
+        String relativeValue = modelFiles.get(key).getAsString();
+        if (relativeValue == null || relativeValue.isBlank()) {
+            return false;
+        }
+        Path relative = Path.of(relativeValue);
+        Path resolved = manifest.getParent().resolve(relative).normalize();
+        if (Files.isRegularFile(resolved)) {
+            return true;
+        }
+        Path fileName = relative.getFileName();
+        return fileName != null && containsExactFileName(manifest.getParent(), fileName.toString());
     }
 
     private static boolean containsModelFile(Path dir) {
@@ -239,6 +347,32 @@ public class TtsModelInfo {
                 String name = p.getFileName().toString().toLowerCase();
                 return Files.isRegularFile(p) && (name.endsWith(".onnx") || name.endsWith(".bin") || name.endsWith(".gguf"));
             });
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean containsFile(Path dir, String keyword, String extension) {
+        if (!Files.isDirectory(dir)) return false;
+        String normalizedKeyword = keyword == null ? "" : keyword.toLowerCase();
+        String normalizedExtension = extension == null ? "" : extension.toLowerCase();
+        try (var stream = Files.walk(dir)) {
+            return stream.anyMatch(p -> {
+                if (!Files.isRegularFile(p)) {
+                    return false;
+                }
+                String name = p.getFileName().toString().toLowerCase();
+                return name.contains(normalizedKeyword) && name.endsWith(normalizedExtension);
+            });
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean containsExactFileName(Path dir, String fileName) {
+        if (!Files.isDirectory(dir) || fileName == null || fileName.isBlank()) return false;
+        try (var stream = Files.walk(dir)) {
+            return stream.anyMatch(p -> Files.isRegularFile(p) && fileName.equals(p.getFileName().toString()));
         } catch (IOException e) {
             return false;
         }

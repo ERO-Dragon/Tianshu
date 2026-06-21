@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class HuggingFaceDownloader {
@@ -23,6 +24,7 @@ public class HuggingFaceDownloader {
     private static volatile String activeBaseUrl = null;
 
     private final IGameEnvironment env;
+    private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
 
     @FunctionalInterface
     public interface DownloadControl {
@@ -39,6 +41,14 @@ public class HuggingFaceDownloader {
 
     public HuggingFaceDownloader(IGameEnvironment env) {
         this.env = env;
+    }
+
+    public void cancelActiveTransfers() {
+        for (HttpURLConnection connection : activeConnections) {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     public static synchronized String getActiveBaseUrl() {
@@ -312,6 +322,7 @@ public class HuggingFaceDownloader {
             HttpURLConnection conn = null;
             try {
                 conn = (HttpURLConnection) new URL(url).openConnection();
+                activeConnections.add(conn);
                 conn.setConnectTimeout((int) Duration.ofSeconds(15).toMillis());
                 conn.setReadTimeout((int) Duration.ofSeconds(120).toMillis());
                 conn.setRequestMethod("GET");
@@ -353,6 +364,7 @@ public class HuggingFaceDownloader {
                 }
             } finally {
                 if (conn != null) {
+                    activeConnections.remove(conn);
                     conn.disconnect();
                 }
             }

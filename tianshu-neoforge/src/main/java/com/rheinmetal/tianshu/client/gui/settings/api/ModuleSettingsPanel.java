@@ -51,6 +51,12 @@ public interface ModuleSettingsPanel {
 
     ModuleSettingsPanel actions(String id, Component title, BooleanSupplier enabled, BooleanSupplier visible, Consumer<ActionTemplate> builder);
 
+    ModuleSettingsPanel compound(String id, Component title, Consumer<OptionTemplate> options, Consumer<ActionTemplate> actions, Consumer<StatusTemplate> status);
+
+    ModuleSettingsPanel compound(String id, Component title, BooleanSupplier enabled, Consumer<OptionTemplate> options, Consumer<ActionTemplate> actions, Consumer<StatusTemplate> status);
+
+    ModuleSettingsPanel compound(String id, Component title, BooleanSupplier enabled, BooleanSupplier visible, Consumer<OptionTemplate> options, Consumer<ActionTemplate> actions, Consumer<StatusTemplate> status);
+
     <T> ModuleSettingsPanel list(String id, Component title, Consumer<ListTemplate<T>> builder);
 
     <T> ModuleSettingsPanel list(String id, Component title, BooleanSupplier enabled, Consumer<ListTemplate<T>> builder);

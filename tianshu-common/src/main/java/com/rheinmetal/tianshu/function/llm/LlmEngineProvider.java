@@ -4,28 +4,47 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
+import com.rheinmetal.tianshu.libs.llm.InferenceEvent;
 import com.rheinmetal.tianshu.libs.llm.KvCacheType;
+import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public final class LlmEngineProvider {
-    static final int MIN_TASK_HOT_SUSPEND_SLOTS = 0;
-    static final int MAX_TASK_HOT_SUSPEND_SLOTS = 5;
+    private static final String AUTO_DEVICE_ID = "auto";
+    private static final String CPU_DEVICE_ID = "cpu";
+    private static final String MANUAL_CPU_DEVICE_ID = "cpu:manual";
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final InferenceResourcePolicy resourcePolicy;
+    private final Consumer<LlmStatusPayload> inferenceStatusListener;
     private JavaLlamaServer aiService;
 
     public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config) {
-        this(env, config, InferenceResourcePolicy.systemDefault());
+        this(env, config, InferenceResourcePolicy.systemDefault(), null);
     }
 
     public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy) {
+        this(env, config, resourcePolicy, null);
+    }
+
+    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, Consumer<LlmStatusPayload> inferenceStatusListener) {
+        this(env, config, InferenceResourcePolicy.systemDefault(), inferenceStatusListener);
+    }
+
+    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener) {
         this.env = env;
         this.config = config;
         this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
+        this.inferenceStatusListener = inferenceStatusListener == null ? status -> {
+        } : inferenceStatusListener;
     }
 
     private JavaLlamaServer createAiService() {
@@ -37,23 +56,31 @@ public final class LlmEngineProvider {
         int processors = resourcePolicy.processors();
         int chatThreads = resourcePolicy.llmGpuHelperThreads();
         int taskThreads = resourcePolicy.llmGpuHelperThreads();
-        int gpuLayers = resourcePolicy.fullGpuLayers();
+        String deviceId = resolveDeviceId(config.getLlmGpuDeviceId());
+        boolean cpuOnly = isCpuDevice(deviceId);
+        int gpuLayers = cpuOnly ? 0 : resourcePolicy.fullGpuLayers();
+        int contextSize = Math.max(1, config.getLlmContextSize());
+        env.info("LLM context selected: context=" + contextSize
+                + " model=" + config.getCustomLlmName()
+                + " device=" + (cpuOnly ? "cpu" : deviceId));
 
         JavaLlamaServer.Builder builder = JavaLlamaServer.builder()
                 .model(modelPath.toString())
                 .modelAlias(blankToNull(config.getCustomLlmName()))
                 .modelProfile("auto")
-                .chatContext(config.getLlmChatContextSize())
+                .contextSize(contextSize)
                 .chatThreads(chatThreads)
                 .chatMaxQueueSize(positiveOrOne(config.getLlmLibsChatQueueSize()))
-                .taskContext(config.getLlmTaskContextSize())
                 .taskThreads(taskThreads)
-                .taskMaxQueueSize(taskHotSuspendSlots(config.getLlmTaskHotSuspendSlots()))
                 .taskSuspendOnChat(config.isLlmTaskSuspendOnChatEnabled())
                 .requestTimeoutSeconds(config.getLlmRequestTimeoutSeconds())
                 .cacheTypeK(parseCacheType(config.getLlmCacheTypeK(), KvCacheType.Q8_0))
                 .cacheTypeV(parseCacheType(config.getLlmCacheTypeV(), KvCacheType.Q8_0))
-                .gpuLayers(gpuLayers);
+                .gpuLayers(gpuLayers)
+                .inferenceEventListener(this::handleInferenceEvent);
+        if (deviceId != null && !cpuOnly) {
+            builder.device(deviceId);
+        }
 
         Path embeddingPath = config.getLlmEmbeddingGgufFilePath();
         if (embeddingPath != null) {
@@ -62,6 +89,9 @@ public final class LlmEngineProvider {
                     .embeddingThreads(Math.max(1, Math.min(processors, resourcePolicy.llmGpuHelperThreads())))
                     .embeddingAlias(blankToNull(config.getLlmEmbeddingModelName()))
                     .embeddingGpuLayers(gpuLayers);
+            if (deviceId != null && !cpuOnly) {
+                builder.embeddingDevice(deviceId);
+            }
         }
 
         return builder.build();
@@ -69,10 +99,6 @@ public final class LlmEngineProvider {
 
     private int positiveOrOne(int value) {
         return Math.max(1, value);
-    }
-
-    static int taskHotSuspendSlots(int value) {
-        return Math.max(MIN_TASK_HOT_SUSPEND_SLOTS, Math.min(MAX_TASK_HOT_SUSPEND_SLOTS, value));
     }
 
     private KvCacheType parseCacheType(String value, KvCacheType fallback) {
@@ -86,6 +112,89 @@ public final class LlmEngineProvider {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static boolean isCpuDevice(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim();
+        return CPU_DEVICE_ID.equalsIgnoreCase(normalized) || MANUAL_CPU_DEVICE_ID.equalsIgnoreCase(normalized);
+    }
+
+    private static boolean isAutoDevice(String value) {
+        return value == null || value.isBlank() || AUTO_DEVICE_ID.equalsIgnoreCase(value.trim());
+    }
+
+    private static String resolveDeviceId(String configuredDeviceId) {
+        if (!isAutoDevice(configuredDeviceId)) {
+            return blankToNull(configuredDeviceId);
+        }
+        List<String> gpuIds = queryNvidiaGpuIds();
+        if (gpuIds.size() >= 2) {
+            return gpuIds.get(1);
+        }
+        if (gpuIds.size() == 1) {
+            return gpuIds.get(0);
+        }
+        return CPU_DEVICE_ID;
+    }
+
+    private static List<String> queryNvidiaGpuIds() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "nvidia-smi",
+                    "--query-gpu=index",
+                    "--format=csv,noheader,nounits"
+            );
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return List.of();
+            }
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            if (output.isBlank()) {
+                return List.of();
+            }
+            List<String> ids = new ArrayList<>();
+            for (String line : output.lines().toList()) {
+                String id = line == null ? "" : line.trim();
+                if (!id.isBlank()) {
+                    ids.add(id);
+                }
+            }
+            return List.copyOf(ids);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private void handleInferenceEvent(InferenceEvent event) {
+        if (event == null) {
+            return;
+        }
+        try {
+            inferenceStatusListener.accept(toStatus(event));
+        } catch (Exception e) {
+            env.warn("Failed to publish LLM inference event: " + e.getMessage());
+        }
+    }
+
+    private static LlmStatusPayload toStatus(InferenceEvent event) {
+        Throwable error = event.getError();
+        return new LlmStatusPayload(
+                event.getTaskId(),
+                event.getTaskType() == null ? "" : event.getTaskType().name(),
+                event.getLane() == null ? "" : event.getLane().wireName(),
+                event.getType() == null ? "" : event.getType().name(),
+                event.getPriority(),
+                event.getMessage(),
+                event.getReplayCharacters(),
+                event.getGeneratedTokens(),
+                error == null ? "" : error.getMessage(),
+                System.currentTimeMillis()
+        );
     }
 
     public boolean isAiServiceAvailable() {

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -15,12 +16,19 @@ public class LlmModelDownloader {
     }
 
     public interface DownloadControl {
-        void checkCancelled() throws java.io.IOException;
+        void awaitReady() throws IOException;
+    }
+
+    public static final class DownloadCancelledException extends IOException {
+        public DownloadCancelledException() {
+            super("Download was cancelled");
+        }
     }
 
     private final IGameEnvironment env;
     private final HuggingFaceDownloader hfDownloader;
     private volatile boolean cancelled = false;
+    private volatile boolean paused = false;
 
     public LlmModelDownloader(IGameEnvironment env) {
         this.env = env;
@@ -29,23 +37,55 @@ public class LlmModelDownloader {
 
     public void cancelDownload() {
         cancelled = true;
+        paused = false;
+        hfDownloader.cancelActiveTransfers();
+    }
+
+    public void cancelActiveTransfers() {
+        hfDownloader.cancelActiveTransfers();
+    }
+
+    public void pauseDownload() {
+        if (!cancelled) {
+            paused = true;
+        }
+    }
+
+    public void resumeDownload() {
+        if (!cancelled) {
+            paused = false;
+        }
+    }
+
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
+    public boolean isPaused() {
+        return paused;
     }
 
     public void download(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback) {
-        cancelled = false;
-        Objects.requireNonNull(info, "info");
-        Objects.requireNonNull(targetDir, "targetDir");
         Objects.requireNonNull(callback, "callback");
-
+        cancelled = false;
+        paused = false;
         try {
-            doDownload(info, targetDir, callback);
+            downloadSync(info, targetDir, callback, this::awaitReady);
         } catch (Exception e) {
             callback.onError(e.getMessage() != null ? e.getMessage() : "LLM 模型下载失败");
         }
     }
 
-    private void doDownload(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback) throws Exception {
+    public void downloadSync(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+        Objects.requireNonNull(info, "info");
+        Objects.requireNonNull(targetDir, "targetDir");
+        Objects.requireNonNull(callback, "callback");
+        doDownload(info, targetDir, callback, control == null ? () -> {} : control);
+    }
+
+    private void doDownload(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         Path targetFile = targetDir.resolve(info.getModelFile());
+        control.awaitReady();
 
         if (Files.exists(targetFile) && Files.size(targetFile) > 0) {
             env.info("LLM 模型已存在，跳过下载: " + targetFile);
@@ -61,8 +101,9 @@ public class LlmModelDownloader {
         String filePath = resolveHfFilePath(info);
         env.info("LLM 模型下载: repo=" + info.repoId + " file=" + filePath + " → " + targetFile);
 
+        control.awaitReady();
         callback.onProgress("下载中", 5);
-        hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3, this::checkCancelled, new HuggingFaceDownloader.DownloadProgressListener() {
+        hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3, control::awaitReady, new HuggingFaceDownloader.DownloadProgressListener() {
             @Override
             public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                 if (totalBytes > 0L) {
@@ -72,7 +113,7 @@ public class LlmModelDownloader {
             }
         });
 
-        checkCancelled();
+        control.awaitReady();
         if (!Files.exists(targetFile) || Files.size(targetFile) == 0) {
             throw new IllegalStateException("下载完成但文件不存在或为空: " + targetFile);
         }
@@ -88,10 +129,21 @@ public class LlmModelDownloader {
         return info.getModelFile();
     }
 
-    private void checkCancelled() throws java.io.IOException {
+    private void awaitReady() throws IOException {
         if (cancelled || Thread.currentThread().isInterrupted()) {
-            cancelled = false;
-            throw new java.io.IOException("下载已取消");
+            throw new DownloadCancelledException();
+        }
+        while (paused) {
+            if (cancelled || Thread.currentThread().isInterrupted()) {
+                paused = false;
+                throw new DownloadCancelledException();
+            }
+            try {
+                Thread.sleep(200L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("下载线程被中断", e);
+            }
         }
     }
 }

@@ -35,7 +35,6 @@ public final class TestLlmSupport {
         private int taskAdmissionQueueSize = 0;
         private int taskAgingBoostPerRequest = 1;
         private int libsChatQueueSize = 1;
-        private int taskHotSuspendSlots = 0;
 
         public FakeConfig(Path root) {
             this.root = root;
@@ -71,11 +70,6 @@ public final class TestLlmSupport {
             return this;
         }
 
-        public FakeConfig taskHotSuspendSlots(int value) {
-            this.taskHotSuspendSlots = value;
-            return this;
-        }
-
         @Override public boolean isAiEnabled() { return aiEnabled; }
         @Override public void setAiEnabled(boolean enabled) { this.aiEnabled = enabled; }
         @Override public TriggerMode getTriggerMode() { return TriggerMode.ALWAYS; }
@@ -102,7 +96,6 @@ public final class TestLlmSupport {
         @Override public int getLlmTaskAdmissionQueueSize() { return taskAdmissionQueueSize; }
         @Override public int getLlmTaskAgingBoostPerRequest() { return taskAgingBoostPerRequest; }
         @Override public int getLlmLibsChatQueueSize() { return libsChatQueueSize; }
-        @Override public int getLlmTaskHotSuspendSlots() { return taskHotSuspendSlots; }
         @Override public void save() {}
     }
 }

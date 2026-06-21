@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.tts.download.TtsModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsModelSnapshot;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -19,14 +19,14 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class TtsModelService {
 
@@ -34,25 +34,35 @@ public class TtsModelService {
         void onProgress(String label, int percent);
         void onComplete();
         void onError(String message);
+
+        default void onCancelled() {
+        }
     }
 
-    public record DownloadStatus(boolean downloading, boolean paused, String activeModelName, String label, int progress) {
+    public interface ModelDeleteCallback {
+        void onComplete(boolean deleted);
+    }
+
+    public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, String label, int progress) {
         public static DownloadStatus idle() {
-            return new DownloadStatus(false, false, "", "", 0);
+            return new DownloadStatus(false, false, false, "", "", 0);
         }
     }
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final ProtocolExecutorManager executorManager;
-    private volatile boolean downloadCancelled = false;
-    private volatile boolean downloadPaused = false;
-    private volatile DownloadStatus downloadStatus = DownloadStatus.idle();
+    private final TtsModelDownloadCoordinator downloadCoordinator;
+    private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
+    private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
+    private final AtomicBoolean deletingModel = new AtomicBoolean(false);
 
     public TtsModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;
+        this.downloadCoordinator = new TtsModelDownloadCoordinator(env);
+        scheduleStartupCleanup();
     }
 
     public List<TtsModelInfo> catalog() {
@@ -182,6 +192,43 @@ public class TtsModelService {
         return config.getTtsBasePath().resolve("model").resolve(modelDirName);
     }
 
+    private Path modelBasePath() {
+        return config.getTtsBasePath().resolve("model");
+    }
+
+    private void scheduleStartupCleanup() {
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.tts")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.tts:model.cleanup")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                this::cleanupStaleDownloadArtifacts
+        );
+    }
+
+    private void cleanupStaleDownloadArtifacts() {
+        Path base = modelBasePath();
+        if (!Files.isDirectory(base)) {
+            return;
+        }
+        try (var walk = Files.walk(base)) {
+            List<Path> paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList();
+            for (Path path : paths) {
+                String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
+                if (Files.isRegularFile(path) && (name.endsWith(".tmp") || name.endsWith(".downloading"))) {
+                    Files.deleteIfExists(path);
+                } else if (Files.isDirectory(path) && (name.endsWith("-extract") || name.endsWith("-staging"))) {
+                    deleteRecursively(path);
+                }
+            }
+        } catch (IOException e) {
+            env.warn("清理未完成的 TTS 模型下载失败: " + e.getMessage());
+        }
+    }
+
     public TtsModelSnapshot snapshot() {
         Path modelDir = resolveCurrentModelDir();
         if (modelDir == null) {
@@ -203,7 +250,7 @@ public class TtsModelService {
                 info == null ? "" : scoreTier(info.getPerformanceScore()),
                 info != null && info.supportsVoiceClone(),
                 info != null && info.supportsSpeakerSelection(),
-                downloadPaused,
+                isDownloadPaused(),
                 modelDir.toString(),
                 System.currentTimeMillis()
         );
@@ -224,15 +271,7 @@ public class TtsModelService {
         if (modelDir == null || !Files.isDirectory(modelDir)) {
             return false;
         }
-        if (info.modelFiles != null && !info.modelFiles.isEmpty()) {
-            return info.modelFiles.stream()
-                    .filter(file -> file != null && !file.isBlank())
-                    .anyMatch(file -> Files.isRegularFile(modelDir.resolve(file)));
-        }
-        if ("moss".equals(info.getEngineType())) {
-            return Files.isRegularFile(modelDir.resolve("browser_poc_manifest.json")) || hasModelContent(modelDir);
-        }
-        return hasModelContent(modelDir);
+        return TtsModelInfo.isModelDirectoryComplete(info, modelDir);
     }
 
     private boolean hasModelContent(Path modelDir) {
@@ -252,16 +291,63 @@ public class TtsModelService {
         }
     }
 
-    public void deleteModel(TtsModelInfo info) {
+    public boolean deleteModel(TtsModelInfo info) {
         Path modelDir = resolveModelDir(info);
         if (modelDir == null || !Files.exists(modelDir)) {
-            return;
+            return false;
         }
         try {
             deleteRecursively(modelDir);
+            return true;
         } catch (IOException e) {
             env.error("删除 TTS 模型失败", e);
+            return false;
         }
+    }
+
+    public void deleteModelAsync(TtsModelInfo info, ModelDeleteCallback callback) {
+        if (info == null) {
+            if (callback != null) {
+                callback.onComplete(false);
+            }
+            return;
+        }
+        if (!deletingModel.compareAndSet(false, true)) {
+            if (callback != null) {
+                callback.onComplete(false);
+            }
+            return;
+        }
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.tts")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.tts:model.delete")
+                        .maxConcurrency(1)
+                        .queueCapacity(2)
+                        .build(),
+                () -> {
+                    boolean deleted = false;
+                    try {
+                        deleted = deleteModel(info);
+                    } finally {
+                        deletingModel.set(false);
+                    }
+                    if (callback != null) {
+                        callback.onComplete(deleted);
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            deletingModel.set(false);
+            if (callback != null) {
+                callback.onComplete(false);
+            }
+        }
+    }
+
+    public boolean isDeleting() {
+        return deletingModel.get();
     }
 
     public void downloadModel(TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
@@ -271,9 +357,21 @@ public class TtsModelService {
             }
             return;
         }
-        downloadCancelled = false;
-        downloadPaused = false;
-        downloadStatus = new DownloadStatus(true, false, safeModelName(info), "Preparing", 0);
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null) {
+            if (callback != null) {
+                callback.onError("无法解析模型目录");
+            }
+            return;
+        }
+        DownloadTask task = new DownloadTask(safeModelName(info), modelDir, hasModelContent(info), downloadCoordinator.newSession());
+        if (!activeDownload.compareAndSet(null, task)) {
+            if (callback != null) {
+                callback.onError("已有 TTS 模型正在下载");
+            }
+            return;
+        }
+        updateDownload(true, false, false, task.modelName(), "Preparing", 0);
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.tts")
@@ -282,151 +380,143 @@ public class TtsModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                () -> runDownloadModel(info, proxyUrl, callback)
+                () -> runDownloadModel(task, info, proxyUrl, callback)
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
-            downloadCancelled = false;
-            downloadPaused = false;
-            downloadStatus = new DownloadStatus(false, false, "", "TTS model download queue is full", 0);
-            notifyError(callback, "TTS model download queue is full");
+            activeDownload.compareAndSet(task, null);
+            updateDownload(false, false, false, task.modelName(), "TTS model download queue is full", 0);
+            if (callback != null) {
+                callback.onError("TTS model download queue is full");
+            }
         }
     }
 
     public DownloadStatus downloadStatus() {
-        return downloadStatus;
+        return downloadStatus.get();
     }
 
     public boolean isDownloadPaused() {
-        return downloadPaused;
+        DownloadTask task = activeDownload.get();
+        return task != null && task.session().isPaused();
     }
 
     public void pauseDownload() {
-        downloadPaused = true;
-        DownloadStatus current = downloadStatus;
-        downloadStatus = new DownloadStatus(current.downloading(), true, current.activeModelName(), current.label(), current.progress());
+        DownloadTask task = activeDownload.get();
+        DownloadStatus current = downloadStatus.get();
+        if (task == null || current.cancelling()) {
+            return;
+        }
+        task.session().pause();
+        updateDownload(true, true, false, task.modelName(), current.label(), current.progress());
     }
 
     public void resumeDownload() {
-        downloadPaused = false;
-        DownloadStatus current = downloadStatus;
-        downloadStatus = new DownloadStatus(current.downloading(), false, current.activeModelName(), current.label(), current.progress());
+        DownloadTask task = activeDownload.get();
+        DownloadStatus current = downloadStatus.get();
+        if (task == null || current.cancelling()) {
+            return;
+        }
+        task.session().resume();
+        updateDownload(true, false, false, task.modelName(), current.label(), current.progress());
     }
 
     public void cancelDownload() {
-        downloadCancelled = true;
-        downloadPaused = false;
-        DownloadStatus current = downloadStatus;
-        downloadStatus = new DownloadStatus(false, false, "", "Cancelling", 0);
+        DownloadTask task = activeDownload.get();
+        DownloadStatus current = downloadStatus.get();
+        if (task == null) {
+            return;
+        }
+        task.session().cancel();
+        updateDownload(true, false, true, task.modelName(), "Cancelling", current.progress());
     }
 
-    private void runDownloadModel(TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
+    private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
         try {
-            Path modelDir = resolveModelDir(info);
-            if (modelDir == null) {
-                notifyError(callback, "无法解析模型目录");
+            if (task.hadModelContent()) {
+                finishDownloadComplete(task, callback);
                 return;
             }
+            Path stagingDir = stagingDir(task.modelDir());
+            deleteRecursivelyIfExists(stagingDir);
+            Files.createDirectories(stagingDir);
+
             if (info.downloadUrl != null && !info.downloadUrl.isBlank()) {
-                downloadArchiveModel(info, modelDir, proxyUrl, callback);
+                downloadArchiveModel(task, info, stagingDir, proxyUrl, callback);
             } else if ("moss".equals(info.getEngineType())) {
-                downloadMossModel(modelDir, callback);
+                downloadMossModel(task, stagingDir, callback);
             } else {
-                downloadSherpaModel(info, modelDir, callback);
+                downloadSherpaModel(task, info, stagingDir, callback);
             }
-            if (downloadCancelled) {
-                notifyError(callback, "下载已取消");
-                return;
+            task.session().awaitReady();
+            if (!TtsModelInfo.isModelDirectoryComplete(info, stagingDir)) {
+                throw new IOException("TTS 模型下载完成但文件不完整: " + info.getDisplayName());
             }
-            ModelSettings.saveTtsSettings(modelDir, ModelSettings.loadTtsSettings(modelDir));
-            notifyProgress(callback, "完成", 100);
-            downloadStatus = new DownloadStatus(false, false, "", "Complete", 100);
-            if (callback != null) {
-                callback.onComplete();
-            }
+            ModelSettings.saveTtsSettings(stagingDir, ModelSettings.loadTtsSettings(stagingDir));
+            commitStagingDownload(stagingDir, task.modelDir());
+            finishDownloadComplete(task, callback);
         } catch (Exception e) {
-            notifyError(callback, e.getMessage() != null ? e.getMessage() : "下载失败");
+            if (task.session().isCancelled() || isDownloadCancelled(e)) {
+                finishDownloadCancelled(task, callback);
+            } else {
+                finishDownloadError(task, callback, e.getMessage() != null ? e.getMessage() : "下载失败");
+            }
         }
     }
 
-    private void downloadSherpaModel(TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
-        waitIfDownloadPaused();
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-        notifyProgress(callback, "解析 HuggingFace 文件", 5);
-        HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-        downloader.downloadModelFiles(info.id, modelDir, "main", true, 3,
-                () -> {
-                    if (downloadCancelled) {
-                        throw new IOException("下载已取消");
-                    }
-                    waitIfDownloadPaused();
-                },
-                new HuggingFaceDownloader.DownloadProgressListener() {
+    private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
+        task.session().awaitReady();
+        emitProgress(task, callback, "解析 HuggingFace 文件", 5);
+        task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
+                new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                         int percent = totalFiles <= 0 ? 90 : Math.min(94, 5 + (int) ((fileIndex - 1L) * 80 / totalFiles));
-                        notifyProgress(callback, "解析 HuggingFace 文件", percent);
+                        emitProgress(task, callback, "解析 HuggingFace 文件", percent);
                     }
                 });
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-        notifyProgress(callback, "下载完成", 95);
+        task.session().awaitReady();
+        emitProgress(task, callback, "下载完成", 95);
     }
 
-    private void downloadMossModel(Path modelDir, DownloadProgressCallback callback) throws Exception {
-        waitIfDownloadPaused();
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-        notifyProgress(callback, "下载 MOSS 模型", 5);
-        HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-        downloader.downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3,
-                this::waitIfDownloadPaused,
-                new HuggingFaceDownloader.DownloadProgressListener() {
+    private void downloadMossModel(DownloadTask task, Path modelDir, DownloadProgressCallback callback) throws Exception {
+        task.session().awaitReady();
+        emitProgress(task, callback, "下载 MOSS 模型", 5);
+        task.session().downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3,
+                new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                         int percent = totalFiles <= 0 ? 45 : Math.min(48, 5 + (int) ((fileIndex - 1L) * 40 / totalFiles));
-                        notifyProgress(callback, "下载 MOSS 模型", percent);
+                        emitProgress(task, callback, "下载 MOSS 模型", percent);
                     }
                 });
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-        downloader.downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", modelDir, "main", true, 3,
-                this::waitIfDownloadPaused,
-                new HuggingFaceDownloader.DownloadProgressListener() {
+        task.session().awaitReady();
+        task.session().downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", modelDir, "main", true, 3,
+                new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                         int percent = totalFiles <= 0 ? 90 : Math.min(94, 50 + (int) ((fileIndex - 1L) * 40 / totalFiles));
-                        notifyProgress(callback, "下载 MOSS 模型", percent);
+                        emitProgress(task, callback, "下载 MOSS 模型", percent);
                     }
                 });
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-        notifyProgress(callback, "下载完成", 95);
+        task.session().awaitReady();
+        emitProgress(task, callback, "下载完成", 95);
     }
 
-    private void downloadArchiveModel(TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
-        Files.createDirectories(modelDir.getParent());
+    private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
+        Files.createDirectories(modelDir);
         String archiveName = archiveName(info.downloadUrl);
-        Path archivePath = modelDir.getParent().resolve(archiveName);
+        Path archivePath = modelDir.resolve(archiveName);
         String finalUrl = buildDownloadUrl(info.downloadUrl, proxyUrl);
 
-        notifyProgress(callback, "下载压缩包", 5);
-        downloadFile(finalUrl, archivePath, 5, 60_000, (downloaded, total) -> {
+        emitProgress(task, callback, "下载压缩包", 5);
+        task.session().downloadArchive(finalUrl, archivePath, 5, 60_000, (downloaded, total) -> {
             int percent = total > 0 ? Math.min(85, (int) (downloaded * 80 / total) + 5) : 40;
-            notifyProgress(callback, "下载压缩包", percent);
+            emitProgress(task, callback, "下载压缩包", percent);
         });
 
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-        waitIfDownloadPaused();
-        notifyProgress(callback, "解压模型", 90);
-        Path tempDir = modelDir.getParent().resolve(modelDir.getFileName().toString() + "-extract");
+        task.session().awaitReady();
+        emitProgress(task, callback, "解压模型", 90);
+        Path tempDir = modelDir.resolveSibling(modelDir.getFileName().toString() + "-extract");
         deleteRecursivelyIfExists(tempDir);
         Files.createDirectories(tempDir);
         extractTarBz2(archivePath, tempDir);
@@ -436,7 +526,8 @@ public class TtsModelService {
         Files.move(extractedModelDir, modelDir, StandardCopyOption.REPLACE_EXISTING);
         deleteRecursivelyIfExists(tempDir);
         Files.deleteIfExists(archivePath);
-        notifyProgress(callback, "解压完成", 95);
+        task.session().awaitReady();
+        emitProgress(task, callback, "解压完成", 95);
     }
 
     private Path resolveExtractedModelDir(Path extractedRoot, TtsModelInfo info) throws IOException {
@@ -458,20 +549,18 @@ public class TtsModelService {
         return extractedRoot;
     }
 
-    private void notifyProgress(DownloadProgressCallback callback, String label, int percent) {
-        DownloadStatus current = downloadStatus;
-        downloadStatus = new DownloadStatus(current.downloading(), current.paused(), current.activeModelName(), label == null ? "" : label, Math.max(0, Math.min(100, percent)));
+    private void emitProgress(DownloadTask task, DownloadProgressCallback callback, String label, int percent) {
+        if (!isCurrentTask(task) || task.session().isCancelled()) {
+            return;
+        }
+        updateDownload(true, task.session().isPaused(), false, task.modelName(), label, percent);
         if (callback != null) {
             callback.onProgress(label, percent);
         }
     }
 
-    private void notifyError(DownloadProgressCallback callback, String message) {
-        DownloadStatus current = downloadStatus;
-        downloadStatus = new DownloadStatus(false, false, "", message == null ? "" : message, current.progress());
-        if (callback != null) {
-            callback.onError(message);
-        }
+    private void updateDownload(boolean downloading, boolean paused, boolean cancelling, String modelName, String label, int percent) {
+        downloadStatus.set(new DownloadStatus(downloading, paused, cancelling, modelName, label == null ? "" : label, Math.max(0, Math.min(100, percent))));
     }
 
     private String safeModelName(TtsModelInfo info) {
@@ -517,77 +606,6 @@ public class TtsModelService {
         }
     }
 
-    private interface ProgressListener {
-        void onProgress(long downloaded, long total);
-    }
-
-    private void downloadFile(String urlString, Path targetPath, int maxRetries, int timeoutMillis, ProgressListener listener) throws IOException {
-        IOException last = null;
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            waitIfDownloadPaused();
-            HttpURLConnection conn = null;
-            Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".downloading");
-            try {
-                Files.createDirectories(targetPath.getParent());
-                conn = (HttpURLConnection) new URL(urlString).openConnection();
-                conn.setConnectTimeout(timeoutMillis);
-                conn.setReadTimeout(timeoutMillis);
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "Tianshu-Downloader/1.0");
-                int code = conn.getResponseCode();
-                if (code != 200) {
-                    throw new IOException("HTTP 错误: " + code);
-                }
-                long total = conn.getContentLengthLong();
-                long downloaded = 0L;
-                try (InputStream in = conn.getInputStream();
-                     OutputStream out = Files.newOutputStream(tempPath)) {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = in.read(buffer)) != -1) {
-                        if (downloadCancelled) {
-                            throw new IOException("下载已取消");
-                        }
-                        waitIfDownloadPaused();
-                        out.write(buffer, 0, read);
-                        downloaded += read;
-                        listener.onProgress(downloaded, total);
-                    }
-                }
-                Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                return;
-            } catch (IOException e) {
-                last = e;
-                Files.deleteIfExists(tempPath);
-                if (downloadCancelled) {
-                    throw e;
-                }
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
-            }
-        }
-        throw last != null ? last : new IOException("下载失败");
-    }
-
-    private void waitIfDownloadPaused() throws IOException {
-        while (downloadPaused) {
-            if (downloadCancelled) {
-                throw new IOException("下载已取消");
-            }
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("下载线程被中断", e);
-            }
-        }
-        if (downloadCancelled) {
-            throw new IOException("下载已取消");
-        }
-    }
-
     private void deleteRecursivelyIfExists(Path path) throws IOException {
         if (Files.exists(path)) {
             deleteRecursively(path);
@@ -612,6 +630,92 @@ public class TtsModelService {
                 throw ioException;
             }
             throw e;
+        }
+    }
+
+    private Path stagingDir(Path modelDir) {
+        return modelDir.resolveSibling(modelDir.getFileName().toString() + "-staging");
+    }
+
+    private void commitStagingDownload(Path stagingDir, Path modelDir) throws IOException {
+        deleteRecursivelyIfExists(modelDir);
+        Files.move(stagingDir, modelDir, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private boolean isCurrentTask(DownloadTask task) {
+        return task != null && activeDownload.get() == task;
+    }
+
+    private boolean finishTask(DownloadTask task) {
+        return task != null && activeDownload.compareAndSet(task, null);
+    }
+
+    private void finishDownloadComplete(DownloadTask task, DownloadProgressCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        updateDownload(false, false, false, task.modelName(), "Complete", 100);
+        if (callback != null) {
+            callback.onComplete();
+        }
+    }
+
+    private void finishDownloadCancelled(DownloadTask task, DownloadProgressCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        cleanupIncompleteDownload(task);
+        int progress = downloadStatus.get().progress();
+        updateDownload(false, false, false, task.modelName(), "下载已取消", progress);
+        if (callback != null) {
+            callback.onCancelled();
+        }
+    }
+
+    private void finishDownloadError(DownloadTask task, DownloadProgressCallback callback, String message) {
+        if (!finishTask(task)) {
+            return;
+        }
+        cleanupIncompleteDownload(task);
+        int progress = downloadStatus.get().progress();
+        updateDownload(false, false, false, task.modelName(), message, progress);
+        if (callback != null) {
+            callback.onError(message);
+        }
+    }
+
+    private void cleanupIncompleteDownload(DownloadTask task) {
+        if (task == null || task.hadModelContent()) {
+            return;
+        }
+        Path stagingDir = stagingDir(task.modelDir());
+        try {
+            deleteRecursivelyIfExists(stagingDir);
+            deleteRecursivelyIfExists(stagingDir.resolveSibling(stagingDir.getFileName().toString() + "-extract"));
+        } catch (IOException e) {
+            env.warn("清理未完成的 TTS 模型下载失败: " + e.getMessage());
+        }
+    }
+
+    private boolean isDownloadCancelled(Exception exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof TtsModelDownloadCoordinator.DownloadCancelledException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private record DownloadTask(
+            String modelName,
+            Path modelDir,
+            boolean hadModelContent,
+            TtsModelDownloadCoordinator.DownloadSession session
+    ) {
+        private DownloadTask {
+            modelName = modelName == null ? "" : modelName.trim();
         }
     }
 }

@@ -465,15 +465,23 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void deleteModel(ModuleSettingsContext context, AsrModelInfo info) {
-            if (info == null || downloadInProgress()) {
+            if (info == null || downloadInProgress() || asrModelService().isDeleting()) {
                 return;
             }
-            asrModelService().deleteModel(info);
-            if (info.localKey().equalsIgnoreCase(selectedModelName.get())) {
-                selectedModelName.set("");
-            }
-            context.showStatus(asr("message.deleted", info.getDisplayName()), 3000);
-            coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+            String deletedKey = info.localKey();
+            Component displayName = Component.literal(info.getDisplayName());
+            asrModelService().deleteModelAsync(info, deleted -> runOnClient(() -> {
+                if (deleted) {
+                    if (deletedKey.equalsIgnoreCase(selectedModelName.get())) {
+                        selectedModelName.set("");
+                    }
+                    context.showStatus(asr("message.deleted", displayName), 3000);
+                    coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                } else {
+                    context.showStatus(asr("message.delete_failed"), 3000);
+                }
+                queueDownloadRefresh();
+            }));
         }
 
         private boolean sameModel(AsrModelInfo left, AsrModelInfo right) {
@@ -592,7 +600,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             boolean paused = activeDownload && status.paused();
             boolean cancelling = activeDownload && status.cancelling();
             boolean installed = info != null && isDownloaded(info);
-            return new AsrModelCardState(info, installed, downloading, activeDownload, paused, cancelling);
+            boolean operationActive = downloading || asrModelService().isDeleting();
+            return new AsrModelCardState(info, installed, operationActive, activeDownload, paused, cancelling);
         }
 
         private List<String> filterValues(java.util.function.Function<AsrModelInfo, List<String>> mapper) {
@@ -746,9 +755,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
     }
 
-    private record AsrModelCardState(AsrModelInfo info, boolean installed, boolean anyDownloadActive, boolean activeDownload, boolean paused, boolean cancelling) {
+    private record AsrModelCardState(AsrModelInfo info, boolean installed, boolean anyOperationActive, boolean activeDownload, boolean paused, boolean cancelling) {
         private boolean canStartDownload() {
-            return info != null && !installed && !anyDownloadActive;
+            return info != null && !installed && !anyOperationActive;
         }
 
         private boolean canPauseDownload() {
@@ -764,7 +773,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private boolean canDeleteModel() {
-            return info != null && installed && !anyDownloadActive;
+            return info != null && installed && !anyOperationActive;
         }
 
         private Component statusLabel() {

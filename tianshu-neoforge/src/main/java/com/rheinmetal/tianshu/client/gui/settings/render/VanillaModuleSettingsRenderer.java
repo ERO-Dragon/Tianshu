@@ -80,6 +80,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             case SettingsTemplateModel.OptionGroup group -> renderOptionGroup(group);
             case SettingsTemplateModel.StatusGroup group -> renderStatusGroup(group);
             case SettingsTemplateModel.ActionGroup group -> renderActionGroup(group);
+            case SettingsTemplateModel.CompoundGroup group -> renderCompoundGroup(group);
             case SettingsTemplateModel.ListGroup<?> group -> renderListGroup(group);
             case SettingsTemplateModel.CatalogGroup<?> group -> renderCatalogGroup(group);
             case SettingsTemplateModel.Columns columns -> renderColumns(columns);
@@ -277,14 +278,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         boolean groupActive = safeBoolean(group.enabled(), true);
         renderSection(groupActive, () -> {
             renderGroupTitle(group.title(), groupActive);
-            for (SettingsTemplateModel.StatusEntry entry : safeList(group.entries())) {
-                if (entry == null || !safeBoolean(entry.visible(), true)) {
-                    continue;
-                }
-                boolean active = groupActive && safeBoolean(entry.enabled(), true);
-                SettingsLayoutItem item = nextGridItem();
-                addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeGet(entry.value(), Component.empty())), active ? 0xD0D0D0 : 0x606060), item, active);
-            }
+            renderStatusEntries(group.entries(), groupActive);
         });
     }
 
@@ -292,32 +286,55 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         boolean groupActive = safeBoolean(group.enabled(), true);
         renderSection(groupActive, () -> {
             renderGroupTitle(group.title(), groupActive);
-            int buttonX = contentX();
-            SettingsLayoutItem item = layout.row();
-            int buttonWidth = 96;
-            boolean hasVisibleEntry = false;
-            for (SettingsTemplateModel.ActionEntry entry : safeList(group.entries())) {
-                if (entry == null || !safeBoolean(entry.visible(), true)) {
-                    continue;
-                }
-                hasVisibleEntry = true;
-                if (buttonX + buttonWidth > contentX() + contentWidth()) {
-                    item = layout.row();
-                    buttonX = contentX();
-                }
-                Button button = Button.builder(styledButtonLabel(entry), clicked -> runActionAndRefresh(entry.action()))
-                        .pos(buttonX, item.screenY())
-                        .size(buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT)
-                        .build();
-                addIfVisible(button, item, groupActive && safeBoolean(entry.enabled(), true));
-                buttonX += buttonWidth + SettingsLayoutMetrics.GAP;
-            }
-            if (!hasVisibleEntry) {
-                layout.gap();
-            } else {
-                layout.gap();
-            }
+            renderActionEntries(group.entries(), groupActive);
         });
+    }
+
+    private void renderCompoundGroup(SettingsTemplateModel.CompoundGroup group) {
+        boolean groupActive = safeBoolean(group.enabled(), true);
+        renderSection(groupActive, () -> {
+            renderGroupTitle(group.title(), groupActive);
+            renderOptionEntries(group.options(), groupActive, false);
+            renderActionEntries(group.actions(), groupActive);
+            renderStatusEntries(group.statuses(), groupActive);
+        });
+    }
+
+    private void renderActionEntries(List<SettingsTemplateModel.ActionEntry> entries, boolean groupActive) {
+        int buttonX = contentX();
+        SettingsLayoutItem item = layout.row();
+        int buttonWidth = 96;
+        boolean hasVisibleEntry = false;
+        for (SettingsTemplateModel.ActionEntry entry : safeList(entries)) {
+            if (entry == null || !safeBoolean(entry.visible(), true)) {
+                continue;
+            }
+            hasVisibleEntry = true;
+            if (buttonX + buttonWidth > contentX() + contentWidth()) {
+                item = layout.row();
+                buttonX = contentX();
+            }
+            Button button = Button.builder(styledButtonLabel(entry), clicked -> runActionAndRefresh(entry.action()))
+                    .pos(buttonX, item.screenY())
+                    .size(buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT)
+                    .build();
+            addIfVisible(button, item, groupActive && safeBoolean(entry.enabled(), true));
+            buttonX += buttonWidth + SettingsLayoutMetrics.GAP;
+        }
+        if (hasVisibleEntry) {
+            layout.gap();
+        }
+    }
+
+    private void renderStatusEntries(List<SettingsTemplateModel.StatusEntry> entries, boolean groupActive) {
+        for (SettingsTemplateModel.StatusEntry entry : safeList(entries)) {
+            if (entry == null || !safeBoolean(entry.visible(), true)) {
+                continue;
+            }
+            boolean active = groupActive && safeBoolean(entry.enabled(), true);
+            SettingsLayoutItem item = nextGridItem();
+            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeGet(entry.value(), Component.empty())), active ? 0xD0D0D0 : 0x606060), item, active);
+        }
     }
 
     private <T> void renderListGroup(SettingsTemplateModel.ListGroup<T> group) {

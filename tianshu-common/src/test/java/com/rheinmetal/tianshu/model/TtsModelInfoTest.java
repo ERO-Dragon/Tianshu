@@ -1,7 +1,10 @@
 package com.rheinmetal.tianshu.model;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,6 +45,62 @@ class TtsModelInfoTest {
             assertTrue(info.getPerformanceScore() >= 1 && info.getPerformanceScore() <= 10);
             assertTrue(info.getRecommendationScore() >= 1 && info.getRecommendationScore() <= 10);
         }
+    }
+
+    @Test
+    void modelDirectoryRequiresLoadCriticalFiles(@TempDir Path tempDir) throws Exception {
+        TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "vits-melo-tts-zh_en");
+
+        Files.createFile(tempDir.resolve("model.onnx"));
+
+        assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+
+        Files.createFile(tempDir.resolve("tokens.txt"));
+        Files.createFile(tempDir.resolve("lexicon.txt"));
+        Files.createFile(tempDir.resolve("date.fst"));
+        Files.createFile(tempDir.resolve("new_heteronym.fst"));
+        Files.createFile(tempDir.resolve("number.fst"));
+        Files.createFile(tempDir.resolve("phone.fst"));
+
+        assertTrue(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+    }
+
+    @Test
+    void zipVoiceDirectoryRequiresEncoderDecoderVocoderAndTokens(@TempDir Path tempDir) throws Exception {
+        TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "ZipVoice-int8");
+
+        Files.createFile(tempDir.resolve("tokens.txt"));
+        Files.createFile(tempDir.resolve("text_encoder_int8.onnx"));
+        Files.createFile(tempDir.resolve("fm_decoder_int8.onnx"));
+
+        assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+
+        Files.createFile(tempDir.resolve("vocos_24khz.onnx"));
+        Files.createFile(tempDir.resolve("pinyin.raw"));
+        Files.createDirectory(tempDir.resolve("espeak-ng-data"));
+
+        assertTrue(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+    }
+
+    @Test
+    void mossDirectoryRequiresManifestReferencedMetaFiles(@TempDir Path tempDir) throws Exception {
+        TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "MOSS-TTS-Nano-100M-ONNX");
+
+        Files.writeString(tempDir.resolve("browser_poc_manifest.json"), """
+                {
+                  "model_files": {
+                    "tts_meta": "tts_meta.json",
+                    "codec_meta": "codec_meta.json"
+                  }
+                }
+                """);
+
+        assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+
+        Files.writeString(tempDir.resolve("tts_meta.json"), "{}");
+        Files.writeString(tempDir.resolve("codec_meta.json"), "{}");
+
+        assertTrue(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
     }
 
     private static TtsModelInfo find(List<TtsModelInfo> catalog, String name) {

@@ -124,6 +124,34 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
     }
 
     @Override
+    public ModuleSettingsPanel compound(String id, Component title, Consumer<OptionTemplate> options, Consumer<ActionTemplate> actions, Consumer<StatusTemplate> status) {
+        return compound(id, title, ALWAYS_ENABLED, ALWAYS_VISIBLE, options, actions, status);
+    }
+
+    @Override
+    public ModuleSettingsPanel compound(String id, Component title, BooleanSupplier enabled, Consumer<OptionTemplate> options, Consumer<ActionTemplate> actions, Consumer<StatusTemplate> status) {
+        return compound(id, title, enabled, ALWAYS_VISIBLE, options, actions, status);
+    }
+
+    @Override
+    public ModuleSettingsPanel compound(String id, Component title, BooleanSupplier enabled, BooleanSupplier visible, Consumer<OptionTemplate> options, Consumer<ActionTemplate> actions, Consumer<StatusTemplate> status) {
+        OptionGroup optionGroup = new OptionGroup(id + ".options", title);
+        ActionGroup actionGroup = new ActionGroup(id + ".actions", title);
+        StatusGroup statusGroup = new StatusGroup(id + ".status", title);
+        if (options != null) {
+            options.accept(optionGroup);
+        }
+        if (actions != null) {
+            actions.accept(actionGroup);
+        }
+        if (status != null) {
+            status.accept(statusGroup);
+        }
+        templates.add(new SettingsTemplateModel.CompoundGroup(id, title, optionGroup.entries(), actionGroup.entries(), statusGroup.entries(), enabled, visible));
+        return this;
+    }
+
+    @Override
     public <T> ModuleSettingsPanel list(String id, Component title, Consumer<ListTemplate<T>> builder) {
         return list(id, title, ALWAYS_ENABLED, ALWAYS_VISIBLE, builder);
     }
@@ -344,6 +372,10 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         private SettingsTemplateModel.StatusGroup toModel(BooleanSupplier enabled, BooleanSupplier visible) {
             return new SettingsTemplateModel.StatusGroup(id, title, List.copyOf(entries), enabled, visible);
         }
+
+        private List<SettingsTemplateModel.StatusEntry> entries() {
+            return List.copyOf(entries);
+        }
     }
 
     private static final class ActionGroup implements ActionTemplate {
@@ -389,6 +421,10 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
 
         private SettingsTemplateModel.ActionGroup toModel(BooleanSupplier enabled, BooleanSupplier visible) {
             return new SettingsTemplateModel.ActionGroup(id, title, List.copyOf(entries), enabled, visible);
+        }
+
+        private List<SettingsTemplateModel.ActionEntry> entries() {
+            return List.copyOf(entries);
         }
     }
 

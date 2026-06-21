@@ -10,6 +10,12 @@ public class LlmModelInfo {
     public String repoId;
     public String hfFilePath;
     public String modelFile;
+    public String series;
+    public String descriptionKey;
+    public String description;
+    public String thinkingCapability;
+    public long downloadSizeBytes;
+    public long estimatedVramBytes;
     public int contextSize;
     public List<String> lang;
 
@@ -22,6 +28,30 @@ public class LlmModelInfo {
     public String getModelFile() {
         if (modelFile != null && !modelFile.isBlank()) return modelFile;
         return name != null ? name + ".gguf" : "model.gguf";
+    }
+
+    public String getSeries() {
+        return series == null ? "" : series.trim();
+    }
+
+    public String getDescriptionKey() {
+        return descriptionKey == null ? "" : descriptionKey.trim();
+    }
+
+    public String getDescription() {
+        return description == null ? "" : description.trim();
+    }
+
+    public String getThinkingCapability() {
+        return thinkingCapability == null ? "" : thinkingCapability.trim();
+    }
+
+    public long getDownloadSizeBytes() {
+        return Math.max(0L, downloadSizeBytes);
+    }
+
+    public long getEstimatedVramBytes() {
+        return Math.max(0L, estimatedVramBytes);
     }
 
     public int getContextSize() {
