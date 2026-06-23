@@ -18,6 +18,7 @@ public class LLMRequest {
     private String lane = "CHAT";
     private Integer taskPriority = 0;
     private Boolean taskPreemptible = false;
+    private LlmInferencePolicy inferencePolicy = LlmInferencePolicy.defaults();
 
     private List<Chunk> chunks = new ArrayList<>();
 
@@ -26,7 +27,7 @@ public class LLMRequest {
 
     public static LLMRequest of(Chunk... chunks) {
         LLMRequest request = new LLMRequest();
-        request.chunks = List.of(chunks);
+        request.chunks = chunks == null ? new ArrayList<>() : new ArrayList<>(List.of(chunks));
         return request;
     }
 
@@ -66,6 +67,10 @@ public class LLMRequest {
         return taskPreemptible;
     }
 
+    public LlmInferencePolicy getInferencePolicy() {
+        return inferencePolicy;
+    }
+
     public List<Chunk> getChunks() {
         return chunks;
     }
@@ -102,8 +107,12 @@ public class LLMRequest {
         this.taskPreemptible = taskPreemptible != null ? taskPreemptible : false;
     }
 
+    public void setInferencePolicy(LlmInferencePolicy inferencePolicy) {
+        this.inferencePolicy = inferencePolicy == null ? LlmInferencePolicy.defaults() : inferencePolicy;
+    }
+
     public void setChunks(List<Chunk> chunks) {
-        this.chunks = chunks != null ? chunks : new ArrayList<>();
+        this.chunks = chunks != null ? new ArrayList<>(chunks) : new ArrayList<>();
     }
 
     public void addChunk(Chunk chunk) {

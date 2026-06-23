@@ -150,6 +150,10 @@ public interface ITianshuConfig {
         return getLlmBasePath().resolve("rag").resolve("root");
     }
 
+    default Path getLlmRagCacheRootPath() {
+        return getLlmBasePath().resolve("ragCache");
+    }
+
     default boolean isLlmRagRootEnabled() {
         return true;
     }
@@ -244,6 +248,27 @@ public interface ITianshuConfig {
 
     default boolean isLlmTaskSuspendOnChatEnabled() {
         return true;
+    }
+
+    default boolean isLlmFrameGuardEnabled() {
+        return true;
+    }
+
+    default void setLlmFrameGuardEnabled(boolean enabled) {
+    }
+
+    default int getLlmFrameGuardTargetFps() {
+        return 60;
+    }
+
+    default void setLlmFrameGuardTargetFps(int fps) {
+    }
+
+    default boolean isLlmMtpEnabled() {
+        return false;
+    }
+
+    default void setLlmMtpEnabled(boolean enabled) {
     }
 
     default int getLlmRequestTimeoutSeconds() {

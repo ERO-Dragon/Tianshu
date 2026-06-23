@@ -5,6 +5,10 @@ import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 
 import java.util.ArrayList;
@@ -21,12 +25,16 @@ public class LLMService {
 
     private final IGameEnvironment env;
     private final LlmInferenceClient inferenceClient;
+    private final LlmInferenceGovernor inferenceGovernor;
     private final RagCacheManager ragCache;
     private volatile boolean initialized = false;
 
     private LLMService(Builder builder) {
         this.env = Objects.requireNonNull(builder.env, "env");
         this.inferenceClient = Objects.requireNonNull(builder.inferenceClient, "inferenceClient");
+        this.inferenceGovernor = builder.inferenceGovernor != null
+                ? builder.inferenceGovernor
+                : new LlmInferenceGovernor(builder.config != null ? builder.config : new DefaultLlmConfig(), builder.performanceProvider);
 
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
         if (builder.usePersistentCache) {
@@ -53,7 +61,7 @@ public class LLMService {
     public LLMResult chat(LLMRequest request) {
         PreparedResult prepared = prepareRequest(request);
         try {
-            String text = inferenceClient.chat(prepared.messages(), prepared.sampler(), prepared.maxTokens());
+            String text = inferenceClient.chat(prepared.messages(), prepared.sampler(), prepared.maxTokens(), prepared.options());
             return new LLMResult(text, prepared.ragHits());
         } catch (Exception e) {
             env.error("[LLMService] Chat failed", e);
@@ -69,7 +77,7 @@ public class LLMService {
         PreparedResult prepared = prepareRequest(request);
         copyRagHits(prepared, ragHitsSink);
         try {
-            inferenceClient.chatStream(prepared.messages(), prepared.sampler(), safeTokenConsumer(onToken));
+            inferenceClient.chatStream(prepared.messages(), prepared.sampler(), prepared.maxTokens(), prepared.options(), safeTokenConsumer(onToken));
         } catch (Exception e) {
             env.error("[LLMService] Stream chat failed", e);
             throw new RuntimeException("LLM stream chat failed: " + safeMessage(e), e);
@@ -85,7 +93,7 @@ public class LLMService {
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.task(prepared.messages(), prepared.sampler(), prepared.maxTokens(),
-                    prepared.taskPriority(), prepared.taskPreemptible());
+                    prepared.taskPriority(), prepared.taskPreemptible(), prepared.options());
         } catch (Exception e) {
             env.error("[LLMService] Task submit failed", e);
             return CompletableFuture.failedFuture(e);
@@ -97,7 +105,7 @@ public class LLMService {
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.taskStream(prepared.messages(), prepared.sampler(), prepared.maxTokens(),
-                    prepared.taskPriority(), prepared.taskPreemptible(), safeTokenConsumer(onToken));
+                    prepared.taskPriority(), prepared.taskPreemptible(), prepared.options(), safeTokenConsumer(onToken));
         } catch (Exception e) {
             env.error("[LLMService] Stream task submit failed", e);
             return CompletableFuture.failedFuture(e);
@@ -136,6 +144,18 @@ public class LLMService {
         return inferenceClient.supportsEnableThinking();
     }
 
+    public boolean supportsMtp() {
+        return inferenceClient.supportsMtp();
+    }
+
+    public LlmMtpCapabilitySnapshot getMtpCapability() {
+        return inferenceClient.getMtpCapability();
+    }
+
+    public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) {
+        return inferenceClient.calibrateMtpAsync(request);
+    }
+
     public void shutdown() {
         env.info("[LLMService] Shutdown complete");
     }
@@ -167,6 +187,7 @@ public class LLMService {
                 maxTokens(effectiveRequest),
                 effectiveRequest.getTaskPriority(),
                 effectiveRequest.getTaskPreemptible(),
+                inferenceGovernor.resolve(effectiveRequest.getInferencePolicy(), effectiveRequest.isTaskLane(), supportsMtp()),
                 ragHits
         );
     }
@@ -400,10 +421,12 @@ public class LLMService {
             int maxTokens,
             int taskPriority,
             boolean taskPreemptible,
+            LlmInferenceOptions options,
             List<LLMPromptResultPayload.RagHitPayload> ragHits
     ) {
         private PreparedResult {
             messages = messages != null ? List.copyOf(messages) : List.of();
+            options = options == null ? LlmInferenceOptions.defaults() : options;
             ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
         }
     }
@@ -469,13 +492,21 @@ public class LLMService {
 
     public static class Builder {
         private IGameEnvironment env;
+        private com.rheinmetal.tianshu.api.ITianshuConfig config;
         private LlmInferenceClient inferenceClient;
+        private LlmInferenceGovernor inferenceGovernor;
+        private LlmPerformanceProvider performanceProvider = LlmPerformanceProvider.UNAVAILABLE;
         private boolean usePersistentCache = true;
         private java.nio.file.Path cacheDirectory;
         private String cacheNamespace = "default";
 
         public Builder env(IGameEnvironment env) {
             this.env = env;
+            return this;
+        }
+
+        public Builder config(com.rheinmetal.tianshu.api.ITianshuConfig config) {
+            this.config = config;
             return this;
         }
 
@@ -486,6 +517,16 @@ public class LLMService {
 
         public Builder inferenceClient(LlmInferenceClient inferenceClient) {
             this.inferenceClient = inferenceClient;
+            return this;
+        }
+
+        public Builder inferenceGovernor(LlmInferenceGovernor inferenceGovernor) {
+            this.inferenceGovernor = inferenceGovernor;
+            return this;
+        }
+
+        public Builder performanceProvider(LlmPerformanceProvider performanceProvider) {
+            this.performanceProvider = performanceProvider == null ? LlmPerformanceProvider.UNAVAILABLE : performanceProvider;
             return this;
         }
 
@@ -512,5 +553,32 @@ public class LLMService {
             }
             return new LLMService(this);
         }
+    }
+
+    private static final class DefaultLlmConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
+        @Override public boolean isAiEnabled() { return true; }
+        @Override public void setAiEnabled(boolean enabled) {}
+        @Override public com.rheinmetal.tianshu.constant.TriggerMode getTriggerMode() { return com.rheinmetal.tianshu.constant.TriggerMode.PUSH_TO_TALK; }
+        @Override public void setTriggerMode(com.rheinmetal.tianshu.constant.TriggerMode mode) {}
+        @Override public int getAsrPort() { return 0; }
+        @Override public int getLlmPort() { return 0; }
+        @Override public int getTtsPort() { return 0; }
+        @Override public String getCustomAsrName() { return ""; }
+        @Override public void setCustomAsrName(String name) {}
+        @Override public String getCustomLlmName() { return ""; }
+        @Override public void setCustomLlmName(String name) {}
+        @Override public String getCustomTtsName() { return ""; }
+        @Override public void setCustomTtsName(String name) {}
+        @Override public java.nio.file.Path getRootPath() { return java.nio.file.Path.of("."); }
+        @Override public java.nio.file.Path getGameConfigDir() { return java.nio.file.Path.of("."); }
+        @Override public java.nio.file.Path getAsrBasePath() { return java.nio.file.Path.of("."); }
+        @Override public java.nio.file.Path getLlmBasePath() { return java.nio.file.Path.of("."); }
+        @Override public java.nio.file.Path getTtsBasePath() { return java.nio.file.Path.of("."); }
+        @Override public java.nio.file.Path getAsrModelPath() { return null; }
+        @Override public java.nio.file.Path getLlmModelPath() { return null; }
+        @Override public java.nio.file.Path getTtsModelPath() { return null; }
+        @Override public java.nio.file.Path getLlmGgufFilePath() { return null; }
+        @Override public java.nio.file.Path getVoiceLibraryPath() { return java.nio.file.Path.of("."); }
+        @Override public void save() {}
     }
 }

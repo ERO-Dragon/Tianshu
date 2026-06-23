@@ -27,6 +27,9 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue LLM_ENABLED;
     public static final ModConfigSpec.IntValue LLM_GPU_LAYER_PERCENT;
     public static final ModConfigSpec.ConfigValue<String> LLM_GPU_DEVICE_ID;
+    public static final ModConfigSpec.BooleanValue LLM_FRAME_GUARD_ENABLED;
+    public static final ModConfigSpec.IntValue LLM_FRAME_GUARD_TARGET_FPS;
+    public static final ModConfigSpec.BooleanValue LLM_MTP_ENABLED;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.IntValue ASR_PORT;
@@ -63,6 +66,9 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         LLM_ENABLED = builder.define("enabled", true);
         LLM_GPU_LAYER_PERCENT = builder.defineInRange("gpuLayerPercent", 100, 0, 100);
         LLM_GPU_DEVICE_ID = builder.define("gpuDeviceId", "");
+        LLM_FRAME_GUARD_ENABLED = builder.define("frameGuardEnabled", true);
+        LLM_FRAME_GUARD_TARGET_FPS = builder.defineInRange("frameGuardTargetFps", 60, 15, 240);
+        LLM_MTP_ENABLED = builder.define("mtpEnabled", false);
         builder.pop();
 
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
@@ -245,6 +251,36 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setLlmGpuDeviceId(String deviceId) {
         LLM_GPU_DEVICE_ID.set(deviceId == null ? "" : deviceId.trim());
+    }
+
+    @Override
+    public boolean isLlmFrameGuardEnabled() {
+        return LLM_FRAME_GUARD_ENABLED.get();
+    }
+
+    @Override
+    public void setLlmFrameGuardEnabled(boolean enabled) {
+        LLM_FRAME_GUARD_ENABLED.set(enabled);
+    }
+
+    @Override
+    public int getLlmFrameGuardTargetFps() {
+        return LLM_FRAME_GUARD_TARGET_FPS.get();
+    }
+
+    @Override
+    public void setLlmFrameGuardTargetFps(int fps) {
+        LLM_FRAME_GUARD_TARGET_FPS.set(Math.max(15, Math.min(240, fps)));
+    }
+
+    @Override
+    public boolean isLlmMtpEnabled() {
+        return LLM_MTP_ENABLED.get();
+    }
+
+    @Override
+    public void setLlmMtpEnabled(boolean enabled) {
+        LLM_MTP_ENABLED.set(enabled);
     }
 
     @Override

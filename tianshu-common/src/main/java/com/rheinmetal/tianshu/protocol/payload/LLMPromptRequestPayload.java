@@ -18,7 +18,8 @@ public record LLMPromptRequestPayload(
         String dialogueSessionId,
         String requesterModuleId,
         String requesterParticipantId,
-        String dialogueTurnId
+        String dialogueTurnId,
+        InferencePolicyPayload inferencePolicy
 ) implements ITianshuPayload {
     public static final int MIN_TASK_PRIORITY = 0;
     public static final int MAX_TASK_PRIORITY = 1000;
@@ -43,7 +44,7 @@ public record LLMPromptRequestPayload(
             String dialogueTurnId
     ) {
         this(requestId, maxTokens, temperature, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks,
-                dialogueSessionId, requesterModuleId, requesterParticipantId, dialogueTurnId);
+                dialogueSessionId, requesterModuleId, requesterParticipantId, dialogueTurnId, null);
     }
 
     public LLMPromptRequestPayload(
@@ -57,7 +58,7 @@ public record LLMPromptRequestPayload(
             Boolean taskPreemptible,
             List<ChunkPayload> chunks
     ) {
-        this(requestId, maxTokens, temperature, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks, "", "", "", "");
+        this(requestId, maxTokens, temperature, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks, "", "", "", "", null);
     }
 
     public LLMPromptRequestPayload(
@@ -72,7 +73,7 @@ public record LLMPromptRequestPayload(
             Boolean taskPreemptible,
             List<ChunkPayload> chunks
     ) {
-        this(requestId, maxTokens, temperature, stream, thinking, includeThinkingContent, lane, taskPriority, taskPreemptible, chunks, "", "", "", "");
+        this(requestId, maxTokens, temperature, stream, thinking, includeThinkingContent, lane, taskPriority, taskPreemptible, chunks, "", "", "", "", null);
     }
 
     public LLMPromptRequestPayload {
@@ -90,6 +91,7 @@ public record LLMPromptRequestPayload(
         requesterModuleId = clean(requesterModuleId);
         requesterParticipantId = clean(requesterParticipantId);
         dialogueTurnId = clean(dialogueTurnId);
+        inferencePolicy = inferencePolicy == null ? InferencePolicyPayload.followGlobal() : inferencePolicy;
     }
 
     public LLMPromptRequestPayload withDialogueAuthorization(String sessionId, String moduleId, String participantId, String turnId) {
@@ -107,7 +109,8 @@ public record LLMPromptRequestPayload(
                 sessionId,
                 moduleId,
                 participantId,
-                turnId
+                turnId,
+                inferencePolicy
         );
     }
 
@@ -126,7 +129,28 @@ public record LLMPromptRequestPayload(
                 dialogueSessionId,
                 requesterModuleId,
                 requesterParticipantId,
-                dialogueTurnId
+                dialogueTurnId,
+                inferencePolicy
+        );
+    }
+
+    public LLMPromptRequestPayload withInferencePolicy(InferencePolicyPayload inferencePolicy) {
+        return new LLMPromptRequestPayload(
+                requestId,
+                maxTokens,
+                temperature,
+                stream,
+                thinking,
+                includeThinkingContent,
+                lane,
+                taskPriority,
+                taskPreemptible,
+                chunks,
+                dialogueSessionId,
+                requesterModuleId,
+                requesterParticipantId,
+                dialogueTurnId,
+                inferencePolicy
         );
     }
 
@@ -215,6 +239,20 @@ public record LLMPromptRequestPayload(
 
         public static MessageItemPayload assistant(String content) {
             return new MessageItemPayload("assistant", content);
+        }
+    }
+
+    public record InferencePolicyPayload(
+            Boolean frameGuardEnabled,
+            Integer targetFps,
+            Boolean mtpEnabled
+    ) implements ITianshuPayload {
+        public InferencePolicyPayload {
+            targetFps = targetFps == null ? null : Math.max(15, Math.min(240, targetFps));
+        }
+
+        public static InferencePolicyPayload followGlobal() {
+            return new InferencePolicyPayload(null, null, null);
         }
     }
 }

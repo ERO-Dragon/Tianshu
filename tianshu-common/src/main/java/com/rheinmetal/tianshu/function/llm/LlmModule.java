@@ -9,17 +9,16 @@ import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.core.scope.DefaultWorldIdentityProvider;
 import com.rheinmetal.tianshu.core.scope.DefaultWorldScopeProvider;
 import com.rheinmetal.tianshu.core.scope.WorldIdentityProvider;
-import com.rheinmetal.tianshu.core.scope.WorldScope;
 import com.rheinmetal.tianshu.core.scope.WorldScopeProvider;
+import com.rheinmetal.tianshu.function.llm.rag.LlmRagCacheLayout;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
+import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
-import java.nio.file.Path;
 import java.util.List;
-import java.util.Objects;
 
 public final class LlmModule implements TianshuManagedModule {
     private static final List<RuntimeCapability> PROVIDED_CAPABILITIES = List.of(
@@ -31,6 +30,7 @@ public final class LlmModule implements TianshuManagedModule {
     private final ITianshuConfig config;
     private final ProtocolRuntime runtime;
     private final WorldScopeProvider scopeProvider;
+    private final LlmRagCacheLayout ragCacheLayout;
     private final LlmEngineProvider engineProvider;
     private final LlmProtocolAdapter adapter;
     private final Object lifecycleLock = new Object();
@@ -49,6 +49,7 @@ public final class LlmModule implements TianshuManagedModule {
         this.config = config;
         this.runtime = runtime;
         this.scopeProvider = new DefaultWorldScopeProvider(worldIdentityProvider == null ? new DefaultWorldIdentityProvider(env) : worldIdentityProvider);
+        this.ragCacheLayout = new LlmRagCacheLayout(config, scopeProvider);
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
         this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus);
     }
@@ -164,34 +165,36 @@ public final class LlmModule implements TianshuManagedModule {
                 markCapabilitiesReady();
                 return;
             }
-            if (!engineProvider.isAiServiceAvailable()) {
-                markCapabilitiesFailed("LLM model not configured");
-                if (moduleService != null) {
-                    moduleService.markFailed("LLM model not configured");
-                }
-                throw new IllegalStateException("LLM model not configured");
-            }
-
-            llmService = LLMService.builder()
-                    .env(env)
-                    .aiService(engineProvider.getAiService())
-                    .usePersistentCache(true)
-                    .cacheDirectory(cacheDirectory())
-                    .cacheNamespace(cacheNamespace())
-                    .build();
-            adapter.setLlmService(llmService);
-
-            if (runtimeContext != null) {
-                runtimeContext.services().register(LLMService.class, llmService);
-            }
         }
 
         engineProvider.startAsync(() -> {
-            if (moduleService == null || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
-                return;
+            synchronized (lifecycleLock) {
+                if (destroyed || moduleService == null || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
+                    return;
+                }
+                JavaLlamaServer aiService = engineProvider.currentAiService();
+                if (aiService == null) {
+                    markCapabilitiesFailed("LLM service failed to start");
+                    moduleService.markFailed("LLM service failed to start");
+                    return;
+                }
+                llmService = LLMService.builder()
+                        .env(env)
+                        .config(config)
+                        .inferenceClient(new JavaLlamaInferenceClient(aiService))
+                        .performanceProvider(moduleService)
+                        .usePersistentCache(true)
+                        .cacheDirectory(ragCacheLayout.currentWorldCacheDirectory())
+                        .cacheNamespace(ragCacheLayout.cacheNamespace())
+                        .build();
+                adapter.setLlmService(llmService);
+
+                if (runtimeContext != null) {
+                    runtimeContext.services().register(LLMService.class, llmService);
+                }
+                markCapabilitiesReady();
+                moduleService.markReady();
             }
-            markCapabilitiesReady();
-            moduleService.markReady();
             env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天枢] §fLLM 核心已就绪"));
         }, () -> {
             markCapabilitiesFailed("LLM service failed to start");
@@ -236,24 +239,4 @@ public final class LlmModule implements TianshuManagedModule {
         }
     }
 
-    private String cacheNamespace() {
-        return stableSegment(config.getCustomLlmName()) + ":" + stableSegment(config.getLlmEmbeddingModelName());
-    }
-
-    private Path cacheDirectory() {
-        WorldScope scope = scopeProvider == null ? WorldScope.unknown() : scopeProvider.currentScope();
-        return config.getLlmBasePath()
-                .resolve(safePathSegment(scope.worldId(), "unknown_world"))
-                .resolve("cache");
-    }
-
-    private static String stableSegment(String value) {
-        String normalized = value == null || value.isBlank() ? "default" : value.trim();
-        return Integer.toHexString(Objects.hash(normalized));
-    }
-
-    private static String safePathSegment(String value, String fallback) {
-        String normalized = value == null || value.isBlank() ? fallback : value.trim();
-        return normalized.replaceAll("[^a-zA-Z0-9._-]", "_");
-    }
 }

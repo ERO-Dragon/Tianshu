@@ -106,7 +106,7 @@ final class GpuInfo {
         try {
             ProcessBuilder pb = new ProcessBuilder(
                     "nvidia-smi",
-                    "--query-gpu=index,name,memory.total,memory.used",
+                    "--query-gpu=index,name,memory.total,memory.used,utilization.gpu",
                     "--format=csv,noheader,nounits"
             );
             pb.redirectErrorStream(true);
@@ -129,7 +129,8 @@ final class GpuInfo {
                 String name = parts[1].trim();
                 long total = parts.length > 2 ? parseLong(parts[2]) * 1024L * 1024L : 0L;
                 long used = parts.length > 3 ? parseLong(parts[3]) * 1024L * 1024L : 0L;
-                devices.add(new GpuDevice(id.isBlank() ? String.valueOf(devices.size()) : id, name, total, used));
+                double utilization = parts.length > 4 ? parseLong(parts[4]) / 100.0D : -1.0D;
+                devices.add(new GpuDevice(id.isBlank() ? String.valueOf(devices.size()) : id, name, total, used, utilization));
             }
             return List.copyOf(devices);
         } catch (Exception ignored) {
@@ -168,7 +169,7 @@ final class GpuInfo {
             String id = normalizeId(parts[0]);
             String name = parts[1].trim();
             long total = parts.length > 2 ? parseLong(parts[2]) : 0L;
-            devices.add(new GpuDevice(id.isBlank() ? String.valueOf(devices.size()) : id, name, total, 0L));
+            devices.add(new GpuDevice(id.isBlank() ? String.valueOf(devices.size()) : id, name, total, 0L, -1.0D));
         }
         return List.copyOf(devices);
     }
@@ -185,12 +186,17 @@ final class GpuInfo {
         }
     }
 
-    record GpuDevice(String id, String name, long vramTotalBytes, long vramUsedBytes) {
+    record GpuDevice(String id, String name, long vramTotalBytes, long vramUsedBytes, double utilization) {
         GpuDevice {
             id = normalizeId(id);
             name = name == null || name.isBlank() ? "GPU " + id : name.trim();
             vramTotalBytes = Math.max(0L, vramTotalBytes);
             vramUsedBytes = Math.max(0L, vramUsedBytes);
+            utilization = utilization < 0.0D ? -1.0D : Math.max(0.0D, Math.min(1.0D, utilization));
+        }
+
+        boolean hasUtilization() {
+            return utilization >= 0.0D;
         }
     }
 

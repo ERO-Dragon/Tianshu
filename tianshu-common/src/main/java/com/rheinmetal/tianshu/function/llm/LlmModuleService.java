@@ -2,13 +2,15 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class LlmModuleService {
+public final class LlmModuleService implements LlmPerformanceProvider {
     public interface RuntimeController {
         void start();
         void stop();
@@ -18,6 +20,7 @@ public final class LlmModuleService {
     private final AtomicReference<LlmRuntimeState> state = new AtomicReference<>(LlmRuntimeState.STOPPED);
     private final AtomicReference<String> failureMessage = new AtomicReference<>("");
     private final AtomicReference<RuntimeController> runtimeController = new AtomicReference<>();
+    private final AtomicReference<LlmPerformanceProvider> performanceProvider = new AtomicReference<>(LlmPerformanceProvider.UNAVAILABLE);
 
     public LlmModuleService(ITianshuConfig config) {
         this.config = Objects.requireNonNull(config, "config");
@@ -25,6 +28,15 @@ public final class LlmModuleService {
 
     public void bindRuntimeController(RuntimeController controller) {
         runtimeController.set(controller);
+    }
+
+    public void bindPerformanceProvider(LlmPerformanceProvider provider) {
+        performanceProvider.set(provider == null ? LlmPerformanceProvider.UNAVAILABLE : provider);
+    }
+
+    @Override
+    public LlmPerformanceSnapshot performanceSnapshot() {
+        return performanceProvider.get().performanceSnapshot();
     }
 
     public LlmControlResult load() {

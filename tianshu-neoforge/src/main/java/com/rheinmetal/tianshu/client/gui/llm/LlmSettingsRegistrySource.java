@@ -15,6 +15,8 @@ import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.llm.LlmModelService;
 import com.rheinmetal.tianshu.function.llm.LlmModuleService;
+import com.rheinmetal.tianshu.function.llm.service.LLMService;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
@@ -91,7 +93,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                         draft::buildLoadOptions,
                         actions -> actions
                                 .button("llm.load.start", llm("action.load"), SettingsButtonStyle.PRIMARY, () -> draft.startLoad(context), draft::canLoad)
-                                .button("llm.load.stop", llm("action.unload"), SettingsButtonStyle.DANGER, () -> draft.stopLoad(context), draft::canUnload),
+                                .button("llm.load.stop", llm("action.unload"), SettingsButtonStyle.DANGER, () -> draft.stopLoad(context), draft::canUnload)
+                                .button("llm.mtp.calibrate", llm("action.mtp_calibrate"), () -> draft.calibrateMtp(context), draft::canCalibrateMtp, draft::mtpSupported),
                         status -> {
                             draft.buildModelInfo(status);
                             draft.buildLoadStatus(status);
@@ -114,6 +117,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> selectedGpuDeviceId;
+        private final MutableSettingsValue<Boolean> frameGuardEnabled;
+        private final MutableSettingsValue<Double> frameGuardTargetFps;
+        private final MutableSettingsValue<Boolean> mtpEnabled;
         private final MutableSettingsValue<String> seriesFilter;
         private final MutableSettingsValue<String> downloadStateFilter;
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
@@ -127,6 +133,13 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.enabled = new MutableSettingsValue<>(config::isLlmEnabled, config::setLlmEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.selectedGpuDeviceId = new MutableSettingsValue<>(this::currentDeviceTargetId, ignored -> {}, Objects::nonNull);
+            this.frameGuardEnabled = new MutableSettingsValue<>(config::isLlmFrameGuardEnabled, config::setLlmFrameGuardEnabled);
+            this.frameGuardTargetFps = new MutableSettingsValue<>(
+                    () -> (double) config.getLlmFrameGuardTargetFps(),
+                    value -> config.setLlmFrameGuardTargetFps(value == null ? 60 : (int) Math.round(value)),
+                    value -> value != null && value >= 15.0D && value <= 240.0D
+            );
+            this.mtpEnabled = new MutableSettingsValue<>(config::isLlmMtpEnabled, config::setLlmMtpEnabled);
             this.seriesFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.downloadStateFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             GpuInfo.requestRefresh(() -> runOnClient(this::refreshSettingsScreen));
@@ -163,7 +176,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void buildLoadOptions(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
             options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
-                    .select("llm.gpu.device", llm("option.gpu_device"), deviceTargetIds(), selectedGpuDeviceId, this::deviceTargetOptionLabel, enabled::get);
+                    .select("llm.gpu.device", llm("option.gpu_device"), deviceTargetIds(), selectedGpuDeviceId, this::deviceTargetOptionLabel, enabled::get)
+                    .select("llm.frame_guard.enabled", llm("option.frame_guard"), List.of(Boolean.TRUE, Boolean.FALSE), frameGuardEnabled, this::enabledLabel, enabled::get)
+                    .slider("llm.frame_guard.target_fps", llm("option.target_fps"), frameGuardTargetFps, 15.0D, 240.0D, () -> enabled.get() && frameGuardEnabled.get())
+                    .select("llm.mtp.enabled", llm("option.mtp"), List.of(Boolean.TRUE, Boolean.FALSE), mtpEnabled, this::enabledLabel, enabled::get, this::mtpSupported);
         }
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.gui.settings.api.OptionTemplate options) {
@@ -174,6 +190,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private void buildLoadStatus(com.rheinmetal.tianshu.client.gui.settings.api.StatusTemplate status) {
             status.row("llm.load.state", llm("row.load_state"), this::loadStateStatus);
             status.row("llm.load.compatibility", llm("row.load_compatibility"), this::loadCompatibilityStatus);
+            status.row("llm.mtp.capability", llm("row.mtp"), this::mtpStatusText, () -> true, this::mtpSupported);
             status.row("llm.download.progress", llm("row.download_status"), this::downloadStatusText);
         }
 
@@ -186,7 +203,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         public boolean dirty() {
             return enabled.dirty()
                     || selectedModelName.dirty()
-                    || selectedGpuDeviceId.dirty();
+                    || selectedGpuDeviceId.dirty()
+                    || frameGuardEnabled.dirty()
+                    || frameGuardTargetFps.dirty()
+                    || mtpEnabled.dirty();
         }
 
         @Override
@@ -208,6 +228,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             selectedModelName.save();
             config.setLlmGpuDeviceId(persistedDeviceTargetId());
             selectedGpuDeviceId.save();
+            frameGuardEnabled.save();
+            frameGuardTargetFps.save();
+            mtpEnabled.save();
             config.save();
             if (!enabled.get()) {
                 moduleService.unload();
@@ -220,6 +243,13 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             enabled.reset();
             selectedModelName.reset();
             selectedGpuDeviceId.reset();
+            frameGuardEnabled.reset();
+            frameGuardTargetFps.reset();
+            mtpEnabled.reset();
+        }
+
+        private Component enabledLabel(Boolean value) {
+            return common(Boolean.TRUE.equals(value) ? "on" : "off");
         }
 
         private List<String> downloadedModelNames() {
@@ -354,6 +384,48 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private void stopLoad(ModuleSettingsContext context) {
             LlmControlResult result = moduleService.unload();
             context.showStatus(result.accepted() ? llm("message.unload_started") : Component.literal(result.message()), 3000);
+        }
+
+        private boolean mtpSupported() {
+            return coreManager.findService(LLMService.class)
+                    .map(LLMService::supportsMtp)
+                    .orElse(false);
+        }
+
+        private boolean canCalibrateMtp() {
+            LlmRuntimeSnapshot snapshot = moduleService.snapshot();
+            return enabled.get() && snapshot.running() && mtpSupported();
+        }
+
+        private void calibrateMtp(ModuleSettingsContext context) {
+            coreManager.findService(LLMService.class).ifPresentOrElse(service -> {
+                context.showStatus(llm("message.mtp_calibration_started"), 3000);
+                service.calibrateMtpAsync(LlmMtpCalibrationRequest.defaults()).whenComplete((result, error) -> runOnClient(() -> {
+                    if (error != null) {
+                        context.showStatus(llm("message.mtp_calibration_failed", error.getMessage()), 5000);
+                    } else if (result == null || !result.supported() || result.bestDraftMax() <= 0) {
+                        context.showStatus(llm("message.mtp_calibration_unsupported"), 4000);
+                    } else {
+                        context.showStatus(llm("message.mtp_calibration_complete", result.bestDraftMax()), 5000);
+                    }
+                    refreshSettingsScreen();
+                }));
+            }, () -> context.showStatus(llm("state.unloaded"), 3000));
+        }
+
+        private Component mtpStatusText() {
+            return coreManager.findService(LLMService.class)
+                    .map(service -> {
+                        var capability = service.getMtpCapability();
+                        if (capability == null || !capability.supported()) {
+                            return common("unsupported");
+                        }
+                        if (capability.calibrated() && capability.recommendedDraftMax() > 0) {
+                            return llm("mtp.status.calibrated", capability.recommendedDraftMax());
+                        }
+                        return llm("mtp.status.supported");
+                    })
+                    .orElse(common("unsupported"));
         }
 
         private Component loadStateStatus() {

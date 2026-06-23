@@ -198,8 +198,7 @@ public final class LlmEngineProvider {
     }
 
     public boolean isAiServiceAvailable() {
-        ensureAiService();
-        return aiService != null;
+        return currentAiService() != null;
     }
 
     public JavaLlamaServer getAiService() {
@@ -207,14 +206,20 @@ public final class LlmEngineProvider {
         return aiService;
     }
 
+    public JavaLlamaServer currentAiService() {
+        return aiService;
+    }
+
     public void startAsync(Runnable onReady, Runnable onFailed) {
-        JavaLlamaServer service = ensureAiService();
-        if (service == null) {
-            onFailed.run();
-            return;
-        }
         CompletableFuture.runAsync(() -> {
             try {
+                JavaLlamaServer service = ensureAiService();
+                if (service == null) {
+                    if (onFailed != null) {
+                        onFailed.run();
+                    }
+                    return;
+                }
                 service.start();
                 if (onReady != null) {
                     onReady.run();

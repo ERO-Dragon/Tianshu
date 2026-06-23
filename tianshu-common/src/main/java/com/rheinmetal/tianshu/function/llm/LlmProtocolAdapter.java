@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.service.Chunk;
+import com.rheinmetal.tianshu.function.llm.service.LlmInferencePolicy;
 import com.rheinmetal.tianshu.function.llm.service.LLMRequest;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.MessageItem;
@@ -483,6 +484,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         request.setLane(payload.lane());
         request.setTaskPriority(payload.taskPriority());
         request.setTaskPreemptible(payload.taskPreemptible());
+        request.setInferencePolicy(toInferencePolicy(payload.inferencePolicy()));
 
         if (payload.chunks() != null) {
             for (LLMPromptRequestPayload.ChunkPayload chunk : payload.chunks()) {
@@ -495,6 +497,13 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         }
 
         return request;
+    }
+
+    private LlmInferencePolicy toInferencePolicy(LLMPromptRequestPayload.InferencePolicyPayload payload) {
+        if (payload == null) {
+            return LlmInferencePolicy.defaults();
+        }
+        return new LlmInferencePolicy(payload.frameGuardEnabled(), payload.targetFps(), payload.mtpEnabled());
     }
 
     private Chunk toMessageChunk(LLMPromptRequestPayload.ChunkPayload chunk) {

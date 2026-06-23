@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudState;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXClientConfig;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.llm.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.gui.llm.LlmSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.module.TianshuSettingsModule;
 import com.rheinmetal.tianshu.client.gui.settings.registry.CompositeSettingsRegistrySource;
@@ -170,6 +171,7 @@ public class TianshuClient {
             ClientNamedObjectIndexManager.ensureIndex("client login");
             ensureOnnxRuntimeLoaded();
             coreManager.initWorkers();
+            ClientLlmRuntimeBridge.bind(coreManager, config);
             worldSessionStarted = coreManager.isInitialized();
         });
 
@@ -306,6 +308,7 @@ public class TianshuClient {
     }
 
     public static void onRenderGui(RenderGuiEvent.Post event) {
+        ClientLlmRuntimeBridge.markFrame();
         if (axChatHudRenderer != null) {
             axChatHudRenderer.render(event.getGuiGraphics(), 0.0F);
         }
