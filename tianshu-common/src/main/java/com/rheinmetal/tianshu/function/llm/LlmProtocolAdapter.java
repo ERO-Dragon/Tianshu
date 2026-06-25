@@ -308,10 +308,12 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         StringBuilder visibleCollected = new StringBuilder();
         LlmThinkingContentFilter thinkingFilter = responseStreamFilter(payload);
         int[] index = {0};
+        boolean[] ragHitsPublished = {false};
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
 
         try {
             llmService.chatStream(request, token -> {
+                publishInitialRagHits(envelope, payload, ragHits, index, ragHitsPublished);
                 if (token != null && !token.isEmpty()) {
                     String visibleToken = responseStreamToken(thinkingFilter, token);
                     if (visibleToken.isEmpty()) {
@@ -326,6 +328,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     publishLLMPromptStreamChunk(envelope, chunk);
                 }
             }, ragHits);
+            publishInitialRagHits(envelope, payload, ragHits, index, ragHitsPublished);
 
             String finalVisibleToken = responseStreamFlush(thinkingFilter);
             if (!finalVisibleToken.isEmpty()) {
@@ -344,11 +347,13 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             ));
             return true;
         } catch (Exception e) {
+            publishInitialRagHits(envelope, payload, ragHits, index, ragHitsPublished);
             respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
                     payload.requestId(),
                     "LLM_INFERENCE_FAILED",
                     e.getMessage(),
-                    visibleCollected.toString()
+                    visibleCollected.toString(),
+                    ragHits
             ));
             return false;
         }
@@ -365,14 +370,16 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     .exceptionally(ex -> {
                         Throwable cause = unwrapCompletion(ex);
                         if (isTaskCancellation(cause)) {
-                            respondLLMPromptResult(envelope, LLMPromptResultPayload.cancelled(payload.requestId(), ""));
+                            respondLLMPromptResult(envelope, LLMPromptResultPayload.cancelled(payload.requestId(), "", ragHits));
                             cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
                             return null;
                         }
                         respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
                                 payload.requestId(),
                                 "LLM_INFERENCE_FAILED",
-                                failureMessage(cause)
+                                failureMessage(cause),
+                                "",
+                                ragHits
                         ));
                         fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(cause), cause);
                         return null;
@@ -392,9 +399,11 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         StringBuilder visibleCollected = new StringBuilder();
         LlmThinkingContentFilter thinkingFilter = responseStreamFilter(payload);
         int[] index = {0};
+        boolean[] ragHitsPublished = {false};
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
 
         CompletableFuture<String> future = llmService.submitTaskStream(request, token -> {
+            publishInitialRagHits(envelope, payload, ragHits, index, ragHitsPublished);
             if (token != null && !token.isEmpty()) {
                 String visibleToken = responseStreamToken(thinkingFilter, token);
                 if (visibleToken.isEmpty()) {
@@ -409,6 +418,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 publishLLMPromptStreamChunk(envelope, chunk);
             }
         }, ragHits);
+        publishInitialRagHits(envelope, payload, ragHits, index, ragHitsPublished);
 
         return future.thenAccept(text -> {
             String finalVisibleToken = responseStreamFlush(thinkingFilter);
@@ -434,7 +444,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 publishLLMPromptStreamEnd(envelope, index[0]);
                 respondLLMPromptResult(envelope, LLMPromptResultPayload.cancelled(
                         payload.requestId(),
-                        visibleCollected.toString()
+                        visibleCollected.toString(),
+                        ragHits
                 ));
                 cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
                 return null;
@@ -444,11 +455,27 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     payload.requestId(),
                     "LLM_INFERENCE_FAILED",
                     failureMessage(cause),
-                    visibleCollected.toString()
+                    visibleCollected.toString(),
+                    ragHits
             ));
             fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(cause), cause);
             return null;
         });
+    }
+
+    private void publishInitialRagHits(TianshuEnvelope envelope, LLMPromptRequestPayload payload,
+                                       List<LLMPromptResultPayload.RagHitPayload> ragHits, int[] index,
+                                       boolean[] published) {
+        if (published[0] || ragHits == null || ragHits.isEmpty()) {
+            return;
+        }
+        published[0] = true;
+        publishLLMPromptStreamChunk(envelope, LLMPromptStreamChunkPayload.chunk(
+                payload.requestId(),
+                "",
+                index[0]++,
+                List.copyOf(ragHits)
+        ));
     }
 
     private String responseText(LLMPromptRequestPayload payload, String text) {
@@ -525,7 +552,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 chunk.ragContent(),
                 Boolean.TRUE.equals(chunk.useCache()),
                 Boolean.TRUE.equals(chunk.includeRagHits()),
-                chunk.memoryRagTokenBudget() != null ? chunk.memoryRagTokenBudget() : 1000
+                chunk.memoryRagTokenBudget() != null ? chunk.memoryRagTokenBudget() : 1000,
+                Boolean.TRUE.equals(chunk.globalRagCache())
         );
     }
 
@@ -548,18 +576,22 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
         try {
             LLMCacheManageResultPayload result = switch (payload.action()) {
+                case LLMCacheManagePayload.ACTION_INDEX -> {
+                    llmService.indexCache(payload.uid(), payload.contents(), Boolean.TRUE.equals(payload.globalRagCache()));
+                    yield LLMCacheManageResultPayload.indexed(payload.uid(), true);
+                }
                 case LLMCacheManagePayload.ACTION_EVICT_ALL -> {
-                    llmService.evictCache(payload.uid());
+                    llmService.evictCache(payload.uid(), Boolean.TRUE.equals(payload.globalRagCache()));
                     yield LLMCacheManageResultPayload.evicted(payload.uid(), true);
                 }
                 case LLMCacheManagePayload.ACTION_EVICT_CONTENT -> {
                     for (String content : payload.contents()) {
-                        llmService.evictCache(payload.uid(), content);
+                        llmService.evictCache(payload.uid(), content, Boolean.TRUE.equals(payload.globalRagCache()));
                     }
                     yield LLMCacheManageResultPayload.evicted(payload.uid(), true);
                 }
                 case LLMCacheManagePayload.ACTION_QUERY -> {
-                    boolean exists = llmService.hasCache(payload.uid());
+                    boolean exists = llmService.hasCache(payload.uid(), Boolean.TRUE.equals(payload.globalRagCache()));
                     yield LLMCacheManageResultPayload.queried(payload.uid(), exists);
                 }
                 default -> LLMCacheManageResultPayload.failed(payload.uid(), "Unknown action: " + payload.action());

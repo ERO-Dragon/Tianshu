@@ -23,6 +23,14 @@ public final class LlmRagCacheLayout {
         return config.getLlmRagCacheRootPath().resolve(safeSegment(scope.worldId(), "unknown_world"));
     }
 
+    public Path globalCacheDirectory() {
+        return config.getLlmRagCacheRootPath().resolve("global");
+    }
+
+    public Path cacheDirectory(boolean global) {
+        return global ? globalCacheDirectory() : currentWorldCacheDirectory();
+    }
+
     public String cacheNamespace() {
         return stableSegment(config.getCustomLlmName()) + ":" + stableSegment(config.getLlmEmbeddingModelName());
     }

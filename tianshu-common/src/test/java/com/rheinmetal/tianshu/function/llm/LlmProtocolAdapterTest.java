@@ -17,6 +17,8 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
+import com.rheinmetal.tianshu.protocol.payload.LLMCacheManagePayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -407,6 +409,50 @@ class LlmProtocolAdapterTest {
     }
 
     @Test
+    void taskStreamPublishesRagHitsBeforeTokensSoCancellationKeepsMetadata() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-task-rag-cancel", 0, 0.7f, true, false, "TASK", 0, true,
+                List.of(
+                        LLMPromptRequestPayload.ChunkPayload.message(
+                                List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                        ),
+                        LLMPromptRequestPayload.ChunkPayload.rag(
+                                "memory",
+                                "RAG:",
+                                List.of("remembered fact"),
+                                true,
+                                true,
+                                1000
+                        )
+                )
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+        List<LLMPromptStreamChunkPayload> streamPayloads = registerStreamPayloadCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        await(() -> !streamPayloads.isEmpty());
+        client.taskFuture.completeExceptionally(new CancellationException("cancelled"));
+
+        await(() -> result.get() != null);
+        LLMPromptStreamChunkPayload metadata = streamPayloads.get(0);
+        assertEquals("", metadata.text());
+        assertEquals(1, metadata.ragHits().size());
+        assertEquals("memory", metadata.ragHits().get(0).uid());
+        assertEquals(true, result.get().isCancelled());
+        assertEquals(1, result.get().ragHits().size());
+        assertEquals("remembered fact", result.get().ragHits().get(0).hits().get(0).content());
+    }
+
+    @Test
     void taskCancellationReturnsCancelledResult() {
         PendingInferenceClient client = new PendingInferenceClient();
         LLMService service = LLMService.builder()
@@ -569,6 +615,35 @@ class LlmProtocolAdapterTest {
         assertEquals(45, status.generatedTokens());
     }
 
+    @Test
+    void cacheManageIndexCanAddGlobalRagLibrary() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
+                        "test",
+                        ProtocolCapabilities.LLM_CACHE_MANAGE,
+                        PayloadType.LLM_CACHE_MANAGE,
+                        LLMCacheManagePayload.indexGlobal("shared", List.of("global memory"))
+                )
+                .build();
+        AtomicReference<LLMCacheManageResultPayload> result = registerCacheManageResultCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMCacheManage(envelope, context);
+
+        await(() -> result.get() != null);
+        assertEquals(1, context.completed.get());
+        assertEquals("INDEX", result.get().action());
+        assertEquals(true, service.hasCache("shared", true));
+        assertEquals(false, service.hasCache("shared", false));
+    }
+
     private void await(BooleanSupplier condition) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
@@ -687,6 +762,39 @@ class LlmProtocolAdapterTest {
         return result;
     }
 
+    private AtomicReference<LLMCacheManageResultPayload> registerCacheManageResultCapture(ProtocolRuntime runtime, String requestEnvelopeId) {
+        AtomicReference<LLMCacheManageResultPayload> result = new AtomicReference<>();
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        CapabilityDescriptor capability = new CapabilityDescriptor(
+                "test.llm.cache.response",
+                PayloadType.LLM_CACHE_MANAGE_RESULT,
+                LLMCacheManageResultPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE
+        );
+        ModuleDescriptor module = new ModuleDescriptor(
+                "module.test.cache.response",
+                List.of(),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        );
+        runtime.registerResponseHandler(requestEnvelopeId, module, capability, (envelope, context) -> {
+            if (envelope.payload() instanceof LLMCacheManageResultPayload payload) {
+                result.set(payload);
+            }
+            context.complete(envelope.envelopeId());
+        });
+        return result;
+    }
+
     private List<String> registerStreamChunkCapture(ProtocolRuntime runtime, String requestEnvelopeId) {
         List<String> chunks = new CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -714,6 +822,39 @@ class LlmProtocolAdapterTest {
         runtime.registerResponseHandler(requestEnvelopeId, module, capability, (envelope, context) -> {
             if (envelope.payload() instanceof LLMPromptStreamChunkPayload payload && !payload.finished()) {
                 chunks.add(payload.text());
+            }
+            context.complete(envelope.envelopeId());
+        });
+        return chunks;
+    }
+
+    private List<LLMPromptStreamChunkPayload> registerStreamPayloadCapture(ProtocolRuntime runtime, String requestEnvelopeId) {
+        List<LLMPromptStreamChunkPayload> chunks = new CopyOnWriteArrayList<>();
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        CapabilityDescriptor capability = new CapabilityDescriptor(
+                "test.llm.stream.payload.response",
+                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                LLMPromptStreamChunkPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE
+        );
+        ModuleDescriptor module = new ModuleDescriptor(
+                "module.test.stream.payload.response",
+                List.of(),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        );
+        runtime.registerResponseHandler(requestEnvelopeId, module, capability, (envelope, context) -> {
+            if (envelope.payload() instanceof LLMPromptStreamChunkPayload payload && !payload.finished()) {
+                chunks.add(payload);
             }
             context.complete(envelope.envelopeId());
         });

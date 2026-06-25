@@ -16,6 +16,10 @@ public record LLMCacheManageResultPayload(
         errorMessage = errorMessage != null && !errorMessage.isBlank() ? errorMessage.trim() : null;
     }
 
+    public static LLMCacheManageResultPayload indexed(String uid, boolean success) {
+        return new LLMCacheManageResultPayload("INDEX", uid, success, success, null);
+    }
+
     public static LLMCacheManageResultPayload evicted(String uid, boolean success) {
         return new LLMCacheManageResultPayload("EVICT", uid, success, true, null);
     }

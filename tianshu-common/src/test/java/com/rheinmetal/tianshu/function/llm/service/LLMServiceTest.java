@@ -109,6 +109,48 @@ class LLMServiceTest {
     }
 
     @Test
+    void ragHitsKeepUidAndScopeForMultipleRagChunks() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+        LLMRequest request = LLMRequest.of(
+                Chunk.message(MessageItem.user("query text")),
+                Chunk.rag("world-memory", "World:", List.of("world hit"), false, true, 1000),
+                Chunk.globalRag("global-lore", "Global:", List.of("global hit"), false, true, 1000)
+        );
+
+        LLMService.LLMResult result = service.chat(request);
+
+        assertEquals(2, result.ragHits().size());
+        assertEquals("world-memory", result.ragHits().get(0).uid());
+        assertEquals(false, result.ragHits().get(0).globalRagCache());
+        assertEquals("global-lore", result.ragHits().get(1).uid());
+        assertEquals(true, result.ragHits().get(1).globalRagCache());
+    }
+
+    @Test
+    void globalRagCacheIsSeparateFromWorldRagCacheForSameUid() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+        service.indexCache("shared", List.of("global memory"), true);
+
+        service.chat(LLMRequest.of(
+                Chunk.message(MessageItem.user("query text")),
+                Chunk.rag("shared", "RAG:", List.of(), true, true, 1000)
+        ));
+
+        assertFalse(client.lastMessages.stream().anyMatch(message ->
+                "system".equals(message.role) && message.content.contains("global memory")));
+
+        service.chat(LLMRequest.of(
+                Chunk.message(MessageItem.user("query text")),
+                Chunk.globalRag("shared", "RAG:", List.of(), true, true, 1000)
+        ));
+
+        assertTrue(client.lastMessages.stream().anyMatch(message ->
+                "system".equals(message.role) && message.content.contains("global memory")));
+    }
+
+    @Test
     void submitTaskPassesTaskPriorityPreemptibleMaxTokensAndSampler() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);

@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.core.scope.WorldIdentityProvider;
 import com.rheinmetal.tianshu.core.scope.WorldScopeProvider;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagCacheLayout;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
+import com.rheinmetal.tianshu.function.llm.service.JavaLlamaInferenceClient;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
@@ -185,6 +186,7 @@ public final class LlmModule implements TianshuManagedModule {
                         .performanceProvider(moduleService)
                         .usePersistentCache(true)
                         .cacheDirectory(ragCacheLayout.currentWorldCacheDirectory())
+                        .globalCacheDirectory(ragCacheLayout.globalCacheDirectory())
                         .cacheNamespace(ragCacheLayout.cacheNamespace())
                         .build();
                 adapter.setLlmService(llmService);

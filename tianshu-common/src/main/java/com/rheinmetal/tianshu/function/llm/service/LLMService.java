@@ -26,7 +26,8 @@ public class LLMService {
     private final IGameEnvironment env;
     private final LlmInferenceClient inferenceClient;
     private final LlmInferenceGovernor inferenceGovernor;
-    private final RagCacheManager ragCache;
+    private final RagCacheManager worldRagCache;
+    private final RagCacheManager globalRagCache;
     private volatile boolean initialized = false;
 
     private LLMService(Builder builder) {
@@ -38,9 +39,11 @@ public class LLMService {
 
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
         if (builder.usePersistentCache) {
-            this.ragCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.cacheDirectory, builder.cacheNamespace);
+            this.worldRagCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.cacheDirectory, builder.cacheNamespace);
+            this.globalRagCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.globalCacheDirectory(), builder.cacheNamespace);
         } else {
-            this.ragCache = new DefaultRagCacheManager(env, embeddingAdapter);
+            this.worldRagCache = new DefaultRagCacheManager(env, embeddingAdapter);
+            this.globalRagCache = new DefaultRagCacheManager(env, embeddingAdapter);
         }
 
         this.initialized = true;
@@ -113,19 +116,43 @@ public class LLMService {
     }
 
     public RagCacheManager getRagCache() {
-        return ragCache;
+        return worldRagCache;
+    }
+
+    public RagCacheManager getGlobalRagCache() {
+        return globalRagCache;
+    }
+
+    public void indexCache(String uid, List<String> contents) {
+        indexCache(uid, contents, false);
+    }
+
+    public void indexCache(String uid, List<String> contents, boolean globalRagCache) {
+        ragCache(globalRagCache).index(uid, contents);
     }
 
     public void evictCache(String uid) {
-        ragCache.evict(uid);
+        evictCache(uid, false);
+    }
+
+    public void evictCache(String uid, boolean globalRagCache) {
+        ragCache(globalRagCache).evict(uid);
     }
 
     public void evictCache(String uid, String content) {
-        ragCache.evict(uid, content);
+        evictCache(uid, content, false);
+    }
+
+    public void evictCache(String uid, String content, boolean globalRagCache) {
+        ragCache(globalRagCache).evict(uid, content);
     }
 
     public boolean hasCache(String uid) {
-        return ragCache.hasCache(uid);
+        return hasCache(uid, false);
+    }
+
+    public boolean hasCache(String uid, boolean globalRagCache) {
+        return ragCache(globalRagCache).hasCache(uid);
     }
 
     public boolean isReady() {
@@ -174,7 +201,7 @@ public class LLMService {
                 appendMessages(orderedMessages, chunk.getMessageContent());
             } else if ("rag".equalsIgnoreCase(chunk.getType())) {
                 RagPreparation rag = processRagChunk(chunk, lastUserMessage);
-                collectRagHits(chunk.getUid(), rag.results(), chunk.getIncludeRagHits(), ragHits);
+                collectRagHits(chunk, rag.results(), ragHits);
                 if (!rag.prompt().isEmpty()) {
                     orderedMessages.add(MessageItem.system(rag.prompt()));
                 }
@@ -222,9 +249,9 @@ public class LLMService {
 
         if (useCache) {
             if (!contents.isEmpty()) {
-                ragCache.index(uid, contents);
+                ragCache(ragChunk).index(uid, contents);
             }
-            return ragCache.search(uid, queryText, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD);
+            return ragCache(ragChunk).search(uid, queryText, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD);
         }
 
         if (contents.isEmpty()) {
@@ -268,8 +295,8 @@ public class LLMService {
         return kept;
     }
 
-    private void collectRagHits(String uid, List<RagSearchResult> results, Boolean includeRagHits, List<LLMPromptResultPayload.RagHitPayload> ragHits) {
-        if (!Boolean.TRUE.equals(includeRagHits) || results == null || results.isEmpty()) {
+    private void collectRagHits(Chunk chunk, List<RagSearchResult> results, List<LLMPromptResultPayload.RagHitPayload> ragHits) {
+        if (chunk == null || !Boolean.TRUE.equals(chunk.getIncludeRagHits()) || results == null || results.isEmpty()) {
             return;
         }
 
@@ -277,7 +304,7 @@ public class LLMService {
         for (RagSearchResult r : results) {
             entries.add(LLMPromptResultPayload.HitEntry.of(r.getScore(), r.getContent()));
         }
-        ragHits.add(LLMPromptResultPayload.RagHitPayload.of(uid, entries));
+        ragHits.add(LLMPromptResultPayload.RagHitPayload.of(chunk.getUid(), chunk.isGlobalRagCache(), entries));
     }
 
     private String extractLastUserMessage(LLMRequest request) {
@@ -357,6 +384,14 @@ public class LLMService {
                 .map(String::trim)
                 .distinct()
                 .toList();
+    }
+
+    private RagCacheManager ragCache(Chunk chunk) {
+        return ragCache(chunk != null && chunk.isGlobalRagCache());
+    }
+
+    private RagCacheManager ragCache(boolean globalRagCache) {
+        return globalRagCache ? this.globalRagCache : this.worldRagCache;
     }
 
     private static String normalizeRole(String role) {
@@ -498,6 +533,7 @@ public class LLMService {
         private LlmPerformanceProvider performanceProvider = LlmPerformanceProvider.UNAVAILABLE;
         private boolean usePersistentCache = true;
         private java.nio.file.Path cacheDirectory;
+        private java.nio.file.Path globalCacheDirectory;
         private String cacheNamespace = "default";
 
         public Builder env(IGameEnvironment env) {
@@ -540,6 +576,11 @@ public class LLMService {
             return this;
         }
 
+        public Builder globalCacheDirectory(java.nio.file.Path globalCacheDirectory) {
+            this.globalCacheDirectory = globalCacheDirectory;
+            return this;
+        }
+
         public Builder cacheNamespace(String cacheNamespace) {
             this.cacheNamespace = cacheNamespace;
             return this;
@@ -552,6 +593,14 @@ public class LLMService {
                 Objects.requireNonNull(cacheDirectory, "cacheDirectory must be set when persistent cache is enabled");
             }
             return new LLMService(this);
+        }
+
+        private java.nio.file.Path globalCacheDirectory() {
+            if (globalCacheDirectory != null) {
+                return globalCacheDirectory;
+            }
+            java.nio.file.Path parent = cacheDirectory == null ? null : cacheDirectory.getParent();
+            return parent == null ? java.nio.file.Path.of("global") : parent.resolve("global");
         }
     }
 

@@ -38,4 +38,15 @@ class LlmRagCacheLayoutTest {
                 layout.currentWorldCacheDirectory()
         );
     }
+
+    @Test
+    void storesGlobalCacheUnderSharedGlobalDirectory() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        LlmRagCacheLayout layout = new LlmRagCacheLayout(config, null);
+
+        assertEquals(
+                config.getLlmBasePath().resolve("ragCache").resolve("global"),
+                layout.globalCacheDirectory()
+        );
+    }
 }

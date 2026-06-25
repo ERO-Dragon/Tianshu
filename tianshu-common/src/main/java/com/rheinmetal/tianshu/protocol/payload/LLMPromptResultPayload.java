@@ -50,12 +50,20 @@ public record LLMPromptResultPayload(
         return new LLMPromptResultPayload(requestId, "CANCELLED", text, null, null, List.of());
     }
 
+    public static LLMPromptResultPayload cancelled(String requestId, String text, List<RagHitPayload> ragHits) {
+        return new LLMPromptResultPayload(requestId, "CANCELLED", text, null, null, ragHits);
+    }
+
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage) {
         return new LLMPromptResultPayload(requestId, "FAILED", "", errorCode, errorMessage, List.of());
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText) {
         return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", errorCode, errorMessage, List.of());
+    }
+
+    public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText, List<RagHitPayload> ragHits) {
+        return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", errorCode, errorMessage, ragHits);
     }
 
     public boolean isCompleted() {
@@ -86,6 +94,7 @@ public record LLMPromptResultPayload(
 
     public record RagHitPayload(
             String uid,
+            boolean globalRagCache,
             List<HitEntry> hits
     ) implements ITianshuPayload {
         public RagHitPayload {
@@ -93,8 +102,16 @@ public record LLMPromptResultPayload(
             hits = hits != null ? List.copyOf(hits) : List.of();
         }
 
+        public RagHitPayload(String uid, List<HitEntry> hits) {
+            this(uid, false, hits);
+        }
+
         public static RagHitPayload of(String uid, List<HitEntry> hits) {
-            return new RagHitPayload(uid, hits);
+            return new RagHitPayload(uid, false, hits);
+        }
+
+        public static RagHitPayload of(String uid, boolean globalRagCache, List<HitEntry> hits) {
+            return new RagHitPayload(uid, globalRagCache, hits);
         }
     }
 }
