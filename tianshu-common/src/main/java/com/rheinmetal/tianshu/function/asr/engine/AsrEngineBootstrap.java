@@ -12,29 +12,34 @@ import com.rheinmetal.tianshu.utils.PathUtils;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
 public final class AsrEngineBootstrap {
     private final IGameEnvironment env;
     private final ITianshuConfig config;
+    private final Consumer<AsrEngineBootstrapStatus> statusSink;
 
     public AsrEngineBootstrap(IGameEnvironment env, ITianshuConfig config) {
+        this(env, config, null);
+    }
+
+    public AsrEngineBootstrap(IGameEnvironment env, ITianshuConfig config, Consumer<AsrEngineBootstrapStatus> statusSink) {
         this.env = env;
         this.config = config;
+        this.statusSink = statusSink == null ? ignored -> {} : statusSink;
     }
 
     public AsrEngine initialize(ModuleRuntimeContext context, String moduleId) {
-        return initialize(context, moduleId, true);
-    }
-
-    public AsrEngine initialize(ModuleRuntimeContext context, String moduleId, boolean notifyPlayer) {
         Path modelPath = config.getAsrModelPath();
         if (modelPath == null || modelPath.getFileName() == null || modelPath.getFileName().toString().isBlank()) {
             markFailed(context, moduleId, "ASR model is not configured");
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.not_configured", "ASR 模型未配置"));
             return null;
         }
         if (modelPath == null || !Files.isDirectory(modelPath)) {
             markFailed(context, moduleId, "ASR model is not installed");
             env.info("ASR 模型目录不存在，静默等待");
+            publishStatus(AsrEngineBootstrapStatus.waiting("tianshu.presence.module.asr.not_installed", "ASR 模型未安装"));
             return null;
         }
 
@@ -43,19 +48,19 @@ public final class AsrEngineBootstrap {
             if (initializeEngine(engine, context, modelPath)) {
                 context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId);
                 env.info("ASR 引擎初始化成功");
-                if (notifyPlayer) {
-                    env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §f态势感知已就绪"));
-                }
+                publishStatus(AsrEngineBootstrapStatus.ready("tianshu.presence.module.asr.ready", "态势感知已就绪"));
                 return engine;
             }
             markFailed(context, moduleId, "ASR 引擎初始化失败");
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.failed", "ASR 引擎初始化失败"));
         } catch (ModelFilesMissingException e) {
             markFailed(context, moduleId, "ASR 模型文件缺失: " + e.getMessage());
             env.error("ASR 模型文件缺失: " + e.getMessage(), null);
-            env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 模型文件缺失，请重新下载"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.model_files_missing", "ASR 模型文件缺失，请重新下载"));
         } catch (Throwable t) {
             markFailed(context, moduleId, "ASR 引擎初始化异常: " + t.getMessage());
             env.error("ASR 引擎初始化失败", t);
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.exception", "ASR 引擎初始化异常"));
         }
         engine.shutdown();
         return null;
@@ -78,7 +83,7 @@ public final class AsrEngineBootstrap {
         boolean initialized = engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile);
         if (!initialized) {
             env.error("ASR 引擎初始化失败，模型类型可能尚未适配", null);
-            env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天极] §cASR 引擎初始化失败，该模型类型尚未适配"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.unsupported_model", "ASR 引擎初始化失败，该模型类型尚未适配"));
         }
         return initialized;
     }
@@ -117,5 +122,9 @@ public final class AsrEngineBootstrap {
 
     private void markFailed(ModuleRuntimeContext context, String moduleId, String reason) {
         context.runtimeState().capabilities().markFailed(AsrRuntimeCapabilities.INPUT, moduleId, reason);
+    }
+
+    private void publishStatus(AsrEngineBootstrapStatus status) {
+        statusSink.accept(status);
     }
 }

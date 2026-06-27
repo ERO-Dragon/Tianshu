@@ -1,7 +1,10 @@
-package com.rheinmetal.tianshu.protocol.runtime;
+﻿package com.rheinmetal.tianshu.protocol.runtime;
 
+import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
 import com.rheinmetal.tianshu.protocol.DeadLetterPolicy;
+import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
+import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.FailurePolicy;
@@ -10,6 +13,7 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TargetMode;
+import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.broker.BrokerRegistry;
 import com.rheinmetal.tianshu.protocol.broker.BrokerSubmitResult;
@@ -17,7 +21,7 @@ import com.rheinmetal.tianshu.protocol.broker.ProtocolBroker;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleRegistry;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
-import com.rheinmetal.tianshu.protocol.summary.StateSummaryRegistry;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -30,6 +34,7 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionRegistry;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -47,7 +52,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     private final StormGuard stormGuard = new StormGuard(200, 32);
     private final VoiceTriggerRegistry voiceTriggerRegistry;
     private final IntegrationModuleRegistry integrationModuleRegistry = new IntegrationModuleRegistry();
-    private final StateSummaryRegistry stateSummaryRegistry = new StateSummaryRegistry();
+    private final ModuleStatusCache moduleStatusCache = new ModuleStatusCache();
     private final ProtocolExecutorManager executorManager;
     private final BrokerRegistry brokerRegistry;
     private final ProtocolContext context;
@@ -61,6 +66,7 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
         this.executorManager = new ProtocolExecutorManager(mainThreadExecutor);
         this.brokerRegistry = new BrokerRegistry(mainThreadExecutor, executorManager);
         this.context = new RuntimeContext();
+        subscribeModuleStatusCache();
     }
 
     public void registerModule(ModuleDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
@@ -263,10 +269,44 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
     public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
     public IntegrationModuleRegistry integrationModules() { return integrationModuleRegistry; }
-    public StateSummaryRegistry stateSummaries() { return stateSummaryRegistry; }
+    public ModuleStatusCache moduleStatusCache() { return moduleStatusCache; }
     public ProtocolExecutorManager executors() { return executorManager; }
     public ProtocolContext context() { return context; }
     public RuntimeInterruptPublisher runtimeInterrupts() { return this; }
+
+    private void handleModuleStatus(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof ModuleStatusPayload payload) {
+            moduleStatusCache.accept(payload.status());
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void subscribeModuleStatusCache() {
+        subscribeTopic(
+                new ModuleDescriptor(
+                        "core.module_status_cache",
+                        List.of(),
+                        ThreadPolicy.ASYNC_WORKER,
+                        CancellationScope.SELF_ONLY,
+                        FailurePolicy.REPORT_ONLY,
+                        DeliveryPolicy.LATEST_ONLY,
+                        false,
+                        false,
+                        1,
+                        32
+                ),
+                new TopicSubscriptionDescriptor(
+                        ProtocolTopics.MODULE_STATUS,
+                        PayloadType.MODULE_STATUS,
+                        ModuleStatusPayload.class,
+                        BrokerType.STATELESS_FAST_PATH,
+                        EnumSet.of(PacketType.EVENT),
+                        Priority.LOW,
+                        CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+                ),
+                this::handleModuleStatus
+        );
+    }
 
     @Override
     public void publishRuntimeInterrupt(long sessionId, RuntimeInterruptPayload.Reason reason, String detail) {
@@ -318,3 +358,4 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
         }
     }
 }
+

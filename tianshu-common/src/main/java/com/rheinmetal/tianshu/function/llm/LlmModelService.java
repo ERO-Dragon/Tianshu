@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.llm;
+﻿package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
@@ -11,6 +11,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,6 +21,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public final class LlmModelService {
     private static final long PROGRESS_UPDATE_INTERVAL_MILLIS = 200L;
@@ -54,14 +57,20 @@ public final class LlmModelService {
     private final ITianshuConfig config;
     private final ProtocolExecutorManager executorManager;
     private final LlmModelDownloadCoordinator downloadCoordinator;
+    private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
     private final AtomicReference<String> deletingModelName = new AtomicReference<>("");
 
     public LlmModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
+        this(env, config, executorManager, null);
+    }
+
+    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = Objects.requireNonNull(env, "env");
         this.config = Objects.requireNonNull(config, "config");
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");
+        this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new LlmModelDownloadCoordinator(env);
         scheduleStartupCleanup();
     }
@@ -117,10 +126,12 @@ public final class LlmModelService {
         }
         DownloadTask task = new DownloadTask(info.name, modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
+            publishFailed("tianshu.presence.module.llm.download_busy", "LLM 模型下载已在进行");
             if (callback != null) callback.onError("已有 LLM 模型正在下载");
             return;
         }
         updateDownload(true, false, false, info.name, "下载中", 0, "");
+        publishWaiting("tianshu.presence.module.llm.download_started", "LLM 模型下载中");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.llm")
@@ -134,6 +145,7 @@ public final class LlmModelService {
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             updateDownload(false, false, false, info.name, "Download queue is full", 0, "Download queue is full");
+            publishFailed("tianshu.presence.module.llm.download_queue_full", "LLM 模型下载队列已满");
             if (callback != null) callback.onError("Download queue is full");
         }
     }
@@ -146,6 +158,7 @@ public final class LlmModelService {
         }
         task.session().pause();
         updateDownload(true, true, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
+        publishWaiting("tianshu.presence.module.llm.download_paused", "LLM 模型下载已暂停");
     }
 
     public void resumeDownload() {
@@ -156,6 +169,7 @@ public final class LlmModelService {
         }
         task.session().resume();
         updateDownload(true, false, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
+        publishWaiting("tianshu.presence.module.llm.download_resumed", "LLM 模型下载已恢复");
     }
 
     public void cancelDownload() {
@@ -176,6 +190,7 @@ public final class LlmModelService {
                 task.session()::cancelActiveTransfers
         );
         updateDownload(true, false, true, task.modelName(), "正在取消", current.percent(), "");
+        publishWaiting("tianshu.presence.module.llm.download_cancelling", "正在取消 LLM 模型下载");
     }
 
     public boolean isDownloading() {
@@ -341,6 +356,7 @@ public final class LlmModelService {
             return;
         }
         updateDownload(false, false, false, task.modelName(), "下载完成", 100, "");
+        publishReady("tianshu.presence.module.llm.download_complete", "LLM 模型下载完成");
         if (callback != null) callback.onComplete();
     }
 
@@ -350,6 +366,7 @@ public final class LlmModelService {
         }
         cleanupCancelledDownload(task);
         updateDownload(false, false, false, task.modelName(), "下载已取消", downloadSnapshot.get().percent(), "");
+        publishReady("tianshu.presence.module.llm.download_cancelled", "LLM 模型下载已取消");
         if (callback != null) callback.onCancelled();
     }
 
@@ -358,7 +375,20 @@ public final class LlmModelService {
             return;
         }
         updateDownload(false, false, false, task.modelName(), "下载失败", downloadSnapshot.get().percent(), message);
+        publishFailed("tianshu.presence.module.llm.download_failed", "LLM 模型下载失败");
         if (callback != null) callback.onError(message);
+    }
+
+    private void publishReady(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.readyKeyed("module.llm", messageKey, fallbackTitle));
+    }
+
+    private void publishWaiting(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.llm", messageKey, fallbackTitle));
+    }
+
+    private void publishFailed(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.llm", messageKey, fallbackTitle));
     }
 
     private void cleanupCancelledDownload(DownloadTask task) {
@@ -456,3 +486,5 @@ public final class LlmModelService {
         }
     }
 }
+
+

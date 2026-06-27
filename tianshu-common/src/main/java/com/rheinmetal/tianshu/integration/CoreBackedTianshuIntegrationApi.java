@@ -1,14 +1,18 @@
-package com.rheinmetal.tianshu.integration;
+﻿package com.rheinmetal.tianshu.integration;
 
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapabilityStatus;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.integration.CoreCapabilityProbe;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleDeclaration;
-import com.rheinmetal.tianshu.protocol.summary.StateSummary;
-import com.rheinmetal.tianshu.protocol.summary.StateSummaryQuery;
-import com.rheinmetal.tianshu.protocol.summary.StateSummaryRegistry;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
@@ -65,31 +69,34 @@ public final class CoreBackedTianshuIntegrationApi implements TianshuIntegration
     }
 
     @Override
-    public void submitStateSummary(StateSummary summary) {
-        coreManager.protocolRuntime().stateSummaries().submit(summary);
+    public void submitModuleStatus(ModuleStatus status) {
+        if (status == null) {
+            return;
+        }
+        coreManager.protocolRuntime().submit(EnvelopeBuilder.eventTopic(
+                status.moduleId(),
+                ProtocolTopics.MODULE_STATUS,
+                PayloadType.MODULE_STATUS,
+                new ModuleStatusPayload(status)
+        ).build());
     }
 
     @Override
-    public List<StateSummary> queryStateSummaries(StateSummaryQuery query) {
-        StateSummaryRegistry registry = coreManager.protocolRuntime().stateSummaries();
+    public List<ModuleStatus> queryModuleStatuses(ModuleStatusQuery query) {
+        ModuleStatusCache cache = coreManager.protocolRuntime().moduleStatusCache();
         if (query == null) {
-            return registry.all();
+            return cache.all();
         }
         if (query.hasModuleFilter() && query.hasTypeFilter()) {
-            return registry.latest(query.moduleId(), query.summaryType()).stream().toList();
+            return cache.latest(query.moduleId(), query.statusType()).stream().toList();
         }
         if (query.hasModuleFilter()) {
-            return registry.byModule(query.moduleId());
+            return cache.byModule(query.moduleId());
         }
         if (query.hasTypeFilter()) {
-            return registry.byType(query.summaryType());
+            return cache.byType(query.statusType());
         }
-        return registry.all();
-    }
-
-    @Override
-    public StateSummaryRegistry stateSummaries() {
-        return coreManager.protocolRuntime().stateSummaries();
+        return cache.all();
     }
 
     @Override
@@ -97,3 +104,5 @@ public final class CoreBackedTianshuIntegrationApi implements TianshuIntegration
         coreManager.protocolRuntime().submit(envelope);
     }
 }
+
+

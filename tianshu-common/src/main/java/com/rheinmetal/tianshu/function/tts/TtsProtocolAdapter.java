@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.tts;
+﻿package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
@@ -13,11 +13,13 @@ import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
 
@@ -75,7 +77,16 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
         return publishTopic(ProtocolTopics.TTS_PLAYBACK, PayloadType.TTS_PLAYBACK_STATUS, payload);
     }
 
+    public TianshuEnvelope publishModuleStatus(ModuleStatus status) {
+        if (status == null) {
+            return null;
+        }
+        return publishTopic(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, new ModuleStatusPayload(status));
+    }
+
     public TianshuEnvelope respondAudio(TianshuEnvelope parent, TtsAudioPayload payload) {
         return respondTo(parent, PayloadType.TTS_AUDIO, payload);
     }
 }
+
+

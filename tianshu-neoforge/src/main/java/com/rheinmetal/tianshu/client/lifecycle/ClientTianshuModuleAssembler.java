@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.client.auxilium.prompt.MinecraftAXPromptLanguageProvider;
-import com.rheinmetal.tianshu.client.auxilium.rag.MinecraftRuntimeFactTextResolver;
 import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
@@ -16,9 +15,8 @@ import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeDialogueContextProvider;
+import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.provider.WorldStateProvider;
 
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -34,8 +32,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             ProtocolRuntime protocolRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
-            AXWorldIdentityProvider axWorldIdentityProvider,
-            WorldStateProvider worldStateProvider
+            AXWorldIdentityProvider axWorldIdentityProvider
     ) {
         this(
                 env,
@@ -45,10 +42,10 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
-                worldStateProvider,
                 AXOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP,
-                new NeoForgeDialogueContextProvider()
+                DialogueContextProvider.EMPTY,
+                List.of()
         );
     }
 
@@ -60,7 +57,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
-            WorldStateProvider worldStateProvider,
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink
     ) {
@@ -72,10 +68,10 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
-                worldStateProvider,
                 axOutputSettings,
                 axChatOutputSink,
-                new NeoForgeDialogueContextProvider()
+                DialogueContextProvider.EMPTY,
+                List.of()
         );
     }
 
@@ -87,13 +83,16 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
-            WorldStateProvider worldStateProvider,
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink,
-            NeoForgeDialogueContextProvider dialogueContextProvider
+            DialogueContextProvider dialogueContextProvider,
+            List<TianshuFunctionModuleInstaller> neoForgeInstallers
     ) {
-        NeoForgeDialogueContextProvider effectiveDialogueContextProvider = dialogueContextProvider == null ? new NeoForgeDialogueContextProvider() : dialogueContextProvider;
+        DialogueContextProvider effectiveDialogueContextProvider = dialogueContextProvider == null ? DialogueContextProvider.EMPTY : dialogueContextProvider;
         List<TianshuFunctionModuleInstaller> installers = new java.util.ArrayList<>();
+        if (neoForgeInstallers != null) {
+            installers.addAll(neoForgeInstallers);
+        }
         installers.addAll(TianshuCoreModuleInstallers.clientCore(
                 env,
                 config,
@@ -102,8 +101,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
-                worldStateProvider,
-                new MinecraftRuntimeFactTextResolver(),
                 new MinecraftAXPromptLanguageProvider(),
                 effectiveDialogueContextProvider,
                 assistantSettings(axOutputSettings),

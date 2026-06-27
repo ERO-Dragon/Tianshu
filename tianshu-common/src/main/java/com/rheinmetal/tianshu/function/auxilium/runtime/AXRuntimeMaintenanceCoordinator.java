@@ -1,64 +1,38 @@
 package com.rheinmetal.tianshu.function.auxilium.runtime;
 
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
-import com.rheinmetal.tianshu.function.auxilium.fact.RuntimeFactCollector;
-import com.rheinmetal.tianshu.function.auxilium.fact.RuntimeFactRefreshResult;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
-import com.rheinmetal.tianshu.function.auxilium.memory.MemoryConsolidationPlan;
-import com.rheinmetal.tianshu.function.auxilium.memory.MemoryConsolidationPlanner;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryMaintenanceService;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 
 public final class AXRuntimeMaintenanceCoordinator {
-    private final RuntimeFactCollector factCollector;
-    private final AXMemorySystem memorySystem;
-    private final MemoryConsolidationPlanner memoryConsolidationPlanner;
-    private final AXRuntimeMaintenancePolicy policy;
-    private volatile long lastRuntimeFactRefreshAt;
-    private volatile long lastMemoryConsolidationAt;
+    private final AXMemoryMaintenanceService memoryMaintenanceService;
 
-    public AXRuntimeMaintenanceCoordinator(
-            RuntimeFactCollector factCollector,
-            AXMemorySystem memorySystem,
-            MemoryConsolidationPlanner memoryConsolidationPlanner,
-            AXRuntimeMaintenancePolicy policy
-    ) {
-        this.factCollector = factCollector;
-        this.memorySystem = memorySystem;
-        this.memoryConsolidationPlanner = memoryConsolidationPlanner == null ? new MemoryConsolidationPlanner() : memoryConsolidationPlanner;
-        this.policy = policy == null ? AXRuntimeMaintenancePolicy.DEFAULT : policy;
+    public AXRuntimeMaintenanceCoordinator() {
+        this(null);
+    }
+
+    public AXRuntimeMaintenanceCoordinator(AXMemoryMaintenanceService memoryMaintenanceService) {
+        this.memoryMaintenanceService = memoryMaintenanceService;
     }
 
     public AXRuntimeMaintenanceResult beforeQuestion(AXScope scope, AXRequest request) {
-        if (scope == null || !scope.writable()) {
+        return requestMaintenance(scope);
+    }
+
+    public AXRuntimeMaintenanceResult afterAssistantAnswer(AXScope scope) {
+        return requestMaintenance(scope);
+    }
+
+    public void stop() {
+        if (memoryMaintenanceService != null) {
+            memoryMaintenanceService.stop();
+        }
+    }
+
+    private AXRuntimeMaintenanceResult requestMaintenance(AXScope scope) {
+        if (memoryMaintenanceService == null || scope == null || !scope.writable()) {
             return AXRuntimeMaintenanceResult.skipped();
         }
-        long now = System.currentTimeMillis();
-        boolean runtimeFactRefreshRun = policy.shouldRefreshRuntimeFacts(lastRuntimeFactRefreshAt, now);
-        RuntimeFactRefreshResult factRefreshResult = runtimeFactRefreshRun && factCollector != null
-                ? factCollector.refreshForQuestion(scope, request)
-                : RuntimeFactRefreshResult.skipped();
-        if (runtimeFactRefreshRun) {
-            lastRuntimeFactRefreshAt = now;
-        }
-        boolean memoryConsolidationRun = policy.shouldConsolidateMemory(lastMemoryConsolidationAt, now);
-        MemoryConsolidationPlan memoryPlan = memoryConsolidationRun && memorySystem != null
-                ? memorySystem.consolidatePendingMemory(scope, memoryConsolidationPlanner)
-                : new MemoryConsolidationPlan(null, null, null);
-        if (memoryConsolidationRun) {
-            lastMemoryConsolidationAt = now;
-        }
-        if (memorySystem != null && memoryConsolidationRun) {
-            memorySystem.cleanupLongTermMemory(scope);
-        }
-        return new AXRuntimeMaintenanceResult(
-                runtimeFactRefreshRun,
-                factRefreshResult.providers(),
-                factRefreshResult.producedFacts(),
-                factRefreshResult.changedFacts(),
-                memoryConsolidationRun && memorySystem != null,
-                memoryPlan.accepted().size(),
-                memoryPlan.deferred().size(),
-                memoryPlan.rejected().size()
-        );
+        return new AXRuntimeMaintenanceResult(memoryMaintenanceService.requestMaintenance(scope));
     }
 }

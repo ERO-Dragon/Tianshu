@@ -6,7 +6,7 @@ plugins {
 version = mod_version
 group = mod_group_id
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
 
 repositories {
     mavenCentral()
@@ -30,6 +30,7 @@ dependencies {
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testRuntimeOnly 'it.unimi.dsi:fastutil:8.5.15'
     testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'

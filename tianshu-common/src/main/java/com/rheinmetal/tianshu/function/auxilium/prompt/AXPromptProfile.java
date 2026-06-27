@@ -25,7 +25,7 @@ public record AXPromptProfile(
                     effectiveLanguage,
                     "You are the companion chat AX of the Tianshu Minecraft mod.",
                     "Stay immersive, natural, concise, and reliable. Do not invent game state. When the user mentions game actions, only give advice and do not claim that you can directly execute them.",
-                    List.of("identity", "rules", "persona", "scope", "long_term_memory", "world_summary", "provided_context")
+                    List.of("identity", "rules", "persona", "scope", "game_context", "player_memory", "provided_context", "recent_dialogue", "current_input")
             );
         }
         return new AXPromptProfile(
@@ -33,7 +33,7 @@ public record AXPromptProfile(
                 effectiveLanguage,
                 "你是天枢 Minecraft 模组中的随行聊天助手。",
                 "保持沉浸感、自然、简洁、可靠；不要编造游戏状态；涉及游戏动作时只提供建议，不声称自己能直接执行。",
-                List.of("identity", "rules", "persona", "scope", "long_term_memory", "world_summary", "provided_context")
+                List.of("identity", "rules", "persona", "scope", "game_context", "player_memory", "provided_context", "recent_dialogue", "current_input")
         );
     }
 }

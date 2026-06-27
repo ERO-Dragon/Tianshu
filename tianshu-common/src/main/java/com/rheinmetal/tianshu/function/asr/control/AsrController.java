@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.asr.control;
+﻿package com.rheinmetal.tianshu.function.asr.control;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
@@ -11,8 +11,11 @@ import com.rheinmetal.tianshu.function.asr.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.asr.state.AsrState;
 import com.rheinmetal.tianshu.function.asr.state.AsrStateMachine;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 public final class AsrController {
@@ -26,6 +29,7 @@ public final class AsrController {
     private final AsrSessionManager sessionManager;
     private final AudioCaptureService audioCapture;
     private final AsrRecognitionService recognition;
+    private final Consumer<ModuleStatus> moduleStatusSink;
 
     public AsrController(
             IGameEnvironment env,
@@ -39,6 +43,22 @@ public final class AsrController {
             AudioCaptureService audioCapture,
             AsrRecognitionService recognition
     ) {
+        this(env, config, voiceInputAcceptance, asrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, null);
+    }
+
+    public AsrController(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            BooleanSupplier voiceInputAcceptance,
+            BooleanSupplier asrReady,
+            LongSupplier interruptProcessing,
+            AsrProtocolAdapter adapter,
+            AsrStateMachine stateMachine,
+            AsrSessionManager sessionManager,
+            AudioCaptureService audioCapture,
+            AsrRecognitionService recognition,
+            Consumer<ModuleStatus> moduleStatusSink
+    ) {
         this.env = env;
         this.config = config;
         this.voiceInputAcceptance = voiceInputAcceptance;
@@ -49,6 +69,7 @@ public final class AsrController {
         this.sessionManager = sessionManager;
         this.audioCapture = audioCapture;
         this.recognition = recognition;
+        this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
     }
 
     public void handle(AsrInputIntent intent, long eventSessionId) {
@@ -208,6 +229,8 @@ public final class AsrController {
 
     private void notifyAsrWaking() {
         env.warn("ASR 未就绪，跳过语音输入");
-        env.executeOnMainThread(() -> env.displayMessageToPlayer("§e[天极] §f天极正在苏醒，请稍候..."));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", "tianshu.presence.module.asr.waking", "天枢正在苏醒，请稍候"));
     }
 }
+
+

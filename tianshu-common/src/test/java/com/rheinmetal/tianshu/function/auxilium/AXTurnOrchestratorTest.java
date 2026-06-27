@@ -2,6 +2,10 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
+import com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextClient;
+import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextFact;
+import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
@@ -9,8 +13,6 @@ import com.rheinmetal.tianshu.function.auxilium.output.AXOutputContext;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptPlanner;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptRenderer;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
@@ -28,6 +30,8 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -42,6 +46,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXTurnOrchestratorTest {
@@ -60,8 +65,9 @@ class AXTurnOrchestratorTest {
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 null,
-                new AXContextCollector(null, null),
-                new AXLlmPromptRequestBuilder(new AXPromptPlanner(), new AXPromptRenderer(), AXContextBudget.DEFAULT),
+                null,
+                new AXContextCollector(null),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
                 llmClient,
                 new AXSessionController(adapter),
                 null,
@@ -99,6 +105,179 @@ class AXTurnOrchestratorTest {
         assertEquals(List.of("This is the first sentence.", "This is the final suffix."), spoken);
     }
 
+    @Test
+    void runtimeContextIsInjectedAsMessageInsteadOfRagChunk() {
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
+                new AXPromptOrchestrator(null, null, null),
+                AXContextBudget.DEFAULT
+        );
+        AXRequest request = new AXRequest("request", "这个怎么用？", "");
+        AXContextSnapshot context = new AXContextSnapshot(
+                AXScope.unknown(),
+                null,
+                List.of(AXRuntimeContextFact.of("玩家准星指向 minecraft:enchanting_table", 90, "test")),
+                ""
+        );
+
+        LLMPromptRequestPayload payload = builder.buildChatRequest(request, context);
+
+        assertEquals(1, payload.chunks().size());
+        assertTrue(payload.chunks().get(0).messageContent().stream()
+                .anyMatch(message -> message.content().contains("<game_context>")
+                        && message.content().contains("minecraft:enchanting_table")));
+    }
+
+    @Test
+    void requestsRuntimeContextBeforeSubmittingLlmRequest() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        AtomicReference<TianshuEnvelope> contextQuery = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        registerPresenceContextSink(runtime, contextQuery);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                new AXRuntimeContextClient(adapter, 2_000L),
+                new AXContextCollector(null),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+        );
+        DialogueDeliveryPayload delivery = delivery();
+        TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
+                IaProtocolAdapter.SOURCE_ID,
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.DIALOGUE_DELIVERY,
+                delivery
+        ).build();
+
+        orchestrator.startTurn(deliveryEnvelope, delivery);
+
+        await(() -> contextQuery.get() != null);
+        assertNull(llmRequest.get());
+        runtime.submit(EnvelopeBuilder.responseTo(
+                "module.presence.test",
+                contextQuery.get(),
+                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresenceContextSnapshotPayload.success(
+                        ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
+                        List.of(new PresenceContextSnapshotPayload.FactPayload(
+                                "crosshair",
+                                "玩家准星指向 minecraft:enchanting_table",
+                                95,
+                                "presence.test",
+                                "minecraft:enchanting_table",
+                                List.of("crosshair"),
+                                System.currentTimeMillis(),
+                                1_000L
+                        ))
+                )
+        ).build());
+
+        await(() -> llmRequest.get() != null);
+        LLMPromptRequestPayload payload = (LLMPromptRequestPayload) llmRequest.get().payload();
+        assertTrue(payload.chunks().stream()
+                .flatMap(chunk -> chunk.messageContent().stream())
+                .anyMatch(message -> message.content().contains("<game_context>")
+                        && message.content().contains("minecraft:enchanting_table")));
+    }
+
+    @Test
+    void continuesWithoutRuntimeContextWhenNoProviderIsRegistered() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                new AXRuntimeContextClient(adapter, 2_000L),
+                new AXContextCollector(null),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+        );
+        DialogueDeliveryPayload delivery = delivery();
+        TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
+                IaProtocolAdapter.SOURCE_ID,
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.DIALOGUE_DELIVERY,
+                delivery
+        ).build();
+
+        orchestrator.startTurn(deliveryEnvelope, delivery);
+
+        await(() -> llmRequest.get() != null);
+        assertNotNull(llmRequest.get());
+        LLMPromptRequestPayload payload = (LLMPromptRequestPayload) llmRequest.get().payload();
+        assertTrue(payload.chunks().stream()
+                .flatMap(chunk -> chunk.messageContent().stream())
+                .noneMatch(message -> message.content().contains("<game_context>")));
+    }
+
+    @Test
+    void continuesWithoutRuntimeContextWhenProviderFails() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        AtomicReference<TianshuEnvelope> contextQuery = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        registerPresenceContextSink(runtime, contextQuery);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                new AXRuntimeContextClient(adapter, 2_000L),
+                new AXContextCollector(null),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+        );
+        DialogueDeliveryPayload delivery = delivery();
+        TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
+                IaProtocolAdapter.SOURCE_ID,
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.DIALOGUE_DELIVERY,
+                delivery
+        ).build();
+
+        orchestrator.startTurn(deliveryEnvelope, delivery);
+
+        await(() -> contextQuery.get() != null);
+        assertNull(llmRequest.get());
+        runtime.submit(EnvelopeBuilder.responseTo(
+                "module.presence.test",
+                contextQuery.get(),
+                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresenceContextSnapshotPayload.failed(
+                        ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
+                        "TEST_FAILURE",
+                        "provider failed"
+                )
+        ).build());
+
+        await(() -> llmRequest.get() != null);
+        LLMPromptRequestPayload payload = (LLMPromptRequestPayload) llmRequest.get().payload();
+        assertTrue(payload.chunks().stream()
+                .flatMap(chunk -> chunk.messageContent().stream())
+                .noneMatch(message -> message.content().contains("<game_context>")));
+    }
+
     private static AXOutputSettings outputSettings() {
         return () -> AXOutputMode.UI_AND_TTS;
     }
@@ -129,6 +308,30 @@ class AXTurnOrchestratorTest {
                         ProtocolCapabilities.LLM_REQUEST,
                         PayloadType.LLM_PROMPT_REQUEST,
                         LLMPromptRequestPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.REQUEST),
+                        Priority.LOW,
+                        CompletionPolicy.MANUAL_COMPLETE
+                )),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        ), (envelope, context) -> request.set(envelope));
+    }
+
+    private static void registerPresenceContextSink(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        runtime.registerModule(new ModuleDescriptor(
+                "module.presence.test",
+                List.of(new CapabilityDescriptor(
+                        ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
+                        PayloadType.PRESENCE_CONTEXT_QUERY,
+                        PresenceContextQueryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
                         Priority.LOW,

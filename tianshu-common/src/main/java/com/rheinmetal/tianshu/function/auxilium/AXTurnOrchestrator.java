@@ -1,12 +1,18 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
+import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextClient;
+import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextFact;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.input.AXNormalizedInput;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
-import com.rheinmetal.tianshu.function.auxilium.memory.ConversationTurn;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetrievalRequest;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetrievalResult;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetriever;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputContext;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenanceCoordinator;
@@ -19,6 +25,7 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 
+import java.util.List;
 import java.util.Objects;
 
 public final class AXTurnOrchestrator {
@@ -26,18 +33,52 @@ public final class AXTurnOrchestrator {
     private final AXDialogueInputMapper dialogueInputMapper;
     private final AXInputNormalizer inputNormalizer;
     private final AXRuntimeMaintenanceCoordinator maintenanceCoordinator;
+    private final AXRuntimeContextClient runtimeContextClient;
     private final AXContextCollector contextCollector;
     private final AXLlmPromptRequestBuilder llmRequestBuilder;
+    private final AXContextBudget contextBudget;
     private final AXLlmClient llmClient;
     private final AXSessionController sessionController;
     private final AXMemorySystem memorySystem;
     private final AXOutputProcessor outputProcessor;
+    private final AXMemoryRetriever memoryRetriever;
 
     public AXTurnOrchestrator(
             AXScopeProvider scopeProvider,
             AXDialogueInputMapper dialogueInputMapper,
             AXInputNormalizer inputNormalizer,
             AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
+            AXRuntimeContextClient runtimeContextClient,
+            AXContextCollector contextCollector,
+            AXLlmPromptRequestBuilder llmRequestBuilder,
+            AXContextBudget contextBudget,
+            AXLlmClient llmClient,
+            AXSessionController sessionController,
+            AXMemorySystem memorySystem,
+            AXOutputProcessor outputProcessor,
+            AXMemoryRetriever memoryRetriever
+    ) {
+        this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
+        this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
+        this.inputNormalizer = Objects.requireNonNull(inputNormalizer, "inputNormalizer");
+        this.maintenanceCoordinator = maintenanceCoordinator;
+        this.runtimeContextClient = runtimeContextClient;
+        this.contextCollector = Objects.requireNonNull(contextCollector, "contextCollector");
+        this.llmRequestBuilder = Objects.requireNonNull(llmRequestBuilder, "llmRequestBuilder");
+        this.contextBudget = contextBudget == null ? AXContextBudget.DEFAULT : contextBudget;
+        this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
+        this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
+        this.memorySystem = memorySystem;
+        this.outputProcessor = Objects.requireNonNull(outputProcessor, "outputProcessor");
+        this.memoryRetriever = memoryRetriever;
+    }
+
+    public AXTurnOrchestrator(
+            AXScopeProvider scopeProvider,
+            AXDialogueInputMapper dialogueInputMapper,
+            AXInputNormalizer inputNormalizer,
+            AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
+            AXRuntimeContextClient runtimeContextClient,
             AXContextCollector contextCollector,
             AXLlmPromptRequestBuilder llmRequestBuilder,
             AXLlmClient llmClient,
@@ -45,16 +86,21 @@ public final class AXTurnOrchestrator {
             AXMemorySystem memorySystem,
             AXOutputProcessor outputProcessor
     ) {
-        this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
-        this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
-        this.inputNormalizer = Objects.requireNonNull(inputNormalizer, "inputNormalizer");
-        this.maintenanceCoordinator = maintenanceCoordinator;
-        this.contextCollector = Objects.requireNonNull(contextCollector, "contextCollector");
-        this.llmRequestBuilder = Objects.requireNonNull(llmRequestBuilder, "llmRequestBuilder");
-        this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
-        this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
-        this.memorySystem = memorySystem;
-        this.outputProcessor = Objects.requireNonNull(outputProcessor, "outputProcessor");
+        this(
+                scopeProvider,
+                dialogueInputMapper,
+                inputNormalizer,
+                maintenanceCoordinator,
+                runtimeContextClient,
+                contextCollector,
+                llmRequestBuilder,
+                AXContextBudget.DEFAULT,
+                llmClient,
+                sessionController,
+                memorySystem,
+                outputProcessor,
+                null
+        );
     }
 
     public void startTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
@@ -70,9 +116,29 @@ public final class AXTurnOrchestrator {
         if (maintenanceCoordinator != null) {
             maintenanceCoordinator.beforeQuestion(scope, request);
         }
-        AXContextSnapshot context = contextCollector.collect(scope, request);
-        appendTurn(scope, "user", request.userText());
+        appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
+        if (runtimeContextClient == null) {
+            continueTurn(deliveryEnvelope, delivery, scope, request, List.of());
+            return;
+        }
+        runtimeContextClient.sweepExpired();
+        runtimeContextClient.request(deliveryEnvelope, delivery, scope, request, candidates ->
+                continueTurn(deliveryEnvelope, delivery, scope, request, candidates));
+    }
 
+    private void continueTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXRuntimeContextFact> runtimeContextFacts) {
+        if (memoryRetriever == null) {
+            submitLlmTurn(deliveryEnvelope, delivery, scope, request, runtimeContextFacts, AXMemoryRetrievalResult.empty());
+            return;
+        }
+        memoryRetriever.retrieve(
+                new AXMemoryRetrievalRequest(scope, request, contextBudget.maxMemoryItems(), contextBudget.memoryTokenBudget()),
+                memory -> submitLlmTurn(deliveryEnvelope, delivery, scope, request, runtimeContextFacts, memory)
+        );
+    }
+
+    private void submitLlmTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXRuntimeContextFact> runtimeContextFacts, AXMemoryRetrievalResult memoryRetrieval) {
+        AXContextSnapshot context = contextCollector.collect(scope, request, runtimeContextFacts, memoryRetrieval == null ? List.of() : memoryRetrieval.blocks());
         LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context)
                 .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));
@@ -84,11 +150,11 @@ public final class AXTurnOrchestrator {
         return scope == null ? AXScope.unknown() : scope;
     }
 
-    private void appendTurn(AXScope scope, String role, String content) {
+    private void appendTurn(AXScope scope, String role, String content, String iaSessionId, String iaTurnId) {
         if (memorySystem == null || content == null || content.isBlank()) {
             return;
         }
-        memorySystem.appendConversationTurn(scope, new ConversationTurn(role, content, System.currentTimeMillis()));
+        memorySystem.appendRawTurn(scope, AXRawTurn.dialogue(scope, role, content, iaSessionId, iaTurnId));
     }
 
     private boolean isChatLane(LLMPromptRequestPayload payload) {
@@ -124,7 +190,10 @@ public final class AXTurnOrchestrator {
                 String text = finalText(payload);
                 appendFinalSuffix(text);
                 outputTurn.complete(text);
-                appendTurn(scope, "AX", text);
+                appendTurn(scope, "assistant", text, delivery.sessionId(), delivery.turnId());
+                if (maintenanceCoordinator != null) {
+                    maintenanceCoordinator.afterAssistantAnswer(scope);
+                }
                 sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
                 return;
             }

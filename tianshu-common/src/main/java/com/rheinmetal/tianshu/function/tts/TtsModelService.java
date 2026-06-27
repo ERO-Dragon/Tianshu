@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.tts;
+﻿package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
@@ -11,6 +11,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -27,6 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public class TtsModelService {
 
@@ -53,14 +56,20 @@ public class TtsModelService {
     private final ITianshuConfig config;
     private final ProtocolExecutorManager executorManager;
     private final TtsModelDownloadCoordinator downloadCoordinator;
+    private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
 
     public TtsModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
+        this(env, config, executorManager, null);
+    }
+
+    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;
+        this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new TtsModelDownloadCoordinator(env);
         scheduleStartupCleanup();
     }
@@ -366,12 +375,14 @@ public class TtsModelService {
         }
         DownloadTask task = new DownloadTask(safeModelName(info), modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
+            publishFailed("tianshu.presence.module.tts.download_busy", "TTS 模型下载已在进行");
             if (callback != null) {
                 callback.onError("已有 TTS 模型正在下载");
             }
             return;
         }
         updateDownload(true, false, false, task.modelName(), "Preparing", 0);
+        publishWaiting("tianshu.presence.module.tts.download_started", "TTS 模型下载中");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.tts")
@@ -385,6 +396,7 @@ public class TtsModelService {
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             updateDownload(false, false, false, task.modelName(), "TTS model download queue is full", 0);
+            publishFailed("tianshu.presence.module.tts.download_queue_full", "TTS 模型下载队列已满");
             if (callback != null) {
                 callback.onError("TTS model download queue is full");
             }
@@ -408,6 +420,7 @@ public class TtsModelService {
         }
         task.session().pause();
         updateDownload(true, true, false, task.modelName(), current.label(), current.progress());
+        publishWaiting("tianshu.presence.module.tts.download_paused", "TTS 模型下载已暂停");
     }
 
     public void resumeDownload() {
@@ -418,6 +431,7 @@ public class TtsModelService {
         }
         task.session().resume();
         updateDownload(true, false, false, task.modelName(), current.label(), current.progress());
+        publishWaiting("tianshu.presence.module.tts.download_resumed", "TTS 模型下载已恢复");
     }
 
     public void cancelDownload() {
@@ -428,6 +442,7 @@ public class TtsModelService {
         }
         task.session().cancel();
         updateDownload(true, false, true, task.modelName(), "Cancelling", current.progress());
+        publishWaiting("tianshu.presence.module.tts.download_cancelling", "正在取消 TTS 模型下载");
     }
 
     private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
@@ -655,6 +670,7 @@ public class TtsModelService {
             return;
         }
         updateDownload(false, false, false, task.modelName(), "Complete", 100);
+        publishReady("tianshu.presence.module.tts.download_complete", "TTS 模型下载完成");
         if (callback != null) {
             callback.onComplete();
         }
@@ -667,6 +683,7 @@ public class TtsModelService {
         cleanupIncompleteDownload(task);
         int progress = downloadStatus.get().progress();
         updateDownload(false, false, false, task.modelName(), "下载已取消", progress);
+        publishReady("tianshu.presence.module.tts.download_cancelled", "TTS 模型下载已取消");
         if (callback != null) {
             callback.onCancelled();
         }
@@ -679,9 +696,22 @@ public class TtsModelService {
         cleanupIncompleteDownload(task);
         int progress = downloadStatus.get().progress();
         updateDownload(false, false, false, task.modelName(), message, progress);
+        publishFailed("tianshu.presence.module.tts.download_failed", "TTS 模型下载失败");
         if (callback != null) {
             callback.onError(message);
         }
+    }
+
+    private void publishReady(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.readyKeyed("module.tts", messageKey, fallbackTitle));
+    }
+
+    private void publishWaiting(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.tts", messageKey, fallbackTitle));
+    }
+
+    private void publishFailed(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.tts", messageKey, fallbackTitle));
     }
 
     private void cleanupIncompleteDownload(DownloadTask task) {
@@ -719,3 +749,5 @@ public class TtsModelService {
         }
     }
 }
+
+

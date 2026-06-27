@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol;
+﻿package com.rheinmetal.tianshu.protocol;
 
 public enum PayloadType {
     NONE,
@@ -12,9 +12,13 @@ public enum PayloadType {
     LLM_PROMPT_REQUEST,
     LLM_PROMPT_RESULT,
     LLM_PROMPT_STREAM_CHUNK,
+    LLM_PRIMITIVE_QUERY,
+    LLM_PRIMITIVE_RESULT,
     LLM_STATUS,
     LLM_CACHE_MANAGE,
     LLM_CACHE_MANAGE_RESULT,
+    PRESENCE_CONTEXT_QUERY,
+    PRESENCE_CONTEXT_SNAPSHOT,
     TTS_TEXT,
     TTS_PLAYBACK_STATUS,
     TTS_AUDIO,
@@ -31,9 +35,7 @@ public enum PayloadType {
     CORE_CAPABILITY_PROBE,
     INTEGRATION_MODULE_REGISTER,
     INTEGRATION_MODULE_UNREGISTER,
-    STATE_SUMMARY,
-    STATE_SUMMARY_QUERY,
-    STATE_SUMMARY_QUERY_RESULT,
+    MODULE_STATUS,
     GUI_CONTRIBUTION,
     GUI_ACTION_EVENT,
     CORE_LIFECYCLE_EVENT,
@@ -52,3 +54,4 @@ public enum PayloadType {
     DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT,
     CUSTOM
 }
+

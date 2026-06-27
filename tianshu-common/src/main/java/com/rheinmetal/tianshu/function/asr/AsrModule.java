@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.asr;
+﻿package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.function.asr.audio.AsrAudioPipelineFactory;
 import com.rheinmetal.tianshu.function.asr.control.AsrController;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngineBootstrap;
+import com.rheinmetal.tianshu.function.asr.engine.AsrEngineBootstrapStatus;
 import com.rheinmetal.tianshu.function.asr.engine.AsrHotwordSupport;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputGateway;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
@@ -26,6 +27,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceSnapshot;
 
@@ -42,7 +45,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private final BooleanSupplier voiceInputAcceptance;
     private final LongSupplier interruptProcessing;
     private final AtomicBoolean voiceResourceReloadQueued = new AtomicBoolean(false);
-    private AsrProtocolAdapter adapter;
+    private final AsrProtocolAdapter adapter;
     private AsrController controller;
     private AsrInputGateway inputGateway;
     private ModuleRuntimeState runtimeState;
@@ -63,6 +66,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         this.config = config;
         this.voiceInputAcceptance = voiceInputAcceptance;
         this.interruptProcessing = interruptProcessing;
+        this.adapter = new AsrProtocolAdapter(protocolRuntime);
     }
 
     @Override
@@ -72,11 +76,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        modelService = new AsrModelService(env, config, audioBridge, protocolRuntime.executors(), this::asrEngine, this::isAsrReady);
+        modelService = new AsrModelService(env, config, audioBridge, protocolRuntime.executors(), this::asrEngine, this::isAsrReady, this::publishModuleStatus);
         context.services().register(AsrModelService.class, modelService);
         context.services().register(AsrModuleRuntimeControl.class, this);
         inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
         context.services().register(AsrInputService.class, inputGateway);
+        adapter.subscribeRuntimeInterrupt(this::handleRuntimeInterrupt);
     }
 
     @Override
@@ -86,14 +91,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         runtimeState = context.runtimeState();
         initializeEngine(context);
         bindVoiceResources(context.voiceResources());
-        adapter = new AsrProtocolAdapter(protocolRuntime);
-        adapter.subscribeRuntimeInterrupt(this::handleRuntimeInterrupt);
         AsrStateMachine stateMachine = new AsrStateMachine();
         AsrSessionManager sessionManager = new AsrSessionManager();
         audioCapture = new AudioCaptureService(audioBridge, env, this::publishSpeechActivity);
         reconfigureAudioPipeline();
         AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
-        controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition);
+        controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus);
         if (inputGateway == null) {
             inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
         }
@@ -123,7 +126,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             inputGateway.unbind();
             inputGateway = null;
         }
-        adapter = null;
         runtimeContext = null;
         if (runtimeState != null) {
             runtimeState.capabilities().remove(AsrRuntimeCapabilities.INPUT);
@@ -192,15 +194,32 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     private void initializeEngine(ModuleRuntimeContext context) {
-        engine = createEngine(context, true);
+        engine = createEngine(context);
         if (engine != null) {
             appliedVoiceResourceVersion = context.voiceResources().snapshot().version();
         }
     }
 
-    private AsrEngine createEngine(ModuleRuntimeContext context, boolean notifyPlayer) {
-        AsrEngineBootstrap bootstrap = new AsrEngineBootstrap(env, config);
-        return bootstrap.initialize(context, moduleId(), notifyPlayer);
+    private AsrEngine createEngine(ModuleRuntimeContext context) {
+        AsrEngineBootstrap bootstrap = new AsrEngineBootstrap(env, config, this::publishBootstrapStatus);
+        return bootstrap.initialize(context, moduleId());
+    }
+
+    private void publishBootstrapStatus(AsrEngineBootstrapStatus status) {
+        if (status == null) {
+            return;
+        }
+        switch (status.kind()) {
+            case READY -> publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), status.messageKey(), status.message()));
+            case WAITING -> publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), status.messageKey(), status.message()));
+            case FAILED -> publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), status.messageKey(), status.message()));
+        }
+    }
+
+    private void publishModuleStatus(ModuleStatus status) {
+        if (summary != null) {
+            adapter.publishModuleStatus(status);
+        }
     }
 
     private void bindVoiceResources(VoiceResourceAccess resources) {
@@ -238,6 +257,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (!voiceResourceReloadQueued.compareAndSet(false, true)) {
             return;
         }
+        publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.reload_started", "ASR 语音资源重载中"));
         voiceResourceReloadTask = protocolRuntime.executors().submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(moduleId())
@@ -250,6 +270,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         );
         if (voiceResourceReloadTask.state() == ProtocolTaskState.REJECTED) {
             voiceResourceReloadQueued.set(false);
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_rejected", "ASR 语音资源重载任务提交失败"));
             env.warn("ASR 热词资源重载任务提交被拒绝，version=" + requestedVersion);
         }
     }
@@ -293,7 +314,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (previousEngine != null) {
             previousEngine.shutdown();
         }
-        AsrEngine nextEngine = createEngine(context, false);
+        AsrEngine nextEngine = createEngine(context);
         if (destroyed) {
             if (nextEngine != null) {
                 nextEngine.shutdown();
@@ -308,12 +329,14 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
                 readyState.capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId());
             }
             env.info("ASR 语音热词资源重载完成，version=" + snapshotVersion);
+            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.asr.reload_complete", "ASR 语音资源重载完成"));
         } else {
             ModuleRuntimeState failedState = runtimeState;
             if (failedState != null) {
                 failedState.capabilities().markFailed(AsrRuntimeCapabilities.INPUT, moduleId(), "ASR 语音热词资源重载失败");
             }
             env.warn("ASR 语音热词资源重载未产生可用引擎，version=" + snapshotVersion);
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_failed", "ASR 语音资源重载失败"));
         }
     }
 
@@ -325,3 +348,5 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         return AsrHotwordSupport.fromModelPath(config.getAsrModelPath()).reloadRequired();
     }
 }
+
+

@@ -8,7 +8,7 @@ public record AXMemoryWindowPolicy(
         int shortTermChatTokenBudget,
         int memoryRagTokenBudget,
         int userConventionChatTokenBudget,
-        int dynamicRagChatTokenBudget,
+        int runtimeContextChatTokenBudget,
         int recentRawKeepTokenTarget,
         int recentRawKeepTokenMax,
         int shortTermCompressTokenTarget,
@@ -41,7 +41,7 @@ public record AXMemoryWindowPolicy(
         shortTermChatTokenBudget = Math.max(0, shortTermChatTokenBudget);
         memoryRagTokenBudget = Math.max(0, memoryRagTokenBudget);
         userConventionChatTokenBudget = Math.max(0, userConventionChatTokenBudget);
-        dynamicRagChatTokenBudget = Math.max(0, dynamicRagChatTokenBudget);
+        runtimeContextChatTokenBudget = Math.max(0, runtimeContextChatTokenBudget);
         recentRawKeepTokenTarget = Math.max(0, recentRawKeepTokenTarget);
         recentRawKeepTokenMax = Math.max(recentRawKeepTokenTarget, recentRawKeepTokenMax);
         shortTermCompressTokenTarget = Math.max(0, shortTermCompressTokenTarget);
@@ -62,7 +62,7 @@ public record AXMemoryWindowPolicy(
                 config.getLlmAXShortTermChatTokenBudget(),
                 config.getLlmMemoryRagTokenBudget(),
                 config.getLlmAXUserConventionChatTokenBudget(),
-                config.getLlmAXDynamicRagChatTokenBudget(),
+                runtimeContextBudget(config),
                 config.getLlmAXRecentRawKeepTokenTarget(),
                 config.getLlmAXRecentRawKeepTokenMax(),
                 config.getLlmAXShortTermCompressTokenTarget(),
@@ -72,5 +72,9 @@ public record AXMemoryWindowPolicy(
                 config.getLlmAXShortTermChatBlockLimit(),
                 config.getLlmAXConversationPauseMillis()
         );
+    }
+
+    private static int runtimeContextBudget(ITianshuConfig config) {
+        return config.getLlmAXDynamicRagChatTokenBudget();
     }
 }

@@ -10,11 +10,12 @@ public record LLMPromptResultPayload(
         String text,
         String errorCode,
         String errorMessage,
-        List<RagHitPayload> ragHits
+        List<RagHitPayload> ragHits,
+        TokenUsagePayload usage
 ) implements ITianshuPayload {
 
     public static final LLMPromptResultPayload SUCCESS_EMPTY = new LLMPromptResultPayload(
-            "", "COMPLETED", "", null, null, List.of()
+            "", "COMPLETED", "", null, null, List.of(), TokenUsagePayload.empty()
     );
 
     public LLMPromptResultPayload {
@@ -24,6 +25,7 @@ public record LLMPromptResultPayload(
         errorCode = errorCode == null || errorCode.isBlank() ? null : errorCode.trim();
         errorMessage = errorMessage == null || errorMessage.isBlank() ? null : errorMessage.trim();
         ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
+        usage = usage == null ? TokenUsagePayload.empty() : usage;
     }
 
     private static String normalize(String value) {
@@ -39,31 +41,43 @@ public record LLMPromptResultPayload(
     }
 
     public static LLMPromptResultPayload completed(String requestId, String text) {
-        return new LLMPromptResultPayload(requestId, "COMPLETED", text, null, null, List.of());
+        return completed(requestId, text, List.of(), TokenUsagePayload.empty());
     }
 
     public static LLMPromptResultPayload completed(String requestId, String text, List<RagHitPayload> ragHits) {
-        return new LLMPromptResultPayload(requestId, "COMPLETED", text, null, null, ragHits);
+        return completed(requestId, text, ragHits, TokenUsagePayload.empty());
+    }
+
+    public static LLMPromptResultPayload completed(String requestId, String text, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
+        return new LLMPromptResultPayload(requestId, "COMPLETED", text, null, null, ragHits, usage);
     }
 
     public static LLMPromptResultPayload cancelled(String requestId, String text) {
-        return new LLMPromptResultPayload(requestId, "CANCELLED", text, null, null, List.of());
+        return cancelled(requestId, text, List.of(), TokenUsagePayload.empty());
     }
 
     public static LLMPromptResultPayload cancelled(String requestId, String text, List<RagHitPayload> ragHits) {
-        return new LLMPromptResultPayload(requestId, "CANCELLED", text, null, null, ragHits);
+        return cancelled(requestId, text, ragHits, TokenUsagePayload.empty());
+    }
+
+    public static LLMPromptResultPayload cancelled(String requestId, String text, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
+        return new LLMPromptResultPayload(requestId, "CANCELLED", text, null, null, ragHits, usage);
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage) {
-        return new LLMPromptResultPayload(requestId, "FAILED", "", errorCode, errorMessage, List.of());
+        return failed(requestId, errorCode, errorMessage, "", List.of(), TokenUsagePayload.empty());
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText) {
-        return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", errorCode, errorMessage, List.of());
+        return failed(requestId, errorCode, errorMessage, partialText, List.of(), TokenUsagePayload.empty());
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText, List<RagHitPayload> ragHits) {
-        return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", errorCode, errorMessage, ragHits);
+        return failed(requestId, errorCode, errorMessage, partialText, ragHits, TokenUsagePayload.empty());
+    }
+
+    public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
+        return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", errorCode, errorMessage, ragHits, usage);
     }
 
     public boolean isCompleted() {
@@ -89,6 +103,23 @@ public record LLMPromptResultPayload(
 
         public static HitEntry of(double score, String content) {
             return new HitEntry(score, content);
+        }
+    }
+
+    public record TokenUsagePayload(
+            int promptTokens,
+            int completionTokens,
+            int totalTokens
+    ) implements ITianshuPayload {
+        public TokenUsagePayload {
+            promptTokens = Math.max(0, promptTokens);
+            completionTokens = Math.max(0, completionTokens);
+            int computedTotal = promptTokens + completionTokens;
+            totalTokens = totalTokens > 0 ? totalTokens : computedTotal;
+        }
+
+        public static TokenUsagePayload empty() {
+            return new TokenUsagePayload(0, 0, 0);
         }
     }
 

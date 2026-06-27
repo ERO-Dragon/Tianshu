@@ -14,12 +14,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 public final class AXJsonStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson JSONL_GSON = new Gson();
     private final IGameEnvironment env;
 
     public AXJsonStore(IGameEnvironment env) {
@@ -74,7 +76,7 @@ public final class AXJsonStore {
             try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
                 GSON.toJson(object, writer);
             }
-            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            replace(temp, path);
         } catch (IOException e) {
             warn("Failed to write json: " + path, e);
         }
@@ -93,14 +95,50 @@ public final class AXJsonStore {
                         if (object == null) {
                             continue;
                         }
-                        writer.write(GSON.toJson(object));
+                        writer.write(JSONL_GSON.toJson(object));
                         writer.newLine();
                     }
                 }
             }
-            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            replace(temp, path);
         } catch (IOException e) {
             warn("Failed to write jsonl: " + path, e);
+        }
+    }
+
+    public void appendJsonLine(Path path, JsonObject object) {
+        if (path == null || object == null) {
+            return;
+        }
+        appendJsonLines(path, List.of(object));
+    }
+
+    public void appendJsonLines(Path path, List<JsonObject> objects) {
+        if (path == null || objects == null || objects.isEmpty()) {
+            return;
+        }
+        try {
+            Files.createDirectories(path.getParent());
+            try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                for (JsonObject object : objects) {
+                    if (object == null) {
+                        continue;
+                    }
+                    writer.write(JSONL_GSON.toJson(object));
+                    writer.newLine();
+                }
+            }
+        } catch (IOException e) {
+            warn("Failed to append jsonl: " + path, e);
+        }
+    }
+
+    private void replace(Path temp, Path target) throws IOException {
+        try {
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException atomicFailure) {
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

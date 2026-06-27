@@ -1,13 +1,12 @@
-package com.rheinmetal.tianshu.integration;
+﻿package com.rheinmetal.tianshu.integration;
 
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapabilityStatus;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.integration.CoreCapabilityProbe;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleDeclaration;
-import com.rheinmetal.tianshu.protocol.summary.StateSummary;
-import com.rheinmetal.tianshu.protocol.summary.StateSummaryQuery;
-import com.rheinmetal.tianshu.protocol.summary.StateSummaryRegistry;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
@@ -30,11 +29,11 @@ public interface TianshuIntegrationApi {
 
     void unregisterVoiceTriggers(String moduleId);
 
-    void submitStateSummary(StateSummary summary);
+    void submitModuleStatus(ModuleStatus status);
 
-    List<StateSummary> queryStateSummaries(StateSummaryQuery query);
-
-    StateSummaryRegistry stateSummaries();
+    List<ModuleStatus> queryModuleStatuses(ModuleStatusQuery query);
 
     void submit(TianshuEnvelope envelope);
 }
+
+

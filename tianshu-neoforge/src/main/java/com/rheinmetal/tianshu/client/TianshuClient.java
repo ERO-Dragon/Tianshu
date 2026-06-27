@@ -21,6 +21,7 @@ import com.rheinmetal.tianshu.client.integration.TianshuIntegrationRegisterEvent
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.lifecycle.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.client.ir.NamedObjectReloadListener;
+import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
@@ -29,16 +30,6 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.platform.NeoForgeAXWorldIdentityProvider;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeEnvironmentProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeInventoryProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeDialogueContextProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgePlayerStateProvider;
-import com.rheinmetal.tianshu.platform.provider.NeoForgeSocialDataProvider;
-import com.rheinmetal.tianshu.provider.IEnvironmentAwarenessProvider;
-import com.rheinmetal.tianshu.provider.IInventoryDataProvider;
-import com.rheinmetal.tianshu.provider.IPlayerStateProvider;
-import com.rheinmetal.tianshu.provider.ISocialDataProvider;
-import com.rheinmetal.tianshu.provider.WorldStateProvider;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
@@ -48,6 +39,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
@@ -56,6 +49,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
+import java.util.List;
 import java.util.Optional;
 
 public class TianshuClient {
@@ -80,12 +74,7 @@ public class TianshuClient {
     private static TianshuSettingsContributorRegistry externalSettingsContributors;
     private static CoreBackedTianshuIntegrationApi integrationApi;
 
-    private static IInventoryDataProvider inventoryProvider;
-    private static IEnvironmentAwarenessProvider environmentProvider;
-    private static IPlayerStateProvider playerStateProvider;
-    private static ISocialDataProvider socialDataProvider;
-    private static WorldStateProvider worldStateProvider;
-    private static NeoForgeDialogueContextProvider dialogueContextProvider;
+    private static PresenceClientRuntime presenceRuntime;
 
     private static Optional<AsrInputService> asrInputService() {
         return coreManager == null ? Optional.empty() : coreManager.findService(AsrInputService.class);
@@ -102,19 +91,29 @@ public class TianshuClient {
     }
 
     private static void beginVoiceInput() {
+        recordPresenceVoiceKeyInput();
         asrInputService().ifPresent(AsrInputService::beginVoiceInput);
     }
 
     private static void endVoiceInput() {
+        recordPresenceVoiceKeyInput();
         asrInputService().ifPresent(AsrInputService::endVoiceInput);
     }
 
     private static void commitVoiceInput() {
+        recordPresenceVoiceKeyInput();
         asrInputService().ifPresent(AsrInputService::commitVoiceInput);
     }
 
     private static void cancelVoiceInput() {
+        recordPresenceVoiceKeyInput();
         asrInputService().ifPresent(AsrInputService::cancelVoiceInput);
+    }
+
+    private static void recordPresenceVoiceKeyInput() {
+        if (presenceRuntime != null) {
+            presenceRuntime.recordVoiceKeyInput();
+        }
     }
 
     public static void init() {
@@ -124,24 +123,13 @@ public class TianshuClient {
         axConfig = new AXClientConfig(config.getRootPath().resolve("ax"));
         axChatHudState = new AXChatHudState();
         axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axConfig);
+        presenceRuntime = new PresenceClientRuntime();
 
         audioManager = new AudioManager();
         String selectedMicName = config.getSelectedMicName();
         if (selectedMicName != null && !selectedMicName.isBlank()) {
             audioManager.selectMic(selectedMicName);
         }
-        inventoryProvider = new NeoForgeInventoryProvider();
-        environmentProvider = new NeoForgeEnvironmentProvider();
-        playerStateProvider = new NeoForgePlayerStateProvider();
-        socialDataProvider = new NeoForgeSocialDataProvider();
-        dialogueContextProvider = new NeoForgeDialogueContextProvider();
-
-        worldStateProvider = new WorldStateProvider(
-                playerStateProvider,
-                inventoryProvider,
-                environmentProvider,
-                socialDataProvider
-        );
 
         coreManager = new TianshuCoreManager(env, config, audioManager, context -> new ClientTianshuModuleAssembler(
                 context.env(),
@@ -151,10 +139,10 @@ public class TianshuClient {
                 context.voiceInputGate(),
                 context.interruptionSignal(),
                 new NeoForgeAXWorldIdentityProvider(),
-                worldStateProvider,
                 axConfig,
                 axChatHudState,
-                dialogueContextProvider
+                presenceRuntime.contextProvider(),
+                List.of(presenceRuntime.moduleInstaller(context.protocolRuntime()))
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();
         integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
@@ -165,6 +153,10 @@ public class TianshuClient {
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenInit);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onRenderGui);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onClientChatReceived);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onKeyboardInput);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseButtonInput);
+        NeoForge.EVENT_BUS.addListener(TianshuClient::onMouseScrollInput);
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
@@ -214,8 +206,8 @@ public class TianshuClient {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || config == null) return;
-        if (dialogueContextProvider != null) {
-            dialogueContextProvider.tick();
+        if (presenceRuntime != null) {
+            presenceRuntime.tick();
         }
 
         if (!config.isAiEnabled()) {
@@ -283,6 +275,9 @@ public class TianshuClient {
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
         Screen screen = event.getScreen();
+        if (presenceRuntime != null) {
+            presenceRuntime.recordScreenChanged(screen);
+        }
         if (screen instanceof PauseScreen) {
             int screenWidth = screen.width;
             int buttonWidth = 200;
@@ -309,8 +304,35 @@ public class TianshuClient {
 
     public static void onRenderGui(RenderGuiEvent.Post event) {
         ClientLlmRuntimeBridge.markFrame();
+        if (presenceRuntime != null) {
+            presenceRuntime.render(event.getGuiGraphics(), 0.0F);
+        }
         if (axChatHudRenderer != null) {
             axChatHudRenderer.render(event.getGuiGraphics(), 0.0F);
+        }
+    }
+
+    public static void onClientChatReceived(ClientChatReceivedEvent event) {
+        if (presenceRuntime != null) {
+            presenceRuntime.recordChatMessage(event.getMessage());
+        }
+    }
+
+    public static void onKeyboardInput(InputEvent.Key event) {
+        if (presenceRuntime != null && event.getAction() != InputConstants.RELEASE) {
+            presenceRuntime.recordKeyboardInput();
+        }
+    }
+
+    public static void onMouseButtonInput(InputEvent.MouseButton.Post event) {
+        if (presenceRuntime != null && event.getAction() == InputConstants.PRESS) {
+            presenceRuntime.recordMouseInput();
+        }
+    }
+
+    public static void onMouseScrollInput(InputEvent.MouseScrollingEvent event) {
+        if (presenceRuntime != null) {
+            presenceRuntime.recordMouseInput();
         }
     }
 
@@ -350,6 +372,7 @@ public class TianshuClient {
             audioManager.shutdown();
             audioManager = null;
         }
+        presenceRuntime = null;
         isVoiceKeyPressed = false;
         wasAlwaysKeyTriggered = false;
         lastTriggerMode = null;

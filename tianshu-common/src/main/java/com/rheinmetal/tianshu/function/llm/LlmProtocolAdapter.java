@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.llm;
+﻿package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.service.Chunk;
 import com.rheinmetal.tianshu.function.llm.service.LlmInferencePolicy;
@@ -27,9 +27,11 @@ import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -169,6 +171,13 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             return null;
         }
         return publishTopic(ProtocolTopics.LLM_STATUS, PayloadType.LLM_STATUS, status);
+    }
+
+    public TianshuEnvelope publishModuleStatus(ModuleStatus status) {
+        if (status == null) {
+            return null;
+        }
+        return publishTopic(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, new ModuleStatusPayload(status));
     }
 
     public TianshuEnvelope buildDialogueLlmUsageAuthorizationRequest(TianshuEnvelope parent, DialogueLlmUsageAuthorizationRequestPayload payload) {
@@ -831,3 +840,5 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         return message == null || message.isBlank() ? "LLM request failed" : message;
     }
 }
+
+

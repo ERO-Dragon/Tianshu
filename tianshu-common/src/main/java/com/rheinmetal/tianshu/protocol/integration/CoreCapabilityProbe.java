@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.integration;
+﻿package com.rheinmetal.tianshu.protocol.integration;
 
 import java.util.Set;
 
@@ -24,8 +24,8 @@ public record CoreCapabilityProbe(
                 Set.of(
                         IntegrationCapability.VOICE_TRIGGER,
                         IntegrationCapability.DIALOGUE_PARTICIPANT,
-                        IntegrationCapability.STATE_SUMMARY_PROVIDER,
-                        IntegrationCapability.STATE_SUMMARY_CONSUMER,
+                        IntegrationCapability.MODULE_STATUS_PROVIDER,
+                        IntegrationCapability.MODULE_STATUS_CONSUMER,
                         IntegrationCapability.GUI_RENDER_CONTRIBUTOR,
                         IntegrationCapability.LIFECYCLE_LISTENER,
                         IntegrationCapability.RESOURCE_RELOAD_LISTENER
@@ -37,3 +37,4 @@ public record CoreCapabilityProbe(
         return capability != null && supportedCapabilities.contains(capability);
     }
 }
+

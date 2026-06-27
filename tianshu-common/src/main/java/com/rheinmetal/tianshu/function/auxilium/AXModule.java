@@ -5,38 +5,29 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
-import com.rheinmetal.tianshu.function.auxilium.fact.ActiveEffectsRuntimeFactProvider;
-import com.rheinmetal.tianshu.function.auxilium.fact.BasicWorldStateRuntimeFactProvider;
-import com.rheinmetal.tianshu.function.auxilium.fact.InventoryRuntimeFactProvider;
-import com.rheinmetal.tianshu.function.auxilium.fact.RecentChatRuntimeFactProvider;
-import com.rheinmetal.tianshu.function.auxilium.fact.RuntimeFactCollector;
-import com.rheinmetal.tianshu.function.auxilium.fact.RuntimeFactPool;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptPlanner;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptRenderer;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptResourceRepository;
-import com.rheinmetal.tianshu.function.auxilium.rag.DynamicRagCandidateBuilder;
-import com.rheinmetal.tianshu.function.auxilium.rag.DynamicRagUpdatePolicy;
-import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextRenderer;
-import com.rheinmetal.tianshu.function.auxilium.rag.RuntimeFactTextResolver;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.context.AXMemoryWindowPolicy;
+import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextClient;
+import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryMaintenanceService;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetriever;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryTaskPromptRepository;
 import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenanceCoordinator;
-import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenancePolicy;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.DefaultAXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.function.ia.IaModuleService;
-import com.rheinmetal.tianshu.provider.WorldStateProvider;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
@@ -50,8 +41,6 @@ public final class AXModule implements TianshuManagedModule {
     private final ITianshuConfig config;
     private final ProtocolRuntime runtime;
     private final AXWorldIdentityProvider worldIdentityProvider;
-    private final WorldStateProvider worldStateProvider;
-    private final RuntimeFactTextResolver runtimeFactTextResolver;
     private final AXPromptLanguageProvider promptLanguageProvider;
     private final AXAssistantSettings assistantSettings;
     private final AXOutputSettings outputSettings;
@@ -59,23 +48,19 @@ public final class AXModule implements TianshuManagedModule {
     private final AXProtocolAdapter adapter;
     private AXParticipantRegistrar participantRegistrar;
     private AXLlmClient llmClient;
+    private AXLlmPrimitiveClient retrievalPrimitiveClient;
+    private AXLlmPrimitiveClient maintenancePrimitiveClient;
+    private AXRuntimeContextClient runtimeContextClient;
+    private AXRuntimeMaintenanceCoordinator maintenanceCoordinator;
     private AXStorageLayout storageLayout;
     private AXDialogueGateway dialogueGateway;
 
     public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
-        this(env, config, runtime, null, null, null);
+        this(env, config, runtime, null);
     }
 
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AXWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider) {
-        this(env, config, runtime, worldIdentityProvider, worldStateProvider, null);
-    }
-
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AXWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider, RuntimeFactTextResolver runtimeFactTextResolver) {
-        this(env, config, runtime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, null);
-    }
-
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AXWorldIdentityProvider worldIdentityProvider, WorldStateProvider worldStateProvider, RuntimeFactTextResolver runtimeFactTextResolver, AXPromptLanguageProvider promptLanguageProvider) {
-        this(env, config, runtime, worldIdentityProvider, worldStateProvider, runtimeFactTextResolver, promptLanguageProvider, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
+    public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AXWorldIdentityProvider worldIdentityProvider) {
+        this(env, config, runtime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModule(
@@ -83,8 +68,6 @@ public final class AXModule implements TianshuManagedModule {
             ITianshuConfig config,
             ProtocolRuntime runtime,
             AXWorldIdentityProvider worldIdentityProvider,
-            WorldStateProvider worldStateProvider,
-            RuntimeFactTextResolver runtimeFactTextResolver,
             AXPromptLanguageProvider promptLanguageProvider,
             AXAssistantSettings assistantSettings,
             AXOutputSettings outputSettings,
@@ -94,8 +77,6 @@ public final class AXModule implements TianshuManagedModule {
         this.config = config;
         this.runtime = runtime;
         this.worldIdentityProvider = worldIdentityProvider;
-        this.worldStateProvider = worldStateProvider;
-        this.runtimeFactTextResolver = runtimeFactTextResolver;
         this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage.EN_US) : promptLanguageProvider;
         this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
@@ -111,6 +92,8 @@ public final class AXModule implements TianshuManagedModule {
     @Override
     public void register(ModuleRegistrationContext context) {
         llmClient = new AXLlmClient(adapter);
+        retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, 1_000L);
+        maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, 30_000L);
         storageLayout = new AXStorageLayout(config);
         AXJsonStore jsonStore = new AXJsonStore(env);
         AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.fromConfig(config);
@@ -118,31 +101,25 @@ public final class AXModule implements TianshuManagedModule {
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
         AXMemorySystem memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
-        RuntimeFactPool factPool = new RuntimeFactPool();
-        RuntimeFactCollector factCollector = new RuntimeFactCollector(factPool);
-        registerRuntimeFactProviders(factCollector);
-        RuntimeFactTextRenderer factTextRenderer = new RuntimeFactTextRenderer(runtimeFactTextResolver);
-        DynamicRagCandidateBuilder ragCandidateBuilder = new DynamicRagCandidateBuilder(
-                factPool,
-                DynamicRagUpdatePolicy.DEFAULT,
-                factTextRenderer,
-                promptLanguageProvider
-        );
-        AXRuntimeMaintenanceCoordinator maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(
-                factCollector,
+        AXMemoryTaskPromptRepository memoryTaskPromptRepository = new AXMemoryTaskPromptRepository(storageLayout, promptLanguageProvider);
+        AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
+                adapter,
                 memorySystem,
-                null,
-                AXRuntimeMaintenancePolicy.DEFAULT
+                llmClient,
+                maintenancePrimitiveClient,
+                memoryTaskPromptRepository
         );
-        AXContextCollector contextCollector = new AXContextCollector(memorySystem, ragCandidateBuilder);
+        maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(memoryMaintenanceService);
+        AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, retrievalPrimitiveClient);
+        AXContextCollector contextCollector = new AXContextCollector(memorySystem);
         AXPromptResourceRepository promptRepository = new AXPromptResourceRepository(storageLayout, jsonStore);
-        AXPromptPlanner promptPlanner = new AXPromptPlanner(promptRepository, promptLanguageProvider);
+        AXPromptOrchestrator promptOrchestrator = new AXPromptOrchestrator(promptRepository, promptLanguageProvider, null);
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
         AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(
-                promptPlanner,
-                new AXPromptRenderer(),
+                promptOrchestrator,
                 contextBudget
         );
+        runtimeContextClient = new AXRuntimeContextClient(adapter);
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
         AXTurnOrchestrator turnOrchestrator = new AXTurnOrchestrator(
@@ -150,12 +127,15 @@ public final class AXModule implements TianshuManagedModule {
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 maintenanceCoordinator,
+                runtimeContextClient,
                 contextCollector,
                 llmRequestBuilder,
+                contextBudget,
                 llmClient,
                 sessionController,
                 memorySystem,
-                outputProcessor
+                outputProcessor,
+                memoryRetriever
         );
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator);
         adapter.registerDialogueInputCapability(dialogueGateway::handleDelivery);
@@ -175,12 +155,30 @@ public final class AXModule implements TianshuManagedModule {
         if (llmClient != null) {
             llmClient.sweepExpired();
         }
+        if (retrievalPrimitiveClient != null) {
+            retrievalPrimitiveClient.sweepExpired();
+        }
+        if (maintenancePrimitiveClient != null) {
+            maintenancePrimitiveClient.sweepExpired();
+        }
     }
 
     @Override
     public void stop() {
+        if (maintenanceCoordinator != null) {
+            maintenanceCoordinator.stop();
+        }
         if (llmClient != null) {
             llmClient.clear();
+        }
+        if (retrievalPrimitiveClient != null) {
+            retrievalPrimitiveClient.clear();
+        }
+        if (maintenancePrimitiveClient != null) {
+            maintenancePrimitiveClient.clear();
+        }
+        if (runtimeContextClient != null) {
+            runtimeContextClient.clear();
         }
         if (participantRegistrar != null) {
             participantRegistrar.unregister();
@@ -192,18 +190,12 @@ public final class AXModule implements TianshuManagedModule {
         stop();
         participantRegistrar = null;
         llmClient = null;
+        retrievalPrimitiveClient = null;
+        maintenancePrimitiveClient = null;
+        runtimeContextClient = null;
+        maintenanceCoordinator = null;
         storageLayout = null;
         dialogueGateway = null;
-    }
-
-    private void registerRuntimeFactProviders(RuntimeFactCollector factCollector) {
-        if (factCollector == null || worldStateProvider == null) {
-            return;
-        }
-        factCollector.registerProvider(new BasicWorldStateRuntimeFactProvider(worldStateProvider));
-        factCollector.registerProvider(new InventoryRuntimeFactProvider(worldStateProvider));
-        factCollector.registerProvider(new ActiveEffectsRuntimeFactProvider(worldStateProvider));
-        factCollector.registerProvider(new RecentChatRuntimeFactProvider(worldStateProvider));
     }
 
     private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {

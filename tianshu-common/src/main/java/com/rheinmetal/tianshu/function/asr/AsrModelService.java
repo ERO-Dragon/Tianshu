@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.asr;
+﻿package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -13,6 +13,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class AsrModelService {
@@ -58,18 +61,32 @@ public class AsrModelService {
     private final AsrModelDownloadCoordinator downloadCoordinator;
     private final Supplier<AsrEngine> engineSupplier;
     private final BooleanSupplier readySupplier;
+    private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicBoolean previewRunning = new AtomicBoolean(false);
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
 
     public AsrModelService(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, ProtocolExecutorManager executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
+        this(env, config, audioBridge, executorManager, engineSupplier, readySupplier, null);
+    }
+
+    public AsrModelService(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            IAudioBridge audioBridge,
+            ProtocolExecutorManager executorManager,
+            Supplier<AsrEngine> engineSupplier,
+            BooleanSupplier readySupplier,
+            Consumer<ModuleStatus> moduleStatusSink
+    ) {
         this.env = env;
         this.config = config;
         this.audioBridge = audioBridge;
         this.executorManager = executorManager;
         this.engineSupplier = engineSupplier;
         this.readySupplier = readySupplier;
+        this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
         scheduleStartupCleanup();
     }
@@ -198,10 +215,12 @@ public class AsrModelService {
                 downloadCoordinator.newSession()
         );
         if (!activeDownload.compareAndSet(null, task)) {
+            publishFailed("tianshu.presence.module.asr.download_busy", "ASR 模型下载已在进行");
             notifyDownloadError(callback, "ASR model download is already running");
             return;
         }
         task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), "Preparing", 0));
+        publishWaiting("tianshu.presence.module.asr.download_started", "ASR 模型下载中");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.asr")
@@ -229,6 +248,7 @@ public class AsrModelService {
                                 if (!finishTask(task)) {
                                     return;
                                 }
+                                publishReady("tianshu.presence.module.asr.download_complete", "ASR 模型下载完成");
                                 if (callback != null) {
                                     callback.onComplete();
                                 }
@@ -243,8 +263,10 @@ public class AsrModelService {
                                     return;
                                 }
                                 if (task.session().isCancelled()) {
+                                    publishReady("tianshu.presence.module.asr.download_cancelled", "ASR 模型下载已取消");
                                     callback.onCancelled();
                                 } else {
+                                    publishFailed("tianshu.presence.module.asr.download_failed", "ASR 模型下载失败");
                                     callback.onError(message);
                                 }
                             }
@@ -257,8 +279,10 @@ public class AsrModelService {
                             return;
                         }
                         if (task.session().isCancelled()) {
+                            publishReady("tianshu.presence.module.asr.download_cancelled", "ASR 模型下载已取消");
                             callback.onCancelled();
                         } else {
+                            publishFailed("tianshu.presence.module.asr.download_failed", "ASR 模型下载失败");
                             callback.onError(e.getMessage() == null ? "ASR model download failed" : e.getMessage());
                         }
                     }
@@ -266,6 +290,7 @@ public class AsrModelService {
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
+            publishFailed("tianshu.presence.module.asr.download_queue_full", "ASR 模型下载队列已满");
             notifyDownloadError(callback, "ASR model download queue is full");
         }
     }
@@ -307,6 +332,7 @@ public class AsrModelService {
         task.session().pause();
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, true, false, task.modelKey(), current.label(), current.progress()));
+        publishWaiting("tianshu.presence.module.asr.download_paused", "ASR 模型下载已暂停");
     }
 
     public boolean pauseDownload(String modelKey) {
@@ -325,6 +351,7 @@ public class AsrModelService {
         task.session().resume();
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), current.label(), current.progress()));
+        publishWaiting("tianshu.presence.module.asr.download_resumed", "ASR 模型下载已恢复");
     }
 
     public boolean resumeDownload(String modelKey) {
@@ -343,6 +370,7 @@ public class AsrModelService {
         task.session().cancel();
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, false, true, task.modelKey(), "Cancelling", current.progress()));
+        publishWaiting("tianshu.presence.module.asr.download_cancelling", "正在取消 ASR 模型下载");
     }
 
     public boolean cancelDownload(String modelKey) {
@@ -513,6 +541,18 @@ public class AsrModelService {
         return activeDownload.compareAndSet(task, null);
     }
 
+    private void publishReady(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.readyKeyed("module.asr", messageKey, fallbackTitle));
+    }
+
+    private void publishWaiting(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", messageKey, fallbackTitle));
+    }
+
+    private void publishFailed(String messageKey, String fallbackTitle) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.asr", messageKey, fallbackTitle));
+    }
+
     private boolean isActiveModel(String modelKey) {
         DownloadTask task = activeDownload.get();
         return task != null && AsrModelManager.localKeysEqual(modelKey, task.modelKey());
@@ -558,3 +598,5 @@ public class AsrModelService {
         }
     }
 }
+
+

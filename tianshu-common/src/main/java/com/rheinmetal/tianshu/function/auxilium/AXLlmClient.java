@@ -85,6 +85,22 @@ public final class AXLlmClient {
                 : cancellation);
     }
 
+    public boolean cancelRequest(String requestEnvelopeId, AXTurnCancellation cancellation) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return false;
+        }
+        PendingRequest request = handlers.remove(requestEnvelopeId);
+        if (request == null) {
+            return false;
+        }
+        AXTurnCancellation effective = cancellation == null
+                ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
+                : cancellation;
+        request.handler().onCancelled(effective);
+        adapter.unregisterLlmResponses(requestEnvelopeId);
+        return true;
+    }
+
     public void clear() {
         cancelAll(AXTurnCancellation.moduleUnloaded("AX module stopped"));
     }

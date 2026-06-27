@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.llm;
+﻿package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
@@ -18,6 +18,8 @@ import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.List;
 
@@ -75,7 +77,7 @@ public final class LlmModule implements TianshuManagedModule {
                 stopRuntime();
             }
         });
-        modelService = new LlmModelService(env, config, runtime.executors());
+        modelService = new LlmModelService(env, config, runtime.executors(), this::publishModuleStatus);
         adapter.registerLLMRequestCapability(this::handleLLMRequest);
         adapter.registerLLMCacheManageCapability(this::handleLLMCacheManage);
         adapter.registerLLMPrimitiveQueryCapability(this::handleLLMPrimitiveQuery);
@@ -172,6 +174,7 @@ public final class LlmModule implements TianshuManagedModule {
             }
         }
 
+        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting", "LLM 核心加载中"));
         engineProvider.startAsync(() -> {
             synchronized (lifecycleLock) {
                 if (destroyed || moduleService == null || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
@@ -181,6 +184,7 @@ public final class LlmModule implements TianshuManagedModule {
                 if (aiService == null) {
                     markCapabilitiesFailed("LLM service failed to start");
                     moduleService.markFailed("LLM service failed to start");
+                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", "LLM 核心启动失败"));
                     return;
                 }
                 llmService = LLMService.builder()
@@ -197,12 +201,13 @@ public final class LlmModule implements TianshuManagedModule {
                 markCapabilitiesReady();
                 moduleService.markReady();
             }
-            env.executeOnMainThread(() -> env.displayMessageToPlayer("§b[天枢] §fLLM 核心已就绪"));
+            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready", "LLM 核心已就绪"));
         }, () -> {
             markCapabilitiesFailed("LLM service failed to start");
             if (moduleService != null) {
                 moduleService.markFailed("LLM service failed to start");
             }
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", "LLM 核心启动失败"));
             synchronized (lifecycleLock) {
                 adapter.setLlmService(null);
                 LLMService failedService = llmService;
@@ -235,4 +240,12 @@ public final class LlmModule implements TianshuManagedModule {
         }
     }
 
+    private void publishModuleStatus(ModuleStatus status) {
+        if (summary != null) {
+            adapter.publishModuleStatus(status);
+        }
+    }
+
 }
+
+

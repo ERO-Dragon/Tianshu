@@ -3,29 +3,37 @@ package com.rheinmetal.tianshu.function.auxilium.context;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySnapshot;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
-import com.rheinmetal.tianshu.function.auxilium.rag.DynamicRagCandidateBuilder;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXStmBlock;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 
 import java.util.List;
 
 public final class AXContextCollector {
     private final AXMemorySystem memorySystem;
-    private final DynamicRagCandidateBuilder ragCandidateBuilder;
 
-    public AXContextCollector(AXMemorySystem memorySystem, DynamicRagCandidateBuilder ragCandidateBuilder) {
+    public AXContextCollector(AXMemorySystem memorySystem) {
         this.memorySystem = memorySystem;
-        this.ragCandidateBuilder = ragCandidateBuilder;
     }
 
     public AXContextSnapshot collect(AXScope scope, AXRequest request) {
+        return collect(scope, request, List.of());
+    }
+
+    public AXContextSnapshot collect(AXScope scope, AXRequest request, List<AXRuntimeContextFact> runtimeContextFacts) {
+        return collect(scope, request, runtimeContextFacts, null);
+    }
+
+    public AXContextSnapshot collect(AXScope scope, AXRequest request, List<AXRuntimeContextFact> runtimeContextFacts, List<AXStmBlock> selectedMemoryBlocks) {
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
         AXMemorySnapshot memory = memorySystem == null ? AXMemorySnapshot.empty(effectiveScope) : memorySystem.load(effectiveScope);
+        if (selectedMemoryBlocks != null) {
+            memory = memory.withPlayerMemoryBlocks(selectedMemoryBlocks);
+        }
         return new AXContextSnapshot(
                 effectiveScope,
                 memory,
-                ragCandidateBuilder == null ? List.of() : ragCandidateBuilder.build(effectiveScope, request),
-                request == null ? "" : request.providedContext(),
-                memorySystem != null && memorySystem.hasMemoryRagEntries(effectiveScope)
+                runtimeContextFacts,
+                request == null ? "" : request.providedContext()
         );
     }
 }
