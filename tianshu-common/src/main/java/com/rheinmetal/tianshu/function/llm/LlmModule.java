@@ -24,7 +24,8 @@ import java.util.List;
 public final class LlmModule implements TianshuManagedModule {
     private static final List<RuntimeCapability> PROVIDED_CAPABILITIES = List.of(
             LlmRuntimeCapabilities.LLM_REQUEST,
-            LlmRuntimeCapabilities.LLM_CACHE_MANAGE
+            LlmRuntimeCapabilities.LLM_CACHE_MANAGE,
+            LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY
     );
 
     private final IGameEnvironment env;
@@ -75,10 +76,9 @@ public final class LlmModule implements TianshuManagedModule {
             }
         });
         modelService = new LlmModelService(env, config, runtime.executors());
-        context.services().register(LlmModuleService.class, moduleService);
-        context.services().register(LlmModelService.class, modelService);
         adapter.registerLLMRequestCapability(this::handleLLMRequest);
         adapter.registerLLMCacheManageCapability(this::handleLLMCacheManage);
+        adapter.registerLLMPrimitiveQueryCapability(this::handleLLMPrimitiveQuery);
     }
 
     @Override
@@ -124,6 +124,10 @@ public final class LlmModule implements TianshuManagedModule {
 
     private void handleLLMCacheManage(TianshuEnvelope envelope, ProtocolContext context) {
         adapter.handleLLMCacheManage(envelope, context);
+    }
+
+    private void handleLLMPrimitiveQuery(TianshuEnvelope envelope, ProtocolContext context) {
+        adapter.handleLLMPrimitiveQuery(envelope, context);
     }
 
     private void markCapabilitiesInstalled(ModuleRuntimeContext context) {
@@ -190,10 +194,6 @@ public final class LlmModule implements TianshuManagedModule {
                         .cacheNamespace(ragCacheLayout.cacheNamespace())
                         .build();
                 adapter.setLlmService(llmService);
-
-                if (runtimeContext != null) {
-                    runtimeContext.services().register(LLMService.class, llmService);
-                }
                 markCapabilitiesReady();
                 moduleService.markReady();
             }
@@ -207,9 +207,6 @@ public final class LlmModule implements TianshuManagedModule {
                 adapter.setLlmService(null);
                 LLMService failedService = llmService;
                 llmService = null;
-                if (runtimeContext != null && failedService != null) {
-                    runtimeContext.services().unregister(LLMService.class, failedService);
-                }
                 if (failedService != null) {
                     failedService.shutdown();
                 }
@@ -223,9 +220,6 @@ public final class LlmModule implements TianshuManagedModule {
             adapter.setLlmService(null);
             LLMService stoppingService = llmService;
             llmService = null;
-            if (runtimeContext != null && stoppingService != null) {
-                runtimeContext.services().unregister(LLMService.class, stoppingService);
-            }
             if (stoppingService != null) {
                 stoppingService.shutdown();
             }

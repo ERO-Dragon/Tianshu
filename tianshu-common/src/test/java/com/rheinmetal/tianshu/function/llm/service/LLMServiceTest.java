@@ -2,6 +2,10 @@ package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
+import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
+import com.rheinmetal.tianshu.libs.llm.StreamFinishType;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import org.junit.jupiter.api.Test;
@@ -33,7 +37,7 @@ class LLMServiceTest {
     }
 
     @Test
-    void ragPromptAndHitsRespectTokenBudget() {
+    void ragPromptAndHitsDoNotApplyTokenBudgetWithoutLibsCount() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);
         LLMRequest request = LLMRequest.of(
@@ -44,9 +48,9 @@ class LLMServiceTest {
         LLMService.LLMResult result = service.chat(request);
 
         assertTrue(client.lastMessages.stream().anyMatch(message ->
-                "system".equals(message.role) && message.content.contains("[上下文已按预算截断]")));
+                "system".equals(message.role) && message.content.contains("abcdefghijklmnop")));
         assertEquals(1, result.ragHits().size());
-        assertTrue(result.ragHits().get(0).hits().get(0).content().contains("[上下文已按预算截断]"));
+        assertEquals("abcdefghijklmnop", result.ragHits().get(0).hits().get(0).content());
     }
 
     @Test
@@ -230,10 +234,24 @@ class LLMServiceTest {
         }
 
         @Override
+        public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) {
+            return new LlmGenerationResult(chat(messages, sampler, maxTokens), new LlmTokenUsage(messages.size(), 1));
+        }
+
+        @Override
         public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) {
             lastMessages = List.copyOf(messages);
             lastSampler = sampler;
             onToken.accept("ok");
+        }
+
+        @Override
+        public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
+            chatStream(messages, sampler, onToken);
+            if (onFinish != null) {
+                onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(messages.size(), 1), null));
+            }
+            return CompletableFuture.completedFuture("ok");
         }
 
         @Override
@@ -247,6 +265,12 @@ class LLMServiceTest {
         }
 
         @Override
+        public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
+            return task(messages, sampler, maxTokens, priority, preemptible)
+                    .thenApply(text -> new LlmGenerationResult(text, new LlmTokenUsage(messages.size(), 1)));
+        }
+
+        @Override
         public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) {
             lastMessages = List.copyOf(messages);
             lastSampler = sampler;
@@ -255,6 +279,17 @@ class LLMServiceTest {
             lastTaskPreemptible = preemptible;
             taskStreamTokenConsumer = onToken;
             return taskStreamFuture;
+        }
+
+        @Override
+        public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
+            taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
+            return taskStreamFuture.thenApply(text -> {
+                if (onFinish != null) {
+                    onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(messages.size(), 1), null));
+                }
+                return new LlmGenerationResult(text, new LlmTokenUsage(messages.size(), 1));
+            });
         }
 
         @Override
@@ -277,6 +312,11 @@ class LLMServiceTest {
             lastSearchQuery = queryText;
             lastSearchTexts = List.copyOf(texts);
             return texts.stream().map(text -> new RagSearchResult(text, 1.0)).toList();
+        }
+
+        @Override
+        public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
+            return messages == null ? 0 : messages.size();
         }
 
         @Override public boolean isReady() { return ready; }

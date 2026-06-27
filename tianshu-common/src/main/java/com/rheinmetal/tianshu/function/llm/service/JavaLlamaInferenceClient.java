@@ -7,6 +7,8 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpTrialSnapshot;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.InferenceOptions;
+import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.MtpCapability;
 import com.rheinmetal.tianshu.libs.llm.MtpTrialResult;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
@@ -14,7 +16,9 @@ import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 public final class JavaLlamaInferenceClient implements LlmInferenceClient {
@@ -26,30 +30,50 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
 
     @Override
     public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) throws Exception {
-        return server.chat(messages, sampler, maxTokens);
+        return await(server.chat(messages, sampler, maxTokens));
     }
 
     @Override
     public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception {
         InferenceOptions libsOptions = toLibsOptions(options);
-        return libsOptions == null
+        CompletableFuture<String> future = libsOptions == null
                 ? server.chat(messages, sampler, maxTokens)
                 : server.chat(messages, sampler, maxTokens, libsOptions);
+        return await(future);
+    }
+
+    @Override
+    public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception {
+        InferenceOptions libsOptions = toLibsOptions(options);
+        CompletableFuture<LlmGenerationResult> future = libsOptions == null
+                ? server.chatWithUsage(messages, sampler, maxTokens)
+                : server.chatWithUsage(messages, sampler, maxTokens, libsOptions);
+        return await(future);
     }
 
     @Override
     public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) throws Exception {
-        server.chatStream(messages, sampler, onToken);
+        await(server.chatStream(messages, sampler, onToken));
     }
 
     @Override
     public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) throws Exception {
         InferenceOptions libsOptions = toLibsOptions(options);
+        CompletableFuture<String> future;
         if (libsOptions == null) {
-            server.chatStream(messages, sampler, maxTokens, onToken);
+            future = server.chatStream(messages, sampler, maxTokens, onToken);
         } else {
-            server.chatStream(messages, sampler, maxTokens, libsOptions, onToken);
+            future = server.chatStream(messages, sampler, maxTokens, libsOptions, onToken);
         }
+        await(future);
+    }
+
+    @Override
+    public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
+        InferenceOptions libsOptions = toLibsOptions(options);
+        return libsOptions == null
+                ? server.chatStream(messages, sampler, maxTokens, InferenceOptions.defaults(), onToken, onFinish)
+                : server.chatStream(messages, sampler, maxTokens, libsOptions, onToken, onFinish);
     }
 
     @Override
@@ -66,6 +90,13 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
     }
 
     @Override
+    public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
+        InferenceOptions libsOptions = toLibsOptions(options);
+        return server.taskWithUsage(messages, sampler, maxTokens, priority, preemptible,
+                libsOptions == null ? InferenceOptions.defaults() : libsOptions);
+    }
+
+    @Override
     public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) {
         return server.taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
     }
@@ -76,6 +107,13 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
         return libsOptions == null
                 ? server.taskStream(messages, sampler, maxTokens, priority, preemptible, onToken)
                 : server.taskStream(messages, sampler, maxTokens, priority, preemptible, libsOptions, onToken);
+    }
+
+    @Override
+    public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
+        InferenceOptions libsOptions = toLibsOptions(options);
+        return server.taskStreamWithUsage(messages, sampler, maxTokens, priority, preemptible,
+                libsOptions == null ? InferenceOptions.defaults() : libsOptions, onToken, onFinish);
     }
 
     @Override
@@ -94,6 +132,11 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
     }
 
     @Override
+    public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
+        return server.countChatPromptTokens(messages, sampler);
+    }
+
+    @Override
     public boolean isReady() {
         return server.isReady();
     }
@@ -106,6 +149,21 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
     @Override
     public boolean hasTaskQueueCapacity() {
         return server.hasTaskQueueCapacity();
+    }
+
+    @Override
+    public boolean hasQueueCapacity() {
+        return server.hasQueueCapacity();
+    }
+
+    @Override
+    public int getChatQueueSize() {
+        return server.getChatQueueSize();
+    }
+
+    @Override
+    public int getQueueSize() {
+        return server.getChatQueueSize();
     }
 
     @Override
@@ -137,6 +195,26 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
                 .mtpDraftMax(options.mtpDraftMax())
                 .vulkanPriority(options.vulkanPriority())
                 .build();
+    }
+
+    private static <T> T await(CompletableFuture<T> future) throws Exception {
+        try {
+            return future.get();
+        } catch (CancellationException e) {
+            throw e;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof CancellationException cancellation) {
+                throw cancellation;
+            }
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw e;
+        }
     }
 
     private static com.rheinmetal.tianshu.libs.llm.MtpCalibrationRequest toLibsCalibrationRequest(LlmMtpCalibrationRequest request) {

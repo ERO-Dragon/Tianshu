@@ -1,15 +1,22 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
+import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
+import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,23 +28,26 @@ public class LLMService {
 
     private static final int DEFAULT_RAG_TOP_K = 4;
     private static final float DEFAULT_RAG_THRESHOLD = 0.7f;
-    private static final int DEFAULT_RAG_TOKEN_BUDGET = 1000;
 
     private final IGameEnvironment env;
+    private final ITianshuConfig config;
     private final LlmInferenceClient inferenceClient;
     private final LlmInferenceGovernor inferenceGovernor;
+    private final EmbeddingService embeddingService;
     private final RagCacheManager worldRagCache;
     private final RagCacheManager globalRagCache;
     private volatile boolean initialized = false;
 
     private LLMService(Builder builder) {
         this.env = Objects.requireNonNull(builder.env, "env");
+        this.config = builder.config != null ? builder.config : new DefaultLlmConfig();
         this.inferenceClient = Objects.requireNonNull(builder.inferenceClient, "inferenceClient");
         this.inferenceGovernor = builder.inferenceGovernor != null
                 ? builder.inferenceGovernor
-                : new LlmInferenceGovernor(builder.config != null ? builder.config : new DefaultLlmConfig(), builder.performanceProvider);
+                : new LlmInferenceGovernor(config, builder.performanceProvider);
 
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
+        this.embeddingService = embeddingAdapter;
         if (builder.usePersistentCache) {
             this.worldRagCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.cacheDirectory, builder.cacheNamespace);
             this.globalRagCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.globalCacheDirectory(), builder.cacheNamespace);
@@ -64,8 +74,8 @@ public class LLMService {
     public LLMResult chat(LLMRequest request) {
         PreparedResult prepared = prepareRequest(request);
         try {
-            String text = inferenceClient.chat(prepared.messages(), prepared.sampler(), prepared.maxTokens(), prepared.options());
-            return new LLMResult(text, prepared.ragHits());
+            LlmGenerationResult result = inferenceClient.chatWithUsage(prepared.messages(), prepared.sampler(), prepared.maxTokens(), prepared.options());
+            return new LLMResult(result == null ? "" : result.text(), prepared.ragHits(), toUsagePayload(result == null ? null : result.usage()));
         } catch (Exception e) {
             env.error("[LLMService] Chat failed", e);
             throw new RuntimeException("LLM chat failed: " + safeMessage(e), e);
@@ -76,11 +86,21 @@ public class LLMService {
         chatStream(request, onToken, null);
     }
 
-    public void chatStream(LLMRequest request, Consumer<String> onToken, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
+    public LLMStreamResult chatStream(LLMRequest request, Consumer<String> onToken, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
         PreparedResult prepared = prepareRequest(request);
         copyRagHits(prepared, ragHitsSink);
         try {
-            inferenceClient.chatStream(prepared.messages(), prepared.sampler(), prepared.maxTokens(), prepared.options(), safeTokenConsumer(onToken));
+            LlmStreamFinishHolder finishHolder = new LlmStreamFinishHolder();
+            CompletableFuture<String> future = inferenceClient.chatStreamWithUsage(
+                    prepared.messages(),
+                    prepared.sampler(),
+                    prepared.maxTokens(),
+                    prepared.options(),
+                    safeTokenConsumer(onToken),
+                    finishHolder::set
+            );
+            String text = future.get();
+            return new LLMStreamResult(text, toStreamFinish(finishHolder.finish()));
         } catch (Exception e) {
             env.error("[LLMService] Stream chat failed", e);
             throw new RuntimeException("LLM stream chat failed: " + safeMessage(e), e);
@@ -103,12 +123,48 @@ public class LLMService {
         }
     }
 
+    public CompletableFuture<LlmGenerationResult> submitTaskWithUsage(LLMRequest request, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
+        PreparedResult prepared = prepareRequest(request);
+        copyRagHits(prepared, ragHitsSink);
+        try {
+            return inferenceClient.taskWithUsage(prepared.messages(), prepared.sampler(), prepared.maxTokens(),
+                    prepared.taskPriority(), prepared.taskPreemptible(), prepared.options());
+        } catch (Exception e) {
+            env.error("[LLMService] Task submit failed", e);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
     public CompletableFuture<String> submitTaskStream(LLMRequest request, Consumer<String> onToken, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
         PreparedResult prepared = prepareRequest(request);
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.taskStream(prepared.messages(), prepared.sampler(), prepared.maxTokens(),
                     prepared.taskPriority(), prepared.taskPreemptible(), prepared.options(), safeTokenConsumer(onToken));
+        } catch (Exception e) {
+            env.error("[LLMService] Stream task submit failed", e);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    public CompletableFuture<LlmGenerationResult> submitTaskStreamWithUsage(LLMRequest request, Consumer<String> onToken, Consumer<LLMStreamFinish> onFinish, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
+        PreparedResult prepared = prepareRequest(request);
+        copyRagHits(prepared, ragHitsSink);
+        try {
+            return inferenceClient.taskStreamWithUsage(
+                    prepared.messages(),
+                    prepared.sampler(),
+                    prepared.maxTokens(),
+                    prepared.taskPriority(),
+                    prepared.taskPreemptible(),
+                    prepared.options(),
+                    safeTokenConsumer(onToken),
+                    finish -> {
+                        if (onFinish != null) {
+                            onFinish.accept(toStreamFinish(finish));
+                        }
+                    }
+            );
         } catch (Exception e) {
             env.error("[LLMService] Stream task submit failed", e);
             return CompletableFuture.failedFuture(e);
@@ -181,6 +237,97 @@ public class LLMService {
 
     public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) {
         return inferenceClient.calibrateMtpAsync(request);
+    }
+
+    public float[] embed(String text) throws Exception {
+        return inferenceClient.embed(text);
+    }
+
+    public float[][] embed(List<String> texts) throws Exception {
+        return inferenceClient.embed(texts);
+    }
+
+    public int getEmbeddingDimension() {
+        return Math.max(0, embeddingService.getEmbeddingDimension());
+    }
+
+    public LLMPrimitiveResultPayload tokenCountResponse(String requestId, LLMRequest request) {
+        try {
+            PreparedResult prepared = prepareRequest(request);
+            return LLMPrimitiveResultPayload.tokenCount(requestId, inferenceClient.countChatPromptTokens(prepared.messages(), prepared.sampler()));
+        } catch (Exception e) {
+            return LLMPrimitiveResultPayload.failed(
+                    requestId,
+                    LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT,
+                    "LLM_TOKEN_COUNT_FAILED",
+                    safeMessage(e)
+            );
+        }
+    }
+
+    public LLMPrimitiveResultPayload embedResponse(String requestId, List<String> texts, boolean includeVector, boolean includeEmbeddingDetails) {
+        try {
+            List<LLMPrimitiveResultPayload.EmbedResultPayload> results = new ArrayList<>();
+            if (texts != null) {
+                float[][] vectors = embed(texts);
+                for (int i = 0; i < texts.size(); i++) {
+                    String text = texts.get(i);
+                    float[] vector = vectors != null && i < vectors.length ? vectors[i] : null;
+                    results.add(LLMPrimitiveResultPayload.EmbedResultPayload.of(text, vector, includeVector));
+                }
+            }
+            if (!includeEmbeddingDetails) {
+                results = results.stream()
+                        .map(result -> new LLMPrimitiveResultPayload.EmbedResultPayload(result.text(), result.dimension(), new float[0]))
+                        .toList();
+            }
+            return LLMPrimitiveResultPayload.embed(requestId, results);
+        } catch (Exception e) {
+            return LLMPrimitiveResultPayload.failed(requestId, LLMPrimitiveQueryPayload.QUERY_TYPE_EMBED, "LLM_EMBED_FAILED", safeMessage(e));
+        }
+    }
+
+    public LLMPrimitiveResultPayload runtimeSnapshotResponse(String requestId) {
+        return runtimeSnapshotResponse(requestId, true);
+    }
+
+    public LLMPrimitiveResultPayload runtimeSnapshotResponse(String requestId, boolean includeRuntimeDetails) {
+        return LLMPrimitiveResultPayload.runtime(requestId, toRuntimeSnapshot(includeRuntimeDetails));
+    }
+
+    public LLMRuntimeSnapshotPayload toRuntimeSnapshot() {
+        return toRuntimeSnapshot(true);
+    }
+
+    public LLMRuntimeSnapshotPayload toRuntimeSnapshot(boolean includeRuntimeDetails) {
+        boolean ready = isReady();
+        int embeddingDimension = getEmbeddingDimension();
+        boolean hasEmbedding = inferenceClient != null && inferenceClient.isReady() && embeddingDimension > 0;
+        LlmMtpCapabilitySnapshot mtp = getMtpCapability();
+        String modelName = includeRuntimeDetails ? configName() : "";
+        String modelProfile = includeRuntimeDetails ? modelProfile() : "";
+        String failureMessage = includeRuntimeDetails ? "" : "";
+        return new LLMRuntimeSnapshotPayload(
+                ready,
+                inferenceClient != null && inferenceClient.isReady(),
+                hasEmbedding,
+                embeddingDimension,
+                supportsMtp(),
+                mtp != null && mtp.supported() && mtp.calibrated(),
+                mtp == null ? 0 : mtp.mtpLayerCount(),
+                mtp == null ? 0 : mtp.recommendedDraftMax(),
+                Math.max(0, config.getLlmContextSize()),
+                hasChatQueueCapacity(),
+                hasTaskQueueCapacity(),
+                inferenceClient != null && inferenceClient.hasQueueCapacity(),
+                inferenceClient != null ? inferenceClient.getChatQueueSize() : 0,
+                inferenceClient != null ? inferenceClient.getTaskQueueSize() : 0,
+                inferenceClient != null ? inferenceClient.getQueueSize() : 0,
+                modelName,
+                modelProfile,
+                failureMessage,
+                System.currentTimeMillis()
+        );
     }
 
     public void shutdown() {
@@ -269,30 +416,7 @@ public class LLMService {
         if (results == null || results.isEmpty()) {
             return List.of();
         }
-        int budget = tokenBudget != null && tokenBudget > 0 ? tokenBudget : DEFAULT_RAG_TOKEN_BUDGET;
-        int used = 0;
-        List<RagSearchResult> kept = new ArrayList<>();
-        for (RagSearchResult result : results) {
-            String content = result.getContent();
-            int estimatedTokens = estimateTokens(content);
-            if (estimatedTokens <= 0) {
-                continue;
-            }
-            if (!kept.isEmpty() && used + estimatedTokens > budget) {
-                break;
-            }
-            if (used + estimatedTokens <= budget) {
-                kept.add(result);
-                used += estimatedTokens;
-            } else {
-                String truncated = truncateToTokenBudget(content, Math.max(1, budget - used));
-                if (!truncated.isBlank()) {
-                    kept.add(new RagSearchResult(truncated, result.getScore()));
-                }
-                break;
-            }
-        }
-        return kept;
+        return results;
     }
 
     private void collectRagHits(Chunk chunk, List<RagSearchResult> results, List<LLMPromptResultPayload.RagHitPayload> ragHits) {
@@ -405,49 +529,39 @@ public class LLMService {
         };
     }
 
-    private static int estimateTokens(String text) {
-        if (text == null || text.isBlank()) {
-            return 0;
-        }
-        int ascii = 0;
-        int nonAscii = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (Character.isWhitespace(c)) {
-                continue;
-            }
-            if (c <= 127) {
-                ascii++;
-            } else {
-                nonAscii++;
-            }
-        }
-        return Math.max(1, nonAscii + (ascii + 3) / 4);
-    }
-
-    private static String truncateToTokenBudget(String text, int budget) {
-        if (text == null || text.isBlank() || budget <= 0) {
-            return "";
-        }
-        int used = 0;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            int cost = Character.isWhitespace(c) ? 0 : (c <= 127 ? 1 : 4);
-            int normalizedCost = c <= 127 ? cost : 4;
-            int nextUsed = used + (normalizedCost == 0 ? 0 : normalizedCost);
-            if ((nextUsed + 3) / 4 > budget) {
-                break;
-            }
-            sb.append(c);
-            used = nextUsed;
-        }
-        String truncated = sb.toString().trim();
-        return truncated.length() < text.trim().length() ? truncated + "\n[上下文已按预算截断]" : truncated;
-    }
-
     private static String safeMessage(Throwable throwable) {
         return throwable.getMessage() != null ? throwable.getMessage() : throwable.getClass().getSimpleName();
+    }
+
+    private String configName() {
+        return safeText(config.getCustomLlmName());
+    }
+
+    private String modelProfile() {
+        return "";
+    }
+
+    private static String safeText(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    public static LLMPromptResultPayload.TokenUsagePayload toUsagePayload(LlmTokenUsage usage) {
+        if (usage == null) {
+            return LLMPromptResultPayload.TokenUsagePayload.empty();
+        }
+        return new LLMPromptResultPayload.TokenUsagePayload(
+                usage.promptTokens(),
+                usage.completionTokens(),
+                usage.totalTokens()
+        );
+    }
+
+    private static LLMStreamFinish toStreamFinish(LlmStreamFinish finish) {
+        if (finish == null) {
+            return LLMStreamFinish.completed(LLMPromptResultPayload.TokenUsagePayload.empty());
+        }
+        String type = finish.type() == null ? "COMPLETED" : finish.type().name();
+        return new LLMStreamFinish(type, toUsagePayload(finish.usage()), finish.error());
     }
 
     private record PreparedResult(
@@ -518,10 +632,41 @@ public class LLMService {
         }
     }
 
-    public record LLMResult(String text, List<LLMPromptResultPayload.RagHitPayload> ragHits) {
+    public record LLMResult(String text, List<LLMPromptResultPayload.RagHitPayload> ragHits, LLMPromptResultPayload.TokenUsagePayload usage) {
         public LLMResult {
             text = text != null ? text : "";
             ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
+            usage = usage == null ? LLMPromptResultPayload.TokenUsagePayload.empty() : usage;
+        }
+    }
+
+    public record LLMStreamResult(String text, LLMStreamFinish finish) {
+        public LLMStreamResult {
+            text = text != null ? text : "";
+            finish = finish == null ? LLMStreamFinish.completed(LLMPromptResultPayload.TokenUsagePayload.empty()) : finish;
+        }
+    }
+
+    public record LLMStreamFinish(String type, LLMPromptResultPayload.TokenUsagePayload usage, Throwable error) {
+        public LLMStreamFinish {
+            type = type == null || type.isBlank() ? "COMPLETED" : type.trim().toUpperCase();
+            usage = usage == null ? LLMPromptResultPayload.TokenUsagePayload.empty() : usage;
+        }
+
+        static LLMStreamFinish completed(LLMPromptResultPayload.TokenUsagePayload usage) {
+            return new LLMStreamFinish("COMPLETED", usage, null);
+        }
+    }
+
+    private static final class LlmStreamFinishHolder {
+        private volatile LlmStreamFinish finish;
+
+        void set(LlmStreamFinish finish) {
+            this.finish = finish;
+        }
+
+        LlmStreamFinish finish() {
+            return finish;
         }
     }
 

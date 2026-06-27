@@ -12,16 +12,58 @@ LLM 模块对外提供两个协议能力：
 |------|---------|------|
 | `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptRequestPayload` | 发起聊天、流式聊天、后台 TASK |
 | `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManagePayload` | 添加、查询、删除 RAG cache |
+| `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveQueryPayload` | token 计数、embedding 向量化、运行态快照 |
 
 响应类型：
 
 | 请求能力 | 响应 Payload | 说明 |
 |----------|--------------|------|
-| `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptResultPayload` | 最终结果，包含状态、文本、RAG hits |
-| `ProtocolCapabilities.LLM_REQUEST` + `stream=true` | `LLMPromptStreamChunkPayload` | 流式 token 分片；结束时还有最终 `LLMPromptResultPayload` |
+| `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptResultPayload` | 最终结果，包含状态、文本、RAG hits、usage |
+| `ProtocolCapabilities.LLM_REQUEST` + `stream=true` | `LLMPromptStreamChunkPayload` | 流式 token 分片；结束包包含 terminal 状态和 usage，随后还有最终 `LLMPromptResultPayload` |
 | `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManageResultPayload` | cache 管理结果 |
+| `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveResultPayload` | 原语查询结果，按请求类型返回 token、vector 或状态快照 |
 
----
+--- 
+
+## 5. `ProtocolCapabilities.LLM_PRIMITIVE_QUERY`
+
+外部模块向 `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` 提交 `LLMPrimitiveQueryPayload`。
+
+### 5.1 支持的 queryType
+
+| queryType | 说明 |
+|-----------|------|
+| `TOKEN_COUNT` | 对文本、消息列表或请求块做真实 token 计数 |
+| `EMBED` | 对文本数组做 embedding |
+| `STATUS` | 查询 LLM 运行态、模型信息和队列信息 |
+
+### 5.2 LLMPrimitiveQueryPayload 主要字段
+
+| 字段 | 说明 |
+|------|------|
+| `requestId` | 请求标识 |
+| `queryType` | 原语类型：`TOKEN_COUNT` / `EMBED` / `STATUS` |
+| `text` | 参与 token 计数的单段文本 |
+| `texts` | `EMBED` 使用的文本列表 |
+| `messages` | `TOKEN_COUNT` 使用的消息列表 |
+| `chunks` | `TOKEN_COUNT` 使用的请求块 |
+| `includeVector` | `EMBED` 是否回传向量本体 |
+| `includeEmbeddingDetails` | `EMBED` 是否回传更完整的 embedding 细节 |
+| `includeRuntimeDetails` | `STATUS` 是否回传模型名 / profile 等运行态细节 |
+
+### 5.3 LLMPrimitiveResultPayload 主要字段
+
+| 字段 | 说明 |
+|------|------|
+| `requestId` | 对应请求 ID |
+| `queryType` | 对应查询类型 |
+| `status` | `COMPLETED` 或 `FAILED` |
+| `tokenCount` | `TOKEN_COUNT` 的结果 |
+| `embedResults` | `EMBED` 的结果列表 |
+| `runtimeSnapshot` | `STATUS` 的结果快照 |
+| `errorCode` / `errorMessage` | 失败信息 |
+
+`STATUS` 返回的快照应尽量保守：未知值可以返回 `-1` 或空字符串，不要硬猜。
 
 ## 2. `ProtocolCapabilities.LLM_REQUEST`
 
@@ -190,6 +232,9 @@ LLMPromptRequestPayload.ChunkPayload.globalRag(
 | `errorCode` | `null` | 失败原因码。 |
 | `errorMessage` | `null` | 失败原因描述。 |
 | `ragHits` | 空列表 | 本次请求所有 RAG chunk 的命中结果；`COMPLETED`、`CANCELLED`、`FAILED` 都可能携带。 |
+| `usage` | 空 usage | 本次实际 token 统计：`promptTokens`、`completionTokens`、`totalTokens`。 |
+
+`usage.promptTokens` 来自底层真实 chat template prompt token 计数。`usage.completionTokens` 只统计归一化后对上层可见的回答 token，不包含 COT。
 
 常见错误码：
 - `LLM_SERVICE_NOT_READY`：LLM 服务尚未就绪。
@@ -209,6 +254,9 @@ LLMPromptRequestPayload.ChunkPayload.globalRag(
 | `finished` | `false` | `false` 表示普通 token 分片；`true` 表示流式输出结束。 |
 | `index` | 调用方传入值 | 分片序号，调用方可按序拼接。 |
 | `ragHits` | 空列表 | 流式请求的 RAG metadata。LLM 模块会在首个 token 前发送一个 `text=""` 且 `ragHits` 非空的 metadata chunk。 |
+| `finishType` | 空字符串 | 仅 `finished=true` 时有效：`COMPLETED`、`CANCELLED`、`FAILED`。 |
+| `usage` | 空 usage | 仅结束包携带本次实际 token 统计。 |
+| `errorMessage` | `null` | 仅 `finishType=FAILED` 时携带底层错误信息。 |
 
 当 `includeThinkingContent=false` 时，stream chunk 和最终 result 都会在协议出口隐藏 `<think>...</think>` 内容；只包含 hidden thinking 的分片不会发送。
 
@@ -239,9 +287,9 @@ TASK 调度规则：
 
 流式请求：
 - `stream=false`：只返回最终 `LLMPromptResultPayload`。
-- `stream=true`：如果本次请求产生 RAG hits，会先返回一个 `text=""`、`ragHits` 非空的 metadata chunk；随后返回 token chunk，再返回 `finished=true` 的 stream end，最后返回最终 `LLMPromptResultPayload`。
+- `stream=true`：如果本次请求产生 RAG hits，会先返回一个 `text=""`、`ragHits` 非空的 metadata chunk；随后返回 token chunk，再返回 `finished=true` 的 terminal stream end，最后返回最终 `LLMPromptResultPayload`。
 - 协议 envelope 只在 stream end 和最终 result 都发出后完成。
-- TASK 被取消、线程中断或终止型抢占时，流式请求会收到 stream end 和 `status=CANCELLED` 的最终 result；`text` 为已经对外发送过的可见 partial text，`ragHits` 仍保留已计算出的命中结果。
+- CHAT / TASK 被取消、线程中断或终止型抢占时，流式请求会收到 `finishType=CANCELLED` 的 stream end 和 `status=CANCELLED` 的最终 result；`text` 为已经对外发送过的可见 partial text，`ragHits` 仍保留已计算出的命中结果。
 
 ---
 
