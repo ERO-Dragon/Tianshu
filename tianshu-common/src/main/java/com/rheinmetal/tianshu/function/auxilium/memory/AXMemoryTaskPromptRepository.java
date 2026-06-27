@@ -31,16 +31,12 @@ public final class AXMemoryTaskPromptRepository {
 
     public String compressionSystemPrompt() {
         AXPromptLanguage language = currentLanguage();
-        String template = load("memory.compress.system", language);
-        return template.isBlank() ? defaultCompressionSystemPrompt(language) : template;
+        return load("memory.compress.system", language);
     }
 
     public String compressionUserPrompt(String worldId, String turns) {
         AXPromptLanguage language = currentLanguage();
         String template = load("memory.compress.user", language);
-        if (template.isBlank()) {
-            template = defaultCompressionUserPrompt(language);
-        }
         return render(template, Map.of(
                 "world", clean(worldId),
                 "turns", clean(turns)
@@ -49,17 +45,32 @@ public final class AXMemoryTaskPromptRepository {
 
     public String extractionSystemPrompt() {
         AXPromptLanguage language = currentLanguage();
-        String template = load("memory.extract.system", language);
-        return template.isBlank() ? defaultExtractionSystemPrompt(language) : template;
+        return load("memory.extract.system", language);
     }
 
     public String extractionUserPrompt(String stmText) {
         AXPromptLanguage language = currentLanguage();
         String template = load("memory.extract.user", language);
-        if (template.isBlank()) {
-            template = defaultExtractionUserPrompt(language);
-        }
         return render(template, Map.of("stm", clean(stmText)));
+    }
+
+    public String rawTurnLine(AXRawTurn turn) {
+        if (turn == null || turn.isEmpty()) {
+            return "";
+        }
+        AXPromptLanguage language = currentLanguage();
+        if (turn.gameChatRole()) {
+            String template = load("memory.turn.game_chat", language);
+            return render(template, Map.of(
+                    "sender", clean(turn.speakerName()),
+                    "message", clean(turn.content())
+            ));
+        }
+        String template = load("memory.turn.dialogue", language);
+        return render(template, Map.of(
+                "role", clean(turn.role()),
+                "content", clean(turn.content())
+        ));
     }
 
     private AXPromptLanguage currentLanguage() {
@@ -82,16 +93,6 @@ public final class AXMemoryTaskPromptRepository {
                 return value;
             }
         }
-        value = readLegacyTemplate(name, effectiveLanguage);
-        if (!value.isBlank()) {
-            return value;
-        }
-        if (effectiveLanguage != AXPromptLanguage.EN_US) {
-            value = readLegacyTemplate(name, AXPromptLanguage.EN_US);
-            if (!value.isBlank()) {
-                return value;
-            }
-        }
         value = readBuiltinCatalog(name, effectiveLanguage);
         if (!value.isBlank()) {
             return value;
@@ -110,7 +111,7 @@ public final class AXMemoryTaskPromptRepository {
     }
 
     private void ensureExternalCatalog() {
-        if (layout == null || Files.isRegularFile(layout.memoryTaskPromptsFile()) || hasLegacyTemplates()) {
+        if (layout == null || Files.isRegularFile(layout.memoryTaskPromptsFile())) {
             return;
         }
         try (InputStream stream = AXMemoryTaskPromptRepository.class.getResourceAsStream(BUILTIN_RESOURCE)) {
@@ -121,28 +122,6 @@ public final class AXMemoryTaskPromptRepository {
             Files.copy(stream, layout.memoryTaskPromptsFile());
         } catch (IOException ignored) {
         }
-    }
-
-    private boolean hasLegacyTemplates() {
-        if (layout == null || !Files.isDirectory(layout.promptsRoot())) {
-            return false;
-        }
-        try (java.util.stream.Stream<Path> paths = Files.list(layout.promptsRoot())) {
-            return paths.anyMatch(path -> path != null
-                    && Files.isRegularFile(path)
-                    && path.getFileName() != null
-                    && path.getFileName().toString().startsWith("memory.")
-                    && path.getFileName().toString().endsWith(".txt"));
-        } catch (IOException ignored) {
-            return false;
-        }
-    }
-
-    private String readLegacyTemplate(String name, AXPromptLanguage language) {
-        if (layout == null) {
-            return "";
-        }
-        return readText(layout.promptsRoot().resolve(name + "." + language.code() + ".txt"));
     }
 
     private String readBuiltinCatalog(String name, AXPromptLanguage language) {
@@ -193,73 +172,12 @@ public final class AXMemoryTaskPromptRepository {
         return value == null ? "" : value.trim();
     }
 
-    private String readText(Path path) {
-        if (path == null || !Files.isRegularFile(path)) {
-            return "";
-        }
-        try {
-            return Files.readString(path, StandardCharsets.UTF_8).trim();
-        } catch (IOException ignored) {
-            return "";
-        }
-    }
-
     private String render(String template, Map<String, String> values) {
         String result = template == null ? "" : template;
         for (Map.Entry<String, String> entry : Objects.requireNonNullElse(values, Map.<String, String>of()).entrySet()) {
             result = result.replace("{{" + entry.getKey() + "}}", entry.getValue());
         }
         return result.trim();
-    }
-
-    private String defaultCompressionSystemPrompt(AXPromptLanguage language) {
-        if (language == AXPromptLanguage.ZH_CN) {
-            return """
-                    将下面的 AX/玩家对话压缩为一个忠实的短期记忆段落。
-                    保留具体语境和先后顺序。不要添加主观重要性、偏好结论或行动指令。
-                    只输出 STM 正文。
-                    """.trim();
-        }
-        return """
-                Compress the following AX/player dialogue into one faithful short-term memory paragraph.
-                Preserve concrete context and sequence. Do not add subjective importance, preference conclusions, or instructions.
-                Output only the STM text.
-                """.trim();
-    }
-
-    private String defaultCompressionUserPrompt(AXPromptLanguage language) {
-        if (language == AXPromptLanguage.ZH_CN) {
-            return "世界：{{world}}\n\n{{turns}}";
-        }
-        return "World: {{world}}\n\n{{turns}}";
-    }
-
-    private String defaultExtractionSystemPrompt(AXPromptLanguage language) {
-        if (language == AXPromptLanguage.ZH_CN) {
-            return """
-                    从这段 AX 短期记忆中抽取客观原子事实。
-                    规则：
-                    - 每行输出一条事实。
-                    - 保持事实具体且符合真实历史。
-                    - 不输出重要性、保留建议、偏好、性格结论或动机推断。
-                    - 如果没有客观事实，则不输出任何内容。
-                    """.trim();
-        }
-        return """
-                Extract objective atomic facts from this AX short-term memory.
-                Rules:
-                - Output one fact per line.
-                - Keep facts concrete and historically true.
-                - Do not output importance, retention advice, preferences, personality conclusions, or inferred motives.
-                - If there are no objective facts, output nothing.
-                """.trim();
-    }
-
-    private String defaultExtractionUserPrompt(AXPromptLanguage language) {
-        if (language == AXPromptLanguage.ZH_CN) {
-            return "STM 正文：\n{{stm}}";
-        }
-        return "STM text:\n{{stm}}";
     }
 
     private String clean(String value) {

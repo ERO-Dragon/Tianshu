@@ -11,8 +11,8 @@ public final class TopicRegistry {
 
     public void register(TopicDescriptor descriptor) {
         TopicDescriptor existing = topics.putIfAbsent(descriptor.topicId(), descriptor);
-        if (existing != null) {
-            throw new IllegalStateException("Topic already registered: " + descriptor.topicId());
+        if (existing != null && !existing.equals(descriptor)) {
+            throw new IllegalStateException("Topic already registered with a different descriptor: " + descriptor.topicId());
         }
     }
 

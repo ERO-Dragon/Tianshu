@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class AXMemoryMaintenanceService {
     private static final int VECTOR_BATCH_SIZE = 64;
     private static final long TASK_STAGE_TIMEOUT_SECONDS = 120L;
+    private static final long WORLD_EVENT_ATTACHMENT_GRACE_MILLIS = 30_000L;
     private static final String STATUS_KEY_STARTED = "tianshu.presence.module.ax.memory_maintenance_started";
     private static final String STATUS_KEY_COMPLETE = "tianshu.presence.module.ax.memory_maintenance_complete";
     private static final String STATUS_KEY_FAILED = "tianshu.presence.module.ax.memory_maintenance_failed";
@@ -40,6 +41,7 @@ public final class AXMemoryMaintenanceService {
     private final AXLlmClient llmClient;
     private final AXLlmPrimitiveClient primitiveClient;
     private final AXMemoryTaskPromptRepository promptRepository;
+    private final AXWorldEventMemoryLinker worldEventLinker = new AXWorldEventMemoryLinker(null);
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile ProtocolTaskHandle currentTask;
 
@@ -102,12 +104,18 @@ public final class AXMemoryMaintenanceService {
         boolean compressed = false;
         if (!batch.isEmpty()) {
             publishStartedStatus(startedStatusPublished);
-            AXStmBlock stm = compress(scope, batch).join();
+            List<AXAttachedWorldEvent> attachedWorldEvents = memorySystem.unattachedWorldEventsInRange(
+                    scope,
+                    batch.sourceFromMillis(),
+                    batch.sourceToMillis() + WORLD_EVENT_ATTACHMENT_GRACE_MILLIS
+            );
+            AXStmBlock stm = compress(scope, batch, attachedWorldEvents).join();
             if (stm != null && !stm.isEmpty()) {
                 memorySystem.appendStmBlock(scope, stm);
                 memorySystem.confirmRawTurnsConsumed(scope, batch);
                 compressed = true;
-                List<AXMemoryEvent> events = extractEvents(scope, stm).join();
+                List<AXMemoryEvent> events = new ArrayList<>(extractEvents(scope, stm).join());
+                events.addAll(worldEventLinker.directEventsFor(stm, attachedWorldEvents));
                 if (!events.isEmpty()) {
                     memorySystem.ensureStorageManifest(scope);
                     memorySystem.events().appendAll(scope, events);
@@ -120,7 +128,7 @@ public final class AXMemoryMaintenanceService {
         }
     }
 
-    private CompletableFuture<AXStmBlock> compress(AXScope scope, AXRawTurnBatch batch) {
+    private CompletableFuture<AXStmBlock> compress(AXScope scope, AXRawTurnBatch batch, List<AXAttachedWorldEvent> attachedWorldEvents) {
         CompletableFuture<AXStmBlock> future = new CompletableFuture<>();
         TianshuEnvelope envelope = llmClient.submitDetached(compressionRequest(scope, batch), new AXLlmRequestHandler() {
             @Override
@@ -141,7 +149,7 @@ public final class AXMemoryMaintenanceService {
                         batch.turns().size(),
                         0,
                         payload.text(),
-                        List.of()
+                        worldEventLinker.attachedEventIds(attachedWorldEvents)
                 ));
             }
 
@@ -272,7 +280,10 @@ public final class AXMemoryMaintenanceService {
     private LLMPromptRequestPayload compressionRequest(AXScope scope, AXRawTurnBatch batch) {
         StringBuilder turns = new StringBuilder();
         for (AXRawTurn turn : batch.turns()) {
-            turns.append(turn.role()).append(": ").append(turn.content()).append('\n');
+            String line = promptRepository.rawTurnLine(turn);
+            if (!line.isBlank()) {
+                turns.append(line).append('\n');
+            }
         }
         List<LLMPromptRequestPayload.MessageItemPayload> messages = List.of(
                 LLMPromptRequestPayload.MessageItemPayload.system(promptRepository.compressionSystemPrompt()),

@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.client.presence;
 
+import com.rheinmetal.tianshu.client.presence.capture.PresenceRefreshPolicy;
+import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
+import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot;
+import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
+import com.rheinmetal.tianshu.client.presence.status.PresenceModuleStatusMapper;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -55,7 +61,7 @@ public final class PresenceModule implements TianshuManagedModule {
         PresenceContextSnapshot snapshot = stateStore.freshestDetailedContextSnapshot(PresenceRefreshPolicy.DETAILED_SNAPSHOT_STALE_MILLIS);
         adapter.respondContext(envelope, PresenceContextSnapshotPayload.success(
                 payload.requestId(),
-                contextFactMapper.factsFrom(snapshot, stateStore.recentEvents(8), payload.requestedFactIds())
+                contextFactMapper.factsFrom(snapshot, payload.requestedFactIds())
         ));
         context.complete(envelope.envelopeId());
     }

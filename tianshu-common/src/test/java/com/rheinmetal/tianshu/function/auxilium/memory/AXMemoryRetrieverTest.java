@@ -66,7 +66,7 @@ class AXMemoryRetrieverTest {
 
         await(() -> result.get() != null);
         assertEquals(1, result.get().blocks().size());
-        assertEquals(target.id(), result.get().blocks().get(0).id());
+        assertEquals(target.id(), result.get().blocks().get(0).block().id());
     }
 
     @Test
@@ -97,7 +97,7 @@ class AXMemoryRetrieverTest {
         retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 2, 1000), result::set);
 
         await(() -> result.get() != null);
-        assertEquals(List.of(s2.id(), s3.id()), result.get().blocks().stream().map(AXStmBlock::id).toList());
+        assertEquals(List.of(s2.id(), s3.id()), result.get().blocks().stream().map(view -> view.block().id()).toList());
     }
 
     @Test

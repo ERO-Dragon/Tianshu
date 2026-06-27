@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "texts": {
+    "system.title.identity": {
+      "zh_cn": "身份",
+      "en_us": "Identity"
+    },
+    "system.title.behavior_rules": {
+      "zh_cn": "行为规则",
+      "en_us": "Behavior Rules"
+    },
+    "system.title.section_rules": {
+      "zh_cn": "提示词分区约束",
+      "en_us": "Prompt Section Rules"
+    },
+    "system.section_rules": {
+      "zh_cn": "将动态环境、静态知识、玩家记忆、近期对话和当前输入视为不同来源；除非工具结果明确说明，否则不要声称 AX 能直接执行游戏动作。",
+      "en_us": "Treat game context, game knowledge, player memory, recent dialogue, and current input as separate sources. Do not claim that AX can execute game actions unless a tool result explicitly says so."
+    },
+    "system.paragraph": {
+      "zh_cn": "{{title}}:\n{{content}}",
+      "en_us": "{{title}}:\n{{content}}"
+    },
+    "section.ax_system": {
+      "zh_cn": "<ax_system>\n{{content}}\n</ax_system>",
+      "en_us": "<ax_system>\n{{content}}\n</ax_system>"
+    },
+    "section.game_context": {
+      "zh_cn": "<game_context>\n{{content}}\n</game_context>",
+      "en_us": "<game_context>\n{{content}}\n</game_context>"
+    },
+    "game_context.fact_line": {
+      "zh_cn": "- {{fact}}",
+      "en_us": "- {{fact}}"
+    },
+    "section.player_memory": {
+      "zh_cn": "<player_memory>\n{{content}}\n</player_memory>",
+      "en_us": "<player_memory>\n{{content}}\n</player_memory>"
+    },
+    "player_memory.block_line": {
+      "zh_cn": "- {{content}}",
+      "en_us": "- {{content}}"
+    },
+    "player_memory.attached_messages.title": {
+      "zh_cn": "附属消息",
+      "en_us": "Attached messages"
+    },
+    "player_memory.attached_messages.header": {
+      "zh_cn": "  {{title}}：",
+      "en_us": "  {{title}}:"
+    },
+    "player_memory.attached_messages.line": {
+      "zh_cn": "  - {{message}}",
+      "en_us": "  - {{message}}"
+    },
+    "section.game_chat": {
+      "zh_cn": "<game_chat>\n{{content}}\n</game_chat>",
+      "en_us": "<game_chat>\n{{content}}\n</game_chat>"
+    },
+    "game_chat.item_line": {
+      "zh_cn": "- {{message}}",
+      "en_us": "- {{message}}"
+    },
+    "game_chat.message_line": {
+      "zh_cn": "{{sender}}说：{{message}}",
+      "en_us": "{{sender}} says: {{message}}"
+    },
+    "game_chat.unknown_sender": {
+      "zh_cn": "未知",
+      "en_us": "Unknown"
+    },
+    "section.provided_context": {
+      "zh_cn": "<provided_context>\n{{content}}\n</provided_context>",
+      "en_us": "<provided_context>\n{{content}}\n</provided_context>"
+    }
+  }
+}

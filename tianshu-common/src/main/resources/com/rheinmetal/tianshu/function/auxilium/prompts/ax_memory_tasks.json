@@ -17,6 +17,14 @@
     "memory.extract.user": {
       "zh_cn": "STM 正文：\n{{stm}}",
       "en_us": "STM text:\n{{stm}}"
+    },
+    "memory.turn.dialogue": {
+      "zh_cn": "{{role}}: {{content}}",
+      "en_us": "{{role}}: {{content}}"
+    },
+    "memory.turn.game_chat": {
+      "zh_cn": "{{sender}}说：{{message}}",
+      "en_us": "{{sender}} says: {{message}}"
     }
   }
 }

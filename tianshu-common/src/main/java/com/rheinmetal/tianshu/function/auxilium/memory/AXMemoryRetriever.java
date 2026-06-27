@@ -131,7 +131,7 @@ public final class AXMemoryRetriever {
                 .sorted(Comparator.comparingInt(SelectedBlock::order))
                 .map(SelectedBlock::block)
                 .toList();
-        return new AXMemoryRetrievalResult(timeline);
+        return new AXMemoryRetrievalResult(memorySystem.memoryBlockViews(request.scope(), timeline));
     }
 
     private boolean statusCompleted(LLMPrimitiveResultPayload result) {

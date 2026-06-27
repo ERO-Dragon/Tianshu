@@ -6,18 +6,26 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public final class AXPromptResourceRepository {
+    private static final String BUILTIN_TEXTS_RESOURCE = "/com/rheinmetal/tianshu/function/auxilium/prompts/ax_prompt_texts.json";
+
     private final AXStorageLayout layout;
     private final AXJsonStore jsonStore;
 
     public AXPromptResourceRepository(AXStorageLayout layout, AXJsonStore jsonStore) {
         this.layout = layout;
         this.jsonStore = jsonStore;
+        ensureExternalTextsCatalog();
     }
 
     public AXPromptProfile loadProfile(AXPromptTask task, AXPromptLanguage language, String variant) {
@@ -28,6 +36,21 @@ public final class AXPromptResourceRepository {
                 .or(() -> loadProfile(new AXPromptResourceKey(AXPromptTask.GENERAL_AX, effectiveLanguage, variant)))
                 .or(() -> loadProfile(new AXPromptResourceKey(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, variant)))
                 .orElseGet(() -> AXPromptProfile.defaultFor(effectiveTask, effectiveLanguage));
+    }
+
+    public AXPromptTexts loadTexts(AXPromptLanguage language) {
+        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
+        Map<String, String> values = new LinkedHashMap<>();
+        AXPromptTexts.mergeCatalog(values, readBuiltinTexts(), AXPromptLanguage.EN_US);
+        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+            AXPromptTexts.mergeCatalog(values, readBuiltinTexts(), effectiveLanguage);
+        }
+        JsonObject external = readExternalTexts();
+        AXPromptTexts.mergeCatalog(values, external, AXPromptLanguage.EN_US);
+        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+            AXPromptTexts.mergeCatalog(values, external, effectiveLanguage);
+        }
+        return new AXPromptTexts(effectiveLanguage, values);
     }
 
     private Optional<AXPromptProfile> loadProfile(AXPromptResourceKey key) {
@@ -74,4 +97,44 @@ public final class AXPromptResourceRepository {
         }
         return List.copyOf(result);
     }
+
+    private JsonObject readExternalTexts() {
+        if (layout == null || jsonStore == null) {
+            return null;
+        }
+        return jsonStore.readObject(layout.promptTextsFile()).orElse(null);
+    }
+
+    private JsonObject readBuiltinTexts() {
+        return readResource(BUILTIN_TEXTS_RESOURCE);
+    }
+
+    private JsonObject readResource(String resource) {
+        try (InputStream stream = AXPromptResourceRepository.class.getResourceAsStream(resource)) {
+            if (stream == null) {
+                return null;
+            }
+            try (java.io.Reader reader = new java.io.InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                JsonElement element = com.google.gson.JsonParser.parseReader(reader);
+                return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void ensureExternalTextsCatalog() {
+        if (layout == null || Files.isRegularFile(layout.promptTextsFile())) {
+            return;
+        }
+        try (InputStream stream = AXPromptResourceRepository.class.getResourceAsStream(BUILTIN_TEXTS_RESOURCE)) {
+            if (stream == null) {
+                return;
+            }
+            Files.createDirectories(layout.promptsRoot());
+            Files.copy(stream, layout.promptTextsFile());
+        } catch (Exception ignored) {
+        }
+    }
+
 }

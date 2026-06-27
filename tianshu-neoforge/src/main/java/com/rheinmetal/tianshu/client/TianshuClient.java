@@ -315,9 +315,16 @@ public class TianshuClient {
     }
 
     public static void onClientChatReceived(ClientChatReceivedEvent event) {
-        if (presenceRuntime != null) {
-            presenceRuntime.recordChatMessage(event.getMessage());
+        if (presenceRuntime != null && event instanceof ClientChatReceivedEvent.Player && !event.isSystem()) {
+            presenceRuntime.recordPlayerChatMessage(event.getMessage(), event.getSender(), playerChatSenderName(event));
         }
+    }
+
+    private static String playerChatSenderName(ClientChatReceivedEvent event) {
+        if (event == null || event.getBoundChatType() == null || event.getBoundChatType().name() == null) {
+            return "";
+        }
+        return event.getBoundChatType().name().getString();
     }
 
     public static void onKeyboardInput(InputEvent.Key event) {

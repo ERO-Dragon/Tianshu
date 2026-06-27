@@ -21,7 +21,10 @@ import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryMaintenanceServic
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetriever;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryTaskPromptRepository;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXPresenceChatMessageMapper;
+import com.rheinmetal.tianshu.function.auxilium.memory.AXPresenceWorldEventMapper;
 import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenanceCoordinator;
+import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.DefaultAXScopeProvider;
@@ -30,6 +33,8 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.function.ia.IaModuleService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -53,7 +58,11 @@ public final class AXModule implements TianshuManagedModule {
     private AXRuntimeContextClient runtimeContextClient;
     private AXRuntimeMaintenanceCoordinator maintenanceCoordinator;
     private AXStorageLayout storageLayout;
+    private AXScopeProvider scopeProvider;
+    private AXMemorySystem memorySystem;
     private AXDialogueGateway dialogueGateway;
+    private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
+    private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
 
     public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
         this(env, config, runtime, null);
@@ -97,10 +106,10 @@ public final class AXModule implements TianshuManagedModule {
         storageLayout = new AXStorageLayout(config);
         AXJsonStore jsonStore = new AXJsonStore(env);
         AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.fromConfig(config);
-        AXScopeProvider scopeProvider = worldIdentityProvider == null
+        scopeProvider = worldIdentityProvider == null
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
-        AXMemorySystem memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
+        memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
         AXMemoryTaskPromptRepository memoryTaskPromptRepository = new AXMemoryTaskPromptRepository(storageLayout, promptLanguageProvider);
         AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
                 adapter,
@@ -140,6 +149,8 @@ public final class AXModule implements TianshuManagedModule {
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator);
         adapter.registerDialogueInputCapability(dialogueGateway::handleDelivery);
         adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
+        adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
+        adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
         context.services().find(IaModuleService.class).ifPresent(service -> participantRegistrar = new AXParticipantRegistrar(service, assistantSettings));
         if (participantRegistrar != null) {
             participantRegistrar.register();
@@ -195,6 +206,8 @@ public final class AXModule implements TianshuManagedModule {
         runtimeContextClient = null;
         maintenanceCoordinator = null;
         storageLayout = null;
+        scopeProvider = null;
+        memorySystem = null;
         dialogueGateway = null;
     }
 
@@ -212,6 +225,38 @@ public final class AXModule implements TianshuManagedModule {
                     "",
                     "user started speaking"
             ));
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handlePresenceWorldEvent(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof PresenceWorldEventPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX presence world event payload is invalid", null);
+            return;
+        }
+        AXMemorySystem currentMemory = memorySystem;
+        AXScopeProvider currentScopeProvider = scopeProvider;
+        if (currentMemory != null && currentScopeProvider != null) {
+            AXScope scope = currentScopeProvider.currentScope();
+            if (scope != null && scope.writable()) {
+                currentMemory.appendAttachedWorldEvent(scope, worldEventMapper.map(scope, payload));
+            }
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handlePresenceChatMessage(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof PresenceChatMessagePayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX presence chat message payload is invalid", null);
+            return;
+        }
+        AXMemorySystem currentMemory = memorySystem;
+        AXScopeProvider currentScopeProvider = scopeProvider;
+        if (currentMemory != null && currentScopeProvider != null) {
+            AXScope scope = currentScopeProvider.currentScope();
+            if (scope != null && scope.writable()) {
+                currentMemory.appendRawTurn(scope, chatMessageMapper.map(scope, payload));
+            }
         }
         context.complete(envelope.envelopeId());
     }

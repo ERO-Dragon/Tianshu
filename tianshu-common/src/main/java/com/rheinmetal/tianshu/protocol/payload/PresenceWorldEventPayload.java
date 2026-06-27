@@ -16,6 +16,7 @@ public record PresenceWorldEventPayload(
 ) implements ITianshuPayload {
     public static final String TOPIC = "PRESENCE.WORLD_EVENT";
     public static final String EVENT_ADVANCEMENT_UNLOCKED = "advancement_unlocked";
+    public static final String EVENT_PLAYER_DEATH = "player_death";
 
     public PresenceWorldEventPayload {
         eventId = clean(eventId, UUID.randomUUID().toString());

@@ -7,12 +7,14 @@ import java.util.List;
 
 public record AXMemorySnapshot(
         String persona,
-        List<AXStmBlock> playerMemoryBlocks,
+        List<AXMemoryBlockView> playerMemoryBlocks,
         List<AXRawTurn> recentDialogueTurns
 ) {
     public AXMemorySnapshot {
         persona = persona == null || persona.isBlank() ? defaultPersona(AXPromptLanguage.EN_US) : persona.trim();
-        playerMemoryBlocks = playerMemoryBlocks == null ? List.of() : List.copyOf(playerMemoryBlocks);
+        playerMemoryBlocks = playerMemoryBlocks == null ? List.of() : playerMemoryBlocks.stream()
+                .filter(view -> view != null && !view.isEmpty())
+                .toList();
         recentDialogueTurns = recentDialogueTurns == null ? List.of() : List.copyOf(recentDialogueTurns);
     }
 
@@ -31,7 +33,7 @@ public record AXMemorySnapshot(
         return "你是天枢 Minecraft 模组中的随行聊天助手。保持沉浸感，回答自然、简洁；不要编造游戏状态；涉及游戏动作时只提供建议，不声称自己能直接执行。";
     }
 
-    public AXMemorySnapshot withPlayerMemoryBlocks(List<AXStmBlock> blocks) {
+    public AXMemorySnapshot withPlayerMemoryBlocks(List<AXMemoryBlockView> blocks) {
         return new AXMemorySnapshot(persona, blocks, recentDialogueTurns);
     }
 }

@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptProfile;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptRequest;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptResourceRepository;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptTask;
+import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptTexts;
 
 import java.util.List;
 
@@ -41,7 +42,8 @@ public final class AXPromptOrchestrator {
     public AXPromptAssembly assemble(AXRequest request, AXContextSnapshot context, AXContextBudget budget) {
         AXPromptLanguage language = languageProvider.currentLanguage();
         AXPromptProfile profile = loadProfile(language);
-        AXPromptBuildContext buildContext = new AXPromptBuildContext(request, context, budget, language, profile);
+        AXPromptTexts texts = loadTexts(language);
+        AXPromptBuildContext buildContext = new AXPromptBuildContext(request, context, budget, language, profile, texts);
         AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
         for (AXPromptContributor contributor : contributors) {
             if (contributor != null) {
@@ -56,5 +58,12 @@ public final class AXPromptOrchestrator {
             return AXPromptProfile.defaultFor(AXPromptTask.GENERAL_AX, language);
         }
         return resourceRepository.loadProfile(AXPromptTask.GENERAL_AX, language, AXPromptRequest.general(language).variant());
+    }
+
+    private AXPromptTexts loadTexts(AXPromptLanguage language) {
+        if (resourceRepository == null) {
+            return AXPromptTexts.builtin(language);
+        }
+        return resourceRepository.loadTexts(language);
     }
 }

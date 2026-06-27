@@ -25,4 +25,23 @@ public final class TopicDescriptor {
     public PayloadType payloadType() { return payloadType; }
     public DeliveryPolicy deliveryPolicy() { return deliveryPolicy; }
     public int stormLimitPerSecond() { return stormLimitPerSecond; }
+
+    @Override
+    public boolean equals(Object value) {
+        if (this == value) {
+            return true;
+        }
+        if (!(value instanceof TopicDescriptor other)) {
+            return false;
+        }
+        return stormLimitPerSecond == other.stormLimitPerSecond
+                && topicId.equals(other.topicId)
+                && payloadType == other.payloadType
+                && deliveryPolicy == other.deliveryPolicy;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(topicId, payloadType, deliveryPolicy, stormLimitPerSecond);
+    }
 }

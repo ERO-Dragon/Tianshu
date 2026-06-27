@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.presence;
 
+import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
 
 public final class PresenceClientHooks {
@@ -23,5 +24,10 @@ public final class PresenceClientHooks {
         if (current != null) {
             current.recordAdvancementUpdate(packet);
         }
+    }
+
+    public static PresenceContextSnapshot contextSnapshot() {
+        PresenceClientRuntime current = runtime;
+        return current == null ? PresenceContextSnapshot.empty() : current.contextSnapshot();
     }
 }

@@ -48,6 +48,10 @@ public final class AXStorageLayout {
         return promptsRoot().resolve("memory_tasks.json");
     }
 
+    public Path promptTextsFile() {
+        return promptsRoot().resolve("prompt_texts.json");
+    }
+
     public Path rawTurnsRoot(AXScope scope) {
         return worldRoot(scope).resolve("raw_turns");
     }

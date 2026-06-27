@@ -212,6 +212,10 @@ AX 选择的 STM 记忆片段
 实时窗口内的近期完整对话轮次
 </recent_dialogue>
 
+<game_chat>
+由游戏聊天 topic 捕获到的近期聊天文本。它是整段游戏聊天上下文的容器，不是每条 AX/玩家对话的包裹。
+</game_chat>
+
 <current_input>
 玩家当前输入
 </current_input>
@@ -224,6 +228,7 @@ message chunk:
   system: ax_system + 编排说明
   system: game_context
   system: player_memory
+  system: game_chat
   user/assistant: recent_dialogue
   user: current_input
 
@@ -235,6 +240,8 @@ rag chunk:
 ```
 
 不在玩家可见文本里解释这些标签或内部机制。
+
+XML-like 包裹、列表前缀、小标题和聊天行格式都属于 prompt 排版资源，不应硬编码在 Java 业务逻辑里。AX common 内置 `ax_prompt_texts.json` 作为默认目录，运行时可释放到 AX 配置目录供后续覆盖；Java contributor 只负责选择语义槽位、传入变量并决定 LLM message role。
 
 ## 9. 预算分配
 

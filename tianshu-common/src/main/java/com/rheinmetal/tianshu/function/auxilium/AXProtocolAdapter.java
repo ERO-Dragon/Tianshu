@@ -20,8 +20,10 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -61,6 +63,34 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 PayloadType.ASR_SPEECH_ACTIVITY,
                 AsrSpeechActivityPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
+    public void subscribePresenceWorldEvents(EnvelopeHandler handler) {
+        subscribeTopic(
+                PresenceWorldEventPayload.TOPIC,
+                PayloadType.CUSTOM,
+                PresenceWorldEventPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
+    public void subscribePresenceChatMessages(EnvelopeHandler handler) {
+        subscribeTopic(
+                PresenceChatMessagePayload.TOPIC,
+                PayloadType.CUSTOM,
+                PresenceChatMessagePayload.class,
+                BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.EVENT),
                 Priority.LOW,
                 CompletionPolicy.AUTO_COMPLETE_ON_RETURN,

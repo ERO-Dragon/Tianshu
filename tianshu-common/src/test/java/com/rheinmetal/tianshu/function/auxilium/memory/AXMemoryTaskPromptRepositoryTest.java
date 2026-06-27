@@ -19,15 +19,8 @@ class AXMemoryTaskPromptRepositoryTest {
     Path tempDir;
 
     @Test
-    void loadsLanguageTemplateAndRendersVariables() throws Exception {
+    void releasesJsonCatalogAndRendersVariables() {
         AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
-        Path promptDir = layout.sharedRoot().resolve("prompts");
-        Files.createDirectories(promptDir);
-        Files.writeString(
-                promptDir.resolve("memory.compress.user.zh_cn.txt"),
-                "世界={{world}}\n轮次：\n{{turns}}",
-                StandardCharsets.UTF_8
-        );
         AXMemoryTaskPromptRepository repository = new AXMemoryTaskPromptRepository(
                 layout,
                 AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN)
@@ -35,11 +28,12 @@ class AXMemoryTaskPromptRepositoryTest {
 
         String prompt = repository.compressionUserPrompt("save:测试世界", "user: 你好");
 
-        assertEquals("世界=save:测试世界\n轮次：\nuser: 你好", prompt);
+        assertTrue(Files.isRegularFile(layout.memoryTaskPromptsFile()));
+        assertEquals("世界：save:测试世界\n\nuser: 你好", prompt);
     }
 
     @Test
-    void loadsJsonCatalogBeforeLegacyTemplates() throws Exception {
+    void loadsExternalJsonCatalogBeforeBuiltinCatalog() throws Exception {
         AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
         Path promptDir = layout.promptsRoot();
         Files.createDirectories(promptDir);
@@ -55,11 +49,6 @@ class AXMemoryTaskPromptRepositoryTest {
                           }
                         }
                         """,
-                StandardCharsets.UTF_8
-        );
-        Files.writeString(
-                promptDir.resolve("memory.extract.user.zh_cn.txt"),
-                "TXT STM={{stm}}",
                 StandardCharsets.UTF_8
         );
         AXMemoryTaskPromptRepository repository = new AXMemoryTaskPromptRepository(

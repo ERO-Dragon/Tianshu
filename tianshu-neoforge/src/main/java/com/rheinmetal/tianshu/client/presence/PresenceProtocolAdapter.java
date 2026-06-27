@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -44,6 +45,12 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
                 PayloadType.CUSTOM,
                 DeliveryPolicy.WAIT_IN_QUEUE,
                 40
+        ));
+        protocol.registerTopic(new TopicDescriptor(
+                PresenceChatMessagePayload.TOPIC,
+                PayloadType.CUSTOM,
+                DeliveryPolicy.WAIT_IN_QUEUE,
+                80
         ));
         ownedTopicsRegistered = true;
     }
@@ -124,6 +131,10 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishWorldEvent(PresenceWorldEventPayload payload) {
         return publishTopic(PresenceWorldEventPayload.TOPIC, PayloadType.CUSTOM, payload);
+    }
+
+    public TianshuEnvelope publishChatMessage(PresenceChatMessagePayload payload) {
+        return publishTopic(PresenceChatMessagePayload.TOPIC, PayloadType.CUSTOM, payload);
     }
 
 }

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.context.orchestration;
 
 import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextFact;
+import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptTexts;
 
 import java.util.Comparator;
 import java.util.List;
@@ -24,10 +25,9 @@ public final class AXRuntimeContextPromptContributor implements AXPromptContribu
         if (facts.isEmpty()) {
             return;
         }
-        builder.addSystemMessage(wrap("game_context", facts.stream().map(text -> "- " + text.trim()).collect(Collectors.joining("\n"))));
-    }
-
-    private String wrap(String tag, String content) {
-        return "<" + tag + ">\n" + content + "\n</" + tag + ">";
+        String content = facts.stream()
+                .map(text -> AXPromptSectionRenderer.renderLine(context, AXPromptTexts.GAME_CONTEXT_FACT_LINE, "fact", text))
+                .collect(Collectors.joining("\n"));
+        builder.addSystemMessage(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_GAME_CONTEXT, content));
     }
 }
