@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.llm;
+package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;

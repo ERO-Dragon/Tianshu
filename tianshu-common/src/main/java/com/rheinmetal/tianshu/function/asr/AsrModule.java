@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.asr;
+package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -217,7 +217,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     private void publishModuleStatus(ModuleStatus status) {
-        if (summary != null) {
+        if (status != null) {
             adapter.publishModuleStatus(status);
         }
     }

@@ -19,6 +19,7 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
@@ -27,6 +28,7 @@ import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
 
@@ -208,6 +210,13 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public void unregisterLlmResponses(String requestEnvelopeId) {
         unregisterResponseHandlers(requestEnvelopeId);
+    }
+
+    public TianshuEnvelope publishModuleStatus(ModuleStatus status) {
+        if (status == null) {
+            return null;
+        }
+        return publishTopic(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, new ModuleStatusPayload(status));
     }
 
     public TianshuEnvelope speakTts(TtsSpeakPayload payload) {

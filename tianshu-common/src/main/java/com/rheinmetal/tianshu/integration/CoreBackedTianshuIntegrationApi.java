@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.integration;
+package com.rheinmetal.tianshu.integration;
 
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;

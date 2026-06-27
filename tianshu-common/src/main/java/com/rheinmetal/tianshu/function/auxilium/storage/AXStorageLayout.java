@@ -40,6 +40,14 @@ public final class AXStorageLayout {
         return sharedRoot().resolve("persona.json");
     }
 
+    public Path promptsRoot() {
+        return sharedRoot().resolve("prompts");
+    }
+
+    public Path memoryTaskPromptsFile() {
+        return promptsRoot().resolve("memory_tasks.json");
+    }
+
     public Path rawTurnsRoot(AXScope scope) {
         return worldRoot(scope).resolve("raw_turns");
     }
@@ -58,6 +66,10 @@ public final class AXStorageLayout {
 
     public Path eventsFile(AXScope scope) {
         return eventsRoot(scope).resolve("events.jsonl");
+    }
+
+    public Path attachedWorldEventsFile(AXScope scope) {
+        return eventsRoot(scope).resolve("attached_world_events.jsonl");
     }
 
     public Path vectorsRoot(AXScope scope) {

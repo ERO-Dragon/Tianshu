@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.protocol;
+package com.rheinmetal.tianshu.protocol;
 
 public final class ProtocolTopics {
     public static final String INPUT_ASR_SPEECH_ACTIVITY = "INPUT.ASR_SPEECH_ACTIVITY";

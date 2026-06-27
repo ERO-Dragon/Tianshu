@@ -101,10 +101,13 @@ public final class AXMemoryRetriever {
             return AXMemoryRetrievalResult.empty();
         }
         Map<String, AXStmBlock> blocksById = new LinkedHashMap<>();
+        Map<String, Integer> blockOrder = new HashMap<>();
+        int order = 0;
         for (AXStmBlock block : memorySystem.stmBlocks().loadAll(request.scope())) {
             blocksById.putIfAbsent(block.id(), block);
+            blockOrder.putIfAbsent(block.id(), order++);
         }
-        List<AXStmBlock> selected = new ArrayList<>();
+        List<SelectedBlock> selected = new ArrayList<>();
         int tokens = 0;
         Set<String> seen = new HashSet<>();
         List<StmContribution> ordered = contributions.values().stream()
@@ -121,10 +124,14 @@ public final class AXMemoryRetriever {
             if (!selected.isEmpty() && request.tokenBudget() > 0 && tokens + block.estimatedTokens() > request.tokenBudget()) {
                 continue;
             }
-            selected.add(block);
+            selected.add(new SelectedBlock(block, blockOrder.getOrDefault(block.id(), Integer.MAX_VALUE)));
             tokens += block.estimatedTokens();
         }
-        return new AXMemoryRetrievalResult(selected);
+        List<AXStmBlock> timeline = selected.stream()
+                .sorted(Comparator.comparingInt(SelectedBlock::order))
+                .map(SelectedBlock::block)
+                .toList();
+        return new AXMemoryRetrievalResult(timeline);
     }
 
     private boolean statusCompleted(LLMPrimitiveResultPayload result) {
@@ -164,6 +171,9 @@ public final class AXMemoryRetriever {
                 completion.complete(result == null ? AXMemoryRetrievalResult.empty() : result);
             }
         };
+    }
+
+    private record SelectedBlock(AXStmBlock block, int order) {
     }
 
     private static final class StmContribution {

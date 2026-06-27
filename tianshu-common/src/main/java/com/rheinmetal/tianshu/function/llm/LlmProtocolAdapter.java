@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.llm;
+package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.service.Chunk;
 import com.rheinmetal.tianshu.function.llm.service.LlmInferencePolicy;

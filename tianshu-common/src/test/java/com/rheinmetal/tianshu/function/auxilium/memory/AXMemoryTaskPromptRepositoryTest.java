@@ -39,6 +39,38 @@ class AXMemoryTaskPromptRepositoryTest {
     }
 
     @Test
+    void loadsJsonCatalogBeforeLegacyTemplates() throws Exception {
+        AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
+        Path promptDir = layout.promptsRoot();
+        Files.createDirectories(promptDir);
+        Files.writeString(
+                layout.memoryTaskPromptsFile(),
+                """
+                        {
+                          "schemaVersion": 1,
+                          "prompts": {
+                            "memory.extract.user": {
+                              "zh_cn": "JSON STM={{stm}}"
+                            }
+                          }
+                        }
+                        """,
+                StandardCharsets.UTF_8
+        );
+        Files.writeString(
+                promptDir.resolve("memory.extract.user.zh_cn.txt"),
+                "TXT STM={{stm}}",
+                StandardCharsets.UTF_8
+        );
+        AXMemoryTaskPromptRepository repository = new AXMemoryTaskPromptRepository(
+                layout,
+                AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN)
+        );
+
+        assertEquals("JSON STM=一段记忆", repository.extractionUserPrompt("一段记忆"));
+    }
+
+    @Test
     void fallsBackToBuiltInPromptWhenTemplateIsMissing() {
         AXMemoryTaskPromptRepository repository = new AXMemoryTaskPromptRepository(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),

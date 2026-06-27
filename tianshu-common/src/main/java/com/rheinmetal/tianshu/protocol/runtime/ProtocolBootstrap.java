@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.protocol.runtime;
+package com.rheinmetal.tianshu.protocol.runtime;
 
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.PayloadType;

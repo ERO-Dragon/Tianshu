@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.client.presence;
+package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -11,7 +11,6 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 public final class PresenceModule implements TianshuManagedModule {
     private final PresenceStateStore stateStore;
@@ -21,7 +20,7 @@ public final class PresenceModule implements TianshuManagedModule {
     private final PresenceModuleStatusMapper moduleStatusMapper;
 
     public PresenceModule(
-            ProtocolRuntime protocolRuntime,
+            PresenceProtocolAdapter adapter,
             PresenceStateStore stateStore,
             PresenceDisplayPolicy displayPolicy,
             PresenceContextFactMapper contextFactMapper
@@ -29,7 +28,7 @@ public final class PresenceModule implements TianshuManagedModule {
         this.stateStore = stateStore;
         this.displayPolicy = displayPolicy;
         this.contextFactMapper = contextFactMapper == null ? new PresenceContextFactMapper() : contextFactMapper;
-        this.adapter = new PresenceProtocolAdapter(protocolRuntime);
+        this.adapter = adapter;
         this.moduleStatusMapper = new PresenceModuleStatusMapper();
     }
 
@@ -40,6 +39,7 @@ public final class PresenceModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        adapter.registerOwnedTopics(context.protocol());
         adapter.registerQueryContextCapability(this::handleQueryContext);
         adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
         adapter.subscribeLlmStatus(this::handleLlmStatus);

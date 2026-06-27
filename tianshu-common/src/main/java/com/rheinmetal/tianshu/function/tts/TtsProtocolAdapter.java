@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.tts;
+package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;

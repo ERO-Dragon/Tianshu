@@ -76,6 +76,8 @@ AX maintenance
   -> 写入 AX 存储或通过 LLM_CACHE_MANAGE 更新静态 RAG cache
 ```
 
+AX 后台维护状态通过协议中心发布 `MODULE.STATUS` topic，供 Presence、诊断面板或外部集成观察。该 topic 只承载脱敏状态，例如“记忆整理中 / 完成 / 失败”，不承载 prompt、玩家输入、记忆正文、RAG hit 或动态环境快照。本轮 prompt 所需动态环境仍必须走能力请求/回传，不从 topic 读取。
+
 底层原语任务：
 
 ```text
@@ -230,6 +232,7 @@ config/Tianshu/module/ax/cache/
     raw_turns/
     stm_blocks/
     events/
+      attached_world_events.jsonl
     vectors/
     indexes/
     stats/
@@ -253,10 +256,13 @@ config/Tianshu/module/llm/ragCache/global/
 
 - 已发布的权威数据文件不能靠删除字段、改字段语义或重排旧记录来升级。
 - Raw Turn、STM、E、向量组元数据等权威记录必须带 `schemaVersion` 或等价版本标识。
+- 附属世界事件是 STM 的旁证记录，属于 AX 私有记忆权威数据的一部分，但不等同于 E；其升级为 E 必须由 AX 策略显式决定。
 - 主记录优先追加；需要 compaction 时写出新快照，并保留能从旧版本读取或迁移的代码路径。
 - 派生索引、offset、聚类快照和 stats 可以重建，因此可以替换；但替换必须通过临时文件和原子替换完成。
 - 业务代码不得散落物理路径，所有路径通过 `AXStorageLayout` 或迁移器获得。
 - 新版本只增不破坏旧数据；确需废弃字段时，读路径继续兼容旧字段，写路径写新字段。
+
+提示词资源属于 AX 配置资源，不属于 MC 翻译资源。推荐 common 内置 JSON catalog，并在首次运行时释放到 `ax/cache/shared/prompts/` 供玩家覆盖；Java 代码只按 key 读取和渲染变量，避免把压缩、抽事实、prompt 编排文案硬编码在流程代码里。NeoForge 的语言文件只负责玩家可见 UI / Presence 文案。
 
 ## 9. 输出与会话控制
 

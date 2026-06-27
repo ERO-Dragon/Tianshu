@@ -70,6 +70,37 @@ class AXMemoryRetrieverTest {
     }
 
     @Test
+    void returnsSelectedStmBlocksInTimelineOrderWithoutDuplicates() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        registerPrimitiveProvider(runtime);
+        AXMemorySystem memorySystem = new AXMemorySystem(
+                new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+        );
+        AXScope scope = scope();
+        AXStmBlock s2 = block(scope, "s2", "玩家先到达村庄。");
+        AXStmBlock s3 = block(scope, "s3", "玩家随后把钻石镐放进末影箱。");
+        memorySystem.appendStmBlock(scope, s2);
+        memorySystem.appendStmBlock(scope, s3);
+        AXMemoryEvent e2 = event(scope, s2, "玩家到达村庄。");
+        AXMemoryEvent e3a = event(scope, s3, "玩家把钻石镐放进末影箱。");
+        AXMemoryEvent e3b = event(scope, s3, "玩家确认末影箱里有钻石镐。");
+        memorySystem.events().appendAll(scope, List.of(e2, e3a, e3b));
+        memorySystem.vectors().appendAll(scope, List.of(
+                vector(e2, new float[]{0.75F, 0.25F}),
+                vector(e3a, new float[]{1.0F, 0.0F}),
+                vector(e3b, new float[]{0.9F, 0.1F})
+        ));
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L));
+        AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
+
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 2, 1000), result::set);
+
+        await(() -> result.get() != null);
+        assertEquals(List.of(s2.id(), s3.id()), result.get().blocks().stream().map(AXStmBlock::id).toList());
+    }
+
+    @Test
     void returnsEmptyResultWhenPrimitiveProviderIsMissing() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AXMemoryRetriever retriever = new AXMemoryRetriever(

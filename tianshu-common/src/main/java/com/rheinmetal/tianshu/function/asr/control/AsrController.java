@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.asr.control;
+package com.rheinmetal.tianshu.function.asr.control;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;

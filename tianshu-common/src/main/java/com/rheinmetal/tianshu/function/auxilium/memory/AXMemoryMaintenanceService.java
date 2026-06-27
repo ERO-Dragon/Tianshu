@@ -14,10 +14,14 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatusSeverity;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -27,6 +31,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class AXMemoryMaintenanceService {
     private static final int VECTOR_BATCH_SIZE = 64;
     private static final long TASK_STAGE_TIMEOUT_SECONDS = 120L;
+    private static final String STATUS_KEY_STARTED = "tianshu.presence.module.ax.memory_maintenance_started";
+    private static final String STATUS_KEY_COMPLETE = "tianshu.presence.module.ax.memory_maintenance_complete";
+    private static final String STATUS_KEY_FAILED = "tianshu.presence.module.ax.memory_maintenance_failed";
 
     private final AXProtocolAdapter adapter;
     private final AXMemorySystem memorySystem;
@@ -66,6 +73,9 @@ public final class AXMemoryMaintenanceService {
         currentTask = adapter.submitAxTask("ax.memory.maintenance." + AXStorageSafeName.of(scope.worldId()), ExecutionLane.LONG, () -> {
             try {
                 run(scope);
+            } catch (RuntimeException exception) {
+                publishFailedStatus();
+                throw exception;
             } finally {
                 running.set(false);
             }
@@ -88,11 +98,15 @@ public final class AXMemoryMaintenanceService {
     private void run(AXScope scope) {
         memorySystem.ensureStorageManifest(scope);
         AXRawTurnBatch batch = memorySystem.selectCompressionBatch(scope);
+        AtomicBoolean startedStatusPublished = new AtomicBoolean(false);
+        boolean compressed = false;
         if (!batch.isEmpty()) {
+            publishStartedStatus(startedStatusPublished);
             AXStmBlock stm = compress(scope, batch).join();
             if (stm != null && !stm.isEmpty()) {
                 memorySystem.appendStmBlock(scope, stm);
                 memorySystem.confirmRawTurnsConsumed(scope, batch);
+                compressed = true;
                 List<AXMemoryEvent> events = extractEvents(scope, stm).join();
                 if (!events.isEmpty()) {
                     memorySystem.ensureStorageManifest(scope);
@@ -100,7 +114,10 @@ public final class AXMemoryMaintenanceService {
                 }
             }
         }
-        rebuildMissingVectors(scope).join();
+        int rebuiltVectors = rebuildMissingVectors(scope, startedStatusPublished).join();
+        if (compressed || rebuiltVectors > 0) {
+            publishCompleteStatus();
+        }
     }
 
     private CompletableFuture<AXStmBlock> compress(AXScope scope, AXRawTurnBatch batch) {
@@ -167,41 +184,75 @@ public final class AXMemoryMaintenanceService {
         return future.exceptionally(error -> fallback);
     }
 
-    private CompletableFuture<Void> rebuildMissingVectors(AXScope scope) {
-        CompletableFuture<Void> done = new CompletableFuture<>();
+    private CompletableFuture<Integer> rebuildMissingVectors(AXScope scope, AtomicBoolean startedStatusPublished) {
+        CompletableFuture<Integer> done = new CompletableFuture<>();
         primitiveClient.requestStatus("ax.memory.embedding.status", status -> {
             if (!completed(status) || !embeddingUsable(status.runtimeSnapshot())) {
-                done.complete(null);
+                done.complete(0);
                 return;
             }
             String namespace = status.runtimeSnapshot().embeddingNamespace();
             List<AXMemoryEvent> missing = missingVectorEvents(scope, namespace);
             if (missing.isEmpty()) {
-                done.complete(null);
+                done.complete(0);
                 return;
             }
-            embedBatches(scope, namespace, status.runtimeSnapshot().embeddingModelName(), missing, 0, done);
+            publishStartedStatus(startedStatusPublished);
+            embedBatches(scope, namespace, status.runtimeSnapshot().embeddingModelName(), missing, 0, 0, done);
         });
         return done;
     }
 
-    private void embedBatches(AXScope scope, String namespace, String modelName, List<AXMemoryEvent> events, int from, CompletableFuture<Void> done) {
+    private void embedBatches(AXScope scope, String namespace, String modelName, List<AXMemoryEvent> events, int from, int written, CompletableFuture<Integer> done) {
         if (from >= events.size()) {
-            done.complete(null);
+            done.complete(written);
             return;
         }
         int to = Math.min(events.size(), from + VECTOR_BATCH_SIZE);
         List<AXMemoryEvent> batch = events.subList(from, to);
         primitiveClient.requestEmbedding("ax.memory.embedding.batch." + from, batch.stream().map(AXMemoryEvent::fact).toList(), result -> {
+            int nextWritten = written;
             if (completed(result)) {
                 List<AXEventVector> vectors = toVectors(batch, result, modelName, namespace);
                 if (!vectors.isEmpty()) {
                     memorySystem.ensureStorageManifest(scope);
                     memorySystem.vectors().appendAll(scope, vectors);
+                    nextWritten += vectors.size();
                 }
             }
-            embedBatches(scope, namespace, modelName, events, to, done);
+            embedBatches(scope, namespace, modelName, events, to, nextWritten, done);
         });
+    }
+
+    private void publishStartedStatus(AtomicBoolean published) {
+        if (published != null && !published.compareAndSet(false, true)) {
+            return;
+        }
+        adapter.publishModuleStatus(ModuleStatus.keyed(
+                AXProtocolAdapter.MODULE_ID,
+                "memory.maintenance",
+                STATUS_KEY_STARTED,
+                "AX 记忆整理中",
+                ModuleStatusSeverity.NOTICE,
+                3_000L,
+                Map.of("presenceStatusType", "COMPRESSING")
+        ));
+    }
+
+    private void publishCompleteStatus() {
+        adapter.publishModuleStatus(ModuleStatuses.readyKeyed(
+                AXProtocolAdapter.MODULE_ID,
+                STATUS_KEY_COMPLETE,
+                "AX 记忆整理完成"
+        ));
+    }
+
+    private void publishFailedStatus() {
+        adapter.publishModuleStatus(ModuleStatuses.failedKeyed(
+                AXProtocolAdapter.MODULE_ID,
+                STATUS_KEY_FAILED,
+                "AX 记忆整理失败"
+        ));
     }
 
     private List<AXMemoryEvent> missingVectorEvents(AXScope scope, String namespace) {

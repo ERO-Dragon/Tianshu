@@ -22,6 +22,7 @@ import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.lifecycle.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.client.ir.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
+import com.rheinmetal.tianshu.client.presence.PresenceClientHooks;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
@@ -124,6 +125,7 @@ public class TianshuClient {
         axChatHudState = new AXChatHudState();
         axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axConfig);
         presenceRuntime = new PresenceClientRuntime();
+        PresenceClientHooks.bind(presenceRuntime);
 
         audioManager = new AudioManager();
         String selectedMicName = config.getSelectedMicName();
@@ -360,6 +362,9 @@ public class TianshuClient {
 
     public static void shutdownClient() {
         LOGGER.info("关闭天枢客户端资源");
+        PresenceClientRuntime previousPresenceRuntime = presenceRuntime;
+        presenceRuntime = null;
+        PresenceClientHooks.clear(previousPresenceRuntime);
         if (integrationApi != null) {
             TianshuIntegrationAccess.clear(integrationApi);
             integrationApi = null;
@@ -372,7 +377,6 @@ public class TianshuClient {
             audioManager.shutdown();
             audioManager = null;
         }
-        presenceRuntime = null;
         isVoiceKeyPressed = false;
         wasAlwaysKeyTriggered = false;
         lastTriggerMode = null;

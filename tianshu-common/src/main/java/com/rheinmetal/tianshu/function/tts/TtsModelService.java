@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.tts;
+package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;

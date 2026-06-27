@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
@@ -31,7 +32,9 @@ public final class PresenceEventCollector {
 
     private final PresenceStateStore stateStore;
     private final PresenceScreenClassifier screenClassifier = new PresenceScreenClassifier();
+    private final PresenceAdvancementTracker advancementTracker = new PresenceAdvancementTracker();
     private final Deque<PresenceChatMessage> chatHistory = new ConcurrentLinkedDeque<>();
+    private PresenceWorldEventSink worldEventSink = PresenceWorldEventSink.NOOP;
     private long lastKeyboardEventAtMillis;
     private long lastMouseEventAtMillis;
     private long nextDetailedRefreshAtMillis;
@@ -39,6 +42,10 @@ public final class PresenceEventCollector {
 
     public PresenceEventCollector(PresenceStateStore stateStore) {
         this.stateStore = stateStore;
+    }
+
+    public void setWorldEventSink(PresenceWorldEventSink worldEventSink) {
+        this.worldEventSink = worldEventSink == null ? PresenceWorldEventSink.NOOP : worldEventSink;
     }
 
     public void tick() {
@@ -130,6 +137,19 @@ public final class PresenceEventCollector {
                 Map.of("sender", extractSender(text))
         ));
         markDetailedDirty();
+    }
+
+    public void recordAdvancementUpdate(ClientboundUpdateAdvancementsPacket packet) {
+        for (var payload : advancementTracker.collect(packet)) {
+            stateStore.recordEvent(new PresenceInteractionEvent(
+                    PresenceInputKind.NONE,
+                    stateStore.contextSnapshot().screenKind(),
+                    payload.eventType(),
+                    payload.occurredAtMillis(),
+                    payload.values()
+            ));
+            worldEventSink.publish(payload);
+        }
     }
 
     private void refreshDetailedIfNeeded(PresenceInputKind inputKind) {

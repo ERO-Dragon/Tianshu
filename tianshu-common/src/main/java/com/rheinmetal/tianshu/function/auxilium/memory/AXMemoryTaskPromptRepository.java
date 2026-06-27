@@ -1,10 +1,16 @@
 package com.rheinmetal.tianshu.function.auxilium.memory;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 
+import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,12 +18,15 @@ import java.util.Map;
 import java.util.Objects;
 
 public final class AXMemoryTaskPromptRepository {
+    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/function/auxilium/prompts/ax_memory_tasks.json";
+
     private final AXStorageLayout layout;
     private final AXPromptLanguageProvider languageProvider;
 
     public AXMemoryTaskPromptRepository(AXStorageLayout layout, AXPromptLanguageProvider languageProvider) {
         this.layout = layout;
         this.languageProvider = languageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : languageProvider;
+        ensureExternalCatalog();
     }
 
     public String compressionSystemPrompt() {
@@ -59,25 +68,132 @@ public final class AXMemoryTaskPromptRepository {
     }
 
     private String load(String name, AXPromptLanguage language) {
-        if (layout == null || name == null || name.isBlank()) {
+        if (name == null || name.isBlank()) {
             return "";
         }
         AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
-        String value = read(promptPath(name, effectiveLanguage));
+        String value = readExternalCatalog(name, effectiveLanguage);
         if (!value.isBlank()) {
             return value;
         }
         if (effectiveLanguage != AXPromptLanguage.EN_US) {
-            return read(promptPath(name, AXPromptLanguage.EN_US));
+            value = readExternalCatalog(name, AXPromptLanguage.EN_US);
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        value = readLegacyTemplate(name, effectiveLanguage);
+        if (!value.isBlank()) {
+            return value;
+        }
+        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+            value = readLegacyTemplate(name, AXPromptLanguage.EN_US);
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        value = readBuiltinCatalog(name, effectiveLanguage);
+        if (!value.isBlank()) {
+            return value;
+        }
+        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+            return readBuiltinCatalog(name, AXPromptLanguage.EN_US);
         }
         return "";
     }
 
-    private Path promptPath(String name, AXPromptLanguage language) {
-        return layout.sharedRoot().resolve("prompts").resolve(name + "." + language.code() + ".txt");
+    private String readExternalCatalog(String name, AXPromptLanguage language) {
+        if (layout == null) {
+            return "";
+        }
+        return readCatalog(readJson(layout.memoryTaskPromptsFile()), name, language);
     }
 
-    private String read(Path path) {
+    private void ensureExternalCatalog() {
+        if (layout == null || Files.isRegularFile(layout.memoryTaskPromptsFile()) || hasLegacyTemplates()) {
+            return;
+        }
+        try (InputStream stream = AXMemoryTaskPromptRepository.class.getResourceAsStream(BUILTIN_RESOURCE)) {
+            if (stream == null) {
+                return;
+            }
+            Files.createDirectories(layout.promptsRoot());
+            Files.copy(stream, layout.memoryTaskPromptsFile());
+        } catch (IOException ignored) {
+        }
+    }
+
+    private boolean hasLegacyTemplates() {
+        if (layout == null || !Files.isDirectory(layout.promptsRoot())) {
+            return false;
+        }
+        try (java.util.stream.Stream<Path> paths = Files.list(layout.promptsRoot())) {
+            return paths.anyMatch(path -> path != null
+                    && Files.isRegularFile(path)
+                    && path.getFileName() != null
+                    && path.getFileName().toString().startsWith("memory.")
+                    && path.getFileName().toString().endsWith(".txt"));
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    private String readLegacyTemplate(String name, AXPromptLanguage language) {
+        if (layout == null) {
+            return "";
+        }
+        return readText(layout.promptsRoot().resolve(name + "." + language.code() + ".txt"));
+    }
+
+    private String readBuiltinCatalog(String name, AXPromptLanguage language) {
+        try (InputStream stream = AXMemoryTaskPromptRepository.class.getResourceAsStream(BUILTIN_RESOURCE)) {
+            if (stream == null) {
+                return "";
+            }
+            try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                JsonElement element = JsonParser.parseReader(reader);
+                return element != null && element.isJsonObject() ? readCatalog(element.getAsJsonObject(), name, language) : "";
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private JsonObject readJson(Path path) {
+        if (path == null || !Files.isRegularFile(path)) {
+            return null;
+        }
+        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            JsonElement element = JsonParser.parseReader(reader);
+            return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+        } catch (IOException ignored) {
+            return null;
+        }
+    }
+
+    private String readCatalog(JsonObject catalog, String name, AXPromptLanguage language) {
+        if (catalog == null || name == null || language == null) {
+            return "";
+        }
+        JsonObject prompts = catalog.has("prompts") && catalog.get("prompts").isJsonObject()
+                ? catalog.getAsJsonObject("prompts")
+                : catalog;
+        if (!prompts.has(name) || !prompts.get(name).isJsonObject()) {
+            return "";
+        }
+        JsonObject entry = prompts.getAsJsonObject(name);
+        return readCatalogValue(entry, language.code());
+    }
+
+    private String readCatalogValue(JsonObject entry, String languageCode) {
+        if (entry == null || languageCode == null || !entry.has(languageCode) || entry.get(languageCode).isJsonNull()) {
+            return "";
+        }
+        String value = entry.get(languageCode).getAsString();
+        return value == null ? "" : value.trim();
+    }
+
+    private String readText(Path path) {
         if (path == null || !Files.isRegularFile(path)) {
             return "";
         }

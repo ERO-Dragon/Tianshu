@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.asr;
+package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;

@@ -51,13 +51,21 @@ public final class AXJsonStore {
         List<JsonObject> result = new ArrayList<>();
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
+            boolean warned = false;
             while ((line = reader.readLine()) != null) {
                 if (line.isBlank()) {
                     continue;
                 }
-                JsonElement element = JsonParser.parseString(line);
-                if (element != null && element.isJsonObject()) {
-                    result.add(element.getAsJsonObject());
+                try {
+                    JsonElement element = JsonParser.parseString(line);
+                    if (element != null && element.isJsonObject()) {
+                        result.add(element.getAsJsonObject());
+                    }
+                } catch (Exception e) {
+                    if (!warned) {
+                        warn("Skipped malformed jsonl record: " + path, e);
+                        warned = true;
+                    }
                 }
             }
         } catch (Exception e) {

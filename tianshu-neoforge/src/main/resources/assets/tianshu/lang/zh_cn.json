@@ -451,6 +451,9 @@
   "tianshu.presence.module.tts.reload_started": "TTS 模型重载中",
   "tianshu.presence.module.tts.reload_complete": "TTS 模型重载完成",
   "tianshu.presence.module.tts.reload_failed": "TTS 模型重载失败",
+  "tianshu.presence.module.ax.memory_maintenance_started": "AX 记忆整理中",
+  "tianshu.presence.module.ax.memory_maintenance_complete": "AX 记忆整理完成",
+  "tianshu.presence.module.ax.memory_maintenance_failed": "AX 记忆整理失败",
 
   "tianshu.presence.context.unknown": "未知",
   "tianshu.presence.context.list_separator": "；",

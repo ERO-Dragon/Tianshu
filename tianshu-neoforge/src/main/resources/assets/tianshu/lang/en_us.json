@@ -451,6 +451,9 @@
   "tianshu.presence.module.tts.reload_started": "Reloading TTS model",
   "tianshu.presence.module.tts.reload_complete": "TTS model reloaded",
   "tianshu.presence.module.tts.reload_failed": "TTS model reload failed",
+  "tianshu.presence.module.ax.memory_maintenance_started": "AX is organizing memory",
+  "tianshu.presence.module.ax.memory_maintenance_complete": "AX memory is organized",
+  "tianshu.presence.module.ax.memory_maintenance_failed": "AX memory organization failed",
 
   "tianshu.presence.context.unknown": "unknown",
   "tianshu.presence.context.list_separator": "; ",

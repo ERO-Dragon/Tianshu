@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.llm;
+package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
@@ -241,7 +241,7 @@ public final class LlmModule implements TianshuManagedModule {
     }
 
     private void publishModuleStatus(ModuleStatus status) {
-        if (summary != null) {
+        if (status != null) {
             adapter.publishModuleStatus(status);
         }
     }

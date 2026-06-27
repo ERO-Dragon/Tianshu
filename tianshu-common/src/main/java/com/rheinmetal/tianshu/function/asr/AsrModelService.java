@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.asr;
+package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;

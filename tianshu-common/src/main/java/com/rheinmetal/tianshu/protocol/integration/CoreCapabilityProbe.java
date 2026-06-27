@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.protocol.integration;
+package com.rheinmetal.tianshu.protocol.integration;
 
 import java.util.Set;
 

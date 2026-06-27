@@ -52,6 +52,7 @@ public final class AXMemoryStorageManifestStore {
         boolean changed = !manifest.has("schemas");
         changed |= addInt(schemas, "stmBlock", AXStmBlock.SCHEMA_VERSION);
         changed |= addInt(schemas, "memoryEvent", AXMemoryEvent.SCHEMA_VERSION);
+        changed |= addInt(schemas, "attachedWorldEvent", AXAttachedWorldEvent.SCHEMA_VERSION);
         changed |= addInt(schemas, "eventVector", AXEventVector.SCHEMA_VERSION);
         manifest.add("schemas", schemas);
         return changed;
@@ -62,8 +63,9 @@ public final class AXMemoryStorageManifestStore {
         boolean changed = !manifest.has("files");
         changed |= addString(files, "stmBlocks", "stm_blocks/stm_blocks.jsonl");
         changed |= addString(files, "events", "events/events.jsonl");
+        changed |= addString(files, "attachedWorldEvents", "events/attached_world_events.jsonl");
         changed |= addString(files, "eventVectors", "vectors/<embeddingNamespace>/event_vectors.jsonl");
-        changed |= addArray(files, "appendOnly", "stmBlocks", "events", "eventVectors");
+        changed |= addArray(files, "appendOnly", "stmBlocks", "events", "attachedWorldEvents", "eventVectors");
         manifest.add("files", files);
         return changed;
     }

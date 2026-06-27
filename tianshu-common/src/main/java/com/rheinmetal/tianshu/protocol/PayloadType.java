@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.protocol;
+package com.rheinmetal.tianshu.protocol;
 
 public enum PayloadType {
     NONE,

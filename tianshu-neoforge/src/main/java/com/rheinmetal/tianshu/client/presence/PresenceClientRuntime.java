@@ -20,7 +20,9 @@ public final class PresenceClientRuntime {
     }
 
     public TianshuFunctionModuleInstaller moduleInstaller(ProtocolRuntime protocolRuntime) {
-        return new PresenceModuleInstaller(protocolRuntime, stateStore, displayPolicy, contextFactMapper);
+        PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(protocolRuntime);
+        eventCollector.setWorldEventSink(adapter::publishWorldEvent);
+        return new PresenceModuleInstaller(adapter, stateStore, displayPolicy, contextFactMapper);
     }
 
     public void tick() {
@@ -45,6 +47,10 @@ public final class PresenceClientRuntime {
 
     public void recordChatMessage(Component message) {
         eventCollector.recordChatMessage(message);
+    }
+
+    public void recordAdvancementUpdate(net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket packet) {
+        eventCollector.recordAdvancementUpdate(packet);
     }
 
     public void render(GuiGraphics graphics, float partialTick) {

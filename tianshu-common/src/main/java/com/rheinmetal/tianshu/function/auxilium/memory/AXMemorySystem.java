@@ -12,6 +12,7 @@ public final class AXMemorySystem {
     private final AXRawTurnWindow rawTurnWindow;
     private final AXStmBlockStore stmBlockStore;
     private final AXMemoryEventStore eventStore;
+    private final AXAttachedWorldEventStore attachedWorldEventStore;
     private final AXEventVectorStore vectorStore;
     private final AXMemoryStorageManifestStore manifestStore;
 
@@ -25,6 +26,7 @@ public final class AXMemorySystem {
         this.rawTurnWindow = new AXRawTurnWindow(policy);
         this.stmBlockStore = new AXStmBlockStore(layout, jsonStore);
         this.eventStore = new AXMemoryEventStore(layout, jsonStore);
+        this.attachedWorldEventStore = new AXAttachedWorldEventStore(layout, jsonStore);
         this.vectorStore = new AXEventVectorStore(layout, jsonStore);
         this.manifestStore = new AXMemoryStorageManifestStore(layout, jsonStore);
     }
@@ -80,6 +82,10 @@ public final class AXMemorySystem {
 
     public AXMemoryEventStore events() {
         return eventStore;
+    }
+
+    public AXAttachedWorldEventStore attachedWorldEvents() {
+        return attachedWorldEventStore;
     }
 
     public AXEventVectorStore vectors() {

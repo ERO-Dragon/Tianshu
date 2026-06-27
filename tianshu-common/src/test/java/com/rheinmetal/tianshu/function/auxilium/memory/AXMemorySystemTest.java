@@ -85,7 +85,46 @@ class AXMemorySystemTest {
         JsonObject manifest = JsonParser.parseString(Files.readString(layout.worldManifestFile(scope), StandardCharsets.UTF_8)).getAsJsonObject();
         assertEquals(AXMemoryStorageManifestStore.LAYOUT_VERSION, manifest.get("layoutVersion").getAsInt());
         assertEquals(AXStmBlock.SCHEMA_VERSION, manifest.getAsJsonObject("schemas").get("stmBlock").getAsInt());
+        assertEquals(AXAttachedWorldEvent.SCHEMA_VERSION, manifest.getAsJsonObject("schemas").get("attachedWorldEvent").getAsInt());
         assertEquals("stm_blocks/stm_blocks.jsonl", manifest.getAsJsonObject("files").get("stmBlocks").getAsString());
+        assertEquals("events/attached_world_events.jsonl", manifest.getAsJsonObject("files").get("attachedWorldEvents").getAsString());
+    }
+
+    @Test
+    void attachedWorldEventsAreStoredAppendOnlyAndDeduplicatedByKey() {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+        AXAttachedWorldEvent first = new AXAttachedWorldEvent(
+                "",
+                "player_death",
+                "death:bucket",
+                scope.worldId(),
+                "minecraft:overworld",
+                "10,64,20",
+                1000L,
+                "",
+                "玩家在主世界死亡一次。",
+                List.of("minecraft:death")
+        );
+        AXAttachedWorldEvent duplicate = new AXAttachedWorldEvent(
+                "",
+                "player_death",
+                "death:bucket",
+                scope.worldId(),
+                "minecraft:overworld",
+                "10,64,20",
+                1001L,
+                "",
+                "玩家在主世界死亡一次。",
+                List.of("minecraft:death")
+        );
+
+        memorySystem.ensureStorageManifest(scope);
+        memorySystem.attachedWorldEvents().appendAll(scope, List.of(first, duplicate));
+
+        assertEquals(1, memorySystem.attachedWorldEvents().loadAll(scope).size());
+        assertTrue(Files.isRegularFile(layout.attachedWorldEventsFile(scope)));
     }
 
     @Test

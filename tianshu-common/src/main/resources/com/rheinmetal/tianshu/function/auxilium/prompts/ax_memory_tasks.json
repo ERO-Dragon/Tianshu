@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "kind": "ax.memory_task_prompts",
+  "prompts": {
+    "memory.compress.system": {
+      "zh_cn": "将下面的 AX/玩家对话压缩为一个忠实的短期记忆段落。\n保留具体语境和先后顺序。不要添加主观重要性、偏好结论或行动指令。\n只输出 STM 正文。",
+      "en_us": "Compress the following AX/player dialogue into one faithful short-term memory paragraph.\nPreserve concrete context and sequence. Do not add subjective importance, preference conclusions, or instructions.\nOutput only the STM text."
+    },
+    "memory.compress.user": {
+      "zh_cn": "世界：{{world}}\n\n{{turns}}",
+      "en_us": "World: {{world}}\n\n{{turns}}"
+    },
+    "memory.extract.system": {
+      "zh_cn": "从这段 AX 短期记忆中抽取客观原子事实。\n规则：\n- 每行输出一条事实。\n- 保持事实具体且符合真实历史。\n- 不输出重要性、保留建议、偏好、性格结论或动机推断。\n- 如果没有客观事实，则不输出任何内容。",
+      "en_us": "Extract objective atomic facts from this AX short-term memory.\nRules:\n- Output one fact per line.\n- Keep facts concrete and historically true.\n- Do not output importance, retention advice, preferences, personality conclusions, or inferred motives.\n- If there are no objective facts, output nothing."
+    },
+    "memory.extract.user": {
+      "zh_cn": "STM 正文：\n{{stm}}",
+      "en_us": "STM text:\n{{stm}}"
+    }
+  }
+}

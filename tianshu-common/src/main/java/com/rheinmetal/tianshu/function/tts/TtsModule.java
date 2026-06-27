@@ -1,4 +1,4 @@
-﻿package com.rheinmetal.tianshu.function.tts;
+package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -422,7 +422,7 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private void publishModuleStatus(ModuleStatus status) {
-        if (summary != null) {
+        if (status != null) {
             adapter.publishModuleStatus(status);
         }
     }
