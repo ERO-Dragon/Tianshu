@@ -33,7 +33,7 @@ LLM 模块对外提供两个协议能力：
 
 | queryType | 说明 |
 |-----------|------|
-| `TOKEN_COUNT` | 对文本、消息列表或请求块做真实 token 计数 |
+| `TOKEN_COUNT` | 对文本或消息列表做真实 token 计数；不接受 `rag` chunk |
 | `EMBED` | 对文本数组做 embedding |
 | `STATUS` | 查询 LLM 运行态、模型信息和队列信息 |
 
@@ -46,7 +46,7 @@ LLM 模块对外提供两个协议能力：
 | `text` | 参与 token 计数的单段文本 |
 | `texts` | `EMBED` 使用的文本列表 |
 | `messages` | `TOKEN_COUNT` 使用的消息列表 |
-| `chunks` | `TOKEN_COUNT` 使用的请求块 |
+| `chunks` | 保留字段；`TOKEN_COUNT` 不接受 `rag` chunk，避免触发检索、索引或 cache 修改 |
 | `includeVector` | `EMBED` 是否回传向量本体 |
 | `includeEmbeddingDetails` | `EMBED` 是否回传更完整的 embedding 细节 |
 | `includeRuntimeDetails` | `STATUS` 是否回传模型名 / profile 等运行态细节 |
@@ -62,6 +62,8 @@ LLM 模块对外提供两个协议能力：
 | `embedResults` | `EMBED` 的结果列表 |
 | `runtimeSnapshot` | `STATUS` 的结果快照 |
 | `errorCode` / `errorMessage` | 失败信息 |
+
+`EMBED` 的每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName` 和 `embeddingNamespace`。`STATUS` 快照也包含 embedding 模型身份字段，用于 AX 校验持久化向量是否仍属于同一 embedding 空间。
 
 `STATUS` 返回的快照应尽量保守：未知值可以返回 `-1` 或空字符串，不要硬猜。
 

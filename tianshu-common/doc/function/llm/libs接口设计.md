@@ -7,11 +7,12 @@ libs 只提供底层基础能力，不包含业务逻辑。
 | 能力 | 说明 |
 |------|------|
 | 推理 | chat / chatStream / task / taskStream |
+| token / usage | countChatPromptTokens / LlmTokenUsage |
 | 向量 | embed(text) / embed(texts) |
 | 检索 | search(queryText, texts, topK, threshold) |
 | 调度 | CHAT 优先，可暂停 TASK |
 | 运行选项 | InferenceOptions 控制请求级 MTP 与 Vulkan 时间片优先级 |
-| 能力探测 | supportsMtp / getMtpCapability / calibrateMtpAsync / calibrateMtp |
+| 能力探测 | supportsMtp / getMtpCapability / calibrateMtp |
 
 ---
 
@@ -31,6 +32,7 @@ JavaLlamaServer service = JavaLlamaServer.builder()
     .chatMaxQueueSize(4)
     .gpuLayers(999)
     .device("0")                         // 可选：传给 JJML ModelParam.device
+    .flashAttention(FlashAttentionMode.ENABLED) // 可选：默认 ENABLED；也可 AUTO / DISABLED
     .cacheTypeK(KvCacheType.F16)          // 可选：F16 / Q8_0
     .cacheTypeV(KvCacheType.F16)          // 可选：F16 / Q8_0
     .taskThreads(2)
@@ -53,35 +55,61 @@ service.shutdown();   // 游戏关闭或模块卸载时释放资源
 
 `start()` 可能耗时较长，主包不应在 Minecraft 主线程中同步阻塞等待模型加载。
 
+模型级推理参数说明：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `contextSize` | `16000` | LLM 上下文窗口大小；模型加载服务后固定，CHAT / TASK 共用同一配置 |
+| `gpuLayers` | `999` | 交给 JJML / llama.cpp 的 GPU offload 层数；通常用于尽量全量放到 GPU |
+| `device` | `null` | 可选设备选择器；纯数字会规范化为 JJML 设备索引格式，例如 `"0"` -> `"#0"` |
+| `flashAttention` | `FlashAttentionMode.ENABLED` | Flash Attention 模式；属于 context/runtime 结构配置，不是单次请求参数 |
+| `cacheTypeK` | `null` | K cache 类型；`null` 表示使用 JJML 默认值，可显式设置 `F16` / `Q8_0` |
+| `cacheTypeV` | `null` | V cache 类型；`null` 表示使用 JJML 默认值，可显式设置 `F16` / `Q8_0` |
+
+`flashAttention`、`cacheTypeK`、`cacheTypeV` 都会在创建 `LlamaCppContext` 时写入 JJML context params，因此它们是服务级配置：同一个 `JavaLlamaServer` 实例内的 `chat` / `task` 会使用同一组设置。如果需要对比不同 FA 或 KV cache 配置，应创建不同服务实例或重新加载模型服务。
+
 ### 2.1 推理
 
 ```java
 // 简单聊天
-String chat(String message, String systemPrompt);
-String chat(String message, String systemPrompt, ThinkingMode thinkingMode);
+CompletableFuture<String> chat(String message, String systemPrompt);
+CompletableFuture<String> chat(String message, String systemPrompt, ThinkingMode thinkingMode);
 
-// 同步聊天
-String chat(List<ChatMessage> messages);
-String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens);
-String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, InferenceOptions options);
+// 聊天；返回 future，可通过 cancel(false) 取消本次 chat
+CompletableFuture<String> chat(List<ChatMessage> messages);
+CompletableFuture<String> chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens);
+CompletableFuture<String> chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, InferenceOptions options);
+CompletableFuture<LlmGenerationResult> chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens);
+CompletableFuture<LlmGenerationResult> chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, InferenceOptions options);
 
 // 流式聊天
-void chatStream(String message, String systemPrompt, Consumer<String> onToken);
-void chatStream(String message, String systemPrompt, int maxTokens, Consumer<String> onToken);
-void chatStream(List<ChatMessage> messages, Consumer<String> onToken);
-void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken);
-void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, Consumer<String> onToken);
-void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, InferenceOptions options, Consumer<String> onToken);
+CompletableFuture<String> chatStream(String message, String systemPrompt, Consumer<String> onToken);
+CompletableFuture<String> chatStream(String message, String systemPrompt, int maxTokens, Consumer<String> onToken);
+CompletableFuture<String> chatStream(List<ChatMessage> messages, Consumer<String> onToken);
+CompletableFuture<String> chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken);
+CompletableFuture<String> chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, Consumer<String> onToken);
+CompletableFuture<String> chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, InferenceOptions options, Consumer<String> onToken);
+CompletableFuture<String> chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, InferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish);
 
-// 后台任务（可被 chat 暂停）- 同步返回
-CompletableFuture<String> task(List<ChatMessage> messages);
+// 请求前 token 预算查询；使用当前 LLM 的 chat template + tokenizer
+int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler);
+
+// 后台任务（可被 chat 暂停）- 非流式返回
 CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible);
 CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, InferenceOptions options);
+CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, InferenceOptions options);
 
 // 后台任务 - 流式返回
 CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> tokenConsumer);
 CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, InferenceOptions options, Consumer<String> tokenConsumer);
+CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, InferenceOptions options, Consumer<String> tokenConsumer, Consumer<LlmStreamFinish> finishConsumer);
 ```
+
+所有 `chat` / `chatStream` / `task` / `taskStream` 返回的 `CompletableFuture` 都是本次请求的控制句柄：
+
+- 成功时 future 返回完整文本，`WithUsage` 变体返回 `LlmGenerationResult`。
+- 调用 `future.cancel(false)` 会取消对应请求；流式请求会通过 `LlmStreamFinish` 返回 `CANCELLED` 和已知 usage。
+- `chat` 不会抢占另一个正在执行的 `chat`；新的 CHAT 请求仍按 CHAT 队列排序执行。
 
 ### 2.1.1 推理状态事件
 
@@ -125,13 +153,14 @@ public enum InferenceEventType {
 
 ### 2.1.2 推理输出归一化（内部行为）
 
-libs 不新增或改变上述调用方法；所有归一化都发生在内部 token 输出边界，对 `chat` / `chatStream` / `task` / `taskStream` 统一生效。
+所有归一化都发生在内部 token 输出边界，对 `chat` / `chatStream` / `task` / `taskStream` 统一生效。
 
 - 不同开源模型可能使用不同的思考包裹格式，例如 `<think>`、`<reasoning>`、`<thought>`、`<analysis>`、`<|begin_of_thought|>` 等。
 - libs 会把已知思考包裹统一归一化为 `<think>...</think>` 后返回，便于上层只处理一种格式。
 - 空思考块会被清洗掉，例如 `<think></think>`、`<think>\n\n</think>` 或 no-think 标记块，不再返回给上层。
 - 流式输出不会缓冲完整思考段。内部只暂存可能组成标签的短尾部，以及开标签后的空白前缀；一旦出现非空思考内容，会立即流式输出规范化后的 `<think>` 和后续内容。
 - `enableThinking` / `ThinkingMode` 仍然只是生成前的模板控制；输出归一化是生成后的统一兼容层，二者互不改变对外 API。
+- `LlmTokenUsage.completionTokens` 只统计归一化后可见回答 token；被识别为思考包裹内的 token 不计入 completion。
 
 ### 2.1.3 请求级运行选项
 
@@ -144,7 +173,7 @@ InferenceOptions options = InferenceOptions.builder()
     .vulkanPriority(0.35f)     // 0.0~1.0；值越低越倾向于给游戏渲染让路
     .build();
 
-String reply = service.chat(messages, sampler, 256, options);
+String reply = service.chat(messages, sampler, 256, options).get();
 ```
 
 字段语义：
@@ -171,10 +200,10 @@ boolean supported = service.supportsMtp();
 MtpCapability capability = service.getMtpCapability();
 
 if (supported && !capability.isCalibrated()) {
-    service.calibrateMtpAsync(MtpCalibrationRequest.defaults())
-        .thenAccept(result -> {
-            int bestDraftMax = result.getBestDraftMax();
-        });
+    MtpCalibrationResult result = service.calibrateMtp(
+        MtpCalibrationRequest.defaults()
+    );
+    int bestDraftMax = result.getBestDraftMax();
 }
 ```
 
@@ -194,16 +223,19 @@ MtpCalibrationResult calibrateMtp(MtpCalibrationRequest request) throws Exceptio
 | 类型 | 说明 |
 |------|------|
 | `MtpCapability` | 当前模型是否支持 MTP、MTP 层数、是否已有校准结果、推荐 `draftMax` |
-| `MtpCalibrationRequest` | 校准范围：`maxDraftMax`、`maxTokens`、`targetPromptTokens` |
+| `MtpCalibrationRequest` | 校准范围：draftMax 自动扫描或手动上限、每轮生成 token 数、目标长 prompt token 数 |
 | `MtpCalibrationResult` | 校准是否支持、测试列表、最佳 trial、最佳 `draftMax` |
-| `MtpTrialResult` | 单次测试的速度、接受率、draft/accepted token 数、decode 耗时等统计 |
+| `MtpTrialResult` | 单次测试的速度、接受率、draft/accepted token 数等统计 |
 
 校准说明：
 
-- `calibrateMtpAsync()` 和 `calibrateMtpAsync(MtpCalibrationRequest)` 是实际可用的异步入口。
-- `calibrateMtp()` 和 `calibrateMtp(MtpCalibrationRequest)` 也是 jar 里真实存在的同步入口。
-- `MtpCalibrationRequest.defaults()` 代表默认校准参数，是否自动扫描由 request 内部默认值决定。
-- `InferenceOptions.builder().mtpEnabled(true).build()` 可尝试启用 MTP；`mtpDraftMax` 不传时由底层按当前能力和校准结果决定。
+- 校准任务走 TASK 通道，避免阻塞 CHAT 队列；上层可以用 async 方法在 UI 中显示“能力测试中”。
+- 校准使用内部生成的重型长上下文 workload，默认目标约 8k prompt tokens，并按当前 TASK context 自动保留生成 token、draft 窗口和安全余量。
+- 如果当前 context 太小，无法容纳至少 4096 prompt tokens 的重型 workload，校准会返回失败结果，不会退化为无意义的短 prompt 测试。
+- 默认校准使用 `maxDraftMax=0` 自动扫描：先测试保守初始范围；如果最佳 `draftMax` 贴近当前扫描边界，再逐步扩大范围，直到最佳值不再贴边、MTP 初始化失败或达到硬安全上限。
+- `maxDraftMax > 0` 表示高级调用手动指定扫描上限；这个上限是校准预算，不是模型能力上限。
+- 校准按 tokens/s 选择当前最优值，并缓存到当前 `LlamaEngine`。
+- `InferenceOptions.builder().mtpEnabled(true).build()` 未指定 `mtpDraftMax` 时，会使用缓存的推荐值；未校准时使用默认 `draftMax=3`。
 - 校准结果只保存在当前进程/当前引擎内；如果上层希望跨启动复用，需要自行持久化策略和环境信息。
 
 ### 2.2 向量
@@ -278,10 +310,14 @@ public class SamplerConfig {
     public Boolean enableThinking; // 最省事入口：true 开启，false 关闭，null 自动
     public ThinkingMode thinkingMode; // AUTO / ENABLED / DISABLED
     public Map<String, String> chatTemplateKwargs; // 额外 Jinja 模板参数
+    public String grammarStr;      // 可选：GBNF grammar
+    public String grammarRoot;     // 默认 root
 
+    public static SamplerConfig defaults();
     public void setEnableThinking(Boolean enableThinking);
     public ThinkingMode getEffectiveThinkingMode();
     public SamplerConfig chatTemplateKwarg(String key, String value);
+    public SamplerConfig withKwargs(String key, String value);
     public SamplerConfig copy();
 }
 ```
@@ -316,7 +352,56 @@ public class RagSearchResult {
 }
 ```
 
-### 3.4 InferenceOptions
+### 3.4 LLM usage 相关结构
+
+```java
+public record LlmTokenUsage(int promptTokens, int completionTokens) {
+    public int totalTokens(); // promptTokens + completionTokens
+}
+
+public record LlmGenerationResult(String text, LlmTokenUsage usage) {
+}
+
+public record LlmStreamFinish(StreamFinishType type, LlmTokenUsage usage, Throwable error) {
+}
+
+public enum StreamFinishType {
+    COMPLETED,
+    CANCELLED,
+    FAILED
+}
+```
+
+说明：
+
+- `promptTokens`：实际 chat template 渲染后的 prompt token 数。
+- `completionTokens`：模型实际生成且归一化后对上层可见的回答 token 数；识别出的 COT token 不计入。
+- `totalTokens()`：`promptTokens + completionTokens`。
+- 非流式 `chatWithUsage` / `taskWithUsage` 成功完成时通过 `LlmGenerationResult` 返回 usage。
+- 流式请求通过 `LlmStreamFinish` 返回终态和 usage；取消时 future 进入取消态，finish type 为 `CANCELLED`。
+
+### 3.5 FlashAttentionMode 与 KvCacheType
+
+```java
+public enum FlashAttentionMode {
+    AUTO,      // 交给 JJML / llama.cpp 自动判断
+    DISABLED,  // 显式关闭 Flash Attention
+    ENABLED    // 显式开启 Flash Attention；libs 默认值
+}
+
+public enum KvCacheType {
+    F16,
+    Q8_0
+}
+```
+
+说明：
+
+- `FlashAttentionMode` 是模型/context 级配置，通过 `JavaLlamaServer.Builder.flashAttention(...)` 设置，默认 `ENABLED`。
+- `KvCacheType` 是 KV cache 量化配置，通过 `cacheTypeK(...)` 和 `cacheTypeV(...)` 设置；不设置时保留 JJML 默认值。
+- 这两类参数都会影响 context 创建方式和显存/性能特征，因此不放入 `InferenceOptions`，也不建议在单轮对话级别频繁切换。
+
+### 3.6 InferenceOptions
 
 ```java
 public final class InferenceOptions {
@@ -332,7 +417,7 @@ public final class InferenceOptions {
 
 `InferenceOptions` 是不可变对象，提交任务时会复制快照。上层可以安全复用模板对象，也可以为每轮对话临时构建。
 
-### 3.5 MTP 相关结构
+### 3.7 MTP 相关结构
 
 ```java
 public final class MtpCapability {
@@ -344,13 +429,10 @@ public final class MtpCapability {
 }
 
 public final class MtpCalibrationRequest {
+    // defaults(): maxDraftMax=0 表示自动扫描，不是固定测到某个模型上限
     public MtpCalibrationRequest(int maxDraftMax, int maxTokens);
     public MtpCalibrationRequest(int maxDraftMax, int maxTokens, int targetPromptTokens);
     public static MtpCalibrationRequest defaults();
-    public int getMaxDraftMax();
-    public int getMaxTokens();
-    public int getTargetPromptTokens();
-    public boolean isAutoDraftMax();
 }
 
 public final class MtpCalibrationResult {
@@ -359,6 +441,7 @@ public final class MtpCalibrationResult {
     public int getMaxDraftMaxTested();
     public boolean hasBestTrial();
     public int getBestDraftMax();
+    public MtpTrialResult getBestTrial();
     public List<MtpTrialResult> getTrials();
     public String getMessage();
 }
@@ -399,6 +482,7 @@ void shutdown();
 | Lane 调度 | libs 内置：CHAT 优先，可暂停 TASK |
 | RagSearchResult | 只包含 content + score，不包含 id（libs 不知道业务 ID） |
 | 向量维度校验 | 维度不匹配时抛出异常，确保查询和文档使用同一 embedding 模型 |
-| 运行策略归属 | 采样参数放在 SamplerConfig；MTP / Vulkan 时间片放在 InferenceOptions |
-| MTP 策略 | 模型级能力探测，请求级启用，校准结果由底层运行时缓存 |
+| 模型级运行参数 | contextSize / flashAttention / cacheTypeK / cacheTypeV 放在 Builder；创建 context 时统一生效 |
+| 请求级运行策略 | 采样参数放在 SamplerConfig；MTP / Vulkan 时间片放在 InferenceOptions |
+| MTP 策略 | 模型级能力探测，请求级启用，校准结果缓存在当前 LlamaEngine |
 | 视觉能力 | 当前文本推理路径不加载 mtmd/mmproj；视觉仍保持显式 opt-in，不在本接口中默认启用 |

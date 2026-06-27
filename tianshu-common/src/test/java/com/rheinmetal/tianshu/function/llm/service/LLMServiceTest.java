@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
@@ -113,6 +114,37 @@ class LLMServiceTest {
     }
 
     @Test
+    void tokenCountRejectsRagChunksWithoutSearchOrCacheMutation() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+        LLMRequest request = LLMRequest.of(
+                Chunk.message(MessageItem.user("query text")),
+                Chunk.rag("dynamic", "RAG:", List.of("one"), false, true, 1000)
+        );
+
+        var result = service.tokenCountResponse("count-rag", request);
+
+        assertEquals("FAILED", result.status());
+        assertEquals("LLM_TOKEN_COUNT_UNSUPPORTED_INPUT", result.errorCode());
+        assertEquals(0, client.searchCalls);
+        assertEquals(0, client.tokenCountCalls);
+    }
+
+    @Test
+    void embedAndRuntimeExposeEmbeddingIdentity() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+
+        var embed = service.embedResponse("embed-id", List.of("memory"), false, true);
+        var runtime = service.toRuntimeSnapshot(true);
+
+        assertEquals("test-embedding", embed.embedResults().get(0).embeddingModelName());
+        assertEquals("5c13d660:fb945ffb", embed.embedResults().get(0).embeddingNamespace());
+        assertEquals("test-embedding", runtime.embeddingModelName());
+        assertEquals("5c13d660:fb945ffb", runtime.embeddingNamespace());
+    }
+
+    @Test
     void ragHitsKeepUidAndScopeForMultipleRagChunks() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);
@@ -203,7 +235,8 @@ class LLMServiceTest {
 
     private static LLMService service(FakeInferenceClient client) {
         return LLMService.builder()
-                .env(new FakeGameEnvironment())
+            .env(new FakeGameEnvironment())
+                .config(new FakeConfig())
                 .inferenceClient(client)
                 .usePersistentCache(false)
                 .build();
@@ -216,6 +249,7 @@ class LLMServiceTest {
         private int lastTaskPriority;
         private boolean lastTaskPreemptible;
         private int searchCalls;
+        private int tokenCountCalls;
         private String lastSearchQuery;
         private List<String> lastSearchTexts = List.of();
         private boolean ready = true;
@@ -316,6 +350,7 @@ class LLMServiceTest {
 
         @Override
         public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
+            tokenCountCalls++;
             return messages == null ? 0 : messages.size();
         }
 
@@ -334,5 +369,33 @@ class LLMServiceTest {
         @Override public void info(String msg) {}
         @Override public void warn(String msg) {}
         @Override public void error(String msg, Throwable t) {}
+    }
+
+    private static final class FakeConfig implements ITianshuConfig {
+        @Override public boolean isAiEnabled() { return true; }
+        @Override public void setAiEnabled(boolean enabled) {}
+        @Override public com.rheinmetal.tianshu.constant.TriggerMode getTriggerMode() { return com.rheinmetal.tianshu.constant.TriggerMode.PUSH_TO_TALK; }
+        @Override public void setTriggerMode(com.rheinmetal.tianshu.constant.TriggerMode mode) {}
+        @Override public int getAsrPort() { return 0; }
+        @Override public int getLlmPort() { return 0; }
+        @Override public int getTtsPort() { return 0; }
+        @Override public String getCustomAsrName() { return ""; }
+        @Override public void setCustomAsrName(String name) {}
+        @Override public String getCustomLlmName() { return ""; }
+        @Override public void setCustomLlmName(String name) {}
+        @Override public String getCustomTtsName() { return ""; }
+        @Override public void setCustomTtsName(String name) {}
+        @Override public Path getRootPath() { return Path.of("."); }
+        @Override public Path getGameConfigDir() { return Path.of("."); }
+        @Override public Path getAsrBasePath() { return Path.of("."); }
+        @Override public Path getLlmBasePath() { return Path.of("."); }
+        @Override public Path getTtsBasePath() { return Path.of("."); }
+        @Override public Path getAsrModelPath() { return null; }
+        @Override public Path getLlmModelPath() { return null; }
+        @Override public Path getTtsModelPath() { return null; }
+        @Override public Path getLlmGgufFilePath() { return null; }
+        @Override public Path getVoiceLibraryPath() { return Path.of("."); }
+        @Override public String getLlmEmbeddingModelName() { return "test-embedding"; }
+        @Override public void save() {}
     }
 }

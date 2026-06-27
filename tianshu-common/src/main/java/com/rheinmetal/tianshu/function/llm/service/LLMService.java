@@ -36,6 +36,7 @@ public class LLMService {
     private final EmbeddingService embeddingService;
     private final RagCacheManager worldRagCache;
     private final RagCacheManager globalRagCache;
+    private final String cacheNamespace;
     private volatile boolean initialized = false;
 
     private LLMService(Builder builder) {
@@ -45,6 +46,7 @@ public class LLMService {
         this.inferenceGovernor = builder.inferenceGovernor != null
                 ? builder.inferenceGovernor
                 : new LlmInferenceGovernor(config, builder.performanceProvider);
+        this.cacheNamespace = safeText(builder.cacheNamespace);
 
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
         this.embeddingService = embeddingAdapter;
@@ -253,13 +255,13 @@ public class LLMService {
 
     public LLMPrimitiveResultPayload tokenCountResponse(String requestId, LLMRequest request) {
         try {
-            PreparedResult prepared = prepareRequest(request);
+            PreparedResult prepared = prepareTokenCountRequest(request);
             return LLMPrimitiveResultPayload.tokenCount(requestId, inferenceClient.countChatPromptTokens(prepared.messages(), prepared.sampler()));
         } catch (Exception e) {
             return LLMPrimitiveResultPayload.failed(
                     requestId,
                     LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT,
-                    "LLM_TOKEN_COUNT_FAILED",
+                    e instanceof UnsupportedOperationException ? "LLM_TOKEN_COUNT_UNSUPPORTED_INPUT" : "LLM_TOKEN_COUNT_FAILED",
                     safeMessage(e)
             );
         }
@@ -273,12 +275,12 @@ public class LLMService {
                 for (int i = 0; i < texts.size(); i++) {
                     String text = texts.get(i);
                     float[] vector = vectors != null && i < vectors.length ? vectors[i] : null;
-                    results.add(LLMPrimitiveResultPayload.EmbedResultPayload.of(text, vector, includeVector));
+                    results.add(LLMPrimitiveResultPayload.EmbedResultPayload.of(text, vector, includeVector, embeddingModelName(), embeddingNamespace()));
                 }
             }
             if (!includeEmbeddingDetails) {
                 results = results.stream()
-                        .map(result -> new LLMPrimitiveResultPayload.EmbedResultPayload(result.text(), result.dimension(), new float[0]))
+                        .map(result -> new LLMPrimitiveResultPayload.EmbedResultPayload(result.text(), result.dimension(), new float[0], result.embeddingModelName(), result.embeddingNamespace()))
                         .toList();
             }
             return LLMPrimitiveResultPayload.embed(requestId, results);
@@ -306,6 +308,8 @@ public class LLMService {
         LlmMtpCapabilitySnapshot mtp = getMtpCapability();
         String modelName = includeRuntimeDetails ? configName() : "";
         String modelProfile = includeRuntimeDetails ? modelProfile() : "";
+        String embeddingModelName = includeRuntimeDetails ? embeddingModelName() : "";
+        String embeddingNamespace = includeRuntimeDetails ? embeddingNamespace() : "";
         String failureMessage = includeRuntimeDetails ? "" : "";
         return new LLMRuntimeSnapshotPayload(
                 ready,
@@ -325,6 +329,8 @@ public class LLMService {
                 inferenceClient != null ? inferenceClient.getQueueSize() : 0,
                 modelName,
                 modelProfile,
+                embeddingModelName,
+                embeddingNamespace,
                 failureMessage,
                 System.currentTimeMillis()
         );
@@ -363,6 +369,32 @@ public class LLMService {
                 effectiveRequest.getTaskPreemptible(),
                 inferenceGovernor.resolve(effectiveRequest.getInferencePolicy(), effectiveRequest.isTaskLane(), supportsMtp()),
                 ragHits
+        );
+    }
+
+    private PreparedResult prepareTokenCountRequest(LLMRequest request) {
+        LLMRequest effectiveRequest = request != null ? request : new LLMRequest();
+        List<MessageItem> orderedMessages = new ArrayList<>();
+
+        for (Chunk chunk : effectiveRequest.getChunks()) {
+            if (chunk == null || chunk.getType() == null) {
+                continue;
+            }
+            if ("message".equalsIgnoreCase(chunk.getType())) {
+                appendMessages(orderedMessages, chunk.getMessageContent());
+            } else if ("rag".equalsIgnoreCase(chunk.getType())) {
+                throw new UnsupportedOperationException("TOKEN_COUNT only accepts message-only input; rag chunks may trigger retrieval or cache mutation");
+            }
+        }
+
+        return new PreparedResult(
+                buildLibsMessages(orderedMessages),
+                createSampler(effectiveRequest),
+                maxTokens(effectiveRequest),
+                effectiveRequest.getTaskPriority(),
+                effectiveRequest.getTaskPreemptible(),
+                LlmInferenceOptions.defaults(),
+                List.of()
         );
     }
 
@@ -541,8 +573,26 @@ public class LLMService {
         return "";
     }
 
+    private String embeddingModelName() {
+        return safeText(config.getLlmEmbeddingModelName());
+    }
+
+    private String embeddingNamespace() {
+        String embedding = embeddingModelName();
+        if (!cacheNamespace.isBlank() && !"default".equals(cacheNamespace)) {
+            return cacheNamespace;
+        }
+        String llm = configName();
+        return stableSegment(llm) + ":" + stableSegment(embedding);
+    }
+
     private static String safeText(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static String stableSegment(String value) {
+        String normalized = value == null || value.isBlank() ? "default" : value.trim();
+        return Integer.toHexString(java.util.Objects.hash(normalized));
     }
 
     public static LLMPromptResultPayload.TokenUsagePayload toUsagePayload(LlmTokenUsage usage) {
