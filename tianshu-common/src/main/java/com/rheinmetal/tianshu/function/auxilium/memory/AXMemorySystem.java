@@ -23,6 +23,7 @@ public final class AXMemorySystem {
     private final AXEventVectorStore vectorStore;
     private final AXMemoryStatsStore statsStore;
     private final AXMemoryStorageManifestStore manifestStore;
+    private final AXMemoryRetrievalIndexSnapshotStore retrievalIndexSnapshotStore;
     private final AXMemoryStorageCompatibilityChecker compatibilityChecker;
     private final AXMemoryRetrievalIndexCache retrievalIndexCache = new AXMemoryRetrievalIndexCache();
     private final AXMemoryRetrievalPolicy retrievalPolicy;
@@ -51,6 +52,7 @@ public final class AXMemorySystem {
         this.vectorStore = new AXEventVectorStore(layout, jsonStore);
         this.statsStore = new AXMemoryStatsStore(layout, jsonStore);
         this.manifestStore = new AXMemoryStorageManifestStore(layout, jsonStore);
+        this.retrievalIndexSnapshotStore = new AXMemoryRetrievalIndexSnapshotStore(layout, jsonStore);
         this.compatibilityChecker = new AXMemoryStorageCompatibilityChecker(layout, jsonStore);
         this.retrievalPolicy = retrievalPolicy == null ? AXMemoryRetrievalPolicy.DEFAULT : retrievalPolicy;
     }
@@ -174,6 +176,10 @@ public final class AXMemorySystem {
         return statsStore;
     }
 
+    public AXMemoryRetrievalIndexSnapshotStore retrievalIndexSnapshots() {
+        return retrievalIndexSnapshotStore;
+    }
+
     AXMemoryRetrievalIndex retrievalIndex(AXScope scope, String embeddingNamespace) {
         if (scope == null || !scope.writable() || embeddingNamespace == null || embeddingNamespace.isBlank()) {
             return AXMemoryRetrievalIndex.empty(embeddingNamespace);
@@ -183,13 +189,34 @@ public final class AXMemorySystem {
                 scope,
                 embeddingNamespace,
                 sourceStamp,
-                () -> AXMemoryRetrievalIndex.build(
-                        eventStore.loadAll(scope),
-                        vectorStore.load(scope, embeddingNamespace),
-                        embeddingNamespace,
-                        retrievalPolicy
-                )
+                () -> buildRetrievalIndex(scope, embeddingNamespace, sourceStamp)
         );
+    }
+
+    private AXMemoryRetrievalIndex buildRetrievalIndex(
+            AXScope scope,
+            String embeddingNamespace,
+            AXMemoryRetrievalIndexCache.SourceStamp sourceStamp
+    ) {
+        java.util.Optional<AXMemoryRetrievalIndexSnapshot> snapshot = retrievalIndexSnapshotStore.load(scope, embeddingNamespace)
+                .filter(candidate -> candidate.matches(embeddingNamespace, sourceStamp));
+        boolean reusableSnapshot = snapshot
+                .map(candidate -> candidate.eventCount() > 0
+                        && candidate.effectiveMappingByEventId().size() >= candidate.eventCount()
+                        && !candidate.l1Clusters().isEmpty()
+                        && !candidate.l2EffectiveMappings().isEmpty())
+                .orElse(false);
+        AXMemoryRetrievalIndex index = AXMemoryRetrievalIndex.build(
+                eventStore.loadAll(scope),
+                vectorStore.load(scope, embeddingNamespace),
+                embeddingNamespace,
+                retrievalPolicy,
+                reusableSnapshot ? snapshot.orElse(null) : null
+        );
+        if (!reusableSnapshot && !index.isEmpty()) {
+            retrievalIndexSnapshotStore.write(scope, index.toSnapshot(sourceStamp));
+        }
+        return index;
     }
 
     public AXRawTurnWindow rawTurns() {

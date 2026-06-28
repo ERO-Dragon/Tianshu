@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXMemoryRetrieverTest {
     @TempDir
@@ -67,6 +68,14 @@ class AXMemoryRetrieverTest {
         await(() -> result.get() != null);
         assertEquals(1, result.get().blocks().size());
         assertEquals(target.id(), result.get().blocks().get(0).block().id());
+        assertEquals(1, result.get().traces().size());
+        assertEquals(target.id(), result.get().traces().get(0).stmId());
+        assertEquals(2, result.get().traces().get(0).eventHits().size());
+        assertTrue(memorySystem.retrievalIndexSnapshots().load(scope, "test-embed:v1").isPresent());
+        AXMemoryRetrievalIndexSnapshot snapshot = memorySystem.retrievalIndexSnapshots().load(scope, "test-embed:v1").orElseThrow();
+        assertEquals("test-embed:v1", snapshot.embeddingNamespace());
+        assertTrue(snapshot.l1Clusters().size() >= 1);
+        assertTrue(snapshot.l2EffectiveMappings().size() >= 1);
     }
 
     @Test

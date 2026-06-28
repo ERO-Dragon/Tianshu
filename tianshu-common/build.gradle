@@ -51,6 +51,10 @@ test {
     systemProperty 'tianshu.llm.smoke', System.getProperty('tianshu.llm.smoke', System.getenv('TIANSHU_LLM_SMOKE') ?: 'false')
     systemProperty 'tianshu.llm.smoke.model', System.getProperty('tianshu.llm.smoke.model', System.getenv('TIANSHU_LLM_SMOKE_MODEL') ?: '')
     systemProperty 'tianshu.llm.smoke.embeddingModel', System.getProperty('tianshu.llm.smoke.embeddingModel', System.getenv('TIANSHU_LLM_SMOKE_EMBEDDING_MODEL') ?: '')
+    systemProperty 'tianshu.ax.longrun.smoke', System.getProperty('tianshu.ax.longrun.smoke', System.getenv('TIANSHU_AX_LONGRUN_SMOKE') ?: 'false')
+    systemProperty 'tianshu.ax.longrun.rounds', System.getProperty('tianshu.ax.longrun.rounds', System.getenv('TIANSHU_AX_LONGRUN_ROUNDS') ?: '10')
+    systemProperty 'tianshu.ax.longrun.context', System.getProperty('tianshu.ax.longrun.context', System.getenv('TIANSHU_AX_LONGRUN_CONTEXT') ?: '4096')
+    systemProperty 'tianshu.ax.longrun.timeoutSeconds', System.getProperty('tianshu.ax.longrun.timeoutSeconds', System.getenv('TIANSHU_AX_LONGRUN_TIMEOUT_SECONDS') ?: '180')
 }
 
 tasks.withType(JavaCompile).configureEach {

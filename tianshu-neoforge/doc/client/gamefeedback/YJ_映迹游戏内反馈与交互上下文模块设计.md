@@ -147,18 +147,21 @@ WORLD_ENVIRONMENT
 - `PresenceHudDisplay` 作为 HUD 纯显示数据
 - `PresenceClientRuntime.currentHudDisplay()` 输出当前 HUD 状态
 - `client/gui/presence/hud/PresenceHudRenderer` 负责 HUD 元素调度
+- `PresenceHudElementFrame` 承载元素类型、状态、显示数据和状态时间
 - `PresenceStatusTextElementController` 负责状态文本元素的可见性和状态机
 - `PresenceStatusTextElementRenderer` 负责状态文本元素的 Minecraft 绘制
 - `PresenceHudSettings` 控制 HUD 总开关、状态文本开关和模块来源可见性
 - 映迹设置页已接入设置控制台，用于控制 HUD 元素和模块状态来源
+- 内测调试开关已接入设置页，默认关闭
+- 模块流水线调试视图只读读取 `ModuleStatusCache`，不订阅新 topic，不保存历史
 - AX responding 状态通过 `presenceStatusType=SPEAKING` 接入映迹状态展示
 
 三期预留：
 
 可能方向：
 
-- 模块流水线调试页
 - icon / shader 类 HUD 元素
+- shader 参数由具体元素 controller 从状态和 `stateAgeMillis()` 推导，不写进映迹核心
 - 更细的状态展示样式
 - 新的低频 Presence topic
 - 新模块接入统一查询
@@ -334,10 +337,15 @@ client/gui/presence/hud/
 client/gui/presence/hud/element/
   PresenceHudElementController
   PresenceHudElementFrame
+  PresenceHudElementRenderer
   PresenceHudElementState
+  PresenceHudElementTiming
   PresenceHudElementType
   PresenceStatusTextElementController
   PresenceStatusTextElementRenderer
+
+client/gui/presence/debug/
+  PresenceDebugPipelineSnapshot
 
 client/gui/presence/settings/
   PresenceSettingsRegistrySource
@@ -365,12 +373,12 @@ platform/
 - HUD 绘制已迁到 `client/gui/presence/hud`
 - 映迹核心只输出 `PresenceHudDisplay`
 - 设置页已可控制 HUD 总开关、状态文本和 ASR / LLM / TTS / AX 状态来源
+- 内测调试页已可查看 ASR / IA / AX / LLM / TTS / Presence 最新模块状态
 
 待继续观察：
 
 - 快照字段组是否还需要再收紧
 - UI 是否需要进一步拆分
-- 是否需要内测调试页
 - HUD 是否需要新增 icon / shader 等元素
 
 ## 10. 设计原则
@@ -385,3 +393,5 @@ platform/
 8. 采集和文本映射依赖 platform 端口；NeoForge / Minecraft 版本敏感实现留在外层 `platform` 包。
 9. HUD 绘制属于 GUI 层；映迹核心只做显示状态控制。
 10. 设置页只控制显示策略，不影响采集、协议订阅和状态生成。
+11. shader / icon / 动画参数属于具体 HUD 元素，不进入 Presence 协议和采集模型。
+12. 内测调试视图只读观察现有状态缓存，不新增协议能力、不记录历史流水。

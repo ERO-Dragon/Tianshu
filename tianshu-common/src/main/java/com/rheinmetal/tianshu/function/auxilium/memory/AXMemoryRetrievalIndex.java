@@ -55,6 +55,16 @@ final class AXMemoryRetrievalIndex {
             String embeddingNamespace,
             AXMemoryRetrievalPolicy policy
     ) {
+        return build(events, vectors, embeddingNamespace, policy, null);
+    }
+
+    static AXMemoryRetrievalIndex build(
+            List<AXMemoryEvent> events,
+            List<AXEventVector> vectors,
+            String embeddingNamespace,
+            AXMemoryRetrievalPolicy policy,
+            AXMemoryRetrievalIndexSnapshot snapshot
+    ) {
         AXMemoryRetrievalPolicy effectivePolicy = policy == null ? AXMemoryRetrievalPolicy.DEFAULT : policy;
         if (events == null || events.isEmpty() || vectors == null || vectors.isEmpty()) {
             return empty(embeddingNamespace, effectivePolicy);
@@ -87,11 +97,28 @@ final class AXMemoryRetrievalIndex {
         }
         Map<String, List<EventVectorEntry>> entriesByEntityTag = buildEntityIndex(entries);
         Map<String, Set<String>> relatedEntityTags = buildEntityGraph(entries);
+        ClusterState clusterState = hydrateClusterState(entries, snapshot);
+        if (clusterState == null) {
+            clusterState = buildClusterState(entries, effectivePolicy);
+        }
+        return new AXMemoryRetrievalIndex(
+                embeddingNamespace,
+                effectivePolicy,
+                entries,
+                entriesByEntityTag,
+                relatedEntityTags,
+                clusterState.effectiveMappingByEventId(),
+                clusterState.l1Clusters(),
+                clusterState.l2EffectiveMappings()
+        );
+    }
+
+    private static ClusterState buildClusterState(List<EventVectorEntry> entries, AXMemoryRetrievalPolicy policy) {
         List<VectorCluster> l1Clusters = buildClusters(
                 entries,
                 "l1",
-                effectivePolicy.l1ClusterThreshold(),
-                effectivePolicy.l1ClusterMaxSize()
+                policy.l1ClusterThreshold(),
+                policy.l1ClusterMaxSize()
         );
         List<VectorCluster> l2Mappings = new ArrayList<>();
         Map<String, String> effectiveMappingByEventId = new HashMap<>();
@@ -99,8 +126,8 @@ final class AXMemoryRetrievalIndex {
             List<VectorCluster> l2Clusters = buildClusters(
                     l1Cluster.entries(),
                     l1Cluster.id() + "_l2",
-                    effectivePolicy.l2EffectiveMappingThreshold(),
-                    effectivePolicy.l2EffectiveMappingMaxSize()
+                    policy.l2EffectiveMappingThreshold(),
+                    policy.l2EffectiveMappingMaxSize()
             );
             l2Mappings.addAll(l2Clusters);
             for (VectorCluster l2Cluster : l2Clusters) {
@@ -112,16 +139,61 @@ final class AXMemoryRetrievalIndex {
         for (EventVectorEntry entry : entries) {
             effectiveMappingByEventId.putIfAbsent(entry.event().id(), entry.event().id());
         }
-        return new AXMemoryRetrievalIndex(
-                embeddingNamespace,
-                effectivePolicy,
-                entries,
-                entriesByEntityTag,
-                relatedEntityTags,
-                effectiveMappingByEventId,
-                l1Clusters,
-                l2Mappings
-        );
+        return new ClusterState(l1Clusters, l2Mappings, effectiveMappingByEventId);
+    }
+
+    private static ClusterState hydrateClusterState(List<EventVectorEntry> entries, AXMemoryRetrievalIndexSnapshot snapshot) {
+        if (entries == null || entries.isEmpty() || snapshot == null || snapshot.l1Clusters().isEmpty()) {
+            return null;
+        }
+        Map<String, EventVectorEntry> entriesByEventId = new LinkedHashMap<>();
+        for (EventVectorEntry entry : entries) {
+            entriesByEventId.putIfAbsent(entry.event().id(), entry);
+        }
+        List<VectorCluster> l1Clusters = hydrateClusters(snapshot.l1Clusters(), entriesByEventId);
+        List<VectorCluster> l2Mappings = hydrateClusters(snapshot.l2EffectiveMappings(), entriesByEventId);
+        if (l1Clusters.isEmpty() || l2Mappings.isEmpty()) {
+            return null;
+        }
+        Map<String, String> effectiveMappingByEventId = new HashMap<>();
+        for (Map.Entry<String, String> mapping : snapshot.effectiveMappingByEventId().entrySet()) {
+            if (entriesByEventId.containsKey(mapping.getKey()) && mapping.getValue() != null && !mapping.getValue().isBlank()) {
+                effectiveMappingByEventId.put(mapping.getKey(), mapping.getValue());
+            }
+        }
+        for (EventVectorEntry entry : entries) {
+            effectiveMappingByEventId.putIfAbsent(entry.event().id(), entry.event().id());
+        }
+        return new ClusterState(l1Clusters, l2Mappings, effectiveMappingByEventId);
+    }
+
+    private static List<VectorCluster> hydrateClusters(
+            List<AXMemoryRetrievalIndexSnapshot.ClusterSnapshot> snapshots,
+            Map<String, EventVectorEntry> entriesByEventId
+    ) {
+        if (snapshots == null || snapshots.isEmpty() || entriesByEventId == null || entriesByEventId.isEmpty()) {
+            return List.of();
+        }
+        List<VectorCluster> clusters = new ArrayList<>();
+        for (AXMemoryRetrievalIndexSnapshot.ClusterSnapshot snapshot : snapshots) {
+            if (snapshot == null || snapshot.id().isBlank() || snapshot.eventIds().isEmpty()) {
+                continue;
+            }
+            List<EventVectorEntry> clusterEntries = snapshot.eventIds().stream()
+                    .map(entriesByEventId::get)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (clusterEntries.isEmpty()) {
+                continue;
+            }
+            clusters.add(new VectorCluster(
+                    snapshot.id(),
+                    clusterEntries,
+                    recomputeCentroid(clusterEntries),
+                    new LinkedHashSet<>(snapshot.entityTags())
+            ));
+        }
+        return List.copyOf(clusters);
     }
 
     static AXMemoryRetrievalIndex empty(String embeddingNamespace) {
@@ -216,6 +288,26 @@ final class AXMemoryRetrievalIndex {
         return embeddingNamespace;
     }
 
+    AXMemoryRetrievalIndexSnapshot toSnapshot(AXMemoryRetrievalIndexCache.SourceStamp sourceStamp) {
+        AXMemoryRetrievalIndexCache.SourceStamp stamp = sourceStamp == null
+                ? new AXMemoryRetrievalIndexCache.SourceStamp(-1L, -1L, -1L, -1L)
+                : sourceStamp;
+        return new AXMemoryRetrievalIndexSnapshot(
+                AXMemoryRetrievalIndexSnapshot.SCHEMA_VERSION,
+                embeddingNamespace,
+                System.currentTimeMillis(),
+                stamp.eventsSize(),
+                stamp.eventsModifiedAtMillis(),
+                stamp.vectorsSize(),
+                stamp.vectorsModifiedAtMillis(),
+                entries.size(),
+                entries.size(),
+                clusterSnapshots("l1", l1Clusters),
+                clusterSnapshots("l2", l2EffectiveMappings),
+                effectiveMappingByEventId
+        );
+    }
+
     private QueryAnalysis analyze(String queryText) {
         String normalizedQuery = normalize(queryText);
         Set<String> matchedTags = new LinkedHashSet<>();
@@ -236,6 +328,21 @@ final class AXMemoryRetrievalIndex {
                 Set.copyOf(relatedTags),
                 AXMemoryPosition.parse(queryText).orElse(null)
         );
+    }
+
+    private static List<AXMemoryRetrievalIndexSnapshot.ClusterSnapshot> clusterSnapshots(String level, List<VectorCluster> clusters) {
+        if (clusters == null || clusters.isEmpty()) {
+            return List.of();
+        }
+        return clusters.stream()
+                .filter(cluster -> cluster != null && !cluster.entries().isEmpty())
+                .map(cluster -> new AXMemoryRetrievalIndexSnapshot.ClusterSnapshot(
+                        cluster.id(),
+                        level,
+                        cluster.entries().stream().map(entry -> entry.event().id()).toList(),
+                        cluster.entityTags().stream().sorted().toList()
+                ))
+                .toList();
     }
 
     private double routeScore(VectorCluster cluster, float[] queryVector, QueryAnalysis analysis) {
@@ -367,6 +474,31 @@ final class AXMemoryRetrievalIndex {
         return result;
     }
 
+    private static double[] recomputeCentroid(List<EventVectorEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return new double[0];
+        }
+        int dimension = entries.get(0).vector().vector().length;
+        double[] centroid = new double[dimension];
+        int count = 0;
+        for (EventVectorEntry entry : entries) {
+            if (entry == null || entry.vector().vector().length != dimension) {
+                continue;
+            }
+            float[] vector = entry.vector().vector();
+            for (int index = 0; index < dimension; index++) {
+                centroid[index] += vector[index];
+            }
+            count++;
+        }
+        if (count > 0) {
+            for (int index = 0; index < centroid.length; index++) {
+                centroid[index] /= count;
+            }
+        }
+        return centroid;
+    }
+
     private static String stableClusterId(String prefix, int index, List<EventVectorEntry> entries) {
         String seed = entries.stream()
                 .limit(12)
@@ -492,6 +624,18 @@ final class AXMemoryRetrievalIndex {
     }
 
     private record ScoredCluster(VectorCluster cluster, double score) {
+    }
+
+    private record ClusterState(
+            List<VectorCluster> l1Clusters,
+            List<VectorCluster> l2EffectiveMappings,
+            Map<String, String> effectiveMappingByEventId
+    ) {
+        private ClusterState {
+            l1Clusters = l1Clusters == null ? List.of() : List.copyOf(l1Clusters);
+            l2EffectiveMappings = l2EffectiveMappings == null ? List.of() : List.copyOf(l2EffectiveMappings);
+            effectiveMappingByEventId = effectiveMappingByEventId == null ? Map.of() : Map.copyOf(effectiveMappingByEventId);
+        }
     }
 
     private record VectorCluster(String id, List<EventVectorEntry> entries, double[] centroid, Set<String> entityTags) {

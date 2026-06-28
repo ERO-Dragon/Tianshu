@@ -29,7 +29,7 @@ class AXMemoryTaskPromptRepositoryTest {
         String prompt = repository.compressionUserPrompt("save:测试世界", "user: 你好");
 
         assertTrue(Files.isRegularFile(layout.memoryTaskPromptsFile()));
-        assertEquals("世界：save:测试世界\n\nuser: 你好", prompt);
+        assertEquals("user: 你好", prompt);
     }
 
     @Test

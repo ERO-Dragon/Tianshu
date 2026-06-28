@@ -98,7 +98,7 @@ public final class AXMemoryRetriever {
                 continue;
             }
             contributions.computeIfAbsent(event.stmId(), StmContribution::new)
-                    .add(index.effectiveMappingId(event.id()), relevance);
+                    .add(event, index.effectiveMappingId(event.id()), relevance);
         }
         if (contributions.isEmpty()) {
             return AXMemoryRetrievalResult.empty();
@@ -116,7 +116,15 @@ public final class AXMemoryRetriever {
                 .sorted(Comparator.comparingInt(SelectedBlock::order))
                 .map(SelectedBlock::block)
                 .toList();
-        return new AXMemoryRetrievalResult(memorySystem.memoryBlockViews(request.scope(), timeline));
+        Set<String> selectedStmIds = timeline.stream()
+                .map(AXStmBlock::id)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        List<AXMemoryRetrievalTrace> traces = selectedStmIds.stream()
+                .map(contributions::get)
+                .filter(Objects::nonNull)
+                .map(StmContribution::toTrace)
+                .toList();
+        return new AXMemoryRetrievalResult(memorySystem.memoryBlockViews(request.scope(), timeline), traces);
     }
 
     private List<SelectedBlock> selectBlocks(
@@ -239,21 +247,24 @@ public final class AXMemoryRetriever {
         private double max;
         private double sum;
         private final Set<String> effectiveMappings = new HashSet<>();
+        private final List<AXMemoryRetrievalTrace.EventHit> hits = new ArrayList<>();
 
         private StmContribution(String stmId) {
             this.stmId = stmId;
         }
 
-        private void add(String effectiveMappingId, double relevance) {
+        private void add(AXMemoryEvent event, String effectiveMappingId, double relevance) {
             String mapping = effectiveMappingId == null || effectiveMappingId.isBlank()
                     ? "unmapped"
                     : effectiveMappingId;
             if (!effectiveMappings.add(mapping)) {
                 max = Math.max(max, relevance);
+                hits.add(hit(event, mapping, relevance));
                 return;
             }
             max = Math.max(max, relevance);
             sum += Math.max(0.0D, relevance);
+            hits.add(hit(event, mapping, relevance));
         }
 
         private String stmId() {
@@ -262,6 +273,23 @@ public final class AXMemoryRetriever {
 
         private double score() {
             return max + Math.log1p(sum);
+        }
+
+        private AXMemoryRetrievalTrace toTrace() {
+            return new AXMemoryRetrievalTrace(
+                    stmId,
+                    score(),
+                    hits.stream()
+                            .sorted(Comparator.comparingDouble(AXMemoryRetrievalTrace.EventHit::relevance).reversed())
+                            .toList()
+            );
+        }
+
+        private AXMemoryRetrievalTrace.EventHit hit(AXMemoryEvent event, String mapping, double relevance) {
+            if (event == null) {
+                return new AXMemoryRetrievalTrace.EventHit("", "", mapping, relevance);
+            }
+            return new AXMemoryRetrievalTrace.EventHit(event.id(), event.factHash(), mapping, relevance);
         }
     }
 }

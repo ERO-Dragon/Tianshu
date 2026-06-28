@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
-final class LlmThinkingContentFilter {
+public final class LlmThinkingContentFilter {
     private static final String OPEN_TAG = "<think>";
     private static final String CLOSE_TAG = "</think>";
 
@@ -24,7 +24,7 @@ final class LlmThinkingContentFilter {
         return result;
     }
 
-    static String strip(String text) {
+    public static String strip(String text) {
         if (text == null || text.isEmpty()) {
             return "";
         }

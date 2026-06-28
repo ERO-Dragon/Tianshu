@@ -3,16 +3,16 @@
   "kind": "ax.memory_task_prompts",
   "prompts": {
     "memory.compress.system": {
-      "zh_cn": "将下面的 AX/玩家对话压缩为一个忠实的短期记忆段落。\n保留具体语境和先后顺序。不要添加主观重要性、偏好结论或行动指令。\n只输出 STM 正文。",
-      "en_us": "Compress the following AX/player dialogue into one faithful short-term memory paragraph.\nPreserve concrete context and sequence. Do not add subjective importance, preference conclusions, or instructions.\nOutput only the STM text."
+      "zh_cn": "将下面的 AX/玩家对话压缩为一个忠实的短期记忆段落。\n保留具体语境和先后顺序。不要添加主观重要性、偏好结论或行动指令。\n如果原文包含建议、请求、计划或疑问，把它写成历史叙述，例如 AX 曾建议玩家... 或玩家请求...；不要保留裸建议句或待办句。\n只输出 STM 正文。",
+      "en_us": "Compress the following AX/player dialogue into one faithful short-term memory paragraph.\nPreserve concrete context and sequence. Do not add subjective importance, preference conclusions, or instructions.\nIf the source contains advice, requests, plans, or questions, write them as historical narration, such as AX suggested that the player... or the player asked...; do not keep bare advice or todo sentences.\nOutput only the STM text."
     },
     "memory.compress.user": {
-      "zh_cn": "世界：{{world}}\n\n{{turns}}",
-      "en_us": "World: {{world}}\n\n{{turns}}"
+      "zh_cn": "{{turns}}",
+      "en_us": "{{turns}}"
     },
     "memory.extract.system": {
-      "zh_cn": "从这段 AX 短期记忆中抽取客观原子事实。\n规则：\n- 每行输出一条事实。\n- 保持事实具体且符合真实历史。\n- 不输出重要性、保留建议、偏好、性格结论或动机推断。\n- 如果没有客观事实，则不输出任何内容。",
-      "en_us": "Extract objective atomic facts from this AX short-term memory.\nRules:\n- Output one fact per line.\n- Keep facts concrete and historically true.\n- Do not output importance, retention advice, preferences, personality conclusions, or inferred motives.\n- If there are no objective facts, output nothing."
+      "zh_cn": "从这段 AX 短期记忆中抽取客观原子事实。\n输出格式必须是严格 JSON 数组，不要 Markdown，不要代码块，不要解释。\n数组元素只能是对象，结构为 {\"fact\":\"...\"}。\n规则：\n- 每个 fact 是一条客观事实，保持具体且符合真实历史。\n- 如果原文包含建议、请求、计划或疑问，fact 必须写成谁提出了什么；不要输出裸建议、命令或待办。\n- 不输出重要性、保留建议、偏好、性格结论或动机推断。\n- 如果没有客观事实，输出 []。",
+      "en_us": "Extract objective atomic facts from this AX short-term memory.\nThe output must be a strict JSON array. Do not use Markdown, code fences, or explanations.\nEach array item must be an object shaped as {\"fact\":\"...\"}.\nRules:\n- Each fact is one objective fact, concrete and historically true.\n- If the source contains advice, requests, plans, or questions, write the fact as who raised what; do not output bare advice, commands, or todos.\n- Do not output importance, retention advice, preferences, personality conclusions, or inferred motives.\n- If there are no objective facts, output []."
     },
     "memory.extract.user": {
       "zh_cn": "STM 正文：\n{{stm}}",

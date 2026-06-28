@@ -94,7 +94,7 @@ public class TianshuClient {
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, axConfig);
-        TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config);
+        TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config, coreManager);
         return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource, presenceSource);
     }
 

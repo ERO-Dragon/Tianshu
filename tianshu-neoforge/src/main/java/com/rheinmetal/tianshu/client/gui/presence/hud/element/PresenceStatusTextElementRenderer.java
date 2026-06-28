@@ -5,12 +5,18 @@ import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
-public final class PresenceStatusTextElementRenderer {
+public final class PresenceStatusTextElementRenderer implements PresenceHudElementRenderer {
     private static final int PANEL_BACKGROUND = 0x8A071116;
     private static final int TEXT_COLOR = 0xFFEAF7FF;
     private static final int ERROR_ACCENT = 0xD0FF7777;
     private static final int ACTIVE_ACCENT = 0xD0A7F3FF;
 
+    @Override
+    public PresenceHudElementType type() {
+        return PresenceHudElementType.STATUS_TEXT;
+    }
+
+    @Override
     public void render(GuiGraphics graphics, Font font, PresenceHudElementFrame frame) {
         if (graphics == null || font == null || frame == null || frame.state() != PresenceHudElementState.ACTIVE) {
             return;

@@ -36,6 +36,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue PRESENCE_LLM_STATUS_VISIBLE;
     public static final ModConfigSpec.BooleanValue PRESENCE_TTS_STATUS_VISIBLE;
     public static final ModConfigSpec.BooleanValue PRESENCE_AX_STATUS_VISIBLE;
+    public static final ModConfigSpec.BooleanValue PRESENCE_DEBUG_PIPELINE_ENABLED;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.IntValue ASR_PORT;
@@ -84,6 +85,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         PRESENCE_LLM_STATUS_VISIBLE = builder.define("llmStatusVisible", true);
         PRESENCE_TTS_STATUS_VISIBLE = builder.define("ttsStatusVisible", true);
         PRESENCE_AX_STATUS_VISIBLE = builder.define("axStatusVisible", true);
+        PRESENCE_DEBUG_PIPELINE_ENABLED = builder.define("debugPipelineEnabled", false);
         builder.pop();
 
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
@@ -344,6 +346,14 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
 
     public void setPresenceAxStatusVisible(boolean visible) {
         PRESENCE_AX_STATUS_VISIBLE.set(visible);
+    }
+
+    public boolean isPresenceDebugPipelineEnabled() {
+        return PRESENCE_DEBUG_PIPELINE_ENABLED.get();
+    }
+
+    public void setPresenceDebugPipelineEnabled(boolean enabled) {
+        PRESENCE_DEBUG_PIPELINE_ENABLED.set(enabled);
     }
 
     @Override

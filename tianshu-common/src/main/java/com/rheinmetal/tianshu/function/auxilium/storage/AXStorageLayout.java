@@ -92,6 +92,14 @@ public final class AXStorageLayout {
         return worldRoot(scope).resolve("indexes");
     }
 
+    public Path retrievalIndexRoot(AXScope scope, String embeddingNamespace) {
+        return indexesRoot(scope).resolve(safeName(embeddingNamespace));
+    }
+
+    public Path retrievalIndexSnapshotFile(AXScope scope, String embeddingNamespace) {
+        return retrievalIndexRoot(scope, embeddingNamespace).resolve("retrieval_index_snapshot.json");
+    }
+
     public Path statsRoot(AXScope scope) {
         return worldRoot(scope).resolve("stats");
     }

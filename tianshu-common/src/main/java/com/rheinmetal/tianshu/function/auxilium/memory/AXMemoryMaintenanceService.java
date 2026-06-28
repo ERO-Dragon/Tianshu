@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.function.auxilium.AXLlmPrimitiveClient;
 import com.rheinmetal.tianshu.function.auxilium.AXLlmRequestHandler;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
-import com.rheinmetal.tianshu.function.auxilium.storage.AXHashing;
+import com.rheinmetal.tianshu.function.llm.LlmThinkingContentFilter;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -41,6 +41,7 @@ public final class AXMemoryMaintenanceService {
     private final AXLlmClient llmClient;
     private final AXLlmPrimitiveClient primitiveClient;
     private final AXMemoryTaskPromptRepository promptRepository;
+    private final AXMemoryFactExtractionParser factExtractionParser = new AXMemoryFactExtractionParser();
     private final AXWorldEventMemoryLinker worldEventLinker = new AXWorldEventMemoryLinker(null);
     private final AXMemoryDerivedMaintenanceService derivedMaintenanceService;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -136,7 +137,8 @@ public final class AXMemoryMaintenanceService {
         TianshuEnvelope envelope = llmClient.submitDetached(compressionRequest(scope, batch), new AXLlmRequestHandler() {
             @Override
             public void onResult(LLMPromptResultPayload payload) {
-                if (payload == null || !payload.isCompleted() || payload.text().isBlank()) {
+                String text = cleanModelTaskText(payload == null ? "" : payload.text());
+                if (payload == null || !payload.isCompleted() || text.isBlank()) {
                     future.complete(null);
                     return;
                 }
@@ -151,7 +153,7 @@ public final class AXMemoryMaintenanceService {
                         "",
                         batch.turns().size(),
                         0,
-                        payload.text(),
+                        text,
                         worldEventLinker.attachedEventIds(attachedWorldEvents)
                 ));
             }
@@ -169,11 +171,12 @@ public final class AXMemoryMaintenanceService {
         TianshuEnvelope envelope = llmClient.submitDetached(extractionRequest(stm), new AXLlmRequestHandler() {
             @Override
             public void onResult(LLMPromptResultPayload payload) {
-                if (payload == null || !payload.isCompleted() || payload.text().isBlank()) {
+                String text = cleanModelTaskText(payload == null ? "" : payload.text());
+                if (payload == null || !payload.isCompleted() || text.isBlank()) {
                     future.complete(List.of());
                     return;
                 }
-                future.complete(parseFacts(scope, stm, payload.text()));
+                future.complete(parseFacts(scope, stm, text));
             }
 
             @Override
@@ -294,7 +297,7 @@ public final class AXMemoryMaintenanceService {
         );
         return new LLMPromptRequestPayload(
                 "ax.memory.compress." + batch.batchId(),
-                512,
+                0,
                 0.2f,
                 false,
                 true,
@@ -312,10 +315,10 @@ public final class AXMemoryMaintenanceService {
         );
         return new LLMPromptRequestPayload(
                 "ax.memory.extract." + stm.id(),
-                512,
+                0,
                 0.1f,
                 false,
-                false,
+                true,
                 "TASK",
                 500,
                 true,
@@ -325,12 +328,7 @@ public final class AXMemoryMaintenanceService {
 
     private List<AXMemoryEvent> parseFacts(AXScope scope, AXStmBlock stm, String text) {
         List<AXMemoryEvent> events = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (String line : text.split("\\R")) {
-            String fact = normalizeFactLine(line);
-            if (fact.isBlank() || !seen.add(AXHashing.sha256Short(fact))) {
-                continue;
-            }
+        for (String fact : factExtractionParser.parse(text)) {
             events.add(new AXMemoryEvent(
                     "",
                     fact,
@@ -350,22 +348,8 @@ public final class AXMemoryMaintenanceService {
         return events;
     }
 
-    private String normalizeFactLine(String line) {
-        if (line == null) {
-            return "";
-        }
-        String value = line.trim();
-        while (value.startsWith("-") || value.startsWith("*") || value.startsWith("\u2022")) {
-            value = value.substring(1).trim();
-        }
-        int dot = value.indexOf('.');
-        if (dot > 0 && dot <= 3) {
-            String prefix = value.substring(0, dot);
-            if (prefix.chars().allMatch(Character::isDigit)) {
-                value = value.substring(dot + 1).trim();
-            }
-        }
-        return value;
+    private String cleanModelTaskText(String text) {
+        return LlmThinkingContentFilter.strip(text).strip();
     }
 
     private List<AXEventVector> toVectors(List<AXMemoryEvent> events, LLMPrimitiveResultPayload result, String fallbackModelName, String fallbackNamespace) {
