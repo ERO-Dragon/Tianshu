@@ -19,7 +19,7 @@ run/
 *.class
 *.hprof
 .factorypath
-
+*.gguf
 # === OS ===
 .DS_Store
 Thumbs.db

@@ -142,6 +142,22 @@ class LLMServiceTest {
         assertEquals("5c13d660:fb945ffb", embed.embedResults().get(0).embeddingNamespace());
         assertEquals("test-embedding", runtime.embeddingModelName());
         assertEquals("5c13d660:fb945ffb", runtime.embeddingNamespace());
+        assertEquals(2, runtime.embeddingDimension());
+        assertTrue(runtime.embeddingAvailable());
+    }
+
+    @Test
+    void runtimeSnapshotKeepsEmbeddingAvailableSeparateFromChatReady() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        client.ready = false;
+        LLMService service = service(client, true);
+
+        var runtime = service.toRuntimeSnapshot(true);
+
+        assertFalse(runtime.modelLoaded());
+        assertTrue(runtime.embeddingAvailable());
+        assertEquals(0, runtime.embeddingDimension());
+        assertEquals("test-embedding", runtime.embeddingModelName());
     }
 
     @Test
@@ -234,10 +250,15 @@ class LLMServiceTest {
     }
 
     private static LLMService service(FakeInferenceClient client) {
+        return service(client, false);
+    }
+
+    private static LLMService service(FakeInferenceClient client, boolean embeddingConfigured) {
         return LLMService.builder()
             .env(new FakeGameEnvironment())
                 .config(new FakeConfig())
                 .inferenceClient(client)
+                .embeddingConfigured(embeddingConfigured)
                 .usePersistentCache(false)
                 .build();
     }

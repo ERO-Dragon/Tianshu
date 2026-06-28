@@ -23,7 +23,7 @@ public final class AXLlmPromptRequestBuilder {
         List<LLMPromptRequestPayload.ChunkPayload> chunks = List.of(LLMPromptRequestPayload.ChunkPayload.message(assembly.messages()));
         return new LLMPromptRequestPayload(
                 request == null ? "AX.request" : request.requestKey(),
-                1024,
+                0,
                 0.7f,
                 true,
                 false,

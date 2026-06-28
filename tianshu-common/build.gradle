@@ -48,8 +48,9 @@ test {
     if (mossOrtJarPath != null && !mossOrtJarPath.isBlank()) {
         classpath = files(mossOrtJarPath) + classpath
     }
-    systemProperty 'tianshu.llm.smoke', System.getProperty('tianshu.llm.smoke', 'false')
-    systemProperty 'tianshu.llm.smoke.model', System.getProperty('tianshu.llm.smoke.model', '')
+    systemProperty 'tianshu.llm.smoke', System.getProperty('tianshu.llm.smoke', System.getenv('TIANSHU_LLM_SMOKE') ?: 'false')
+    systemProperty 'tianshu.llm.smoke.model', System.getProperty('tianshu.llm.smoke.model', System.getenv('TIANSHU_LLM_SMOKE_MODEL') ?: '')
+    systemProperty 'tianshu.llm.smoke.embeddingModel', System.getProperty('tianshu.llm.smoke.embeddingModel', System.getenv('TIANSHU_LLM_SMOKE_EMBEDDING_MODEL') ?: '')
 }
 
 tasks.withType(JavaCompile).configureEach {

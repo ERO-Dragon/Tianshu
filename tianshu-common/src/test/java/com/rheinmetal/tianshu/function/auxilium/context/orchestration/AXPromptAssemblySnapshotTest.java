@@ -78,6 +78,8 @@ class AXPromptAssemblySnapshotTest {
         );
 
         assertEquals(1, payload.chunks().size());
+        assertEquals(0, payload.maxTokens());
+        assertTrue(!payload.thinking());
         assertEquals("message", payload.chunks().get(0).type());
         List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.chunks().get(0).messageContent();
         assertEquals("user", messages.get(messages.size() - 1).role());
@@ -85,6 +87,7 @@ class AXPromptAssemblySnapshotTest {
 
         String joined = messages.stream().map(LLMPromptRequestPayload.MessageItemPayload::content).collect(java.util.stream.Collectors.joining("\n\n"));
         assertOrdered(joined, "<ax_system>", "<game_context>", "<player_memory>", "<provided_context>", "<recent_dialogue>", "当前输入：这个怎么修？");
+        assertTrue(joined.contains("正常对话长度"));
         assertTrue(joined.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(joined.contains("minecraft:anvil | 铁砧可以修复工具。"));
         assertTrue(joined.contains("检索命中的 STM"));

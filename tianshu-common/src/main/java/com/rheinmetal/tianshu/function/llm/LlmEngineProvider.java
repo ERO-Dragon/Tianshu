@@ -26,6 +26,7 @@ public final class LlmEngineProvider {
     private final InferenceResourcePolicy resourcePolicy;
     private final Consumer<LlmStatusPayload> inferenceStatusListener;
     private JavaLlamaServer aiService;
+    private volatile boolean embeddingConfigured;
 
     public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config) {
         this(env, config, InferenceResourcePolicy.systemDefault(), null);
@@ -49,6 +50,7 @@ public final class LlmEngineProvider {
 
     private JavaLlamaServer createAiService() {
         Path modelPath = config.getLlmGgufFilePath();
+        embeddingConfigured = false;
         if (modelPath == null) {
             return null;
         }
@@ -84,6 +86,7 @@ public final class LlmEngineProvider {
 
         Path embeddingPath = config.getLlmEmbeddingGgufFilePath();
         if (embeddingPath != null) {
+            embeddingConfigured = true;
             builder.embeddingModel(embeddingPath.toString())
                     .embeddingContextSize(config.getLlmEmbeddingContextSize())
                     .embeddingThreads(Math.max(1, Math.min(processors, resourcePolicy.llmGpuHelperThreads())))
@@ -95,6 +98,10 @@ public final class LlmEngineProvider {
         }
 
         return builder.build();
+    }
+
+    public boolean isEmbeddingConfigured() {
+        return embeddingConfigured;
     }
 
     private int positiveOrOne(int value) {
@@ -236,6 +243,7 @@ public final class LlmEngineProvider {
     public void stop() {
         JavaLlamaServer service = aiService;
         aiService = null;
+        embeddingConfigured = false;
         if (service != null) {
             service.shutdown();
         }

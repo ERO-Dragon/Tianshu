@@ -196,6 +196,7 @@ public final class LlmModule implements TianshuManagedModule {
                         .cacheDirectory(ragCacheLayout.currentWorldCacheDirectory())
                         .globalCacheDirectory(ragCacheLayout.globalCacheDirectory())
                         .cacheNamespace(ragCacheLayout.cacheNamespace())
+                        .embeddingConfigured(engineProvider.isEmbeddingConfigured())
                         .build();
                 adapter.setLlmService(llmService);
                 markCapabilitiesReady();

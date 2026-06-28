@@ -37,6 +37,7 @@ public class LLMService {
     private final RagCacheManager worldRagCache;
     private final RagCacheManager globalRagCache;
     private final String cacheNamespace;
+    private final boolean embeddingConfigured;
     private volatile boolean initialized = false;
 
     private LLMService(Builder builder) {
@@ -47,6 +48,7 @@ public class LLMService {
                 ? builder.inferenceGovernor
                 : new LlmInferenceGovernor(config, builder.performanceProvider);
         this.cacheNamespace = safeText(builder.cacheNamespace);
+        this.embeddingConfigured = builder.embeddingConfigured;
 
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
         this.embeddingService = embeddingAdapter;
@@ -242,11 +244,11 @@ public class LLMService {
     }
 
     public float[] embed(String text) throws Exception {
-        return inferenceClient.embed(text);
+        return embeddingService.embed(text);
     }
 
     public float[][] embed(List<String> texts) throws Exception {
-        return inferenceClient.embed(texts);
+        return embeddingService.embed(texts);
     }
 
     public int getEmbeddingDimension() {
@@ -304,7 +306,7 @@ public class LLMService {
     public LLMRuntimeSnapshotPayload toRuntimeSnapshot(boolean includeRuntimeDetails) {
         boolean ready = isReady();
         int embeddingDimension = getEmbeddingDimension();
-        boolean hasEmbedding = inferenceClient != null && inferenceClient.isReady() && embeddingDimension > 0;
+        boolean hasEmbedding = embeddingConfigured || embeddingDimension > 0;
         LlmMtpCapabilitySnapshot mtp = getMtpCapability();
         String modelName = includeRuntimeDetails ? configName() : "";
         String modelProfile = includeRuntimeDetails ? modelProfile() : "";
@@ -730,6 +732,7 @@ public class LLMService {
         private java.nio.file.Path cacheDirectory;
         private java.nio.file.Path globalCacheDirectory;
         private String cacheNamespace = "default";
+        private boolean embeddingConfigured;
 
         public Builder env(IGameEnvironment env) {
             this.env = env;
@@ -778,6 +781,11 @@ public class LLMService {
 
         public Builder cacheNamespace(String cacheNamespace) {
             this.cacheNamespace = cacheNamespace;
+            return this;
+        }
+
+        public Builder embeddingConfigured(boolean embeddingConfigured) {
+            this.embeddingConfigured = embeddingConfigured;
             return this;
         }
 

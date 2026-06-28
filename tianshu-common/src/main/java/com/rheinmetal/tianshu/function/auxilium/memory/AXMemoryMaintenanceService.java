@@ -297,7 +297,7 @@ public final class AXMemoryMaintenanceService {
                 512,
                 0.2f,
                 false,
-                false,
+                true,
                 "TASK",
                 600,
                 true,
