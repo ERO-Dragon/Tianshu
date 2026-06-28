@@ -32,10 +32,12 @@ module.presence
 
 - 通过外层 platform 端口读取客户端状态
 - 维护不可变快照
-- 渲染轻量 HUD
+- 输出轻量 HUD 显示状态
 - 通过协议中心暴露交互上下文查询能力
 - 广播低频世界事件
 - 发布映迹自己拥有的低频客户端 topic
+
+实际 Minecraft GUI 绘制放在 `client/gui/presence`，不放进映迹采集和协议链路。
 
 一句话定位：
 
@@ -126,10 +128,6 @@ WORLD_ENVIRONMENT
 - `PresenceContextFactMapper` 和 `PresenceDisplayPolicy` 不再直接调用 Minecraft `I18n`
 - NeoForge 细节集中到 `NeoForgePresencePlatform`、`NeoForgePresenceAdvancementTracker`、`NeoForgePresenceScreenClassifier`、`NeoForgePresenceTextProvider`
 
-暂不处理：
-
-- HUD 底层绘制仍由当前 NeoForge renderer 直接接 `GuiGraphics`，留到三期 UI 解耦处理
-
 ### 3.3 三期：UI 解耦与能力扩展
 
 三期解决“映迹怎么继续长，但不把自己长成怪物”。
@@ -137,15 +135,30 @@ WORLD_ENVIRONMENT
 三期目标：
 
 - 把 HUD 渲染进一步从采集链路里拆开
-- 给更复杂的展示预留纯渲染层，不回流到协议 adapter
-- 给未来的新模块预留统一查询口，但不扩成通用总线
+- 把游戏内 HUD 绘制放到 `client/gui/presence/hud`
+- 让映迹核心只输出纯显示状态，不直接碰底层 GUI API
+- 设置页负责控制哪些模块状态进入 HUD，以及哪些 HUD 元素显示
+- HUD 元素允许逐步扩展成文本、icon、shader 等多种绘制形态，但只能停留在 GUI 层
+- 给未来调试页预留 GUI 层入口，但不回流到协议 adapter
 - 让 Presence 继续保持“轻量上下文模块”，而不是全局运行时
+
+已完成：
+
+- `PresenceHudDisplay` 作为 HUD 纯显示数据
+- `PresenceClientRuntime.currentHudDisplay()` 输出当前 HUD 状态
+- `client/gui/presence/hud/PresenceHudRenderer` 负责 HUD 元素调度
+- `PresenceStatusTextElementController` 负责状态文本元素的可见性和状态机
+- `PresenceStatusTextElementRenderer` 负责状态文本元素的 Minecraft 绘制
+- `PresenceHudSettings` 控制 HUD 总开关、状态文本开关和模块来源可见性
+- 映迹设置页已接入设置控制台，用于控制 HUD 元素和模块状态来源
+- AX responding 状态通过 `presenceStatusType=SPEAKING` 接入映迹状态展示
 
 三期预留：
 
 可能方向：
 
-- UI 渲染进一步解耦
+- 模块流水线调试页
+- icon / shader 类 HUD 元素
 - 更细的状态展示样式
 - 新的低频 Presence topic
 - 新模块接入统一查询
@@ -155,6 +168,7 @@ WORLD_ENVIRONMENT
 - 不把映迹改成完整 GUI 框架
 - 不把 Presence 改成业务调度中心
 - 不把状态展示改成消息历史系统
+- 调试流水线不常开，必须由内测/上线开关控制
 
 ## 4. 当前实现边界
 
@@ -165,7 +179,7 @@ WORLD_ENVIRONMENT
 - 处理 `PRESENCE.QUERY_CONTEXT`
 - 发布 `PRESENCE.WORLD_EVENT`
 - 发布 `PRESENCE.CHAT_MESSAGE`
-- 本地 HUD 展示
+- 输出本地 HUD 显示状态
 
 映迹不做这些：
 
@@ -175,6 +189,8 @@ WORLD_ENVIRONMENT
 - 不改协议中心功能定义
 - 不在 common 引入 NeoForge 活对象
 - 不在采集、查询、状态映射链路里直接依赖 NeoForge / Minecraft 版本 API
+- 不直接执行 Minecraft HUD 绘制
+- 不决定 GUI 元素的具体绘制形态
 
 ## 5. 协议入口
 
@@ -281,11 +297,9 @@ client/presence/
   PresenceStateStore
 
 client/presence/capture/
-  PresenceAdvancementTracker
   PresenceChatMessageSink
   PresenceEventCollector
   PresenceRefreshPolicy
-  PresenceScreenClassifier
   PresenceWorldEventSink
 
 client/presence/context/
@@ -308,12 +322,25 @@ client/presence/model/
 
 client/presence/status/
   PresenceDisplayPolicy
+  PresenceHudDisplay
   PresenceModuleStatusMapper
   PresenceStatusPriority
 
-client/presence/render/
+client/gui/presence/hud/
+  ClientConfigPresenceHudSettings
   PresenceHudRenderer
-  PresenceRenderer
+  PresenceHudSettings
+
+client/gui/presence/hud/element/
+  PresenceHudElementController
+  PresenceHudElementFrame
+  PresenceHudElementState
+  PresenceHudElementType
+  PresenceStatusTextElementController
+  PresenceStatusTextElementRenderer
+
+client/gui/presence/settings/
+  PresenceSettingsRegistrySource
 
 platform/
   PresencePlatform
@@ -335,11 +362,16 @@ platform/
 - IA / IR / AX 接入 Presence 查询
 - 旧的同步上下文桥已移除
 - 世界事件 topic 已纳入 Presence 一期/二期范围
+- HUD 绘制已迁到 `client/gui/presence/hud`
+- 映迹核心只输出 `PresenceHudDisplay`
+- 设置页已可控制 HUD 总开关、状态文本和 ASR / LLM / TTS / AX 状态来源
 
 待继续观察：
 
 - 快照字段组是否还需要再收紧
 - UI 是否需要进一步拆分
+- 是否需要内测调试页
+- HUD 是否需要新增 icon / shader 等元素
 
 ## 10. 设计原则
 
@@ -351,3 +383,5 @@ platform/
 6. 详细字段按字段组 dirty 管理，没请求不刷新。
 7. 协议处理线程不直接读取 Minecraft 活对象。
 8. 采集和文本映射依赖 platform 端口；NeoForge / Minecraft 版本敏感实现留在外层 `platform` 包。
+9. HUD 绘制属于 GUI 层；映迹核心只做显示状态控制。
+10. 设置页只控制显示策略，不影响采集、协议订阅和状态生成。

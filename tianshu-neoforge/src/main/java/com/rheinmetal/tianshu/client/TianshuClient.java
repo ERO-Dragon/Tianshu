@@ -10,6 +10,9 @@ import com.rheinmetal.tianshu.client.gui.auxilium.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.llm.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.gui.llm.LlmSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.presence.hud.ClientConfigPresenceHudSettings;
+import com.rheinmetal.tianshu.client.gui.presence.hud.PresenceHudRenderer;
+import com.rheinmetal.tianshu.client.gui.presence.settings.PresenceSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.module.TianshuSettingsModule;
 import com.rheinmetal.tianshu.client.gui.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.registry.ExternalSettingsRegistrySource;
@@ -78,6 +81,7 @@ public class TianshuClient {
     private static CoreBackedTianshuIntegrationApi integrationApi;
 
     private static PresenceClientRuntime presenceRuntime;
+    private static PresenceHudRenderer presenceHudRenderer;
 
     private static Optional<AsrInputService> asrInputService() {
         return coreManager == null ? Optional.empty() : coreManager.findService(AsrInputService.class);
@@ -90,7 +94,8 @@ public class TianshuClient {
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, axConfig);
-        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource);
+        TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config);
+        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource, presenceSource);
     }
 
     private static void beginVoiceInput() {
@@ -127,6 +132,7 @@ public class TianshuClient {
         axChatHudState = new AXChatHudState();
         axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axConfig);
         presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(), new NeoForgePresenceTextProvider());
+        presenceHudRenderer = new PresenceHudRenderer(presenceRuntime::currentHudDisplay, new ClientConfigPresenceHudSettings(config));
         PresenceClientHooks.bind(presenceRuntime);
 
         audioManager = new AudioManager();
@@ -307,8 +313,8 @@ public class TianshuClient {
 
     public static void onRenderGui(RenderGuiEvent.Post event) {
         ClientLlmRuntimeBridge.markFrame();
-        if (presenceRuntime != null) {
-            presenceRuntime.render(event.getGuiGraphics(), 0.0F);
+        if (presenceHudRenderer != null) {
+            presenceHudRenderer.render(event.getGuiGraphics(), 0.0F);
         }
         if (axChatHudRenderer != null) {
             axChatHudRenderer.render(event.getGuiGraphics(), 0.0F);
@@ -376,6 +382,7 @@ public class TianshuClient {
         LOGGER.info("关闭天枢客户端资源");
         PresenceClientRuntime previousPresenceRuntime = presenceRuntime;
         presenceRuntime = null;
+        presenceHudRenderer = null;
         PresenceClientHooks.clear(previousPresenceRuntime);
         if (integrationApi != null) {
             TianshuIntegrationAccess.clear(integrationApi);

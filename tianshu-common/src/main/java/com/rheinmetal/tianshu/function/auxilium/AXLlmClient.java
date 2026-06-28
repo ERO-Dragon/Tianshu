@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
 public final class AXLlmClient {
@@ -79,8 +80,8 @@ public final class AXLlmClient {
         handlers.clear();
     }
 
-    public void cancelChatRequests(AXTurnCancellation cancellation) {
-        cancelRequestsByLane("CHAT", cancellation == null
+    public boolean cancelChatRequests(AXTurnCancellation cancellation) {
+        return cancelRequestsByLane("CHAT", cancellation == null
                 ? AXTurnCancellation.playerInterrupted("AX chat request cancelled")
                 : cancellation);
     }
@@ -152,14 +153,15 @@ public final class AXLlmClient {
         }
     }
 
-    private void cancelRequestsByLane(String lane, AXTurnCancellation cancellation) {
+    private boolean cancelRequestsByLane(String lane, AXTurnCancellation cancellation) {
         String expectedLane = lane == null ? "" : lane.trim().toUpperCase();
         if (expectedLane.isBlank()) {
-            return;
+            return false;
         }
         AXTurnCancellation effective = cancellation == null
                 ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
                 : cancellation;
+        AtomicBoolean cancelled = new AtomicBoolean(false);
         handlers.entrySet().removeIf(entry -> {
             PendingRequest request = entry.getValue();
             if (request == null || !expectedLane.equals(request.lane())) {
@@ -167,8 +169,10 @@ public final class AXLlmClient {
             }
             request.handler().onCancelled(effective);
             adapter.unregisterLlmResponses(entry.getKey());
+            cancelled.set(true);
             return true;
         });
+        return cancelled.get();
     }
 
     private String payloadLane(TianshuEnvelope envelope) {

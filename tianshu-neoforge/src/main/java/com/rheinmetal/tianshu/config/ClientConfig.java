@@ -30,6 +30,12 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue LLM_FRAME_GUARD_ENABLED;
     public static final ModConfigSpec.IntValue LLM_FRAME_GUARD_TARGET_FPS;
     public static final ModConfigSpec.BooleanValue LLM_MTP_ENABLED;
+    public static final ModConfigSpec.BooleanValue PRESENCE_HUD_ENABLED;
+    public static final ModConfigSpec.BooleanValue PRESENCE_STATUS_TEXT_ENABLED;
+    public static final ModConfigSpec.BooleanValue PRESENCE_ASR_STATUS_VISIBLE;
+    public static final ModConfigSpec.BooleanValue PRESENCE_LLM_STATUS_VISIBLE;
+    public static final ModConfigSpec.BooleanValue PRESENCE_TTS_STATUS_VISIBLE;
+    public static final ModConfigSpec.BooleanValue PRESENCE_AX_STATUS_VISIBLE;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.IntValue ASR_PORT;
@@ -69,6 +75,15 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         LLM_FRAME_GUARD_ENABLED = builder.define("frameGuardEnabled", true);
         LLM_FRAME_GUARD_TARGET_FPS = builder.defineInRange("frameGuardTargetFps", 60, 15, 240);
         LLM_MTP_ENABLED = builder.define("mtpEnabled", false);
+        builder.pop();
+
+        builder.comment("映迹 HUD 显示设置").push("presence");
+        PRESENCE_HUD_ENABLED = builder.define("hudEnabled", true);
+        PRESENCE_STATUS_TEXT_ENABLED = builder.define("statusTextEnabled", true);
+        PRESENCE_ASR_STATUS_VISIBLE = builder.define("asrStatusVisible", true);
+        PRESENCE_LLM_STATUS_VISIBLE = builder.define("llmStatusVisible", true);
+        PRESENCE_TTS_STATUS_VISIBLE = builder.define("ttsStatusVisible", true);
+        PRESENCE_AX_STATUS_VISIBLE = builder.define("axStatusVisible", true);
         builder.pop();
 
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
@@ -281,6 +296,54 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setLlmMtpEnabled(boolean enabled) {
         LLM_MTP_ENABLED.set(enabled);
+    }
+
+    public boolean isPresenceHudEnabled() {
+        return PRESENCE_HUD_ENABLED.get();
+    }
+
+    public void setPresenceHudEnabled(boolean enabled) {
+        PRESENCE_HUD_ENABLED.set(enabled);
+    }
+
+    public boolean isPresenceStatusTextEnabled() {
+        return PRESENCE_STATUS_TEXT_ENABLED.get();
+    }
+
+    public void setPresenceStatusTextEnabled(boolean enabled) {
+        PRESENCE_STATUS_TEXT_ENABLED.set(enabled);
+    }
+
+    public boolean isPresenceAsrStatusVisible() {
+        return PRESENCE_ASR_STATUS_VISIBLE.get();
+    }
+
+    public void setPresenceAsrStatusVisible(boolean visible) {
+        PRESENCE_ASR_STATUS_VISIBLE.set(visible);
+    }
+
+    public boolean isPresenceLlmStatusVisible() {
+        return PRESENCE_LLM_STATUS_VISIBLE.get();
+    }
+
+    public void setPresenceLlmStatusVisible(boolean visible) {
+        PRESENCE_LLM_STATUS_VISIBLE.set(visible);
+    }
+
+    public boolean isPresenceTtsStatusVisible() {
+        return PRESENCE_TTS_STATUS_VISIBLE.get();
+    }
+
+    public void setPresenceTtsStatusVisible(boolean visible) {
+        PRESENCE_TTS_STATUS_VISIBLE.set(visible);
+    }
+
+    public boolean isPresenceAxStatusVisible() {
+        return PRESENCE_AX_STATUS_VISIBLE.get();
+    }
+
+    public void setPresenceAxStatusVisible(boolean visible) {
+        PRESENCE_AX_STATUS_VISIBLE.set(visible);
     }
 
     @Override

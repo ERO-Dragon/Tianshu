@@ -36,8 +36,10 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -104,6 +106,94 @@ class AXTurnOrchestratorTest {
         await(() -> spoken.size() == 2);
         assertEquals("This is the first sentence. This is the final suffix.", chatSink.text.toString());
         assertEquals(List.of("This is the first sentence.", "This is the final suffix."), spoken);
+    }
+
+    @Test
+    void publishesTurnRuntimeStatuses() {
+        ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXTurnStatusPublisher statusPublisher = new AXTurnStatusPublisher(adapter);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                AXContextBudget.DEFAULT,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                null,
+                statusPublisher
+        );
+        DialogueDeliveryPayload delivery = delivery();
+        TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
+                IaProtocolAdapter.SOURCE_ID,
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.DIALOGUE_DELIVERY,
+                delivery
+        ).build();
+
+        orchestrator.startTurn(deliveryEnvelope, delivery);
+
+        await(() -> llmRequest.get() != null);
+        assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_ACCEPTED, AXTurnStatusPublisher.KEY_TURN_ACCEPTED);
+        assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_PROCESSING, AXTurnStatusPublisher.KEY_TURN_PROCESSING);
+        assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_LLM_THINKING, AXTurnStatusPublisher.KEY_LLM_THINKING);
+
+        LLMPromptRequestPayload requestPayload = (LLMPromptRequestPayload) llmRequest.get().payload();
+        llmClient.handleStreamChunk(
+                llmRequest.get().envelopeId(),
+                LLMPromptStreamChunkPayload.chunk(requestPayload.requestId(), "Streaming response.", 0)
+        );
+
+        ModuleStatus responding = assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_RESPONDING, AXTurnStatusPublisher.KEY_RESPONDING);
+        assertEquals("responding", responding.tags().get("axPipelineStage"));
+        assertEquals("SPEAKING", responding.tags().get("presenceStatusType"));
+    }
+
+    @Test
+    void publishesFailureAndInterruptionStatuses() {
+        ProtocolRuntime failedRuntime = ProtocolBootstrap.create(Runnable::run);
+        AtomicReference<TianshuEnvelope> failedLlmRequest = new AtomicReference<>();
+        registerLlmSink(failedRuntime, failedLlmRequest);
+        AXProtocolAdapter failedAdapter = new AXProtocolAdapter(failedRuntime);
+        AXTurnStatusPublisher failedStatusPublisher = new AXTurnStatusPublisher(failedAdapter);
+        AXLlmClient failedLlmClient = new AXLlmClient(failedAdapter);
+        AXTurnOrchestrator failedOrchestrator = statusOrchestrator(failedAdapter, failedLlmClient, failedStatusPublisher);
+
+        failedOrchestrator.startTurn(deliveryEnvelope(), delivery());
+        await(() -> failedLlmRequest.get() != null);
+        LLMPromptRequestPayload failedRequestPayload = (LLMPromptRequestPayload) failedLlmRequest.get().payload();
+        failedLlmClient.handleResult(
+                failedLlmRequest.get().envelopeId(),
+                LLMPromptResultPayload.failed(failedRequestPayload.requestId(), "TEST_FAILURE", "test failure")
+        );
+
+        ModuleStatus failed = assertStatusKey(failedRuntime, AXTurnStatusPublisher.TYPE_FAILED, AXTurnStatusPublisher.KEY_FAILED);
+        assertEquals("failed", failed.tags().get("axPipelineStage"));
+        assertEquals("llm.TEST_FAILURE", failed.tags().get("reasonCode"));
+
+        ProtocolRuntime interruptedRuntime = ProtocolBootstrap.create(Runnable::run);
+        AtomicReference<TianshuEnvelope> interruptedLlmRequest = new AtomicReference<>();
+        registerLlmSink(interruptedRuntime, interruptedLlmRequest);
+        AXProtocolAdapter interruptedAdapter = new AXProtocolAdapter(interruptedRuntime);
+        AXTurnStatusPublisher interruptedStatusPublisher = new AXTurnStatusPublisher(interruptedAdapter);
+        AXLlmClient interruptedLlmClient = new AXLlmClient(interruptedAdapter);
+        AXTurnOrchestrator interruptedOrchestrator = statusOrchestrator(interruptedAdapter, interruptedLlmClient, interruptedStatusPublisher);
+
+        interruptedOrchestrator.startTurn(deliveryEnvelope(), delivery());
+        await(() -> interruptedLlmRequest.get() != null);
+        assertTrue(interruptedLlmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("test interruption")));
+
+        ModuleStatus interrupted = assertStatusKey(interruptedRuntime, AXTurnStatusPublisher.TYPE_INTERRUPTED, AXTurnStatusPublisher.KEY_INTERRUPTED);
+        assertEquals("interrupted", interrupted.tags().get("axPipelineStage"));
     }
 
     @Test
@@ -323,6 +413,64 @@ class AXTurnOrchestratorTest {
                 System.currentTimeMillis(),
                 System.currentTimeMillis() + 30_000L
         );
+    }
+
+    private static TianshuEnvelope deliveryEnvelope() {
+        return EnvelopeBuilder.commandToCapability(
+                IaProtocolAdapter.SOURCE_ID,
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.DIALOGUE_DELIVERY,
+                delivery()
+        ).build();
+    }
+
+    private static AXTurnOrchestrator statusOrchestrator(
+            AXProtocolAdapter adapter,
+            AXLlmClient llmClient,
+            AXTurnStatusPublisher statusPublisher
+    ) {
+        return new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                AXContextBudget.DEFAULT,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                null,
+                statusPublisher
+        );
+    }
+
+    private static ModuleStatus assertStatusKey(ProtocolRuntime runtime, String statusType, String messageKey) {
+        ModuleStatus status = awaitStatus(runtime, statusType);
+        assertNotNull(status);
+        assertEquals(AXProtocolAdapter.MODULE_ID, status.moduleId());
+        assertEquals(messageKey, status.messageKey());
+        return status;
+    }
+
+    private static ModuleStatus awaitStatus(ProtocolRuntime runtime, String statusType) {
+        long deadline = System.currentTimeMillis() + 2000L;
+        ModuleStatus status;
+        do {
+            status = runtime.moduleStatusCache().latest(AXProtocolAdapter.MODULE_ID, statusType).orElse(null);
+            if (status != null) {
+                return status;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        } while (System.currentTimeMillis() < deadline);
+        return null;
     }
 
     private static void registerLlmSink(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {

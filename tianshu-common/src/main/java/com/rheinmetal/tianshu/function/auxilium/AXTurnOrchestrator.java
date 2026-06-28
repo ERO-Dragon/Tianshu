@@ -42,6 +42,7 @@ public final class AXTurnOrchestrator {
     private final AXMemorySystem memorySystem;
     private final AXOutputProcessor outputProcessor;
     private final AXMemoryRetriever memoryRetriever;
+    private final AXTurnStatusPublisher statusPublisher;
 
     public AXTurnOrchestrator(
             AXScopeProvider scopeProvider,
@@ -58,6 +59,40 @@ public final class AXTurnOrchestrator {
             AXOutputProcessor outputProcessor,
             AXMemoryRetriever memoryRetriever
     ) {
+        this(
+                scopeProvider,
+                dialogueInputMapper,
+                inputNormalizer,
+                maintenanceCoordinator,
+                runtimeContextClient,
+                contextCollector,
+                llmRequestBuilder,
+                contextBudget,
+                llmClient,
+                sessionController,
+                memorySystem,
+                outputProcessor,
+                memoryRetriever,
+                null
+        );
+    }
+
+    public AXTurnOrchestrator(
+            AXScopeProvider scopeProvider,
+            AXDialogueInputMapper dialogueInputMapper,
+            AXInputNormalizer inputNormalizer,
+            AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
+            AXRuntimeContextClient runtimeContextClient,
+            AXContextCollector contextCollector,
+            AXLlmPromptRequestBuilder llmRequestBuilder,
+            AXContextBudget contextBudget,
+            AXLlmClient llmClient,
+            AXSessionController sessionController,
+            AXMemorySystem memorySystem,
+            AXOutputProcessor outputProcessor,
+            AXMemoryRetriever memoryRetriever,
+            AXTurnStatusPublisher statusPublisher
+    ) {
         this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
         this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
         this.inputNormalizer = Objects.requireNonNull(inputNormalizer, "inputNormalizer");
@@ -71,6 +106,7 @@ public final class AXTurnOrchestrator {
         this.memorySystem = memorySystem;
         this.outputProcessor = Objects.requireNonNull(outputProcessor, "outputProcessor");
         this.memoryRetriever = memoryRetriever;
+        this.statusPublisher = statusPublisher;
     }
 
     public AXTurnOrchestrator(
@@ -111,6 +147,10 @@ public final class AXTurnOrchestrator {
             sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
             return;
         }
+        if (statusPublisher != null) {
+            statusPublisher.accepted();
+            statusPublisher.processing();
+        }
 
         AXRequest request = AXRequest.fromNormalizedInput(input);
         if (maintenanceCoordinator != null) {
@@ -131,6 +171,9 @@ public final class AXTurnOrchestrator {
             submitLlmTurn(deliveryEnvelope, delivery, scope, request, runtimeContextFacts, AXMemoryRetrievalResult.empty());
             return;
         }
+        if (statusPublisher != null) {
+            statusPublisher.retrievingMemory();
+        }
         memoryRetriever.retrieve(
                 new AXMemoryRetrievalRequest(scope, request, contextBudget.maxMemoryItems(), contextBudget.memoryTokenBudget()),
                 memory -> submitLlmTurn(deliveryEnvelope, delivery, scope, request, runtimeContextFacts, memory)
@@ -142,6 +185,9 @@ public final class AXTurnOrchestrator {
         LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context)
                 .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));
+        if (statusPublisher != null) {
+            statusPublisher.thinking();
+        }
         llmClient.submit(deliveryEnvelope, llmPayload, new PendingTurn(deliveryEnvelope, delivery, scope, outputTurn));
     }
 
@@ -167,6 +213,7 @@ public final class AXTurnOrchestrator {
         private final AXScope scope;
         private final AXOutputProcessor.AXOutputTurn outputTurn;
         private final StringBuilder streamed = new StringBuilder();
+        private boolean respondingPublished;
 
         private PendingTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn) {
             this.deliveryEnvelope = deliveryEnvelope;
@@ -180,16 +227,23 @@ public final class AXTurnOrchestrator {
             if (payload == null || payload.finished() || payload.text().isEmpty()) {
                 return;
             }
+            publishRespondingOnce();
             streamed.append(payload.text());
-            outputTurn.append(payload.text());
+            appendOutput(payload.text(), "output.stream_failed");
         }
 
         @Override
         public void onResult(LLMPromptResultPayload payload) {
             if (payload != null && payload.isCompleted()) {
                 String text = finalText(payload);
+                if (!text.isBlank()) {
+                    publishRespondingOnce();
+                }
                 appendFinalSuffix(text);
-                outputTurn.complete(text);
+                if (!completeOutput(text)) {
+                    sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
+                    return;
+                }
                 appendTurn(scope, "assistant", text, delivery.sessionId(), delivery.turnId());
                 if (maintenanceCoordinator != null) {
                     maintenanceCoordinator.afterAssistantAnswer(scope);
@@ -197,7 +251,10 @@ public final class AXTurnOrchestrator {
                 sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
                 return;
             }
-            outputTurn.fail(payload == null ? "LLM returned no result" : payload.errorMessage());
+            if (statusPublisher != null) {
+                statusPublisher.failed(resultFailureReason(payload));
+            }
+            failOutput(payload == null ? "LLM returned no result" : payload.errorMessage(), "output.failure_notice_failed");
             sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
         }
 
@@ -206,8 +263,33 @@ public final class AXTurnOrchestrator {
             AXTurnCancellation effective = cancellation == null
                     ? AXTurnCancellation.playerInterrupted("AX turn cancelled")
                     : cancellation;
-            outputTurn.fail(effective.message());
+            if (statusPublisher != null) {
+                if (effective.releaseReason() == DialogueReleaseReason.PLAYER_CANCELLED) {
+                    statusPublisher.interrupted();
+                } else {
+                    statusPublisher.failed("cancelled." + effective.releaseReason().name());
+                }
+            }
+            failOutput(effective.message(), "output.cancel_notice_failed");
             sessionController.release(deliveryEnvelope, delivery, effective.releaseReason());
+        }
+
+        private void publishRespondingOnce() {
+            if (respondingPublished || statusPublisher == null) {
+                return;
+            }
+            respondingPublished = true;
+            statusPublisher.responding();
+        }
+
+        private String resultFailureReason(LLMPromptResultPayload payload) {
+            if (payload == null) {
+                return "llm.result.missing";
+            }
+            if (payload.errorCode() != null && !payload.errorCode().isBlank()) {
+                return "llm." + payload.errorCode();
+            }
+            return "llm." + payload.status().toLowerCase(java.util.Locale.ROOT);
         }
 
         private String finalText(LLMPromptResultPayload payload) {
@@ -225,7 +307,43 @@ public final class AXTurnOrchestrator {
             }
             String suffix = text.substring(current.length());
             streamed.append(suffix);
-            outputTurn.append(suffix);
+            appendOutput(suffix, "output.final_suffix_failed");
+        }
+
+        private boolean appendOutput(String text, String reasonCode) {
+            try {
+                outputTurn.append(text);
+                return true;
+            } catch (RuntimeException exception) {
+                publishOutputFailed(reasonCode);
+                failOutput("", "output.failure_notice_failed");
+                return false;
+            }
+        }
+
+        private boolean completeOutput(String text) {
+            try {
+                outputTurn.complete(text);
+                return true;
+            } catch (RuntimeException exception) {
+                publishOutputFailed("output.complete_failed");
+                failOutput("", "output.failure_notice_failed");
+                return false;
+            }
+        }
+
+        private void failOutput(String reason, String fallbackReasonCode) {
+            try {
+                outputTurn.fail(reason == null ? "" : reason);
+            } catch (RuntimeException exception) {
+                publishOutputFailed(fallbackReasonCode);
+            }
+        }
+
+        private void publishOutputFailed(String reasonCode) {
+            if (statusPublisher != null) {
+                statusPublisher.failed(reasonCode);
+            }
         }
     }
 }

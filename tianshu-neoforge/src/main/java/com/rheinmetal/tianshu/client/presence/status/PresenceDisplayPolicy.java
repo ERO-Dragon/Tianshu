@@ -99,6 +99,15 @@ public final class PresenceDisplayPolicy {
         return textProvider.exists(fallbackKey) ? textProvider.text(fallbackKey) : "";
     }
 
+    public PresenceHudDisplay hudDisplay(PresenceStatusSnapshot snapshot) {
+        PresenceStatusSnapshot effective = snapshot == null ? PresenceStatusSnapshot.idle() : snapshot;
+        String text = displayText(effective);
+        if (text.isBlank()) {
+            return PresenceHudDisplay.HIDDEN;
+        }
+        return new PresenceHudDisplay(true, text, effective.severity(), effective.statusType(), effective.sourceModuleId());
+    }
+
     private PresenceStatusSnapshot status(
             PresenceStatusType type,
             PresenceSeverity severity,

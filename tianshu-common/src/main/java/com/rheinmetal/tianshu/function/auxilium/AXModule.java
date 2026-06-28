@@ -61,6 +61,7 @@ public final class AXModule implements TianshuManagedModule {
     private AXScopeProvider scopeProvider;
     private AXMemorySystem memorySystem;
     private AXDialogueGateway dialogueGateway;
+    private AXTurnStatusPublisher turnStatusPublisher;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
 
@@ -101,6 +102,7 @@ public final class AXModule implements TianshuManagedModule {
     @Override
     public void register(ModuleRegistrationContext context) {
         llmClient = new AXLlmClient(adapter);
+        turnStatusPublisher = new AXTurnStatusPublisher(adapter);
         retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, 1_000L);
         maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, 30_000L);
         storageLayout = new AXStorageLayout(config);
@@ -144,9 +146,10 @@ public final class AXModule implements TianshuManagedModule {
                 sessionController,
                 memorySystem,
                 outputProcessor,
-                memoryRetriever
+                memoryRetriever,
+                turnStatusPublisher
         );
-        dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator);
+        dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
         adapter.registerDialogueInputCapability(dialogueGateway::handleDelivery);
         adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
@@ -209,6 +212,7 @@ public final class AXModule implements TianshuManagedModule {
         scopeProvider = null;
         memorySystem = null;
         dialogueGateway = null;
+        turnStatusPublisher = null;
     }
 
     private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {

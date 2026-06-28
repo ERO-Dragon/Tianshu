@@ -612,6 +612,7 @@ class LlmProtocolAdapterTest {
                 1_000L
         ));
 
+        await(() -> statuses.size() == 1);
         assertEquals(1, statuses.size());
         LlmStatusPayload status = statuses.get(0);
         assertEquals("task-1", status.taskId());

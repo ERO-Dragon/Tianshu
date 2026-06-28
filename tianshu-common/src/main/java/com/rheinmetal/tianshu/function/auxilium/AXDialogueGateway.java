@@ -9,10 +9,16 @@ import java.util.Objects;
 public final class AXDialogueGateway {
     private final AXAccessController accessController;
     private final AXTurnOrchestrator orchestrator;
+    private final AXTurnStatusPublisher statusPublisher;
 
     public AXDialogueGateway(AXAccessController accessController, AXTurnOrchestrator orchestrator) {
+        this(accessController, orchestrator, null);
+    }
+
+    public AXDialogueGateway(AXAccessController accessController, AXTurnOrchestrator orchestrator, AXTurnStatusPublisher statusPublisher) {
         this.accessController = Objects.requireNonNull(accessController, "accessController");
         this.orchestrator = Objects.requireNonNull(orchestrator, "orchestrator");
+        this.statusPublisher = statusPublisher;
     }
 
     public void handleDelivery(TianshuEnvelope envelope, ProtocolContext context) {
@@ -28,6 +34,9 @@ public final class AXDialogueGateway {
             orchestrator.startTurn(envelope, payload);
             complete(context, envelope);
         } catch (Exception e) {
+            if (statusPublisher != null) {
+                statusPublisher.failed("gateway.turn_start_failed");
+            }
             fail(context, envelope, "AX_TURN_START_FAILED", safeMessage(e), e);
         }
     }

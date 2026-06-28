@@ -4,14 +4,12 @@ import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.client.presence.render.PresenceHudRenderer;
-import com.rheinmetal.tianshu.client.presence.render.PresenceRenderer;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
+import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
 import com.rheinmetal.tianshu.platform.PresencePlatform;
 import com.rheinmetal.tianshu.platform.PresenceTextProvider;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.Objects;
 
@@ -21,7 +19,6 @@ public final class PresenceClientRuntime {
     private final PresenceContextFactMapper contextFactMapper;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final PresenceEventCollector eventCollector;
-    private final PresenceRenderer renderer;
 
     public PresenceClientRuntime(PresencePlatform platform, PresenceTextProvider textProvider) {
         PresenceTextProvider effectiveTextProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
@@ -29,7 +26,6 @@ public final class PresenceClientRuntime {
         contextFactMapper = new PresenceContextFactMapper(effectiveTextProvider);
         contextQueryCoordinator = new PresenceContextQueryCoordinator(stateStore, contextFactMapper);
         eventCollector = new PresenceEventCollector(stateStore, Objects.requireNonNull(platform, "platform"));
-        renderer = new PresenceHudRenderer(stateStore, displayPolicy);
     }
 
     public PresenceContextSnapshot contextSnapshot() {
@@ -72,7 +68,7 @@ public final class PresenceClientRuntime {
         eventCollector.recordAdvancementUpdate(nativePacket);
     }
 
-    public void render(GuiGraphics graphics, float partialTick) {
-        renderer.render(graphics, partialTick);
+    public PresenceHudDisplay currentHudDisplay() {
+        return displayPolicy.hudDisplay(stateStore.statusSnapshot());
     }
 }
