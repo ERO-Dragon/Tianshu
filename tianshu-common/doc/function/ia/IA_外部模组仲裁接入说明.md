@@ -183,7 +183,7 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 
 非 owner 不会收到该 payload。
 
-其中 `repairedText`、`normalizedText`、`matchedWakeWords`、`matchedItemIds` 来自 IR 的文本侧结果。`matchedWakeWords` 在 IA 仲裁语义中只表示 wake word，不参与模糊评分。`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过平台 `DialogueContextProvider` 捕获的仲裁快照；`matchedEntityRefs` 使用 `DialogueEntityRef`，会同时包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会提供手持物、身上装备、准星实体、维度或按键状态。
+其中 `repairedText`、`normalizedText`、`matchedWakeWords`、`matchedItemIds` 来自 IR 的文本侧结果。`matchedWakeWords` 在 IA 仲裁语义中只表示 wake word，不参与模糊评分。`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过 `PRESENCE.QUERY_CONTEXT` 获取的仲裁快照；`matchedEntityRefs` 使用 `DialogueEntityRef`，会同时包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
 
 ## 5. 处理 delivery
 

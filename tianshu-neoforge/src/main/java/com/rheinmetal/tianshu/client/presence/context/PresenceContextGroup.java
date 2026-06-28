@@ -24,21 +24,17 @@ public enum PresenceContextGroup {
     }
 
     public static EnumSet<PresenceContextGroup> fromFactIds(List<String> requestedFactIds) {
-        List<String> effective = requestedFactIds == null || requestedFactIds.isEmpty()
-                ? PresenceContextFactIds.AX_PROMPT_DEFAULTS
-                : requestedFactIds;
         EnumSet<PresenceContextGroup> groups = EnumSet.noneOf(PresenceContextGroup.class);
-        for (String factId : effective) {
+        if (requestedFactIds == null || requestedFactIds.isEmpty()) {
+            return groups;
+        }
+        for (String factId : requestedFactIds) {
             PresenceContextGroup group = fromFactId(factId);
             if (group != null) {
                 groups.add(group);
             }
         }
         return groups;
-    }
-
-    public static EnumSet<PresenceContextGroup> details() {
-        return EnumSet.of(PLAYER_STATUS, PLAYER_INVENTORY, PLAYER_ACTIVE_EFFECTS, WORLD_ENVIRONMENT);
     }
 
     public static EnumSet<PresenceContextGroup> copyOf(Set<PresenceContextGroup> groups) {

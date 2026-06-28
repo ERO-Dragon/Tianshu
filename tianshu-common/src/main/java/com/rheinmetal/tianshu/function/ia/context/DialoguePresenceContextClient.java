@@ -54,7 +54,7 @@ public final class DialoguePresenceContextClient {
                 userText,
                 List.of(),
                 System.currentTimeMillis(),
-                requestedFactIds == null || requestedFactIds.isEmpty() ? mapper.defaultFactIds() : requestedFactIds
+                requestedFactIds
         );
         TianshuEnvelope queryEnvelope = adapter.buildPresenceContextQuery(parent, payload);
         pending.put(queryEnvelope.envelopeId(), new PendingQuery(playerId, completion));

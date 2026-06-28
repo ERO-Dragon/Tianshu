@@ -18,6 +18,10 @@ import java.util.Optional;
 
 public final class AXPromptResourceRepository {
     private static final String BUILTIN_TEXTS_RESOURCE = "/com/rheinmetal/tianshu/function/auxilium/prompts/ax_prompt_texts.json";
+    private static final String[] BUILTIN_PROFILE_RESOURCES = {
+            "/com/rheinmetal/tianshu/function/auxilium/prompts/general_ax.en_us.default.json",
+            "/com/rheinmetal/tianshu/function/auxilium/prompts/general_ax.zh_cn.default.json"
+    };
 
     private final AXStorageLayout layout;
     private final AXJsonStore jsonStore;
@@ -26,6 +30,7 @@ public final class AXPromptResourceRepository {
         this.layout = layout;
         this.jsonStore = jsonStore;
         ensureExternalTextsCatalog();
+        ensureExternalProfileCatalog();
     }
 
     public AXPromptProfile loadProfile(AXPromptTask task, AXPromptLanguage language, String variant) {
@@ -133,6 +138,29 @@ public final class AXPromptResourceRepository {
             }
             Files.createDirectories(layout.promptsRoot());
             Files.copy(stream, layout.promptTextsFile());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void ensureExternalProfileCatalog() {
+        if (layout == null) {
+            return;
+        }
+        Path promptDir = layout.sharedRoot().resolve("prompts");
+        try {
+            Files.createDirectories(promptDir);
+            for (String resource : BUILTIN_PROFILE_RESOURCES) {
+                Path target = promptDir.resolve(resource.substring(resource.lastIndexOf('/') + 1));
+                if (Files.isRegularFile(target)) {
+                    continue;
+                }
+                try (InputStream stream = AXPromptResourceRepository.class.getResourceAsStream(resource)) {
+                    if (stream == null) {
+                        continue;
+                    }
+                    Files.copy(stream, target);
+                }
+            }
         } catch (Exception ignored) {
         }
     }

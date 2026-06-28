@@ -313,11 +313,11 @@ DialogueArbitrationRequestPayload(
 | `timestampMillis` | 请求创建时间。 |
 | `expireAtMillis` | 请求过期时间。 |
 
-仲裁请求 payload 只承载 IR 的文本侧结果：修复文本、归一化文本、命中的 wake word 和识别出的物品 ID。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 自己通过 `DialogueContextProvider` 捕获，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。
+仲裁请求 payload 只承载 IR 的文本侧结果：修复文本、归一化文本、命中的 wake word 和识别出的物品 ID。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 通过 `PRESENCE.QUERY_CONTEXT` 按需请求，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。
 
-IA 会订阅 `INPUT.ASR_SPEECH_ACTIVITY / ASR_SPEECH_ACTIVITY`。当 ASR 发布 `speaking=true` 时，IA 立即按 `sourceSessionId` 冻结一份上下文快照；当后续 IR 提交带有相同 `sourceSessionId` 的文本仲裁请求时，IA 优先消费这份冻结快照。`speaking=false` 不会立刻删除快照，因为最终文本通常在用户说完后才进入 IR；快照会短时间保留，直到被仲裁消费或过期清理。这样 claim 判断使用的是“用户开始说话时”的手持、装备、准星和按键状态，而不是 ASR 识别完成后的状态。
+IA 会订阅 `INPUT.ASR_SPEECH_ACTIVITY / ASR_SPEECH_ACTIVITY`。当 ASR 发布 `speaking=true` 时，IA 立即通过 Presence 请求并按 `sourceSessionId` 冻结一份上下文快照；当后续 IR 提交带有相同 `sourceSessionId` 的文本仲裁请求时，IA 优先消费这份冻结快照。`speaking=false` 不会立刻删除快照，因为最终文本通常在用户说完后才进入 IR；快照会短时间保留，直到被仲裁消费或过期清理。这样 claim 判断使用的是“用户开始说话时”的手持、装备、准星和按键状态，而不是 ASR 识别完成后的状态。
 
-实际代码中，payload 不应直接携带 Minecraft 活对象。平台侧采集器只能把世界状态转换成 common 可理解的 ID、快照和引用描述；采集失败时应降级为空 `DialogueContextFrame`，不能阻断仲裁。
+实际代码中，payload 不应直接携带 Minecraft 活对象。Presence 只能把世界状态转换成 common 可理解的 ID、快照和引用描述；采集失败或超时时应降级为空 `DialogueContextFrame`，不能阻断仲裁。
 
 ## 8. 仲裁结果契约
 

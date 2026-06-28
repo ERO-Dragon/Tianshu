@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextClient;
 import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextFact;
+import com.rheinmetal.tianshu.function.auxilium.knowledge.AXKnowledgeHit;
 import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
@@ -133,13 +134,9 @@ class AXTurnOrchestratorTest {
                 new AXPromptOrchestrator(
                         null,
                         null,
-                        (request, context, budget) -> List.of(LLMPromptRequestPayload.ChunkPayload.rag(
+                        (request, context, budget) -> List.of(AXKnowledgeHit.of(
                                 "ax.static_knowledge.mock",
-                                "",
-                                List.of("minecraft:anvil | 铁砧可以修复工具。"),
-                                false,
-                                false,
-                                500
+                                List.of("minecraft:anvil | 铁砧可以修复工具。")
                         )),
                         null
                 ),

@@ -1,6 +1,15 @@
 package com.rheinmetal.tianshu.function.auxilium.prompt;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 
 public record AXPromptProfile(
         AXPromptTask task,
@@ -19,21 +28,78 @@ public record AXPromptProfile(
 
     public static AXPromptProfile defaultFor(AXPromptTask task, AXPromptLanguage language) {
         AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
-        if (effectiveLanguage == AXPromptLanguage.EN_US) {
-            return new AXPromptProfile(
-                    task,
-                    effectiveLanguage,
-                    "You are the companion chat AX of the Tianshu Minecraft mod.",
-                    "Stay immersive, natural, concise, and reliable. Do not invent game state. When the user mentions game actions, only give advice and do not claim that you can directly execute them.",
-                    List.of("identity", "rules", "persona", "scope", "game_context", "player_memory", "provided_context", "recent_dialogue", "current_input")
-            );
-        }
-        return new AXPromptProfile(
-                task,
+        AXPromptTask effectiveTask = task == null ? AXPromptTask.GENERAL_AX : task;
+        return loadBuiltin(effectiveTask, effectiveLanguage).orElseGet(() -> new AXPromptProfile(
+                effectiveTask,
                 effectiveLanguage,
-                "你是天枢 Minecraft 模组中的随行聊天助手。",
-                "保持沉浸感、自然、简洁、可靠；不要编造游戏状态；涉及游戏动作时只提供建议，不声称自己能直接执行。",
-                List.of("identity", "rules", "persona", "scope", "game_context", "player_memory", "provided_context", "recent_dialogue", "current_input")
-        );
+                "",
+                "",
+                DEFAULT_SECTION_ORDER
+        ));
     }
+
+    private static Optional<AXPromptProfile> loadBuiltin(AXPromptTask task, AXPromptLanguage language) {
+        String resource = "/com/rheinmetal/tianshu/function/auxilium/prompts/" + new AXPromptResourceKey(task, language, "default").fileName();
+        try (InputStream stream = AXPromptProfile.class.getResourceAsStream(resource)) {
+            if (stream == null) {
+                return Optional.empty();
+            }
+            try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                JsonElement element = JsonParser.parseReader(reader);
+                if (element == null || !element.isJsonObject()) {
+                    return Optional.empty();
+                }
+                return Optional.of(fromJson(task, language, element.getAsJsonObject()));
+            }
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static AXPromptProfile fromJson(AXPromptTask task, AXPromptLanguage language, JsonObject json) {
+        String identity = readString(json, "identity", "");
+        String behaviorRules = readString(json, "behaviorRules", "");
+        List<String> sectionOrder = readStringArray(json, "sectionOrder");
+        if (sectionOrder.isEmpty()) {
+            sectionOrder = DEFAULT_SECTION_ORDER;
+        }
+        return new AXPromptProfile(task, language, identity, behaviorRules, sectionOrder);
+    }
+
+    private static String readString(JsonObject json, String key, String fallback) {
+        if (json == null || key == null || !json.has(key) || json.get(key).isJsonNull()) {
+            return fallback;
+        }
+        String value = json.get(key).getAsString();
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static List<String> readStringArray(JsonObject json, String key) {
+        if (json == null || key == null || !json.has(key) || !json.get(key).isJsonArray()) {
+            return List.of();
+        }
+        List<String> result = new java.util.ArrayList<>();
+        for (JsonElement element : json.getAsJsonArray(key)) {
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            String value = element.getAsString();
+            if (value != null && !value.isBlank()) {
+                result.add(value.trim());
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static final List<String> DEFAULT_SECTION_ORDER = List.of(
+            "identity",
+            "rules",
+            "persona",
+            "scope",
+            "game_context",
+            "player_memory",
+            "provided_context",
+            "recent_dialogue",
+            "current_input"
+    );
 }

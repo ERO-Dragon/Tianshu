@@ -214,8 +214,8 @@ class IaModuleProtocolFlowTest {
     @Test
     void hardClaimUsesFrozenSpeechStartContextAndDeliversOnlyToOwner() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        MutablePresenceContextProvider presence = new MutablePresenceContextProvider();
-        registerPresenceContextProvider(presence);
+        MutablePresenceContextHandler presence = new MutablePresenceContextHandler();
+        registerPresenceContextHandler(presence);
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler maidDelivery = new RecordingHandler();
@@ -432,7 +432,7 @@ class IaModuleProtocolFlowTest {
         );
     }
 
-    private void registerPresenceContextProvider(MutablePresenceContextProvider handler) {
+    private void registerPresenceContextHandler(MutablePresenceContextHandler handler) {
         runtime.registerModule(
                 descriptor("test.presence", new CapabilityDescriptor(
                         ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
@@ -552,7 +552,7 @@ class IaModuleProtocolFlowTest {
         boolean satisfied();
     }
 
-    private static final class MutablePresenceContextProvider implements EnvelopeHandler {
+    private static final class MutablePresenceContextHandler implements EnvelopeHandler {
         private final AtomicReference<PresenceContextSnapshotPayload> payload = new AtomicReference<>(PresenceContextSnapshotPayload.success("empty", List.of()));
         private final AtomicInteger captureCount = new AtomicInteger();
 

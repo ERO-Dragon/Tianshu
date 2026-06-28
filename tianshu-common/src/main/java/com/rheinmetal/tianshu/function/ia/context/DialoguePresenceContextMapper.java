@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.ia.context;
 
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 
 import java.util.LinkedHashMap;
@@ -42,10 +41,6 @@ public final class DialoguePresenceContextMapper {
                 facts
         );
         return new DialogueContextFrame(hints, snapshot);
-    }
-
-    public List<String> defaultFactIds() {
-        return List.of(PresenceContextFactIds.INTERACTION_CONTEXT);
     }
 
     private DialogueEntityRef crosshairRef(Map<String, String> values) {

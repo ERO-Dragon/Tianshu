@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
@@ -53,7 +52,7 @@ public final class AXRuntimeContextClient {
                 request == null ? "" : request.userText(),
                 focusIds(delivery),
                 System.currentTimeMillis(),
-                PresenceContextFactIds.AX_PROMPT_DEFAULTS
+                AXPresenceFactIds.DEFAULT_CONTEXT_FACTS
         );
         if (adapter.presenceContextProviderCount() <= 0) {
             completion.complete(List.of());

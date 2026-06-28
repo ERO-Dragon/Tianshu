@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium.context.orchestration;
 
 import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextFact;
+import com.rheinmetal.tianshu.function.auxilium.knowledge.AXKnowledgeHit;
 import com.rheinmetal.tianshu.function.auxilium.knowledge.AXStaticKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptTexts;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 
 import java.util.Comparator;
 import java.util.List;
@@ -52,13 +52,13 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
     }
 
     private List<String> staticKnowledge(AXPromptBuildContext context) {
-        List<LLMPromptRequestPayload.ChunkPayload> chunks = staticKnowledgePlanner.plan(context.request(), context.context(), context.budget());
-        if (chunks == null || chunks.isEmpty()) {
+        List<AXKnowledgeHit> hits = staticKnowledgePlanner.plan(context.request(), context.context(), context.budget());
+        if (hits == null || hits.isEmpty()) {
             return List.of();
         }
-        return chunks.stream()
-                .filter(chunk -> chunk != null && chunk.ragContent() != null && !chunk.ragContent().isEmpty())
-                .flatMap(chunk -> chunk.ragContent().stream())
+        return hits.stream()
+                .filter(hit -> hit != null && hit.facts() != null && !hit.facts().isEmpty())
+                .flatMap(hit -> hit.facts().stream())
                 .filter(text -> text != null && !text.isBlank())
                 .map(String::trim)
                 .distinct()

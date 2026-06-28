@@ -23,20 +23,14 @@ import java.util.stream.Collectors;
 public final class PresenceContextFactMapper {
     private static final long FACT_TTL_MILLIS = 120_000L;
 
-    public List<PresenceContextSnapshotPayload.FactPayload> factsFrom(PresenceContextSnapshot snapshot) {
-        return factsFrom(snapshot, List.of());
-    }
-
     public List<PresenceContextSnapshotPayload.FactPayload> factsFrom(
             PresenceContextSnapshot snapshot,
             List<String> requestedFactIds
     ) {
-        if (snapshot == null) {
+        if (snapshot == null || requestedFactIds == null || requestedFactIds.isEmpty()) {
             return List.of();
         }
-        Set<String> requested = requestedFactIds == null || requestedFactIds.isEmpty()
-                ? new LinkedHashSet<>(PresenceContextFactIds.AX_PROMPT_DEFAULTS)
-                : requestedFactIds.stream()
+        Set<String> requested = requestedFactIds.stream()
                 .filter(value -> value != null && !value.isBlank())
                 .map(String::trim)
                 .collect(Collectors.toCollection(LinkedHashSet::new));

@@ -4,10 +4,10 @@ import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextFact;
+import com.rheinmetal.tianshu.function.auxilium.knowledge.AXKnowledgeHit;
 import com.rheinmetal.tianshu.function.auxilium.knowledge.AXStaticKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptProfile;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -18,14 +18,7 @@ class AXGameContextPromptContributorTest {
     @Test
     void dynamicFactsAndKnowledgeShareTheSameGameContextSection() {
         AXStaticKnowledgePlanner planner = (request, context, budget) -> List.of(
-                LLMPromptRequestPayload.ChunkPayload.rag(
-                        "ax.static_knowledge.mock",
-                        "",
-                        List.of("minecraft:anvil | 铁砧可以修复工具。"),
-                        false,
-                        false,
-                        500
-                )
+                AXKnowledgeHit.of("ax.static_knowledge.mock", List.of("minecraft:anvil | 铁砧可以修复工具。"))
         );
         AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
 

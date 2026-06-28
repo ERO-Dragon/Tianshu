@@ -117,7 +117,7 @@ payload 中来自 IR 的字段包括：
 - `matchedItemIds`：IR 提取出的物品结构化 ID。
 - `sourceSessionId` / `turnId`：用于 IA 关联 ASR 说话开始时冻结的上下文快照。
 
-IR 不提供手持物、身上装备、准星实体、附近实体、按键状态或维度信息。这些游戏上下文由 IA 通过平台 `DialogueContextProvider` 捕获。
+IR 不在仲裁请求 payload 里提供手持物、身上装备、准星实体、附近实体、按键状态或维度信息。IR 如需物品上下文增强，会通过 `PRESENCE.QUERY_CONTEXT` 显式请求 `INTERACTION_CONTEXT` 和 `PLAYER_INVENTORY`；IA 仲裁仍会按自己的规则重新请求所需 Presence 字段。
 
 ## 7. 结果观测
 
