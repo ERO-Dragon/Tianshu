@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.AXLlmPrimitiveClient;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 
@@ -20,10 +19,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class AXMemoryRetriever {
     private final AXMemorySystem memorySystem;
     private final AXLlmPrimitiveClient primitiveClient;
+    private final AXMemoryRetrievalPolicy retrievalPolicy;
 
     public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmPrimitiveClient primitiveClient) {
+        this(memorySystem, primitiveClient, AXMemoryRetrievalPolicy.DEFAULT);
+    }
+
+    public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmPrimitiveClient primitiveClient, AXMemoryRetrievalPolicy retrievalPolicy) {
         this.memorySystem = Objects.requireNonNull(memorySystem, "memorySystem");
         this.primitiveClient = Objects.requireNonNull(primitiveClient, "primitiveClient");
+        this.retrievalPolicy = retrievalPolicy == null ? AXMemoryRetrievalPolicy.DEFAULT : retrievalPolicy;
     }
 
     public void retrieve(AXMemoryRetrievalRequest request, Completion completion) {
@@ -76,62 +81,133 @@ public final class AXMemoryRetriever {
         if (embeddingNamespace == null || embeddingNamespace.isBlank()) {
             return AXMemoryRetrievalResult.empty();
         }
-        List<AXMemoryEvent> events = memorySystem.events().loadAll(request.scope());
-        List<AXEventVector> vectors = memorySystem.vectors().load(request.scope(), embeddingNamespace);
-        if (events.isEmpty() || vectors.isEmpty()) {
+        AXMemoryRetrievalIndex index = memorySystem.retrievalIndex(request.scope(), embeddingNamespace);
+        if (index.isEmpty()) {
             return AXMemoryRetrievalResult.empty();
         }
-        Map<String, AXMemoryEvent> eventsById = new HashMap<>();
-        for (AXMemoryEvent event : events) {
-            eventsById.putIfAbsent(event.id(), event);
-        }
+        AXMemoryRetrievalIndex.RoutedCandidates routed = index.route(request.queryText(), queryVector);
+        long nowMillis = System.currentTimeMillis();
         Map<String, StmContribution> contributions = new HashMap<>();
-        for (AXEventVector vector : vectors) {
-            AXMemoryEvent event = eventsById.get(vector.eventId());
-            if (event == null || event.stmId().isBlank() || !event.factHash().equals(vector.eventFactHash())) {
+        for (AXMemoryRetrievalIndex.EventVectorEntry entry : routed.entries()) {
+            AXMemoryEvent event = entry.event();
+            if (event == null || event.stmId().isBlank()) {
                 continue;
             }
-            double relevance = cosine(queryVector, vector.vector());
+            double relevance = index.score(entry, queryVector, routed.analysis(), nowMillis);
             if (relevance <= 0.0D) {
                 continue;
             }
-            contributions.computeIfAbsent(event.stmId(), StmContribution::new).add(relevance);
+            contributions.computeIfAbsent(event.stmId(), StmContribution::new)
+                    .add(index.effectiveMappingId(event.id()), relevance);
         }
         if (contributions.isEmpty()) {
             return AXMemoryRetrievalResult.empty();
         }
+        List<AXStmBlock> allBlocks = memorySystem.stmBlocks().loadAll(request.scope());
         Map<String, AXStmBlock> blocksById = new LinkedHashMap<>();
         Map<String, Integer> blockOrder = new HashMap<>();
         int order = 0;
-        for (AXStmBlock block : memorySystem.stmBlocks().loadAll(request.scope())) {
+        for (AXStmBlock block : allBlocks) {
             blocksById.putIfAbsent(block.id(), block);
             blockOrder.putIfAbsent(block.id(), order++);
         }
+        List<SelectedBlock> selected = selectBlocks(request, contributions, blocksById, blockOrder, allBlocks);
+        List<AXStmBlock> timeline = selected.stream()
+                .sorted(Comparator.comparingInt(SelectedBlock::order))
+                .map(SelectedBlock::block)
+                .toList();
+        return new AXMemoryRetrievalResult(memorySystem.memoryBlockViews(request.scope(), timeline));
+    }
+
+    private List<SelectedBlock> selectBlocks(
+            AXMemoryRetrievalRequest request,
+            Map<String, StmContribution> contributions,
+            Map<String, AXStmBlock> blocksById,
+            Map<String, Integer> blockOrder,
+            List<AXStmBlock> allBlocks
+    ) {
         List<SelectedBlock> selected = new ArrayList<>();
         int tokens = 0;
         Set<String> seen = new HashSet<>();
         List<StmContribution> ordered = contributions.values().stream()
                 .sorted(Comparator.comparingDouble(StmContribution::score).reversed())
                 .toList();
+        double topScore = ordered.isEmpty() ? 0.0D : ordered.get(0).score();
         for (StmContribution contribution : ordered) {
             if (selected.size() >= request.maxBlocks()) {
                 break;
             }
             AXStmBlock block = blocksById.get(contribution.stmId());
-            if (block == null || block.isEmpty() || !seen.add(block.id())) {
+            if (block == null || block.isEmpty()) {
                 continue;
             }
-            if (!selected.isEmpty() && request.tokenBudget() > 0 && tokens + block.estimatedTokens() > request.tokenBudget()) {
-                continue;
+            List<AXStmBlock> candidates = chainExpansionCandidates(block, contribution, topScore, blockOrder, allBlocks);
+            for (AXStmBlock candidate : candidates) {
+                if (selected.size() >= request.maxBlocks()) {
+                    break;
+                }
+                if (candidate == null || candidate.isEmpty() || !seen.add(candidate.id())) {
+                    continue;
+                }
+                if (!selected.isEmpty() && request.tokenBudget() > 0 && tokens + candidate.estimatedTokens() > request.tokenBudget()) {
+                    seen.remove(candidate.id());
+                    continue;
+                }
+                selected.add(new SelectedBlock(candidate, blockOrder.getOrDefault(candidate.id(), Integer.MAX_VALUE)));
+                tokens += candidate.estimatedTokens();
             }
-            selected.add(new SelectedBlock(block, blockOrder.getOrDefault(block.id(), Integer.MAX_VALUE)));
-            tokens += block.estimatedTokens();
         }
-        List<AXStmBlock> timeline = selected.stream()
-                .sorted(Comparator.comparingInt(SelectedBlock::order))
-                .map(SelectedBlock::block)
-                .toList();
-        return new AXMemoryRetrievalResult(memorySystem.memoryBlockViews(request.scope(), timeline));
+        return selected;
+    }
+
+    private List<AXStmBlock> chainExpansionCandidates(
+            AXStmBlock center,
+            StmContribution contribution,
+            double topScore,
+            Map<String, Integer> blockOrder,
+            List<AXStmBlock> allBlocks
+    ) {
+        int radius = retrievalPolicy.chainExpansionRadius();
+        if (radius <= 0 || !shouldExpandChain(contribution, topScore)) {
+            return List.of(center);
+        }
+        Integer centerOrder = blockOrder.get(center.id());
+        if (centerOrder == null || centerOrder < 0 || centerOrder >= allBlocks.size()) {
+            return List.of(center);
+        }
+        int from = Math.max(0, centerOrder - radius);
+        int to = Math.min(allBlocks.size() - 1, centerOrder + radius);
+        List<AXStmBlock> candidates = new ArrayList<>();
+        for (int index = from; index <= to; index++) {
+            AXStmBlock candidate = allBlocks.get(index);
+            if (sameChain(center, candidate)) {
+                candidates.add(candidate);
+            }
+        }
+        return candidates.isEmpty() ? List.of(center) : candidates;
+    }
+
+    private boolean shouldExpandChain(StmContribution contribution, double topScore) {
+        if (contribution == null || topScore <= 0.0D) {
+            return false;
+        }
+        if (contribution.score() < retrievalPolicy.chainExpansionMinScore()) {
+            return false;
+        }
+        return contribution.score() >= topScore * retrievalPolicy.chainExpansionScoreRatio();
+    }
+
+    private boolean sameChain(AXStmBlock center, AXStmBlock candidate) {
+        if (center == null || candidate == null) {
+            return false;
+        }
+        if (center.id().equals(candidate.id())) {
+            return true;
+        }
+        return center.id().equals(candidate.previousStmId())
+                || center.id().equals(candidate.nextStmId())
+                || candidate.id().equals(center.previousStmId())
+                || candidate.id().equals(center.nextStmId());
     }
 
     private boolean statusCompleted(LLMPrimitiveResultPayload result) {
@@ -140,24 +216,6 @@ public final class AXMemoryRetriever {
 
     private boolean embeddingUsable(LLMRuntimeSnapshotPayload snapshot) {
         return snapshot != null && snapshot.embeddingAvailable() && !snapshot.embeddingNamespace().isBlank();
-    }
-
-    private double cosine(float[] left, float[] right) {
-        if (left == null || right == null || left.length == 0 || right.length == 0 || left.length != right.length) {
-            return 0.0D;
-        }
-        double dot = 0.0D;
-        double leftNorm = 0.0D;
-        double rightNorm = 0.0D;
-        for (int i = 0; i < left.length; i++) {
-            dot += left[i] * right[i];
-            leftNorm += left[i] * left[i];
-            rightNorm += right[i] * right[i];
-        }
-        if (leftNorm <= 0.0D || rightNorm <= 0.0D) {
-            return 0.0D;
-        }
-        return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
     }
 
     public interface Completion {
@@ -180,12 +238,20 @@ public final class AXMemoryRetriever {
         private final String stmId;
         private double max;
         private double sum;
+        private final Set<String> effectiveMappings = new HashSet<>();
 
         private StmContribution(String stmId) {
             this.stmId = stmId;
         }
 
-        private void add(double relevance) {
+        private void add(String effectiveMappingId, double relevance) {
+            String mapping = effectiveMappingId == null || effectiveMappingId.isBlank()
+                    ? "unmapped"
+                    : effectiveMappingId;
+            if (!effectiveMappings.add(mapping)) {
+                max = Math.max(max, relevance);
+                return;
+            }
             max = Math.max(max, relevance);
             sum += Math.max(0.0D, relevance);
         }

@@ -7,23 +7,33 @@ import java.util.List;
 
 public record AXMemorySnapshot(
         String persona,
-        List<AXMemoryBlockView> playerMemoryBlocks,
+        List<AXMemoryBlockView> retrievedPlayerMemoryBlocks,
+        List<AXMemoryBlockView> recentPlayerMemoryBlocks,
         List<AXRawTurn> recentDialogueTurns
 ) {
     public AXMemorySnapshot {
         persona = persona == null || persona.isBlank() ? defaultPersona(AXPromptLanguage.EN_US) : persona.trim();
-        playerMemoryBlocks = playerMemoryBlocks == null ? List.of() : playerMemoryBlocks.stream()
-                .filter(view -> view != null && !view.isEmpty())
-                .toList();
+        retrievedPlayerMemoryBlocks = normalizeBlocks(retrievedPlayerMemoryBlocks);
+        recentPlayerMemoryBlocks = normalizeBlocks(recentPlayerMemoryBlocks);
         recentDialogueTurns = recentDialogueTurns == null ? List.of() : List.copyOf(recentDialogueTurns);
     }
 
+    public AXMemorySnapshot(String persona, List<AXMemoryBlockView> recentPlayerMemoryBlocks, List<AXRawTurn> recentDialogueTurns) {
+        this(persona, List.of(), recentPlayerMemoryBlocks, recentDialogueTurns);
+    }
+
+    private static List<AXMemoryBlockView> normalizeBlocks(List<AXMemoryBlockView> blocks) {
+        return blocks == null ? List.of() : blocks.stream()
+                .filter(view -> view != null && !view.isEmpty())
+                .toList();
+    }
+
     public static AXMemorySnapshot empty(AXScope scope) {
-        return new AXMemorySnapshot(defaultPersona(AXPromptLanguage.EN_US), List.of(), List.of());
+        return new AXMemorySnapshot(defaultPersona(AXPromptLanguage.EN_US), List.of(), List.of(), List.of());
     }
 
     public static AXMemorySnapshot empty(AXScope scope, AXPromptLanguage language) {
-        return new AXMemorySnapshot(defaultPersona(language), List.of(), List.of());
+        return new AXMemorySnapshot(defaultPersona(language), List.of(), List.of(), List.of());
     }
 
     public static String defaultPersona(AXPromptLanguage language) {
@@ -33,7 +43,11 @@ public record AXMemorySnapshot(
         return "你是天枢 Minecraft 模组中的随行聊天助手。保持沉浸感，回答自然、简洁；不要编造游戏状态；涉及游戏动作时只提供建议，不声称自己能直接执行。";
     }
 
-    public AXMemorySnapshot withPlayerMemoryBlocks(List<AXMemoryBlockView> blocks) {
-        return new AXMemorySnapshot(persona, blocks, recentDialogueTurns);
+    public AXMemorySnapshot withRetrievedPlayerMemoryBlocks(List<AXMemoryBlockView> blocks) {
+        return new AXMemorySnapshot(persona, blocks, recentPlayerMemoryBlocks, recentDialogueTurns);
+    }
+
+    public AXMemorySnapshot withRecentPlayerMemoryBlocks(List<AXMemoryBlockView> blocks) {
+        return new AXMemorySnapshot(persona, retrievedPlayerMemoryBlocks, blocks, recentDialogueTurns);
     }
 }

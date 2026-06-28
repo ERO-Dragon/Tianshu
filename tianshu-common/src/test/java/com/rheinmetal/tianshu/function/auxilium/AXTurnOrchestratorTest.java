@@ -128,6 +128,34 @@ class AXTurnOrchestratorTest {
     }
 
     @Test
+    void promptAssemblyDoesNotCreateSeparateRagChunks() {
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
+                new AXPromptOrchestrator(
+                        null,
+                        null,
+                        (request, context, budget) -> List.of(LLMPromptRequestPayload.ChunkPayload.rag(
+                                "ax.static_knowledge.mock",
+                                "",
+                                List.of("minecraft:anvil | 铁砧可以修复工具。"),
+                                false,
+                                false,
+                                500
+                        )),
+                        null
+                ),
+                AXContextBudget.DEFAULT
+        );
+        AXRequest request = new AXRequest("request", "铁砧怎么用？", "");
+
+        LLMPromptRequestPayload payload = builder.buildChatRequest(request, AXContextSnapshot.empty());
+
+        assertEquals(1, payload.chunks().size());
+        assertEquals("message", payload.chunks().get(0).type());
+        assertTrue(payload.chunks().get(0).messageContent().stream()
+                .anyMatch(message -> message.content().contains("minecraft:anvil")));
+    }
+
+    @Test
     void requestsRuntimeContextBeforeSubmittingLlmRequest() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();

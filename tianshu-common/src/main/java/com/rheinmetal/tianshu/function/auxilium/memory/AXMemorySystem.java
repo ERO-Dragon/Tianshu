@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -13,26 +15,44 @@ import java.util.stream.Collectors;
 public final class AXMemorySystem {
     private final AXStorageLayout layout;
     private final AXJsonStore jsonStore;
+    private final AXMemoryWindowPolicy windowPolicy;
     private final AXRawTurnWindow rawTurnWindow;
     private final AXStmBlockStore stmBlockStore;
     private final AXMemoryEventStore eventStore;
     private final AXAttachedWorldEventStore attachedWorldEventStore;
     private final AXEventVectorStore vectorStore;
+    private final AXMemoryStatsStore statsStore;
     private final AXMemoryStorageManifestStore manifestStore;
+    private final AXMemoryStorageCompatibilityChecker compatibilityChecker;
+    private final AXMemoryRetrievalIndexCache retrievalIndexCache = new AXMemoryRetrievalIndexCache();
+    private final AXMemoryRetrievalPolicy retrievalPolicy;
 
     public AXMemorySystem(AXStorageLayout layout, AXJsonStore jsonStore) {
         this(layout, jsonStore, null);
     }
 
     public AXMemorySystem(AXStorageLayout layout, AXJsonStore jsonStore, AXMemoryWindowPolicy policy) {
+        this(layout, jsonStore, policy, AXMemoryRetrievalPolicy.DEFAULT);
+    }
+
+    public AXMemorySystem(
+            AXStorageLayout layout,
+            AXJsonStore jsonStore,
+            AXMemoryWindowPolicy policy,
+            AXMemoryRetrievalPolicy retrievalPolicy
+    ) {
         this.layout = layout;
         this.jsonStore = jsonStore;
-        this.rawTurnWindow = new AXRawTurnWindow(policy);
+        this.windowPolicy = policy == null ? AXMemoryWindowPolicy.DEFAULT : policy;
+        this.rawTurnWindow = new AXRawTurnWindow(this.windowPolicy);
         this.stmBlockStore = new AXStmBlockStore(layout, jsonStore);
         this.eventStore = new AXMemoryEventStore(layout, jsonStore);
         this.attachedWorldEventStore = new AXAttachedWorldEventStore(layout, jsonStore);
         this.vectorStore = new AXEventVectorStore(layout, jsonStore);
+        this.statsStore = new AXMemoryStatsStore(layout, jsonStore);
         this.manifestStore = new AXMemoryStorageManifestStore(layout, jsonStore);
+        this.compatibilityChecker = new AXMemoryStorageCompatibilityChecker(layout, jsonStore);
+        this.retrievalPolicy = retrievalPolicy == null ? AXMemoryRetrievalPolicy.DEFAULT : retrievalPolicy;
     }
 
     public AXMemorySnapshot load(AXScope scope) {
@@ -42,7 +62,8 @@ public final class AXMemorySystem {
         }
         return new AXMemorySnapshot(
                 loadPersona(),
-                memoryBlockViews(effectiveScope, stmBlockStore.loadRecent(effectiveScope, 8)),
+                List.of(),
+                memoryBlockViews(effectiveScope, stmBlockStore.loadRecent(effectiveScope, windowPolicy.shortTermChatBlockLimit())),
                 rawTurnWindow.recent(effectiveScope)
         );
     }
@@ -66,26 +87,36 @@ public final class AXMemorySystem {
     }
 
     public void appendStmBlock(AXScope scope, AXStmBlock block) {
-        ensureWorldManifest(scope);
+        if (!storageReadyForWrite(scope)) {
+            return;
+        }
         stmBlockStore.append(scope, block);
     }
 
     public void appendMemoryEvent(AXScope scope, AXMemoryEvent event) {
-        ensureWorldManifest(scope);
+        if (!storageReadyForWrite(scope)) {
+            return;
+        }
         eventStore.append(scope, event);
+        retrievalIndexCache.invalidate(scope);
     }
 
     public void appendAttachedWorldEvent(AXScope scope, AXAttachedWorldEvent event) {
         if (event == null || event.isEmpty()) {
             return;
         }
-        ensureWorldManifest(scope);
+        if (!storageReadyForWrite(scope)) {
+            return;
+        }
         attachedWorldEventStore.appendAll(scope, List.of(event));
     }
 
     public void appendEventVector(AXScope scope, AXEventVector vector) {
-        ensureWorldManifest(scope);
+        if (!storageReadyForWrite(scope)) {
+            return;
+        }
         vectorStore.append(scope, vector);
+        retrievalIndexCache.invalidate(scope);
     }
 
     public List<AXAttachedWorldEvent> unattachedWorldEventsInRange(AXScope scope, long fromMillis, long toMillis) {
@@ -139,6 +170,28 @@ public final class AXMemorySystem {
         return vectorStore;
     }
 
+    public AXMemoryStatsStore stats() {
+        return statsStore;
+    }
+
+    AXMemoryRetrievalIndex retrievalIndex(AXScope scope, String embeddingNamespace) {
+        if (scope == null || !scope.writable() || embeddingNamespace == null || embeddingNamespace.isBlank()) {
+            return AXMemoryRetrievalIndex.empty(embeddingNamespace);
+        }
+        AXMemoryRetrievalIndexCache.SourceStamp sourceStamp = retrievalIndexSourceStamp(scope, embeddingNamespace);
+        return retrievalIndexCache.get(
+                scope,
+                embeddingNamespace,
+                sourceStamp,
+                () -> AXMemoryRetrievalIndex.build(
+                        eventStore.loadAll(scope),
+                        vectorStore.load(scope, embeddingNamespace),
+                        embeddingNamespace,
+                        retrievalPolicy
+                )
+        );
+    }
+
     public AXRawTurnWindow rawTurns() {
         return rawTurnWindow;
     }
@@ -147,9 +200,60 @@ public final class AXMemorySystem {
         ensureWorldManifest(scope);
     }
 
+    public AXMemoryStorageCompatibilityReport checkStorageCompatibility(AXScope scope) {
+        if (compatibilityChecker == null) {
+            return new AXMemoryStorageCompatibilityReport(false, false, List.of(
+                    AXMemoryStorageCompatibilityReport.Issue.error("AX_MEMORY_COMPATIBILITY_CHECKER_MISSING", "storage compatibility checker is not available")
+            ));
+        }
+        return compatibilityChecker.check(scope);
+    }
+
     private void ensureWorldManifest(AXScope scope) {
         if (manifestStore != null) {
             manifestStore.ensureWorldManifest(scope);
+        }
+    }
+
+    private boolean storageReadyForWrite(AXScope scope) {
+        if (scope == null || !scope.writable()) {
+            return false;
+        }
+        if (compatibilityChecker != null) {
+            AXMemoryStorageCompatibilityReport before = compatibilityChecker.check(scope);
+            if (before.manifestPresent() && before.hasErrors()) {
+                return false;
+            }
+        }
+        ensureWorldManifest(scope);
+        if (compatibilityChecker == null) {
+            return true;
+        }
+        return !compatibilityChecker.check(scope).hasErrors();
+    }
+
+    private AXMemoryRetrievalIndexCache.SourceStamp retrievalIndexSourceStamp(AXScope scope, String embeddingNamespace) {
+        return new AXMemoryRetrievalIndexCache.SourceStamp(
+                fileSize(layout.eventsFile(scope)),
+                fileModifiedAtMillis(layout.eventsFile(scope)),
+                fileSize(layout.eventVectorsFile(scope, embeddingNamespace)),
+                fileModifiedAtMillis(layout.eventVectorsFile(scope, embeddingNamespace))
+        );
+    }
+
+    private long fileSize(Path path) {
+        try {
+            return path == null || !Files.isRegularFile(path) ? -1L : Files.size(path);
+        } catch (Exception e) {
+            return -1L;
+        }
+    }
+
+    private long fileModifiedAtMillis(Path path) {
+        try {
+            return path == null || !Files.isRegularFile(path) ? -1L : Files.getLastModifiedTime(path).toMillis();
+        } catch (Exception e) {
+            return -1L;
         }
     }
 

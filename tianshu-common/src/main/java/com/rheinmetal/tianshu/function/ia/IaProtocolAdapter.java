@@ -22,6 +22,8 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
@@ -43,7 +45,7 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
                 Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                CompletionPolicy.MANUAL_COMPLETE,
                 handler,
                 defaults()
         );
@@ -125,6 +127,36 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public TianshuEnvelope respondLlmUsageAuthorizationResult(TianshuEnvelope parent, DialogueLlmUsageAuthorizationResultPayload payload) {
         return respondTo(parent, PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT, payload);
+    }
+
+    public TianshuEnvelope buildPresenceContextQuery(TianshuEnvelope parent, PresenceContextQueryPayload payload) {
+        return buildRequestCapability(parent, ProtocolCapabilities.PRESENCE_QUERY_CONTEXT, PayloadType.PRESENCE_CONTEXT_QUERY, payload);
+    }
+
+    public TianshuEnvelope submitPresenceContextQuery(TianshuEnvelope envelope) {
+        return submitPrepared(envelope);
+    }
+
+    public int presenceContextProviderCount() {
+        return runtime().capabilities().findCapability(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT).size();
+    }
+
+    public void registerPresenceContextSnapshotResponse(String requestEnvelopeId, EnvelopeHandler handler) {
+        registerResponseHandler(
+                requestEnvelopeId,
+                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresenceContextSnapshotPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    public void unregisterPresenceContextResponses(String requestEnvelopeId) {
+        unregisterResponseHandlers(requestEnvelopeId);
     }
 
     @Override

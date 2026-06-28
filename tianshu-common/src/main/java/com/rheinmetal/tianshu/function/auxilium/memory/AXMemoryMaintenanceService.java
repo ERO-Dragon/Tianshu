@@ -42,6 +42,7 @@ public final class AXMemoryMaintenanceService {
     private final AXLlmPrimitiveClient primitiveClient;
     private final AXMemoryTaskPromptRepository promptRepository;
     private final AXWorldEventMemoryLinker worldEventLinker = new AXWorldEventMemoryLinker(null);
+    private final AXMemoryDerivedMaintenanceService derivedMaintenanceService;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile ProtocolTaskHandle currentTask;
 
@@ -66,6 +67,7 @@ public final class AXMemoryMaintenanceService {
         this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
         this.primitiveClient = Objects.requireNonNull(primitiveClient, "primitiveClient");
         this.promptRepository = promptRepository == null ? new AXMemoryTaskPromptRepository(null, null) : promptRepository;
+        this.derivedMaintenanceService = new AXMemoryDerivedMaintenanceService(this.memorySystem);
     }
 
     public boolean requestMaintenance(AXScope scope) {
@@ -123,7 +125,8 @@ public final class AXMemoryMaintenanceService {
             }
         }
         int rebuiltVectors = rebuildMissingVectors(scope, startedStatusPublished).join();
-        if (compressed || rebuiltVectors > 0) {
+        AXMemoryDerivedMaintenanceResult derivedResult = derivedMaintenanceService.maintain(scope);
+        if (compressed || rebuiltVectors > 0 || (derivedResult.ran() && derivedResult.stmChainRewritten())) {
             publishCompleteStatus();
         }
     }

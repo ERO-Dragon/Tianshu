@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.client.presence.capture;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.client.language.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.client.presence.PresenceStateStore;
+import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInventoryItem;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class PresenceEventCollector {
@@ -44,8 +46,6 @@ public final class PresenceEventCollector {
     private PresenceChatMessageSink chatMessageSink = PresenceChatMessageSink.NOOP;
     private long lastKeyboardEventAtMillis;
     private long lastMouseEventAtMillis;
-    private long nextDetailedRefreshAtMillis;
-    private boolean detailedDirty = true;
 
     public PresenceEventCollector(PresenceStateStore stateStore) {
         this.stateStore = stateStore;
@@ -59,15 +59,9 @@ public final class PresenceEventCollector {
         this.chatMessageSink = chatMessageSink == null ? PresenceChatMessageSink.NOOP : chatMessageSink;
     }
 
-    public void tick() {
-        PresenceContextSnapshot snapshot = captureLiveSnapshot(PresenceInputKind.NONE);
-        stateStore.updateContext(snapshot);
-        refreshDetailedIfNeeded(PresenceInputKind.NONE);
-    }
-
     public void recordScreenChanged(Screen screen) {
         stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.NONE));
-        markDetailedDirty();
+        stateStore.markDirty(PresenceContextGroup.PLAYER_INVENTORY);
     }
 
     public void recordKeyboardInput() {
@@ -92,13 +86,6 @@ public final class PresenceEventCollector {
         stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.VOICE_KEY));
     }
 
-    private void refreshDetailedNow(PresenceInputKind inputKind) {
-        PresenceContextSnapshot snapshot = captureLiveSnapshot(inputKind, true);
-        stateStore.updateDetailedContext(snapshot);
-        detailedDirty = false;
-        nextDetailedRefreshAtMillis = System.currentTimeMillis() + PresenceRefreshPolicy.DETAILED_REFRESH_INTERVAL_MILLIS;
-    }
-
     public void recordPlayerChatMessage(Component message, UUID senderId, String senderName) {
         if (message == null || senderId == null) {
             return;
@@ -113,7 +100,6 @@ public final class PresenceEventCollector {
                 sender,
                 text
         ));
-        markDetailedDirty();
     }
 
     public void recordAdvancementUpdate(ClientboundUpdateAdvancementsPacket packet) {
@@ -122,29 +108,25 @@ public final class PresenceEventCollector {
         }
     }
 
-    private void refreshDetailedIfNeeded(PresenceInputKind inputKind) {
-        long now = System.currentTimeMillis();
-        if (!detailedDirty && now < nextDetailedRefreshAtMillis) {
-            return;
-        }
-        refreshDetailedNow(inputKind);
-    }
-
-    private void markDetailedDirty() {
-        detailedDirty = true;
-    }
-
     private PresenceContextSnapshot captureLiveSnapshot(PresenceInputKind inputKind) {
-        return captureLiveSnapshot(inputKind, false);
+        return captureGroups(Set.of(PresenceContextGroup.INTERACTION_CONTEXT), inputKind);
     }
 
-    private PresenceContextSnapshot captureLiveSnapshot(PresenceInputKind inputKind, boolean detailed) {
+    public PresenceContextSnapshot captureGroups(Set<PresenceContextGroup> groups) {
+        return captureGroups(groups, PresenceInputKind.NONE);
+    }
+
+    private PresenceContextSnapshot captureGroups(Set<PresenceContextGroup> groups, PresenceInputKind inputKind) {
         Minecraft minecraft = Minecraft.getInstance();
         Player player = minecraft.player;
         if (player == null || minecraft.level == null) {
             return PresenceContextSnapshot.empty();
         }
 
+        Set<PresenceContextGroup> requested = groups == null || groups.isEmpty()
+                ? Set.of(PresenceContextGroup.INTERACTION_CONTEXT)
+                : groups;
+        boolean live = requested.contains(PresenceContextGroup.INTERACTION_CONTEXT);
         Screen screen = minecraft.screen;
         PresenceScreenKind screenKind = screenClassifier.classify(screen);
         PresenceTargetSnapshot crosshairTarget = crosshairTarget(minecraft, player);
@@ -162,13 +144,14 @@ public final class PresenceEventCollector {
                 equippedItems,
                 crosshairTarget,
                 minecraft.options.keyUse.isDown(),
+                minecraft.options.keyAttack.isDown(),
                 player.isShiftKeyDown(),
                 inputKind == null ? PresenceInputKind.NONE : inputKind,
-                detailed ? playerStatus(player) : PresencePlayerStatus.empty(),
-                detailed ? worldEnvironment(minecraft.level, player) : PresenceWorldEnvironment.empty(),
-                detailed ? inventoryItems(player) : List.of(),
-                detailed ? activeEffects(player) : List.of(),
-                facts,
+                requested.contains(PresenceContextGroup.PLAYER_STATUS) ? playerStatus(player) : PresencePlayerStatus.empty(),
+                requested.contains(PresenceContextGroup.WORLD_ENVIRONMENT) ? worldEnvironment(minecraft.level, player) : PresenceWorldEnvironment.empty(),
+                requested.contains(PresenceContextGroup.PLAYER_INVENTORY) ? inventoryItems(player) : List.of(),
+                requested.contains(PresenceContextGroup.PLAYER_ACTIVE_EFFECTS) ? activeEffects(player) : List.of(),
+                live ? facts : Map.of(),
                 System.currentTimeMillis()
         );
     }

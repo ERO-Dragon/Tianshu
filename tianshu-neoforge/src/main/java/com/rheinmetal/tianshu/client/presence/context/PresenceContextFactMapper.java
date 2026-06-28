@@ -137,7 +137,7 @@ public final class PresenceContextFactMapper {
         Map<String, String> values = orderedMap();
         values.put("itemCount", Integer.toString(snapshot.inventoryItems().size()));
         values.put("items", counts.entrySet().stream()
-                .map(entry -> rawToken(ids.get(entry.getKey())) + ":" + entry.getValue().count)
+                .map(entry -> valueToken(ids.get(entry.getKey())) + ":" + entry.getValue().count)
                 .collect(Collectors.joining("|")));
         String text = tr("tianshu.presence.context.inventory", itemsText);
         return fact(PresenceContextFactIds.PLAYER_INVENTORY, text, 78, "player_inventory", List.of("inventory", "items"), now, values);
@@ -161,7 +161,7 @@ public final class PresenceContextFactMapper {
         Map<String, String> values = orderedMap();
         values.put("effects", snapshot.activeEffects().stream()
                 .filter(effect -> effect != null && !effect.effectId().isBlank())
-                .map(effect -> rawToken(effect.effectId()) + ":" + effect.amplifier() + ":" + effect.durationTicks())
+                .map(effect -> valueToken(effect.effectId()) + ":" + effect.amplifier() + ":" + effect.durationTicks())
                 .collect(Collectors.joining("|")));
         String text = tr("tianshu.presence.context.effects", effectsText);
         return fact(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS, text, 76, "player", List.of("player", "effects"), now, values);
@@ -170,6 +170,13 @@ public final class PresenceContextFactMapper {
     private PresenceContextSnapshotPayload.FactPayload interactionContext(PresenceContextSnapshot snapshot, long now) {
         List<String> parts = new ArrayList<>();
         Map<String, String> values = orderedMap();
+        values.put("playerId", snapshot.playerId());
+        values.put("dimensionId", snapshot.dimensionId());
+        if (!snapshot.equippedItemIds().isEmpty()) {
+            values.put("equippedItemIds", snapshot.equippedItemIds().stream()
+                    .map(this::valueToken)
+                    .collect(Collectors.joining("|")));
+        }
         if (!snapshot.heldItemId().isBlank()) {
             values.put("heldItemId", snapshot.heldItemId());
             parts.add(tr("tianshu.presence.context.interaction.held_item", readableId(snapshot.heldItemId())));
@@ -182,6 +189,10 @@ public final class PresenceContextFactMapper {
             values.put("interactionKeyDown", "true");
             parts.add(tr("tianshu.presence.context.interaction.key_down"));
         }
+        if (snapshot.attackKeyDown()) {
+            values.put("attackKeyDown", "true");
+            parts.add(tr("tianshu.presence.context.interaction.attack_key_down"));
+        }
         if (snapshot.sneaking()) {
             values.put("sneaking", "true");
             parts.add(tr("tianshu.presence.context.interaction.sneaking"));
@@ -190,15 +201,18 @@ public final class PresenceContextFactMapper {
         if (target != null && target.present()) {
             values.put("crosshairTargetId", target.entityId());
             values.put("crosshairTargetTypeId", target.entityTypeId());
+            values.put("crosshairTargetDisplayName", target.displayName());
             values.put("crosshairTargetDistance", formatDecimal(target.distance()));
             parts.add(tr("tianshu.presence.context.interaction.crosshair",
                     readable(target.displayName(), readableId(target.entityTypeId())),
                     formatDecimal(target.distance())));
         }
-        if (parts.isEmpty()) {
+        if (parts.isEmpty() && values.size() <= 2) {
             return null;
         }
-        String text = tr("tianshu.presence.context.interaction",
+        String text = parts.isEmpty()
+                ? ""
+                : tr("tianshu.presence.context.interaction",
                 String.join(tr("tianshu.presence.context.list_separator"), parts));
         return fact(PresenceContextFactIds.INTERACTION_CONTEXT, text, 84, "interaction", List.of("interaction", "screen"), now, values);
     }
@@ -279,11 +293,10 @@ public final class PresenceContextFactMapper {
         return String.format(Locale.ROOT, "%.1f", value);
     }
 
-    private String rawToken(String value) {
+    private String valueToken(String value) {
         return value == null ? "" : value.trim()
                 .replace(";", " ")
-                .replace("|", " ")
-                .replace(":", "_");
+                .replace("|", " ");
     }
 
     private Map<String, String> orderedMap() {

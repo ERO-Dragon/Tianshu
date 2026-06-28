@@ -101,6 +101,31 @@ class AXMemoryRetrieverTest {
     }
 
     @Test
+    void expandsConfidentHitToAdjacentStmChainInTimelineOrder() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        registerPrimitiveProvider(runtime);
+        AXMemorySystem memorySystem = new AXMemorySystem(
+                new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+        );
+        AXScope scope = scope();
+        AXStmBlock s1 = linkedBlock(scope, "s1", "", "stm_s2", "玩家出发去找村庄。");
+        AXStmBlock s2 = linkedBlock(scope, "s2", "stm_s1", "stm_s3", "玩家在村庄铁匠铺找到钻石镐。");
+        AXStmBlock s3 = linkedBlock(scope, "s3", "stm_s2", "", "玩家把钻石镐放进末影箱。");
+        memorySystem.stmBlocks().rewrite(scope, List.of(s1, s2, s3));
+        AXMemoryEvent e2 = event(scope, s2, "玩家在村庄铁匠铺找到钻石镐。");
+        memorySystem.events().appendAll(scope, List.of(e2));
+        memorySystem.vectors().appendAll(scope, List.of(vector(e2, new float[]{1.0F, 0.0F})));
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L));
+        AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
+
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 3, 1000), result::set);
+
+        await(() -> result.get() != null);
+        assertEquals(List.of(s1.id(), s2.id(), s3.id()), result.get().blocks().stream().map(view -> view.block().id()).toList());
+    }
+
+    @Test
     void returnsEmptyResultWhenPrimitiveProviderIsMissing() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AXMemoryRetriever retriever = new AXMemoryRetriever(
@@ -128,6 +153,23 @@ class AXMemoryRetrieverTest {
                 2L,
                 "",
                 "",
+                1,
+                0,
+                content,
+                List.of()
+        );
+    }
+
+    private static AXStmBlock linkedBlock(AXScope scope, String seed, String previousId, String nextId, String content) {
+        return new AXStmBlock(
+                "stm_" + seed,
+                "",
+                scope.worldId(),
+                System.currentTimeMillis(),
+                1L,
+                2L,
+                previousId,
+                nextId,
                 1,
                 0,
                 content,

@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.context.orchestration;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.knowledge.AXStaticKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptProfile;
@@ -23,15 +24,29 @@ public final class AXPromptOrchestrator {
             AXPromptLanguageProvider languageProvider,
             List<AXPromptContributor> contributors
     ) {
+        this(resourceRepository, languageProvider, AXStaticKnowledgePlanner.NONE, contributors);
+    }
+
+    public AXPromptOrchestrator(
+            AXPromptResourceRepository resourceRepository,
+            AXPromptLanguageProvider languageProvider,
+            AXStaticKnowledgePlanner staticKnowledgePlanner,
+            List<AXPromptContributor> contributors
+    ) {
         this.resourceRepository = resourceRepository;
         this.languageProvider = languageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : languageProvider;
-        this.contributors = contributors == null ? defaultContributors() : List.copyOf(contributors);
+        AXStaticKnowledgePlanner effectivePlanner = staticKnowledgePlanner == null ? AXStaticKnowledgePlanner.NONE : staticKnowledgePlanner;
+        this.contributors = contributors == null ? defaultContributors(effectivePlanner) : List.copyOf(contributors);
     }
 
     public static List<AXPromptContributor> defaultContributors() {
+        return defaultContributors(AXStaticKnowledgePlanner.NONE);
+    }
+
+    public static List<AXPromptContributor> defaultContributors(AXStaticKnowledgePlanner staticKnowledgePlanner) {
         return List.of(
                 new AXSystemPromptContributor(),
-                new AXRuntimeContextPromptContributor(),
+                new AXGameContextPromptContributor(staticKnowledgePlanner),
                 new AXPlayerMemoryPromptContributor(),
                 new AXProvidedContextPromptContributor(),
                 new AXRecentDialoguePromptContributor(),

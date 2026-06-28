@@ -4,9 +4,12 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public final class AXEventVectorStore {
     private final AXStorageLayout layout;
@@ -25,6 +28,26 @@ public final class AXEventVectorStore {
                 .map(AXEventVector::fromJson)
                 .filter(vector -> !vector.isEmpty())
                 .toList();
+    }
+
+    public List<AXEventVector> loadAllNamespaces(AXScope scope) {
+        if (!usable(scope)) {
+            return List.of();
+        }
+        Path root = layout.vectorsRoot(scope);
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> paths = Files.walk(root, 2)) {
+            return paths
+                    .filter(path -> path != null && Files.isRegularFile(path) && "event_vectors.jsonl".equals(path.getFileName().toString()))
+                    .flatMap(path -> jsonStore.readJsonLines(path).stream())
+                    .map(AXEventVector::fromJson)
+                    .filter(vector -> !vector.isEmpty())
+                    .toList();
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     public void append(AXScope scope, AXEventVector vector) {

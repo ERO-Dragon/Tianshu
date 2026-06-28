@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.ir;
 
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
+import com.rheinmetal.tianshu.function.ir.enhance.IrContextHint;
 import com.rheinmetal.tianshu.function.ir.input.IrPreparedInput;
 import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
 import com.rheinmetal.tianshu.function.ir.core.ParseUnit;
@@ -14,10 +15,15 @@ import java.util.Set;
 final class ClientIrNamedObjectEnhancer implements IrNamedObjectEnhancer {
     @Override
     public IrNamedObjectEnhancementResult enhance(IrPreparedInput input) {
+        return enhance(input, IrContextHint.empty());
+    }
+
+    @Override
+    public IrNamedObjectEnhancementResult enhance(IrPreparedInput input, IrContextHint contextHint) {
         if (input == null || input.filteredText().isBlank()) {
             return IrNamedObjectEnhancementResult.empty(input == null ? "" : input.voiceText());
         }
-        IRParseResult parseResult = ClientNamedObjectIndexManager.parsePlayerCommand(input.filteredText(), true);
+        IRParseResult parseResult = ClientNamedObjectIndexManager.parsePlayerCommand(input.filteredText(), true, contextHint);
         if (parseResult == null) {
             return IrNamedObjectEnhancementResult.empty(input.filteredText());
         }

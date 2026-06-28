@@ -41,10 +41,10 @@ class AXRecentDialoguePromptContributorTest {
 
         var messages = builder.build().messages();
         assertEquals("system", messages.get(0).role());
-        assertTrue(messages.get(0).content().contains("<game_chat>"));
-        assertTrue(messages.get(0).content().contains("Steve说：有人看到村庄吗？"));
-        assertTrue(messages.get(0).content().contains("</game_chat>"));
-        assertEquals("user", messages.get(1).role());
-        assertEquals("assistant", messages.get(2).role());
+        assertTrue(messages.get(0).content().contains("<recent_dialogue>"));
+        assertTrue(messages.get(0).content().contains("玩家：帮我看看附近有什么"));
+        assertTrue(messages.get(0).content().contains("Steve：有人看到村庄吗？"));
+        assertTrue(messages.get(0).content().contains("AX：我会根据上下文判断。"));
+        assertTrue(messages.get(0).content().contains("</recent_dialogue>"));
     }
 }

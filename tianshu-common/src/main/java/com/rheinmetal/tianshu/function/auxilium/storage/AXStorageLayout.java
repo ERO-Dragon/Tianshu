@@ -96,6 +96,10 @@ public final class AXStorageLayout {
         return worldRoot(scope).resolve("stats");
     }
 
+    public Path memoryStatsFile(AXScope scope) {
+        return statsRoot(scope).resolve("memory_stats.json");
+    }
+
     public static String safeName(String value) {
         if (value == null || value.isBlank()) {
             return "unknown";

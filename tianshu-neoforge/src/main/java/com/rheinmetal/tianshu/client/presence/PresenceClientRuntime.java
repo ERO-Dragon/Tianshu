@@ -2,13 +2,12 @@ package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextProvider;
+import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.render.PresenceHudRenderer;
 import com.rheinmetal.tianshu.client.presence.render.PresenceRenderer;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -20,13 +19,9 @@ public final class PresenceClientRuntime {
     private final PresenceStateStore stateStore = new PresenceStateStore();
     private final PresenceDisplayPolicy displayPolicy = new PresenceDisplayPolicy();
     private final PresenceContextFactMapper contextFactMapper = new PresenceContextFactMapper();
+    private final PresenceContextQueryCoordinator contextQueryCoordinator = new PresenceContextQueryCoordinator(stateStore, contextFactMapper);
     private final PresenceEventCollector eventCollector = new PresenceEventCollector(stateStore);
-    private final PresenceContextProvider contextProvider = new PresenceContextProvider(stateStore);
     private final PresenceRenderer renderer = new PresenceHudRenderer(stateStore, displayPolicy);
-
-    public DialogueContextProvider contextProvider() {
-        return contextProvider;
-    }
 
     public PresenceContextSnapshot contextSnapshot() {
         return stateStore.contextSnapshot();
@@ -34,13 +29,14 @@ public final class PresenceClientRuntime {
 
     public TianshuFunctionModuleInstaller moduleInstaller(ProtocolRuntime protocolRuntime) {
         PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(protocolRuntime);
+        contextQueryCoordinator.bindAdapter(adapter);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
         eventCollector.setChatMessageSink(adapter::publishChatMessage);
-        return new PresenceModuleInstaller(adapter, stateStore, displayPolicy, contextFactMapper);
+        return new PresenceModuleInstaller(adapter, stateStore, displayPolicy, contextFactMapper, contextQueryCoordinator);
     }
 
     public void tick() {
-        eventCollector.tick();
+        contextQueryCoordinator.processPending(eventCollector);
     }
 
     public void recordScreenChanged(Screen screen) {

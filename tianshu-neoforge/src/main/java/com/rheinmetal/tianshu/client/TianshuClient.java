@@ -143,7 +143,6 @@ public class TianshuClient {
                 new NeoForgeAXWorldIdentityProvider(),
                 axConfig,
                 axChatHudState,
-                presenceRuntime.contextProvider(),
                 List.of(presenceRuntime.moduleInstaller(context.protocolRuntime()))
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();

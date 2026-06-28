@@ -15,7 +15,6 @@ import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 import java.util.List;
@@ -44,7 +43,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 axWorldIdentityProvider,
                 AXOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP,
-                DialogueContextProvider.EMPTY,
                 List.of()
         );
     }
@@ -70,7 +68,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 axWorldIdentityProvider,
                 axOutputSettings,
                 axChatOutputSink,
-                DialogueContextProvider.EMPTY,
                 List.of()
         );
     }
@@ -85,10 +82,8 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             AXWorldIdentityProvider axWorldIdentityProvider,
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink,
-            DialogueContextProvider dialogueContextProvider,
             List<TianshuFunctionModuleInstaller> neoForgeInstallers
     ) {
-        DialogueContextProvider effectiveDialogueContextProvider = dialogueContextProvider == null ? DialogueContextProvider.EMPTY : dialogueContextProvider;
         List<TianshuFunctionModuleInstaller> installers = new java.util.ArrayList<>();
         if (neoForgeInstallers != null) {
             installers.addAll(neoForgeInstallers);
@@ -102,7 +97,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 interruptionSignal,
                 axWorldIdentityProvider,
                 new MinecraftAXPromptLanguageProvider(),
-                effectiveDialogueContextProvider,
                 assistantSettings(axOutputSettings),
                 axOutputSettings,
                 axChatOutputSink,

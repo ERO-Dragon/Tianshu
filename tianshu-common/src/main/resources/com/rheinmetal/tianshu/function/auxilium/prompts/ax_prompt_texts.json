@@ -29,6 +29,14 @@
       "zh_cn": "<game_context>\n{{content}}\n</game_context>",
       "en_us": "<game_context>\n{{content}}\n</game_context>"
     },
+    "game_context.dynamic_title": {
+      "zh_cn": "动态环境",
+      "en_us": "Dynamic Context"
+    },
+    "game_context.knowledge_title": {
+      "zh_cn": "静态知识",
+      "en_us": "Static Knowledge"
+    },
     "game_context.fact_line": {
       "zh_cn": "- {{fact}}",
       "en_us": "- {{fact}}"
@@ -36,6 +44,14 @@
     "section.player_memory": {
       "zh_cn": "<player_memory>\n{{content}}\n</player_memory>",
       "en_us": "<player_memory>\n{{content}}\n</player_memory>"
+    },
+    "player_memory.retrieved_title": {
+      "zh_cn": "检索命中 STM",
+      "en_us": "Retrieved STM"
+    },
+    "player_memory.recent_title": {
+      "zh_cn": "近期 STM",
+      "en_us": "Recent STM"
     },
     "player_memory.block_line": {
       "zh_cn": "- {{content}}",
@@ -53,19 +69,23 @@
       "zh_cn": "  - {{message}}",
       "en_us": "  - {{message}}"
     },
-    "section.game_chat": {
-      "zh_cn": "<game_chat>\n{{content}}\n</game_chat>",
-      "en_us": "<game_chat>\n{{content}}\n</game_chat>"
+    "section.recent_dialogue": {
+      "zh_cn": "<recent_dialogue>\n{{content}}\n</recent_dialogue>",
+      "en_us": "<recent_dialogue>\n{{content}}\n</recent_dialogue>"
     },
-    "game_chat.item_line": {
-      "zh_cn": "- {{message}}",
-      "en_us": "- {{message}}"
+    "recent_dialogue.line": {
+      "zh_cn": "- {{speaker}}：{{message}}",
+      "en_us": "- {{speaker}}: {{message}}"
     },
-    "game_chat.message_line": {
-      "zh_cn": "{{sender}}说：{{message}}",
-      "en_us": "{{sender}} says: {{message}}"
+    "recent_dialogue.user_speaker": {
+      "zh_cn": "玩家",
+      "en_us": "Player"
     },
-    "game_chat.unknown_sender": {
+    "recent_dialogue.assistant_speaker": {
+      "zh_cn": "AX",
+      "en_us": "AX"
+    },
+    "recent_dialogue.unknown_speaker": {
       "zh_cn": "未知",
       "en_us": "Unknown"
     },

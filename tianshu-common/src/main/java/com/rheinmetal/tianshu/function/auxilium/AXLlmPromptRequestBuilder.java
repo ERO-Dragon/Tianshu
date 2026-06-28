@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptAs
 import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -21,9 +20,7 @@ public final class AXLlmPromptRequestBuilder {
 
     public LLMPromptRequestPayload buildChatRequest(AXRequest request, AXContextSnapshot context) {
         AXPromptAssembly assembly = promptOrchestrator.assemble(request, context, budget);
-        List<LLMPromptRequestPayload.ChunkPayload> chunks = new ArrayList<>();
-        chunks.add(LLMPromptRequestPayload.ChunkPayload.message(assembly.messages()));
-        chunks.addAll(assembly.ragChunks());
+        List<LLMPromptRequestPayload.ChunkPayload> chunks = List.of(LLMPromptRequestPayload.ChunkPayload.message(assembly.messages()));
         return new LLMPromptRequestPayload(
                 request == null ? "AX.request" : request.requestKey(),
                 1024,

@@ -470,6 +470,7 @@
   "tianshu.presence.context.interaction.held_item": "holding %s",
   "tianshu.presence.context.interaction.screen": "screen %s",
   "tianshu.presence.context.interaction.key_down": "use key is pressed",
+  "tianshu.presence.context.interaction.attack_key_down": "attack key is pressed",
   "tianshu.presence.context.interaction.sneaking": "player is sneaking",
   "tianshu.presence.context.interaction.crosshair": "crosshair targets %s at %s blocks",
   "tianshu.presence.context.screen.none": "none",

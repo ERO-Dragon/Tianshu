@@ -55,15 +55,17 @@ AX 的上下文不是简单的“静态、动态、记忆”三个池子并列�
 message chunk:
   ax_system
   game_context
+    dynamic_context
+    static_knowledge_hits
   player_memory
+    retrieved_stm
+    recent_stm
+  provided_context
   recent_dialogue
   current_input
-
-rag chunk:
-  game_knowledge
 ```
 
-玩家记忆和动态环境以普通 message 注入。静态知识优先通过 LLM rag chunk 召回。具体 message 角色、chunk 结构和字段名以 LLM 协议实现为准。
+玩家记忆、动态环境、静态知识命中结果都由 AX 排版为普通 message 注入。静态知识库可以复用 LLM 的 RAG cache 能力，但最终进入玩家可见 CHAT 请求前，应先由 AX 获得命中内容，再放入 `<game_context>`，避免 LLM 模块在最终请求中追加位置不受控的 rag prompt。
 
 ## 4. 请求编排流程
 
@@ -77,10 +79,11 @@ rag chunk:
 5. 用当前输入检索动态环境，得到相关环境事实
 6. 用当前输入直接规划静态知识 RAG query
 7. 用 当前输入 + 命中的环境事实 规划静态知识 RAG query
-8. 检索玩家记忆 E，并映射到 STM 注入片段
-9. 按模型预算选择 message 分区内容
-10. 组装 message chunk + rag chunk
-11. 通过 LLM_REQUEST lane=CHAT 调用 LLM
+8. 在静态 RAG 可用时解析静态知识命中内容
+9. 检索玩家记忆 E，并映射到 STM 注入片段
+10. 按模型预算选择 message 分区内容
+11. 组装单一 message chunk
+12. 通过 LLM_REQUEST lane=CHAT 调用 LLM
 ```
 
 第 6 步和第 7 步是并存关系：
@@ -88,7 +91,7 @@ rag chunk:
 - 直接静态 RAG 解决普通知识问题，例如“钻石镐怎么修”“下界合金怎么做”。
 - 动态引导静态 RAG 解决现场指代问题，例如“我手上这个能干嘛”“面前这个方块怎么用”。
 
-实现上可以把两路 query 合并成一个 rag chunk，也可以保留多个 rag chunk 或多个 query context。文档只固定职责，不固定协议字段。
+实现上可以把两路 query 合并后检索，也可以保留多个 query context。文档只固定职责，不固定检索协议字段。无论静态知识由什么底层能力返回，最终 prompt 中都作为 `<game_context>` 的一部分出现。
 
 ## 5. 动态环境检索
 
@@ -145,7 +148,8 @@ AX
 AX 准备静态资料
   -> LLM_CACHE_MANAGE INDEX
   -> LLM 模块生成并缓存向量
-  -> 请求时通过 LLM_REQUEST 的 rag chunk 召回
+  -> AX 按当前输入 / 动态环境 query 获取命中内容
+  -> AX 将命中内容渲染进 <game_context>
 ```
 
 AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
@@ -197,24 +201,16 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 </ax_system>
 
 <game_context>
-当前环境、短 TTL 动态事实、命中的现场指代
+当前环境、短 TTL 动态事实、命中的现场指代、已解析的静态知识命中
 </game_context>
 
-<game_knowledge>
-由 LLM RAG 召回的外部知识库、规则、资料、模组说明
-</game_knowledge>
-
 <player_memory>
-AX 选择的 STM 记忆片段
+先放 E 检索命中的 STM，再放近期 STM；附属消息跟随对应 STM
 </player_memory>
 
 <recent_dialogue>
-实时窗口内的近期完整对话轮次
+实时窗口内的近期完整对话轮次。AX/玩家对话和游戏聊天栏消息按时间线交错呈现。
 </recent_dialogue>
-
-<game_chat>
-由游戏聊天 topic 捕获到的近期聊天文本。它是整段游戏聊天上下文的容器，不是每条 AX/玩家对话的包裹。
-</game_chat>
 
 <current_input>
 玩家当前输入
@@ -228,15 +224,9 @@ message chunk:
   system: ax_system + 编排说明
   system: game_context
   system: player_memory
-  system: game_chat
-  user/assistant: recent_dialogue
+  system: provided_context
+  system: recent_dialogue
   user: current_input
-
-rag chunk:
-  uid: 静态知识库 uid
-  prompt: game_knowledge 前缀
-  contents: 可选增量资料或空列表
-  useCache: true
 ```
 
 不在玩家可见文本里解释这些标签或内部机制。
@@ -257,10 +247,10 @@ AX 需要根据当前模型能力控制上下文预算。预算分配不在本�
 - 近期对话保留完整轮次，不在句中截断。
 - 动态环境只保留和当前输入相关的事实。
 - 玩家记忆按 STM 粒度注入，完整 STM 放不下则跳过。
-- 静态知识交给 rag chunk 的 token budget 控制。
+- 静态知识命中内容按 `<game_context>` 内部预算控制；静态 RAG 检索本身的预算在检索阶段控制。
 - 外部知识和玩家记忆不能混入同一个文本池做无差别截断。
 
-需要 token 估算时，AX 可以通过 `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 对 text/message-only 内容计数。带 rag chunk 的完整请求不走 TOKEN_COUNT 兜底校验。
+需要 token 估算时，AX 可以通过 `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 对 text/message-only 内容计数。最终 CHAT prompt 应由 AX 组装为 message-only；如某些底层检索流程需要 rag chunk，不应把该 rag chunk 直接混入最终玩家可见请求做预算兜底。
 
 ## 10. 面向 Agent 的扩展性
 

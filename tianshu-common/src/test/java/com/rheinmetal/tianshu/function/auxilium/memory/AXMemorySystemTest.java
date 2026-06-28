@@ -88,6 +88,12 @@ class AXMemorySystemTest {
         assertEquals(AXAttachedWorldEvent.SCHEMA_VERSION, manifest.getAsJsonObject("schemas").get("attachedWorldEvent").getAsInt());
         assertEquals("stm_blocks/stm_blocks.jsonl", manifest.getAsJsonObject("files").get("stmBlocks").getAsString());
         assertEquals("events/attached_world_events.jsonl", manifest.getAsJsonObject("files").get("attachedWorldEvents").getAsString());
+        assertFalse(manifest.getAsJsonObject("derivedArtifacts").get("authority").getAsBoolean());
+        assertTrue(manifest.getAsJsonObject("derivedArtifacts").getAsJsonArray("rebuildable").contains(JsonParser.parseString("\"l1Clusters\"")));
+
+        AXMemoryStorageCompatibilityReport report = memorySystem.checkStorageCompatibility(scope);
+        assertTrue(report.compatible());
+        assertFalse(report.hasErrors());
     }
 
     @Test
@@ -143,6 +149,39 @@ class AXMemorySystemTest {
     }
 
     @Test
+    void storageCompatibilityFlagsFutureSchemaVersions() throws Exception {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+
+        memorySystem.ensureStorageManifest(scope);
+        JsonObject manifest = JsonParser.parseString(Files.readString(layout.worldManifestFile(scope), StandardCharsets.UTF_8)).getAsJsonObject();
+        manifest.addProperty("layoutVersion", AXMemoryStorageManifestStore.LAYOUT_VERSION + 1);
+        Files.writeString(layout.worldManifestFile(scope), manifest.toString(), StandardCharsets.UTF_8);
+
+        AXMemoryStorageCompatibilityReport report = memorySystem.checkStorageCompatibility(scope);
+
+        assertFalse(report.compatible());
+        assertTrue(report.errorCodes().contains("AX_MEMORY_LAYOUT_VERSION_FUTURE"));
+    }
+
+    @Test
+    void durableWritesAreSkippedWhenManifestIsFromFutureLayout() throws Exception {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+
+        memorySystem.ensureStorageManifest(scope);
+        JsonObject manifest = JsonParser.parseString(Files.readString(layout.worldManifestFile(scope), StandardCharsets.UTF_8)).getAsJsonObject();
+        manifest.addProperty("layoutVersion", AXMemoryStorageManifestStore.LAYOUT_VERSION + 1);
+        Files.writeString(layout.worldManifestFile(scope), manifest.toString(), StandardCharsets.UTF_8);
+
+        memorySystem.appendStmBlock(scope, new AXStmBlock("", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "不会写入的 STM。", List.of()));
+
+        assertFalse(Files.exists(layout.stmBlocksFile(scope)));
+    }
+
+    @Test
     void rawTurnsStayInRollingRuntimeWindowUntilCompressionPipelinePersistsStm() {
         AXStorageLayout layout = layout();
         AXMemorySystem memorySystem = memorySystem(layout);
@@ -174,6 +213,32 @@ class AXMemorySystemTest {
         assertEquals(3, memorySystem.load(scope).recentDialogueTurns().size());
         assertEquals(batch.turns().size(), memorySystem.confirmRawTurnsConsumed(scope, batch));
         assertEquals(3 - batch.turns().size(), memorySystem.load(scope).recentDialogueTurns().size());
+    }
+
+    @Test
+    void derivedMaintenanceRebuildsStatsAndNormalizesStmChainWithoutDroppingEvents() {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+        AXStmBlock s1 = new AXStmBlock("stm_s1", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "第一段。", List.of());
+        AXStmBlock s2 = new AXStmBlock("stm_s2", "", scope.worldId(), 2000L, 1900L, 1950L, "", "", 1, 0, "第二段。", List.of());
+        memorySystem.stmBlocks().rewrite(scope, List.of(s1, s2));
+        AXMemoryEvent event = new AXMemoryEvent("", "玩家做了一件事。", "", s2.id(), "stm_fact", scope.worldId(), "", "", false, 2100L, 1950L, 0, List.of());
+        memorySystem.events().appendAll(scope, List.of(event));
+        memorySystem.vectors().appendAll(scope, List.of(new AXEventVector(event.id(), event.factHash(), "embed", "embed:v1", 2, new float[]{1.0F, 0.0F}, 2200L)));
+
+        AXMemoryDerivedMaintenanceResult result = new AXMemoryDerivedMaintenanceService(memorySystem).maintain(scope);
+
+        assertTrue(result.ran());
+        assertTrue(result.stmChainRewritten());
+        assertEquals(1, memorySystem.events().loadAll(scope).size());
+        assertEquals("stm_s1", memorySystem.stmBlocks().loadAll(scope).get(1).previousStmId());
+        assertEquals("stm_s2", memorySystem.stmBlocks().loadAll(scope).get(0).nextStmId());
+        AXMemoryStatsSnapshot stats = memorySystem.stats().load(scope);
+        assertEquals(2, stats.stmBlockCount());
+        assertEquals(1, stats.memoryEventCount());
+        assertEquals(1, stats.vectorCount());
+        assertTrue(Files.isRegularFile(layout.memoryStatsFile(scope)));
     }
 
     private AXMemorySystem memorySystem(AXStorageLayout layout) {

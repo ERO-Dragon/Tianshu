@@ -11,7 +11,6 @@ import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityCoreAdapter;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
@@ -68,7 +67,6 @@ public final class TianshuCoreModuleInstallers {
                 interruptionSignal,
                 axWorldIdentityProvider,
                 promptLanguageProvider,
-                DialogueContextProvider.EMPTY,
                 AXAssistantSettings.DEFAULT,
                 AXOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP,
@@ -98,7 +96,6 @@ public final class TianshuCoreModuleInstallers {
                 interruptionSignal,
                 axWorldIdentityProvider,
                 promptLanguageProvider,
-                DialogueContextProvider.EMPTY,
                 AXAssistantSettings.DEFAULT,
                 axOutputSettings,
                 axChatOutputSink,
@@ -115,7 +112,6 @@ public final class TianshuCoreModuleInstallers {
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
-            DialogueContextProvider dialogueContextProvider,
             AXAssistantSettings axAssistantSettings,
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink,
@@ -125,7 +121,7 @@ public final class TianshuCoreModuleInstallers {
                 ? moduleHostInstaller(protocolRuntime)
                 : irInstaller;
         return List.of(
-                new IaModuleInstaller(protocolRuntime, dialogueContextProvider),
+                new IaModuleInstaller(protocolRuntime),
                 effectiveIrInstaller,
                 new LlmModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
                 new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, promptLanguageProvider, axAssistantSettings, axOutputSettings, axChatOutputSink),

@@ -16,14 +16,8 @@ import java.util.Optional;
 import java.util.Set;
 
 final class AXMemoryRetrievalIndex {
-    private static final double L1_CLUSTER_THRESHOLD = 0.56D;
-    private static final double L2_EFFECTIVE_MAPPING_THRESHOLD = 0.92D;
-    private static final int L1_CLUSTER_MAX_SIZE = 256;
-    private static final int L2_MAPPING_MAX_SIZE = 48;
-    private static final int DEFAULT_MAX_ROUTED_CANDIDATES = 4096;
-    private static final int MIN_ROUTED_L1_CLUSTERS = 4;
-
     private final String embeddingNamespace;
+    private final AXMemoryRetrievalPolicy policy;
     private final List<EventVectorEntry> entries;
     private final Map<String, List<EventVectorEntry>> entriesByEntityTag;
     private final Map<String, Set<String>> relatedEntityTags;
@@ -33,6 +27,7 @@ final class AXMemoryRetrievalIndex {
 
     private AXMemoryRetrievalIndex(
             String embeddingNamespace,
+            AXMemoryRetrievalPolicy policy,
             List<EventVectorEntry> entries,
             Map<String, List<EventVectorEntry>> entriesByEntityTag,
             Map<String, Set<String>> relatedEntityTags,
@@ -41,6 +36,7 @@ final class AXMemoryRetrievalIndex {
             List<VectorCluster> l2EffectiveMappings
     ) {
         this.embeddingNamespace = embeddingNamespace == null ? "" : embeddingNamespace;
+        this.policy = policy == null ? AXMemoryRetrievalPolicy.DEFAULT : policy;
         this.entries = List.copyOf(entries);
         this.entriesByEntityTag = copyListMap(entriesByEntityTag);
         this.relatedEntityTags = copySetMap(relatedEntityTags);
@@ -50,8 +46,18 @@ final class AXMemoryRetrievalIndex {
     }
 
     static AXMemoryRetrievalIndex build(List<AXMemoryEvent> events, List<AXEventVector> vectors, String embeddingNamespace) {
+        return build(events, vectors, embeddingNamespace, AXMemoryRetrievalPolicy.DEFAULT);
+    }
+
+    static AXMemoryRetrievalIndex build(
+            List<AXMemoryEvent> events,
+            List<AXEventVector> vectors,
+            String embeddingNamespace,
+            AXMemoryRetrievalPolicy policy
+    ) {
+        AXMemoryRetrievalPolicy effectivePolicy = policy == null ? AXMemoryRetrievalPolicy.DEFAULT : policy;
         if (events == null || events.isEmpty() || vectors == null || vectors.isEmpty()) {
-            return empty(embeddingNamespace);
+            return empty(embeddingNamespace, effectivePolicy);
         }
         Map<String, AXMemoryEvent> eventsById = new LinkedHashMap<>();
         for (AXMemoryEvent event : events) {
@@ -77,19 +83,24 @@ final class AXMemoryRetrievalIndex {
             entries.add(new EventVectorEntry(event, vector));
         }
         if (entries.isEmpty()) {
-            return empty(embeddingNamespace);
+            return empty(embeddingNamespace, effectivePolicy);
         }
         Map<String, List<EventVectorEntry>> entriesByEntityTag = buildEntityIndex(entries);
         Map<String, Set<String>> relatedEntityTags = buildEntityGraph(entries);
-        List<VectorCluster> l1Clusters = buildClusters(entries, "l1", L1_CLUSTER_THRESHOLD, L1_CLUSTER_MAX_SIZE);
+        List<VectorCluster> l1Clusters = buildClusters(
+                entries,
+                "l1",
+                effectivePolicy.l1ClusterThreshold(),
+                effectivePolicy.l1ClusterMaxSize()
+        );
         List<VectorCluster> l2Mappings = new ArrayList<>();
         Map<String, String> effectiveMappingByEventId = new HashMap<>();
         for (VectorCluster l1Cluster : l1Clusters) {
             List<VectorCluster> l2Clusters = buildClusters(
                     l1Cluster.entries(),
                     l1Cluster.id() + "_l2",
-                    L2_EFFECTIVE_MAPPING_THRESHOLD,
-                    L2_MAPPING_MAX_SIZE
+                    effectivePolicy.l2EffectiveMappingThreshold(),
+                    effectivePolicy.l2EffectiveMappingMaxSize()
             );
             l2Mappings.addAll(l2Clusters);
             for (VectorCluster l2Cluster : l2Clusters) {
@@ -103,6 +114,7 @@ final class AXMemoryRetrievalIndex {
         }
         return new AXMemoryRetrievalIndex(
                 embeddingNamespace,
+                effectivePolicy,
                 entries,
                 entriesByEntityTag,
                 relatedEntityTags,
@@ -113,8 +125,13 @@ final class AXMemoryRetrievalIndex {
     }
 
     static AXMemoryRetrievalIndex empty(String embeddingNamespace) {
+        return empty(embeddingNamespace, AXMemoryRetrievalPolicy.DEFAULT);
+    }
+
+    static AXMemoryRetrievalIndex empty(String embeddingNamespace, AXMemoryRetrievalPolicy policy) {
         return new AXMemoryRetrievalIndex(
                 embeddingNamespace,
+                policy,
                 List.of(),
                 Map.of(),
                 Map.of(),
@@ -133,7 +150,7 @@ final class AXMemoryRetrievalIndex {
         if (entries.isEmpty() || queryVector == null || queryVector.length == 0) {
             return new RoutedCandidates(List.of(), analysis);
         }
-        int maxCandidates = Math.max(DEFAULT_MAX_ROUTED_CANDIDATES, MIN_ROUTED_L1_CLUSTERS * L1_CLUSTER_MAX_SIZE);
+        int maxCandidates = Math.max(policy.maxRoutedCandidates(), policy.minRoutedL1Clusters() * policy.l1ClusterMaxSize());
         LinkedHashSet<EventVectorEntry> routed = new LinkedHashSet<>();
         for (String tag : analysis.matchedEntityTags()) {
             List<EventVectorEntry> tagged = entriesByEntityTag.get(tag);
@@ -154,7 +171,7 @@ final class AXMemoryRetrievalIndex {
             if (routed.size() >= maxCandidates) {
                 break;
             }
-            if (selectedClusters >= MIN_ROUTED_L1_CLUSTERS && scored.score() <= 0.20D) {
+            if (selectedClusters >= policy.minRoutedL1Clusters() && scored.score() <= policy.l1RouteScoreFloor()) {
                 continue;
             }
             routed.addAll(scored.cluster().entries());
@@ -175,9 +192,9 @@ final class AXMemoryRetrievalIndex {
             return 0.0D;
         }
         return semantic
-                * entityWeight(entry.event(), analysis)
-                * timeWeight(entry.event(), nowMillis)
-                * spatialWeight(entry.event(), analysis);
+                * entityWeight(entry.event(), analysis, policy)
+                * timeWeight(entry.event(), nowMillis, policy)
+                * spatialWeight(entry.event(), analysis, policy);
     }
 
     String effectiveMappingId(String eventId) {
@@ -234,7 +251,7 @@ final class AXMemoryRetrievalIndex {
         return semantic + entity;
     }
 
-    private static double entityWeight(AXMemoryEvent event, QueryAnalysis analysis) {
+    private static double entityWeight(AXMemoryEvent event, QueryAnalysis analysis, AXMemoryRetrievalPolicy policy) {
         if (event == null || analysis == null || event.entityTags().isEmpty()) {
             return 1.0D;
         }
@@ -242,24 +259,24 @@ final class AXMemoryRetrievalIndex {
         for (String rawTag : event.entityTags()) {
             String tag = normalizeEntityTag(rawTag);
             if (analysis.matchedEntityTags().contains(tag)) {
-                weight = Math.max(weight, 1.25D);
+                weight = Math.max(weight, policy.directEntityBoost());
             } else if (analysis.relatedEntityTags().contains(tag)) {
-                weight = Math.max(weight, 1.08D);
+                weight = Math.max(weight, policy.relatedEntityBoost());
             }
         }
         return weight;
     }
 
-    private static double timeWeight(AXMemoryEvent event, long nowMillis) {
+    private static double timeWeight(AXMemoryEvent event, long nowMillis, AXMemoryRetrievalPolicy policy) {
         if (event == null || nowMillis <= 0L || event.happenedAtMillis() <= 0L) {
             return 1.0D;
         }
         long ageMillis = Math.max(0L, nowMillis - event.happenedAtMillis());
         double ageDays = ageMillis / 86_400_000.0D;
-        return Math.max(0.90D, 1.0D - Math.min(0.10D, ageDays / 3650.0D));
+        return Math.max(1.0D - policy.maxTimeDecay(), 1.0D - Math.min(policy.maxTimeDecay(), ageDays / policy.timeDecayDaysToMax()));
     }
 
-    private static double spatialWeight(AXMemoryEvent event, QueryAnalysis analysis) {
+    private static double spatialWeight(AXMemoryEvent event, QueryAnalysis analysis, AXMemoryRetrievalPolicy policy) {
         if (event == null || analysis == null || analysis.queryPosition().isEmpty() || !event.spatiallyBound()) {
             return 1.0D;
         }
@@ -268,16 +285,16 @@ final class AXMemoryRetrievalIndex {
             return 1.0D;
         }
         double distance = eventPosition.get().distanceTo(analysis.queryPosition().get());
-        if (distance <= 64.0D) {
+        if (distance <= policy.spatialNearDistance()) {
             return 1.0D;
         }
-        if (distance <= 256.0D) {
-            return 0.96D;
+        if (distance <= policy.spatialMidDistance()) {
+            return policy.spatialMidWeight();
         }
-        if (distance <= 1024.0D) {
-            return 0.88D;
+        if (distance <= policy.spatialFarDistance()) {
+            return policy.spatialFarWeight();
         }
-        return 0.76D;
+        return policy.spatialVeryFarWeight();
     }
 
     private static Map<String, List<EventVectorEntry>> buildEntityIndex(List<EventVectorEntry> entries) {

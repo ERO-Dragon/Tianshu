@@ -16,4 +16,8 @@ public record AXContextSnapshot(AXScope scope, AXMemorySnapshot memory, List<AXR
         runtimeContextFacts = runtimeContextFacts == null ? List.of() : List.copyOf(runtimeContextFacts);
         providedContext = providedContext == null ? "" : providedContext.trim();
     }
+
+    public static AXContextSnapshot empty() {
+        return new AXContextSnapshot(AXScope.unknown(), null, List.of(), "");
+    }
 }

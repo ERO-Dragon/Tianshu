@@ -7,6 +7,9 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -42,18 +45,44 @@ public final class AXMemoryStorageManifestStore {
         changed |= addString(manifest, "worldName", scope.displayName());
         changed |= ensureSchemas(manifest);
         changed |= ensureFiles(manifest);
+        changed |= ensureDerivedArtifacts(manifest);
         if (changed) {
             jsonStore.writeObject(path, manifest);
         }
     }
 
+    public static Map<String, Integer> currentSchemas() {
+        Map<String, Integer> schemas = new LinkedHashMap<>();
+        schemas.put("stmBlock", AXStmBlock.SCHEMA_VERSION);
+        schemas.put("memoryEvent", AXMemoryEvent.SCHEMA_VERSION);
+        schemas.put("attachedWorldEvent", AXAttachedWorldEvent.SCHEMA_VERSION);
+        schemas.put("eventVector", AXEventVector.SCHEMA_VERSION);
+        return Map.copyOf(schemas);
+    }
+
+    public static Map<String, String> requiredFiles() {
+        Map<String, String> files = new LinkedHashMap<>();
+        files.put("stmBlocks", "stm_blocks/stm_blocks.jsonl");
+        files.put("events", "events/events.jsonl");
+        files.put("attachedWorldEvents", "events/attached_world_events.jsonl");
+        files.put("eventVectors", "vectors/<embeddingNamespace>/event_vectors.jsonl");
+        return Map.copyOf(files);
+    }
+
+    public static List<String> appendOnlyFileKeys() {
+        return List.of("stmBlocks", "events", "attachedWorldEvents", "eventVectors");
+    }
+
+    public static List<String> rebuildableArtifactKeys() {
+        return List.of("retrievalIndex", "l1Clusters", "l2EffectiveMappings", "entityGraph", "storageStats");
+    }
+
     private boolean ensureSchemas(JsonObject manifest) {
         JsonObject schemas = object(manifest, "schemas");
         boolean changed = !manifest.has("schemas");
-        changed |= addInt(schemas, "stmBlock", AXStmBlock.SCHEMA_VERSION);
-        changed |= addInt(schemas, "memoryEvent", AXMemoryEvent.SCHEMA_VERSION);
-        changed |= addInt(schemas, "attachedWorldEvent", AXAttachedWorldEvent.SCHEMA_VERSION);
-        changed |= addInt(schemas, "eventVector", AXEventVector.SCHEMA_VERSION);
+        for (Map.Entry<String, Integer> schema : currentSchemas().entrySet()) {
+            changed |= addInt(schemas, schema.getKey(), schema.getValue());
+        }
         manifest.add("schemas", schemas);
         return changed;
     }
@@ -61,12 +90,22 @@ public final class AXMemoryStorageManifestStore {
     private boolean ensureFiles(JsonObject manifest) {
         JsonObject files = object(manifest, "files");
         boolean changed = !manifest.has("files");
-        changed |= addString(files, "stmBlocks", "stm_blocks/stm_blocks.jsonl");
-        changed |= addString(files, "events", "events/events.jsonl");
-        changed |= addString(files, "attachedWorldEvents", "events/attached_world_events.jsonl");
-        changed |= addString(files, "eventVectors", "vectors/<embeddingNamespace>/event_vectors.jsonl");
-        changed |= addArray(files, "appendOnly", "stmBlocks", "events", "attachedWorldEvents", "eventVectors");
+        for (Map.Entry<String, String> file : requiredFiles().entrySet()) {
+            changed |= addString(files, file.getKey(), file.getValue());
+        }
+        changed |= addArray(files, "appendOnly", appendOnlyFileKeys());
         manifest.add("files", files);
+        return changed;
+    }
+
+    private boolean ensureDerivedArtifacts(JsonObject manifest) {
+        JsonObject derived = object(manifest, "derivedArtifacts");
+        boolean changed = !manifest.has("derivedArtifacts");
+        changed |= addBoolean(derived, "authority", false);
+        changed |= addString(derived, "root", "indexes/");
+        changed |= addString(derived, "statsFile", "stats/memory_stats.json");
+        changed |= addArray(derived, "rebuildable", rebuildableArtifactKeys());
+        manifest.add("derivedArtifacts", derived);
         return changed;
     }
 
@@ -101,7 +140,15 @@ public final class AXMemoryStorageManifestStore {
         return true;
     }
 
-    private boolean addArray(JsonObject json, String key, String... values) {
+    private boolean addBoolean(JsonObject json, String key, boolean value) {
+        if (json.has(key)) {
+            return false;
+        }
+        json.addProperty(key, value);
+        return true;
+    }
+
+    private boolean addArray(JsonObject json, String key, List<String> values) {
         if (json.has(key)) {
             return false;
         }

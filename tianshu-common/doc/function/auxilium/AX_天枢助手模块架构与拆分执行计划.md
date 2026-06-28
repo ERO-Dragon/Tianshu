@@ -161,10 +161,10 @@ AXModule
 - `AXConversationService`：组织一次玩家可见对话的主流程。
 - `AXInputNormalizer`：规范化当前输入，不改变语义。
 - `AXRuntimeContextCollector` / `AXRuntimeContextClient`：通过能力请求获取动态环境快照，输出短 TTL 事实。
-- `AXStaticKnowledgePlanner`：选择静态知识库 RAG uid / scope / query context。
+- `AXStaticKnowledgePlanner`：选择静态知识库 scope / query context，并把命中内容交给 prompt 编排层。
 - `AXMemorySystem`：维护 Raw Turn、STM、E、向量组、检索和 STM 注入片段。
 - `AXPromptPlanner`：决定本轮上下文预算和分区内容。
-- `AXPromptRenderer`：渲染 message chunk 和 rag chunk。
+- `AXPromptRenderer`：渲染最终 message chunk；动态环境、静态知识命中、玩家记忆和近期对话都由 AX 先整理后进入 message。
 - `AXMaintenanceCoordinator`：调度压缩、事实抽取、向量重建、索引 checkpoint。
 - `AXOutputProcessor`：处理流式输出、最终结果、TTS 和 session release。
 - `AXAccessController`：统一处理 IA 授权、协议调用权限和后续工具权限边界。
@@ -315,7 +315,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 - IA 授权入口和 `AXDialogueGateway`。
 - 上下文 Provider / Prompt Contributor 的基本框架。
 - 动态环境能力请求、短 TTL 检索和 `<game_context>` 注入。
-- 静态知识库 `LLM_CACHE_MANAGE` 和 rag chunk 接入。
+- 静态知识库 `LLM_CACHE_MANAGE` 接入，以及静态知识命中内容到 `<game_context>` 的编排。
 - 玩家输入直接检索静态知识库。
 - 玩家输入先检索动态环境，再用命中的环境信息检索静态知识库。
 - Raw Turn、STM、E 的完整记忆链路。

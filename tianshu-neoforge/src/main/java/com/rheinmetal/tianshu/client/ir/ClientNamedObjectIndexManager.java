@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.ir.core.IRCommandService;
 import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
 import com.rheinmetal.tianshu.function.ir.core.IRSnapshot;
 import com.rheinmetal.tianshu.function.ir.core.ParseUnit;
+import com.rheinmetal.tianshu.function.ir.enhance.IrContextHint;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -18,7 +19,6 @@ public final class ClientNamedObjectIndexManager {
     private static final IRCommandService IR_SERVICE = new IRCommandService();
     private static final ClientItemDictionaryBuilder ITEM_DICTIONARY_BUILDER = new ClientItemDictionaryBuilder();
     private static final ClientEntityDictionaryBuilder ENTITY_DICTIONARY_BUILDER = new ClientEntityDictionaryBuilder();
-    private static final ClientItemContextCollector CONTEXT_COLLECTOR = new ClientItemContextCollector();
     private static final IRCacheStore CACHE_STORE = new IRCacheStore();
 
     private static volatile String lastBuildReason = "uninitialized";
@@ -82,8 +82,12 @@ public final class ClientNamedObjectIndexManager {
     }
 
     public static IRParseResult parsePlayerCommand(String rawText, boolean isFastIR) {
+        return parsePlayerCommand(rawText, isFastIR, IrContextHint.empty());
+    }
+
+    public static IRParseResult parsePlayerCommand(String rawText, boolean isFastIR, IrContextHint contextHint) {
         ensureIndex("parse fallback");
-        return IR_SERVICE.parse(rawText, CONTEXT_COLLECTOR, isFastIR);
+        return IR_SERVICE.parse(rawText, ClientItemContextResolver.from(contextHint), isFastIR);
     }
 
     public static String formatPreview(IRParseResult parseResult) {

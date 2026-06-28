@@ -26,7 +26,7 @@ class AXPromptResourceRepositoryTest {
         AXPromptTexts texts = repository.loadTexts(AXPromptLanguage.ZH_CN);
 
         assertTrue(Files.isRegularFile(layout.promptTextsFile()));
-        assertEquals("<game_chat>\n内容\n</game_chat>", texts.render(AXPromptTexts.SECTION_GAME_CHAT, Map.of("content", "内容")));
+        assertEquals("<recent_dialogue>\n内容\n</recent_dialogue>", texts.render(AXPromptTexts.SECTION_RECENT_DIALOGUE, Map.of("content", "内容")));
     }
 
     @Test
@@ -35,15 +35,15 @@ class AXPromptResourceRepositoryTest {
         Files.createDirectories(layout.promptsRoot());
         Files.writeString(
                 layout.promptTextsFile(),
-                """
+                        """
                         {
                           "schemaVersion": 1,
                           "texts": {
-                            "section.game_chat": {
-                              "zh_cn": "[GAME_CHAT]\\n{{content}}\\n[/GAME_CHAT]"
+                            "section.recent_dialogue": {
+                              "zh_cn": "[RECENT]\\n{{content}}\\n[/RECENT]"
                             },
-                            "game_chat.item_line": {
-                              "zh_cn": "* {{message}}"
+                            "recent_dialogue.line": {
+                              "zh_cn": "* {{speaker}}: {{message}}"
                             }
                           }
                         }
@@ -54,7 +54,7 @@ class AXPromptResourceRepositoryTest {
 
         AXPromptTexts texts = repository.loadTexts(AXPromptLanguage.ZH_CN);
 
-        assertEquals("[GAME_CHAT]\n内容\n[/GAME_CHAT]", texts.render(AXPromptTexts.SECTION_GAME_CHAT, Map.of("content", "内容")));
-        assertEquals("* Steve说：你好", texts.render(AXPromptTexts.GAME_CHAT_ITEM_LINE, Map.of("message", "Steve说：你好")));
+        assertEquals("[RECENT]\n内容\n[/RECENT]", texts.render(AXPromptTexts.SECTION_RECENT_DIALOGUE, Map.of("content", "内容")));
+        assertEquals("* Steve: 你好", texts.render(AXPromptTexts.RECENT_DIALOGUE_LINE, Map.of("speaker", "Steve", "message", "你好")));
     }
 }

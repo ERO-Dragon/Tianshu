@@ -7,7 +7,6 @@ import java.util.List;
 
 public final class AXPromptAssemblyBuilder {
     private final List<LLMPromptRequestPayload.MessageItemPayload> messages = new ArrayList<>();
-    private final List<LLMPromptRequestPayload.ChunkPayload> ragChunks = new ArrayList<>();
 
     public void addSystemMessage(String content) {
         addMessage("system", content);
@@ -28,14 +27,7 @@ public final class AXPromptAssemblyBuilder {
         messages.add(LLMPromptRequestPayload.MessageItemPayload.of(role, content));
     }
 
-    public void addRagChunk(LLMPromptRequestPayload.ChunkPayload chunk) {
-        if (chunk == null) {
-            return;
-        }
-        ragChunks.add(chunk);
-    }
-
     public AXPromptAssembly build() {
-        return new AXPromptAssembly(messages, ragChunks);
+        return new AXPromptAssembly(messages);
     }
 }

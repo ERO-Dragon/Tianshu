@@ -27,7 +27,7 @@ public final class AXContextCollector {
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
         AXMemorySnapshot memory = memorySystem == null ? AXMemorySnapshot.empty(effectiveScope) : memorySystem.load(effectiveScope);
         if (selectedMemoryBlocks != null) {
-            memory = memory.withPlayerMemoryBlocks(selectedMemoryBlocks);
+            memory = memory.withRetrievedPlayerMemoryBlocks(selectedMemoryBlocks);
         }
         return new AXContextSnapshot(
                 effectiveScope,

@@ -238,14 +238,34 @@ interaction.key_down
 
 ### 8.1 采集策略
 
-映迹不做全量世界扫描，不逐帧构建复杂上下文。第一版按四类采集策略控制成本：
+映迹不做全量世界扫描，不逐帧构建复杂上下文。第一版按“事件、请求、字段组 dirty、client tick 执行”控制成本，不做固定保鲜。
 
 | 策略 | 适用字段 | 说明 |
 |---|---|---|
-| 实时读取 | 交互键、潜行、主手物品、副手物品、准星命中基础信息 | 成本低，只允许在 NeoForge tick/event 边界读取并写入轻量快照。 |
-| 脏数据变化 | screen kind、container kind、输入类型 | 由 screen/input/container 事件更新轻量快照，必要时标记详细快照 dirty。 |
-| 请求时读取 | IA capture 或 `PRESENCE.QUERY_CONTEXT` 需要的上下文 | 请求时只读取映迹缓存快照，不临时访问 Minecraft 活对象。 |
-| 固定间隔 | 玩家状态、环境、背包摘要、药水效果 | 低频刷新详细快照，必须有上限，不能跟随高频输入反复扫描。 |
+| 事件驱动 | screen kind、container kind、输入类型、聊天、世界事件 | 事件发生时更新轻量状态或发布 topic，不周期扫描。 |
+| 请求捕获 | `INTERACTION_CONTEXT` | capability 请求到达后入队，下一次 client tick 捕获主副手、准星、使用键、攻击键、潜行、screen 兜底等轻量字段后返回。 |
+| 请求刷新 | 背包摘要、药水效果、玩家状态、世界环境 | 每个字段组独立维护 missing/dirty。只有请求了该字段组且 missing/dirty 时，下一次 client tick 才刷新该组。 |
+| Dirty 标记 | inventory/effects/status/environment 等字段组 | dirty 只表示缓存不可信，不主动触发扫描。没请求的 dirty 字段不刷新。 |
+
+当前字段组：
+
+```text
+INTERACTION_CONTEXT
+PLAYER_INVENTORY
+PLAYER_ACTIVE_EFFECTS
+PLAYER_STATUS
+WORLD_ENVIRONMENT
+```
+
+刷新规则：
+
+```text
+请求字段组为空 -> 不刷新
+请求 INTERACTION_CONTEXT -> 下一次 client tick 捕获新的轻量交互上下文
+请求详细字段组且缓存存在且不 dirty -> 直接返回缓存
+请求详细字段组且 missing/dirty -> 下一次 client tick 只刷新这些字段组，再返回
+字段组 dirty 但没人请求 -> 不扫描
+```
 
 第一版明确不做：
 
@@ -254,6 +274,8 @@ interaction.key_down
 - 不为通用状态展示读取 NBT 或复杂组件。
 - 不把 AX 动态事实采集并入映迹。
 - 不在协议线程、LLM/AX/IA worker 线程中读取 Minecraft 活对象。
+- 不做固定间隔保鲜。
+- 不做 request interest 体系。
 
 如果后续某个功能需要完整背包、附近实体列表或复杂世界信息，应由该功能模块自己维护专用数据源，或另行设计明确的低频查询能力，不把映迹变成通用世界扫描器。
 
@@ -273,6 +295,8 @@ PRESENCE.QUERY_CONTEXT
 - 请求方通过 `PresenceContextQueryPayload.requestedFactIds` 指定需要的事实项。
 - 映迹返回 `PresenceContextSnapshotPayload`。
 - 查询结果只表达当前快照事实，不返回聊天历史或交互历史。
+- 协议 handler 不读取 Minecraft 活对象。需要捕获或刷新时，查询会挂起到下一次 client tick，由映迹在客户端线程读取后再回复。
+- 映迹只刷新请求字段对应的字段组；未请求字段即使 dirty 也不会扫描。
 
 ### 9.2 Topic
 
@@ -395,9 +419,9 @@ client/presence/render/
 - 协议能力处理器只读取 `PresenceStateStore` 中的快照。
 - 后台 worker 不访问 `Minecraft.getInstance()`。
 - HUD 渲染只读当前状态，不做复杂扫描。
-- 详细快照低频刷新，且通过 dirty 标记和时间间隔控制成本。
+- 详细字段按字段组维护 missing/dirty，只在被请求且 missing/dirty 时由下一次 client tick 刷新。
 
-请求/响应不会在映迹里等待主线程即时扫描。快照过旧时，返回已有轻量快照或空结果，由调用方按业务语义降级。
+请求/响应不会在协议线程即时扫描。需要新快照时，映迹登记 pending query，下一次 client tick 捕获或刷新所需字段组，再通过协议中心回复并 complete 原请求。
 
 ## 12. 旧结构迁移进展
 
@@ -428,5 +452,5 @@ client/presence/render/
 5. 高频事件默认不广播，先进入本地 latest snapshot。
 6. 协议入口保持少量、稳定，后续功能按真实需求扩展。
 7. 业务 topic 由业务模块拥有；映迹只注册自己拥有的 topic。
-8. 映迹采集必须遵守实时、脏数据变化、请求时、固定间隔四类策略，不做常态全量扫描。
+8. 映迹采集必须遵守事件驱动、请求捕获、字段组 dirty、client tick 执行的策略，不做常态全量扫描。
 9. 协议处理和后台 worker 不读取 Minecraft 活对象，只读取映迹已经维护的不可变快照。

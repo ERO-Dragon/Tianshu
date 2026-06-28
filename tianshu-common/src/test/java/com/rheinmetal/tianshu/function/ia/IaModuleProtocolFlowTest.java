@@ -4,11 +4,6 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextProvider;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
@@ -30,10 +25,13 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -75,7 +73,7 @@ class IaModuleProtocolFlowTest {
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
-        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, services));
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
 
@@ -104,7 +102,7 @@ class IaModuleProtocolFlowTest {
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
-        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, services));
         ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
@@ -148,7 +146,7 @@ class IaModuleProtocolFlowTest {
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
-        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, services));
         ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
         RecordingHandler maidDelivery = new RecordingHandler();
@@ -192,7 +190,7 @@ class IaModuleProtocolFlowTest {
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
-        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, services));
         ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
@@ -216,8 +214,9 @@ class IaModuleProtocolFlowTest {
     @Test
     void hardClaimUsesFrozenSpeechStartContextAndDeliversOnlyToOwner() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        MutableContextProvider contextProvider = new MutableContextProvider();
-        IaModule ia = new IaModule(runtime, contextProvider);
+        MutablePresenceContextProvider presence = new MutablePresenceContextProvider();
+        registerPresenceContextProvider(presence);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler maidDelivery = new RecordingHandler();
         RecordingHandler axDelivery = new RecordingHandler();
@@ -239,15 +238,15 @@ class IaModuleProtocolFlowTest {
                 ))
         ));
         registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
-        contextProvider.frame(new DialogueContextFrame(
-                new DialogueInteractionHints("", true, false, false, 3.0D, List.of()),
-                new DialogueContextSnapshot(
-                        "",
-                        "minecraft:overworld",
-                        List.of(new DialogueEntityRef("maid-uuid", "touhou_little_maid:maid", "酒狐", 3.0D, true)),
-                        List.of(),
-                        Map.of()
-                )
+        presence.payload(interactionContextPayload(
+                "",
+                "minecraft:overworld",
+                "",
+                "",
+                "maid-uuid",
+                "touhou_little_maid:maid",
+                "酒狐",
+                "3.0"
         ));
 
         runtime.submit(EnvelopeBuilder.eventTopic(
@@ -256,8 +255,8 @@ class IaModuleProtocolFlowTest {
                 PayloadType.ASR_SPEECH_ACTIVITY,
                 AsrSpeechActivityPayload.speaking(900L)
         ).build());
-        await(() -> contextProvider.captureCount() >= 1);
-        contextProvider.frame(DialogueContextFrame.empty("player"));
+        await(() -> presence.requestCount() >= 1);
+        presence.payload(PresenceContextSnapshotPayload.success("empty", List.of()));
         runtime.submit(EnvelopeBuilder.commandToCapability(
                 "module.ir",
                 ProtocolCapabilities.DIALOGUE_ARBITRATE,
@@ -280,7 +279,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void defaultOwnerReceivesDeliveryWhenNoHardClaimAndRequestGetsResultResponse() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler axDelivery = new RecordingHandler();
         registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
@@ -310,7 +309,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void llmAuthorizationAllowsCurrentOwnerAndRejectsNonOwnerAfterDelivery() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        IaModule ia = new IaModule(runtime, DialogueContextProvider.EMPTY);
+        IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler axDelivery = new RecordingHandler();
         registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
@@ -433,6 +432,55 @@ class IaModuleProtocolFlowTest {
         );
     }
 
+    private void registerPresenceContextProvider(MutablePresenceContextProvider handler) {
+        runtime.registerModule(
+                descriptor("test.presence", new CapabilityDescriptor(
+                        ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
+                        PayloadType.PRESENCE_CONTEXT_QUERY,
+                        PresenceContextQueryPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.REQUEST),
+                        Priority.LOW,
+                        CompletionPolicy.MANUAL_COMPLETE
+                )),
+                handler
+        );
+    }
+
+    private PresenceContextSnapshotPayload interactionContextPayload(
+            String playerId,
+            String dimensionId,
+            String heldItemId,
+            String equippedItemIds,
+            String targetId,
+            String targetTypeId,
+            String targetName,
+            String targetDistance
+    ) {
+        return PresenceContextSnapshotPayload.success("test.presence.context", List.of(
+                new PresenceContextSnapshotPayload.FactPayload(
+                        PresenceContextFactIds.INTERACTION_CONTEXT,
+                        "interaction",
+                        84,
+                        "presence",
+                        "interaction",
+                        List.of(),
+                        System.currentTimeMillis(),
+                        120_000L,
+                        Map.of(
+                                "playerId", playerId,
+                                "dimensionId", dimensionId,
+                                "heldItemId", heldItemId,
+                                "equippedItemIds", equippedItemIds,
+                                "crosshairTargetId", targetId,
+                                "crosshairTargetTypeId", targetTypeId,
+                                "crosshairTargetDisplayName", targetName,
+                                "crosshairTargetDistance", targetDistance
+                        )
+                )
+        ));
+    }
+
     private void subscribeOwnerPreview(RecordingHandler handler) {
         runtime.subscribeTopic(
                 descriptor("test.preview", List.of()),
@@ -504,21 +552,27 @@ class IaModuleProtocolFlowTest {
         boolean satisfied();
     }
 
-    private static final class MutableContextProvider implements DialogueContextProvider {
-        private final AtomicReference<DialogueContextFrame> frame = new AtomicReference<>(DialogueContextFrame.empty(""));
+    private static final class MutablePresenceContextProvider implements EnvelopeHandler {
+        private final AtomicReference<PresenceContextSnapshotPayload> payload = new AtomicReference<>(PresenceContextSnapshotPayload.success("empty", List.of()));
         private final AtomicInteger captureCount = new AtomicInteger();
 
         @Override
-        public DialogueContextFrame capture(String playerId) {
+        public void handle(TianshuEnvelope envelope, ProtocolContext context) {
             captureCount.incrementAndGet();
-            return frame.get();
+            context.submit(EnvelopeBuilder.responseTo(
+                    "test.presence",
+                    envelope,
+                    PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                    payload.get()
+            ).build());
+            context.complete(envelope.envelopeId());
         }
 
-        private void frame(DialogueContextFrame value) {
-            frame.set(value);
+        private void payload(PresenceContextSnapshotPayload value) {
+            payload.set(value == null ? PresenceContextSnapshotPayload.success("empty", List.of()) : value);
         }
 
-        private int captureCount() {
+        private int requestCount() {
             return captureCount.get();
         }
     }

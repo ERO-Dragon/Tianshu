@@ -7,13 +7,17 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrParsePayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
+import com.rheinmetal.tianshu.function.ir.enhance.IrContextHint;
 import com.rheinmetal.tianshu.function.ir.input.IrInputMapper;
 import com.rheinmetal.tianshu.function.ir.input.IrInputPreprocessor;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
@@ -22,9 +26,17 @@ import com.rheinmetal.tianshu.function.ir.routing.IrRouteKind;
 import com.rheinmetal.tianshu.function.ir.routing.IrRoutingDecision;
 import com.rheinmetal.tianshu.function.ir.routing.IrRoutingPolicy;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 
 public final class IrModule implements TianshuManagedModule {
+    private static final long PRESENCE_CONTEXT_TIMEOUT_MILLIS = 300L;
+
     private final IrProtocolAdapter adapter;
     private final IrInputPreprocessor preprocessor;
     private final IrNamedObjectEnhancer namedObjectEnhancer;
@@ -33,6 +45,7 @@ public final class IrModule implements TianshuManagedModule {
     private final IrVoiceTriggerMatcher matcher;
     private final IrRoutingPolicy routingPolicy;
     private final IrDialogueArbitrationRequestMapper dialogueMapper;
+    private final ConcurrentMap<String, PendingPresenceContext> pendingPresenceContexts = new ConcurrentHashMap<>();
     private final Object indexLock = new Object();
     private volatile List<VoiceTriggerRegistration> indexedRegistrations = List.of();
     private volatile List<IrCompiledVoiceTrigger> voiceTriggerIndex = List.of();
@@ -77,6 +90,7 @@ public final class IrModule implements TianshuManagedModule {
         voiceResources = null;
         indexedRegistrations = List.of();
         voiceTriggerIndex = List.of();
+        clearPendingPresenceContexts();
     }
 
     private void handleAsrFinalText(TianshuEnvelope envelope, ProtocolContext context) {
@@ -84,7 +98,7 @@ public final class IrModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "ASR payload is invalid", null);
             return;
         }
-        processInput(envelope, IrInputMapper.fromAsr(payload));
+        processInput(envelope, context, IrInputMapper.fromAsr(payload), false);
     }
 
     private void handleParseRequest(TianshuEnvelope envelope, ProtocolContext context) {
@@ -92,26 +106,113 @@ public final class IrModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "IR payload is invalid", null);
             return;
         }
-        processInput(envelope, IrInputMapper.fromParse(payload));
+        processInput(envelope, context, IrInputMapper.fromParse(payload), true);
     }
 
-    private void processInput(TianshuEnvelope envelope, IrInputText input) {
+    private void processInput(TianshuEnvelope envelope, ProtocolContext context, IrInputText input, boolean completeSourceEnvelope) {
         if (input == null || input.blank()) {
             publishNoMatch(envelope, input, "EMPTY_INPUT");
+            completeIfNeeded(context, envelope, completeSourceEnvelope);
             return;
         }
         IrPreparedInput prepared = preprocessor.prepare(input);
-        IrNamedObjectEnhancementResult namedObjectEnhancement = namedObjectEnhancer.enhance(prepared);
+        requestPresenceContext(envelope, context, input, completeSourceEnvelope, hint -> continueProcessing(envelope, context, input, prepared, hint, completeSourceEnvelope));
+    }
+
+    private void continueProcessing(
+            TianshuEnvelope envelope,
+            ProtocolContext context,
+            IrInputText input,
+            IrPreparedInput prepared,
+            IrContextHint contextHint,
+            boolean completeSourceEnvelope
+    ) {
+        IrNamedObjectEnhancementResult namedObjectEnhancement = namedObjectEnhancer.enhance(prepared, contextHint);
         List<IrCompiledVoiceTrigger> index = ensureVoiceTriggerIndex();
         IrInputText voiceInput = wakeWordEnhancer.enhance(inputWithNamedObjectRepair(prepared, namedObjectEnhancement), index);
         IrMatchBatch batch = matcher.match(voiceInput, index);
         IrRoutingDecision decision = routingPolicy.decide(voiceInput, batch);
         if (decision.kind() == IrRouteKind.NO_MATCH) {
             publishNoMatch(envelope, voiceInput, decision.reason());
+            completeIfNeeded(context, envelope, completeSourceEnvelope);
             return;
         }
         submitDialogueArbitration(envelope, voiceInput, prepared, namedObjectEnhancement, batch);
         publishDialogueRouted(envelope, voiceInput, batch);
+        completeIfNeeded(context, envelope, completeSourceEnvelope);
+    }
+
+    private void requestPresenceContext(
+            TianshuEnvelope parent,
+            ProtocolContext sourceContext,
+            IrInputText input,
+            boolean completeSourceEnvelope,
+            PresenceContextCompletion completion
+    ) {
+        if (adapter.presenceContextProviderCount() <= 0) {
+            completion.complete(IrContextHint.empty());
+            return;
+        }
+        PresenceContextQueryPayload payload = new PresenceContextQueryPayload(
+                "IR.context." + input.turnId(),
+                Long.toString(input.sessionId()),
+                Integer.toString(input.turnId()),
+                "",
+                "",
+                "",
+                input.text(),
+                List.of(),
+                System.currentTimeMillis(),
+                List.of(PresenceContextFactIds.INTERACTION_CONTEXT, PresenceContextFactIds.PLAYER_INVENTORY)
+        );
+        TianshuEnvelope queryEnvelope = adapter.buildPresenceContextQuery(parent, payload);
+        PendingPresenceContext pending = new PendingPresenceContext(sourceContext, parent, completeSourceEnvelope, completion);
+        pendingPresenceContexts.put(queryEnvelope.envelopeId(), pending);
+        adapter.registerPresenceContextSnapshotResponse(queryEnvelope.envelopeId(), this::handlePresenceContextResponse);
+        adapter.submitPresenceContextQuery(queryEnvelope);
+        schedulePresenceContextTimeout(queryEnvelope.envelopeId());
+    }
+
+    private void handlePresenceContextResponse(TianshuEnvelope envelope, ProtocolContext context) {
+        String requestEnvelopeId = envelope == null ? "" : envelope.parentId();
+        PendingPresenceContext pending = pendingPresenceContexts.remove(requestEnvelopeId);
+        if (pending == null) {
+            completeIfNeeded(context, envelope, true);
+            return;
+        }
+        adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        IrContextHint hint = IrContextHint.empty();
+        if (envelope.payload() instanceof PresenceContextSnapshotPayload payload && payload.success()) {
+            hint = IrPresenceContextMapper.toHint(payload);
+        }
+        pending.completion().complete(hint);
+        completeIfNeeded(context, envelope, true);
+    }
+
+    private void schedulePresenceContextTimeout(String requestEnvelopeId) {
+        CompletableFuture.delayedExecutor(PRESENCE_CONTEXT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+                .execute(() -> timeoutPresenceContext(requestEnvelopeId));
+    }
+
+    private void timeoutPresenceContext(String requestEnvelopeId) {
+        PendingPresenceContext pending = pendingPresenceContexts.remove(requestEnvelopeId);
+        if (pending == null) {
+            return;
+        }
+        adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        pending.completion().complete(IrContextHint.empty());
+        completeIfNeeded(pending.sourceContext(), pending.sourceEnvelope(), pending.completeSourceEnvelope());
+    }
+
+    private void clearPendingPresenceContexts() {
+        for (String requestEnvelopeId : pendingPresenceContexts.keySet()) {
+            PendingPresenceContext pending = pendingPresenceContexts.remove(requestEnvelopeId);
+            adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+            if (pending != null) {
+                pending.completion().complete(IrContextHint.empty());
+                completeIfNeeded(pending.sourceContext(), pending.sourceEnvelope(), pending.completeSourceEnvelope());
+            }
+        }
     }
 
     private IrInputText inputWithNamedObjectRepair(IrPreparedInput prepared, IrNamedObjectEnhancementResult namedObjectEnhancement) {
@@ -213,6 +314,69 @@ public final class IrModule implements TianshuManagedModule {
                 .mapToDouble(IrVoiceMatch::confidence)
                 .max()
                 .orElse(0.0D);
+    }
+
+    private void completeIfNeeded(ProtocolContext context, TianshuEnvelope envelope, boolean enabled) {
+        if (!enabled || context == null || envelope == null) {
+            return;
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private interface PresenceContextCompletion {
+        void complete(IrContextHint hint);
+    }
+
+    private record PendingPresenceContext(
+            ProtocolContext sourceContext,
+            TianshuEnvelope sourceEnvelope,
+            boolean completeSourceEnvelope,
+            PresenceContextCompletion completion
+    ) {
+    }
+
+    private static final class IrPresenceContextMapper {
+        private static IrContextHint toHint(PresenceContextSnapshotPayload payload) {
+            if (payload == null || payload.facts().isEmpty()) {
+                return IrContextHint.empty();
+            }
+            List<String> itemIds = new ArrayList<>();
+            for (PresenceContextSnapshotPayload.FactPayload fact : payload.facts()) {
+                if (fact == null || fact.nativeValues().isEmpty()) {
+                    continue;
+                }
+                addItemId(itemIds, fact.nativeValues().get("heldItemId"));
+                addDelimitedValues(itemIds, fact.nativeValues().get("equippedItemIds"));
+                addInventoryItems(itemIds, fact.nativeValues().get("items"));
+            }
+            return new IrContextHint(itemIds);
+        }
+
+        private static void addDelimitedValues(List<String> values, String raw) {
+            if (raw == null || raw.isBlank()) {
+                return;
+            }
+            for (String value : raw.split("\\|")) {
+                addItemId(values, value);
+            }
+        }
+
+        private static void addInventoryItems(List<String> values, String raw) {
+            if (raw == null || raw.isBlank()) {
+                return;
+            }
+            for (String entry : raw.split("\\|")) {
+                int separator = entry.lastIndexOf(':');
+                addItemId(values, separator > 0 ? entry.substring(0, separator) : entry);
+            }
+        }
+
+        private static void addItemId(List<String> values, String value) {
+            Optional.ofNullable(value)
+                    .map(String::trim)
+                    .filter(itemId -> !itemId.isBlank())
+                    .ifPresent(values::add);
+        }
     }
 
 }

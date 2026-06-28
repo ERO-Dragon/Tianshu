@@ -25,16 +25,21 @@ public record AXPromptTexts(
     public static final String SYSTEM_PARAGRAPH = "system.paragraph";
     public static final String SECTION_AX_SYSTEM = "section.ax_system";
     public static final String SECTION_GAME_CONTEXT = "section.game_context";
+    public static final String GAME_CONTEXT_DYNAMIC_TITLE = "game_context.dynamic_title";
+    public static final String GAME_CONTEXT_KNOWLEDGE_TITLE = "game_context.knowledge_title";
     public static final String GAME_CONTEXT_FACT_LINE = "game_context.fact_line";
     public static final String SECTION_PLAYER_MEMORY = "section.player_memory";
+    public static final String PLAYER_MEMORY_RETRIEVED_TITLE = "player_memory.retrieved_title";
+    public static final String PLAYER_MEMORY_RECENT_TITLE = "player_memory.recent_title";
     public static final String PLAYER_MEMORY_BLOCK_LINE = "player_memory.block_line";
     public static final String PLAYER_MEMORY_ATTACHED_TITLE = "player_memory.attached_messages.title";
     public static final String PLAYER_MEMORY_ATTACHED_HEADER = "player_memory.attached_messages.header";
     public static final String PLAYER_MEMORY_ATTACHED_LINE = "player_memory.attached_messages.line";
-    public static final String SECTION_GAME_CHAT = "section.game_chat";
-    public static final String GAME_CHAT_ITEM_LINE = "game_chat.item_line";
-    public static final String CHAT_MESSAGE_LINE = "game_chat.message_line";
-    public static final String CHAT_UNKNOWN_SENDER = "game_chat.unknown_sender";
+    public static final String SECTION_RECENT_DIALOGUE = "section.recent_dialogue";
+    public static final String RECENT_DIALOGUE_LINE = "recent_dialogue.line";
+    public static final String RECENT_DIALOGUE_USER_SPEAKER = "recent_dialogue.user_speaker";
+    public static final String RECENT_DIALOGUE_ASSISTANT_SPEAKER = "recent_dialogue.assistant_speaker";
+    public static final String RECENT_DIALOGUE_UNKNOWN_SPEAKER = "recent_dialogue.unknown_speaker";
     public static final String SECTION_PROVIDED_CONTEXT = "section.provided_context";
 
     public AXPromptTexts {

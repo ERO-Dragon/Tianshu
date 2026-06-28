@@ -2,7 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium.context.orchestration;
 
 import com.rheinmetal.tianshu.function.auxilium.memory.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptTexts;
-import java.util.ArrayList;
+
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -17,36 +18,44 @@ public final class AXRecentDialoguePromptContributor implements AXPromptContribu
         List<AXRawTurn> selected = turns.stream()
                 .filter(turn -> turn != null && !turn.isEmpty())
                 .skip(Math.max(0, turns.size() - context.budget().maxShortTermTurns()))
+                .sorted(Comparator.comparingLong(AXRawTurn::createdAtMillis))
                 .toList();
-        List<String> chatMessages = new ArrayList<>();
-        List<AXRawTurn> dialogueTurns = new ArrayList<>();
-        for (AXRawTurn turn : selected) {
-            if (turn.gameChatRole()) {
-                chatMessages.add(renderGameChat(context, turn));
-                continue;
-            }
-            dialogueTurns.add(turn);
+        if (selected.isEmpty()) {
+            return;
         }
-        if (!chatMessages.isEmpty()) {
-            String content = chatMessages.stream()
-                    .map(text -> AXPromptSectionRenderer.renderLine(context, AXPromptTexts.GAME_CHAT_ITEM_LINE, "message", text))
-                    .collect(Collectors.joining("\n"));
-            builder.addSystemMessage(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_GAME_CHAT, content));
-        }
-        for (AXRawTurn turn : dialogueTurns) {
-            builder.addMessage(turn.assistantRole() ? "assistant" : "user", turn.content());
-        }
-
+        String content = selected.stream()
+                .map(turn -> renderTurn(context, turn))
+                .filter(text -> text != null && !text.isBlank())
+                .collect(Collectors.joining("\n"));
+        builder.addSystemMessage(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_RECENT_DIALOGUE, content));
     }
 
-    private String renderGameChat(AXPromptBuildContext context, AXRawTurn turn) {
-        String sender = turn.speakerName();
-        if (sender == null || sender.isBlank()) {
-            sender = context.texts().text(AXPromptTexts.CHAT_UNKNOWN_SENDER);
+    private String renderTurn(AXPromptBuildContext context, AXRawTurn turn) {
+        if (turn == null) {
+            return "";
         }
-        return context.texts().render(AXPromptTexts.CHAT_MESSAGE_LINE, Map.of(
-                "sender", sender,
-                "message", turn.content()
+        String speaker = speakerLabel(context, turn);
+        String message = turn.content();
+        if (speaker.isBlank() || message == null || message.isBlank()) {
+            return "";
+        }
+        return context.texts().render(AXPromptTexts.RECENT_DIALOGUE_LINE, Map.of(
+                "speaker", speaker,
+                "message", message
         ));
+    }
+
+    private String speakerLabel(AXPromptBuildContext context, AXRawTurn turn) {
+        if (turn.gameChatRole()) {
+            String sender = turn.speakerName();
+            if (sender == null || sender.isBlank()) {
+                return context.texts().text(AXPromptTexts.RECENT_DIALOGUE_UNKNOWN_SPEAKER);
+            }
+            return sender.trim();
+        }
+        if (turn.assistantRole()) {
+            return context.texts().text(AXPromptTexts.RECENT_DIALOGUE_ASSISTANT_SPEAKER);
+        }
+        return context.texts().text(AXPromptTexts.RECENT_DIALOGUE_USER_SPEAKER);
     }
 }

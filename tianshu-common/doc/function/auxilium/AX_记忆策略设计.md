@@ -88,7 +88,7 @@ Raw Turn 至少需要表达：
 
 Raw Turn 可被压缩、归档或按容量裁剪，但压缩任务必须基于只读快照执行，不能阻塞当前对话。
 
-游戏聊天 topic 捕获到的聊天消息属于 Raw Turn 来源之一。它不等同于世界事件，也不直接作为附属事件或 E；它应保留发送者和文本，参与 STM 压缩。进入 prompt 时可以被渲染到独立的游戏聊天上下文区块，但普通 AX/玩家对话仍按 user/assistant 消息处理。
+游戏聊天 topic 捕获到的聊天消息属于 Raw Turn 来源之一。它不等同于世界事件，也不直接作为附属事件或 E；它应保留发送者和文本，参与 STM 压缩。进入 prompt 时应与 AX/玩家对话一起渲染到近期对话时间线中，按时间交错呈现；不再单独作为 `game_chat` 区块注入。
 
 ### 3.2 STM
 
@@ -417,10 +417,10 @@ AX 对 LLM 的所有访问都必须经过协议中心。
 - `LLM_PRIMITIVE_QUERY / TOKEN_COUNT`：用于 text / message-only 的无副作用 token 计数。
 - `LLM_PRIMITIVE_QUERY / EMBED`：用于批量文本向量化，并返回向量维度与 embedding 空间标识。
 - `LLM_PRIMITIVE_QUERY / STATUS`：用于获取模型、上下文配置和 embedding 空间快照。
-- `LLM_REQUEST` 的 `rag` chunk：用于复用 LLM 模块的外部静态知识库召回。
+- `LLM_CACHE_MANAGE` / 静态知识检索能力：用于复用 LLM 模块的外部静态知识库能力；玩家可见 CHAT 的最终 prompt 由 AX 组装为 message-only。
 - `LLM_REQUEST` 的 result / stream terminal usage：用于观察 CHAT / TASK 的实际调用成本。
 
-embedding 向量不混入普通 prompt result。AX 私有记忆由 AX 自己检索、映射、拼接后作为普通 message chunk 注入；外部知识库、规则库和模组资料使用 LLM 的 `rag` chunk 或 cache 管理能力。
+embedding 向量不混入普通 prompt result。AX 私有记忆由 AX 自己检索、映射、拼接后作为普通 message chunk 注入；外部知识库、规则库和模组资料可以复用 LLM 的静态知识检索或 cache 管理能力，但玩家可见 CHAT 的最终 prompt 仍由 AX 整理为 message-only。
 
 后台压缩使用 `lane=TASK`。玩家可见对话使用 `lane=CHAT`，并携带 IA 授权上下文。
 

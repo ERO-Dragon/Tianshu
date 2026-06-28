@@ -470,6 +470,7 @@
   "tianshu.presence.context.interaction.held_item": "手持 %s",
   "tianshu.presence.context.interaction.screen": "界面 %s",
   "tianshu.presence.context.interaction.key_down": "正在按住使用键",
+  "tianshu.presence.context.interaction.attack_key_down": "正在按住攻击键",
   "tianshu.presence.context.interaction.sneaking": "玩家正在潜行",
   "tianshu.presence.context.interaction.crosshair": "准星指向 %s，距离 %s 格",
   "tianshu.presence.context.screen.none": "无界面",
