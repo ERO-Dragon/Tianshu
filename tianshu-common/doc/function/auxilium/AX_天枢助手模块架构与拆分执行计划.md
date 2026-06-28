@@ -39,7 +39,7 @@ AX 在模块拓扑上与 LLM、IA、TTS 平级，但内部复杂度高于普通�
 - 三期：结构化工具选择与 planner。面向 9B 以上或云端模型探索更强的 function calling 和短链路计划。
 - 四期以后：更高级的 agent 行动能力和世界动作安全设计。
 
-一期虽然不做完整工具调用，但整体框架必须为后续 agent 化预留扩展点。也就是说，一期不能把动态环境、静态知识、玩家记忆、输出动作全部硬编码进一个巨大的 PromptPlanner；应保留 Provider / Planner / Contributor / Policy 这类职责边界，让二期可以自然插入 IntentRouter、ToolRegistry 和 ToolExecutor。
+一期虽然不做完整工具调用，但整体框架必须为后续 agent 化预留扩展点。这里的“预留”不是提前实现二期框架，而是避免把动态环境、静态知识、玩家记忆、输出动作全部硬编码进一个巨大的 PromptPlanner。一期只保留必要的职责边界，例如上下文提供、知识命中适配、prompt contributor 和预算策略；二期再按需要插入 IntentRouter、ToolRegistry 和 ToolExecutor。
 
 模型能力决定启用深度：
 
@@ -161,7 +161,7 @@ AXModule
 - `AXConversationService`：组织一次玩家可见对话的主流程。
 - `AXInputNormalizer`：规范化当前输入，不改变语义。
 - `AXRuntimeContextCollector` / `AXRuntimeContextClient`：通过能力请求获取动态环境快照，输出短 TTL 事实。
-- `AXStaticKnowledgePlanner`：选择静态知识库 scope / query context，并把命中内容交给 prompt 编排层。
+- `AXStaticKnowledgePlanner`：选择静态知识库 scope / query context，并把底层检索结果适配为 AX 自己的知识命中对象后交给 prompt 编排层。
 - `AXMemorySystem`：维护 Raw Turn、STM、E、向量组、检索和 STM 注入片段。
 - `AXPromptPlanner`：决定本轮上下文预算和分区内容。
 - `AXPromptRenderer`：渲染最终 message chunk；动态环境、静态知识命中、玩家记忆和近期对话都由 AX 先整理后进入 message。
@@ -262,7 +262,9 @@ config/Tianshu/module/llm/ragCache/global/
 - 业务代码不得散落物理路径，所有路径通过 `AXStorageLayout` 或迁移器获得。
 - 新版本只增不破坏旧数据；确需废弃字段时，读路径继续兼容旧字段，写路径写新字段。
 
-提示词资源属于 AX 配置资源，不属于 MC 翻译资源。推荐 common 内置 JSON catalog，并在首次运行时释放到 `ax/cache/shared/prompts/` 供玩家覆盖；Java 代码只按 key 读取和渲染变量，避免把压缩、抽事实、prompt 编排文案硬编码在流程代码里。NeoForge 的语言文件只负责玩家可见 UI / Presence 文案。
+提示词资源属于 AX 配置资源，不属于 MC 翻译资源。推荐 common 内置 JSON catalog，并在首次运行时释放到 `ax/cache/shared/prompts/` 供玩家覆盖；Java 代码只按 key 读取和渲染变量，避免把压缩、抽事实、prompt 编排文案硬编码在流程代码里。顶层 prompt 顺序只通过 `ax_system`、`game_context`、`player_memory`、`provided_context`、`recent_dialogue`、`current_input` 这类语义区块配置。NeoForge 的语言文件只负责玩家可见 UI / Presence 文案。
+
+玩家可见 CHAT 的最终请求由 AX 组装为单一 message chunk。静态知识可以复用 LLM RAG cache 做检索和缓存，但进入最终 prompt 前必须先被 AX 适配为知识命中结果，再渲染到 `<game_context>`；AX prompt 编排层不直接持有 LLM rag chunk 作为自己的上下文结构。
 
 ## 9. 输出与会话控制
 

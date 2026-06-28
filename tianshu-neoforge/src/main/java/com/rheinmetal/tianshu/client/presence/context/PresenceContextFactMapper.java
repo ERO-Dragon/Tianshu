@@ -7,9 +7,9 @@ import com.rheinmetal.tianshu.client.presence.model.PresencePotionEffect;
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment;
+import com.rheinmetal.tianshu.platform.PresenceTextProvider;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
-import net.minecraft.client.resources.language.I18n;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,6 +22,15 @@ import java.util.stream.Collectors;
 
 public final class PresenceContextFactMapper {
     private static final long FACT_TTL_MILLIS = 120_000L;
+    private final PresenceTextProvider textProvider;
+
+    public PresenceContextFactMapper() {
+        this(PresenceTextProvider.NOOP);
+    }
+
+    public PresenceContextFactMapper(PresenceTextProvider textProvider) {
+        this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
+    }
 
     public List<PresenceContextSnapshotPayload.FactPayload> factsFrom(
             PresenceContextSnapshot snapshot,
@@ -243,8 +252,8 @@ public final class PresenceContextFactMapper {
             return tr("tianshu.presence.context.unknown");
         }
         String key = "tianshu.presence.context.dimension." + dimensionId.trim().replace(':', '.');
-        if (I18n.exists(key)) {
-            return I18n.get(key);
+        if (textProvider.exists(key)) {
+            return textProvider.text(key);
         }
         return readableId(dimensionId);
     }
@@ -272,15 +281,10 @@ public final class PresenceContextFactMapper {
         if (key == null || key.isBlank()) {
             return "";
         }
-        if (I18n.exists(key)) {
-            return I18n.get(key, args);
+        if (textProvider.exists(key)) {
+            return textProvider.text(key, args);
         }
-        if (args == null || args.length == 0) {
-            return key;
-        }
-        return key + " " + java.util.Arrays.stream(args)
-                .map(String::valueOf)
-                .collect(Collectors.joining(" "));
+        return PresenceTextProvider.NOOP.text(key, args);
     }
 
     private String formatDecimal(double value) {

@@ -9,6 +9,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public final class AXRecentDialoguePromptContributor implements AXPromptContributor {
+    public static final String SECTION_ID = "recent_dialogue";
+
+    @Override
+    public String sectionId() {
+        return SECTION_ID;
+    }
+
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
         if (context.context() == null || context.context().memory() == null || context.budget().maxShortTermTurns() <= 0) {

@@ -92,10 +92,7 @@ public record AXPromptProfile(
     }
 
     private static final List<String> DEFAULT_SECTION_ORDER = List.of(
-            "identity",
-            "rules",
-            "persona",
-            "scope",
+            "ax_system",
             "game_context",
             "player_memory",
             "provided_context",

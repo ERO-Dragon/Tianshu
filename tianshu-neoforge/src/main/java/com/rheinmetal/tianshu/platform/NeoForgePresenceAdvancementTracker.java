@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.client.presence.capture;
+package com.rheinmetal.tianshu.platform;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
@@ -21,14 +21,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-final class PresenceAdvancementTracker {
+final class NeoForgePresenceAdvancementTracker {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final Set<String> completedAdvancementIds = new HashSet<>();
     private boolean baselineInitialized;
 
-    List<PresenceWorldEventPayload> collect(ClientboundUpdateAdvancementsPacket packet) {
-        if (packet == null) {
+    List<PresenceWorldEventPayload> collect(Object nativePacket) {
+        if (!(nativePacket instanceof ClientboundUpdateAdvancementsPacket packet)) {
             return List.of();
         }
         if (packet.shouldReset()) {

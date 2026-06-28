@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
 
 public final class PresenceClientHooks {
     private static volatile PresenceClientRuntime runtime;
@@ -19,10 +18,10 @@ public final class PresenceClientHooks {
         }
     }
 
-    public static void recordAdvancementUpdate(ClientboundUpdateAdvancementsPacket packet) {
+    public static void recordAdvancementUpdate(Object nativePacket) {
         PresenceClientRuntime current = runtime;
         if (current != null) {
-            current.recordAdvancementUpdate(packet);
+            current.recordAdvancementUpdate(nativePacket);
         }
     }
 

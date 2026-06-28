@@ -1,15 +1,15 @@
-package com.rheinmetal.tianshu.client.presence.capture;
+package com.rheinmetal.tianshu.platform;
 
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
-import net.minecraft.client.gui.screens.PauseScreen;
 
-public final class PresenceScreenClassifier {
-    public PresenceScreenKind classify(Screen screen) {
+final class NeoForgePresenceScreenClassifier {
+    PresenceScreenKind classify(Screen screen) {
         if (screen == null) {
             return PresenceScreenKind.NONE;
         }

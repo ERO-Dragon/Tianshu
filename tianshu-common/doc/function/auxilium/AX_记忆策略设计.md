@@ -420,7 +420,7 @@ AX 对 LLM 的所有访问都必须经过协议中心。
 - `LLM_CACHE_MANAGE` / 静态知识检索能力：用于复用 LLM 模块的外部静态知识库能力；玩家可见 CHAT 的最终 prompt 由 AX 组装为 message-only。
 - `LLM_REQUEST` 的 result / stream terminal usage：用于观察 CHAT / TASK 的实际调用成本。
 
-embedding 向量不混入普通 prompt result。AX 私有记忆由 AX 自己检索、映射、拼接后作为普通 message chunk 注入；外部知识库、规则库和模组资料可以复用 LLM 的静态知识检索或 cache 管理能力，但玩家可见 CHAT 的最终 prompt 仍由 AX 整理为 message-only。
+embedding 向量不混入普通 prompt result。AX 私有记忆由 AX 自己检索、映射、拼接后作为普通 message chunk 注入；外部知识库、规则库和模组资料可以复用 LLM 的静态知识检索或 cache 管理能力，但玩家可见 CHAT 的最终 prompt 仍由 AX 整理为 message-only。静态知识检索结果进入 prompt 前应先被适配为 AX 自己的知识命中对象，再与动态环境一起渲染进 `<game_context>`，不要把 LLM rag chunk 当作 AX prompt 编排层的内部结构。
 
 后台压缩使用 `lane=TASK`。玩家可见对话使用 `lane=CHAT`，并携带 IA 授权上下文。
 

@@ -67,6 +67,8 @@ message chunk:
 
 玩家记忆、动态环境、静态知识命中结果都由 AX 排版为普通 message 注入。静态知识库可以复用 LLM 的 RAG cache 能力，但最终进入玩家可见 CHAT 请求前，应先由 AX 获得命中内容，再放入 `<game_context>`，避免 LLM 模块在最终请求中追加位置不受控的 rag prompt。
 
+实现上，静态知识检索结果先被适配为 AX 自己的知识命中对象，例如 `AXKnowledgeHit`。Prompt 编排层只消费 AX 语义类型，不直接消费 `LLMPromptRequestPayload.ChunkPayload.rag`。这样正式 LLM RAG cache 返回、端到端测试桩或未来替代检索实现，都必须先经过同一个 AX 语义边界，再进入 `<game_context>` 渲染流程。
+
 ## 4. 请求编排流程
 
 推荐一期流程：
@@ -141,6 +143,8 @@ AX
 静态知识包括 MC 原版资料、模组说明、规则文档、玩法知识和项目内置资料。
 
 当前静态 RAG 库尚未搭建时，本节作为架构预留，不阻塞一期其他链路。AX 应先保证 IA 授权、动态环境能力请求、玩家记忆检索注入、prompt 分区和输出闭环稳定；静态知识 RAG 接入后再启用第 6、7 步相关 query。
+
+在正式静态 RAG 库完成前，可以用测试数据模拟静态知识命中。推荐把可公开、可脱敏的运行日志或调试记录整理成“一行一条知识命中”的测试数据，例如从 NeoForge `run/logs` 中抽样后手动或测试工具转换为 `AXKnowledgeHit`。这只用于验证检索结果进入 `<game_context>` 的编排效果，不代表正式知识库 schema，也不要求 AX 内置一套日志检索器。
 
 静态知识由 LLM RAG cache 管理：
 
@@ -232,6 +236,10 @@ message chunk:
 不在玩家可见文本里解释这些标签或内部机制。
 
 XML-like 包裹、列表前缀、小标题和聊天行格式都属于 prompt 排版资源，不应硬编码在 Java 业务逻辑里。AX common 内置 `ax_prompt_texts.json` 作为默认目录，运行时可释放到 AX 配置目录供后续覆盖；Java contributor 只负责选择语义槽位、传入变量并决定 LLM message role。
+
+`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`provided_context`、`recent_dialogue`、`current_input`。`identity`、`behaviorRules` 这类内容属于 `ax_system` 内部字段，不应作为独立顶层区块参与排序。为兼容早期已释放配置，读取旧的 `identity` / `rules` / `persona` / `scope` 排序项时，可映射为 `ax_system`。
+
+AX 的身份、行为规则和默认分区顺序也属于 prompt profile 资源。common 内置 `general_ax.<lang>.default.json`，运行时同样释放到 AX 配置目录；Java 只负责读取 profile 和组装 message，不在流程代码中写死具体提示词内容。
 
 ## 9. 预算分配
 

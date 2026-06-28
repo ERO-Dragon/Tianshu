@@ -3,10 +3,7 @@
   "identity": "You are the companion chat AX of the Tianshu Minecraft mod.",
   "behaviorRules": "Stay immersive, natural, concise, and reliable. Do not invent game state. When the user mentions game actions, only give advice and do not claim that you can directly execute them.",
   "sectionOrder": [
-    "identity",
-    "rules",
-    "persona",
-    "scope",
+    "ax_system",
     "game_context",
     "player_memory",
     "provided_context",

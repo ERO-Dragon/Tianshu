@@ -30,7 +30,7 @@ module.presence
 
 映迹是 `tianshu-neoforge` 侧的客户端模块，负责：
 
-- 读取 NeoForge / Minecraft 客户端状态
+- 通过外层 platform 端口读取客户端状态
 - 维护不可变快照
 - 渲染轻量 HUD
 - 通过协议中心暴露交互上下文查询能力
@@ -108,6 +108,28 @@ PLAYER_STATUS
 WORLD_ENVIRONMENT
 ```
 
+### 3.2.5 二点五期：平台端口解耦
+
+二点五期解决“映迹核心不直接绑定 NeoForge / Minecraft 版本 API”。
+
+已确定目标：
+
+- 映迹采集链只依赖 `PresencePlatform`
+- 映迹文本映射只依赖 `PresenceTextProvider`
+- NeoForge / Minecraft 的活对象读取、screen 分类、成就包解析、注册表读取、本地化 API 都放在外层 `platform` 包
+- 映迹事件入口尽量接收普通值或平台端口，不让 `Screen`、`Component`、packet 等版本敏感类型流入映迹核心
+
+已完成：
+
+- `PresenceEventCollector` 不再直接读取 `Minecraft.getInstance()`
+- `PresenceEventCollector` 不再接收 `Screen`、`Component`、`ClientboundUpdateAdvancementsPacket`
+- `PresenceContextFactMapper` 和 `PresenceDisplayPolicy` 不再直接调用 Minecraft `I18n`
+- NeoForge 细节集中到 `NeoForgePresencePlatform`、`NeoForgePresenceAdvancementTracker`、`NeoForgePresenceScreenClassifier`、`NeoForgePresenceTextProvider`
+
+暂不处理：
+
+- HUD 底层绘制仍由当前 NeoForge renderer 直接接 `GuiGraphics`，留到三期 UI 解耦处理
+
 ### 3.3 三期：UI 解耦与能力扩展
 
 三期解决“映迹怎么继续长，但不把自己长成怪物”。
@@ -138,7 +160,7 @@ WORLD_ENVIRONMENT
 
 映迹只做这些：
 
-- 采集 NeoForge 客户端状态
+- 通过 platform 端口采集客户端状态
 - 维护 `PresenceStateStore`
 - 处理 `PRESENCE.QUERY_CONTEXT`
 - 发布 `PRESENCE.WORLD_EVENT`
@@ -152,6 +174,7 @@ WORLD_ENVIRONMENT
 - 不替 IR 做文本修复
 - 不改协议中心功能定义
 - 不在 common 引入 NeoForge 活对象
+- 不在采集、查询、状态映射链路里直接依赖 NeoForge / Minecraft 版本 API
 
 ## 5. 协议入口
 
@@ -291,6 +314,14 @@ client/presence/status/
 client/presence/render/
   PresenceHudRenderer
   PresenceRenderer
+
+platform/
+  PresencePlatform
+  PresenceTextProvider
+  NeoForgePresencePlatform
+  NeoForgePresenceAdvancementTracker
+  NeoForgePresenceScreenClassifier
+  NeoForgePresenceTextProvider
 ```
 
 ## 9. 当前完成度
@@ -319,3 +350,4 @@ client/presence/render/
 5. 业务 topic 由业务模块拥有，映迹只订阅或发布自己拥有的 topic。
 6. 详细字段按字段组 dirty 管理，没请求不刷新。
 7. 协议处理线程不直接读取 Minecraft 活对象。
+8. 采集和文本映射依赖 platform 端口；NeoForge / Minecraft 版本敏感实现留在外层 `platform` 包。

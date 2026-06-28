@@ -5,6 +5,13 @@ import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptTexts;
 import java.util.Map;
 
 public final class AXSystemPromptContributor implements AXPromptContributor {
+    public static final String SECTION_ID = "ax_system";
+
+    @Override
+    public String sectionId() {
+        return SECTION_ID;
+    }
+
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
         StringBuilder text = new StringBuilder();

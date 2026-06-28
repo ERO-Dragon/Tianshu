@@ -3,11 +3,11 @@ package com.rheinmetal.tianshu.client.presence.status;
 import com.rheinmetal.tianshu.client.presence.model.PresenceSeverity;
 import com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceStatusType;
+import com.rheinmetal.tianshu.platform.PresenceTextProvider;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
-import net.minecraft.client.resources.language.I18n;
 
 import java.util.Map;
 
@@ -15,6 +15,15 @@ public final class PresenceDisplayPolicy {
     private static final long SHORT_TTL_MILLIS = 1_500L;
     private static final long ACTIVE_TTL_MILLIS = 8_000L;
     private static final long ERROR_TTL_MILLIS = 6_000L;
+    private final PresenceTextProvider textProvider;
+
+    public PresenceDisplayPolicy() {
+        this(PresenceTextProvider.NOOP);
+    }
+
+    public PresenceDisplayPolicy(PresenceTextProvider textProvider) {
+        this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
+    }
 
     public PresenceStatusSnapshot fromAsr(AsrSpeechActivityPayload payload) {
         if (payload == null || !payload.speaking()) {
@@ -80,14 +89,14 @@ public final class PresenceDisplayPolicy {
 
     public String displayText(PresenceStatusSnapshot snapshot) {
         PresenceStatusSnapshot effective = snapshot == null ? PresenceStatusSnapshot.idle() : snapshot;
-        if (!effective.messageKey().isBlank() && I18n.exists(effective.messageKey())) {
-            return I18n.get(effective.messageKey());
+        if (!effective.messageKey().isBlank() && textProvider.exists(effective.messageKey())) {
+            return textProvider.text(effective.messageKey());
         }
         if (!effective.messageText().isBlank()) {
             return effective.messageText();
         }
         String fallbackKey = messageKey(effective.statusType());
-        return I18n.exists(fallbackKey) ? I18n.get(fallbackKey) : "";
+        return textProvider.exists(fallbackKey) ? textProvider.text(fallbackKey) : "";
     }
 
     private PresenceStatusSnapshot status(

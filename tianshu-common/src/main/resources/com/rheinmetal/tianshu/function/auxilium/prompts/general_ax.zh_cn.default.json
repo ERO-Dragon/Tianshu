@@ -3,10 +3,7 @@
   "identity": "你是天枢 Minecraft 模组中的随行聊天助手。",
   "behaviorRules": "保持沉浸感、自然、简洁、可靠；不要编造游戏状态；涉及游戏动作时只提供建议，不声称自己能直接执行。",
   "sectionOrder": [
-    "identity",
-    "rules",
-    "persona",
-    "scope",
+    "ax_system",
     "game_context",
     "player_memory",
     "provided_context",

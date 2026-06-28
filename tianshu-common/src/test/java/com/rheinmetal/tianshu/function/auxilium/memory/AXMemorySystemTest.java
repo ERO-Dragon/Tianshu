@@ -166,6 +166,23 @@ class AXMemorySystemTest {
     }
 
     @Test
+    void storageCompatibilityFlagsFutureEntitySchemaVersions() throws Exception {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+
+        memorySystem.ensureStorageManifest(scope);
+        JsonObject manifest = JsonParser.parseString(Files.readString(layout.worldManifestFile(scope), StandardCharsets.UTF_8)).getAsJsonObject();
+        manifest.getAsJsonObject("schemas").addProperty("memoryEvent", AXMemoryEvent.SCHEMA_VERSION + 1);
+        Files.writeString(layout.worldManifestFile(scope), manifest.toString(), StandardCharsets.UTF_8);
+
+        AXMemoryStorageCompatibilityReport report = memorySystem.checkStorageCompatibility(scope);
+
+        assertFalse(report.compatible());
+        assertTrue(report.errorCodes().contains("AX_MEMORY_SCHEMA_FUTURE_memoryEvent"));
+    }
+
+    @Test
     void durableWritesAreSkippedWhenManifestIsFromFutureLayout() throws Exception {
         AXStorageLayout layout = layout();
         AXMemorySystem memorySystem = memorySystem(layout);
@@ -179,6 +196,44 @@ class AXMemorySystemTest {
         memorySystem.appendStmBlock(scope, new AXStmBlock("", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "不会写入的 STM。", List.of()));
 
         assertFalse(Files.exists(layout.stmBlocksFile(scope)));
+    }
+
+    @Test
+    void durableWritesAreSkippedWhenManifestHasFutureEntitySchema() throws Exception {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+
+        memorySystem.ensureStorageManifest(scope);
+        JsonObject manifest = JsonParser.parseString(Files.readString(layout.worldManifestFile(scope), StandardCharsets.UTF_8)).getAsJsonObject();
+        manifest.getAsJsonObject("schemas").addProperty("memoryEvent", AXMemoryEvent.SCHEMA_VERSION + 1);
+        Files.writeString(layout.worldManifestFile(scope), manifest.toString(), StandardCharsets.UTF_8);
+
+        memorySystem.appendMemoryEvent(scope, new AXMemoryEvent("", "不会写入的 E。", "", "stm_block", "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, 0, List.of()));
+
+        assertFalse(Files.exists(layout.eventsFile(scope)));
+    }
+
+    @Test
+    void eventVectorsAreIsolatedByEmbeddingNamespace() {
+        AXStorageLayout layout = layout();
+        AXMemorySystem memorySystem = memorySystem(layout);
+        AXScope scope = scope();
+        AXStmBlock block = new AXStmBlock("", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "玩家把钻石镐放进末影箱。", List.of());
+        AXMemoryEvent event = new AXMemoryEvent("", "玩家把钻石镐放进末影箱。", "", block.id(), "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, 0, List.of("minecraft:diamond_pickaxe"));
+
+        memorySystem.appendStmBlock(scope, block);
+        memorySystem.appendMemoryEvent(scope, event);
+        memorySystem.appendEventVector(scope, new AXEventVector(event.id(), event.factHash(), "embed-a", "embed:a", 2, new float[]{1.0F, 0.0F}, 1000L));
+
+        AXMemoryRetrievalIndex matching = memorySystem.retrievalIndex(scope, "embed:a");
+        AXMemoryRetrievalIndex otherNamespace = memorySystem.retrievalIndex(scope, "embed:b");
+
+        assertFalse(matching.isEmpty());
+        assertTrue(otherNamespace.isEmpty());
+        assertEquals(1, memorySystem.vectors().load(scope, "embed:a").size());
+        assertEquals(0, memorySystem.vectors().load(scope, "embed:b").size());
+        assertEquals(1, memorySystem.vectors().loadAllNamespaces(scope).size());
     }
 
     @Test

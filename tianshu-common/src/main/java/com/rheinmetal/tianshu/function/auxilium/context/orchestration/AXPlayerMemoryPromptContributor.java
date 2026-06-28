@@ -9,6 +9,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public final class AXPlayerMemoryPromptContributor implements AXPromptContributor {
+    public static final String SECTION_ID = "player_memory";
+
+    @Override
+    public String sectionId() {
+        return SECTION_ID;
+    }
+
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
         if (context.context() == null || context.context().memory() == null || context.budget().maxMemoryItems() <= 0) {

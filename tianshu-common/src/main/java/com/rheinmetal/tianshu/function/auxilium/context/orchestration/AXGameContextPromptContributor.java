@@ -10,10 +10,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public final class AXGameContextPromptContributor implements AXPromptContributor {
+    public static final String SECTION_ID = "game_context";
+
     private final AXStaticKnowledgePlanner staticKnowledgePlanner;
 
     public AXGameContextPromptContributor(AXStaticKnowledgePlanner staticKnowledgePlanner) {
         this.staticKnowledgePlanner = staticKnowledgePlanner == null ? AXStaticKnowledgePlanner.NONE : staticKnowledgePlanner;
+    }
+
+    @Override
+    public String sectionId() {
+        return SECTION_ID;
     }
 
     @Override

@@ -31,6 +31,8 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.platform.NeoForgeAXWorldIdentityProvider;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
+import com.rheinmetal.tianshu.platform.NeoForgePresencePlatform;
+import com.rheinmetal.tianshu.platform.NeoForgePresenceTextProvider;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
@@ -124,7 +126,7 @@ public class TianshuClient {
         axConfig = new AXClientConfig(config.getRootPath().resolve("ax"));
         axChatHudState = new AXChatHudState();
         axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axConfig);
-        presenceRuntime = new PresenceClientRuntime();
+        presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(), new NeoForgePresenceTextProvider());
         PresenceClientHooks.bind(presenceRuntime);
 
         audioManager = new AudioManager();
@@ -277,7 +279,7 @@ public class TianshuClient {
     public static void onScreenInit(ScreenEvent.Init.Post event) {
         Screen screen = event.getScreen();
         if (presenceRuntime != null) {
-            presenceRuntime.recordScreenChanged(screen);
+            presenceRuntime.recordScreenChanged();
         }
         if (screen instanceof PauseScreen) {
             int screenWidth = screen.width;
@@ -315,7 +317,11 @@ public class TianshuClient {
 
     public static void onClientChatReceived(ClientChatReceivedEvent event) {
         if (presenceRuntime != null && event instanceof ClientChatReceivedEvent.Player && !event.isSystem()) {
-            presenceRuntime.recordPlayerChatMessage(event.getMessage(), event.getSender(), playerChatSenderName(event));
+            presenceRuntime.recordPlayerChatMessage(
+                    event.getMessage().getString(),
+                    event.getSender() == null ? "" : event.getSender().toString(),
+                    playerChatSenderName(event)
+            );
         }
     }
 
