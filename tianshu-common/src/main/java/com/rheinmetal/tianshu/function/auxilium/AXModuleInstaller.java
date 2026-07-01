@@ -5,9 +5,9 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
-import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 

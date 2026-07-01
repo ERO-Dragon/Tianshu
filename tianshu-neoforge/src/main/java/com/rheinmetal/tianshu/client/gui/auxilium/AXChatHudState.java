@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.client.gui.auxilium;
 
-import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputContext;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
 
 import java.util.Objects;
 

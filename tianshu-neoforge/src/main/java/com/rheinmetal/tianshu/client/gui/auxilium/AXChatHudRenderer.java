@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.client.gui.auxilium;
 
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;

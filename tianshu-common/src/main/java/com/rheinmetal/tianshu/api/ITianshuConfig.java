@@ -166,54 +166,6 @@ public interface ITianshuConfig {
         return 1000;
     }
 
-    default int getLlmMemoryRagTokenBudget() {
-        return 1000;
-    }
-
-    default int getLlmAXChatInputTokenBudget() {
-        return 8000;
-    }
-
-    default int getLlmAXRecentRawChatTokenBudget() {
-        return 4000;
-    }
-
-    default int getLlmAXShortTermChatTokenBudget() {
-        return 1500;
-    }
-
-    default int getLlmAXUserConventionChatTokenBudget() {
-        return 500;
-    }
-
-    default int getLlmAXDynamicRagChatTokenBudget() {
-        return 500;
-    }
-
-    default int getLlmAXRecentRawKeepTokenTarget() {
-        return 5000;
-    }
-
-    default int getLlmAXRecentRawKeepTokenMax() {
-        return 8000;
-    }
-
-    default int getLlmAXShortTermCompressTokenTarget() {
-        return 7000;
-    }
-
-    default int getLlmAXShortTermCompressTokenMax() {
-        return 10000;
-    }
-
-    default int getLlmAXMaxRawEstimatedTokens() {
-        return 28000;
-    }
-
-    default int getLlmAXMaxRawCharacters() {
-        return 120000;
-    }
-
     default int getLlmAXShortTermChatBlockLimit() {
         return 3;
     }
@@ -305,6 +257,10 @@ public interface ITianshuConfig {
 
     default int getLlmContextSize() {
         return 4096;
+    }
+
+    default int getLlmPromptTokenBudget() {
+        return 3000;
     }
 
     void save();

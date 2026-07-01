@@ -4,17 +4,18 @@
 
 本文描述 AX 在获得 IA 授权后，如何把玩家当前输入、动态环境、静态知识、玩家记忆和近期对话组合成一次 `LLM_REQUEST lane=CHAT`。
 
-本文只讨论 prompt 编排和上下文检索链路，不定义 AX 记忆字段协议，不定义 LLM RAG cache 的底层文件格式，也不定义二期以后的工具调用协议。
+本文只讨论 prompt 编排和上下文检索链路，不定义 AX 记忆字段协议，不定义 LLM RAG cache 的底层文件格式，也不定义二期以后技能协作的技能执行协议。
 
 相关文档：
 
-- [AX_天枢助手模块架构与拆分执行计划.md](./AX_天枢助手模块架构与拆分执行计划.md)：定义 AX 模块身份、内部子系统和分期边界。
 - [AX_记忆策略设计.md](./AX_记忆策略设计.md)：定义 Raw Turn、STM、E、检索、存储和记忆注入边界。
+- [AX_辅星自然交互基线设计.md](./AX_辅星自然交互基线设计.md)：定义一期边界。
+- [AX_辅星技能协作设计.md](./AX_辅星技能协作设计.md)：定义二期边界。
 - [../llm/LLM接口设计.md](../llm/LLM接口设计.md)：定义 LLM_REQUEST、LLM_PRIMITIVE_QUERY、LLM_CACHE_MANAGE 等协议能力。
 
 ## 2. 核心原则
 
-AX 的上下文不是简单的“静态、动态、记忆”三个池子并列塞入 prompt。更准确的模型是三条链路：
+AX 的 prompt 输入不是简单的“静态、动态、记忆”三个池子并列塞入 prompt。更准确的模型是三条链路：
 
 ```text
 玩家输入
@@ -33,10 +34,10 @@ AX 的上下文不是简单的“静态、动态、记忆”三个池子并列�
 其中：
 
 - 静态知识用于解释 MC 原版、模组、规则、资料和玩法。
-- 动态环境用于理解“这个、手上、附近、我面前”等现场指代，并为静态知识检索提供更准确的 query context。
+- 动态环境用于命中本轮动态事实，理解“这个、手上、附近、我面前”等现场指代，并为静态知识检索提供更准确的 query 材料。
 - 玩家记忆用于解释玩家和 AX 的历史，不进入 LLM RAG cache。
 
-动态环境既可以作为 prompt 的 `<game_context>` 注入，也可以作为静态知识 RAG 的 query 扩展来源。二者是两个用途，不应混成长期记忆。
+命中的动态事实进入 `<game_context>` 的 `dynamic_content`，同时作为动态引导静态 RAG 的 query 材料。动态事实和动态事实命中的静态 RAG 内容属于同一条动态内容链路，不应混成长期记忆。
 
 ## 3. 输入与输出
 
@@ -55,17 +56,21 @@ AX 的上下文不是简单的“静态、动态、记忆”三个池子并列�
 message chunk:
   ax_system
   game_context
-    dynamic_context
-    static_knowledge_hits
+    static_content
+    dynamic_content
   player_memory
     retrieved_stm
     recent_stm
-  provided_context
   recent_dialogue
   current_input
 ```
 
-玩家记忆、动态环境、静态知识命中结果都由 AX 排版为普通 message 注入。静态知识库可以复用 LLM 的 RAG cache 能力，但最终进入玩家可见 CHAT 请求前，应先由 AX 获得命中内容，再放入 `<game_context>`，避免 LLM 模块在最终请求中追加位置不受控的 rag prompt。
+`game_context` 内部只承载两类组装内容：
+
+- `static_content`：仅由当前输入直接检索静态 RAG 库得到的命中内容。
+- `dynamic_content`：先用当前输入检索动态环境得到的命中动态事实，以及用这些动态事实扩展静态 RAG query 得到的命中内容。
+
+玩家记忆、静态内容、动态内容、近期对话和当前输入都由 AX 排版为普通 message 注入。静态知识库可以复用 LLM 的 RAG cache 能力，但最终进入玩家可见 CHAT 请求前，应先由 AX 获得命中内容，再放入 `<game_context>`，避免 LLM 模块在最终请求中追加位置不受控的 rag prompt。
 
 实现上，静态知识检索结果先被适配为 AX 自己的知识命中对象，例如 `AXKnowledgeHit`。Prompt 编排层只消费 AX 语义类型，不直接消费 `LLMPromptRequestPayload.ChunkPayload.rag`。这样正式 LLM RAG cache 返回、端到端测试桩或未来替代检索实现，都必须先经过同一个 AX 语义边界，再进入 `<game_context>` 渲染流程。
 
@@ -77,10 +82,10 @@ message chunk:
 1. 校验 IA 授权和 session owner
 2. 规范化当前输入
 3. 读取近期完整对话轮次
-4. 通过 `PRESENCE.QUERY_CONTEXT` 等能力请求获取本轮动态环境快照
-5. 用当前输入检索动态环境，得到相关环境事实
+4. 通过 `PRESENCE.QUERY_CONTEXT` 等能力请求获取本轮动态事实候选
+5. 用当前输入筛选动态环境，得到相关动态事实
 6. 用当前输入直接规划静态知识 RAG query
-7. 用 当前输入 + 命中的环境事实 规划静态知识 RAG query
+7. 用 当前输入 + 命中的动态事实 规划静态知识 RAG query
 8. 在静态 RAG 可用时解析静态知识命中内容
 9. 检索玩家记忆 E，并映射到 STM 注入片段
 10. 按模型预算选择 message 分区内容
@@ -93,7 +98,7 @@ message chunk:
 - 直接静态 RAG 解决普通知识问题，例如“钻石镐怎么修”“下界合金怎么做”。
 - 动态引导静态 RAG 解决现场指代问题，例如“我手上这个能干嘛”“面前这个方块怎么用”。
 
-实现上可以把两路 query 合并后检索，也可以保留多个 query context。文档只固定职责，不固定检索协议字段。无论静态知识由什么底层能力返回，最终 prompt 中都作为 `<game_context>` 的一部分出现。
+实现上可以把两路 query 合并后检索，也可以保留多个 query 通道。文档只固定职责，不固定检索协议字段。无论静态知识由什么底层能力返回，最终 prompt 中都作为 `<game_context>` 的一部分出现。
 
 ## 5. 动态环境检索
 
@@ -106,15 +111,15 @@ message chunk:
 - 当前打开的界面。
 - 近期世界事件。
 
-动态环境检索的目标不是“记住历史”，而是给当前输入补齐现场语义。
+动态环境检索的目标不是“记住历史”，而是给当前输入补齐现场语义，并产出本轮可解释的动态事实。
 
 本轮 prompt 所需的动态环境必须通过协议中心能力请求/响应获取，不能依赖 topic 广播作为权威输入：
 
 ```text
 AX
   -> PRESENCE.QUERY_CONTEXT
-  -> NeoForge 映迹模块或其他平台上下文模块回传本轮环境事实
-  -> AX 过滤、排序并注入 <game_context>
+  -> NeoForge 映迹模块或其他平台动态环境 provider 回传本轮事实候选
+  -> AX 过滤、排序后作为 dynamic_content 的动态事实部分进入 <game_context>
 ```
 
 原因：
@@ -127,7 +132,8 @@ AX
 ```text
 当前输入：“这个怎么用？”
   -> 动态环境检索命中：玩家准星指向 minecraft:enchanting_table
-  -> 静态知识 query context：enchanting table / 附魔台 / 当前输入
+  -> dynamic_content 动态事实：玩家准星指向 minecraft:enchanting_table
+  -> 静态知识 query 材料：enchanting table / 附魔台 / 当前输入
   -> 静态知识 RAG 召回附魔台用法
 ```
 
@@ -172,7 +178,7 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
     -> static knowledge query
 ```
 
-动态环境命中后，应优先把环境事实规范化为稳定标识，例如物品 ID、方块 ID、实体 ID、模组 ID、维度 ID 或结构名，而不是把完整环境快照塞进 query。
+动态环境命中后，应优先把动态事实规范化为稳定标识，例如物品 ID、方块 ID、实体 ID、模组 ID、维度 ID 或结构名，而不是把完整环境快照塞进 query。
 
 ## 7. 玩家记忆注入
 
@@ -186,6 +192,16 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
   -> 可选 STM 链式发散
   -> 按预算注入 player_memory
 ```
+
+一期实现里，`player_memory` 必须执行 `E -> STM` 折叠注入：
+
+- 检索命中的 E 只能作为定位锚点。
+- 最终注入必须是 E 所属的完整 STM 文本。
+- 不允许把孤立 E 文本直接拼进 prompt。
+- 当命中置信度足够高时，才允许沿 STM 前后链路做链式发散。
+- 链式发散深度必须与当前模型档位预算策略挂钩，不能写死为固定常量。
+
+`player_memory` 的检索和 `game_context` 的取数在一期 baseline 中不做模块级握手，二者是并列模块。真正的融合只发生在 `core` 末端装配时。
 
 玩家记忆可以参考动态环境事实，但不应与静态知识混进同一个无差别文本池：
 
@@ -205,7 +221,7 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 </ax_system>
 
 <game_context>
-当前环境、短 TTL 动态事实、命中的现场指代、已解析的静态知识命中
+静态内容、动态事实、动态事实路径 RAG 命中
 </game_context>
 
 <player_memory>
@@ -228,7 +244,6 @@ message chunk:
   system: ax_system + 编排说明
   system: game_context
   system: player_memory
-  system: provided_context
   system: recent_dialogue
   user: current_input
 ```
@@ -237,55 +252,63 @@ message chunk:
 
 XML-like 包裹、列表前缀、小标题和聊天行格式都属于 prompt 排版资源，不应硬编码在 Java 业务逻辑里。AX common 内置 `ax_prompt_texts.json` 作为默认目录，运行时可释放到 AX 配置目录供后续覆盖；Java contributor 只负责选择语义槽位、传入变量并决定 LLM message role。
 
-`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`provided_context`、`recent_dialogue`、`current_input`。`identity`、`behaviorRules` 这类内容属于 `ax_system` 内部字段，不应作为独立顶层区块参与排序。为兼容早期已释放配置，读取旧的 `identity` / `rules` / `persona` / `scope` 排序项时，可映射为 `ax_system`。
+`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`recent_dialogue`、`current_input`。`identity`、`behaviorRules` 这类内容属于 `ax_system` 内部字段，不应作为独立顶层区块参与排序。为兼容早期已释放配置，读取旧的 `identity` / `rules` / `persona` / `scope` 排序项时，可映射为 `ax_system`。
 
 AX 的身份、行为规则和默认分区顺序也属于 prompt profile 资源。common 内置 `general_ax.<lang>.default.json`，运行时同样释放到 AX 配置目录；Java 只负责读取 profile 和组装 message，不在流程代码中写死具体提示词内容。
 
-## 9. 预算分配
+## 9. 预算策略
 
-AX 需要根据当前模型能力控制上下文预算。预算分配不在本文写死比例，但应遵守优先级：
+AX 不在本文写死上下文配比。预算分配先按模型档位和任务类型选布局档，再按本轮上下文密度做动态裁剪。
 
-```text
-当前输入 > 系统约束 > 近期对话 > 动态环境 > 玩家记忆 > 静态知识
-```
+- `current_input` 是生成锚点，通常只有少量 token，默认应完整保留，不作为预算分配的主要矛盾。
+- 真正要动态区分的是不同模型的“甜点窗口”：小模型优先保留最近对话和最小必要 `game_context`；中模型可以同时容纳较完整的 `game_context`、记忆和静态知识；更大模型才扩展到更长的记忆链和更丰富的知识命中。
+- 同一模型内部，预算不按固定比例常量实现，而按本轮任务、上下文密度、命中质量和剩余窗口动态选取。
+- 当窗口不足时，优先裁剪低收益、可重建或可替换内容；不要截断完整轮次、完整 STM 或已成型的知识命中块。
+- 预算策略只规定选择原则，不规定硬编码比例、固定排序和静态阈值。
 
-说明：
+`AXMemory` 的检索预算也要按这个原则分层，不得退化为单一 Top-K。Hot / Warm / Cold 的比例、阈值和发散深度都应由预算策略配置化提供，而不是硬编码。
 
-- 当前输入和系统约束不可丢。
-- 近期对话保留完整轮次，不在句中截断。
-- 动态环境只保留和当前输入相关的事实。
-- 玩家记忆按 STM 粒度注入，完整 STM 放不下则跳过。
-- 静态知识命中内容按 `<game_context>` 内部预算控制；静态 RAG 检索本身的预算在检索阶段控制。
-- 外部知识和玩家记忆不能混入同一个文本池做无差别截断。
+## 10. 一期 core
 
-需要 token 估算时，AX 可以通过 `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 对 text/message-only 内容计数。最终 CHAT prompt 应由 AX 组装为 message-only；如某些底层检索流程需要 rag chunk，不应把该 rag chunk 直接混入最终玩家可见请求做预算兜底。
+一期 `core` 由 `AXPromptOrchestrator` + `AXPromptAssemblyBuilder` + `AXPromptAssembly` 构成，和 `module` 同级。`core` 不是新的业务块，只负责把五块内容装配成最终 message chunk。
 
-## 10. 面向 Agent 的扩展性
+它负责：
 
-一期的 prompt 编排流程可以是固定管线，但结构上应允许二期 agent 能力插入。
+- 接收 `AXSystem`、`AXGameContext`、`AXMemory`、`AXRecentDialogue`、`AXCurrentInput` 的候选内容。
+- 根据预算决定各区块保留内容。
+- 排序、去重、裁剪和分区。
+- 产出最终 `LLM_REQUEST lane=CHAT` 所需的 message chunk。
+
+它不替代数据来源本身，也不把 IA delivery 携带的输入快照升格为独立 prompt 区块。
+
+`AXPromptAssemblyBuilder` 只负责 message 级别的拼装，不负责把 E 原文当独立文本注入；它最终只能接收已经折叠好的 STM 和其它区块内容。
+
+## 11. 面向二期技能协作的扩展性
+
+一期自然交互基线的 prompt 编排流程可以是固定管线，但结构上应允许二期技能协作插入受控技能结果。这里的扩展点只描述 prompt 编排边界，不提前冻结技能 manifest 或执行协议。
 
 应预留的扩展点：
 
 ```text
-ContextNeedDecider
+KnowledgeNeedDecider
   一期可由规则实现，二期可由 IntentRouter 接管
 
-QueryContextBuilder
+QueryMaterialBuilder
   分别构造直接静态 RAG、动态引导静态 RAG、玩家记忆检索 query
 
 PromptContributor
   每类上下文独立贡献 prompt 分区
 
-ToolResultContributor
-  二期以后把工具结果归一化后加入 prompt
+SkillResultContributor
+  二期以后把技能结果归一化后加入 prompt
 
 ExecutionPolicy
   控制权限、预算、超时、脱敏和可见性
 ```
 
-这些扩展点不是要求一期创建复杂框架，而是要求一期不要把所有逻辑硬编码在一个不可拆分的方法里。二期引入工具调用时，应能把“工具结果”作为新的上下文来源加入 prompt，而不是重写整个对话链路。
+这些扩展点不是要求一期创建复杂框架，而是要求一期不要把所有逻辑硬编码在一个不可拆分的方法里。二期引入技能调用时，应能把“技能结果”作为新的受控上下文来源加入 prompt，而不是重写整个对话链路。技能结果进入 prompt 前必须先经过 `core` 校验、归一化和脱敏，不能由子执行体直接改写玩家可见消息。
 
-## 11. 协议与安全
+## 12. 协议与安全
 
 AX 对 LLM 的所有访问必须经过协议中心。
 
@@ -306,12 +329,12 @@ AX 对 LLM 的所有访问必须经过协议中心。
 
 普通日志禁止输出完整玩家输入、prompt、动态环境完整快照、玩家记忆正文、RAG hit 明细和完整 LLM response。
 
-## 12. 最终原则
+## 13. 最终原则
 
 - 直接静态 RAG 和动态引导静态 RAG 是两条不同链路。
 - 动态环境先服务当前指代，再服务静态知识检索扩展。
 - 玩家记忆由 AX 自己检索和注入，不进入 LLM RAG cache。
 - 静态知识复用 LLM RAG cache，不污染 AX 私有记忆。
 - Prompt 编排必须保持分区，不做无差别文本池。
-- 一期是固定管线，但必须保留二期 agent 化的扩展位置。
+- 一期自然交互基线是固定管线，但必须保留二期技能协作的扩展位置。
 - 所有跨模块调用走协议中心。

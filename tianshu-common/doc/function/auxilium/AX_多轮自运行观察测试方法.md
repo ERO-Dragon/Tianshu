@@ -24,7 +24,7 @@ tianshu-common/src/test/java/com/rheinmetal/tianshu/function/auxilium/AXLongRunO
 默认使用工作区根目录模型：
 
 ```text
-Qwen3-0.6B-Q4_K_M.gguf
+Qwen3.5-2B-Q4_K_M.gguf
 bge-large-zh-v1.5-q4_k_m.gguf
 ```
 
@@ -91,7 +91,7 @@ tianshu-common/build/reports/ax/long-run-observer-smoke.md
 - Fake Log RAG Source：本次用作假 RAG 的日志行。
 - Rounds：每轮问题、回答、raw turn、recent STM、retrieved STM，以及 E -> STM Retrieval Trace。
 - Prompt Snapshots：首轮、中间轮、末轮最终 CHAT prompt。
-- Extraction Format Smoke：0.6B 对结构化 E 抽取格式的单点探针。
+- Extraction Format Smoke：当前小模型对结构化 E 抽取格式的单点探针。
 - Task Response Summary：压缩和抽事实 TASK 的原始模型输出。
 - Memory Store Snapshot：实际落盘 STM、E、向量记录和可重建检索索引快照摘要。
 
@@ -102,14 +102,32 @@ tianshu-common/build/reports/ax/long-run-observer-smoke.md
 - CHAT 使用 maxTokens=0、thinking=false。
 - 压缩和 E 抽取使用 TASK lane、maxTokens=0、thinking=true、includeThinkingContent=false。
 - 模型返回的 think 内容必须在写入 STM/E 前清理。
-- E 抽取只接受严格 JSON array，元素必须只有 fact 字符串字段。
-- 非 JSON array、JSONL、对象、额外字段、非字符串 fact、包含 Unicode replacement character 的 fact 都不入库。
+- E 抽取优先按严格 JSON array 解析；JSON 失败时降级按行解析，剥除 `<think>...</think>` 残段、markdown 围栏与控制符，保留行首编号或列表标记去除后的纯文本事实。
+- 包含 Unicode replacement character 的 fact 不入库；超长（>512 字符）fact 不入库；重复 fact 去重。
 - E 只补齐代码能确定的客观元数据：stmId、worldId、createdAtMillis、happenedAtMillis、sourceKind、token 估算等。
 - 不做实体、位置、维度、标签的 if-contains 推断。
 
-## 8. 已知观察项
+## 8. TASK + think 的 jjml 需求
 
-0.6B 模型可以在部分回合输出严格 JSON array，但长背景下可能产生乱码替换符或把建议句抽成事实。当前 parser 会拒绝含 replacement character 的 fact；建议句的历史化表达主要依赖 memory task prompt，后续提示词重设计时需要专门处理。
+当前观察到的问题不是“模型不支持 think”。如果 2B 模型在 `LLM_REQUEST lane=TASK`、`thinking=true`、`includeThinkingContent=false` 时触发 jjml 底层异常，应视为 jjml 的任务执行 / chat 模板 / think 输出处理边界问题，而不是 AX 关闭 thinking 的理由。
+
+AX 侧要求：
+
+- 不通过关闭 TASK thinking 来掩盖底层问题。
+- 不把 TASK 降级成 CHAT 来绕开问题。
+- 允许原始任务响应里出现 think 内容，但写入 STM/E 前必须清理。
+- TASK 失败时记录脱敏错误码和 lane / thinking / includeThinkingContent / modelId，不记录完整 prompt 或玩家正文。
+
+需要 jjml 暴露或修复的能力：
+
+- `TASK + thinking=true + includeThinkingContent=false` 必须稳定返回结果，或返回结构化错误码，不能 native 崩溃。
+- `STATUS` 或加载结果应返回安全 ctx 预算：`safeContextTokens`、`createdContextTokens`、`ctxMemoryEstimateBytes`、`vramReserveBytes`。
+- 这些字段的作用是在加载模型 / 创建 ctx 时给显存留下余量，避免 KV cache 和 backend buffer 吃满 VRAM。
+- `TOKEN_COUNT` 只需对 message-only 输入给出贴近当前 tokenizer / chat template 的计数；AX 不要求它处理最终带 rag chunk 的请求。
+
+## 9. 已知观察项
+
+2B 模型在结构化输出上比 0.6B 更稳定，但仍可能在长背景下把建议句抽成事实。当前 parser 优先 JSON、失败降级按行解析，会拒绝含 replacement character 的 fact；建议句的历史化表达主要依赖 memory task prompt，后续提示词重设计时需要专门处理。
 
 如果报告中出现以下情况，需要继续排查：
 

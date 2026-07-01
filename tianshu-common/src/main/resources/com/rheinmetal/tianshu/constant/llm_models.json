@@ -10,6 +10,7 @@
     "thinkingCapability": "supported",
     "downloadSizeBytes": 1280835840,
     "contextSize": 8192,
+    "promptTokenBudget": 3000,
     "lang": ["zh", "en"]
   },
   {
@@ -23,6 +24,7 @@
     "thinkingCapability": "supported",
     "downloadSizeBytes": 2740937888,
     "contextSize": 8192,
+    "promptTokenBudget": 4000,
     "lang": ["zh", "en"]
   },
   {
@@ -36,6 +38,7 @@
     "thinkingCapability": "supported",
     "downloadSizeBytes": 2707513696,
     "contextSize": 8192,
+    "promptTokenBudget": 4000,
     "lang": ["zh", "en"]
   },
   {
@@ -49,6 +52,7 @@
     "thinkingCapability": "supported",
     "downloadSizeBytes": 5629105408,
     "contextSize": 8192,
+    "promptTokenBudget": 6500,
     "lang": ["zh", "en"]
   },
   {
@@ -62,6 +66,7 @@
     "thinkingCapability": "supported",
     "downloadSizeBytes": 5335285728,
     "contextSize": 8192,
+    "promptTokenBudget": 4000,
     "lang": ["zh", "en"]
   },
   {
@@ -75,6 +80,7 @@
     "thinkingCapability": "supported",
     "downloadSizeBytes": 7121860000,
     "contextSize": 8192,
+    "promptTokenBudget": 8000,
     "lang": ["zh", "en"]
   }
 ]

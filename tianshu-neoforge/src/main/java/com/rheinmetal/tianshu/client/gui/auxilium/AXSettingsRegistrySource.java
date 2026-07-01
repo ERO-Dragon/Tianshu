@@ -10,7 +10,7 @@ import com.rheinmetal.tianshu.client.gui.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
 
 import net.minecraft.network.chat.Component;

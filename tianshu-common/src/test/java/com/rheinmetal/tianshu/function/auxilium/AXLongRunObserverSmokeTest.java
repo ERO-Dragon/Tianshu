@@ -1,35 +1,36 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
-import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
-import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
-import com.rheinmetal.tianshu.function.auxilium.context.AXMemoryWindowPolicy;
-import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextClient;
-import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptOrchestrator;
-import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
-import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
-import com.rheinmetal.tianshu.function.auxilium.knowledge.AXKnowledgeHit;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXEventVector;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryFactExtractionParser;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryMaintenanceService;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryEvent;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetrievalIndexSnapshot;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetrievalRequest;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetrievalResult;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetrievalTrace;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetriever;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySnapshot;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryTaskPromptRepository;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXStmBlock;
-import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputContext;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputMode;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputProcessor;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptResourceRepository;
-import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenanceCoordinator;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
+import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
+import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
+import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
+import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXKnowledgeHit;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVector;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryFactExtractionParser;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryMaintenanceService;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalRequest;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalResult;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalTrace;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.index.AXMemoryRetrievalIndexSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySnapshot;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryTaskPromptRepository;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptResourceRepository;
+import com.rheinmetal.tianshu.function.auxilium.core.maintenance.AXRuntimeMaintenanceCoordinator;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
@@ -89,12 +90,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXSessionController;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXStaticKnowledgePlanner;
 
 @EnabledIfSystemProperty(named = "tianshu.ax.longrun.smoke", matches = "true")
 class AXLongRunObserverSmokeTest {
-    private static final String DEFAULT_MODEL_FILE = "Qwen3-0.6B-Q4_K_M.gguf";
+    private static final String DEFAULT_MODEL_FILE = "Qwen3.5-2B-Q4_K_M.gguf";
     private static final String DEFAULT_EMBEDDING_MODEL_FILE = "bge-large-zh-v1.5-q4_k_m.gguf";
-    private static final String CHAT_MODEL_NAME = "qwen3-0.6b-ax-longrun";
+    private static final String CHAT_MODEL_NAME = "qwen3.5-2b-ax-longrun";
     private static final String EMBEDDING_MODEL_NAME = "bge-large-zh-v1.5";
 
     @TempDir
@@ -120,12 +129,12 @@ class AXLongRunObserverSmokeTest {
                 .requestTimeoutSeconds(intProperty("tianshu.ax.longrun.timeoutSeconds", 180))
                 .cacheTypeK(KvCacheType.Q8_0)
                 .cacheTypeV(KvCacheType.Q8_0)
-                .gpuLayers(0)
+                .gpuLayers(intProperty("tianshu.ax.longrun.gpuLayers", 9999))
                 .embeddingModel(embeddingModelPath.toString())
                 .embeddingAlias(EMBEDDING_MODEL_NAME)
                 .embeddingContextSize(512)
                 .embeddingThreads(2)
-                .embeddingGpuLayers(0)
+                .embeddingGpuLayers(intProperty("tianshu.ax.longrun.embeddingGpuLayers", 9999))
                 .build();
 
         try {
@@ -156,7 +165,7 @@ class AXLongRunObserverSmokeTest {
             assertFalse(records.isEmpty());
             assertTrue(records.stream().allMatch(record -> !record.answer().isBlank()), "AX answer should not be blank");
             assertTrue(
-                    finalMemory.recentDialogueTurns().size() + finalMemory.recentPlayerMemoryBlocks().size() >= 1,
+                    harness.recentDialogueSize() + finalMemory.recentPlayerMemoryBlocks().size() >= 1,
                     "dialogue or STM memory should grow over the long run"
             );
         } finally {
@@ -272,7 +281,7 @@ class AXLongRunObserverSmokeTest {
         report.append("- chatModel: `").append(modelPath.toAbsolutePath().normalize()).append("`\n");
         report.append("- embeddingModel: `").append(embeddingModelPath.toAbsolutePath().normalize()).append("`\n");
         report.append("- rounds: `").append(records.size()).append("`\n");
-        report.append("- finalRawTurns: `").append(finalMemory.recentDialogueTurns().size()).append("`\n");
+        report.append("- finalRawTurns: `").append(records.isEmpty() ? 0 : records.get(records.size() - 1).rawTurns()).append("`\n");
         report.append("- finalRetrievedStm: `").append(finalMemory.retrievedPlayerMemoryBlocks().size()).append("`\n");
         report.append("- finalRecentStm: `").append(finalMemory.recentPlayerMemoryBlocks().size()).append("`\n\n");
         if (storageSnapshot != null) {
@@ -617,7 +626,7 @@ class AXLongRunObserverSmokeTest {
                 || normalized.contains("native");
     }
 
-    private static final class LogLineKnowledgePlanner implements com.rheinmetal.tianshu.function.auxilium.knowledge.AXStaticKnowledgePlanner {
+    private static final class LogLineKnowledgePlanner implements com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXStaticKnowledgePlanner {
         private final List<String> lines;
 
         private LogLineKnowledgePlanner(List<String> lines) {
@@ -625,11 +634,11 @@ class AXLongRunObserverSmokeTest {
         }
 
         @Override
-        public List<AXKnowledgeHit> plan(AXRequest request, com.rheinmetal.tianshu.function.auxilium.context.AXContextSnapshot context, AXContextBudget budget) {
+        public List<AXKnowledgeHit> plan(AXRequest request, com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot context, AXContextBudget budget) {
             Set<String> terms = queryTerms(request == null ? "" : request.userText());
             List<String> matches = lines.stream()
                     .filter(line -> matches(line, terms))
-                    .limit(Math.max(1, Math.min(8, budget == null ? 8 : budget.maxRuntimeContextItems())))
+                    .limit(Math.max(1, Math.min(8, budget == null ? 8 : budget.maxStaticContentItems())))
                     .toList();
             if (matches.isEmpty()) {
                 matches = lines.stream().limit(4).toList();
@@ -676,6 +685,7 @@ class AXLongRunObserverSmokeTest {
         private final ProtocolRuntime runtime;
         private final AXTurnOrchestrator orchestrator;
         private final AXMemorySystem memorySystem;
+        private final AXRecentDialogueSystem recentDialogueSystem;
         private final AXScope scope;
         private final RecordingChatSink chatSink;
         private final PromptRecorder promptRecorder;
@@ -687,6 +697,7 @@ class AXLongRunObserverSmokeTest {
                 ProtocolRuntime runtime,
                 AXTurnOrchestrator orchestrator,
                 AXMemorySystem memorySystem,
+                AXRecentDialogueSystem recentDialogueSystem,
                 AXScope scope,
                 RecordingChatSink chatSink,
                 PromptRecorder promptRecorder,
@@ -697,6 +708,7 @@ class AXLongRunObserverSmokeTest {
             this.runtime = runtime;
             this.orchestrator = orchestrator;
             this.memorySystem = memorySystem;
+            this.recentDialogueSystem = recentDialogueSystem;
             this.scope = scope;
             this.chatSink = chatSink;
             this.promptRecorder = promptRecorder;
@@ -714,11 +726,11 @@ class AXLongRunObserverSmokeTest {
             AXJsonStore jsonStore = new AXJsonStore(env);
             AXMemoryWindowPolicy windowPolicy = new AXMemoryWindowPolicy(
                     8000,
-                    4000,
+                    2000,
+                    2000,
                     1500,
                     1000,
-                    500,
-                    500,
+                    1000,
                     25,
                     40,
                     25,
@@ -729,6 +741,7 @@ class AXLongRunObserverSmokeTest {
                     0L
             );
             AXMemorySystem memorySystem = new AXMemorySystem(layout, jsonStore, windowPolicy);
+            AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(windowPolicy);
             AXLlmClient llmClient = new AXLlmClient(axAdapter);
             AXLlmPrimitiveClient primitiveClient = new AXLlmPrimitiveClient(axAdapter, 120_000L);
             AXPromptLanguageProvider languageProvider = AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN);
@@ -737,6 +750,7 @@ class AXLongRunObserverSmokeTest {
             AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
                     axAdapter,
                     memorySystem,
+                    recentDialogueSystem,
                     llmClient,
                     primitiveClient,
                     taskPromptRepository
@@ -760,18 +774,19 @@ class AXLongRunObserverSmokeTest {
                     new AXDialogueInputMapper(),
                     new AXInputNormalizer(),
                     maintenanceCoordinator,
-                    new AXRuntimeContextClient(axAdapter, 2_000L),
-                    new AXContextCollector(memorySystem),
+                    new AXDynamicFactClient(axAdapter, 2_000L),
+                    new AXContextCollector(memorySystem, recentDialogueSystem),
                     new AXLlmPromptRequestBuilder(promptOrchestrator, AXContextBudget.DEFAULT),
                     AXContextBudget.DEFAULT,
                     llmClient,
                     new AXSessionController(axAdapter),
                     memorySystem,
+                    recentDialogueSystem,
                     new AXOutputProcessor(axAdapter, outputSettings(), chatSink),
                     memoryRetriever,
                     new AXTurnStatusPublisher(axAdapter)
             );
-            return new SmokeHarness(runtime, orchestrator, memorySystem, scope, chatSink, promptRecorder, taskPromptRepository, memoryRetriever, logKnowledgeLines);
+            return new SmokeHarness(runtime, orchestrator, memorySystem, recentDialogueSystem, scope, chatSink, promptRecorder, taskPromptRepository, memoryRetriever, logKnowledgeLines);
         }
 
         RoundRecord runRound(int round, String question) throws Exception {
@@ -792,11 +807,15 @@ class AXLongRunObserverSmokeTest {
                     round,
                     question,
                     answer,
-                    memory.recentDialogueTurns().size(),
+                    recentDialogueSystem.snapshot(scope).turns().size(),
                     diagnosticRetrieval.blocks().size(),
                     memory.recentPlayerMemoryBlocks().size(),
                     diagnosticRetrieval.traces()
             );
+        }
+
+        int recentDialogueSize() {
+            return recentDialogueSystem.snapshot(scope).turns().size();
         }
 
         private AXMemoryRetrievalResult retrieveForDiagnostics(int round, String question) throws Exception {

@@ -483,6 +483,17 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     }
 
     @Override
+    public int getLlmPromptTokenBudget() {
+        String modelName = getCustomLlmName();
+        if (modelName != null && !modelName.isBlank()) {
+            com.rheinmetal.tianshu.model.LlmModelInfo info = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName.trim());
+            if (info != null) return info.getPromptTokenBudget();
+        }
+        com.rheinmetal.tianshu.model.LlmModelInfo defaultModel = getDefaultLlmModelInfo();
+        return defaultModel != null ? defaultModel.getPromptTokenBudget() : 3000;
+    }
+
+    @Override
     public int getLlmChatContextSize() {
         return getLlmContextSize();
     }

@@ -5,8 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputMode;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;

@@ -29,13 +29,13 @@
       "zh_cn": "<game_context>\n{{content}}\n</game_context>",
       "en_us": "<game_context>\n{{content}}\n</game_context>"
     },
-    "game_context.dynamic_title": {
-      "zh_cn": "动态环境",
-      "en_us": "Dynamic Context"
+    "game_context.dynamic_content_title": {
+      "zh_cn": "动态内容",
+      "en_us": "Dynamic Content"
     },
-    "game_context.knowledge_title": {
-      "zh_cn": "静态知识",
-      "en_us": "Static Knowledge"
+    "game_context.static_content_title": {
+      "zh_cn": "静态内容",
+      "en_us": "Static Content"
     },
     "game_context.fact_line": {
       "zh_cn": "- {{fact}}",
@@ -88,10 +88,6 @@
     "recent_dialogue.unknown_speaker": {
       "zh_cn": "未知",
       "en_us": "Unknown"
-    },
-    "section.provided_context": {
-      "zh_cn": "<provided_context>\n{{content}}\n</provided_context>",
-      "en_us": "<provided_context>\n{{content}}\n</provided_context>"
     }
   }
 }

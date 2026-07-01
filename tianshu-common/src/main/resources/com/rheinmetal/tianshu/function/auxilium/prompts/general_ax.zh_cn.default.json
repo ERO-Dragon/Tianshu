@@ -6,7 +6,6 @@
     "ax_system",
     "game_context",
     "player_memory",
-    "provided_context",
     "recent_dialogue",
     "current_input"
   ]

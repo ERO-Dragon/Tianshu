@@ -17,6 +17,7 @@ public class LlmModelInfo {
     public long downloadSizeBytes;
     public long estimatedVramBytes;
     public int contextSize;
+    public int promptTokenBudget;
     public List<String> lang;
 
     public String getDisplayName() {
@@ -56,6 +57,10 @@ public class LlmModelInfo {
 
     public int getContextSize() {
         return contextSize > 0 ? contextSize : 4096;
+    }
+
+    public int getPromptTokenBudget() {
+        return promptTokenBudget > 0 ? promptTokenBudget : 3000;
     }
 
     public List<String> getLang() {

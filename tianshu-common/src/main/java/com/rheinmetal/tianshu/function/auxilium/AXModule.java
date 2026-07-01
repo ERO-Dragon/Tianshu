@@ -5,25 +5,35 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
-import com.rheinmetal.tianshu.function.auxilium.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputProcessor;
-import com.rheinmetal.tianshu.function.auxilium.output.AXOutputSettings;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguageProvider;
-import com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptResourceRepository;
-import com.rheinmetal.tianshu.function.auxilium.context.AXContextBudget;
-import com.rheinmetal.tianshu.function.auxilium.context.AXContextCollector;
-import com.rheinmetal.tianshu.function.auxilium.context.AXMemoryWindowPolicy;
-import com.rheinmetal.tianshu.function.auxilium.context.AXRuntimeContextClient;
-import com.rheinmetal.tianshu.function.auxilium.context.orchestration.AXPromptOrchestrator;
-import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInputMapper;
-import com.rheinmetal.tianshu.function.auxilium.input.AXInputNormalizer;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryMaintenanceService;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryRetriever;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemorySystem;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXMemoryTaskPromptRepository;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXPresenceChatMessageMapper;
-import com.rheinmetal.tianshu.function.auxilium.memory.AXPresenceWorldEventMapper;
-import com.rheinmetal.tianshu.function.auxilium.runtime.AXRuntimeMaintenanceCoordinator;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
+import com.rheinmetal.tianshu.function.auxilium.core.maintenance.AXRuntimeMaintenanceCoordinator;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXAccessController;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXDialogueGateway;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXSessionController;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
+import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
+import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceChatMessageMapper;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceWorldEventMapper;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryMaintenanceService;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryTaskPromptRepository;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
+import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptResourceRepository;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
@@ -55,11 +65,12 @@ public final class AXModule implements TianshuManagedModule {
     private AXLlmClient llmClient;
     private AXLlmPrimitiveClient retrievalPrimitiveClient;
     private AXLlmPrimitiveClient maintenancePrimitiveClient;
-    private AXRuntimeContextClient runtimeContextClient;
+    private AXDynamicFactClient dynamicFactClient;
     private AXRuntimeMaintenanceCoordinator maintenanceCoordinator;
     private AXStorageLayout storageLayout;
     private AXScopeProvider scopeProvider;
     private AXMemorySystem memorySystem;
+    private AXRecentDialogueSystem recentDialogueSystem;
     private AXDialogueGateway dialogueGateway;
     private AXTurnStatusPublisher turnStatusPublisher;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
@@ -87,7 +98,7 @@ public final class AXModule implements TianshuManagedModule {
         this.config = config;
         this.runtime = runtime;
         this.worldIdentityProvider = worldIdentityProvider;
-        this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(com.rheinmetal.tianshu.function.auxilium.prompt.AXPromptLanguage.EN_US) : promptLanguageProvider;
+        this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : promptLanguageProvider;
         this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
@@ -112,17 +123,19 @@ public final class AXModule implements TianshuManagedModule {
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
         memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
+        recentDialogueSystem = new AXRecentDialogueSystem(memoryPolicy);
         AXMemoryTaskPromptRepository memoryTaskPromptRepository = new AXMemoryTaskPromptRepository(storageLayout, promptLanguageProvider);
         AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
                 adapter,
                 memorySystem,
+                recentDialogueSystem,
                 llmClient,
                 maintenancePrimitiveClient,
                 memoryTaskPromptRepository
         );
         maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(memoryMaintenanceService);
         AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, retrievalPrimitiveClient);
-        AXContextCollector contextCollector = new AXContextCollector(memorySystem);
+        AXContextCollector contextCollector = new AXContextCollector(memorySystem, recentDialogueSystem);
         AXPromptResourceRepository promptRepository = new AXPromptResourceRepository(storageLayout, jsonStore);
         AXPromptOrchestrator promptOrchestrator = new AXPromptOrchestrator(promptRepository, promptLanguageProvider, null);
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
@@ -130,7 +143,7 @@ public final class AXModule implements TianshuManagedModule {
                 promptOrchestrator,
                 contextBudget
         );
-        runtimeContextClient = new AXRuntimeContextClient(adapter);
+        dynamicFactClient = new AXDynamicFactClient(adapter);
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
         AXTurnOrchestrator turnOrchestrator = new AXTurnOrchestrator(
@@ -138,13 +151,14 @@ public final class AXModule implements TianshuManagedModule {
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 maintenanceCoordinator,
-                runtimeContextClient,
+                dynamicFactClient,
                 contextCollector,
                 llmRequestBuilder,
                 contextBudget,
                 llmClient,
                 sessionController,
                 memorySystem,
+                recentDialogueSystem,
                 outputProcessor,
                 memoryRetriever,
                 turnStatusPublisher
@@ -191,8 +205,8 @@ public final class AXModule implements TianshuManagedModule {
         if (maintenancePrimitiveClient != null) {
             maintenancePrimitiveClient.clear();
         }
-        if (runtimeContextClient != null) {
-            runtimeContextClient.clear();
+        if (dynamicFactClient != null) {
+            dynamicFactClient.clear();
         }
         if (participantRegistrar != null) {
             participantRegistrar.unregister();
@@ -206,7 +220,7 @@ public final class AXModule implements TianshuManagedModule {
         llmClient = null;
         retrievalPrimitiveClient = null;
         maintenancePrimitiveClient = null;
-        runtimeContextClient = null;
+        dynamicFactClient = null;
         maintenanceCoordinator = null;
         storageLayout = null;
         scopeProvider = null;
@@ -259,7 +273,9 @@ public final class AXModule implements TianshuManagedModule {
         if (currentMemory != null && currentScopeProvider != null) {
             AXScope scope = currentScopeProvider.currentScope();
             if (scope != null && scope.writable()) {
-                currentMemory.appendRawTurn(scope, chatMessageMapper.map(scope, payload));
+                if (recentDialogueSystem != null) {
+                    recentDialogueSystem.append(scope, chatMessageMapper.map(scope, payload));
+                }
             }
         }
         context.complete(envelope.envelopeId());
