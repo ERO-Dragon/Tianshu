@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudget;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSnapshot;
@@ -45,7 +47,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final AXDynamicFactClient dynamicFactClient;
     private final AXContextCollector contextCollector;
     private final AXLlmPromptRequestBuilder llmRequestBuilder;
-    private final AXContextBudget contextBudget;
+    private final AXRuntimeLlmBudgetResolver budgetResolver;
+    private final AXRuntimeLlmBudget fallbackRuntimeBudget;
     private final AXLlmClient llmClient;
     private final AXSessionController sessionController;
     private final AXMemorySystem memorySystem;
@@ -63,6 +66,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXContextCollector contextCollector,
             AXLlmPromptRequestBuilder llmRequestBuilder,
             AXContextBudget contextBudget,
+            AXRuntimeLlmBudgetResolver budgetResolver,
             AXLlmClient llmClient,
             AXSessionController sessionController,
             AXMemorySystem memorySystem,
@@ -79,6 +83,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 contextCollector,
                 llmRequestBuilder,
                 contextBudget,
+                budgetResolver,
                 llmClient,
                 sessionController,
                 memorySystem,
@@ -98,6 +103,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXContextCollector contextCollector,
             AXLlmPromptRequestBuilder llmRequestBuilder,
             AXContextBudget contextBudget,
+            AXRuntimeLlmBudgetResolver budgetResolver,
             AXLlmClient llmClient,
             AXSessionController sessionController,
             AXMemorySystem memorySystem,
@@ -113,7 +119,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         this.dynamicFactClient = dynamicFactClient;
         this.contextCollector = Objects.requireNonNull(contextCollector, "contextCollector");
         this.llmRequestBuilder = Objects.requireNonNull(llmRequestBuilder, "llmRequestBuilder");
-        this.contextBudget = contextBudget == null ? AXContextBudget.DEFAULT : contextBudget;
+        AXContextBudget fallbackContextBudget = contextBudget == null ? AXContextBudget.DEFAULT : contextBudget;
+        this.budgetResolver = budgetResolver;
+        this.fallbackRuntimeBudget = new AXRuntimeLlmBudget(null, fallbackContextBudget);
         this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
         this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
         this.memorySystem = memorySystem;
@@ -131,6 +139,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXDynamicFactClient dynamicFactClient,
             AXContextCollector contextCollector,
             AXLlmPromptRequestBuilder llmRequestBuilder,
+            AXRuntimeLlmBudgetResolver budgetResolver,
             AXLlmClient llmClient,
             AXSessionController sessionController,
             AXMemorySystem memorySystem,
@@ -146,6 +155,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 contextCollector,
                 llmRequestBuilder,
                 AXContextBudget.DEFAULT,
+                budgetResolver,
                 llmClient,
                 sessionController,
                 memorySystem,
@@ -182,20 +192,30 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     }
 
     private void continueTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts) {
+        if (budgetResolver == null) {
+            continueTurnWithBudget(deliveryEnvelope, delivery, scope, request, dynamicFacts, fallbackRuntimeBudget);
+            return;
+        }
+        budgetResolver.resolveContextBudget(request.requestKey(), budget ->
+                continueTurnWithBudget(deliveryEnvelope, delivery, scope, request, dynamicFacts, budget));
+    }
+
+    private void continueTurnWithBudget(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXRuntimeLlmBudget runtimeBudget) {
+        AXRuntimeLlmBudget budget = runtimeBudget == null ? fallbackRuntimeBudget : runtimeBudget;
         if (memoryRetriever == null) {
-            submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, AXMemoryRetrievalResult.empty());
+            submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, AXMemoryRetrievalResult.empty(), budget.contextBudget());
             return;
         }
         if (statusPublisher != null) {
             statusPublisher.retrievingMemory();
         }
         memoryRetriever.retrieve(
-                new AXMemoryRetrievalRequest(scope, request, contextBudget.maxMemoryItems(), contextBudget.memoryTokenBudget()),
-                memory -> submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, memory)
+                new AXMemoryRetrievalRequest(scope, request, budget.contextBudget().maxMemoryItems(), budget.contextBudget().memoryTokenBudget()),
+                memory -> submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, memory, budget.contextBudget())
         );
     }
 
-    private void submitLlmTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval) {
+    private void submitLlmTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {
         AXContextSnapshot context = contextCollector.collect(scope, request, dynamicFacts);
         if (memoryRetrieval != null && !memoryRetrieval.blocks().isEmpty()) {
             context = new AXContextSnapshot(
@@ -206,7 +226,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                     context.deliverySnapshot()
             );
         }
-        LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context)
+        LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context, contextBudget)
                 .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
         appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));

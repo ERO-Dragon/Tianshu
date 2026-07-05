@@ -67,17 +67,15 @@ class AXLogKnowledgePromptFixtureTest {
                 "IA 上下文：玩家正在进行 AX 一期假数据 RAG 测试。"
         );
         AXRequest request = new AXRequest("ax.fixture.log_rag", "刚才资源重载之后，日志里显示哪个 AX 相关缓存被加载？", "");
-        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
-                new AXPromptOrchestrator(
-                        null,
+        AXContextBudget budget = new AXContextBudget(4000, 4, 8, 4);
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
+                null,
                 AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
-                        new LogLineKnowledgePlanner(sourceLines),
-                        null
-                ),
-                new AXContextBudget(4000, 4, 8, 4)
-        );
+                new LogLineKnowledgePlanner(sourceLines),
+                null
+        ));
 
-        LLMPromptRequestPayload payload = builder.buildChatRequest(request, context);
+        LLMPromptRequestPayload payload = builder.buildChatRequest(request, context, budget);
         List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.chunks().get(0).messageContent();
         String joined = renderMessages(messages);
 

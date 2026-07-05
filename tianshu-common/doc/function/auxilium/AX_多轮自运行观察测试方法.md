@@ -75,7 +75,7 @@ tianshu-neoforge/run/logs/latest.log
 tianshu-neoforge/run/logs/debug.log
 ```
 
-测试会把日志中的有效行作为一条条 AXKnowledgeHit 内容放入 game_context 的静态知识分区。这个逻辑只存在于 smoke test，不进入 AX 主链路。
+测试会把日志中的有效行作为一条条 `AXKnowledgeHit` 内容放入 `game_context.static_content`。这只是 AX 语义边界内的测试替身，不生成正式 jsonl，也不写入未来静态 RAG 数据库；正式 RAG schema 完成后再由静态知识接入链路替换这个 planner。
 
 ## 6. 报告位置
 
@@ -100,30 +100,32 @@ tianshu-common/build/reports/ax/long-run-observer-smoke.md
 当前只要求链路正确，不要求提示词语义最终定型：
 
 - CHAT 使用 maxTokens=0、thinking=false。
-- 压缩和 E 抽取使用 TASK lane、maxTokens=0、thinking=true、includeThinkingContent=false。
-- 模型返回的 think 内容必须在写入 STM/E 前清理。
-- E 抽取优先按严格 JSON array 解析；JSON 失败时降级按行解析，剥除 `<think>...</think>` 残段、markdown 围栏与控制符，保留行首编号或列表标记去除后的纯文本事实。
+- 压缩和 E 抽取使用 TASK lane、maxTokens=0、thinking=true、captureThinkingContent=false。
+- AX 不在 smoke 或主链路里额外指定 temperature / topK / topP 等采样参数，由 LLM 层按 lane 和模型默认策略兜底。
+- LLM 协议应把可见文本和 `thinkingContent` 结构化分离；AX 写入 STM/E 时只消费可见文本，不再维护思考标签文本过滤补丁。
+- E 抽取优先按严格 JSON array 解析；JSON 失败时降级按行解析，剥除 markdown 围栏与控制符，保留行首编号或列表标记去除后的纯文本事实。
 - 包含 Unicode replacement character 的 fact 不入库；超长（>512 字符）fact 不入库；重复 fact 去重。
 - E 只补齐代码能确定的客观元数据：stmId、worldId、createdAtMillis、happenedAtMillis、sourceKind、token 估算等。
 - 不做实体、位置、维度、标签的 if-contains 推断。
 
-## 8. TASK + think 的 jjml 需求
+## 8. TASK + think 与 ctx 预算
 
-当前观察到的问题不是“模型不支持 think”。如果 2B 模型在 `LLM_REQUEST lane=TASK`、`thinking=true`、`includeThinkingContent=false` 时触发 jjml 底层异常，应视为 jjml 的任务执行 / chat 模板 / think 输出处理边界问题，而不是 AX 关闭 thinking 的理由。
+当前观察到的问题不是“模型不支持 think”。早期 2B 模型在 `LLM_REQUEST lane=TASK`、`thinking=true`、`captureThinkingContent=false`、`maxTokens=0` 时触发 `Decode failed with status 1`，后续定位为生成预算没有按 ctx 剩余空间钳制：`maxTokens=0` 表示不指定业务输出上限，但仍必须受实际 prompt token 数、已加载 ctx 和 `promptMarginTokens` 约束。
 
 AX 侧要求：
 
 - 不通过关闭 TASK thinking 来掩盖底层问题。
 - 不把 TASK 降级成 CHAT 来绕开问题。
-- 允许原始任务响应里出现 think 内容，但写入 STM/E 前必须清理。
-- TASK 失败时记录脱敏错误码和 lane / thinking / includeThinkingContent / modelId，不记录完整 prompt 或玩家正文。
+- LLM 响应的 `text` 必须是可见输出；如需观察思考内容，通过结构化 `thinkingContent` 单独读取。
+- TASK 失败时记录脱敏错误码和 lane / thinking / captureThinkingContent / modelId，不记录完整 prompt 或玩家正文。
 
-需要 jjml 暴露或修复的能力：
+LLM / libs 侧已收敛的能力边界：
 
-- `TASK + thinking=true + includeThinkingContent=false` 必须稳定返回结果，或返回结构化错误码，不能 native 崩溃。
-- `STATUS` 或加载结果应返回安全 ctx 预算：`safeContextTokens`、`createdContextTokens`、`ctxMemoryEstimateBytes`、`vramReserveBytes`。
-- 这些字段的作用是在加载模型 / 创建 ctx 时给显存留下余量，避免 KV cache 和 backend buffer 吃满 VRAM。
+- `TASK + thinking=true + captureThinkingContent=false` 必须稳定返回可见正文，并把 thinking/COT 与 `text` 分离。
+- `maxTokens > 0` 和 `maxTokens == 0` 都必须按 ctx 剩余空间钳制 completion 预算。
 - `TOKEN_COUNT` 只需对 message-only 输入给出贴近当前 tokenizer / chat template 的计数；AX 不要求它处理最终带 rag chunk 的请求。
+
+ctx 预算职责边界不在本文展开，详见 `AX_LLM_CTX预算职责边界需求.md`。
 
 ## 9. 已知观察项
 

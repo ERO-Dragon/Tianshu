@@ -208,7 +208,7 @@ class AXMemoryRetrievalTieredTest {
                     envelope,
                     PayloadType.LLM_PRIMITIVE_RESULT,
                     LLMPrimitiveResultPayload.runtime(payload.requestId(), new LLMRuntimeSnapshotPayload(
-                            true, true, true, 2, false, false, 0, 0, 4096,
+                            true, true, true, 2, false, false, false, false, false, 0, 0, 4096, 3000,
                             true, true, true, 0, 0, 0,
                             "test-model", "test-profile", "test-embed", "test-embed:v1", "",
                             System.currentTimeMillis()

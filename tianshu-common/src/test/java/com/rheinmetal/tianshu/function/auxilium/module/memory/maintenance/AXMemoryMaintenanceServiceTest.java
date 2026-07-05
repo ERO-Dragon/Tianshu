@@ -92,20 +92,17 @@ class AXMemoryMaintenanceServiceTest {
         LLMPromptRequestPayload extraction = llm.requests.get(1);
         assertEquals(0, compression.maxTokens());
         assertTrue(compression.thinking());
-        assertFalse(compression.includeThinkingContent());
+        assertFalse(compression.captureThinkingContent());
         assertEquals(0, extraction.maxTokens());
         assertTrue(extraction.thinking());
-        assertFalse(extraction.includeThinkingContent());
+        assertFalse(extraction.captureThinkingContent());
 
         String stm = memorySystem.stmBlocks().loadAll(scope).get(0).content();
         String fact = memorySystem.events().loadAll(scope).get(0).fact();
         String secondFact = memorySystem.events().loadAll(scope).get(1).fact();
         assertEquals("玩家在调试资源重载日志，并关注缓存和模块加载。", stm);
         assertEquals("玩家关注资源重载后的缓存和模块加载。", fact);
-        assertFalse(stm.contains("<think>"));
-        assertFalse(fact.contains("<think>"));
         assertEquals("AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d\u3002", secondFact);
-        assertFalse(secondFact.contains("<think>"));
         assertTrue(memorySystem.events().loadAll(scope).stream()
                 .allMatch(event -> memorySystem.stmBlocks().loadAll(scope).get(0).id().equals(event.stmId())));
     }
@@ -116,10 +113,10 @@ class AXMemoryMaintenanceServiceTest {
 
         // 单行纯文本降级为一条事实，去除行尾标点
         assertEquals(List.of("\u73a9\u5bb6\u5173\u6ce8\u8d44\u6e90\u91cd\u8f7d\u540e\u7684\u7f13\u5b58"), parser.parse("\u73a9\u5bb6\u5173\u6ce8\u8d44\u6e90\u91cd\u8f7d\u540e\u7684\u7f13\u5b58\u3002"));
-        // 多行纯文本降级，剥除 think 残段、markdown 围栏与控制符
+        // 多行纯文本降级，剥除 markdown 围栏与控制符
         assertEquals(
                 List.of("\u73a9\u5bb6\u5173\u6ce8\u7f13\u5b58", "AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d"),
-                parser.parse("<think>some reasoning</think>\n```\n\u73a9\u5bb6\u5173\u6ce8\u7f13\u5b58\u3002\n1. AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d\u3002\n```")
+                parser.parse("```\n\u73a9\u5bb6\u5173\u6ce8\u7f13\u5b58\u3002\n1. AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d\u3002\n```")
         );
         // 单个 JSON 对象（非数组）仍被拒绝
         assertTrue(parser.parse("{\"fact\":\"\u73a9\u5bb6\u5173\u6ce8\u8d44\u6e90\u91cd\u8f7d\u540e\u7684\u7f13\u5b58\u3002\"}").isEmpty());
@@ -211,26 +208,26 @@ class AXMemoryMaintenanceServiceTest {
             requests.add(payload);
             if (count.get() == 1) {
                 count.incrementAndGet();
-                String text = "<think>\u62bd\u53d6\u4e8b\u5b9e\u601d\u8003\u8fc7\u7a0b</think>"
-                        + "[{\"fact\":\"\u73a9\u5bb6\u5173\u6ce8\u8d44\u6e90\u91cd\u8f7d\u540e\u7684\u7f13\u5b58\u548c\u6a21\u5757\u52a0\u8f7d\u3002\"},"
+                String text = "[{\"fact\":\"\u73a9\u5bb6\u5173\u6ce8\u8d44\u6e90\u91cd\u8f7d\u540e\u7684\u7f13\u5b58\u548c\u6a21\u5757\u52a0\u8f7d\u3002\"},"
                         + "{\"fact\":\"AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d\u3002\"}]";
                 context.submit(EnvelopeBuilder.responseTo(
                         "module.llm.memory-test",
                         envelope,
                         PayloadType.LLM_PROMPT_RESULT,
-                        LLMPromptResultPayload.completed(payload.requestId(), text)
+                        LLMPromptResultPayload.completed(payload.requestId(), text, "\u62bd\u53d6\u4e8b\u5b9e\u601d\u8003\u8fc7\u7a0b", List.of(), LLMPromptResultPayload.TokenUsagePayload.empty())
                 ).build());
                 context.complete(envelope.envelopeId());
                 return;
             }
             String text = count.getAndIncrement() == 0
-                    ? "<think>压缩思考过程</think>玩家在调试资源重载日志，并关注缓存和模块加载。"
-                    : "<think>抽取事实思考过程</think>玩家关注资源重载后的缓存和模块加载。";
+                    ? "玩家在调试资源重载日志，并关注缓存和模块加载。"
+                    : "玩家关注资源重载后的缓存和模块加载。";
+            String thinkingContent = count.get() == 1 ? "压缩思考过程" : "抽取事实思考过程";
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.memory-test",
                     envelope,
                     PayloadType.LLM_PROMPT_RESULT,
-                    LLMPromptResultPayload.completed(payload.requestId(), text)
+                    LLMPromptResultPayload.completed(payload.requestId(), text, thinkingContent, List.of(), LLMPromptResultPayload.TokenUsagePayload.empty())
             ).build());
             context.complete(envelope.envelopeId());
         }

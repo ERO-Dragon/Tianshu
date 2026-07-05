@@ -59,22 +59,21 @@ class AXPromptAssemblySnapshotTest {
                 List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                 "IA delivery 附带上下文"
         );
-        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
-                new AXPromptOrchestrator(
-                        null,
-                        AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
-                        (request, snapshot, budget) -> List.of(AXKnowledgeHit.of(
-                                "ax.static_knowledge.mock",
-                                List.of("minecraft:anvil | 铁砧可以修复工具。")
-                        )),
-                        null
-                ),
-                new AXContextBudget(4000, 4, 8, 4)
-        );
+        AXContextBudget budget = new AXContextBudget(4000, 4, 8, 4);
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
+                null,
+                AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
+                (request, snapshot, contextBudget) -> List.of(AXKnowledgeHit.of(
+                        "ax.static_knowledge.mock",
+                        List.of("minecraft:anvil | 铁砧可以修复工具。")
+                )),
+                null
+        ));
 
         LLMPromptRequestPayload payload = builder.buildChatRequest(
                 new AXRequest("request", "当前输入：这个怎么修？", ""),
-                context
+                context,
+                budget
         );
 
         assertEquals(1, payload.chunks().size());
@@ -135,16 +134,14 @@ class AXPromptAssemblySnapshotTest {
                 List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                 "IA delivery 附带上下文"
         );
-        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
-                new AXPromptOrchestrator(
-                        new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())),
-                        AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
-                        null
-                ),
-                new AXContextBudget(4000, 4, 8, 4)
-        );
+        AXContextBudget budget = new AXContextBudget(4000, 4, 8, 4);
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
+                new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())),
+                AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
+                null
+        ));
 
-        LLMPromptRequestPayload payload = builder.buildChatRequest(new AXRequest("request", "本轮唯一输入-排序测试", ""), context);
+        LLMPromptRequestPayload payload = builder.buildChatRequest(new AXRequest("request", "本轮唯一输入-排序测试", ""), context, budget);
 
         String joined = payload.chunks().get(0).messageContent().stream()
                 .map(LLMPromptRequestPayload.MessageItemPayload::content)

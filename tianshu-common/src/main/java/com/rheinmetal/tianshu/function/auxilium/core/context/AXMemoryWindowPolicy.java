@@ -5,13 +5,13 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 /**
  * Auxilium memory window policy.
  *
- * <p>Token budgets are derived from a single {@code promptTokenBudget} total.
+ * <p>Token budgets are derived from a single {@code contextTokenBudget} total.
  * This object is only the baseline layout; per-turn selection can still trim or skip
  * low-value candidates according to the current model and request density.</p>
  *
  * <p>Reference budget is 8000 tokens; all ratio constants and baseline compression parameters
  * are calibrated against that baseline. At runtime, actual values equal
- * {@code promptTokenBudget * ratio}.</p>
+ * {@code contextTokenBudget * ratio}.</p>
  */
 public record AXMemoryWindowPolicy(
         int chatInputTokenBudget,
@@ -67,11 +67,11 @@ public record AXMemoryWindowPolicy(
     }
 
     /**
-     * Build a policy from a prompt-token total budget. All input slots and compression
+     * Build a policy from the LLM-provided context token budget. All input slots and compression
      * parameters are scaled proportionally.
      */
-    public static AXMemoryWindowPolicy fromBudget(int promptTokenBudget, int shortTermChatBlockLimit, long conversationPauseMillis) {
-        int budget = Math.max(1000, promptTokenBudget);
+    public static AXMemoryWindowPolicy fromBudget(int contextTokenBudget, int shortTermChatBlockLimit, long conversationPauseMillis) {
+        int budget = Math.max(1000, contextTokenBudget);
         double scale = (double) budget / REFERENCE_BUDGET;
         return new AXMemoryWindowPolicy(
                 budget,

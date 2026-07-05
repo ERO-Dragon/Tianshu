@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
@@ -40,7 +41,6 @@ import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
-import com.rheinmetal.tianshu.function.llm.LlmThinkingContentFilter;
 import com.rheinmetal.tianshu.function.llm.service.LLMRequest;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.MessageItem;
@@ -125,7 +125,6 @@ class AXLongRunObserverSmokeTest {
                 .chatThreads(2)
                 .chatMaxQueueSize(2)
                 .taskThreads(1)
-                .taskSuspendOnChat(true)
                 .requestTimeoutSeconds(intProperty("tianshu.ax.longrun.timeoutSeconds", 180))
                 .cacheTypeK(KvCacheType.Q8_0)
                 .cacheTypeV(KvCacheType.Q8_0)
@@ -186,7 +185,6 @@ class AXLongRunObserverSmokeTest {
         request.setLane("TASK");
         request.setTaskPriority(100);
         request.setTaskPreemptible(true);
-        request.setTemperature(0.45f);
         String text;
         try {
             text = service.submitTask(request).get(180, TimeUnit.SECONDS);
@@ -217,10 +215,9 @@ class AXLongRunObserverSmokeTest {
         request.setLane("TASK");
         request.setTaskPriority(50);
         request.setTaskPreemptible(true);
-        request.setTemperature(0.1f);
         try {
             String raw = service.submitTask(request).get(180, TimeUnit.SECONDS);
-            String cleaned = LlmThinkingContentFilter.strip(raw).strip();
+            String cleaned = raw == null ? "" : raw.strip();
             List<String> facts = new AXMemoryFactExtractionParser().parse(cleaned);
             return new FormatSmokeRecord(true, raw, cleaned, facts, "");
         } catch (Exception e) {
@@ -346,8 +343,8 @@ class AXLongRunObserverSmokeTest {
         for (LLMPromptRequestPayload payload : taskPrompts) {
             report.append("- `").append(payload.requestId()).append("`: maxTokens=`")
                     .append(payload.maxTokens()).append("`, thinking=`")
-                    .append(payload.thinking()).append("`, includeThinkingContent=`")
-                    .append(payload.includeThinkingContent()).append("`, priority=`")
+                    .append(payload.thinking()).append("`, captureThinkingContent=`")
+                    .append(payload.captureThinkingContent()).append("`, priority=`")
                     .append(payload.taskPriority()).append("`\n");
         }
         report.append('\n');
@@ -776,8 +773,9 @@ class AXLongRunObserverSmokeTest {
                     maintenanceCoordinator,
                     new AXDynamicFactClient(axAdapter, 2_000L),
                     new AXContextCollector(memorySystem, recentDialogueSystem),
-                    new AXLlmPromptRequestBuilder(promptOrchestrator, AXContextBudget.DEFAULT),
+                    new AXLlmPromptRequestBuilder(promptOrchestrator),
                     AXContextBudget.DEFAULT,
+                    new AXRuntimeLlmBudgetResolver(primitiveClient, windowPolicy),
                     llmClient,
                     new AXSessionController(axAdapter),
                     memorySystem,
@@ -923,7 +921,6 @@ class AXLongRunObserverSmokeTest {
                             .toList());
                     request.setMaxTokens(payload.maxTokens());
                     request.setThinking(payload.thinking());
-                    request.setTemperature(payload.temperature());
                     request.setStream(false);
                     request.setLane(payload.lane());
                     request.setTaskPriority(payload.taskPriority());

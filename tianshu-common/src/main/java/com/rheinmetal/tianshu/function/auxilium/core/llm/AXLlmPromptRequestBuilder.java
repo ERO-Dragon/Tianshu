@@ -12,20 +12,19 @@ import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 
 public final class AXLlmPromptRequestBuilder {
     private final AXPromptOrchestrator promptOrchestrator;
-    private final AXContextBudget budget;
 
-    public AXLlmPromptRequestBuilder(AXPromptOrchestrator promptOrchestrator, AXContextBudget budget) {
+    public AXLlmPromptRequestBuilder(AXPromptOrchestrator promptOrchestrator) {
         this.promptOrchestrator = Objects.requireNonNull(promptOrchestrator, "promptOrchestrator");
-        this.budget = budget == null ? AXContextBudget.DEFAULT : budget;
     }
 
-    public LLMPromptRequestPayload buildChatRequest(AXRequest request, AXContextSnapshot context) {
-        AXPromptAssembly assembly = promptOrchestrator.assemble(request, context, budget);
+    public LLMPromptRequestPayload buildChatRequest(AXRequest request, AXContextSnapshot context, AXContextBudget budget) {
+        AXContextBudget effectiveBudget = budget == null ? AXContextBudget.DEFAULT : budget;
+        AXPromptAssembly assembly = promptOrchestrator.assemble(request, context, effectiveBudget);
         List<LLMPromptRequestPayload.ChunkPayload> chunks = List.of(LLMPromptRequestPayload.ChunkPayload.message(assembly.messages()));
         return new LLMPromptRequestPayload(
                 request == null ? "AX.request" : request.requestKey(),
                 0,
-                0.7f,
+                null,
                 true,
                 false,
                 "CHAT",

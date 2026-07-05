@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
-import com.rheinmetal.tianshu.function.llm.LlmThinkingContentFilter;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -317,7 +316,7 @@ public final class AXMemoryMaintenanceService {
         return new LLMPromptRequestPayload(
                 "ax.memory.compress." + batch.batchId(),
                 0,
-                0.2f,
+                null,
                 false,
                 true,
                 "TASK",
@@ -335,7 +334,7 @@ public final class AXMemoryMaintenanceService {
         return new LLMPromptRequestPayload(
                 "ax.memory.extract." + stm.id(),
                 0,
-                0.1f,
+                null,
                 false,
                 true,
                 "TASK",
@@ -368,7 +367,7 @@ public final class AXMemoryMaintenanceService {
     }
 
     private String cleanModelTaskText(String text) {
-        return LlmThinkingContentFilter.strip(text).strip();
+        return text == null ? "" : text.strip();
     }
 
     private List<AXEventVector> toVectors(List<AXMemoryEvent> events, LLMPrimitiveResultPayload result, String fallbackModelName, String fallbackNamespace) {

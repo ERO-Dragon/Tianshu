@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
@@ -139,10 +140,8 @@ public final class AXModule implements TianshuManagedModule {
         AXPromptResourceRepository promptRepository = new AXPromptResourceRepository(storageLayout, jsonStore);
         AXPromptOrchestrator promptOrchestrator = new AXPromptOrchestrator(promptRepository, promptLanguageProvider, null);
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
-        AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(
-                promptOrchestrator,
-                contextBudget
-        );
+        AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator);
+        AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, memoryPolicy);
         dynamicFactClient = new AXDynamicFactClient(adapter);
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
@@ -155,6 +154,7 @@ public final class AXModule implements TianshuManagedModule {
                 contextCollector,
                 llmRequestBuilder,
                 contextBudget,
+                budgetResolver,
                 llmClient,
                 sessionController,
                 memorySystem,

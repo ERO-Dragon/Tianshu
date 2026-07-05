@@ -15,23 +15,22 @@ import java.util.regex.Pattern;
 
 /**
  * E 抽取结果解析器。优先按设计文档要求的严格 JSON 数组解析；
- * 当小模型输出非 JSON（含 think 残段、markdown 控制符或自由文本）时，
+ * 当小模型输出非 JSON（含 markdown 控制符或自由文本）时，
  * 按行降级解析以保证链路鲁棒性。
  *
- * 降级解析约束：剥除 <think>...</think> 残段；跳过明显非事实行
- * （纯符号、JSON 控制符、markdown 围栏）；去行首编号与列表标记；
+ * 降级解析约束：跳过明显非事实行（纯符号、JSON 控制符、markdown 围栏）；
+ * 去行首编号与列表标记；
  * 仍受长度上限、Unicode 替换符过滤和去重约束。
  */
 public final class AXMemoryFactExtractionParser {
     private static final int MAX_FACT_CHARS = 512;
     private static final String FACT_KEY = "fact";
 
-    private static final Pattern THINK_BLOCK = Pattern.compile("<think>[\\s\\S]*?</think>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ORDERED_LIST_PREFIX = Pattern.compile("^\\s*\\d+[.)、]\\s*");
     private static final Pattern UNORDERED_LIST_PREFIX = Pattern.compile("^\\s*[-*•]\\s+");
 
     public List<String> parse(String text) {
-        String normalized = stripThinkBlock(text == null ? "" : text).trim();
+        String normalized = (text == null ? "" : text).trim();
         if (normalized.isBlank()) {
             return List.of();
         }
@@ -165,20 +164,4 @@ public final class AXMemoryFactExtractionParser {
         return end == line.length() ? line : line.substring(0, end).trim();
     }
 
-    private String stripThinkBlock(String text) {
-        if (text == null || text.isEmpty()) {
-            return "";
-        }
-        String result = THINK_BLOCK.matcher(text).replaceAll("");
-        int start = result.indexOf("<think>");
-        if (start >= 0) {
-            int end = result.indexOf("</think>", start);
-            if (end < 0) {
-                result = result.substring(0, start);
-            } else {
-                result = result.substring(0, start) + result.substring(end + "</think>".length());
-            }
-        }
-        return result;
-    }
 }

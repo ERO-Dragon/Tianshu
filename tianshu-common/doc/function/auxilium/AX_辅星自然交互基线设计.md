@@ -293,7 +293,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 
 以下内容已经在设计上纳入一期，但代码里还没有完全做到位，先保留在文档末尾，不在这里硬补：
 
-- 记忆检索和 prompt 预算已经有 `LlmModelInfo.promptTokenBudget`、`AXMemoryWindowPolicy.fromBudget`、`AXContextBudget.fromPolicy` 这些入口，但仍只是模型档位的 baseline 布局，不能再描述成固定百分比分区。后续需要接入 jjml / LLM 加载后的安全 ctx 预算与本轮密度评估，让近期对话、玩家记忆、静态内容、动态内容按收益动态裁剪；不得再引入文档未定义的额外 prompt 分区。
+- 记忆检索和 prompt 预算已经接入 LLM `STATUS.contextTokenBudget`、`AXMemoryWindowPolicy.fromBudget`、`AXContextBudget.fromPolicy` 这些入口；它们仍只是模型窗口下的 baseline 布局，不能描述成固定百分比分区。后续需要继续结合本轮密度评估，让近期对话、玩家记忆、静态内容、动态内容按收益动态裁剪；不得再引入文档未定义的额外 prompt 分区。
 - 二期 agent 化的工具协作还只是边界规划，尚未形成独立的工具注册与执行子系统。
 
 以下条目已在本次整改中完成：

@@ -72,7 +72,7 @@ class AXLlmClientTest {
         return new LLMPromptRequestPayload(
                 requestId,
                 0,
-                0.7f,
+                null,
                 false,
                 false,
                 lane,

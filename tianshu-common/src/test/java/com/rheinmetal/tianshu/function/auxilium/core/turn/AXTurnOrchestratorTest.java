@@ -94,7 +94,8 @@ class AXTurnOrchestratorTest {
                 null,
                 null,
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
-                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
                 llmClient,
                 new AXSessionController(adapter),
                 null,
@@ -148,8 +149,9 @@ class AXTurnOrchestratorTest {
                 null,
                 null,
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
-                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
                 AXContextBudget.DEFAULT,
+                null,
                 llmClient,
                 new AXSessionController(adapter),
                 null,
@@ -224,10 +226,7 @@ class AXTurnOrchestratorTest {
 
     @Test
     void dynamicFactsAreInjectedAsDynamicContentInsteadOfRagChunk() {
-        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
-                new AXPromptOrchestrator(null, null, null),
-                AXContextBudget.DEFAULT
-        );
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null));
         AXRequest request = new AXRequest("request", "这个怎么用？", "");
         AXContextSnapshot context = new AXContextSnapshot(
                 AXScope.unknown(),
@@ -236,7 +235,7 @@ class AXTurnOrchestratorTest {
                 ""
         );
 
-        LLMPromptRequestPayload payload = builder.buildChatRequest(request, context);
+        LLMPromptRequestPayload payload = builder.buildChatRequest(request, context, AXContextBudget.DEFAULT);
 
         assertEquals(1, payload.chunks().size());
         assertTrue(payload.chunks().get(0).messageContent().stream()
@@ -246,21 +245,18 @@ class AXTurnOrchestratorTest {
 
     @Test
     void promptAssemblyDoesNotCreateSeparateRagChunks() {
-        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
-                new AXPromptOrchestrator(
-                        null,
-                        null,
-                        (request, context, budget) -> List.of(AXKnowledgeHit.of(
-                                "ax.static_knowledge.mock",
-                                List.of("minecraft:anvil | 铁砧可以修复工具。")
-                        )),
-                        null
-                ),
-                AXContextBudget.DEFAULT
-        );
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
+                null,
+                null,
+                (request, context, budget) -> List.of(AXKnowledgeHit.of(
+                        "ax.static_knowledge.mock",
+                        List.of("minecraft:anvil | 铁砧可以修复工具。")
+                )),
+                null
+        ));
         AXRequest request = new AXRequest("request", "铁砧怎么用？", "");
 
-        LLMPromptRequestPayload payload = builder.buildChatRequest(request, AXContextSnapshot.empty());
+        LLMPromptRequestPayload payload = builder.buildChatRequest(request, AXContextSnapshot.empty(), AXContextBudget.DEFAULT);
 
         assertEquals(1, payload.chunks().size());
         assertEquals("message", payload.chunks().get(0).type());
@@ -284,7 +280,8 @@ class AXTurnOrchestratorTest {
                 null,
                 new AXDynamicFactClient(adapter, 2_000L),
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
-                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
                 llmClient,
                 new AXSessionController(adapter),
                 null,
@@ -344,7 +341,8 @@ class AXTurnOrchestratorTest {
                 null,
                 new AXDynamicFactClient(adapter, 2_000L),
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
-                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
                 llmClient,
                 new AXSessionController(adapter),
                 null,
@@ -385,7 +383,8 @@ class AXTurnOrchestratorTest {
                 null,
                 new AXDynamicFactClient(adapter, 2_000L),
                 new AXContextCollector(null),
-                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
                 llmClient,
                 new AXSessionController(adapter),
                 null,
@@ -465,8 +464,9 @@ class AXTurnOrchestratorTest {
                 null,
                 null,
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
-                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null), AXContextBudget.DEFAULT),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
                 AXContextBudget.DEFAULT,
+                null,
                 llmClient,
                 new AXSessionController(adapter),
                 null,

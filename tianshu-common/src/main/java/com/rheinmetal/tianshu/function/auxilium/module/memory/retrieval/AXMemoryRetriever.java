@@ -93,13 +93,17 @@ public final class AXMemoryRetriever {
         AXMemoryRetrievalIndex.RoutedCandidates routed = index.route(request.queryText(), queryVector);
         long nowMillis = System.currentTimeMillis();
         Map<String, StmContribution> contributions = new HashMap<>();
+        Set<String> subColdStmIds = new HashSet<>();
         for (AXMemoryRetrievalIndex.EventVectorEntry entry : routed.entries()) {
             AXMemoryEvent event = entry.event();
             if (event == null || event.stmId().isBlank()) {
                 continue;
             }
             double relevance = index.score(entry, queryVector, routed.analysis(), nowMillis);
-            if (relevance <= 0.0D) {
+            if (relevance < retrievalPolicy.coldScoreThreshold()) {
+                if (relevance > 0.0D) {
+                    subColdStmIds.add(event.stmId());
+                }
                 continue;
             }
             contributions.computeIfAbsent(event.stmId(), StmContribution::new)
@@ -116,7 +120,7 @@ public final class AXMemoryRetriever {
             blocksById.putIfAbsent(block.id(), block);
             blockOrder.putIfAbsent(block.id(), order++);
         }
-        List<SelectedBlock> selected = selectBlocks(request, contributions, blocksById, blockOrder, allBlocks);
+        List<SelectedBlock> selected = selectBlocks(request, contributions, subColdStmIds, blocksById, blockOrder, allBlocks);
         List<AXStmBlock> timeline = selected.stream()
                 .sorted(Comparator.comparingInt(SelectedBlock::order))
                 .map(SelectedBlock::block)
@@ -135,6 +139,7 @@ public final class AXMemoryRetriever {
     private List<SelectedBlock> selectBlocks(
             AXMemoryRetrievalRequest request,
             Map<String, StmContribution> contributions,
+            Set<String> subColdStmIds,
             Map<String, AXStmBlock> blocksById,
             Map<String, Integer> blockOrder,
             List<AXStmBlock> allBlocks
@@ -145,37 +150,51 @@ public final class AXMemoryRetriever {
         if (ordered.isEmpty()) {
             return List.of();
         }
-        double topScore = ordered.get(0).score();
+        double topScore = ordered.stream()
+                .mapToDouble(StmContribution::maxRelevance)
+                .max()
+                .orElse(0.0D);
         List<StmContribution> hotCandidates = new ArrayList<>();
         List<StmContribution> warmCandidates = new ArrayList<>();
         List<StmContribution> coldCandidates = new ArrayList<>();
         for (StmContribution contribution : ordered) {
-            double score = contribution.score();
-            if (score >= retrievalPolicy.hotScoreThreshold()) {
+            double relevance = contribution.maxRelevance();
+            if (relevance >= retrievalPolicy.hotScoreThreshold()) {
                 hotCandidates.add(contribution);
-            } else if (score >= retrievalPolicy.warmScoreThreshold()) {
+            } else if (relevance >= retrievalPolicy.warmScoreThreshold()) {
                 warmCandidates.add(contribution);
-            } else if (score >= retrievalPolicy.coldScoreThreshold()) {
+            } else if (relevance >= retrievalPolicy.coldScoreThreshold()) {
                 coldCandidates.add(contribution);
             }
         }
+        List<StmContribution> eligible = new ArrayList<>();
+        eligible.addAll(hotCandidates);
+        eligible.addAll(warmCandidates);
+        eligible.addAll(coldCandidates);
         int maxBlocks = request.maxBlocks();
         int tokenBudget = request.tokenBudget();
         Set<String> seen = new HashSet<>();
         List<SelectedBlock> selected = new ArrayList<>();
         int[] tokens = {0};
         TierBudget hotTier = new TierBudget(retrievalPolicy.hotBlockBudget(maxBlocks), retrievalPolicy.hotTokenBudget(tokenBudget));
-        selectFromTier(hotCandidates, hotTier, topScore, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        selectFromTier(hotCandidates, hotTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
         TierBudget warmTier = new TierBudget(
                 Math.min(retrievalPolicy.warmBlockBudget(maxBlocks), maxBlocks - selected.size()),
                 tokenBudget <= 0 ? 0 : Math.min(retrievalPolicy.warmTokenBudget(tokenBudget), Math.max(0, tokenBudget - tokens[0]))
         );
-        selectFromTier(warmCandidates, warmTier, topScore, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        selectFromTier(warmCandidates, warmTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
         TierBudget coldTier = new TierBudget(
                 Math.min(retrievalPolicy.coldBlockBudget(maxBlocks), maxBlocks - selected.size()),
                 tokenBudget <= 0 ? 0 : Math.min(retrievalPolicy.coldTokenBudget(tokenBudget), Math.max(0, tokenBudget - tokens[0]))
         );
-        selectFromTier(coldCandidates, coldTier, topScore, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        selectFromTier(coldCandidates, coldTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        if (selected.size() < maxBlocks) {
+            TierBudget remainingTier = new TierBudget(
+                    maxBlocks - selected.size(),
+                    tokenBudget <= 0 ? 0 : Math.max(0, tokenBudget - tokens[0])
+            );
+            selectFromTier(eligible, remainingTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        }
         return selected;
     }
 
@@ -183,6 +202,7 @@ public final class AXMemoryRetriever {
             List<StmContribution> candidates,
             TierBudget tier,
             double topScore,
+            Set<String> subColdStmIds,
             Map<String, AXStmBlock> blocksById,
             Map<String, Integer> blockOrder,
             List<AXStmBlock> allBlocks,
@@ -194,9 +214,9 @@ public final class AXMemoryRetriever {
         if (tier.blockBudget() <= 0) {
             return;
         }
-        int selectedBefore = selected.size();
+        int selectedAnchors = 0;
         for (StmContribution contribution : candidates) {
-            if (selected.size() - selectedBefore >= tier.blockBudget()) {
+            if (selectedAnchors >= tier.blockBudget()) {
                 break;
             }
             if (selected.size() >= maxBlocks) {
@@ -206,11 +226,9 @@ public final class AXMemoryRetriever {
             if (block == null || block.isEmpty()) {
                 continue;
             }
-            List<AXStmBlock> chain = chainExpansionCandidates(block, contribution, topScore, blockOrder, allBlocks);
+            List<AXStmBlock> chain = chainExpansionCandidates(block, contribution, topScore, subColdStmIds, blockOrder, allBlocks);
+            boolean selectedAny = false;
             for (AXStmBlock candidate : chain) {
-                if (selected.size() - selectedBefore >= tier.blockBudget()) {
-                    break;
-                }
                 if (selected.size() >= maxBlocks) {
                     break;
                 }
@@ -223,6 +241,10 @@ public final class AXMemoryRetriever {
                 }
                 selected.add(new SelectedBlock(candidate, blockOrder.getOrDefault(candidate.id(), Integer.MAX_VALUE)));
                 tokens[0] += candidate.estimatedTokens();
+                selectedAny = true;
+            }
+            if (selectedAny) {
+                selectedAnchors++;
             }
         }
     }
@@ -234,6 +256,7 @@ public final class AXMemoryRetriever {
             AXStmBlock center,
             StmContribution contribution,
             double topScore,
+            Set<String> subColdStmIds,
             Map<String, Integer> blockOrder,
             List<AXStmBlock> allBlocks
     ) {
@@ -250,6 +273,9 @@ public final class AXMemoryRetriever {
         List<AXStmBlock> candidates = new ArrayList<>();
         for (int index = from; index <= to; index++) {
             AXStmBlock candidate = allBlocks.get(index);
+            if (!center.id().equals(candidate.id()) && subColdStmIds != null && subColdStmIds.contains(candidate.id())) {
+                continue;
+            }
             if (sameChain(center, candidate)) {
                 candidates.add(candidate);
             }
@@ -261,10 +287,10 @@ public final class AXMemoryRetriever {
         if (contribution == null || topScore <= 0.0D) {
             return false;
         }
-        if (contribution.score() < retrievalPolicy.chainExpansionMinScore()) {
+        if (contribution.maxRelevance() < retrievalPolicy.chainExpansionMinScore()) {
             return false;
         }
-        return contribution.score() >= topScore * retrievalPolicy.chainExpansionScoreRatio();
+        return contribution.maxRelevance() >= topScore * retrievalPolicy.chainExpansionScoreRatio();
     }
 
     private boolean sameChain(AXStmBlock center, AXStmBlock candidate) {
@@ -335,6 +361,10 @@ public final class AXMemoryRetriever {
 
         private double score() {
             return max + Math.log1p(sum);
+        }
+
+        private double maxRelevance() {
+            return max;
         }
 
         private AXMemoryRetrievalTrace toTrace() {
