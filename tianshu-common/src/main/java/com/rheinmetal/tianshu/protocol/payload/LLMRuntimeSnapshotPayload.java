@@ -7,11 +7,15 @@ public record LLMRuntimeSnapshotPayload(
         boolean modelLoaded,
         boolean embeddingAvailable,
         int embeddingDimension,
+        boolean supportsThinking,
         boolean supportsMtp,
+        boolean supportsEmbeddedMtp,
+        boolean externalMtpAvailable,
         boolean mtpCalibrated,
         int mtpLayerCount,
         int recommendedDraftMax,
         int contextSize,
+        int contextTokenBudget,
         boolean chatQueueCapacity,
         boolean taskQueueCapacity,
         boolean queueCapacity,
@@ -30,6 +34,7 @@ public record LLMRuntimeSnapshotPayload(
         mtpLayerCount = Math.max(0, mtpLayerCount);
         recommendedDraftMax = Math.max(0, recommendedDraftMax);
         contextSize = Math.max(0, contextSize);
+        contextTokenBudget = Math.max(0, contextTokenBudget);
         chatQueueSize = Math.max(0, chatQueueSize);
         taskQueueSize = Math.max(0, taskQueueSize);
         queueSize = Math.max(0, queueSize);
@@ -42,6 +47,7 @@ public record LLMRuntimeSnapshotPayload(
     }
 
     public static LLMRuntimeSnapshotPayload unavailable() {
-        return new LLMRuntimeSnapshotPayload(false, false, false, -1, false, false, 0, 0, 0, false, false, false, 0, 0, 0, "", "", "", "", "", System.currentTimeMillis());
+        return new LLMRuntimeSnapshotPayload(false, false, false, -1, false, false, false, false, false, 0, 0, 0, 0,
+                false, false, false, 0, 0, 0, "", "", "", "", "", System.currentTimeMillis());
     }
 }

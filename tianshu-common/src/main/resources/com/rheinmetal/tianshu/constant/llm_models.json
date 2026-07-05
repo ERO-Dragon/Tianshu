@@ -1,63 +1,45 @@
 [
   {
-    "name": "Qwen3.5-2B-GGUF-Q4_K_M",
-    "displayName": "Qwen3.5 2B Q4_K_M",
-    "repoId": "unsloth/Qwen3.5-2B-GGUF",
-    "hfFilePath": "Qwen3.5-2B-Q4_K_M.gguf",
-    "modelFile": "Qwen3.5-2B-Q4_K_M.gguf",
-    "series": "Qwen3.5",
-    "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
+    "name": "gemma12B-MTP-Hauhau",
+    "displayName": "Gemma 4 12B QAT Uncensored HauhauCS Balanced Q4_K_M",
+    "repoId": "HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced",
+    "hfFilePath": "Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf",
+    "modelFile": "Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf",
+    "mtpDraftModelFile": "mtp-gemma-4-12B-it.gguf",
+    "mtpDraftHfFilePath": "mtp-gemma-4-12B-it.gguf",
+    "series": "Gemma 4",
+    "descriptionKey": "tianshu.gui.llm.model.gemma4_12b_it.description",
     "thinkingCapability": "supported",
-    "downloadSizeBytes": 1280835840,
+    "downloadSizeBytes": 7381381760,
     "contextSize": 8192,
-    "promptTokenBudget": 3000,
+    "sampling": {
+      "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
+    },
     "lang": ["zh", "en"]
   },
   {
-    "name": "Qwen3.5-4B-GGUF-Q4_K_M",
-    "displayName": "Qwen3.5 4B Q4_K_M",
-    "repoId": "unsloth/Qwen3.5-4B-GGUF",
-    "hfFilePath": "Qwen3.5-4B-Q4_K_M.gguf",
-    "modelFile": "Qwen3.5-4B-Q4_K_M.gguf",
-    "series": "Qwen3.5",
-    "descriptionKey": "tianshu.gui.llm.model.qwen35_4b.description",
+    "name": "gemma12B-MTP-unsloth",
+    "displayName": "Gemma 4 12B IT QAT UD Q4_K_XL",
+    "repoId": "unsloth/gemma-4-12b-it-GGUF",
+    "hfFilePath": "gemma-4-12B-it-qat-UD-Q4_K_XL.gguf",
+    "modelFile": "gemma-4-12B-it-qat-UD-Q4_K_XL.gguf",
+    "mtpDraftModelFile": "mtp-gemma-4-12B-it.gguf",
+    "mtpDraftHfFilePath": "mtp-gemma-4-12B-it.gguf",
+    "series": "Gemma 4",
+    "descriptionKey": "tianshu.gui.llm.model.gemma4_12b_it.description",
     "thinkingCapability": "supported",
-    "downloadSizeBytes": 2740937888,
+    "downloadSizeBytes": 6716355328,
     "contextSize": 8192,
-    "promptTokenBudget": 4000,
+    "sampling": {
+      "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
+    },
     "lang": ["zh", "en"]
   },
   {
-    "name": "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
-    "displayName": "Qwen3.5 4B Uncensored Q4_K_M",
-    "repoId": "HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive",
-    "hfFilePath": "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
-    "modelFile": "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
-    "series": "Qwen3.5",
-    "descriptionKey": "tianshu.gui.llm.model.qwen35_4b_uncensored.description",
-    "thinkingCapability": "supported",
-    "downloadSizeBytes": 2707513696,
-    "contextSize": 8192,
-    "promptTokenBudget": 4000,
-    "lang": ["zh", "en"]
-  },
-  {
-    "name": "Qwen3.5-9B-DeepSeek-V4-Flash-Q4_K_M",
-    "displayName": "Qwen3.5 9B DeepSeek V4 Flash Q4_K_M",
-    "repoId": "Jackrong/Qwen3.5-9B-DeepSeek-V4-Flash-GGUF",
-    "hfFilePath": "Qwen3.5-9B-DeepSeek-V4-Flash-Q4_K_M.gguf",
-    "modelFile": "Qwen3.5-9B-DeepSeek-V4-Flash-Q4_K_M.gguf",
-    "series": "Qwen3.5",
-    "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
-    "thinkingCapability": "supported",
-    "downloadSizeBytes": 5629105408,
-    "contextSize": 8192,
-    "promptTokenBudget": 6500,
-    "lang": ["zh", "en"]
-  },
-  {
-    "name": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
-    "displayName": "Gemma 4 E4B Uncensored Q4_K_M",
+    "name": "gemmaE4B-MTP-Hauhau",
+    "displayName": "Gemma 4 E4B Uncensored HauhauCS Aggressive Q4_K_M",
     "repoId": "HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive",
     "hfFilePath": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
     "modelFile": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
@@ -65,22 +47,183 @@
     "descriptionKey": "tianshu.gui.llm.model.gemma4_e4b_uncensored.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 5335285728,
-    "contextSize": 8192,
-    "promptTokenBudget": 4000,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
+    },
     "lang": ["zh", "en"]
   },
   {
-    "name": "Gemma-4-12B-IT-GGUF-Q4_K_M",
-    "displayName": "Gemma 4 12B IT Q4_K_M",
-    "repoId": "unsloth/gemma-4-12b-it-GGUF",
-    "hfFilePath": "gemma-4-12b-it-Q4_K_M.gguf",
-    "modelFile": "gemma-4-12b-it-Q4_K_M.gguf",
+    "name": "gemmaE4B-MTP-unsloth",
+    "displayName": "Gemma 4 E4B IT QAT UD Q4_K_XL",
+    "repoId": "unsloth/gemma-4-E4B-it-GGUF",
+    "hfFilePath": "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+    "modelFile": "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+    "mtpDraftModelFile": "mtp-gemma-4-E4B-it.gguf",
+    "mtpDraftHfFilePath": "mtp-gemma-4-E4B-it.gguf",
     "series": "Gemma 4",
-    "descriptionKey": "tianshu.gui.llm.model.gemma4_12b_it.description",
+    "descriptionKey": "tianshu.gui.llm.model.gemma4_e4b_uncensored.description",
     "thinkingCapability": "supported",
-    "downloadSizeBytes": 7121860000,
-    "contextSize": 8192,
-    "promptTokenBudget": 8000,
+    "downloadSizeBytes": 4215693760,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-2B-hauhau",
+    "displayName": "Qwen3.5 2B Uncensored HauhauCS Aggressive Q4_K_M",
+    "repoId": "HauhauCS/Qwen3.5-2B-Uncensored-HauhauCS-Aggressive",
+    "hfFilePath": "Qwen3.5-2B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-2B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 1270808032,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-2B-MTP-unsloth-Q4_K_M",
+    "displayName": "Qwen3.5 2B Q4_K_M",
+    "repoId": "unsloth/Qwen3.5-2B-GGUF",
+    "hfFilePath": "Qwen3.5-2B-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-2B-Q4_K_M.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 1329851808,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-2B-MTP-unsloth-Q4_K_XL",
+    "displayName": "Qwen3.5 2B UD Q4_K_XL",
+    "repoId": "unsloth/Qwen3.5-2B-GGUF",
+    "hfFilePath": "Qwen3.5-2B-UD-Q4_K_XL.gguf",
+    "modelFile": "Qwen3.5-2B-UD-Q4_K_XL.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 1384902048,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-4B-hauhau",
+    "displayName": "Qwen3.5 4B Uncensored HauhauCS Aggressive Q4_K_M",
+    "repoId": "HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive",
+    "hfFilePath": "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_4b_uncensored.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 2707513696,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-4B-MTP-unsloth-Q4_K_M",
+    "displayName": "Qwen3.5 4B Q4_K_M",
+    "repoId": "unsloth/Qwen3.5-4B-GGUF",
+    "hfFilePath": "Qwen3.5-4B-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-4B-Q4_K_M.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_4b.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 2834975040,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-4B-MTP-unsloth-Q4_K_XL",
+    "displayName": "Qwen3.5 4B UD Q4_K_XL",
+    "repoId": "unsloth/Qwen3.5-4B-GGUF",
+    "hfFilePath": "Qwen3.5-4B-UD-Q4_K_XL.gguf",
+    "modelFile": "Qwen3.5-4B-UD-Q4_K_XL.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_4b.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 2990664000,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-9B-hauhau",
+    "displayName": "Qwen3.5 9B Uncensored HauhauCS Aggressive Q4_K_M",
+    "repoId": "HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive",
+    "hfFilePath": "Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 5627044224,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-9B-MTP-unsloth-Q4_K_M",
+    "displayName": "Qwen3.5 9B Q4_K_M",
+    "repoId": "unsloth/Qwen3.5-9B-GGUF",
+    "hfFilePath": "Qwen3.5-9B-Q4_K_M.gguf",
+    "modelFile": "Qwen3.5-9B-Q4_K_M.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 5868826976,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
+    "lang": ["zh", "en"]
+  },
+  {
+    "name": "qwen3.5-9B-MTP-unsloth-Q4_K_XL",
+    "displayName": "Qwen3.5 9B UD Q4_K_XL",
+    "repoId": "unsloth/Qwen3.5-9B-GGUF",
+    "hfFilePath": "Qwen3.5-9B-UD-Q4_K_XL.gguf",
+    "modelFile": "Qwen3.5-9B-UD-Q4_K_XL.gguf",
+    "series": "Qwen3.5",
+    "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
+    "thinkingCapability": "supported",
+    "downloadSizeBytes": 6135034208,
+    "contextSize": 16384,
+    "sampling": {
+      "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
+      "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
+    },
     "lang": ["zh", "en"]
   }
 ]

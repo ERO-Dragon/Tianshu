@@ -101,6 +101,11 @@ public interface ITianshuConfig {
     Path getLlmModelPath();
     Path getTtsModelPath();
     Path getLlmGgufFilePath();
+
+    default Path getLlmMtpDraftGgufFilePath() {
+        return null;
+    }
+
     Path getVoiceLibraryPath();
 
     default Path getLlmEmbeddingModelPath() {
@@ -196,10 +201,6 @@ public interface ITianshuConfig {
 
     default int getLlmLibsChatQueueSize() {
         return 1;
-    }
-
-    default boolean isLlmTaskSuspendOnChatEnabled() {
-        return true;
     }
 
     default boolean isLlmFrameGuardEnabled() {

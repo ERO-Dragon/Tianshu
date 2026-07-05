@@ -1,13 +1,18 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpTrialSnapshot;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.libs.llm.InferenceLane;
 import com.rheinmetal.tianshu.libs.llm.InferenceOptions;
+import com.rheinmetal.tianshu.libs.llm.LlmContextBudgetPlan;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.libs.llm.LlmRuntimeCapabilities;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.MtpCapability;
 import com.rheinmetal.tianshu.libs.llm.MtpTrialResult;
@@ -77,6 +82,20 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
     }
 
     @Override
+    public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
+        InferenceOptions libsOptions = toLibsOptions(options);
+        return server.chatStream(
+                messages,
+                sampler,
+                maxTokens,
+                libsOptions == null ? InferenceOptions.defaults() : libsOptions,
+                onToken,
+                onThinking,
+                onFinish
+        );
+    }
+
+    @Override
     public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible) {
         return server.task(messages, sampler, maxTokens, priority, preemptible);
     }
@@ -114,6 +133,22 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
         InferenceOptions libsOptions = toLibsOptions(options);
         return server.taskStreamWithUsage(messages, sampler, maxTokens, priority, preemptible,
                 libsOptions == null ? InferenceOptions.defaults() : libsOptions, onToken, onFinish);
+    }
+
+    @Override
+    public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
+        InferenceOptions libsOptions = toLibsOptions(options);
+        return server.taskStreamWithUsage(
+                messages,
+                sampler,
+                maxTokens,
+                priority,
+                preemptible,
+                libsOptions == null ? InferenceOptions.defaults() : libsOptions,
+                onToken,
+                onThinking,
+                onFinish
+        );
     }
 
     @Override
@@ -162,13 +197,18 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
     }
 
     @Override
+    public int getTaskQueueSize() {
+        return 0;
+    }
+
+    @Override
     public int getQueueSize() {
         return server.getChatQueueSize();
     }
 
     @Override
-    public boolean supportsEnableThinking() {
-        return server.supportsEnableThinking();
+    public boolean supportsThinking() {
+        return toSnapshot(server.getRuntimeCapabilities()).supportsThinking();
     }
 
     @Override
@@ -179,6 +219,21 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
     @Override
     public LlmMtpCapabilitySnapshot getMtpCapability() {
         return toSnapshot(server.getMtpCapability());
+    }
+
+    @Override
+    public LlmEngineCapabilitySnapshot getRuntimeCapabilities() {
+        return toSnapshot(server.getRuntimeCapabilities());
+    }
+
+    @Override
+    public LlmContextBudgetSnapshot getContextBudgetPlan() {
+        return toSnapshot(server.getContextBudgetPlan());
+    }
+
+    @Override
+    public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) {
+        return toSnapshot(server.getContextBudgetPlan(InferenceLane.parse(lane)));
     }
 
     @Override
@@ -194,6 +249,8 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
                 .mtpEnabled(options.mtpEnabled())
                 .mtpDraftMax(options.mtpDraftMax())
                 .vulkanPriority(options.vulkanPriority())
+                .captureThinkingContent(options.captureThinkingContent())
+                .toolsJson(options.toolsJson())
                 .build();
     }
 
@@ -238,6 +295,37 @@ public final class JavaLlamaInferenceClient implements LlmInferenceClient {
                 capability.isCalibrated(),
                 capability.getRecommendedDraftMax(),
                 toSnapshot(capability.getBestTrial())
+        );
+    }
+
+    private static LlmEngineCapabilitySnapshot toSnapshot(LlmRuntimeCapabilities capabilities) {
+        if (capabilities == null) {
+            return LlmEngineCapabilitySnapshot.unavailable();
+        }
+        return new LlmEngineCapabilitySnapshot(
+                capabilities.ready(),
+                capabilities.supportsThinking(),
+                capabilities.supportsMtp(),
+                capabilities.supportsEmbeddedMtp(),
+                capabilities.externalMtpAvailable(),
+                capabilities.mtpLayerCount()
+        );
+    }
+
+    private static LlmContextBudgetSnapshot toSnapshot(LlmContextBudgetPlan plan) {
+        if (plan == null) {
+            return LlmContextBudgetSnapshot.unavailable("LLM context budget plan is unavailable");
+        }
+        return new LlmContextBudgetSnapshot(
+                plan.requestedContextSize(),
+                plan.trainingContextSize(),
+                plan.memoryContextSize(),
+                plan.plannedContextSize(),
+                plan.promptTokenBudget(),
+                plan.promptMarginTokens(),
+                plan.safetyMarginBytes(),
+                plan.reliable(),
+                plan.limitation()
         );
     }
 

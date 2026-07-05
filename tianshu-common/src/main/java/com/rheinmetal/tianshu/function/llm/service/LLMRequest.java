@@ -11,9 +11,18 @@ public class LLMRequest {
 
 
     private Integer maxTokens = 0;
-    private Float temperature = 0.7f;
+    private Float temperature = null;
+    private Integer topK = null;
+    private Float topP = null;
+    private Float minP = null;
+    private Float penaltyRepeat = null;
+    private Float penaltyFreq = null;
+    private Float penaltyPresent = null;
+    private Integer penaltyLastN = null;
     private Boolean stream = false;
     private Boolean thinking = false;
+    private Boolean captureThinkingContent = false;
+    private String toolsJson = "";
 
     private String lane = "CHAT";
     private Integer taskPriority = 0;
@@ -47,12 +56,48 @@ public class LLMRequest {
         return temperature;
     }
 
+    public Integer getTopK() {
+        return topK;
+    }
+
+    public Float getTopP() {
+        return topP;
+    }
+
+    public Float getMinP() {
+        return minP;
+    }
+
+    public Float getPenaltyRepeat() {
+        return penaltyRepeat;
+    }
+
+    public Float getPenaltyFreq() {
+        return penaltyFreq;
+    }
+
+    public Float getPenaltyPresent() {
+        return penaltyPresent;
+    }
+
+    public Integer getPenaltyLastN() {
+        return penaltyLastN;
+    }
+
     public Boolean getStream() {
         return stream;
     }
 
     public Boolean getThinking() {
         return thinking;
+    }
+
+    public Boolean getCaptureThinkingContent() {
+        return captureThinkingContent;
+    }
+
+    public String getToolsJson() {
+        return toolsJson;
     }
 
     public String getLane() {
@@ -81,10 +126,38 @@ public class LLMRequest {
 
     public void setTemperature(Float temperature) {
         if (temperature == null || Float.isNaN(temperature) || temperature < 0f || temperature > 2f) {
-            this.temperature = 0.7f;
+            this.temperature = null;
         } else {
             this.temperature = temperature;
         }
+    }
+
+    public void setTopK(Integer topK) {
+        this.topK = topK != null && topK > 0 ? topK : null;
+    }
+
+    public void setTopP(Float topP) {
+        this.topP = normalizeUnit(topP);
+    }
+
+    public void setMinP(Float minP) {
+        this.minP = normalizeUnit(minP);
+    }
+
+    public void setPenaltyRepeat(Float penaltyRepeat) {
+        this.penaltyRepeat = normalizePenalty(penaltyRepeat);
+    }
+
+    public void setPenaltyFreq(Float penaltyFreq) {
+        this.penaltyFreq = normalizePenalty(penaltyFreq);
+    }
+
+    public void setPenaltyPresent(Float penaltyPresent) {
+        this.penaltyPresent = normalizePenalty(penaltyPresent);
+    }
+
+    public void setPenaltyLastN(Integer penaltyLastN) {
+        this.penaltyLastN = penaltyLastN != null && penaltyLastN >= 0 ? penaltyLastN : null;
     }
 
     public void setStream(Boolean stream) {
@@ -93,6 +166,14 @@ public class LLMRequest {
 
     public void setThinking(Boolean thinking) {
         this.thinking = thinking != null ? thinking : false;
+    }
+
+    public void setCaptureThinkingContent(Boolean captureThinkingContent) {
+        this.captureThinkingContent = captureThinkingContent != null ? captureThinkingContent : false;
+    }
+
+    public void setToolsJson(String toolsJson) {
+        this.toolsJson = toolsJson == null ? "" : toolsJson.trim();
     }
 
     public void setLane(String lane) {
@@ -123,6 +204,20 @@ public class LLMRequest {
 
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private Float normalizeUnit(Float value) {
+        if (value == null || Float.isNaN(value) || value < 0f || value > 1f) {
+            return null;
+        }
+        return value;
+    }
+
+    private Float normalizePenalty(Float value) {
+        if (value == null || Float.isNaN(value) || value < 0f || value > 4f) {
+            return null;
+        }
+        return value;
     }
 
     public boolean isTaskLane() {

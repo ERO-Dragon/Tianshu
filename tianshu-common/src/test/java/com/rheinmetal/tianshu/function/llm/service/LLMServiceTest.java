@@ -2,6 +2,11 @@ package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
@@ -246,7 +251,7 @@ class LLMServiceTest {
         assertFalse(service.isReady());
         assertFalse(service.hasChatQueueCapacity());
         assertTrue(service.hasTaskQueueCapacity());
-        assertFalse(service.supportsEnableThinking());
+        assertFalse(service.supportsThinking());
     }
 
     private static LLMService service(FakeInferenceClient client) {
@@ -289,6 +294,11 @@ class LLMServiceTest {
         }
 
         @Override
+        public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) {
+            return chat(messages, sampler, maxTokens);
+        }
+
+        @Override
         public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) {
             return new LlmGenerationResult(chat(messages, sampler, maxTokens), new LlmTokenUsage(messages.size(), 1));
         }
@@ -301,12 +311,22 @@ class LLMServiceTest {
         }
 
         @Override
+        public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) {
+            chatStream(messages, sampler, onToken);
+        }
+
+        @Override
         public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
             chatStream(messages, sampler, onToken);
             if (onFinish != null) {
                 onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(messages.size(), 1), null));
             }
             return CompletableFuture.completedFuture("ok");
+        }
+
+        @Override
+        public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
+            return chatStreamWithUsage(messages, sampler, maxTokens, options, onToken, onFinish);
         }
 
         @Override
@@ -317,6 +337,11 @@ class LLMServiceTest {
             lastTaskPriority = priority;
             lastTaskPreemptible = preemptible;
             return CompletableFuture.completedFuture("task");
+        }
+
+        @Override
+        public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
+            return task(messages, sampler, maxTokens, priority, preemptible);
         }
 
         @Override
@@ -337,6 +362,11 @@ class LLMServiceTest {
         }
 
         @Override
+        public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken) {
+            return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
+        }
+
+        @Override
         public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
             taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
             return taskStreamFuture.thenApply(text -> {
@@ -345,6 +375,11 @@ class LLMServiceTest {
                 }
                 return new LlmGenerationResult(text, new LlmTokenUsage(messages.size(), 1));
             });
+        }
+
+        @Override
+        public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
+            return taskStreamWithUsage(messages, sampler, maxTokens, priority, preemptible, options, onToken, onFinish);
         }
 
         @Override
@@ -378,7 +413,17 @@ class LLMServiceTest {
         @Override public boolean isReady() { return ready; }
         @Override public boolean hasChatQueueCapacity() { return chatQueueCapacity; }
         @Override public boolean hasTaskQueueCapacity() { return taskQueueCapacity; }
-        @Override public boolean supportsEnableThinking() { return thinkingSupported; }
+        @Override public boolean hasQueueCapacity() { return chatQueueCapacity; }
+        @Override public int getChatQueueSize() { return 0; }
+        @Override public int getTaskQueueSize() { return 0; }
+        @Override public int getQueueSize() { return 0; }
+        @Override public boolean supportsThinking() { return thinkingSupported; }
+        @Override public boolean supportsMtp() { return false; }
+        @Override public LlmMtpCapabilitySnapshot getMtpCapability() { return LlmMtpCapabilitySnapshot.unsupported(); }
+        @Override public LlmEngineCapabilitySnapshot getRuntimeCapabilities() { return new LlmEngineCapabilitySnapshot(ready, thinkingSupported, false, false, false, 0); }
+        @Override public LlmContextBudgetSnapshot getContextBudgetPlan() { return new LlmContextBudgetSnapshot(4096, 4096, 4096, 4096, 3000, 64, 0L, true, ""); }
+        @Override public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) { return getContextBudgetPlan(); }
+        @Override public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) { return CompletableFuture.completedFuture(LlmMtpCalibrationResult.unsupported()); }
     }
 
     private static final class FakeGameEnvironment implements IGameEnvironment {

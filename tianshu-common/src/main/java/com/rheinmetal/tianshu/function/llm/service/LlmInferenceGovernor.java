@@ -29,7 +29,7 @@ public final class LlmInferenceGovernor {
         LlmInferencePolicy effective = effectivePolicy(override);
         boolean mtpEnabled = Boolean.TRUE.equals(effective.mtpEnabled()) && mtpSupported;
         Float vulkanPriority = resolveVulkanPriority(effective, taskLane);
-        return new LlmInferenceOptions(mtpEnabled, null, vulkanPriority);
+        return new LlmInferenceOptions(mtpEnabled, null, vulkanPriority, false, null);
     }
 
     private LlmInferencePolicy effectivePolicy(LlmInferencePolicy override) {

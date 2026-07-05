@@ -12,7 +12,11 @@ import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
+import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.model.LlmModelManager;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
@@ -79,7 +83,12 @@ public class LLMService {
         PreparedResult prepared = prepareRequest(request);
         try {
             LlmGenerationResult result = inferenceClient.chatWithUsage(prepared.messages(), prepared.sampler(), prepared.maxTokens(), prepared.options());
-            return new LLMResult(result == null ? "" : result.text(), prepared.ragHits(), toUsagePayload(result == null ? null : result.usage()));
+            return new LLMResult(
+                    result == null ? "" : result.text(),
+                    result == null ? "" : result.thinkingContent(),
+                    prepared.ragHits(),
+                    toUsagePayload(result == null ? null : result.usage())
+            );
         } catch (Exception e) {
             env.error("[LLMService] Chat failed", e);
             throw new RuntimeException("LLM chat failed: " + safeMessage(e), e);
@@ -91,6 +100,10 @@ public class LLMService {
     }
 
     public LLMStreamResult chatStream(LLMRequest request, Consumer<String> onToken, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
+        return chatStream(request, onToken, null, ragHitsSink);
+    }
+
+    public LLMStreamResult chatStream(LLMRequest request, Consumer<String> onToken, Consumer<String> onThinking, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
         PreparedResult prepared = prepareRequest(request);
         copyRagHits(prepared, ragHitsSink);
         try {
@@ -101,6 +114,7 @@ public class LLMService {
                     prepared.maxTokens(),
                     prepared.options(),
                     safeTokenConsumer(onToken),
+                    safeTokenConsumer(onThinking),
                     finishHolder::set
             );
             String text = future.get();
@@ -152,6 +166,10 @@ public class LLMService {
     }
 
     public CompletableFuture<LlmGenerationResult> submitTaskStreamWithUsage(LLMRequest request, Consumer<String> onToken, Consumer<LLMStreamFinish> onFinish, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
+        return submitTaskStreamWithUsage(request, onToken, null, onFinish, ragHitsSink);
+    }
+
+    public CompletableFuture<LlmGenerationResult> submitTaskStreamWithUsage(LLMRequest request, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LLMStreamFinish> onFinish, List<LLMPromptResultPayload.RagHitPayload> ragHitsSink) {
         PreparedResult prepared = prepareRequest(request);
         copyRagHits(prepared, ragHitsSink);
         try {
@@ -163,6 +181,7 @@ public class LLMService {
                     prepared.taskPreemptible(),
                     prepared.options(),
                     safeTokenConsumer(onToken),
+                    safeTokenConsumer(onThinking),
                     finish -> {
                         if (onFinish != null) {
                             onFinish.accept(toStreamFinish(finish));
@@ -227,8 +246,8 @@ public class LLMService {
         return inferenceClient.hasTaskQueueCapacity();
     }
 
-    public boolean supportsEnableThinking() {
-        return inferenceClient.supportsEnableThinking();
+    public boolean supportsThinking() {
+        return inferenceClient.supportsThinking();
     }
 
     public boolean supportsMtp() {
@@ -237,6 +256,18 @@ public class LLMService {
 
     public LlmMtpCapabilitySnapshot getMtpCapability() {
         return inferenceClient.getMtpCapability();
+    }
+
+    public LlmEngineCapabilitySnapshot getRuntimeCapabilities() {
+        return inferenceClient.getRuntimeCapabilities();
+    }
+
+    public LlmContextBudgetSnapshot getContextBudgetPlan() {
+        return inferenceClient.getContextBudgetPlan();
+    }
+
+    public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) {
+        return inferenceClient.getContextBudgetPlan(lane);
     }
 
     public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) {
@@ -308,6 +339,10 @@ public class LLMService {
         int embeddingDimension = getEmbeddingDimension();
         boolean hasEmbedding = embeddingConfigured || embeddingDimension > 0;
         LlmMtpCapabilitySnapshot mtp = getMtpCapability();
+        LlmEngineCapabilitySnapshot capabilities = getRuntimeCapabilities();
+        LlmContextBudgetSnapshot budget = getContextBudgetPlan();
+        int loadedContextSize = loadedContextSize(budget);
+        int contextTokenBudget = contextTokenBudget(budget, loadedContextSize);
         String modelName = includeRuntimeDetails ? configName() : "";
         String modelProfile = includeRuntimeDetails ? modelProfile() : "";
         String embeddingModelName = includeRuntimeDetails ? embeddingModelName() : "";
@@ -318,11 +353,15 @@ public class LLMService {
                 inferenceClient != null && inferenceClient.isReady(),
                 hasEmbedding,
                 embeddingDimension,
+                capabilities.supportsThinking(),
                 supportsMtp(),
+                capabilities.supportsEmbeddedMtp(),
+                capabilities.externalMtpAvailable(),
                 mtp != null && mtp.supported() && mtp.calibrated(),
                 mtp == null ? 0 : mtp.mtpLayerCount(),
                 mtp == null ? 0 : mtp.recommendedDraftMax(),
-                Math.max(0, config.getLlmContextSize()),
+                loadedContextSize,
+                contextTokenBudget,
                 hasChatQueueCapacity(),
                 hasTaskQueueCapacity(),
                 inferenceClient != null && inferenceClient.hasQueueCapacity(),
@@ -369,7 +408,8 @@ public class LLMService {
                 maxTokens(effectiveRequest),
                 effectiveRequest.getTaskPriority(),
                 effectiveRequest.getTaskPreemptible(),
-                inferenceGovernor.resolve(effectiveRequest.getInferencePolicy(), effectiveRequest.isTaskLane(), supportsMtp()),
+                inferenceGovernor.resolve(effectiveRequest.getInferencePolicy(), effectiveRequest.isTaskLane(), supportsMtp())
+                        .withRequestOptions(Boolean.TRUE.equals(effectiveRequest.getCaptureThinkingContent()), effectiveRequest.getToolsJson()),
                 ragHits
         );
     }
@@ -505,10 +545,31 @@ public class LLMService {
     }
 
     private SamplerConfig createSampler(LLMRequest request) {
-        SamplerConfig config = SamplerConfig.defaults();
+        SamplerConfig config = applyModelSamplingDefaults(SamplerConfig.defaults(), Boolean.TRUE.equals(request.getThinking()));
         Float temp = request.getTemperature();
         if (temp != null) {
             config.setTemperature(temp);
+        }
+        if (request.getTopK() != null) {
+            config.setTopK(request.getTopK());
+        }
+        if (request.getTopP() != null) {
+            config.setTopP(request.getTopP());
+        }
+        if (request.getMinP() != null) {
+            config.setMinP(request.getMinP());
+        }
+        if (request.getPenaltyRepeat() != null) {
+            config.setPenaltyRepeat(request.getPenaltyRepeat());
+        }
+        if (request.getPenaltyFreq() != null) {
+            config.setPenaltyFreq(request.getPenaltyFreq());
+        }
+        if (request.getPenaltyPresent() != null) {
+            config.setPenaltyPresent(request.getPenaltyPresent());
+        }
+        if (request.getPenaltyLastN() != null) {
+            config.setPenaltyLastN(request.getPenaltyLastN());
         }
         config.setEnableThinking(Boolean.TRUE.equals(request.getThinking()));
         return config;
@@ -588,6 +649,40 @@ public class LLMService {
         return stableSegment(llm) + ":" + stableSegment(embedding);
     }
 
+    private SamplerConfig applyModelSamplingDefaults(SamplerConfig sampler, boolean thinking) {
+        LlmModelInfo info = LlmModelManager.getModelByName(configName());
+        LlmModelInfo.SamplingSettings settings = info == null ? null : info.getSamplingSettings(thinking);
+        if (settings == null || settings.isEmpty()) {
+            return sampler;
+        }
+        if (settings.temperature != null) sampler.setTemperature(settings.temperature);
+        if (settings.topK != null) sampler.setTopK(settings.topK);
+        if (settings.topP != null) sampler.setTopP(settings.topP);
+        if (settings.minP != null) sampler.setMinP(settings.minP);
+        if (settings.penaltyRepeat != null) sampler.setPenaltyRepeat(settings.penaltyRepeat);
+        if (settings.penaltyFreq != null) sampler.setPenaltyFreq(settings.penaltyFreq);
+        if (settings.penaltyPresent != null) sampler.setPenaltyPresent(settings.penaltyPresent);
+        if (settings.penaltyLastN != null) sampler.setPenaltyLastN(settings.penaltyLastN);
+        return sampler;
+    }
+
+    private int loadedContextSize(LlmContextBudgetSnapshot budget) {
+        int planned = budget == null ? 0 : budget.plannedContextSize();
+        if (planned > 0) {
+            return planned;
+        }
+        return Math.max(0, config.getLlmContextSize());
+    }
+
+    private int contextTokenBudget(LlmContextBudgetSnapshot budget, int loadedContextSize) {
+        int plannedBudget = budget == null ? 0 : budget.promptTokenBudget();
+        if (plannedBudget > 0) {
+            return plannedBudget;
+        }
+        int margin = budget == null ? 64 : Math.max(0, budget.promptMarginTokens());
+        return Math.max(0, loadedContextSize - margin);
+    }
+
     private static String safeText(String value) {
         return value == null ? "" : value.trim();
     }
@@ -604,6 +699,8 @@ public class LLMService {
         return new LLMPromptResultPayload.TokenUsagePayload(
                 usage.promptTokens(),
                 usage.completionTokens(),
+                usage.thinkingTokens(),
+                usage.outputTokens(),
                 usage.totalTokens()
         );
     }
@@ -613,7 +710,7 @@ public class LLMService {
             return LLMStreamFinish.completed(LLMPromptResultPayload.TokenUsagePayload.empty());
         }
         String type = finish.type() == null ? "COMPLETED" : finish.type().name();
-        return new LLMStreamFinish(type, toUsagePayload(finish.usage()), finish.error());
+        return new LLMStreamFinish(type, toUsagePayload(finish.usage()), finish.error(), finish.thinkingContent());
     }
 
     private record PreparedResult(
@@ -684,11 +781,16 @@ public class LLMService {
         }
     }
 
-    public record LLMResult(String text, List<LLMPromptResultPayload.RagHitPayload> ragHits, LLMPromptResultPayload.TokenUsagePayload usage) {
+    public record LLMResult(String text, String thinkingContent, List<LLMPromptResultPayload.RagHitPayload> ragHits, LLMPromptResultPayload.TokenUsagePayload usage) {
         public LLMResult {
             text = text != null ? text : "";
+            thinkingContent = thinkingContent != null ? thinkingContent : "";
             ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
             usage = usage == null ? LLMPromptResultPayload.TokenUsagePayload.empty() : usage;
+        }
+
+        public LLMResult(String text, List<LLMPromptResultPayload.RagHitPayload> ragHits, LLMPromptResultPayload.TokenUsagePayload usage) {
+            this(text, "", ragHits, usage);
         }
     }
 
@@ -699,10 +801,15 @@ public class LLMService {
         }
     }
 
-    public record LLMStreamFinish(String type, LLMPromptResultPayload.TokenUsagePayload usage, Throwable error) {
+    public record LLMStreamFinish(String type, LLMPromptResultPayload.TokenUsagePayload usage, Throwable error, String thinkingContent) {
+        public LLMStreamFinish(String type, LLMPromptResultPayload.TokenUsagePayload usage, Throwable error) {
+            this(type, usage, error, "");
+        }
+
         public LLMStreamFinish {
             type = type == null || type.isBlank() ? "COMPLETED" : type.trim().toUpperCase();
             usage = usage == null ? LLMPromptResultPayload.TokenUsagePayload.empty() : usage;
+            thinkingContent = thinkingContent == null ? "" : thinkingContent;
         }
 
         static LLMStreamFinish completed(LLMPromptResultPayload.TokenUsagePayload usage) {

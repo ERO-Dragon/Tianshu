@@ -2,6 +2,11 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationResultPayload;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.LlmInferenceClient;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
@@ -38,6 +43,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CancellationException;
@@ -253,7 +259,7 @@ class LlmProtocolAdapterTest {
     }
 
     @Test
-    void taskResponseStripsThinkingContentByDefault() {
+    void taskResponseUsesVisibleTextFromStructuredResult() {
         PendingInferenceClient client = new PendingInferenceClient();
         LLMService service = LLMService.builder()
                 .env(new FakeGameEnvironment())
@@ -272,15 +278,17 @@ class LlmProtocolAdapterTest {
         AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
 
         adapter.handleLLMRequest(envelope, context);
-        client.taskFuture.complete("<think>hidden reasoning</think>visible answer");
+        client.taskFuture.complete("visible answer");
 
         await(() -> result.get() != null);
         assertEquals("visible answer", result.get().text());
+        assertEquals("", result.get().thinkingContent());
     }
 
     @Test
-    void taskResponseCanIncludeThinkingContent() {
+    void taskResponseCanCaptureThinkingContent() {
         PendingInferenceClient client = new PendingInferenceClient();
+        client.nextTaskThinkingContent = "hidden reasoning";
         LLMService service = LLMService.builder()
                 .env(new FakeGameEnvironment())
                 .inferenceClient(client)
@@ -298,14 +306,15 @@ class LlmProtocolAdapterTest {
         AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
 
         adapter.handleLLMRequest(envelope, context);
-        client.taskFuture.complete("<think>hidden reasoning</think>visible answer");
+        client.taskFuture.complete("visible answer");
 
         await(() -> result.get() != null);
-        assertEquals("<think>hidden reasoning</think>visible answer", result.get().text());
+        assertEquals("visible answer", result.get().text());
+        assertEquals("hidden reasoning", result.get().thinkingContent());
     }
 
     @Test
-    void taskStreamResponseStripsThinkingContentAcrossChunksByDefault() {
+    void taskStreamResponseUsesSeparatedVisibleTokens() {
         PendingInferenceClient client = new PendingInferenceClient();
         LLMService service = LLMService.builder()
                 .env(new FakeGameEnvironment())
@@ -326,16 +335,57 @@ class LlmProtocolAdapterTest {
 
         adapter.handleLLMRequest(envelope, context);
         await(() -> client.taskStreamTokens.get() != null);
-        client.taskStreamTokens.get().accept("<thi");
-        client.taskStreamTokens.get().accept("nk>hidden");
-        client.taskStreamTokens.get().accept("</thi");
-        client.taskStreamTokens.get().accept("nk>visible ");
+        client.taskStreamTokens.get().accept("visible ");
         client.taskStreamTokens.get().accept("answer");
-        client.taskFuture.complete("<think>hidden</think>visible answer");
+        client.taskFuture.complete("visible answer");
 
         await(() -> result.get() != null);
         assertEquals(List.of("visible ", "answer"), List.copyOf(chunks));
         assertEquals("visible answer", result.get().text());
+        assertEquals("", result.get().thinkingContent());
+    }
+
+    @Test
+    void taskStreamPublishesSeparatedThinkingChunksAndConsistentRequestId() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        client.nextTaskThinkingContent = "hidden reasoning";
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
+                "request-think-stream-capture", 0, 0.7f, true, true, true, "TASK", 0, false,
+                List.of(LLMPromptRequestPayload.ChunkPayload.message(
+                        List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                ))
+        ));
+        AtomicReference<LLMPromptResultPayload> result = registerResultCapture(runtime, envelope.envelopeId());
+        List<LLMPromptStreamChunkPayload> chunks = registerStreamPayloadCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMRequest(envelope, context);
+        await(() -> client.taskStreamTokens.get() != null && client.taskStreamThinking.get() != null);
+        client.taskStreamTokens.get().accept("visible ");
+        client.taskStreamThinking.get().accept("hidden reasoning");
+        client.taskStreamTokens.get().accept("answer");
+        client.taskFuture.complete("visible answer");
+
+        await(() -> result.get() != null && chunks.stream().anyMatch(LLMPromptStreamChunkPayload::finished));
+        assertEquals("visible answer", result.get().text());
+        assertEquals("hidden reasoning", result.get().thinkingContent());
+        assertEquals("request-think-stream-capture", chunks.get(0).requestId());
+        assertEquals("visible ", chunks.get(0).text());
+        assertEquals("", chunks.get(0).thinkingContent());
+        assertEquals("request-think-stream-capture", chunks.get(1).requestId());
+        assertEquals("", chunks.get(1).text());
+        assertEquals("hidden reasoning", chunks.get(1).thinkingContent());
+        assertEquals("request-think-stream-capture", chunks.get(2).requestId());
+        assertEquals("answer", chunks.get(2).text());
+        assertEquals("request-think-stream-capture", chunks.get(chunks.size() - 1).requestId());
+        assertEquals("hidden reasoning", chunks.get(chunks.size() - 1).thinkingContent());
     }
 
     @Test
@@ -372,7 +422,7 @@ class LlmProtocolAdapterTest {
         client.taskStreamTokens.get().accept("after");
         client.taskFuture.complete("before after");
 
-        await(() -> result.get() != null);
+        await(() -> result.get() != null && chunks.size() == 2);
         assertEquals(List.of("before ", "after"), List.copyOf(chunks));
         assertEquals("before after", result.get().text());
         assertEquals(1, context.completed.get());
@@ -927,7 +977,7 @@ class LlmProtocolAdapterTest {
     }
 
     private List<String> registerStreamChunkCapture(ProtocolRuntime runtime, String requestEnvelopeId) {
-        List<String> chunks = new CopyOnWriteArrayList<>();
+        List<String> chunks = java.util.Collections.synchronizedList(new ArrayList<>());
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "test.llm.stream.response",
@@ -951,8 +1001,13 @@ class LlmProtocolAdapterTest {
                 defaults.queueCapacity()
         );
         runtime.registerResponseHandler(requestEnvelopeId, module, capability, (envelope, context) -> {
-            if (envelope.payload() instanceof LLMPromptStreamChunkPayload payload && !payload.finished()) {
-                chunks.add(payload.text());
+            if (envelope.payload() instanceof LLMPromptStreamChunkPayload payload && !payload.finished() && !payload.text().isEmpty()) {
+                synchronized (chunks) {
+                    while (chunks.size() <= payload.index()) {
+                        chunks.add("");
+                    }
+                    chunks.set(payload.index(), payload.text());
+                }
             }
             context.complete(envelope.envelopeId());
         });
@@ -1032,16 +1087,24 @@ class LlmProtocolAdapterTest {
         private final AtomicInteger taskCalls = new AtomicInteger();
         private final AtomicInteger tokenCountCalls = new AtomicInteger();
         private final AtomicReference<Consumer<String>> taskStreamTokens = new AtomicReference<>();
+        private final AtomicReference<Consumer<String>> taskStreamThinking = new AtomicReference<>();
         private int tokenCount = 1;
+        private String nextTaskThinkingContent = "";
 
         @Override public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) { chatCalls.incrementAndGet(); return "chat"; }
+        @Override public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options) { return chat(messages, sampler, maxTokens); }
         @Override public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options) { return new LlmGenerationResult(chat(messages, sampler, maxTokens), new LlmTokenUsage(1, 1)); }
         @Override public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) { onToken.accept("chat"); }
+        @Override public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken) { chatStream(messages, sampler, onToken); }
         @Override public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) { chatStream(messages, sampler, onToken); if (onFinish != null) onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(1, 1), null)); return CompletableFuture.completedFuture("chat"); }
+        @Override public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) { return chatStreamWithUsage(messages, sampler, maxTokens, options, onToken, onFinish); }
         @Override public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible) { taskCalls.incrementAndGet(); taskPriorities.add(priority); return nextTaskFuture(); }
-        @Override public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options) { return task(messages, sampler, maxTokens, priority, preemptible).thenApply(text -> new LlmGenerationResult(text, new LlmTokenUsage(1, 1))); }
+        @Override public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options) { return task(messages, sampler, maxTokens, priority, preemptible); }
+        @Override public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options) { return task(messages, sampler, maxTokens, priority, preemptible).thenApply(text -> new LlmGenerationResult(text, new LlmTokenUsage(1, 1), Boolean.TRUE.equals(options == null ? false : options.captureThinkingContent()) ? nextTaskThinkingContent : "")); }
         @Override public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) { taskCalls.incrementAndGet(); taskPriorities.add(priority); taskStreamTokens.set(onToken); return nextTaskFuture(); }
+        @Override public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken) { return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken); }
         @Override public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) { return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken).thenApply(text -> { if (onFinish != null) onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(1, 1), null)); return new LlmGenerationResult(text, new LlmTokenUsage(1, 1)); }); }
+        @Override public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) { taskStreamThinking.set(onThinking); return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken).thenApply(text -> { String thinking = Boolean.TRUE.equals(options == null ? false : options.captureThinkingContent()) ? nextTaskThinkingContent : ""; if (onFinish != null) onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(1, 1), null, thinking)); return new LlmGenerationResult(text, new LlmTokenUsage(1, 1), thinking); }); }
         @Override public float[] embed(String text) { return new float[]{1f}; }
         @Override public float[][] embed(List<String> texts) { return texts.stream().map(ignored -> new float[]{1f}).toArray(float[][]::new); }
         @Override public List<RagSearchResult> search(String queryText, List<String> texts, int topK, float threshold) { return List.of(); }
@@ -1049,6 +1112,17 @@ class LlmProtocolAdapterTest {
         @Override public boolean isReady() { return true; }
         @Override public boolean hasChatQueueCapacity() { return true; }
         @Override public boolean hasTaskQueueCapacity() { return true; }
+        @Override public boolean hasQueueCapacity() { return true; }
+        @Override public int getChatQueueSize() { return 0; }
+        @Override public int getTaskQueueSize() { return taskFutures.size(); }
+        @Override public int getQueueSize() { return getTaskQueueSize(); }
+        @Override public boolean supportsThinking() { return true; }
+        @Override public boolean supportsMtp() { return false; }
+        @Override public LlmMtpCapabilitySnapshot getMtpCapability() { return LlmMtpCapabilitySnapshot.unsupported(); }
+        @Override public LlmEngineCapabilitySnapshot getRuntimeCapabilities() { return new LlmEngineCapabilitySnapshot(true, true, false, false, false, 0); }
+        @Override public LlmContextBudgetSnapshot getContextBudgetPlan() { return new LlmContextBudgetSnapshot(4096, 4096, 4096, 4096, 3000, 64, 0L, true, ""); }
+        @Override public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) { return getContextBudgetPlan(); }
+        @Override public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) { return CompletableFuture.completedFuture(LlmMtpCalibrationResult.unsupported()); }
 
         private CompletableFuture<String> nextTaskFuture() {
             if (taskFutures.isEmpty()) {

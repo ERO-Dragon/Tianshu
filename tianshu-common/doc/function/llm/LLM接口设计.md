@@ -65,6 +65,17 @@ LLM 模块对外提供两个协议能力：
 
 `EMBED` 的每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName` 和 `embeddingNamespace`。`STATUS` 快照也包含 embedding 模型身份字段，用于 AX 校验持久化向量是否仍属于同一 embedding 空间。
 
+`STATUS` 快照还会返回 LLM 运行能力与 ctx 预算事实：
+
+| 字段 | 说明 |
+|------|------|
+| `supportsThinking` | 当前已加载模型 / chat template 是否支持 thinking 控制。 |
+| `supportsMtp` / `supportsEmbeddedMtp` / `externalMtpAvailable` | 当前运行环境的 MTP 能力来源与可用性。 |
+| `contextSize` | 当前已规划/加载的 ctx；优先来自底层 plan，不再只代表配置期望值。 |
+| `contextTokenBudget` | 当前已加载模型实例的最终安全输入 token 预算；已扣除底层 prompt margin，不是 CHAT / TASK lane 预算。 |
+
+上层做 prompt 预算时只消费 `contextTokenBudget`。LLM 模块不规划调用方的 prompt 分区，也不把底层 dryrun 的训练 ctx、显存 ctx 等诊断事实暴露成上层可消费协议；这些事实只属于 LLM 内部加载与安全预算判断。
+
 `STATUS` 返回的快照应尽量保守：未知值可以返回 `-1` 或空字符串，不要硬猜。
 
 ## 2. `ProtocolCapabilities.LLM_REQUEST`
@@ -75,7 +86,7 @@ LLM 模块对外提供两个协议能力：
 LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
     "ax.chat",
     0,
-    0.7f,
+    null,
     false,
     false,
     false,
@@ -131,10 +142,12 @@ protocolRuntime.submit(envelope);
 |------|--------|------|
 | `requestId` | `"llm.request"` | 调用方生成的请求标识，用于响应关联和日志定位。 |
 | `maxTokens` | `0` | 最大生成 token 数；`0` 表示不额外限制。 |
-| `temperature` | `0.7` | 采样温度，合法范围 `0.0..2.0`；非法值会回落到 `0.7`。 |
+| `temperature` | `null` | 采样温度覆盖值；`null` 表示沿用当前模型目录 JSON 的 COT 开 / 关默认值。 |
+| `topK` / `topP` / `minP` | `null` | 采样截断覆盖值；调用方只传哪个字段就只覆盖哪个字段。 |
+| `penaltyRepeat` / `penaltyFreq` / `penaltyPresent` / `penaltyLastN` | `null` | repetition / frequency / presence 等惩罚参数覆盖值；未传字段继续沿用 JSON 默认或底层默认。 |
 | `stream` | `false` | 是否流式返回。`true` 时会先收到若干 `LLM_PROMPT_STREAM_CHUNK`，最后收到 `LLM_PROMPT_RESULT`。 |
 | `thinking` | `false` | 是否允许模型生成 thinking 内容。 |
-| `includeThinkingContent` | `false` | 是否把 `<think>...</think>` 内容暴露给调用方；不影响模型是否生成 thinking。 |
+| `captureThinkingContent` | `false` | 是否把底层识别出的 COT/thinking 内容写入结构化 `thinkingContent` 通道；正文 `text` 始终只包含正式回答。 |
 | `lane` | `"CHAT"` | 执行通道：`CHAT` 或 `TASK`。非法值按 `CHAT` 处理。 |
 | `taskPriority` | `0` | TASK 优先级，范围 `0..1000`；仅 `lane=TASK` 时参与调度。 |
 | `taskPreemptible` | `false` | 当前 TASK 是否允许被更高优先级 TASK 抢占；仅 `lane=TASK` 时有效。 |
@@ -144,15 +157,18 @@ protocolRuntime.submit(envelope);
 | `requesterParticipantId` | 空字符串 | 请求方参与者 ID；用于 IA 授权。 |
 | `dialogueTurnId` | 空字符串 | 对话轮次 ID，用于追踪一次对话回合。 |
 | `inferencePolicy` | 跟随全局 | 请求级推理策略覆盖项。 |
+| `toolsJson` | 空字符串 | OpenAI-style function tools JSON；LLM 模块只透传给底层模板，不解析输出、不执行工具。 |
 
 CHAT 请求需要带对话授权上下文：`dialogueSessionId`、`requesterModuleId`、`requesterParticipantId`。LLM 模块会通过 IA 授权能力确认该调用方是否允许使用 CHAT LLM。
 
 TASK 请求不走 CHAT 的 IA 授权，但会进入 LLM 模块的 TASK admission 队列。
 
-`thinking` 和 `includeThinkingContent` 是两个不同边界：
+采样参数的优先级是：底层 `SamplerConfig.defaults()` -> 当前模型 JSON 中按 `thinking` 选择的 `sampling.standard` / `sampling.thinking` -> 本次请求中非 null 的采样覆盖字段。覆盖是逐字段的，不会因为调用方传了一个采样参数就替换整套采样配置。
+
+`thinking` 和 `captureThinkingContent` 是两个不同边界：
 - `thinking=false`：请求模型不要生成 thinking，LLM 模块会传给底层 sampler。
-- `thinking=true + includeThinkingContent=false`：允许模型生成 thinking，但协议响应会隐藏规范化后的 `<think>...</think>` 内容。
-- `thinking=true + includeThinkingContent=true`：协议响应保留 `<think>...</think>` 内容，通常只用于调试、评估或专门展示推理过程的工具。
+- `thinking=true + captureThinkingContent=false`：允许模型生成 thinking；底层仍会从正文中剥离 COT，但不向上保存 thinking 内容。
+- `thinking=true + captureThinkingContent=true`：协议响应通过 `thinkingContent` 返回结构化 COT，正文 `text` 仍不混入 thinking。
 
 ### 2.2 ChunkPayload 字段
 
@@ -231,12 +247,13 @@ LLMPromptRequestPayload.ChunkPayload.globalRag(
 | `requestId` | 空字符串 | 对应请求 payload 的 `requestId`。 |
 | `status` | `"FAILED"` | 结果状态：`COMPLETED`、`CANCELLED`、`FAILED`。 |
 | `text` | 空字符串 | 最终可见文本；失败或取消时可能是 partial text。 |
+| `thinkingContent` | 空字符串 | 当请求设置 `captureThinkingContent=true` 时返回结构化 thinking/COT 内容；不会混入 `text`。 |
 | `errorCode` | `null` | 失败原因码。 |
 | `errorMessage` | `null` | 失败原因描述。 |
 | `ragHits` | 空列表 | 本次请求所有 RAG chunk 的命中结果；`COMPLETED`、`CANCELLED`、`FAILED` 都可能携带。 |
-| `usage` | 空 usage | 本次实际 token 统计：`promptTokens`、`completionTokens`、`totalTokens`。 |
+| `usage` | 空 usage | 本次实际 token 统计：`promptTokens`、`completionTokens`、`thinkingTokens`、`outputTokens`、`totalTokens`。 |
 
-`usage.promptTokens` 来自底层真实 chat template prompt token 计数。`usage.completionTokens` 只统计归一化后对上层可见的回答 token，不包含 COT。
+`usage.promptTokens` 来自底层真实 chat template prompt token 计数。`usage.completionTokens` 只统计正式正文 token；`thinkingTokens` 统计被识别到结构化 thinking 通道的 token；`outputTokens = completionTokens + thinkingTokens`。
 
 常见错误码：
 - `LLM_SERVICE_NOT_READY`：LLM 服务尚未就绪。
@@ -253,6 +270,7 @@ LLMPromptRequestPayload.ChunkPayload.globalRag(
 |------|--------|------|
 | `requestId` | 空字符串 | 请求标识。 |
 | `text` | 空字符串 | 当前分片文本。 |
+| `thinkingContent` | 空字符串 | 当前分片的 thinking/COT 文本；普通正文分片为空。 |
 | `finished` | `false` | `false` 表示普通 token 分片；`true` 表示流式输出结束。 |
 | `index` | 调用方传入值 | 分片序号，调用方可按序拼接。 |
 | `ragHits` | 空列表 | 流式请求的 RAG metadata。LLM 模块会在首个 token 前发送一个 `text=""` 且 `ragHits` 非空的 metadata chunk。 |
@@ -260,7 +278,7 @@ LLMPromptRequestPayload.ChunkPayload.globalRag(
 | `usage` | 空 usage | 仅结束包携带本次实际 token 统计。 |
 | `errorMessage` | `null` | 仅 `finishType=FAILED` 时携带底层错误信息。 |
 
-当 `includeThinkingContent=false` 时，stream chunk 和最终 result 都会在协议出口隐藏 `<think>...</think>` 内容；只包含 hidden thinking 的分片不会发送。
+流式请求使用结构化双通道：正文 token 放在 `text`；thinking token 放在 `thinkingContent`。结束包会携带本次汇总后的 `thinkingContent`，最终 `LLMPromptResultPayload` 也会带同一语义的汇总结果。
 
 ### 2.7 RagHitPayload 字段
 

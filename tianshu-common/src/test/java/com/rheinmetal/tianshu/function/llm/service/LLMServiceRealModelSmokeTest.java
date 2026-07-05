@@ -41,7 +41,6 @@ class LLMServiceRealModelSmokeTest {
                 .chatThreads(2)
                 .chatMaxQueueSize(1)
                 .taskThreads(1)
-                .taskSuspendOnChat(true)
                 .requestTimeoutSeconds(90)
                 .cacheTypeK(KvCacheType.Q8_0)
                 .cacheTypeV(KvCacheType.Q8_0)

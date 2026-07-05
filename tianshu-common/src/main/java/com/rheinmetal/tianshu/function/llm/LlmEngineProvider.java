@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.libs.llm.InferenceEvent;
 import com.rheinmetal.tianshu.libs.llm.KvCacheType;
+import com.rheinmetal.tianshu.libs.llm.LlmContextBudgetPlan;
+import com.rheinmetal.tianshu.libs.llm.LlmContextBudgetPolicy;
 import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 
 import java.nio.charset.StandardCharsets;
@@ -55,17 +57,24 @@ public final class LlmEngineProvider {
             return null;
         }
 
-        int processors = resourcePolicy.processors();
-        int chatThreads = resourcePolicy.llmGpuHelperThreads();
-        int taskThreads = resourcePolicy.llmGpuHelperThreads();
         String deviceId = resolveDeviceId(config.getLlmGpuDeviceId());
         boolean cpuOnly = isCpuDevice(deviceId);
         int gpuLayers = cpuOnly ? 0 : resourcePolicy.fullGpuLayers();
-        int contextSize = Math.max(1, config.getLlmContextSize());
-        env.info("LLM context selected: context=" + contextSize
+        int requestedContextSize = Math.max(1, config.getLlmContextSize());
+        LlmContextBudgetPolicy budgetPolicy = LlmContextBudgetPolicy.defaults();
+        int plannedContextSize = planContextSize(modelPath, requestedContextSize, deviceId, cpuOnly, gpuLayers, budgetPolicy);
+        env.info("LLM context selected: requested=" + requestedContextSize
+                + " planned=" + plannedContextSize
                 + " model=" + config.getCustomLlmName()
                 + " device=" + (cpuOnly ? "cpu" : deviceId));
 
+        return configureBuilder(modelPath, plannedContextSize, deviceId, cpuOnly, gpuLayers, budgetPolicy).build();
+    }
+
+    private JavaLlamaServer.Builder configureBuilder(Path modelPath, int contextSize, String deviceId, boolean cpuOnly, int gpuLayers, LlmContextBudgetPolicy budgetPolicy) {
+        int processors = resourcePolicy.processors();
+        int chatThreads = resourcePolicy.llmGpuHelperThreads();
+        int taskThreads = resourcePolicy.llmGpuHelperThreads();
         JavaLlamaServer.Builder builder = JavaLlamaServer.builder()
                 .model(modelPath.toString())
                 .modelAlias(blankToNull(config.getCustomLlmName()))
@@ -74,14 +83,18 @@ public final class LlmEngineProvider {
                 .chatThreads(chatThreads)
                 .chatMaxQueueSize(positiveOrOne(config.getLlmLibsChatQueueSize()))
                 .taskThreads(taskThreads)
-                .taskSuspendOnChat(config.isLlmTaskSuspendOnChatEnabled())
                 .requestTimeoutSeconds(config.getLlmRequestTimeoutSeconds())
                 .cacheTypeK(parseCacheType(config.getLlmCacheTypeK(), KvCacheType.Q8_0))
                 .cacheTypeV(parseCacheType(config.getLlmCacheTypeV(), KvCacheType.Q8_0))
+                .contextBudgetPolicy(budgetPolicy)
                 .gpuLayers(gpuLayers)
                 .inferenceEventListener(this::handleInferenceEvent);
         if (deviceId != null && !cpuOnly) {
             builder.device(deviceId);
+        }
+        Path mtpDraftPath = config.getLlmMtpDraftGgufFilePath();
+        if (mtpDraftPath != null) {
+            builder.mtpDraftModel(mtpDraftPath.toString());
         }
 
         Path embeddingPath = config.getLlmEmbeddingGgufFilePath();
@@ -97,7 +110,42 @@ public final class LlmEngineProvider {
             }
         }
 
-        return builder.build();
+        return builder;
+    }
+
+    private int planContextSize(Path modelPath, int requestedContextSize, String deviceId, boolean cpuOnly, int gpuLayers, LlmContextBudgetPolicy budgetPolicy) {
+        try {
+            LlmContextBudgetPlan plan = configureBuilder(modelPath, requestedContextSize, deviceId, cpuOnly, gpuLayers, budgetPolicy)
+                    .dryRunContextBudget();
+            if (plan == null) {
+                throw new IllegalStateException("LLM context dryrun returned no budget plan");
+            }
+            int planned = plan.plannedContextSize();
+            if (planned <= 0) {
+                throw new IllegalStateException("LLM context dryrun returned invalid planned context=" + planned);
+            }
+            env.info("LLM context dryrun: requested=" + plan.requestedContextSize()
+                    + " planned=" + plan.plannedContextSize()
+                    + " promptBudget=" + plan.promptTokenBudget()
+                    + " memoryLimit=" + plan.memoryContextSize()
+                    + " reliable=" + plan.reliable()
+                    + formatLimitation(plan));
+            if (!cpuOnly && !plan.reliable()) {
+                throw new IllegalStateException("LLM context dryrun is not reliable for GPU loading" + formatLimitation(plan));
+            }
+            return planned;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("LLM context dryrun failed before loading model: " + e.getMessage(), e);
+        }
+    }
+
+    private static String formatLimitation(LlmContextBudgetPlan plan) {
+        if (plan == null || plan.limitation() == null || plan.limitation().isBlank()) {
+            return "";
+        }
+        return " limitation=" + plan.limitation();
     }
 
     public boolean isEmbeddingConfigured() {

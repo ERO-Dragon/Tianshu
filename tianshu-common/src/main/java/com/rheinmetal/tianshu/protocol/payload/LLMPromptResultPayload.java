@@ -8,6 +8,7 @@ public record LLMPromptResultPayload(
         String requestId,
         String status,
         String text,
+        String thinkingContent,
         String errorCode,
         String errorMessage,
         List<RagHitPayload> ragHits,
@@ -15,13 +16,26 @@ public record LLMPromptResultPayload(
 ) implements ITianshuPayload {
 
     public static final LLMPromptResultPayload SUCCESS_EMPTY = new LLMPromptResultPayload(
-            "", "COMPLETED", "", null, null, List.of(), TokenUsagePayload.empty()
+            "", "COMPLETED", "", "", null, null, List.of(), TokenUsagePayload.empty()
     );
+
+    public LLMPromptResultPayload(
+            String requestId,
+            String status,
+            String text,
+            String errorCode,
+            String errorMessage,
+            List<RagHitPayload> ragHits,
+            TokenUsagePayload usage
+    ) {
+        this(requestId, status, text, "", errorCode, errorMessage, ragHits, usage);
+    }
 
     public LLMPromptResultPayload {
         requestId = normalize(requestId);
         status = normalizeStatus(status);
         text = text == null ? "" : text;
+        thinkingContent = thinkingContent == null ? "" : thinkingContent;
         errorCode = errorCode == null || errorCode.isBlank() ? null : errorCode.trim();
         errorMessage = errorMessage == null || errorMessage.isBlank() ? null : errorMessage.trim();
         ragHits = ragHits != null ? List.copyOf(ragHits) : List.of();
@@ -49,7 +63,11 @@ public record LLMPromptResultPayload(
     }
 
     public static LLMPromptResultPayload completed(String requestId, String text, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
-        return new LLMPromptResultPayload(requestId, "COMPLETED", text, null, null, ragHits, usage);
+        return completed(requestId, text, "", ragHits, usage);
+    }
+
+    public static LLMPromptResultPayload completed(String requestId, String text, String thinkingContent, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
+        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, ragHits, usage);
     }
 
     public static LLMPromptResultPayload cancelled(String requestId, String text) {
@@ -61,7 +79,11 @@ public record LLMPromptResultPayload(
     }
 
     public static LLMPromptResultPayload cancelled(String requestId, String text, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
-        return new LLMPromptResultPayload(requestId, "CANCELLED", text, null, null, ragHits, usage);
+        return cancelled(requestId, text, "", ragHits, usage);
+    }
+
+    public static LLMPromptResultPayload cancelled(String requestId, String text, String thinkingContent, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
+        return new LLMPromptResultPayload(requestId, "CANCELLED", text, thinkingContent, null, null, ragHits, usage);
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage) {
@@ -77,7 +99,11 @@ public record LLMPromptResultPayload(
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
-        return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", errorCode, errorMessage, ragHits, usage);
+        return failed(requestId, errorCode, errorMessage, partialText, "", ragHits, usage);
+    }
+
+    public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage, String partialText, String thinkingContent, List<RagHitPayload> ragHits, TokenUsagePayload usage) {
+        return new LLMPromptResultPayload(requestId, "FAILED", partialText != null ? partialText : "", thinkingContent, errorCode, errorMessage, ragHits, usage);
     }
 
     public boolean isCompleted() {
@@ -109,17 +135,26 @@ public record LLMPromptResultPayload(
     public record TokenUsagePayload(
             int promptTokens,
             int completionTokens,
+            int thinkingTokens,
+            int outputTokens,
             int totalTokens
     ) implements ITianshuPayload {
+        public TokenUsagePayload(int promptTokens, int completionTokens, int totalTokens) {
+            this(promptTokens, completionTokens, 0, completionTokens, totalTokens);
+        }
+
         public TokenUsagePayload {
             promptTokens = Math.max(0, promptTokens);
             completionTokens = Math.max(0, completionTokens);
-            int computedTotal = promptTokens + completionTokens;
+            thinkingTokens = Math.max(0, thinkingTokens);
+            int computedOutput = completionTokens + thinkingTokens;
+            outputTokens = outputTokens > 0 ? outputTokens : computedOutput;
+            int computedTotal = promptTokens + outputTokens;
             totalTokens = totalTokens > 0 ? totalTokens : computedTotal;
         }
 
         public static TokenUsagePayload empty() {
-            return new TokenUsagePayload(0, 0, 0);
+            return new TokenUsagePayload(0, 0, 0, 0, 0);
         }
     }
 

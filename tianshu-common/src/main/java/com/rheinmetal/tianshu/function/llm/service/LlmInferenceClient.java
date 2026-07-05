@@ -5,6 +5,8 @@ import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
@@ -17,35 +19,31 @@ public interface LlmInferenceClient {
 
     String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) throws Exception;
 
-    default String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception {
-        return chat(messages, sampler, maxTokens);
-    }
+    String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception;
 
     LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception;
 
     void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) throws Exception;
 
-    default void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) throws Exception {
-        chatStream(messages, sampler, onToken);
-    }
+    void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) throws Exception;
 
     CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) throws Exception;
 
+    CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) throws Exception;
+
     CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible);
 
-    default CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
-        return task(messages, sampler, maxTokens, priority, preemptible);
-    }
+    CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options);
 
     CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options);
 
     CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken);
 
-    default CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken) {
-        return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
-    }
+    CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken);
 
     CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish);
+
+    CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish);
 
     float[] embed(String text) throws Exception;
 
@@ -61,35 +59,25 @@ public interface LlmInferenceClient {
 
     boolean hasTaskQueueCapacity();
 
-    default boolean hasQueueCapacity() {
-        return hasChatQueueCapacity();
-    }
+    boolean hasQueueCapacity();
 
-    default int getChatQueueSize() {
-        return 0;
-    }
+    int getChatQueueSize();
 
-    default int getTaskQueueSize() {
-        return 0;
-    }
+    int getTaskQueueSize();
 
-    default int getQueueSize() {
-        return getChatQueueSize();
-    }
+    int getQueueSize();
 
-    default boolean supportsEnableThinking() {
-        return false;
-    }
+    boolean supportsThinking();
 
-    default boolean supportsMtp() {
-        return false;
-    }
+    boolean supportsMtp();
 
-    default LlmMtpCapabilitySnapshot getMtpCapability() {
-        return LlmMtpCapabilitySnapshot.unsupported();
-    }
+    LlmMtpCapabilitySnapshot getMtpCapability();
 
-    default CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) {
-        return CompletableFuture.completedFuture(LlmMtpCalibrationResult.unsupported());
-    }
+    LlmEngineCapabilitySnapshot getRuntimeCapabilities();
+
+    LlmContextBudgetSnapshot getContextBudgetPlan();
+
+    LlmContextBudgetSnapshot getContextBudgetPlan(String lane);
+
+    CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request);
 }
