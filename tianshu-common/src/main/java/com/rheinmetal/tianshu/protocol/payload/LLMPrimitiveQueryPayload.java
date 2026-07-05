@@ -66,8 +66,7 @@ public record LLMPrimitiveQueryPayload(
             String prompt,
             Boolean useCache,
             Boolean includeRagHits,
-            Integer memoryRagTokenBudget,
-            Boolean globalRagCache
+            Integer memoryRagTokenBudget
     ) implements ITianshuPayload {
         public ChunkPayload {
             type = type == null ? "message" : type.trim().toLowerCase();
@@ -77,19 +76,14 @@ public record LLMPrimitiveQueryPayload(
             useCache = useCache != null ? useCache : true;
             includeRagHits = includeRagHits != null ? includeRagHits : true;
             memoryRagTokenBudget = memoryRagTokenBudget != null ? memoryRagTokenBudget : 1000;
-            globalRagCache = globalRagCache != null ? globalRagCache : false;
         }
 
         public static ChunkPayload message(List<MessageItemPayload> messageContent) {
-            return new ChunkPayload("message", messageContent, List.of(), "", "", true, true, 1000, false);
+            return new ChunkPayload("message", messageContent, List.of(), "", "", true, true, 1000);
         }
 
         public static ChunkPayload rag(String uid, String prompt, List<String> ragContent, boolean useCache, boolean includeRagHits, int memoryRagTokenBudget) {
-            return new ChunkPayload("rag", List.of(), ragContent, uid, prompt, useCache, includeRagHits, memoryRagTokenBudget, false);
-        }
-
-        public static ChunkPayload globalRag(String uid, String prompt, List<String> ragContent, boolean useCache, boolean includeRagHits, int memoryRagTokenBudget) {
-            return new ChunkPayload("rag", List.of(), ragContent, uid, prompt, useCache, includeRagHits, memoryRagTokenBudget, true);
+            return new ChunkPayload("rag", List.of(), ragContent, uid, prompt, useCache, includeRagHits, memoryRagTokenBudget);
         }
     }
 

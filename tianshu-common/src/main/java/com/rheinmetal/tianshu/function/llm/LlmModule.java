@@ -6,10 +6,6 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
-import com.rheinmetal.tianshu.core.scope.DefaultWorldIdentityProvider;
-import com.rheinmetal.tianshu.core.scope.DefaultWorldScopeProvider;
-import com.rheinmetal.tianshu.core.scope.WorldIdentityProvider;
-import com.rheinmetal.tianshu.core.scope.WorldScopeProvider;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagCacheLayout;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.function.llm.service.JavaLlamaInferenceClient;
@@ -33,7 +29,6 @@ public final class LlmModule implements TianshuManagedModule {
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final ProtocolRuntime runtime;
-    private final WorldScopeProvider scopeProvider;
     private final LlmRagCacheLayout ragCacheLayout;
     private final LlmEngineProvider engineProvider;
     private final LlmProtocolAdapter adapter;
@@ -45,15 +40,10 @@ public final class LlmModule implements TianshuManagedModule {
     private boolean destroyed;
 
     public LlmModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
-        this(env, config, runtime, new DefaultWorldIdentityProvider(env));
-    }
-
-    public LlmModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, WorldIdentityProvider worldIdentityProvider) {
         this.env = env;
         this.config = config;
         this.runtime = runtime;
-        this.scopeProvider = new DefaultWorldScopeProvider(worldIdentityProvider == null ? new DefaultWorldIdentityProvider(env) : worldIdentityProvider);
-        this.ragCacheLayout = new LlmRagCacheLayout(config, scopeProvider);
+        this.ragCacheLayout = new LlmRagCacheLayout(config);
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
         this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus);
     }
@@ -193,8 +183,7 @@ public final class LlmModule implements TianshuManagedModule {
                         .inferenceClient(new JavaLlamaInferenceClient(aiService))
                         .performanceProvider(moduleService)
                         .usePersistentCache(true)
-                        .cacheDirectory(ragCacheLayout.currentWorldCacheDirectory())
-                        .globalCacheDirectory(ragCacheLayout.globalCacheDirectory())
+                        .cacheDirectory(ragCacheLayout.cacheDirectory())
                         .cacheNamespace(ragCacheLayout.cacheNamespace())
                         .embeddingConfigured(engineProvider.isEmbeddingConfigured())
                         .build();

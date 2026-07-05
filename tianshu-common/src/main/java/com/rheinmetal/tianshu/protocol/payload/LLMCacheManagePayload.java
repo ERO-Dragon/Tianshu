@@ -7,64 +7,115 @@ import java.util.List;
 public record LLMCacheManagePayload(
         String action,
         String uid,
-        List<String> contents,
-        Boolean globalRagCache
+        String modid,
+        String visibility,
+        List<String> tags,
+        String entryId,
+        String content,
+        float[] vector,
+        Boolean updateContent,
+        Boolean updateVector,
+        String queryText,
+        Integer topK,
+        Float threshold
 ) implements ITianshuPayload {
 
-    public static final String ACTION_INDEX = "INDEX";
-    public static final String ACTION_EVICT_ALL = "EVICT_ALL";
-    public static final String ACTION_EVICT_CONTENT = "EVICT_CONTENT";
-    public static final String ACTION_QUERY = "QUERY";
+    public static final String ACTION_UPSERT_ENTRY = "UPSERT_ENTRY";
+    public static final String ACTION_PATCH_ENTRY = "PATCH_ENTRY";
+    public static final String ACTION_DELETE_ENTRY = "DELETE_ENTRY";
+    public static final String ACTION_CLEAR_UID = "CLEAR_UID";
+    public static final String ACTION_QUERY_UID = "QUERY_UID";
+    public static final String ACTION_REGISTER_LIBRARY = "REGISTER_LIBRARY";
+    public static final String ACTION_UNREGISTER_LIBRARY = "UNREGISTER_LIBRARY";
+    public static final String ACTION_SEARCH_UID = "SEARCH_UID";
+    public static final String ACTION_SEARCH_MODID = "SEARCH_MODID";
+    public static final String ACTION_SEARCH_TAGS = "SEARCH_TAGS";
 
     public LLMCacheManagePayload {
         action = normalizeAction(action);
-        uid = uid != null ? uid.trim() : "";
-        contents = contents != null ? List.copyOf(contents) : List.of();
-        globalRagCache = globalRagCache != null ? globalRagCache : false;
+        uid = clean(uid);
+        modid = clean(modid).toLowerCase();
+        visibility = normalizeVisibility(visibility);
+        tags = normalizeTags(tags);
+        entryId = clean(entryId);
+        content = content == null ? "" : content.trim();
+        vector = vector == null ? new float[0] : vector.clone();
+        updateContent = updateContent != null ? updateContent : false;
+        updateVector = updateVector != null ? updateVector : false;
+        queryText = queryText == null ? "" : queryText.trim();
+        topK = topK != null && topK > 0 ? topK : 4;
+        threshold = threshold != null && threshold > 0f && threshold <= 1f ? threshold : 0.7f;
     }
 
-    public LLMCacheManagePayload(String action, String uid, List<String> contents) {
-        this(action, uid, contents, false);
+    public static LLMCacheManagePayload upsertEntry(String uid, String entryId, String content, float[] vector) {
+        return new LLMCacheManagePayload(ACTION_UPSERT_ENTRY, uid, "", "SHARED", List.of(), entryId, content, vector, true, true, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload patchEntry(String uid, String entryId, String content, float[] vector, boolean updateContent, boolean updateVector) {
+        return new LLMCacheManagePayload(ACTION_PATCH_ENTRY, uid, "", "SHARED", List.of(), entryId, content, vector, updateContent, updateVector, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload deleteEntry(String uid, String entryId) {
+        return new LLMCacheManagePayload(ACTION_DELETE_ENTRY, uid, "", "SHARED", List.of(), entryId, "", null, false, false, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload clearUid(String uid) {
+        return new LLMCacheManagePayload(ACTION_CLEAR_UID, uid, "", "SHARED", List.of(), "", "", null, false, false, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload queryUid(String uid) {
+        return new LLMCacheManagePayload(ACTION_QUERY_UID, uid, "", "SHARED", List.of(), "", "", null, false, false, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload registerLibrary(String uid, String modid, String visibility, List<String> tags) {
+        return new LLMCacheManagePayload(ACTION_REGISTER_LIBRARY, uid, modid, visibility, tags, "", "", null, false, false, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload unregisterLibrary(String uid) {
+        return new LLMCacheManagePayload(ACTION_UNREGISTER_LIBRARY, uid, "", "SHARED", List.of(), "", "", null, false, false, "", 4, 0.7f);
+    }
+
+    public static LLMCacheManagePayload searchUid(String uid, String queryText, int topK, float threshold) {
+        return new LLMCacheManagePayload(ACTION_SEARCH_UID, uid, "", "SHARED", List.of(), "", "", null, false, false, queryText, topK, threshold);
+    }
+
+    public static LLMCacheManagePayload searchModid(String modid, String queryText, int topK, float threshold) {
+        return new LLMCacheManagePayload(ACTION_SEARCH_MODID, "", modid, "SHARED", List.of(), "", "", null, false, false, queryText, topK, threshold);
+    }
+
+    public static LLMCacheManagePayload searchTags(List<String> tags, String queryText, int topK, float threshold) {
+        return new LLMCacheManagePayload(ACTION_SEARCH_TAGS, "", "", "SHARED", tags, "", "", null, false, false, queryText, topK, threshold);
     }
 
     private static String normalizeAction(String value) {
-        if (value == null || value.isBlank()) return ACTION_QUERY;
+        if (value == null || value.isBlank()) {
+            return ACTION_QUERY_UID;
+        }
         String upper = value.trim().toUpperCase();
         return switch (upper) {
-            case "INDEX", "EVICT_ALL", "EVICT_CONTENT", "QUERY" -> upper;
-            default -> ACTION_QUERY;
+            case ACTION_UPSERT_ENTRY, ACTION_PATCH_ENTRY, ACTION_DELETE_ENTRY, ACTION_CLEAR_UID, ACTION_QUERY_UID,
+                    ACTION_REGISTER_LIBRARY, ACTION_UNREGISTER_LIBRARY, ACTION_SEARCH_UID, ACTION_SEARCH_MODID, ACTION_SEARCH_TAGS -> upper;
+            default -> upper;
         };
     }
 
-    public static LLMCacheManagePayload index(String uid, List<String> contents) {
-        return new LLMCacheManagePayload(ACTION_INDEX, uid, contents, false);
+    private static String clean(String value) {
+        return value == null ? "" : value.trim();
     }
 
-    public static LLMCacheManagePayload indexGlobal(String uid, List<String> contents) {
-        return new LLMCacheManagePayload(ACTION_INDEX, uid, contents, true);
+    private static String normalizeVisibility(String value) {
+        String normalized = clean(value).toUpperCase();
+        return "PRIVATE".equals(normalized) ? "PRIVATE" : "SHARED";
     }
 
-    public static LLMCacheManagePayload evictAll(String uid) {
-        return new LLMCacheManagePayload(ACTION_EVICT_ALL, uid, List.of(), false);
-    }
-
-    public static LLMCacheManagePayload evictAllGlobal(String uid) {
-        return new LLMCacheManagePayload(ACTION_EVICT_ALL, uid, List.of(), true);
-    }
-
-    public static LLMCacheManagePayload evictContent(String uid, List<String> contents) {
-        return new LLMCacheManagePayload(ACTION_EVICT_CONTENT, uid, contents, false);
-    }
-
-    public static LLMCacheManagePayload evictGlobalContent(String uid, List<String> contents) {
-        return new LLMCacheManagePayload(ACTION_EVICT_CONTENT, uid, contents, true);
-    }
-
-    public static LLMCacheManagePayload query(String uid) {
-        return new LLMCacheManagePayload(ACTION_QUERY, uid, List.of(), false);
-    }
-
-    public static LLMCacheManagePayload queryGlobal(String uid) {
-        return new LLMCacheManagePayload(ACTION_QUERY, uid, List.of(), true);
+    private static List<String> normalizeTags(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toLowerCase())
+                .distinct()
+                .toList();
     }
 }

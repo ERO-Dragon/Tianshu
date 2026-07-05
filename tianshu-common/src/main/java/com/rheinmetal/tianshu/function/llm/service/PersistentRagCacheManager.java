@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -25,8 +24,9 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     private static final int DEFAULT_TOP_K = 4;
     private static final float DEFAULT_THRESHOLD = 0.7f;
     private static final int CACHE_MAGIC = 0x54535247; // TSRG
-    private static final int CACHE_VERSION = 2;
+    private static final int CACHE_VERSION = 3;
     private static final int MAX_TEXT_BYTES = 1_048_576;
+    private static final int MAX_ENTRY_ID_BYTES = 4_096;
     private static final int MAX_VECTOR_DIMENSION = 65_536;
 
     private final IGameEnvironment env;
@@ -45,6 +45,151 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         this.cacheDirectory = Objects.requireNonNull(cacheDirectory, "cacheDirectory");
         this.namespace = namespace == null || namespace.isBlank() ? "default" : namespace.trim();
         initialize();
+    }
+
+    @Override
+    public void upsert(String uid, String entryId, String content, float[] vector) {
+        if (isBlank(uid) || isBlank(entryId)) {
+            return;
+        }
+        try {
+            VectorStore store = stores.computeIfAbsent(uid.trim(), VectorStore::new);
+            if (isSameContentWithoutVectorChange(store, entryId, content, vector)) {
+                return;
+            }
+            float[] effectiveVector = normalizeVector(resolveVector(content, vector));
+            if (store.upsert(entryId, content, effectiveVector)) {
+                saveStore(uid);
+                env.info("[RAG] Upserted and persisted entry for uid: " + uid);
+            }
+        } catch (Exception e) {
+            env.error("[RAG] Failed to upsert entry for uid: " + uid, e);
+        }
+    }
+
+    @Override
+    public void patch(String uid, String entryId, String content, float[] vector, boolean updateContent, boolean updateVector) {
+        if (isBlank(uid) || isBlank(entryId)) {
+            return;
+        }
+        try {
+            VectorStore store = stores.computeIfAbsent(uid.trim(), VectorStore::new);
+            float[] effectiveVector = updateVector ? normalizeVector(resolveVector(content, vector)) : null;
+            if (store.patch(entryId, content, effectiveVector, updateContent, updateVector)) {
+                saveStore(uid);
+                env.info("[RAG] Patched and persisted entry for uid: " + uid);
+            }
+        } catch (Exception e) {
+            env.error("[RAG] Failed to patch entry for uid: " + uid, e);
+        }
+    }
+
+    @Override
+    public void deleteEntry(String uid, String entryId) {
+        if (isBlank(uid) || isBlank(entryId)) {
+            return;
+        }
+        loadStoreIfNeeded(uid);
+        VectorStore store = stores.get(uid.trim());
+        if (store != null && store.deleteEntry(entryId)) {
+            saveStore(uid);
+            env.info("[RAG] Deleted entry from uid: " + uid);
+        }
+    }
+
+    @Override
+    public void clearUid(String uid) {
+        if (isBlank(uid)) {
+            return;
+        }
+        stores.remove(uid.trim());
+        deleteStoreFile(uid);
+        updateManifest(uid, false);
+        env.info("[RAG] Cleared uid: " + uid);
+    }
+
+    @Override
+    public boolean hasEntry(String uid, String entryId) {
+        if (isBlank(uid) || isBlank(entryId)) {
+            return false;
+        }
+        loadStoreIfNeeded(uid);
+        VectorStore store = stores.get(uid.trim());
+        return store != null && store.hasEntry(entryId);
+    }
+
+    @Override
+    public List<RagEntrySearchResult> searchEntries(String uid, String queryText, int topK, float threshold) {
+        if (isBlank(uid) || isBlank(queryText)) {
+            return List.of();
+        }
+        try {
+            float[] queryVector = embeddingService.embed(queryText);
+            if (!isUsableVector(queryVector)) {
+                return List.of();
+            }
+            loadStoreIfNeeded(uid);
+            VectorStore store = stores.get(uid.trim());
+            if (store == null || store.isEmpty()) {
+                return List.of();
+            }
+            int effectiveTopK = topK > 0 ? topK : DEFAULT_TOP_K;
+            float effectiveThreshold = threshold > 0f && threshold <= 1f ? threshold : DEFAULT_THRESHOLD;
+            return store.searchEntries(VectorMath.normalize(queryVector), queryText, effectiveTopK, effectiveThreshold);
+        } catch (Exception e) {
+            env.error("[RAG] Failed to search for uid: " + uid, e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<RagSearchResult> search(String uid, String queryText, int topK, float threshold) {
+        return searchEntries(uid, queryText, topK, threshold).stream()
+                .filter(result -> !result.content().isBlank())
+                .map(result -> new RagSearchResult(result.content(), result.score()))
+                .toList();
+    }
+
+    @Override
+    public boolean hasCache(String uid) {
+        if (isBlank(uid)) {
+            return false;
+        }
+        loadStoreIfNeeded(uid);
+        VectorStore store = stores.get(uid.trim());
+        return store != null && !store.isEmpty();
+    }
+
+    @Override
+    public CacheStats getStats() {
+        int uidCount = stores.size();
+        int totalChunks = stores.values().stream().mapToInt(VectorStore::size).sum();
+        long cacheSize = 0L;
+        try (var walk = Files.exists(cacheDirectory) ? Files.walk(cacheDirectory) : java.util.stream.Stream.<Path>empty()) {
+            cacheSize = walk.filter(Files::isRegularFile).mapToLong(this::safeSize).sum();
+        } catch (Exception ignored) {
+        }
+        return new CacheStats(uidCount, totalChunks, cacheSize);
+    }
+
+    @Override
+    public void clear() {
+        stores.clear();
+        try {
+            if (Files.exists(cacheDirectory)) {
+                try (var walk = Files.walk(cacheDirectory)) {
+                    walk.filter(Files::isRegularFile).forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            }
+            env.info("[RAG] Cleared all caches and deleted files");
+        } catch (Exception e) {
+            env.error("[RAG] Failed to clear cache files", e);
+        }
     }
 
     private void initialize() {
@@ -66,8 +211,15 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         }
     }
 
+    private void loadStoreIfNeeded(String uid) {
+        String cleanUid = uid == null ? "" : uid.trim();
+        if (!cleanUid.isBlank() && !stores.containsKey(cleanUid) && Files.isRegularFile(vectorsFile(cleanUid))) {
+            loadStore(cleanUid);
+        }
+    }
+
     private void loadStore(String uid) {
-        if (uid == null || uid.isBlank()) {
+        if (isBlank(uid)) {
             return;
         }
         Path vectorsFile = vectorsFile(uid);
@@ -85,41 +237,34 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             }
 
             String fileNamespace = dis.readUTF();
-            int dimension = dis.readInt();
             int count = dis.readInt();
-            if (!namespace.equals(fileNamespace) || dimension <= 0 || dimension > MAX_VECTOR_DIMENSION || count < 0) {
+            if (!namespace.equals(fileNamespace) || count < 0) {
                 env.warn("[RAG] Ignored invalid cache metadata for uid: " + uid);
                 discardStoreFile(uid);
                 return;
             }
 
-            List<String> texts = new ArrayList<>(count);
-            List<float[]> vectors = new ArrayList<>(count);
+            VectorStore store = new VectorStore(uid);
             for (int entry = 0; entry < count; entry++) {
-                int textLen = dis.readInt();
-                if (textLen <= 0 || textLen > MAX_TEXT_BYTES) {
-                    throw new IOException("Invalid cached text size: " + textLen);
+                String entryId = readString(dis, MAX_ENTRY_ID_BYTES, false);
+                String content = readString(dis, MAX_TEXT_BYTES, true);
+                int vectorLength = dis.readInt();
+                if (vectorLength < 0 || vectorLength > MAX_VECTOR_DIMENSION) {
+                    throw new IOException("Invalid vector dimension: " + vectorLength);
                 }
-                byte[] textBytes = dis.readNBytes(textLen);
-                if (textBytes.length != textLen) {
-                    throw new IOException("Truncated cached text");
-                }
-                float[] vector = new float[dimension];
-                for (int i = 0; i < dimension; i++) {
+                float[] vector = new float[vectorLength];
+                for (int i = 0; i < vectorLength; i++) {
                     float value = dis.readFloat();
                     if (Float.isNaN(value) || Float.isInfinite(value)) {
                         throw new IOException("Invalid vector value");
                     }
                     vector[i] = value;
                 }
-                texts.add(new String(textBytes, StandardCharsets.UTF_8));
-                vectors.add(vector);
+                store.upsert(entryId, content, vectorLength == 0 ? null : vector);
             }
 
-            if (!texts.isEmpty()) {
-                VectorStore store = new VectorStore(uid);
-                store.addAll(texts, vectors);
-                stores.put(uid, store);
+            if (!store.isEmpty()) {
+                stores.put(uid.trim(), store);
             }
         } catch (Exception e) {
             env.error("[RAG] Failed to load store for uid: " + uid, e);
@@ -128,52 +273,55 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     }
 
     private void saveStore(String uid) {
-        VectorStore store = stores.get(uid);
+        String cleanUid = uid == null ? "" : uid.trim();
+        VectorStore store = stores.get(cleanUid);
         if (store == null || store.isEmpty()) {
-            deleteStoreFile(uid);
-            updateManifest(uid, false);
+            deleteStoreFile(cleanUid);
+            updateManifest(cleanUid, false);
             return;
         }
 
-        List<String> texts = store.getTexts();
-        List<float[]> vectors = store.getVectors();
-        if (texts.isEmpty() || texts.size() != vectors.size()) {
-            return;
-        }
-
-        int dimension = vectors.get(0) == null ? 0 : vectors.get(0).length;
-        if (dimension <= 0) {
-            return;
-        }
-
+        List<VectorStore.EntrySnapshot> entries = store.getEntries();
         try {
             Files.createDirectories(cacheDirectory);
-            Path tmp = cacheDirectory.resolve(sanitizeFileName(uid) + ".tmp");
+            Path tmp = cacheDirectory.resolve(sanitizeFileName(cleanUid) + ".tmp");
             try (DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)))) {
                 dos.writeInt(CACHE_MAGIC);
                 dos.writeInt(CACHE_VERSION);
                 dos.writeUTF(namespace);
-                dos.writeInt(dimension);
-                dos.writeInt(texts.size());
-
-                for (int i = 0; i < texts.size(); i++) {
-                    float[] vector = vectors.get(i);
-                    if (!isUsableVector(vector) || vector.length != dimension) {
-                        throw new IOException("Vector dimension mismatch while saving uid: " + uid);
-                    }
-                    byte[] textBytes = texts.get(i).getBytes(StandardCharsets.UTF_8);
-                    dos.writeInt(textBytes.length);
-                    dos.write(textBytes);
-                    for (float val : vector) {
-                        dos.writeFloat(val);
+                dos.writeInt(entries.size());
+                for (VectorStore.EntrySnapshot entry : entries) {
+                    writeString(dos, entry.entryId());
+                    writeString(dos, entry.content());
+                    float[] vector = entry.vector();
+                    if (vector == null) {
+                        dos.writeInt(0);
+                    } else {
+                        if (!isUsableVector(vector)) {
+                            throw new IOException("Invalid vector while saving uid: " + uid);
+                        }
+                        dos.writeInt(vector.length);
+                        for (float value : vector) {
+                            dos.writeFloat(value);
+                        }
                     }
                 }
             }
-            moveIntoPlace(tmp, vectorsFile(uid));
-            updateManifest(uid, true);
+            moveIntoPlace(tmp, vectorsFile(cleanUid));
+            updateManifest(cleanUid, true);
         } catch (Exception e) {
             env.error("[RAG] Failed to save store for uid: " + uid, e);
         }
+    }
+
+    private float[] resolveVector(String content, float[] vector) throws Exception {
+        if (isUsableVector(vector)) {
+            return vector;
+        }
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        return embeddingService.embed(content);
     }
 
     private Set<String> readManifest() {
@@ -195,12 +343,12 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     }
 
     private void updateManifest(String uid, boolean add) {
-        if (uid == null || uid.isBlank()) {
+        if (isBlank(uid)) {
             return;
         }
         try {
             Set<String> uids = readManifest();
-            boolean changed = add ? uids.add(uid) : uids.remove(uid);
+            boolean changed = add ? uids.add(uid.trim()) : uids.remove(uid.trim());
             if (!changed) {
                 return;
             }
@@ -236,169 +384,9 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     }
 
     private void discardStoreFile(String uid) {
-        stores.remove(uid);
+        stores.remove(uid == null ? "" : uid.trim());
         deleteStoreFile(uid);
         updateManifest(uid, false);
-    }
-
-    private String sanitizeFileName(String name) {
-        if (name == null || name.isBlank()) {
-            return "empty";
-        }
-        return name.replaceAll("[^a-zA-Z0-9._-]", "_");
-    }
-
-    @Override
-    public void index(String uid, List<String> texts) {
-        List<String> validTexts = validTexts(texts);
-        if (uid == null || uid.isBlank() || validTexts.isEmpty()) {
-            return;
-        }
-
-        try {
-            VectorStore store = stores.computeIfAbsent(uid, k -> new VectorStore(uid));
-            List<String> textsToIndex = validTexts.stream()
-                    .filter(text -> !store.containsText(text))
-                    .toList();
-            if (textsToIndex.isEmpty()) {
-                return;
-            }
-
-            float[][] vectors = embeddingService.embed(textsToIndex);
-            if (vectors == null || vectors.length != textsToIndex.size()) {
-                env.warn("[RAG] Embedding result size mismatch for uid: " + uid);
-                return;
-            }
-
-            List<String> filteredTexts = new ArrayList<>();
-            List<float[]> filteredVectors = new ArrayList<>();
-
-            for (int i = 0; i < textsToIndex.size(); i++) {
-                String text = textsToIndex.get(i);
-                float[] vector = vectors[i];
-                if (isUsableVector(vector)) {
-                    filteredTexts.add(text);
-                    filteredVectors.add(VectorMath.normalize(vector));
-                }
-            }
-
-            if (!filteredTexts.isEmpty()) {
-                if (store.addAll(filteredTexts, filteredVectors)) {
-                    saveStore(uid);
-                    env.info("[RAG] Indexed and persisted " + filteredTexts.size() + " vectors for uid: " + uid);
-                }
-            }
-        } catch (Exception e) {
-            env.error("[RAG] Failed to index texts for uid: " + uid, e);
-        }
-    }
-
-    @Override
-    public List<RagSearchResult> search(String uid, String queryText, int topK, float threshold) {
-        if (uid == null || uid.isBlank() || queryText == null || queryText.isBlank()) {
-            return List.of();
-        }
-
-        try {
-            float[] queryVector = embeddingService.embed(queryText);
-            if (!isUsableVector(queryVector)) {
-                return List.of();
-            }
-
-            if (!stores.containsKey(uid)) {
-                loadStore(uid);
-            }
-
-            VectorStore store = stores.get(uid);
-            if (store == null || store.isEmpty()) {
-                return List.of();
-            }
-
-            int effectiveTopK = topK > 0 ? topK : DEFAULT_TOP_K;
-            float effectiveThreshold = threshold > 0f && threshold <= 1f ? threshold : DEFAULT_THRESHOLD;
-            return store.search(VectorMath.normalize(queryVector), effectiveTopK, effectiveThreshold);
-        } catch (Exception e) {
-            env.error("[RAG] Failed to search for uid: " + uid, e);
-            return List.of();
-        }
-    }
-
-    @Override
-    public void evict(String uid) {
-        if (uid == null || uid.isBlank()) {
-            return;
-        }
-        stores.remove(uid);
-        deleteStoreFile(uid);
-        updateManifest(uid, false);
-        env.info("[RAG] Evicted all vectors for uid: " + uid);
-    }
-
-    @Override
-    public void evict(String uid, String content) {
-        if (uid == null || uid.isBlank() || content == null) {
-            return;
-        }
-        VectorStore store = stores.get(uid);
-        if (store == null) {
-            loadStore(uid);
-            store = stores.get(uid);
-        }
-        if (store != null) {
-            if (store.remove(content)) {
-                saveStore(uid);
-                env.info("[RAG] Evicted content from uid: " + uid);
-            }
-        }
-    }
-
-    @Override
-    public boolean hasCache(String uid) {
-        if (uid == null || uid.isBlank()) {
-            return false;
-        }
-        VectorStore store = stores.get(uid);
-        if (store != null && !store.isEmpty()) {
-            return true;
-        }
-        if (Files.isRegularFile(vectorsFile(uid))) {
-            loadStore(uid);
-            VectorStore loaded = stores.get(uid);
-            return loaded != null && !loaded.isEmpty();
-        }
-        return false;
-    }
-
-    @Override
-    public CacheStats getStats() {
-        int uidCount = stores.size();
-        int totalChunks = stores.values().stream().mapToInt(VectorStore::size).sum();
-        long cacheSize = 0L;
-        try (var walk = Files.exists(cacheDirectory) ? Files.walk(cacheDirectory) : java.util.stream.Stream.<Path>empty()) {
-            cacheSize = walk.filter(Files::isRegularFile).mapToLong(this::safeSize).sum();
-        } catch (Exception ignored) {
-        }
-        return new CacheStats(uidCount, totalChunks, cacheSize);
-    }
-
-    @Override
-    public void clear() {
-        stores.clear();
-        try {
-            if (Files.exists(cacheDirectory)) {
-                try (var walk = Files.walk(cacheDirectory)) {
-                    walk.filter(Files::isRegularFile).forEach(path -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (Exception ignored) {
-                        }
-                    });
-                }
-            }
-            env.info("[RAG] Cleared all caches and deleted files");
-        } catch (Exception e) {
-            env.error("[RAG] Failed to clear cache files", e);
-        }
     }
 
     private long safeSize(Path path) {
@@ -409,15 +397,33 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         }
     }
 
-    private static List<String> validTexts(List<String> texts) {
-        if (texts == null || texts.isEmpty()) {
-            return List.of();
+    private String sanitizeFileName(String name) {
+        if (name == null || name.isBlank()) {
+            return "empty";
         }
-        return texts.stream()
-                .filter(text -> text != null && !text.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
+        return name.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    private static void writeString(DataOutputStream dos, String value) throws IOException {
+        byte[] bytes = (value == null ? "" : value).getBytes(StandardCharsets.UTF_8);
+        dos.writeInt(bytes.length);
+        dos.write(bytes);
+    }
+
+    private static String readString(DataInputStream dis, int maxBytes, boolean allowEmpty) throws IOException {
+        int length = dis.readInt();
+        if (length < 0 || length > maxBytes || (!allowEmpty && length == 0)) {
+            throw new IOException("Invalid cached string size: " + length);
+        }
+        byte[] bytes = dis.readNBytes(length);
+        if (bytes.length != length) {
+            throw new IOException("Truncated cached string");
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    private static float[] normalizeVector(float[] vector) {
+        return isUsableVector(vector) ? VectorMath.normalize(vector) : null;
     }
 
     private static boolean isUsableVector(float[] vector) {
@@ -430,5 +436,21 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             }
         }
         return true;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static boolean isSameContentWithoutVectorChange(VectorStore store, String entryId, String content, float[] vector) {
+        if (isUsableVector(vector)) {
+            return false;
+        }
+        VectorStore.EntrySnapshot existing = store.getEntry(entryId);
+        if (existing == null || !isUsableVector(existing.vector())) {
+            return false;
+        }
+        String nextContent = content == null ? "" : content.trim();
+        return existing.content().equals(nextContent);
     }
 }

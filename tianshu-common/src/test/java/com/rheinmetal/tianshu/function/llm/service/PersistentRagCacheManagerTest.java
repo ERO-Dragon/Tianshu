@@ -18,11 +18,11 @@ class PersistentRagCacheManagerTest {
     Path tempDir;
 
     @Test
-    void indexSkipsEmbeddingAndDiskWriteWhenTextsAlreadyCached() throws Exception {
+    void upsertSkipsDiskWriteWhenEntryIsUnchanged() throws Exception {
         CountingEmbeddingService embeddings = new CountingEmbeddingService();
         PersistentRagCacheManager cache = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
 
-        cache.index("memory", List.of("same memory"));
+        cache.upsert("memory", "entry-a", "same memory", null);
 
         Path vectorsFile = tempDir.resolve("memory.bin");
         assertTrue(Files.isRegularFile(vectorsFile));
@@ -30,23 +30,22 @@ class PersistentRagCacheManagerTest {
         long firstSize = Files.size(vectorsFile);
 
         Thread.sleep(25L);
-        cache.index("memory", List.of("same memory"));
+        cache.upsert("memory", "entry-a", "same memory", null);
 
-        assertEquals(1, embeddings.batchCalls);
+        assertEquals(1, embeddings.singleCalls);
         assertEquals(firstModified, Files.getLastModifiedTime(vectorsFile));
         assertEquals(firstSize, Files.size(vectorsFile));
     }
 
     @Test
-    void indexKeepsIncrementalAppendForSameUid() {
+    void upsertKeepsMultipleEntriesForSameUid() {
         CountingEmbeddingService embeddings = new CountingEmbeddingService();
         PersistentRagCacheManager cache = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
 
-        cache.index("memory", List.of("old memory"));
-        cache.index("memory", List.of("old memory", "new memory"));
+        cache.upsert("memory", "old", "old memory", null);
+        cache.upsert("memory", "new", "new memory", null);
 
-        assertEquals(2, embeddings.batchCalls);
-        assertEquals(List.of(1, 1), embeddings.batchSizes);
+        assertEquals(2, embeddings.singleCalls);
         assertEquals(2, cache.getStats().getTotalChunks());
         assertTrue(cache.search("memory", "anything", 10, 0.1f).stream()
                 .anyMatch(result -> "old memory".equals(result.getContent())));
@@ -54,12 +53,42 @@ class PersistentRagCacheManagerTest {
                 .anyMatch(result -> "new memory".equals(result.getContent())));
     }
 
+    @Test
+    void upsertPatchAndSearchOperateOnEntryIds() {
+        CountingEmbeddingService embeddings = new CountingEmbeddingService();
+        PersistentRagCacheManager cache = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+
+        cache.upsert("route", "cluster-a", "", new float[]{1f, 0f});
+        cache.patch("route", "cluster-a", "cluster summary", null, true, false);
+        List<RagCacheManager.RagEntrySearchResult> results = cache.searchEntries("route", "anything", 5, 0.1f);
+
+        assertEquals(1, results.size());
+        assertEquals("cluster-a", results.get(0).entryId());
+        assertEquals("cluster summary", results.get(0).content());
+    }
+
+    @Test
+    void patchContentDoesNotReplaceExistingVector() {
+        CountingEmbeddingService embeddings = new CountingEmbeddingService();
+        PersistentRagCacheManager cache = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+
+        cache.upsert("route", "cluster-a", "", new float[]{0f, 1f});
+        cache.patch("route", "cluster-a", "summary text", null, true, false);
+        cache.upsert("route", "cluster-b", "embedded text", null);
+
+        List<RagCacheManager.RagEntrySearchResult> results = cache.searchEntries("route", "query", 1, 0.1f);
+
+        assertEquals("cluster-b", results.get(0).entryId());
+    }
+
     private static final class CountingEmbeddingService implements EmbeddingService {
+        private int singleCalls;
         private int batchCalls;
         private final java.util.ArrayList<Integer> batchSizes = new java.util.ArrayList<>();
 
         @Override
         public float[] embed(String text) {
+            singleCalls++;
             return new float[]{1f, 0f};
         }
 

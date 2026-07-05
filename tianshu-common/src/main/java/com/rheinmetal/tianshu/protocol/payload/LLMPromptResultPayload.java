@@ -119,16 +119,18 @@ public record LLMPromptResultPayload(
     }
 
     public record HitEntry(
-            double score,
-            String content
+            String entryId,
+            String content,
+            double score
     ) implements ITianshuPayload {
         public HitEntry {
+            entryId = entryId == null ? "" : entryId.trim();
             content = content == null ? "" : content;
             score = Double.isNaN(score) || Double.isInfinite(score) ? 0.0 : score;
         }
 
-        public static HitEntry of(double score, String content) {
-            return new HitEntry(score, content);
+        public static HitEntry of(String entryId, String content, double score) {
+            return new HitEntry(entryId, content, score);
         }
     }
 
@@ -160,7 +162,6 @@ public record LLMPromptResultPayload(
 
     public record RagHitPayload(
             String uid,
-            boolean globalRagCache,
             List<HitEntry> hits
     ) implements ITianshuPayload {
         public RagHitPayload {
@@ -168,16 +169,8 @@ public record LLMPromptResultPayload(
             hits = hits != null ? List.copyOf(hits) : List.of();
         }
 
-        public RagHitPayload(String uid, List<HitEntry> hits) {
-            this(uid, false, hits);
-        }
-
         public static RagHitPayload of(String uid, List<HitEntry> hits) {
-            return new RagHitPayload(uid, false, hits);
-        }
-
-        public static RagHitPayload of(String uid, boolean globalRagCache, List<HitEntry> hits) {
-            return new RagHitPayload(uid, globalRagCache, hits);
+            return new RagHitPayload(uid, hits);
         }
     }
 }

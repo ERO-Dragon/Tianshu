@@ -12,23 +12,21 @@ public final class LlmModuleInstaller implements TianshuFunctionModuleInstaller 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final ProtocolRuntime protocolRuntime;
-    private final WorldIdentityProvider worldIdentityProvider;
 
     public LlmModuleInstaller(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime protocolRuntime) {
-        this(env, config, protocolRuntime, null);
-    }
-
-    public LlmModuleInstaller(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime protocolRuntime, WorldIdentityProvider worldIdentityProvider) {
         this.env = env;
         this.config = config;
         this.protocolRuntime = protocolRuntime;
-        this.worldIdentityProvider = worldIdentityProvider;
+    }
+
+    public LlmModuleInstaller(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime protocolRuntime, WorldIdentityProvider ignoredWorldIdentityProvider) {
+        this(env, config, protocolRuntime);
     }
 
     @Override
     public void install(TianshuModuleHost moduleHost, ModuleServiceRegistry moduleServices) {
         moduleHost.registerOptionalModule(
-                new LlmModule(env, config, protocolRuntime, worldIdentityProvider),
+                new LlmModule(env, config, protocolRuntime),
                 LlmRuntimeCapabilities.LLM_REQUEST,
                 LlmRuntimeCapabilities.LLM_CACHE_MANAGE,
                 LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY

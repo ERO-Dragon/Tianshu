@@ -6,12 +6,12 @@
 
 `LLMRequest` 是 `LlmProtocolAdapter` 转入 LLM 模块内部后使用的实现对象，不属于外部模块协议接口。外部模块只需要构造本文件中的 protocol payload。
 
-LLM 模块对外提供两个协议能力：
+LLM 模块对外提供三个协议能力：
 
 | 能力 | Payload | 说明 |
 |------|---------|------|
 | `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptRequestPayload` | 发起聊天、流式聊天、后台 TASK |
-| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManagePayload` | 添加、查询、删除 RAG cache |
+| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManagePayload` | 管理、查询持久 RAG 条目 |
 | `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveQueryPayload` | token 计数、embedding 向量化、运行态快照 |
 
 响应类型：
@@ -23,60 +23,7 @@ LLM 模块对外提供两个协议能力：
 | `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManageResultPayload` | cache 管理结果 |
 | `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveResultPayload` | 原语查询结果，按请求类型返回 token、vector 或状态快照 |
 
---- 
-
-## 5. `ProtocolCapabilities.LLM_PRIMITIVE_QUERY`
-
-外部模块向 `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` 提交 `LLMPrimitiveQueryPayload`。
-
-### 5.1 支持的 queryType
-
-| queryType | 说明 |
-|-----------|------|
-| `TOKEN_COUNT` | 对文本或消息列表做真实 token 计数；不接受 `rag` chunk |
-| `EMBED` | 对文本数组做 embedding |
-| `STATUS` | 查询 LLM 运行态、模型信息和队列信息 |
-
-### 5.2 LLMPrimitiveQueryPayload 主要字段
-
-| 字段 | 说明 |
-|------|------|
-| `requestId` | 请求标识 |
-| `queryType` | 原语类型：`TOKEN_COUNT` / `EMBED` / `STATUS` |
-| `text` | 参与 token 计数的单段文本 |
-| `texts` | `EMBED` 使用的文本列表 |
-| `messages` | `TOKEN_COUNT` 使用的消息列表 |
-| `chunks` | 保留字段；`TOKEN_COUNT` 不接受 `rag` chunk，避免触发检索、索引或 cache 修改 |
-| `includeVector` | `EMBED` 是否回传向量本体 |
-| `includeEmbeddingDetails` | `EMBED` 是否回传更完整的 embedding 细节 |
-| `includeRuntimeDetails` | `STATUS` 是否回传模型名 / profile 等运行态细节 |
-
-### 5.3 LLMPrimitiveResultPayload 主要字段
-
-| 字段 | 说明 |
-|------|------|
-| `requestId` | 对应请求 ID |
-| `queryType` | 对应查询类型 |
-| `status` | `COMPLETED` 或 `FAILED` |
-| `tokenCount` | `TOKEN_COUNT` 的结果 |
-| `embedResults` | `EMBED` 的结果列表 |
-| `runtimeSnapshot` | `STATUS` 的结果快照 |
-| `errorCode` / `errorMessage` | 失败信息 |
-
-`EMBED` 的每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName` 和 `embeddingNamespace`。`STATUS` 快照也包含 embedding 模型身份字段，用于 AX 校验持久化向量是否仍属于同一 embedding 空间。
-
-`STATUS` 快照还会返回 LLM 运行能力与 ctx 预算事实：
-
-| 字段 | 说明 |
-|------|------|
-| `supportsThinking` | 当前已加载模型 / chat template 是否支持 thinking 控制。 |
-| `supportsMtp` / `supportsEmbeddedMtp` / `externalMtpAvailable` | 当前运行环境的 MTP 能力来源与可用性。 |
-| `contextSize` | 当前已规划/加载的 ctx；优先来自底层 plan，不再只代表配置期望值。 |
-| `contextTokenBudget` | 当前已加载模型实例的最终安全输入 token 预算；已扣除底层 prompt margin，不是 CHAT / TASK lane 预算。 |
-
-上层做 prompt 预算时只消费 `contextTokenBudget`。LLM 模块不规划调用方的 prompt 分区，也不把底层 dryrun 的训练 ctx、显存 ctx 等诊断事实暴露成上层可消费协议；这些事实只属于 LLM 内部加载与安全预算判断。
-
-`STATUS` 返回的快照应尽量保守：未知值可以返回 `-1` 或空字符串，不要硬猜。
+---
 
 ## 2. `ProtocolCapabilities.LLM_REQUEST`
 
@@ -177,12 +124,11 @@ TASK 请求不走 CHAT 的 IA 授权，但会进入 LLM 模块的 TASK admission
 | `type` | `"message"` | chunk 类型：`message` 或 `rag`。 |
 | `messageContent` | 空列表 | `type=message` 时使用，按顺序加入消息上下文。 |
 | `ragContent` | 空列表 | `type=rag` 时使用。非空时可被增量索引进 RAG cache。 |
-| `uid` | 空字符串 | RAG 库标识；同一 cache scope 下按 uid 分文件保存。 |
+| `uid` | 空字符串 | RAG 库标识；LLM 只按 uid 分桶，不理解世界、全局、模块、聚类等上层语义。 |
 | `prompt` | 空字符串 | RAG 命中内容注入模型前的提示前缀。 |
 | `useCache` | `true` | `true` 使用 LLM 模块持久 RAG cache；`false` 仅对本次 `ragContent` 走 libs 临时检索。 |
 | `includeRagHits` | `true` | 是否在最终 `LLMPromptResultPayload` 中返回命中的 RAG 内容。 |
 | `memoryRagTokenBudget` | `1000` | 本 chunk 注入模型的 RAG 文本预算。 |
-| `globalRagCache` | `false` | `false` 使用当前世界 cache；`true` 使用全局 cache。 |
 
 `message` chunk 示例：
 
@@ -193,7 +139,7 @@ LLMPromptRequestPayload.ChunkPayload.message(List.of(
 ));
 ```
 
-当前世界 RAG chunk 示例：
+RAG chunk 示例：
 
 ```java
 LLMPromptRequestPayload.ChunkPayload.rag(
@@ -206,25 +152,17 @@ LLMPromptRequestPayload.ChunkPayload.rag(
 );
 ```
 
-全局 RAG chunk 示例：
-
-```java
-LLMPromptRequestPayload.ChunkPayload.globalRag(
-    "ax_global_lore",
-    "通用知识：",
-    List.of(),
-    true,
-    true,
-    1000
-);
-```
-
 ### 2.3 MessageItemPayload 字段
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
 | `role` | `"user"` | 消息角色：`system`、`user`、`assistant`。 |
 | `content` | 空字符串 | 消息正文。 |
+
+消息编排规则：
+- 底层只支持一个 `system` role。LLM 模块会合并开头连续的 `system` 消息，并作为唯一首条 `system` 发送。
+- 对话开始后出现调用方提供的 `system` 消息会被拒绝，错误码语义为 `LLM_UNSUPPORTED_SYSTEM_POSITION`。
+- RAG chunk 生成的检索提示属于 LLM 内部编排，会并入首条 `system`，不会在中间额外插入 `system` 消息。
 
 ### 2.4 InferencePolicyPayload 字段
 
@@ -285,10 +223,9 @@ LLMPromptRequestPayload.ChunkPayload.globalRag(
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
 | `uid` | 空字符串 | 命中的 RAG 库 uid。 |
-| `globalRagCache` | `false` | 该命中来自当前世界 cache 还是全局 cache。 |
 | `hits` | 空列表 | 命中条目列表。 |
 
-`uid` 是 RAG 库的唯一标识。多个 RAG chunk 命中不同库时，会按请求处理顺序返回多个 `RagHitPayload`；调用方按 `uid` 识别对应 RAG 库即可。
+`hits` 中每个条目包含 `entryId`、`content`、`score`。多个 RAG chunk 命中不同库时，会按请求处理顺序返回多个 `RagHitPayload`；调用方按 `uid` 识别对应 RAG 库即可。
 
 ---
 
@@ -318,14 +255,11 @@ TASK 调度规则：
 外部模块向 `ProtocolCapabilities.LLM_CACHE_MANAGE` 提交 `LLMCacheManagePayload`。
 
 ```java
-LLMCacheManagePayload.indexGlobal(
-    "ax_global_lore",
-    List.of("通用世界观文本")
-);
-
-LLMCacheManagePayload.index(
-    "ax_world_memory",
-    List.of("当前世界记忆")
+LLMCacheManagePayload.upsertEntry(
+    "ax.memory.cluster.cluster-001",
+    "event-001",
+    "玩家把钻石镐放在末影箱",
+    eventVector
 );
 ```
 
@@ -344,7 +278,7 @@ TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
         "module.ax",
         ProtocolCapabilities.LLM_CACHE_MANAGE,
         PayloadType.LLM_CACHE_MANAGE,
-        LLMCacheManagePayload.queryGlobal("ax_global_lore")
+        LLMCacheManagePayload.searchUid("ax.memory.cluster.cluster-001", "玩家问钻石镐在哪里", 4, 0.7f)
 ).build();
 
 protocolRuntime.submit(envelope);
@@ -354,49 +288,72 @@ protocolRuntime.submit(envelope);
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `action` | `"QUERY"` | 操作类型：`INDEX`、`QUERY`、`EVICT_ALL`、`EVICT_CONTENT`。 |
-| `uid` | 空字符串 | RAG 库标识。 |
-| `contents` | 空列表 | `INDEX` 时表示要加入 cache 的文本；`EVICT_CONTENT` 时表示要删除的具体文本。 |
-| `globalRagCache` | `false` | `false` 操作当前世界 cache；`true` 操作全局 cache。 |
+| `action` | `"QUERY_UID"` | 操作类型：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`。 |
+| `uid` | 空字符串 | RAG 库标识。一个 uid 表示一个库/簇；调用方自行把世界、模块、层级等作用域编码进 uid。 |
+| `modid` | 空字符串 | RAG 库所属 modid；用于 `REGISTER_LIBRARY` 和 `SEARCH_MODID`。同一个 modid 可以注册多个 uid。 |
+| `visibility` | `"SHARED"` | RAG 库可见性：`SHARED` 可被 `modid/tag` 聚合检索发现；`PRIVATE` 不参与共享发现。 |
+| `tags` | 空列表 | RAG 库标签；用于 `REGISTER_LIBRARY` 和 `SEARCH_TAGS`，例如 `main`、`addon`。 |
+| `entryId` | 空字符串 | 条目 id，由调用方拥有；LLM 只存储和返回该 id。 |
+| `content` | 空字符串 | 条目文本，可为空。为空时仍可依赖调用方传入的向量参与检索。 |
+| `vector` | 空向量 | 条目向量，可为空。为空且 `content` 非空时，LLM 会用当前 embedding 服务生成向量。 |
+| `updateContent` | `false` | `PATCH_ENTRY` 时是否更新文本。 |
+| `updateVector` | `false` | `PATCH_ENTRY` 时是否更新向量。 |
+| `queryText` | 空字符串 | `SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS` 时的查询文本。 |
+| `topK` | `4` | 每个 uid 返回条数。 |
+| `threshold` | `0.7` | 命中阈值。 |
 
 快捷构造：
 
 ```java
-LLMCacheManagePayload.index("ax_world_memory", texts);
-LLMCacheManagePayload.indexGlobal("ax_global_lore", texts);
-LLMCacheManagePayload.query("ax_world_memory");
-LLMCacheManagePayload.queryGlobal("ax_global_lore");
-LLMCacheManagePayload.evictAll("ax_world_memory");
-LLMCacheManagePayload.evictAllGlobal("ax_global_lore");
-LLMCacheManagePayload.evictContent("ax_world_memory", texts);
-LLMCacheManagePayload.evictGlobalContent("ax_global_lore", texts);
+LLMCacheManagePayload.registerLibrary("ax.memory.cluster.cluster-001", "tianshu", "PRIVATE", List.of("main"));
+LLMCacheManagePayload.upsertEntry("ax.memory.cluster.cluster-001", "event-001", "玩家把钻石镐放在末影箱", eventVector);
+LLMCacheManagePayload.patchEntry("ax.memory.cluster.cluster-001", "event-001", "更新后的事实文本", null, true, false);
+LLMCacheManagePayload.deleteEntry("ax.memory.cluster.cluster-001", "event-001");
+LLMCacheManagePayload.clearUid("ax.memory.cluster.cluster-001");
+LLMCacheManagePayload.queryUid("ax.memory.cluster.cluster-001");
+LLMCacheManagePayload.searchUid("ax.memory.cluster.cluster-001", "玩家问钻石镐在哪里", 4, 0.7f);
+LLMCacheManagePayload.searchModid("botania", "魔力池怎么做", 4, 0.7f);
+LLMCacheManagePayload.searchTags(List.of("main", "addon"), "钻石镐在哪里", 4, 0.7f);
 ```
 
 ### 4.2 LLMCacheManageResultPayload 字段
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `action` | 空字符串 | 结果动作：`INDEX`、`QUERY`、`EVICT`、`FAILED`。 |
+| `action` | 空字符串 | 结果动作：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`FAILED`。 |
 | `uid` | 空字符串 | 对应 RAG 库标识。 |
+| `entryId` | 空字符串 | 对应条目 id；仅条目级操作返回。 |
 | `success` | 调用方传入值 | 操作是否成功。 |
-| `exists` | 调用方传入值 | `QUERY` 时表示 cache 是否存在；`INDEX` 成功时为 `true`；失败时为 `false`。 |
+| `exists` | 调用方传入值 | `QUERY_UID` 时表示 uid 是否存在；检索时表示是否有命中。 |
+| `hits` | 空列表 | 检索返回的命中组，按 uid 分组。每组包含 `uid`、`entries`、`score`；`entries` 元素为 `entryId`、`content`、`score`。 |
+| `libraries` | 空列表 | 涉及的库元信息列表；元素为 `uid`、`modid`、`visibility`、`tags`。 |
 | `errorMessage` | `null` | 失败描述。 |
 
-### 4.3 RAG cache 存储 scope
+### 4.3 RAG 库注册与检索语义
+
+LLM 只理解“库”和“条目”：
+- `uid` 是一个 RAG 库，可以对应一个簇、一个模组知识库或任意调用方定义的集合。
+- `entryId` 是该 uid 内的条目 id，用于写入、patch、delete，以及检索命中后原样返回。
+- `modid` 和 `tags` 只用于共享库发现；LLM 不校验 modid 真实性，依赖模组开发者自觉。
+
+共享检索规则：
+- `SEARCH_UID`：只检索指定 uid。
+- `SEARCH_MODID`：检索该 modid 下所有 `SHARED` 的 uid；同一个 modid 可以有多个 uid。
+- `SEARCH_TAGS`：检索所有 `SHARED` 且命中任意 tag 的 uid。
+
+AX 记忆检索示例：
+- 已知某个二级簇时：`uid = ax.memory.cluster.<clusterId>`，`entryId = eventId`，`content = E.factText`。
+- LLM 返回命中的 `entryId` 后，AX 用 eventId 回到自己的事件存储取完整结构。
+
+### 4.4 RAG cache 存储
 
 持久 RAG cache 默认位于：
 
 ```text
-config/Tianshu/module/llm/ragCache/<world>/
+config/Tianshu/module/llm/ragCache/entries/
 ```
 
-全局 RAG cache 位于：
-
-```text
-config/Tianshu/module/llm/ragCache/global/
-```
-
-每个 cache 目录下按 RAG `uid` 分文件保存：
+目录下按 RAG `uid` 分文件保存：
 
 ```text
 manifest.txt
@@ -407,9 +364,64 @@ manifest.txt
 
 ---
 
-## 5. 请求示例
+## 5. `ProtocolCapabilities.LLM_PRIMITIVE_QUERY`
 
-### 5.1 世界记忆聊天
+外部模块向 `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` 提交 `LLMPrimitiveQueryPayload`。
+
+### 5.1 支持的 queryType
+
+| queryType | 说明 |
+|-----------|------|
+| `TOKEN_COUNT` | 对文本或消息列表做真实 token 计数；不接受 `rag` chunk |
+| `EMBED` | 对文本数组做 embedding |
+| `STATUS` | 查询 LLM 运行态、模型信息和队列信息 |
+
+### 5.2 LLMPrimitiveQueryPayload 主要字段
+
+| 字段 | 说明 |
+|------|------|
+| `requestId` | 请求标识 |
+| `queryType` | 原语类型：`TOKEN_COUNT` / `EMBED` / `STATUS` |
+| `text` | 参与 token 计数的单段文本 |
+| `texts` | `EMBED` 使用的文本列表 |
+| `messages` | `TOKEN_COUNT` 使用的消息列表 |
+| `chunks` | 保留字段；`TOKEN_COUNT` 不接受 `rag` chunk，避免触发检索、索引或 cache 修改 |
+| `includeVector` | `EMBED` 是否回传向量本体 |
+| `includeEmbeddingDetails` | `EMBED` 是否回传更完整的 embedding 细节 |
+| `includeRuntimeDetails` | `STATUS` 是否回传模型名 / profile 等运行态细节 |
+
+### 5.3 LLMPrimitiveResultPayload 主要字段
+
+| 字段 | 说明 |
+|------|------|
+| `requestId` | 对应请求 ID |
+| `queryType` | 对应查询类型 |
+| `status` | `COMPLETED` 或 `FAILED` |
+| `tokenCount` | `TOKEN_COUNT` 的结果 |
+| `embedResults` | `EMBED` 的结果列表 |
+| `runtimeSnapshot` | `STATUS` 的结果快照 |
+| `errorCode` / `errorMessage` | 失败信息 |
+
+`EMBED` 的每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName` 和 `embeddingNamespace`。`STATUS` 快照也包含 embedding 模型身份字段，用于 AX 校验持久化向量是否仍属于同一 embedding 空间。
+
+`STATUS` 快照还会返回 LLM 运行能力与 ctx 预算事实：
+
+| 字段 | 说明 |
+|------|------|
+| `supportsThinking` | 当前已加载模型 / chat template 是否支持 thinking 控制。 |
+| `supportsMtp` / `supportsEmbeddedMtp` / `externalMtpAvailable` | 当前运行环境的 MTP 能力来源与可用性。 |
+| `contextSize` | 当前已规划/加载的 ctx；优先来自底层 plan，不再只代表配置期望值。 |
+| `contextTokenBudget` | 当前已加载模型实例的最终安全输入 token 预算；已扣除底层 prompt margin，不是 CHAT / TASK lane 预算。 |
+
+上层做 prompt 预算时只消费 `contextTokenBudget`。LLM 模块不规划调用方的 prompt 分区，也不把底层 dryrun 的训练 ctx、显存 ctx 等诊断事实暴露成上层可消费协议；这些事实只属于 LLM 内部加载与安全预算判断。
+
+`STATUS` 返回的快照应尽量保守：未知值可以返回 `-1` 或空字符串，不要硬猜。
+
+---
+
+## 6. 请求示例
+
+### 6.1 世界记忆聊天
 
 ```java
 LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
@@ -444,7 +456,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 );
 ```
 
-### 5.2 后台记忆压缩
+### 6.2 后台记忆压缩
 
 ```java
 LLMPromptRequestPayload payload = new LLMPromptRequestPayload(

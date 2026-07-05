@@ -15,7 +15,6 @@ public class Chunk {
     private Boolean useCache = true;
     private Boolean includeRagHits = true;
     private Integer memoryRagTokenBudget = 1000;
-    private Boolean globalRagCache = false;
 
     public Chunk() {
     }
@@ -39,11 +38,6 @@ public class Chunk {
     }
 
     public static Chunk rag(String uid, String prompt, List<String> contents, boolean useCache, boolean includeRagHits, int memoryRagTokenBudget) {
-        return rag(uid, prompt, contents, useCache, includeRagHits, memoryRagTokenBudget, false);
-    }
-
-    public static Chunk rag(String uid, String prompt, List<String> contents, boolean useCache, boolean includeRagHits,
-                            int memoryRagTokenBudget, boolean globalRagCache) {
         Chunk chunk = new Chunk();
         chunk.setType("rag");
         chunk.setUid(uid);
@@ -52,12 +46,7 @@ public class Chunk {
         chunk.setUseCache(useCache);
         chunk.setIncludeRagHits(includeRagHits);
         chunk.setMemoryRagTokenBudget(memoryRagTokenBudget);
-        chunk.setGlobalRagCache(globalRagCache);
         return chunk;
-    }
-
-    public static Chunk globalRag(String uid, String prompt, List<String> contents, boolean useCache, boolean includeRagHits, int memoryRagTokenBudget) {
-        return rag(uid, prompt, contents, useCache, includeRagHits, memoryRagTokenBudget, true);
     }
 
     // Getters
@@ -93,14 +82,6 @@ public class Chunk {
         return memoryRagTokenBudget;
     }
 
-    public Boolean getGlobalRagCache() {
-        return globalRagCache;
-    }
-
-    public boolean isGlobalRagCache() {
-        return Boolean.TRUE.equals(globalRagCache);
-    }
-
     // Setters
     public void setType(String type) {
         this.type = type;
@@ -132,9 +113,5 @@ public class Chunk {
 
     public void setMemoryRagTokenBudget(Integer memoryRagTokenBudget) {
         this.memoryRagTokenBudget = memoryRagTokenBudget != null ? memoryRagTokenBudget : 1000;
-    }
-
-    public void setGlobalRagCache(Boolean globalRagCache) {
-        this.globalRagCache = globalRagCache != null ? globalRagCache : false;
     }
 }

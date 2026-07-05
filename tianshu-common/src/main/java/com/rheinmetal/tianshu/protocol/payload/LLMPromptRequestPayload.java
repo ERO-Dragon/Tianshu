@@ -303,8 +303,7 @@ public record LLMPromptRequestPayload(
             String prompt,
             Boolean useCache,
             Boolean includeRagHits,
-            Integer memoryRagTokenBudget,
-            Boolean globalRagCache
+            Integer memoryRagTokenBudget
     ) implements ITianshuPayload {
         public ChunkPayload {
             type = type == null ? "message" : type.trim().toLowerCase();
@@ -314,36 +313,18 @@ public record LLMPromptRequestPayload(
             useCache = useCache != null ? useCache : true;
             includeRagHits = includeRagHits != null ? includeRagHits : true;
             memoryRagTokenBudget = memoryRagTokenBudget != null ? memoryRagTokenBudget : 1000;
-            globalRagCache = globalRagCache != null ? globalRagCache : false;
-        }
-
-        public ChunkPayload(
-                String type,
-                List<MessageItemPayload> messageContent,
-                List<String> ragContent,
-                String uid,
-                String prompt,
-                Boolean useCache,
-                Boolean includeRagHits,
-                Integer memoryRagTokenBudget
-        ) {
-            this(type, messageContent, ragContent, uid, prompt, useCache, includeRagHits, memoryRagTokenBudget, false);
         }
 
         public static ChunkPayload message(List<MessageItemPayload> messages) {
-            return new ChunkPayload("message", messages, null, null, null, null, null, null, false);
+            return new ChunkPayload("message", messages, null, null, null, null, null, null);
         }
 
         public static ChunkPayload rag(String uid, List<String> contents) {
-            return new ChunkPayload("rag", null, contents, uid, "", true, true, 1000, false);
+            return new ChunkPayload("rag", null, contents, uid, "", true, true, 1000);
         }
 
         public static ChunkPayload rag(String uid, String prompt, List<String> contents, boolean useCache, boolean includeRagHits, int memoryTokenBudget) {
-            return new ChunkPayload("rag", null, contents, uid, prompt, useCache, includeRagHits, memoryTokenBudget, false);
-        }
-
-        public static ChunkPayload globalRag(String uid, String prompt, List<String> contents, boolean useCache, boolean includeRagHits, int memoryTokenBudget) {
-            return new ChunkPayload("rag", null, contents, uid, prompt, useCache, includeRagHits, memoryTokenBudget, true);
+            return new ChunkPayload("rag", null, contents, uid, prompt, useCache, includeRagHits, memoryTokenBudget);
         }
     }
 

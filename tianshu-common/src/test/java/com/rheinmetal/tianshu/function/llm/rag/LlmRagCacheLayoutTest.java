@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.llm.rag;
 
-import com.rheinmetal.tianshu.core.scope.WorldScope;
-import com.rheinmetal.tianshu.core.scope.WorldScopeKind;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,38 +13,13 @@ class LlmRagCacheLayoutTest {
     Path tempDir;
 
     @Test
-    void storesCacheUnderConfiguredRagCacheWorldDirectory() {
-        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
-        LlmRagCacheLayout layout = new LlmRagCacheLayout(
-                config,
-                () -> new WorldScope("user", "world:nether/test", "Nether", WorldScopeKind.LOCAL_WORLD, true)
-        );
-
-        assertEquals(
-                config.getLlmBasePath().resolve("ragCache").resolve("world_nether_test"),
-                layout.currentWorldCacheDirectory()
-        );
-    }
-
-    @Test
-    void usesUnknownWorldWhenScopeProviderIsMissing() {
+    void storesCacheUnderSingleConfiguredEntryDirectory() {
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
         LlmRagCacheLayout layout = new LlmRagCacheLayout(config, null);
 
         assertEquals(
-                config.getLlmBasePath().resolve("ragCache").resolve("unknown_world"),
-                layout.currentWorldCacheDirectory()
-        );
-    }
-
-    @Test
-    void storesGlobalCacheUnderSharedGlobalDirectory() {
-        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
-        LlmRagCacheLayout layout = new LlmRagCacheLayout(config, null);
-
-        assertEquals(
-                config.getLlmBasePath().resolve("ragCache").resolve("global"),
-                layout.globalCacheDirectory()
+                config.getLlmBasePath().resolve("ragCache").resolve("entries"),
+                layout.cacheDirectory()
         );
     }
 }

@@ -8,7 +8,6 @@ import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
-import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
@@ -38,8 +37,8 @@ public class LLMService {
     private final LlmInferenceClient inferenceClient;
     private final LlmInferenceGovernor inferenceGovernor;
     private final EmbeddingService embeddingService;
-    private final RagCacheManager worldRagCache;
-    private final RagCacheManager globalRagCache;
+    private final RagCacheManager ragCache;
+    private final RagLibraryRegistry ragLibraryRegistry;
     private final String cacheNamespace;
     private final boolean embeddingConfigured;
     private volatile boolean initialized = false;
@@ -57,12 +56,11 @@ public class LLMService {
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
         this.embeddingService = embeddingAdapter;
         if (builder.usePersistentCache) {
-            this.worldRagCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.cacheDirectory, builder.cacheNamespace);
-            this.globalRagCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.globalCacheDirectory(), builder.cacheNamespace);
+            this.ragCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.cacheDirectory, builder.cacheNamespace);
         } else {
-            this.worldRagCache = new DefaultRagCacheManager(env, embeddingAdapter);
-            this.globalRagCache = new DefaultRagCacheManager(env, embeddingAdapter);
+            this.ragCache = new DefaultRagCacheManager(env, embeddingAdapter);
         }
+        this.ragLibraryRegistry = new RagLibraryRegistry(env, builder.usePersistentCache ? builder.cacheDirectory : null);
 
         this.initialized = true;
         env.info("[LLMService] Initialized, cache mode: " + (builder.usePersistentCache ? "PERSISTENT" : "MEMORY"));
@@ -195,43 +193,85 @@ public class LLMService {
     }
 
     public RagCacheManager getRagCache() {
-        return worldRagCache;
-    }
-
-    public RagCacheManager getGlobalRagCache() {
-        return globalRagCache;
-    }
-
-    public void indexCache(String uid, List<String> contents) {
-        indexCache(uid, contents, false);
-    }
-
-    public void indexCache(String uid, List<String> contents, boolean globalRagCache) {
-        ragCache(globalRagCache).index(uid, contents);
-    }
-
-    public void evictCache(String uid) {
-        evictCache(uid, false);
-    }
-
-    public void evictCache(String uid, boolean globalRagCache) {
-        ragCache(globalRagCache).evict(uid);
-    }
-
-    public void evictCache(String uid, String content) {
-        evictCache(uid, content, false);
-    }
-
-    public void evictCache(String uid, String content, boolean globalRagCache) {
-        ragCache(globalRagCache).evict(uid, content);
+        return ragCache;
     }
 
     public boolean hasCache(String uid) {
-        return hasCache(uid, false);
+        return ragCache.hasCache(uid);
     }
 
-    public boolean hasCache(String uid, boolean globalRagCache) {
-        return ragCache(globalRagCache).hasCache(uid);
+    public void upsertRagEntry(String uid, String entryId, String content, float[] vector) {
+        ragCache.upsert(uid, entryId, content, vector);
+    }
+
+    public void patchRagEntry(String uid, String entryId, String content, float[] vector, boolean updateContent, boolean updateVector) {
+        ragCache.patch(uid, entryId, content, vector, updateContent, updateVector);
+    }
+
+    public void deleteRagEntry(String uid, String entryId) {
+        ragCache.deleteEntry(uid, entryId);
+    }
+
+    public void clearRagUid(String uid) {
+        ragCache.clearUid(uid);
+    }
+
+    public boolean hasRagUid(String uid) {
+        return ragCache.hasCache(uid);
+    }
+
+    public boolean hasRagEntry(String uid, String entryId) {
+        return ragCache.hasEntry(uid, entryId);
+    }
+
+    public List<RagCacheManager.RagEntrySearchResult> searchRagEntries(String uid, String queryText, int topK, float threshold) {
+        return ragCache.searchEntries(uid, queryText, topK, threshold);
+    }
+
+    public RagLibraryRegistry.RagLibraryMeta registerRagLibrary(String uid, String modid, String visibility, List<String> tags) {
+        ragLibraryRegistry.register(uid, modid, visibility, tags);
+        return ragLibraryRegistry.meta(uid);
+    }
+
+    public void unregisterRagLibrary(String uid) {
+        ragLibraryRegistry.unregister(uid);
+    }
+
+    public RagLibraryRegistry.RagLibraryMeta ragLibrary(String uid) {
+        return ragLibraryRegistry.meta(uid);
+    }
+
+    public List<RagLibrarySearchResult> searchRagLibraryByUid(String uid, String queryText, int topK, float threshold) {
+        List<RagCacheManager.RagEntrySearchResult> entries = searchRagEntries(uid, queryText, topK, threshold);
+        if (entries.isEmpty()) {
+            return List.of();
+        }
+        return List.of(new RagLibrarySearchResult(uid, ragLibraryRegistry.meta(uid), entries));
+    }
+
+    public List<RagLibrarySearchResult> searchSharedRagLibrariesByModid(String modid, String queryText, int topK, float threshold) {
+        return searchLibraries(ragLibraryRegistry.sharedByModid(modid), queryText, topK, threshold);
+    }
+
+    public List<RagLibrarySearchResult> searchSharedRagLibrariesByTags(List<String> tags, String queryText, int topK, float threshold) {
+        return searchLibraries(ragLibraryRegistry.sharedByTags(tags), queryText, topK, threshold);
+    }
+
+    private List<RagLibrarySearchResult> searchLibraries(List<RagLibraryRegistry.RagLibraryMeta> libraries, String queryText, int topK, float threshold) {
+        if (libraries == null || libraries.isEmpty()) {
+            return List.of();
+        }
+        List<RagLibrarySearchResult> results = new ArrayList<>();
+        for (RagLibraryRegistry.RagLibraryMeta library : libraries) {
+            if (library == null || library.uid().isBlank()) {
+                continue;
+            }
+            List<RagCacheManager.RagEntrySearchResult> entries = searchRagEntries(library.uid(), queryText, topK, threshold);
+            if (!entries.isEmpty()) {
+                results.add(new RagLibrarySearchResult(library.uid(), library, entries));
+            }
+        }
+        return results;
     }
 
     public boolean isReady() {
@@ -383,7 +423,7 @@ public class LLMService {
 
     private PreparedResult prepareRequest(LLMRequest request) {
         LLMRequest effectiveRequest = request != null ? request : new LLMRequest();
-        List<MessageItem> orderedMessages = new ArrayList<>();
+        MessageAssembler messages = new MessageAssembler();
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
         String lastUserMessage = extractLastUserMessage(effectiveRequest);
 
@@ -392,18 +432,18 @@ public class LLMService {
                 continue;
             }
             if ("message".equalsIgnoreCase(chunk.getType())) {
-                appendMessages(orderedMessages, chunk.getMessageContent());
+                messages.appendMessages(chunk.getMessageContent());
             } else if ("rag".equalsIgnoreCase(chunk.getType())) {
                 RagPreparation rag = processRagChunk(chunk, lastUserMessage);
                 collectRagHits(chunk, rag.results(), ragHits);
                 if (!rag.prompt().isEmpty()) {
-                    orderedMessages.add(MessageItem.system(rag.prompt()));
+                    messages.appendSystemPart(rag.prompt());
                 }
             }
         }
 
         return new PreparedResult(
-                buildLibsMessages(orderedMessages),
+                buildLibsMessages(messages.finish()),
                 createSampler(effectiveRequest),
                 maxTokens(effectiveRequest),
                 effectiveRequest.getTaskPriority(),
@@ -416,21 +456,21 @@ public class LLMService {
 
     private PreparedResult prepareTokenCountRequest(LLMRequest request) {
         LLMRequest effectiveRequest = request != null ? request : new LLMRequest();
-        List<MessageItem> orderedMessages = new ArrayList<>();
+        MessageAssembler messages = new MessageAssembler();
 
         for (Chunk chunk : effectiveRequest.getChunks()) {
             if (chunk == null || chunk.getType() == null) {
                 continue;
             }
             if ("message".equalsIgnoreCase(chunk.getType())) {
-                appendMessages(orderedMessages, chunk.getMessageContent());
+                messages.appendMessages(chunk.getMessageContent());
             } else if ("rag".equalsIgnoreCase(chunk.getType())) {
                 throw new UnsupportedOperationException("TOKEN_COUNT only accepts message-only input; rag chunks may trigger retrieval or cache mutation");
             }
         }
 
         return new PreparedResult(
-                buildLibsMessages(orderedMessages),
+                buildLibsMessages(messages.finish()),
                 createSampler(effectiveRequest),
                 maxTokens(effectiveRequest),
                 effectiveRequest.getTaskPriority(),
@@ -440,69 +480,60 @@ public class LLMService {
         );
     }
 
-    private void appendMessages(List<MessageItem> sink, List<MessageItem> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return;
-        }
-        for (MessageItem message : messages) {
-            if (message == null || message.getContent() == null || message.getContent().isBlank()) {
-                continue;
-            }
-            String role = normalizeRole(message.getRole());
-            sink.add(new MessageItem(role, message.getContent()));
-        }
-    }
-
     private RagPreparation processRagChunk(Chunk ragChunk, String queryText) {
         if (queryText == null || queryText.isBlank()) {
             return RagPreparation.empty();
         }
 
-        List<RagSearchResult> results = searchRag(ragChunk, queryText);
-        List<RagSearchResult> budgeted = applyRagBudget(results, ragChunk.getMemoryRagTokenBudget());
+        List<RagCacheManager.RagEntrySearchResult> results = searchRag(ragChunk, queryText);
+        List<RagCacheManager.RagEntrySearchResult> budgeted = applyRagBudget(results, ragChunk.getMemoryRagTokenBudget());
         return new RagPreparation(budgeted, buildRagPrompt(budgeted, ragChunk.getPrompt()));
     }
 
-    private List<RagSearchResult> searchRag(Chunk ragChunk, String queryText) {
+    private List<RagCacheManager.RagEntrySearchResult> searchRag(Chunk ragChunk, String queryText) {
         String uid = ragChunk.getUid();
         boolean useCache = Boolean.TRUE.equals(ragChunk.getUseCache());
         List<String> contents = validTexts(ragChunk.getRagContent());
 
         if (useCache) {
             if (!contents.isEmpty()) {
-                ragCache(ragChunk).index(uid, contents);
+                for (String content : contents) {
+                    ragCache.upsert(uid, contentEntryId(content), content, null);
+                }
             }
-            return ragCache(ragChunk).search(uid, queryText, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD);
+            return ragCache.searchEntries(uid, queryText, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD);
         }
 
         if (contents.isEmpty()) {
             return List.of();
         }
         try {
-            return inferenceClient.search(queryText, contents, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD);
+            return inferenceClient.search(queryText, contents, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD).stream()
+                    .map(result -> new RagCacheManager.RagEntrySearchResult("", result.getContent(), result.getScore()))
+                    .toList();
         } catch (Exception e) {
             env.error("[LLMService] Search via libs failed", e);
             return List.of();
         }
     }
 
-    private List<RagSearchResult> applyRagBudget(List<RagSearchResult> results, Integer tokenBudget) {
+    private List<RagCacheManager.RagEntrySearchResult> applyRagBudget(List<RagCacheManager.RagEntrySearchResult> results, Integer tokenBudget) {
         if (results == null || results.isEmpty()) {
             return List.of();
         }
         return results;
     }
 
-    private void collectRagHits(Chunk chunk, List<RagSearchResult> results, List<LLMPromptResultPayload.RagHitPayload> ragHits) {
+    private void collectRagHits(Chunk chunk, List<RagCacheManager.RagEntrySearchResult> results, List<LLMPromptResultPayload.RagHitPayload> ragHits) {
         if (chunk == null || !Boolean.TRUE.equals(chunk.getIncludeRagHits()) || results == null || results.isEmpty()) {
             return;
         }
 
         List<LLMPromptResultPayload.HitEntry> entries = new ArrayList<>();
-        for (RagSearchResult r : results) {
-            entries.add(LLMPromptResultPayload.HitEntry.of(r.getScore(), r.getContent()));
+        for (RagCacheManager.RagEntrySearchResult r : results) {
+            entries.add(LLMPromptResultPayload.HitEntry.of(r.entryId(), r.content(), r.score()));
         }
-        ragHits.add(LLMPromptResultPayload.RagHitPayload.of(chunk.getUid(), chunk.isGlobalRagCache(), entries));
+        ragHits.add(LLMPromptResultPayload.RagHitPayload.of(chunk.getUid(), entries));
     }
 
     private String extractLastUserMessage(LLMRequest request) {
@@ -520,7 +551,7 @@ public class LLMService {
         return null;
     }
 
-    private String buildRagPrompt(List<RagSearchResult> results, String prompt) {
+    private String buildRagPrompt(List<RagCacheManager.RagEntrySearchResult> results, String prompt) {
         if (results == null || results.isEmpty()) {
             return "";
         }
@@ -533,7 +564,7 @@ public class LLMService {
         }
 
         for (int i = 0; i < results.size(); i++) {
-            sb.append(i + 1).append(". ").append(results.get(i).getContent()).append('\n');
+            sb.append(i + 1).append(". ").append(results.get(i).content()).append('\n');
         }
         return sb.toString();
     }
@@ -603,14 +634,6 @@ public class LLMService {
                 .map(String::trim)
                 .distinct()
                 .toList();
-    }
-
-    private RagCacheManager ragCache(Chunk chunk) {
-        return ragCache(chunk != null && chunk.isGlobalRagCache());
-    }
-
-    private RagCacheManager ragCache(boolean globalRagCache) {
-        return globalRagCache ? this.globalRagCache : this.worldRagCache;
     }
 
     private static String normalizeRole(String role) {
@@ -692,6 +715,10 @@ public class LLMService {
         return Integer.toHexString(java.util.Objects.hash(normalized));
     }
 
+    private static String contentEntryId(String content) {
+        return "content:" + Integer.toHexString(java.util.Objects.hash(content == null ? "" : content));
+    }
+
     public static LLMPromptResultPayload.TokenUsagePayload toUsagePayload(LlmTokenUsage usage) {
         if (usage == null) {
             return LLMPromptResultPayload.TokenUsagePayload.empty();
@@ -729,7 +756,7 @@ public class LLMService {
         }
     }
 
-    private record RagPreparation(List<RagSearchResult> results, String prompt) {
+    private record RagPreparation(List<RagCacheManager.RagEntrySearchResult> results, String prompt) {
         private RagPreparation {
             results = results != null ? List.copyOf(results) : List.of();
             prompt = prompt != null ? prompt : "";
@@ -737,6 +764,57 @@ public class LLMService {
 
         static RagPreparation empty() {
             return new RagPreparation(List.of(), "");
+        }
+    }
+
+    private static final class MessageAssembler {
+        private final StringBuilder leadingSystem = new StringBuilder();
+        private final List<MessageItem> messages = new ArrayList<>();
+        private boolean dialogueStarted;
+
+        void appendMessages(List<MessageItem> items) {
+            if (items == null || items.isEmpty()) {
+                return;
+            }
+            for (MessageItem item : items) {
+                appendMessage(item);
+            }
+        }
+
+        void appendSystemPart(String content) {
+            if (content == null || content.isBlank()) {
+                return;
+            }
+            if (leadingSystem.length() > 0) {
+                leadingSystem.append('\n');
+            }
+            leadingSystem.append(content.trim());
+        }
+
+        List<MessageItem> finish() {
+            List<MessageItem> result = new ArrayList<>();
+            if (leadingSystem.length() > 0) {
+                result.add(MessageItem.system(leadingSystem.toString()));
+            }
+            result.addAll(messages);
+            return result;
+        }
+
+        private void appendMessage(MessageItem message) {
+            if (message == null || message.getContent() == null || message.getContent().isBlank()) {
+                return;
+            }
+            String role = normalizeRole(message.getRole());
+            String content = message.getContent();
+            if ("system".equals(role)) {
+                if (dialogueStarted) {
+                    throw new IllegalArgumentException("LLM_UNSUPPORTED_SYSTEM_POSITION");
+                }
+                appendSystemPart(content);
+                return;
+            }
+            dialogueStarted = true;
+            messages.add(new MessageItem(role, content));
         }
     }
 
@@ -817,6 +895,17 @@ public class LLMService {
         }
     }
 
+    public record RagLibrarySearchResult(
+            String uid,
+            RagLibraryRegistry.RagLibraryMeta library,
+            List<RagCacheManager.RagEntrySearchResult> entries
+    ) {
+        public RagLibrarySearchResult {
+            uid = uid == null ? "" : uid.trim();
+            entries = entries != null ? List.copyOf(entries) : List.of();
+        }
+    }
+
     private static final class LlmStreamFinishHolder {
         private volatile LlmStreamFinish finish;
 
@@ -837,7 +926,6 @@ public class LLMService {
         private LlmPerformanceProvider performanceProvider = LlmPerformanceProvider.UNAVAILABLE;
         private boolean usePersistentCache = true;
         private java.nio.file.Path cacheDirectory;
-        private java.nio.file.Path globalCacheDirectory;
         private String cacheNamespace = "default";
         private boolean embeddingConfigured;
 
@@ -881,11 +969,6 @@ public class LLMService {
             return this;
         }
 
-        public Builder globalCacheDirectory(java.nio.file.Path globalCacheDirectory) {
-            this.globalCacheDirectory = globalCacheDirectory;
-            return this;
-        }
-
         public Builder cacheNamespace(String cacheNamespace) {
             this.cacheNamespace = cacheNamespace;
             return this;
@@ -903,14 +986,6 @@ public class LLMService {
                 Objects.requireNonNull(cacheDirectory, "cacheDirectory must be set when persistent cache is enabled");
             }
             return new LLMService(this);
-        }
-
-        private java.nio.file.Path globalCacheDirectory() {
-            if (globalCacheDirectory != null) {
-                return globalCacheDirectory;
-            }
-            java.nio.file.Path parent = cacheDirectory == null ? null : cacheDirectory.getParent();
-            return parent == null ? java.nio.file.Path.of("global") : parent.resolve("global");
         }
     }
 

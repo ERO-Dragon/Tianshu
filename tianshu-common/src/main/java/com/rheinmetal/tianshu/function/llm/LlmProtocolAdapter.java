@@ -669,8 +669,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 chunk.ragContent(),
                 Boolean.TRUE.equals(chunk.useCache()),
                 Boolean.TRUE.equals(chunk.includeRagHits()),
-                chunk.memoryRagTokenBudget() != null ? chunk.memoryRagTokenBudget() : 1000,
-                Boolean.TRUE.equals(chunk.globalRagCache())
+                chunk.memoryRagTokenBudget() != null ? chunk.memoryRagTokenBudget() : 1000
         );
     }
 
@@ -693,23 +692,61 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
         try {
             LLMCacheManageResultPayload result = switch (payload.action()) {
-                case LLMCacheManagePayload.ACTION_INDEX -> {
-                    llmService.indexCache(payload.uid(), payload.contents(), Boolean.TRUE.equals(payload.globalRagCache()));
-                    yield LLMCacheManageResultPayload.indexed(payload.uid(), true);
+                case LLMCacheManagePayload.ACTION_UPSERT_ENTRY -> {
+                    llmService.upsertRagEntry(payload.uid(), payload.entryId(), payload.content(), payload.vector());
+                    yield LLMCacheManageResultPayload.upserted(payload.uid(), payload.entryId());
                 }
-                case LLMCacheManagePayload.ACTION_EVICT_ALL -> {
-                    llmService.evictCache(payload.uid(), Boolean.TRUE.equals(payload.globalRagCache()));
-                    yield LLMCacheManageResultPayload.evicted(payload.uid(), true);
+                case LLMCacheManagePayload.ACTION_PATCH_ENTRY -> {
+                    llmService.patchRagEntry(payload.uid(), payload.entryId(), payload.content(), payload.vector(),
+                            Boolean.TRUE.equals(payload.updateContent()), Boolean.TRUE.equals(payload.updateVector()));
+                    yield LLMCacheManageResultPayload.patched(payload.uid(), payload.entryId(), llmService.hasRagEntry(payload.uid(), payload.entryId()));
                 }
-                case LLMCacheManagePayload.ACTION_EVICT_CONTENT -> {
-                    for (String content : payload.contents()) {
-                        llmService.evictCache(payload.uid(), content, Boolean.TRUE.equals(payload.globalRagCache()));
-                    }
-                    yield LLMCacheManageResultPayload.evicted(payload.uid(), true);
+                case LLMCacheManagePayload.ACTION_DELETE_ENTRY -> {
+                    llmService.deleteRagEntry(payload.uid(), payload.entryId());
+                    yield LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId());
                 }
-                case LLMCacheManagePayload.ACTION_QUERY -> {
-                    boolean exists = llmService.hasCache(payload.uid(), Boolean.TRUE.equals(payload.globalRagCache()));
-                    yield LLMCacheManageResultPayload.queried(payload.uid(), exists);
+                case LLMCacheManagePayload.ACTION_CLEAR_UID -> {
+                    llmService.clearRagUid(payload.uid());
+                    yield LLMCacheManageResultPayload.cleared(payload.uid());
+                }
+                case LLMCacheManagePayload.ACTION_REGISTER_LIBRARY -> {
+                    var library = llmService.registerRagLibrary(payload.uid(), payload.modid(), payload.visibility(), payload.tags());
+                    yield LLMCacheManageResultPayload.registered(toLibraryPayload(library));
+                }
+                case LLMCacheManagePayload.ACTION_UNREGISTER_LIBRARY -> {
+                    llmService.unregisterRagLibrary(payload.uid());
+                    yield LLMCacheManageResultPayload.unregistered(payload.uid());
+                }
+                case LLMCacheManagePayload.ACTION_QUERY_UID -> {
+                    boolean exists = llmService.hasRagUid(payload.uid());
+                    yield LLMCacheManageResultPayload.queried(payload.uid(), exists, toLibraryPayload(llmService.ragLibrary(payload.uid())));
+                }
+                case LLMCacheManagePayload.ACTION_SEARCH_UID -> {
+                    List<LLMService.RagLibrarySearchResult> results = llmService.searchRagLibraryByUid(
+                            payload.uid(),
+                            payload.queryText(),
+                            payload.topK(),
+                            payload.threshold()
+                    );
+                    yield LLMCacheManageResultPayload.searched(payload.action(), payload.uid(), toHitGroups(results), toLibraryPayloads(results));
+                }
+                case LLMCacheManagePayload.ACTION_SEARCH_MODID -> {
+                    List<LLMService.RagLibrarySearchResult> results = llmService.searchSharedRagLibrariesByModid(
+                            payload.modid(),
+                            payload.queryText(),
+                            payload.topK(),
+                            payload.threshold()
+                    );
+                    yield LLMCacheManageResultPayload.searched(payload.action(), "", toHitGroups(results), toLibraryPayloads(results));
+                }
+                case LLMCacheManagePayload.ACTION_SEARCH_TAGS -> {
+                    List<LLMService.RagLibrarySearchResult> results = llmService.searchSharedRagLibrariesByTags(
+                            payload.tags(),
+                            payload.queryText(),
+                            payload.topK(),
+                            payload.threshold()
+                    );
+                    yield LLMCacheManageResultPayload.searched(payload.action(), "", toHitGroups(results), toLibraryPayloads(results));
                 }
                 default -> LLMCacheManageResultPayload.failed(payload.uid(), "Unknown action: " + payload.action());
             };
@@ -721,6 +758,38 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     LLMCacheManageResultPayload.failed(payload.uid(), e.getMessage()));
             fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", e.getMessage(), e);
         }
+    }
+
+    private List<LLMCacheManageResultPayload.HitGroupPayload> toHitGroups(List<LLMService.RagLibrarySearchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return List.of();
+        }
+        return results.stream()
+                .map(result -> LLMCacheManageResultPayload.HitGroupPayload.of(
+                        result.uid(),
+                        result.entries().stream()
+                                .map(hit -> LLMCacheManageResultPayload.HitEntryPayload.of(hit.entryId(), hit.content(), hit.score()))
+                                .toList()
+                ))
+                .toList();
+    }
+
+    private List<LLMCacheManageResultPayload.LibraryPayload> toLibraryPayloads(List<LLMService.RagLibrarySearchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return List.of();
+        }
+        return results.stream()
+                .map(LLMService.RagLibrarySearchResult::library)
+                .filter(java.util.Objects::nonNull)
+                .map(this::toLibraryPayload)
+                .toList();
+    }
+
+    private LLMCacheManageResultPayload.LibraryPayload toLibraryPayload(com.rheinmetal.tianshu.function.llm.service.RagLibraryRegistry.RagLibraryMeta meta) {
+        if (meta == null) {
+            return null;
+        }
+        return LLMCacheManageResultPayload.LibraryPayload.of(meta.uid(), meta.modid(), meta.visibility(), meta.tags());
     }
 
     public void handleLLMPrimitiveQuery(TianshuEnvelope envelope, ProtocolContext context) {
@@ -791,8 +860,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                             chunk.ragContent(),
                             Boolean.TRUE.equals(chunk.useCache()),
                             Boolean.TRUE.equals(chunk.includeRagHits()),
-                            chunk.memoryRagTokenBudget() != null ? chunk.memoryRagTokenBudget() : 1000,
-                            Boolean.TRUE.equals(chunk.globalRagCache())
+                            chunk.memoryRagTokenBudget() != null ? chunk.memoryRagTokenBudget() : 1000
                     ));
                 }
             }

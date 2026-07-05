@@ -673,7 +673,7 @@ class LlmProtocolAdapterTest {
     }
 
     @Test
-    void cacheManageIndexCanAddGlobalRagLibrary() {
+    void cacheManageUpsertCanAddRagEntry() {
         PendingInferenceClient client = new PendingInferenceClient();
         LLMService service = LLMService.builder()
                 .env(new FakeGameEnvironment())
@@ -687,7 +687,7 @@ class LlmProtocolAdapterTest {
                         "test",
                         ProtocolCapabilities.LLM_CACHE_MANAGE,
                         PayloadType.LLM_CACHE_MANAGE,
-                        LLMCacheManagePayload.indexGlobal("shared", List.of("global memory"))
+                        LLMCacheManagePayload.upsertEntry("shared", "entry-a", "memory", null)
                 )
                 .build();
         AtomicReference<LLMCacheManageResultPayload> result = registerCacheManageResultCapture(runtime, envelope.envelopeId());
@@ -696,9 +696,9 @@ class LlmProtocolAdapterTest {
 
         await(() -> result.get() != null);
         assertEquals(1, context.completed.get());
-        assertEquals("INDEX", result.get().action());
-        assertEquals(true, service.hasCache("shared", true));
-        assertEquals(false, service.hasCache("shared", false));
+        assertEquals("UPSERT_ENTRY", result.get().action());
+        assertEquals(true, service.hasRagEntry("shared", "entry-a"));
+        assertEquals(true, service.hasCache("shared"));
     }
 
     @Test
