@@ -35,7 +35,7 @@ AX 的 prompt 输入不是简单的“静态、动态、记忆”三个池子并
 
 - 静态知识用于解释 MC 原版、模组、规则、资料和玩法。
 - 动态环境用于命中本轮动态事实，理解“这个、手上、附近、我面前”等现场指代，并为静态知识检索提供更准确的 query 材料。
-- 玩家记忆用于解释玩家和 AX 的历史，不进入 LLM RAG cache。
+- 玩家记忆用于解释玩家和 AX 的历史；权威数据、E/STM 语义和最终注入都由 AX 管理。LLM RAG 只可承接 AX 私有、可重建的检索投影，不作为玩家记忆权威库，也不混入 shared 静态知识库。
 
 命中的动态事实进入 `<game_context>` 的 `dynamic_content`，同时作为动态引导静态 RAG 的 query 材料。动态事实和动态事实命中的静态 RAG 内容属于同一条动态内容链路，不应混成长期记忆。
 
@@ -83,9 +83,9 @@ message chunk:
 2. 规范化当前输入
 3. 读取近期完整对话轮次
 4. 通过 `PRESENCE.QUERY_CONTEXT` 等能力请求获取本轮动态事实候选
-5. 用当前输入筛选动态环境，得到相关动态事实
+5. 用当前输入对本轮动态环境候选做临时动态事实检索，得到命中动态事实
 6. 用当前输入直接规划静态知识 RAG query
-7. 用 当前输入 + 命中的动态事实 规划静态知识 RAG query
+7. 用 当前输入 + 命中的动态事实 规划动态引导静态知识 RAG query
 8. 在静态 RAG 可用时解析静态知识命中内容
 9. 检索玩家记忆 E，并映射到 STM 注入片段
 10. 按模型预算选择 message 分区内容
@@ -156,7 +156,7 @@ AX
 
 ```text
 AX 准备静态资料
-  -> LLM_CACHE_MANAGE INDEX
+  -> LLM_CACHE_MANAGE REGISTER_LIBRARY / UPSERT_ENTRY
   -> LLM 模块生成并缓存向量
   -> AX 按当前输入 / 动态环境 query 获取命中内容
   -> AX 将命中内容渲染进 <game_context>
@@ -169,24 +169,31 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 ```text
 直接静态 RAG:
   当前输入
-    -> static knowledge query
+    -> SEARCH_TAGS(tags=[main])
+    -> static knowledge query hit
 
 动态引导静态 RAG:
   当前输入
-    -> dynamic environment hits
-    -> 当前输入 + 方块/物品/实体/维度等规范化环境事实
-    -> static knowledge query
+    -> 对本轮动态环境候选做临时动态事实检索
+    -> dynamic fact hits
+    -> 当前输入 + 命中动态事实中的方块/物品/实体/维度等规范化环境事实
+    -> SEARCH_TAGS(tags=[main, addon])
+    -> dynamic path static knowledge hit
 ```
 
 动态环境命中后，应优先把动态事实规范化为稳定标识，例如物品 ID、方块 ID、实体 ID、模组 ID、维度 ID 或结构名，而不是把完整环境快照塞进 query。
+这里的“临时动态事实检索”只检索本轮动态候选，不写持久 RAG cache，也不直接作为最终 CHAT 的 `rag` chunk 注入；它产出的命中动态事实与随后命中的静态知识一起进入 `game_context.dynamic_content`。
+当前 LLM 协议已通过 `LLM_CACHE_MANAGE / SEARCH_INLINE_CONTENTS` 提供“只检索、不生成、不落盘”的内联 RAG 查询动作；AX 通过该动作召回命中动态事实，不在自身模块内复刻轻量 RAG 实现，也不把全部动态候选直接拿去做 `main/addon` 静态召回。
 
 ## 7. 玩家记忆注入
 
-玩家记忆走 AX 私有记忆系统，不走 LLM RAG cache。
+玩家记忆走 AX 私有记忆系统。AX 可以把二级簇 centroid 与 E factText 投影到 LLM 私有 RAG uid，用于复用 LLM 的向量检索能力；但 LLM 只返回 `uid + entryId` 命中，AX 必须回自己的权威库加载 E，再做 `E -> STM` 折叠、链式发散和预算注入。
 
 ```text
 当前输入
-  -> E 检索
+  -> L1 私有 RAG uid 检索二级簇 entryId
+  -> 命中的 L2 私有 RAG uid 检索 eventId
+  -> 回 AX 权威库加载 E
   -> STM 有效映射
   -> STM 贡献分计算
   -> 可选 STM 链式发散
@@ -333,7 +340,7 @@ AX 对 LLM 的所有访问必须经过协议中心。
 
 - 直接静态 RAG 和动态引导静态 RAG 是两条不同链路。
 - 动态环境先服务当前指代，再服务静态知识检索扩展。
-- 玩家记忆由 AX 自己检索和注入，不进入 LLM RAG cache。
+- 玩家记忆由 AX 自己管理和注入；LLM RAG 只承接 AX 私有检索投影，不拥有 E/STM 语义。
 - 静态知识复用 LLM RAG cache，不污染 AX 私有记忆。
 - Prompt 编排必须保持分区，不做无差别文本池。
 - 一期自然交互基线是固定管线，但必须保留二期技能协作的扩展位置。

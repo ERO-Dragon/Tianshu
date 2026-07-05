@@ -11,7 +11,7 @@ LLM 模块对外提供三个协议能力：
 | 能力 | Payload | 说明 |
 |------|---------|------|
 | `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptRequestPayload` | 发起聊天、流式聊天、后台 TASK |
-| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManagePayload` | 管理、查询持久 RAG 条目 |
+| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManagePayload` | 管理、查询持久 RAG 条目；提供无副作用内联 RAG 召回 |
 | `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveQueryPayload` | token 计数、embedding 向量化、运行态快照 |
 
 响应类型：
@@ -126,7 +126,7 @@ TASK 请求不走 CHAT 的 IA 授权，但会进入 LLM 模块的 TASK admission
 | `ragContent` | 空列表 | `type=rag` 时使用。非空时可被增量索引进 RAG cache。 |
 | `uid` | 空字符串 | RAG 库标识；LLM 只按 uid 分桶，不理解世界、全局、模块、聚类等上层语义。 |
 | `prompt` | 空字符串 | RAG 命中内容注入模型前的提示前缀。 |
-| `useCache` | `true` | `true` 使用 LLM 模块持久 RAG cache；`false` 仅对本次 `ragContent` 走 libs 临时检索。 |
+| `useCache` | `true` | `true` 使用 LLM 模块持久 RAG cache；`false` 仅对本次 `ragContent` 走 libs 内联检索。 |
 | `includeRagHits` | `true` | 是否在最终 `LLMPromptResultPayload` 中返回命中的 RAG 内容。 |
 | `memoryRagTokenBudget` | `1000` | 本 chunk 注入模型的 RAG 文本预算。 |
 
@@ -288,17 +288,18 @@ protocolRuntime.submit(envelope);
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `action` | `"QUERY_UID"` | 操作类型：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`。 |
+| `action` | `"QUERY_UID"` | 操作类型：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`SEARCH_INLINE_CONTENTS`。 |
 | `uid` | 空字符串 | RAG 库标识。一个 uid 表示一个库/簇；调用方自行把世界、模块、层级等作用域编码进 uid。 |
 | `modid` | 空字符串 | RAG 库所属 modid；用于 `REGISTER_LIBRARY` 和 `SEARCH_MODID`。同一个 modid 可以注册多个 uid。 |
 | `visibility` | `"SHARED"` | RAG 库可见性：`SHARED` 可被 `modid/tag` 聚合检索发现；`PRIVATE` 不参与共享发现。 |
 | `tags` | 空列表 | RAG 库标签；用于 `REGISTER_LIBRARY` 和 `SEARCH_TAGS`，例如 `main`、`addon`。 |
 | `entryId` | 空字符串 | 条目 id，由调用方拥有；LLM 只存储和返回该 id。 |
 | `content` | 空字符串 | 条目文本，可为空。为空时仍可依赖调用方传入的向量参与检索。 |
+| `contents` | 空列表 | `SEARCH_INLINE_CONTENTS` 的请求内联候选文本列表；只参与本次检索，不写入持久 RAG cache。 |
 | `vector` | 空向量 | 条目向量，可为空。为空且 `content` 非空时，LLM 会用当前 embedding 服务生成向量。 |
 | `updateContent` | `false` | `PATCH_ENTRY` 时是否更新文本。 |
 | `updateVector` | `false` | `PATCH_ENTRY` 时是否更新向量。 |
-| `queryText` | 空字符串 | `SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS` 时的查询文本。 |
+| `queryText` | 空字符串 | `SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`SEARCH_INLINE_CONTENTS` 时的查询文本。 |
 | `topK` | `4` | 每个 uid 返回条数。 |
 | `threshold` | `0.7` | 命中阈值。 |
 
@@ -314,13 +315,14 @@ LLMCacheManagePayload.queryUid("ax.memory.cluster.cluster-001");
 LLMCacheManagePayload.searchUid("ax.memory.cluster.cluster-001", "玩家问钻石镐在哪里", 4, 0.7f);
 LLMCacheManagePayload.searchModid("botania", "魔力池怎么做", 4, 0.7f);
 LLMCacheManagePayload.searchTags(List.of("main", "addon"), "钻石镐在哪里", 4, 0.7f);
+LLMCacheManagePayload.searchInlineContents("module.example.inline", "钻石镐在哪里", candidateTexts, 4, 0.7f);
 ```
 
 ### 4.2 LLMCacheManageResultPayload 字段
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `action` | 空字符串 | 结果动作：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`FAILED`。 |
+| `action` | 空字符串 | 结果动作：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`SEARCH_INLINE_CONTENTS`、`FAILED`。 |
 | `uid` | 空字符串 | 对应 RAG 库标识。 |
 | `entryId` | 空字符串 | 对应条目 id；仅条目级操作返回。 |
 | `success` | 调用方传入值 | 操作是否成功。 |
@@ -340,6 +342,7 @@ LLM 只理解“库”和“条目”：
 - `SEARCH_UID`：只检索指定 uid。
 - `SEARCH_MODID`：检索该 modid 下所有 `SHARED` 的 uid；同一个 modid 可以有多个 uid。
 - `SEARCH_TAGS`：检索所有 `SHARED` 且命中任意 tag 的 uid。
+- `SEARCH_INLINE_CONTENTS`：只检索请求携带的 `contents`，不注册库、不写入 cache、不触发生成。返回的 `entryId` 是输入列表中的稳定下标字符串。
 
 AX 记忆检索示例：
 - 已知某个二级簇时：`uid = ax.memory.cluster.<clusterId>`，`entryId = eventId`，`content = E.factText`。

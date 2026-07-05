@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance;
 
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
@@ -28,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRagProjectionService;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXWorldEventMemoryLinker;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVector;
@@ -49,6 +51,7 @@ public final class AXMemoryMaintenanceService {
     private final AXRecentDialogueSystem recentDialogueSystem;
     private final AXLlmClient llmClient;
     private final AXLlmPrimitiveClient primitiveClient;
+    private final AXMemoryRagProjectionService ragProjectionService;
     private final AXMemoryTaskPromptRepository promptRepository;
     private final AXMemoryFactExtractionParser factExtractionParser = new AXMemoryFactExtractionParser();
     private final AXWorldEventMemoryLinker worldEventLinker = new AXWorldEventMemoryLinker(null);
@@ -63,7 +66,7 @@ public final class AXMemoryMaintenanceService {
             AXLlmClient llmClient,
             AXLlmPrimitiveClient primitiveClient
     ) {
-        this(adapter, memorySystem, recentDialogueSystem, llmClient, primitiveClient, null);
+        this(adapter, memorySystem, recentDialogueSystem, llmClient, primitiveClient, null, null);
     }
 
     public AXMemoryMaintenanceService(
@@ -74,11 +77,24 @@ public final class AXMemoryMaintenanceService {
             AXLlmPrimitiveClient primitiveClient,
             AXMemoryTaskPromptRepository promptRepository
     ) {
+        this(adapter, memorySystem, recentDialogueSystem, llmClient, primitiveClient, null, promptRepository);
+    }
+
+    public AXMemoryMaintenanceService(
+            AXProtocolAdapter adapter,
+            AXMemorySystem memorySystem,
+            AXRecentDialogueSystem recentDialogueSystem,
+            AXLlmClient llmClient,
+            AXLlmPrimitiveClient primitiveClient,
+            AXLlmRagClient ragClient,
+            AXMemoryTaskPromptRepository promptRepository
+    ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.memorySystem = Objects.requireNonNull(memorySystem, "memorySystem");
         this.recentDialogueSystem = recentDialogueSystem;
         this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
         this.primitiveClient = Objects.requireNonNull(primitiveClient, "primitiveClient");
+        this.ragProjectionService = ragClient == null ? null : new AXMemoryRagProjectionService(this.memorySystem, ragClient);
         this.promptRepository = promptRepository == null ? new AXMemoryTaskPromptRepository(null, null) : promptRepository;
         this.derivedMaintenanceService = new AXMemoryDerivedMaintenanceService(this.memorySystem);
     }
@@ -139,9 +155,11 @@ public final class AXMemoryMaintenanceService {
                 }
             }
         }
-        int rebuiltVectors = rebuildMissingVectors(scope, startedStatusPublished).join();
+        VectorRebuildResult vectorResult = rebuildMissingVectors(scope, startedStatusPublished).join();
+        int rebuiltVectors = vectorResult.rebuiltVectors();
+        int projectedEntries = projectMemoryRag(scope, vectorResult.embeddingNamespace(), startedStatusPublished).join();
         AXMemoryDerivedMaintenanceResult derivedResult = derivedMaintenanceService.maintain(scope);
-        if (compressed || rebuiltVectors > 0 || (derivedResult.ran() && derivedResult.stmChainRewritten())) {
+        if (compressed || rebuiltVectors > 0 || projectedEntries > 0 || (derivedResult.ran() && derivedResult.stmChainRewritten())) {
             publishCompleteStatus();
         }
     }
@@ -212,17 +230,17 @@ public final class AXMemoryMaintenanceService {
         return future.exceptionally(error -> fallback);
     }
 
-    private CompletableFuture<Integer> rebuildMissingVectors(AXScope scope, AtomicBoolean startedStatusPublished) {
-        CompletableFuture<Integer> done = new CompletableFuture<>();
+    private CompletableFuture<VectorRebuildResult> rebuildMissingVectors(AXScope scope, AtomicBoolean startedStatusPublished) {
+        CompletableFuture<VectorRebuildResult> done = new CompletableFuture<>();
         primitiveClient.requestStatus("ax.memory.embedding.status", status -> {
             if (!completed(status) || !embeddingUsable(status.runtimeSnapshot())) {
-                done.complete(0);
+                done.complete(VectorRebuildResult.none());
                 return;
             }
             String namespace = status.runtimeSnapshot().embeddingNamespace();
             List<AXMemoryEvent> missing = missingVectorEvents(scope, namespace);
             if (missing.isEmpty()) {
-                done.complete(0);
+                done.complete(new VectorRebuildResult(namespace, 0));
                 return;
             }
             publishStartedStatus(startedStatusPublished);
@@ -231,9 +249,9 @@ public final class AXMemoryMaintenanceService {
         return done;
     }
 
-    private void embedBatches(AXScope scope, String namespace, String modelName, List<AXMemoryEvent> events, int from, int written, CompletableFuture<Integer> done) {
+    private void embedBatches(AXScope scope, String namespace, String modelName, List<AXMemoryEvent> events, int from, int written, CompletableFuture<VectorRebuildResult> done) {
         if (from >= events.size()) {
-            done.complete(written);
+            done.complete(new VectorRebuildResult(namespace, written));
             return;
         }
         int to = Math.min(events.size(), from + VECTOR_BATCH_SIZE);
@@ -250,6 +268,16 @@ public final class AXMemoryMaintenanceService {
             }
             embedBatches(scope, namespace, modelName, events, to, nextWritten, done);
         });
+    }
+
+    private CompletableFuture<Integer> projectMemoryRag(AXScope scope, String embeddingNamespace, AtomicBoolean startedStatusPublished) {
+        if (ragProjectionService == null || embeddingNamespace == null || embeddingNamespace.isBlank()) {
+            return CompletableFuture.completedFuture(0);
+        }
+        publishStartedStatus(startedStatusPublished);
+        memorySystem.invalidateRetrievalIndex(scope);
+        return ragProjectionService.project(scope, embeddingNamespace)
+                .exceptionally(ignored -> 0);
     }
 
     private void publishStartedStatus(AtomicBoolean published) {
@@ -401,6 +429,17 @@ public final class AXMemoryMaintenanceService {
 
     private boolean embeddingUsable(LLMRuntimeSnapshotPayload snapshot) {
         return snapshot != null && snapshot.embeddingAvailable() && !snapshot.embeddingNamespace().isBlank();
+    }
+
+    private record VectorRebuildResult(String embeddingNamespace, int rebuiltVectors) {
+        private VectorRebuildResult {
+            embeddingNamespace = embeddingNamespace == null ? "" : embeddingNamespace.trim();
+            rebuiltVectors = Math.max(0, rebuiltVectors);
+        }
+
+        private static VectorRebuildResult none() {
+            return new VectorRebuildResult("", 0);
+        }
     }
 
     private static final class AXStorageSafeName {

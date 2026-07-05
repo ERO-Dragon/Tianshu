@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.llm.service.LlmInferencePolicy;
 import com.rheinmetal.tianshu.function.llm.service.LLMRequest;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.MessageItem;
+import com.rheinmetal.tianshu.function.llm.service.RagCacheManager;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationResultPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -748,6 +749,14 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     );
                     yield LLMCacheManageResultPayload.searched(payload.action(), "", toHitGroups(results), toLibraryPayloads(results));
                 }
+                case LLMCacheManagePayload.ACTION_SEARCH_INLINE_CONTENTS -> {
+                    List<RagCacheManager.RagEntrySearchResult> entries =
+                            llmService.searchInlineRagContents(payload.contents(), payload.queryText(), payload.topK(), payload.threshold());
+                    List<LLMCacheManageResultPayload.HitGroupPayload> hits = entries.isEmpty()
+                            ? List.of()
+                            : List.of(toHitGroup(payload.uid(), entries));
+                    yield LLMCacheManageResultPayload.searched(payload.action(), payload.uid(), hits, List.of());
+                }
                 default -> LLMCacheManageResultPayload.failed(payload.uid(), "Unknown action: " + payload.action());
             };
 
@@ -772,6 +781,18 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                                 .toList()
                 ))
                 .toList();
+    }
+
+    private LLMCacheManageResultPayload.HitGroupPayload toHitGroup(
+            String uid,
+            List<RagCacheManager.RagEntrySearchResult> entries
+    ) {
+        return LLMCacheManageResultPayload.HitGroupPayload.of(
+                uid,
+                entries == null ? List.of() : entries.stream()
+                        .map(hit -> LLMCacheManageResultPayload.HitEntryPayload.of(hit.entryId(), hit.content(), hit.score()))
+                        .toList()
+        );
     }
 
     private List<LLMCacheManageResultPayload.LibraryPayload> toLibraryPayloads(List<LLMService.RagLibrarySearchResult> results) {

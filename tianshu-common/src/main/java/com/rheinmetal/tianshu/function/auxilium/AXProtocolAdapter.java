@@ -210,6 +210,14 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
+    public void unregisterLlmCacheManageResponses(String requestEnvelopeId) {
+        unregisterResponseHandlers(requestEnvelopeId);
+    }
+
+    public int llmCacheManageProviderCount() {
+        return runtime().capabilities().findCapability(ProtocolCapabilities.LLM_CACHE_MANAGE).size();
+    }
+
     public void registerLlmPromptResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AXGameContextPromptContributorTest {
     @Test
     void dynamicFactsAndDynamicRagHitsShareDynamicContent() {
-        AXStaticKnowledgePlanner planner = (request, context, budget) -> List.of(
+        AXGameContextKnowledgePlanner planner = (request, context, budget) -> List.of(
                 AXKnowledgeHit.dynamic("ax.dynamic_knowledge.mock", List.of("minecraft:anvil | 当前指向铁砧时，应说明修复、改名和附魔合并。")),
                 AXKnowledgeHit.of("ax.static_knowledge.mock", List.of("minecraft:anvil | 铁砧可以修复工具。"))
         );

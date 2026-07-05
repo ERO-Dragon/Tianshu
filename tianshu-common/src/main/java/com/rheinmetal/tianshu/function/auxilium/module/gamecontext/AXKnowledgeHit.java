@@ -24,8 +24,13 @@ public record AXKnowledgeHit(
         return new AXKnowledgeHit(uid, facts, QueryPath.DYNAMIC_RAG);
     }
 
+    public static AXKnowledgeHit dynamicFacts(String uid, List<String> facts) {
+        return new AXKnowledgeHit(uid, facts, QueryPath.DYNAMIC_FACT);
+    }
+
     public enum QueryPath {
         INPUT_RAG,
+        DYNAMIC_FACT,
         DYNAMIC_RAG
     }
 }

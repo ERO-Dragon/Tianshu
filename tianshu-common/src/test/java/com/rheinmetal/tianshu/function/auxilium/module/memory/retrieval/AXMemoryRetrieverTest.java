@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval;
 
-import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
@@ -12,26 +12,11 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemory
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalResult;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.index.AXMemoryRetrievalIndexSnapshot;
-import com.rheinmetal.tianshu.protocol.BrokerType;
-import com.rheinmetal.tianshu.protocol.CompletionPolicy;
-import com.rheinmetal.tianshu.protocol.PacketType;
-import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
-import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -49,7 +34,8 @@ class AXMemoryRetrieverTest {
     @Test
     void ranksStmByContributionAcrossMultipleMatchingEvents() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        registerPrimitiveProvider(runtime);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
                 new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
@@ -68,7 +54,8 @@ class AXMemoryRetrieverTest {
                 vector(targetB, new float[]{0.8F, 0.2F}),
                 vector(weakerEvent, new float[]{0.6F, 0.4F})
         ));
-        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L));
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
         retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000), result::set);
@@ -89,7 +76,8 @@ class AXMemoryRetrieverTest {
     @Test
     void returnsSelectedStmBlocksInTimelineOrderWithoutDuplicates() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        registerPrimitiveProvider(runtime);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
                 new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
@@ -108,7 +96,8 @@ class AXMemoryRetrieverTest {
                 vector(e3a, new float[]{1.0F, 0.0F}),
                 vector(e3b, new float[]{0.9F, 0.1F})
         ));
-        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L));
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
         retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 2, 1000), result::set);
@@ -120,7 +109,8 @@ class AXMemoryRetrieverTest {
     @Test
     void expandsConfidentHitToAdjacentStmChainInTimelineOrder() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        registerPrimitiveProvider(runtime);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
                 new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
@@ -133,7 +123,8 @@ class AXMemoryRetrieverTest {
         AXMemoryEvent e2 = event(scope, s2, "玩家在村庄铁匠铺找到钻石镐。");
         memorySystem.events().appendAll(scope, List.of(e2));
         memorySystem.vectors().appendAll(scope, List.of(vector(e2, new float[]{1.0F, 0.0F})));
-        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L));
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
         retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 3, 1000), result::set);
@@ -150,7 +141,7 @@ class AXMemoryRetrieverTest {
                         new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
                         new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
                 ),
-                new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L)
+                new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L)
         );
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
@@ -204,81 +195,6 @@ class AXMemoryRetrieverTest {
 
     private AXScope scope() {
         return new AXScope("player", "save:Test", "Test", AXScopeKind.LOCAL_WORLD, true);
-    }
-
-    private static void registerPrimitiveProvider(ProtocolRuntime runtime) {
-        AdapterDefaults defaults = AdapterDefaults.standard();
-        runtime.registerModule(new ModuleDescriptor(
-                "module.llm.test",
-                List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                        PayloadType.LLM_PRIMITIVE_QUERY,
-                        LLMPrimitiveQueryPayload.class,
-                        BrokerType.BOUNDED_QUEUE,
-                        EnumSet.of(PacketType.REQUEST),
-                        Priority.LOW,
-                        CompletionPolicy.MANUAL_COMPLETE
-                )),
-                defaults.threadPolicy(),
-                defaults.cancellationScope(),
-                defaults.failurePolicy(),
-                defaults.deliveryPolicy(),
-                defaults.cancellable(),
-                defaults.supportsStreaming(),
-                defaults.maxConcurrency(),
-                defaults.queueCapacity()
-        ), AXMemoryRetrieverTest::handlePrimitive);
-    }
-
-    private static void handlePrimitive(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof LLMPrimitiveQueryPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "invalid", null);
-            return;
-        }
-        if (LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS.equals(payload.queryType())) {
-            context.submit(com.rheinmetal.tianshu.protocol.EnvelopeBuilder.responseTo(
-                    "module.llm.test",
-                    envelope,
-                    PayloadType.LLM_PRIMITIVE_RESULT,
-                    LLMPrimitiveResultPayload.runtime(payload.requestId(), new LLMRuntimeSnapshotPayload(
-                            true,
-                            true,
-                            true,
-                            2,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            0,
-                            0,
-                            4096,
-                            3000,
-                            true,
-                            true,
-                            true,
-                            0,
-                            0,
-                            0,
-                            "test-model",
-                            "test-profile",
-                            "test-embed",
-                            "test-embed:v1",
-                            "",
-                            System.currentTimeMillis()
-                    ))
-            ).build());
-        } else if (LLMPrimitiveQueryPayload.QUERY_TYPE_EMBED.equals(payload.queryType())) {
-            context.submit(com.rheinmetal.tianshu.protocol.EnvelopeBuilder.responseTo(
-                    "module.llm.test",
-                    envelope,
-                    PayloadType.LLM_PRIMITIVE_RESULT,
-                    LLMPrimitiveResultPayload.embed(payload.requestId(), List.of(
-                            LLMPrimitiveResultPayload.EmbedResultPayload.of(payload.texts().isEmpty() ? "" : payload.texts().get(0), new float[]{1.0F, 0.0F}, true, "test-embed", "test-embed:v1")
-                    ))
-            ).build());
-        }
-        context.complete(envelope.envelopeId());
     }
 
     private static void await(java.util.function.BooleanSupplier condition) {

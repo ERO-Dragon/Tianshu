@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetR
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.core.maintenance.AXRuntimeMaintenanceCoordinator;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
@@ -25,6 +26,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXSharedKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceChatMessageMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceWorldEventMapper;
@@ -66,6 +68,7 @@ public final class AXModule implements TianshuManagedModule {
     private AXLlmClient llmClient;
     private AXLlmPrimitiveClient retrievalPrimitiveClient;
     private AXLlmPrimitiveClient maintenancePrimitiveClient;
+    private AXLlmRagClient ragClient;
     private AXDynamicFactClient dynamicFactClient;
     private AXRuntimeMaintenanceCoordinator maintenanceCoordinator;
     private AXStorageLayout storageLayout;
@@ -117,6 +120,7 @@ public final class AXModule implements TianshuManagedModule {
         turnStatusPublisher = new AXTurnStatusPublisher(adapter);
         retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, 1_000L);
         maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, 30_000L);
+        ragClient = new AXLlmRagClient(adapter, 2_000L);
         storageLayout = new AXStorageLayout(config);
         AXJsonStore jsonStore = new AXJsonStore(env);
         AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.fromConfig(config);
@@ -132,13 +136,19 @@ public final class AXModule implements TianshuManagedModule {
                 recentDialogueSystem,
                 llmClient,
                 maintenancePrimitiveClient,
+                ragClient,
                 memoryTaskPromptRepository
         );
         maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(memoryMaintenanceService);
-        AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, retrievalPrimitiveClient);
+        AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, ragClient);
         AXContextCollector contextCollector = new AXContextCollector(memorySystem, recentDialogueSystem);
         AXPromptResourceRepository promptRepository = new AXPromptResourceRepository(storageLayout, jsonStore);
-        AXPromptOrchestrator promptOrchestrator = new AXPromptOrchestrator(promptRepository, promptLanguageProvider, null);
+        AXPromptOrchestrator promptOrchestrator = new AXPromptOrchestrator(
+                promptRepository,
+                promptLanguageProvider,
+                new AXSharedKnowledgePlanner(ragClient),
+                null
+        );
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
         AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator);
         AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, memoryPolicy);
@@ -189,6 +199,9 @@ public final class AXModule implements TianshuManagedModule {
         if (maintenancePrimitiveClient != null) {
             maintenancePrimitiveClient.sweepExpired();
         }
+        if (ragClient != null) {
+            ragClient.sweepExpired();
+        }
     }
 
     @Override
@@ -205,6 +218,9 @@ public final class AXModule implements TianshuManagedModule {
         if (maintenancePrimitiveClient != null) {
             maintenancePrimitiveClient.clear();
         }
+        if (ragClient != null) {
+            ragClient.clear();
+        }
         if (dynamicFactClient != null) {
             dynamicFactClient.clear();
         }
@@ -220,6 +236,7 @@ public final class AXModule implements TianshuManagedModule {
         llmClient = null;
         retrievalPrimitiveClient = null;
         maintenancePrimitiveClient = null;
+        ragClient = null;
         dynamicFactClient = null;
         maintenanceCoordinator = null;
         storageLayout = null;

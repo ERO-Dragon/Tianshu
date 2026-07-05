@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.prompt;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
-import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXStaticKnowledgePlanner;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXGameContextKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXCurrentInputPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXGameContextPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPlayerMemoryPromptContributor;
@@ -32,29 +32,29 @@ public final class AXPromptOrchestrator {
             AXPromptLanguageProvider languageProvider,
             List<AXPromptContributor> contributors
     ) {
-        this(resourceRepository, languageProvider, AXStaticKnowledgePlanner.NONE, contributors);
+        this(resourceRepository, languageProvider, AXGameContextKnowledgePlanner.NONE, contributors);
     }
 
     public AXPromptOrchestrator(
             AXPromptResourceRepository resourceRepository,
             AXPromptLanguageProvider languageProvider,
-            AXStaticKnowledgePlanner staticKnowledgePlanner,
+            AXGameContextKnowledgePlanner knowledgePlanner,
             List<AXPromptContributor> contributors
     ) {
         this.resourceRepository = resourceRepository;
         this.languageProvider = languageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : languageProvider;
-        AXStaticKnowledgePlanner effectivePlanner = staticKnowledgePlanner == null ? AXStaticKnowledgePlanner.NONE : staticKnowledgePlanner;
+        AXGameContextKnowledgePlanner effectivePlanner = knowledgePlanner == null ? AXGameContextKnowledgePlanner.NONE : knowledgePlanner;
         this.contributors = contributors == null ? defaultContributors(effectivePlanner) : List.copyOf(contributors);
     }
 
     public static List<AXPromptContributor> defaultContributors() {
-        return defaultContributors(AXStaticKnowledgePlanner.NONE);
+        return defaultContributors(AXGameContextKnowledgePlanner.NONE);
     }
 
-    public static List<AXPromptContributor> defaultContributors(AXStaticKnowledgePlanner staticKnowledgePlanner) {
+    public static List<AXPromptContributor> defaultContributors(AXGameContextKnowledgePlanner knowledgePlanner) {
         return List.of(
                 new AXSystemPromptContributor(),
-                new AXGameContextPromptContributor(staticKnowledgePlanner),
+                new AXGameContextPromptContributor(knowledgePlanner),
                 new AXPlayerMemoryPromptContributor(),
                 new AXRecentDialoguePromptContributor(),
                 new AXCurrentInputPromptContributor()

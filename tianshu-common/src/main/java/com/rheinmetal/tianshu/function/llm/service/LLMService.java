@@ -22,7 +22,11 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -255,6 +259,26 @@ public class LLMService {
 
     public List<RagLibrarySearchResult> searchSharedRagLibrariesByTags(List<String> tags, String queryText, int topK, float threshold) {
         return searchLibraries(ragLibraryRegistry.sharedByTags(tags), queryText, topK, threshold);
+    }
+
+    public List<RagCacheManager.RagEntrySearchResult> searchInlineRagContents(List<String> contents, String queryText, int topK, float threshold) {
+        List<InlineRagEntry> entries = inlineRagEntries(contents);
+        if (entries.isEmpty() || queryText == null || queryText.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            int effectiveTopK = topK > 0 ? topK : DEFAULT_RAG_TOP_K;
+            float effectiveThreshold = threshold > 0f && threshold <= 1f ? threshold : DEFAULT_RAG_THRESHOLD;
+            List<String> texts = entries.stream().map(InlineRagEntry::content).toList();
+            Map<String, Deque<String>> entryIdsByContent = inlineEntryIdsByContent(entries);
+            return inferenceClient.search(queryText, texts, effectiveTopK, effectiveThreshold).stream()
+                    .map(result -> new RagCacheManager.RagEntrySearchResult(nextInlineEntryId(entryIdsByContent, result.getContent()), result.getContent(), result.getScore()))
+                    .toList();
+        } catch (Exception e) {
+            env.error("[LLMService] Inline RAG search failed", e);
+            return List.of();
+        }
     }
 
     private List<RagLibrarySearchResult> searchLibraries(List<RagLibraryRegistry.RagLibraryMeta> libraries, String queryText, int topK, float threshold) {
@@ -507,14 +531,7 @@ public class LLMService {
         if (contents.isEmpty()) {
             return List.of();
         }
-        try {
-            return inferenceClient.search(queryText, contents, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD).stream()
-                    .map(result -> new RagCacheManager.RagEntrySearchResult("", result.getContent(), result.getScore()))
-                    .toList();
-        } catch (Exception e) {
-            env.error("[LLMService] Search via libs failed", e);
-            return List.of();
-        }
+        return searchInlineRagContents(contents, queryText, DEFAULT_RAG_TOP_K, DEFAULT_RAG_THRESHOLD);
     }
 
     private List<RagCacheManager.RagEntrySearchResult> applyRagBudget(List<RagCacheManager.RagEntrySearchResult> results, Integer tokenBudget) {
@@ -634,6 +651,37 @@ public class LLMService {
                 .map(String::trim)
                 .distinct()
                 .toList();
+    }
+
+    private static List<InlineRagEntry> inlineRagEntries(List<String> contents) {
+        if (contents == null || contents.isEmpty()) {
+            return List.of();
+        }
+        List<InlineRagEntry> entries = new ArrayList<>();
+        for (int i = 0; i < contents.size(); i++) {
+            String content = contents.get(i);
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            entries.add(new InlineRagEntry(Integer.toString(i), content.trim()));
+        }
+        return entries;
+    }
+
+    private static Map<String, Deque<String>> inlineEntryIdsByContent(List<InlineRagEntry> entries) {
+        Map<String, Deque<String>> idsByContent = new LinkedHashMap<>();
+        for (InlineRagEntry entry : entries) {
+            idsByContent.computeIfAbsent(entry.content(), ignored -> new ArrayDeque<>()).add(entry.entryId());
+        }
+        return idsByContent;
+    }
+
+    private static String nextInlineEntryId(Map<String, Deque<String>> entryIdsByContent, String content) {
+        if (entryIdsByContent == null || content == null) {
+            return "";
+        }
+        Deque<String> ids = entryIdsByContent.get(content);
+        return ids == null || ids.isEmpty() ? "" : ids.removeFirst();
     }
 
     private static String normalizeRole(String role) {
@@ -765,6 +813,9 @@ public class LLMService {
         static RagPreparation empty() {
             return new RagPreparation(List.of(), "");
         }
+    }
+
+    private record InlineRagEntry(String entryId, String content) {
     }
 
     private static final class MessageAssembler {

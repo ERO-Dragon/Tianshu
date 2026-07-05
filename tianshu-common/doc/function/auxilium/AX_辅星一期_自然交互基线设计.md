@@ -77,7 +77,7 @@ AX
         AXContextCollector
         AXDynamicFact
       static knowledge
-        AXStaticKnowledgePlanner
+        AXGameContextKnowledgePlanner
         AXKnowledgeHit
     AXMemory
       short term memory
@@ -165,11 +165,11 @@ LLM 模块只提供能力：
 
 - `LLM_REQUEST`：CHAT / TASK 推理。
 - `LLM_PRIMITIVE_QUERY`：token count、embedding、status。
-- `LLM_CACHE_MANAGE`：静态知识库 RAG cache 管理。
+- `LLM_CACHE_MANAGE`：shared 静态知识库 RAG 管理，以及 AX 私有记忆检索投影的 uid/entryId 检索。
 
 ## 7. 记忆与 Prompt
 
-AX 的私有记忆不进入 LLM RAG cache。`AXRecentDialogue` 持有实时上下文窗口：窗口内保留近期完整 Raw Turn，容量超限时从最老完整轮次开始剥离只读快照。剥离出的纯聊天内容交给 `AXMemory` 后台压缩为 STM，明确世界事件先作为 STM 附属事件视图绑定；随后才进入原子化、E 检索、E -> STM 折叠和 STM 注入链路。静态知识库可以复用 LLM 的 RAG cache，但进入最终 prompt 前必须先被 AX 适配成知识命中结果，再渲染到 `<game_context>`。
+AX 的私有记忆权威数据不进入 LLM shared RAG 库。`AXRecentDialogue` 持有实时上下文窗口：窗口内保留近期完整 Raw Turn，容量超限时从最老完整轮次开始剥离只读快照。剥离出的纯聊天内容交给 `AXMemory` 后台压缩为 STM，明确世界事件先作为 STM 附属事件视图绑定；随后才进入原子化、私有 RAG 投影检索、E -> STM 折叠和 STM 注入链路。静态知识库可以复用 LLM 的 shared RAG cache，但进入最终 prompt 前必须先被 AX 适配成知识命中结果，再渲染到 `<game_context>`。
 
 Prompt 编排与记忆策略的硬约束见对应专题文档。这里只强调一点：一期不是“静态、动态、记忆”的无差别拼接，而是 `core` 统一收口、`module` 各自供料、最后按预算装配成一个 message chunk。
 
@@ -192,7 +192,7 @@ config/Tianshu/module/ax/cache/
 
 边界：
 
-- AX 私有记忆不写入 LLM RAG cache。
+- AX 私有记忆的权威 Raw Turn、STM、E 不写入 LLM RAG cache；可重建的检索投影可以写入 AX 私有 uid。
 - 静态知识库通过 `LLM_CACHE_MANAGE` 写入 LLM RAG cache。
 - 动态环境不持久化为长期记忆。
 - 派生索引和 stats 可重建，不应污染权威记忆数据。
@@ -280,7 +280,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 - IA 决定谁能处理当前对话，AX 只处理授权输入。
 - 一期是完整对话工具，不是最小 demo。
 - 二期进入 agent 化和工具协作，不能再拆成三期、四期来延后定义。
-- 玩家记忆由 AX 自己管理，不进入 LLM RAG cache。
+- 玩家记忆由 AX 自己管理；LLM RAG 只承接 AX 私有检索投影，不拥有玩家记忆语义。
 - 静态知识复用 LLM RAG cache，不污染 AX 记忆。
 - 动态环境是短 TTL 上下文，不是长期记忆。
 - Prompt 编排属于 AX，推理执行属于 LLM。

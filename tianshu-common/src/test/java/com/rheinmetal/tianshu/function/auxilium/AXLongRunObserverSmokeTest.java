@@ -93,11 +93,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXSessionController;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
-import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXStaticKnowledgePlanner;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXGameContextKnowledgePlanner;
 
 @EnabledIfSystemProperty(named = "tianshu.ax.longrun.smoke", matches = "true")
 class AXLongRunObserverSmokeTest {
@@ -623,7 +624,7 @@ class AXLongRunObserverSmokeTest {
                 || normalized.contains("native");
     }
 
-    private static final class LogLineKnowledgePlanner implements com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXStaticKnowledgePlanner {
+    private static final class LogLineKnowledgePlanner implements AXGameContextKnowledgePlanner {
         private final List<String> lines;
 
         private LogLineKnowledgePlanner(List<String> lines) {
@@ -741,6 +742,7 @@ class AXLongRunObserverSmokeTest {
             AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(windowPolicy);
             AXLlmClient llmClient = new AXLlmClient(axAdapter);
             AXLlmPrimitiveClient primitiveClient = new AXLlmPrimitiveClient(axAdapter, 120_000L);
+            AXLlmRagClient ragClient = new AXLlmRagClient(axAdapter, 120_000L);
             AXPromptLanguageProvider languageProvider = AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN);
             AXPromptResourceRepository promptRepository = new AXPromptResourceRepository(layout, jsonStore);
             AXMemoryTaskPromptRepository taskPromptRepository = new AXMemoryTaskPromptRepository(layout, languageProvider);
@@ -750,6 +752,7 @@ class AXLongRunObserverSmokeTest {
                     recentDialogueSystem,
                     llmClient,
                     primitiveClient,
+                    ragClient,
                     taskPromptRepository
             );
             AXRuntimeMaintenanceCoordinator maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(memoryMaintenanceService);
@@ -765,7 +768,7 @@ class AXLongRunObserverSmokeTest {
                     new LogLineKnowledgePlanner(logKnowledgeLines),
                     null
             );
-            AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, primitiveClient);
+            AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, ragClient);
             AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
                     () -> scope,
                     new AXDialogueInputMapper(),

@@ -1,13 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval;
 
-import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
+import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.index.AXMemoryRetrievalIndex;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,19 +18,22 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public final class AXMemoryRetriever {
+    private static final float RAG_SEARCH_FLOOR = 0.01F;
+
     private final AXMemorySystem memorySystem;
-    private final AXLlmPrimitiveClient primitiveClient;
+    private final AXLlmRagClient ragClient;
     private final AXMemoryRetrievalPolicy retrievalPolicy;
 
-    public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmPrimitiveClient primitiveClient) {
-        this(memorySystem, primitiveClient, AXMemoryRetrievalPolicy.DEFAULT);
+    public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmRagClient ragClient) {
+        this(memorySystem, ragClient, AXMemoryRetrievalPolicy.DEFAULT);
     }
 
-    public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmPrimitiveClient primitiveClient, AXMemoryRetrievalPolicy retrievalPolicy) {
+    public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmRagClient ragClient, AXMemoryRetrievalPolicy retrievalPolicy) {
         this.memorySystem = Objects.requireNonNull(memorySystem, "memorySystem");
-        this.primitiveClient = Objects.requireNonNull(primitiveClient, "primitiveClient");
+        this.ragClient = Objects.requireNonNull(ragClient, "ragClient");
         this.retrievalPolicy = retrievalPolicy == null ? AXMemoryRetrievalPolicy.DEFAULT : retrievalPolicy;
     }
 
@@ -44,33 +45,8 @@ public final class AXMemoryRetriever {
             return;
         }
         try {
-            primitiveClient.requestStatus(request.queryText() + ".memory.status", status -> {
-                try {
-                    if (!statusCompleted(status) || !embeddingUsable(status.runtimeSnapshot())) {
-                        safeCompletion.complete(AXMemoryRetrievalResult.empty());
-                        return;
-                    }
-                    String namespace = status.runtimeSnapshot().embeddingNamespace();
-                    primitiveClient.requestEmbedding(request.queryText() + ".memory.embed", List.of(request.queryText()), embedding -> {
-                        try {
-                            if (!statusCompleted(embedding) || embedding.embedResults().isEmpty()) {
-                                safeCompletion.complete(AXMemoryRetrievalResult.empty());
-                                return;
-                            }
-                            float[] queryVector = embedding.embedResults().get(0).vector();
-                            if (queryVector == null || queryVector.length == 0) {
-                                safeCompletion.complete(AXMemoryRetrievalResult.empty());
-                                return;
-                            }
-                            safeCompletion.complete(search(request, namespace, queryVector));
-                        } catch (RuntimeException exception) {
-                            safeCompletion.complete(AXMemoryRetrievalResult.empty());
-                        }
-                    });
-                } catch (RuntimeException exception) {
-                    safeCompletion.complete(AXMemoryRetrievalResult.empty());
-                }
-            });
+            search(request).whenComplete((result, error) ->
+                    safeCompletion.complete(error == null ? result : AXMemoryRetrievalResult.empty()));
         } catch (RuntimeException exception) {
             safeCompletion.complete(AXMemoryRetrievalResult.empty());
         }
@@ -82,32 +58,64 @@ public final class AXMemoryRetriever {
         return future;
     }
 
-    private AXMemoryRetrievalResult search(AXMemoryRetrievalRequest request, String embeddingNamespace, float[] queryVector) {
-        if (embeddingNamespace == null || embeddingNamespace.isBlank()) {
+    private CompletableFuture<AXMemoryRetrievalResult> search(AXMemoryRetrievalRequest request) {
+        String l1Uid = AXMemoryRagUids.l1(request.scope());
+        int l1TopK = Math.max(retrievalPolicy.minRoutedL1Clusters(), request.maxBlocks());
+        return ragClient.searchUid(l1Uid, request.queryText(), l1TopK, RAG_SEARCH_FLOOR)
+                .thenCompose(l1Result -> {
+                    List<String> l2ClusterIds = hitEntryIds(l1Result);
+                    if (l2ClusterIds.isEmpty()) {
+                        return CompletableFuture.completedFuture(AXMemoryRetrievalResult.empty());
+                    }
+                    List<CompletableFuture<LLMCacheManageResultPayload>> futures = l2ClusterIds.stream()
+                            .map(clusterId -> ragClient.searchUid(
+                                    AXMemoryRagUids.l2(request.scope(), clusterId),
+                                    request.queryText(),
+                                    Math.max(request.maxBlocks(), retrievalPolicy.l2EffectiveMappingMaxSize()),
+                                    RAG_SEARCH_FLOOR
+                            ))
+                            .toList();
+                    return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                            .thenApply(ignored -> {
+                                List<LLMCacheManageResultPayload> l2Results = futures.stream()
+                                        .map(CompletableFuture::join)
+                                        .toList();
+                                return search(request, l2Results);
+                            });
+                });
+    }
+
+    private AXMemoryRetrievalResult search(AXMemoryRetrievalRequest request, List<LLMCacheManageResultPayload> l2Results) {
+        if (l2Results == null || l2Results.isEmpty()) {
             return AXMemoryRetrievalResult.empty();
         }
-        AXMemoryRetrievalIndex index = memorySystem.retrievalIndex(request.scope(), embeddingNamespace);
-        if (index.isEmpty()) {
-            return AXMemoryRetrievalResult.empty();
-        }
-        AXMemoryRetrievalIndex.RoutedCandidates routed = index.route(request.queryText(), queryVector);
+        Map<String, AXMemoryEvent> eventsById = memorySystem.events().loadAll(request.scope()).stream()
+                .collect(Collectors.toMap(AXMemoryEvent::id, event -> event, (first, second) -> first, LinkedHashMap::new));
         long nowMillis = System.currentTimeMillis();
         Map<String, StmContribution> contributions = new HashMap<>();
         Set<String> subColdStmIds = new HashSet<>();
-        for (AXMemoryRetrievalIndex.EventVectorEntry entry : routed.entries()) {
-            AXMemoryEvent event = entry.event();
-            if (event == null || event.stmId().isBlank()) {
+        for (LLMCacheManageResultPayload result : l2Results) {
+            if (result == null || !result.success() || result.hits().isEmpty()) {
                 continue;
             }
-            double relevance = index.score(entry, queryVector, routed.analysis(), nowMillis);
-            if (relevance < retrievalPolicy.coldScoreThreshold()) {
-                if (relevance > 0.0D) {
-                    subColdStmIds.add(event.stmId());
+            for (LLMCacheManageResultPayload.HitGroupPayload group : result.hits()) {
+                String effectiveMappingId = AXMemoryRagUids.l2ClusterId(group.uid());
+                for (LLMCacheManageResultPayload.HitEntryPayload hit : group.entries()) {
+                    AXMemoryEvent event = eventsById.get(hit.entryId());
+                    if (event == null || event.stmId().isBlank()) {
+                        continue;
+                    }
+                    double relevance = timeWeight(event, nowMillis, hit.score());
+                    if (relevance < retrievalPolicy.coldScoreThreshold()) {
+                        if (relevance > 0.0D) {
+                            subColdStmIds.add(event.stmId());
+                        }
+                        continue;
+                    }
+                    contributions.computeIfAbsent(event.stmId(), StmContribution::new)
+                            .add(event, effectiveMappingId, relevance);
                 }
-                continue;
             }
-            contributions.computeIfAbsent(event.stmId(), StmContribution::new)
-                    .add(event, index.effectiveMappingId(event.id()), relevance);
         }
         if (contributions.isEmpty()) {
             return AXMemoryRetrievalResult.empty();
@@ -134,6 +142,32 @@ public final class AXMemoryRetriever {
                 .map(StmContribution::toTrace)
                 .toList();
         return new AXMemoryRetrievalResult(memorySystem.memoryBlockViews(request.scope(), timeline), traces);
+    }
+
+    private List<String> hitEntryIds(LLMCacheManageResultPayload result) {
+        if (result == null || !result.success() || result.hits().isEmpty()) {
+            return List.of();
+        }
+        return result.hits().stream()
+                .filter(Objects::nonNull)
+                .flatMap(group -> group.entries().stream())
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingDouble(LLMCacheManageResultPayload.HitEntryPayload::score).reversed())
+                .map(LLMCacheManageResultPayload.HitEntryPayload::entryId)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private double timeWeight(AXMemoryEvent event, long nowMillis, double baseScore) {
+        if (event == null || nowMillis <= 0L || event.happenedAtMillis() <= 0L) {
+            return baseScore;
+        }
+        long ageMillis = Math.max(0L, nowMillis - event.happenedAtMillis());
+        double ageDays = ageMillis / 86_400_000.0D;
+        double factor = Math.max(1.0D - retrievalPolicy.maxTimeDecay(),
+                1.0D - Math.min(retrievalPolicy.maxTimeDecay(), ageDays / retrievalPolicy.timeDecayDaysToMax()));
+        return baseScore * factor;
     }
 
     private List<SelectedBlock> selectBlocks(
@@ -304,14 +338,6 @@ public final class AXMemoryRetriever {
                 || center.id().equals(candidate.nextStmId())
                 || candidate.id().equals(center.previousStmId())
                 || candidate.id().equals(center.nextStmId());
-    }
-
-    private boolean statusCompleted(LLMPrimitiveResultPayload result) {
-        return result != null && LLMPrimitiveResultPayload.STATUS_COMPLETED.equals(result.status());
-    }
-
-    private boolean embeddingUsable(LLMRuntimeSnapshotPayload snapshot) {
-        return snapshot != null && snapshot.embeddingAvailable() && !snapshot.embeddingNamespace().isBlank();
     }
 
     public interface Completion {

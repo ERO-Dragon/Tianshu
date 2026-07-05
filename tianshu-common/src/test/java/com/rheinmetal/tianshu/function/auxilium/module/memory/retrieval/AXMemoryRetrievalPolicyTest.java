@@ -56,10 +56,8 @@ class AXMemoryRetrievalPolicyTest {
     @Test
     void warmRatioIsClampedToRemainingAfterHot() {
         AXMemoryRetrievalPolicy policy = new AXMemoryRetrievalPolicy(
-                0.56D, 0.92D, 256, 48, 4096, 4, 0.20D,
-                1.25D, 1.08D, 0.10D, 3650.0D,
-                64.0D, 256.0D, 1024.0D,
-                0.96D, 0.88D, 0.76D,
+                0.56D, 0.92D, 256, 48, 4,
+                0.10D, 3650.0D,
                 0.82D, 0.35D, 1,
                 0.60D, 0.35D, 0.15D,
                 0.90D, 0.50D

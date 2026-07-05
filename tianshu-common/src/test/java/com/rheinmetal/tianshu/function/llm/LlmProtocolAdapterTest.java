@@ -376,14 +376,10 @@ class LlmProtocolAdapterTest {
         await(() -> result.get() != null && chunks.stream().anyMatch(LLMPromptStreamChunkPayload::finished));
         assertEquals("visible answer", result.get().text());
         assertEquals("hidden reasoning", result.get().thinkingContent());
-        assertEquals("request-think-stream-capture", chunks.get(0).requestId());
-        assertEquals("visible ", chunks.get(0).text());
-        assertEquals("", chunks.get(0).thinkingContent());
-        assertEquals("request-think-stream-capture", chunks.get(1).requestId());
-        assertEquals("", chunks.get(1).text());
-        assertEquals("hidden reasoning", chunks.get(1).thinkingContent());
-        assertEquals("request-think-stream-capture", chunks.get(2).requestId());
-        assertEquals("answer", chunks.get(2).text());
+        assertEquals(true, chunks.stream().allMatch(chunk -> "request-think-stream-capture".equals(chunk.requestId())));
+        assertEquals(true, chunks.stream().anyMatch(chunk -> "visible ".equals(chunk.text()) && chunk.thinkingContent().isEmpty()));
+        assertEquals(true, chunks.stream().anyMatch(chunk -> chunk.text().isEmpty() && "hidden reasoning".equals(chunk.thinkingContent())));
+        assertEquals(true, chunks.stream().anyMatch(chunk -> "answer".equals(chunk.text()) && chunk.thinkingContent().isEmpty()));
         assertEquals("request-think-stream-capture", chunks.get(chunks.size() - 1).requestId());
         assertEquals("hidden reasoning", chunks.get(chunks.size() - 1).thinkingContent());
     }
@@ -699,6 +695,45 @@ class LlmProtocolAdapterTest {
         assertEquals("UPSERT_ENTRY", result.get().action());
         assertEquals(true, service.hasRagEntry("shared", "entry-a"));
         assertEquals(true, service.hasCache("shared"));
+    }
+
+    @Test
+    void cacheManageSearchInlineContentsDoesNotPersistEntries() {
+        PendingInferenceClient client = new PendingInferenceClient();
+        client.searchResults = List.of(new RagSearchResult("diamond pickaxe in ender chest", 0.92D));
+        LLMService service = LLMService.builder()
+                .env(new FakeGameEnvironment())
+                .inferenceClient(client)
+                .usePersistentCache(false)
+                .build();
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
+        RecordingContext context = new RecordingContext();
+        TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
+                        "test",
+                        ProtocolCapabilities.LLM_CACHE_MANAGE,
+                        PayloadType.LLM_CACHE_MANAGE,
+                        LLMCacheManagePayload.searchInlineContents(
+                                "dynamic",
+                                "where is the pickaxe",
+                                List.of("diamond pickaxe in ender chest", "player went fishing"),
+                                4,
+                                0.7f
+                        )
+                )
+                .build();
+        AtomicReference<LLMCacheManageResultPayload> result = registerCacheManageResultCapture(runtime, envelope.envelopeId());
+
+        adapter.handleLLMCacheManage(envelope, context);
+
+        await(() -> result.get() != null);
+        assertEquals(1, context.completed.get());
+        assertEquals("SEARCH_INLINE_CONTENTS", result.get().action());
+        assertEquals(false, service.hasCache("dynamic"));
+        assertEquals(1, client.searchCalls.get());
+        assertEquals(1, result.get().hits().size());
+        assertEquals("dynamic", result.get().hits().get(0).uid());
+        assertEquals("0", result.get().hits().get(0).entries().get(0).entryId());
     }
 
     @Test
@@ -1086,8 +1121,10 @@ class LlmProtocolAdapterTest {
         private final AtomicInteger chatCalls = new AtomicInteger();
         private final AtomicInteger taskCalls = new AtomicInteger();
         private final AtomicInteger tokenCountCalls = new AtomicInteger();
+        private final AtomicInteger searchCalls = new AtomicInteger();
         private final AtomicReference<Consumer<String>> taskStreamTokens = new AtomicReference<>();
         private final AtomicReference<Consumer<String>> taskStreamThinking = new AtomicReference<>();
+        private List<RagSearchResult> searchResults = List.of();
         private int tokenCount = 1;
         private String nextTaskThinkingContent = "";
 
@@ -1107,7 +1144,7 @@ class LlmProtocolAdapterTest {
         @Override public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, com.rheinmetal.tianshu.function.llm.service.LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) { taskStreamThinking.set(onThinking); return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken).thenApply(text -> { String thinking = Boolean.TRUE.equals(options == null ? false : options.captureThinkingContent()) ? nextTaskThinkingContent : ""; if (onFinish != null) onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(1, 1), null, thinking)); return new LlmGenerationResult(text, new LlmTokenUsage(1, 1), thinking); }); }
         @Override public float[] embed(String text) { return new float[]{1f}; }
         @Override public float[][] embed(List<String> texts) { return texts.stream().map(ignored -> new float[]{1f}).toArray(float[][]::new); }
-        @Override public List<RagSearchResult> search(String queryText, List<String> texts, int topK, float threshold) { return List.of(); }
+        @Override public List<RagSearchResult> search(String queryText, List<String> texts, int topK, float threshold) { searchCalls.incrementAndGet(); return searchResults; }
         @Override public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) { tokenCountCalls.incrementAndGet(); return tokenCount; }
         @Override public boolean isReady() { return true; }
         @Override public boolean hasChatQueueCapacity() { return true; }

@@ -35,8 +35,9 @@ class AXProtocolAdapterTest {
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
 
         adapter.submitLlmPrimitiveQuery(adapter.buildLlmPrimitiveQuery(LLMPrimitiveQueryPayload.status("status", false)));
-        adapter.submitLlmCacheManage(adapter.buildLlmCacheManage(LLMCacheManagePayload.queryGlobal("mc.static")));
+        adapter.submitLlmCacheManage(adapter.buildLlmCacheManage(LLMCacheManagePayload.queryUid("mc.static")));
 
+        await(() -> primitive.get() != null && cache.get() != null);
         assertInstanceOf(LLMPrimitiveQueryPayload.class, primitive.get().payload());
         assertEquals("STATUS", ((LLMPrimitiveQueryPayload) primitive.get().payload()).queryType());
         assertInstanceOf(LLMCacheManagePayload.class, cache.get().payload());
@@ -76,5 +77,17 @@ class AXProtocolAdapterTest {
     private static void handle(TianshuEnvelope envelope, ProtocolContext context, AtomicReference<TianshuEnvelope> sink) {
         sink.set(envelope);
         context.complete(envelope.envelopeId());
+    }
+
+    private static void await(java.util.function.BooleanSupplier condition) {
+        long deadline = System.currentTimeMillis() + 2_000L;
+        while (!condition.getAsBoolean() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 }

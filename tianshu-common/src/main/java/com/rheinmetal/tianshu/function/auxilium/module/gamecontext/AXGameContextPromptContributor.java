@@ -13,10 +13,10 @@ import java.util.stream.Collectors;
 public final class AXGameContextPromptContributor implements AXPromptContributor {
     public static final String SECTION_ID = "game_context";
 
-    private final AXStaticKnowledgePlanner staticKnowledgePlanner;
+    private final AXGameContextKnowledgePlanner knowledgePlanner;
 
-    public AXGameContextPromptContributor(AXStaticKnowledgePlanner staticKnowledgePlanner) {
-        this.staticKnowledgePlanner = staticKnowledgePlanner == null ? AXStaticKnowledgePlanner.NONE : staticKnowledgePlanner;
+    public AXGameContextPromptContributor(AXGameContextKnowledgePlanner knowledgePlanner) {
+        this.knowledgePlanner = knowledgePlanner == null ? AXGameContextKnowledgePlanner.NONE : knowledgePlanner;
     }
 
     @Override
@@ -30,7 +30,7 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
             return;
         }
         List<String> lines = new java.util.ArrayList<>();
-        List<AXKnowledgeHit> knowledgeHits = staticKnowledgePlanner.plan(context.request(), context.context(), context.budget());
+        List<AXKnowledgeHit> knowledgeHits = knowledgePlanner.plan(context.request(), context.context(), context.budget());
         List<String> dynamicContent = dynamicContent(context, knowledgeHits);
         if (!dynamicContent.isEmpty()) {
             lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_DYNAMIC_CONTENT_TITLE, dynamicContent));
@@ -65,7 +65,10 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
 
     private List<String> dynamicContent(AXPromptBuildContext context, List<AXKnowledgeHit> hits) {
         int limit = context.budget().maxDynamicContentItems();
-        List<String> lines = new java.util.ArrayList<>(dynamicFacts(context, limit));
+        List<String> selectedDynamicFacts = knowledgeFacts(hits, AXKnowledgeHit.QueryPath.DYNAMIC_FACT, limit);
+        List<String> lines = new java.util.ArrayList<>(selectedDynamicFacts.isEmpty()
+                ? dynamicFacts(context, limit)
+                : selectedDynamicFacts);
         int remaining = Math.max(0, limit - lines.size());
         lines.addAll(knowledgeFacts(hits, AXKnowledgeHit.QueryPath.DYNAMIC_RAG, remaining));
         return lines.stream()

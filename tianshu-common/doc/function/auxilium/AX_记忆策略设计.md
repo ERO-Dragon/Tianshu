@@ -273,7 +273,7 @@ E 命中后，AX 不直接把零散 E 全部塞进 prompt，而是先映射回�
 
 本文只约束玩家记忆侧的选择、映射和注入边界。动态环境匹配、静态知识库 RAG 召回、prompt 标签排版属于 AX 模块请求编排策略，应在模块架构文档中定义。
 
-AX 私有动态记忆不写入 LLM RAG cache。玩家个人经历由 AX 自己检索 E、映射 STM、拼接为普通 message chunk；外部静态知识库可以复用 LLM RAG cache，但不得与玩家记忆混为同一存储或同一注入区。
+AX 私有动态记忆的权威数据不写入 LLM RAG cache。玩家个人经历由 AX 自己持有 Raw Turn、STM、E，并在检索命中后映射 STM、拼接为普通 message chunk；LLM RAG 只可保存 AX 私有、可重建的检索投影，用于按 `uid + entryId` 返回二级簇或 eventId。外部静态知识库可以复用 shared LLM RAG cache，但不得与玩家记忆混为同一存储或同一注入区。
 
 `AXGameContext` 与 `AXMemory` 在一期 baseline 中是并列模块，不应在模块内互相传递检索结果。
 
@@ -409,7 +409,7 @@ E 需要先获得 embedding，才能参与向量检索和后续聚类。向量�
 - 派生索引优先保证读取性能。
 - 派生索引损坏时，应能从 Raw Turn、STM、E 和向量数据重建。
 
-外部静态知识库可以写入 LLM RAG cache，但只能通过 `ProtocolCapabilities.LLM_CACHE_MANAGE`，不能直接修改 LLM cache 二进制文件。动态环境事实不属于 AX 长期记忆；AX 动态记忆也不写入 LLM RAG cache。
+外部静态知识库和 AX 私有检索投影都只能通过 `ProtocolCapabilities.LLM_CACHE_MANAGE` 写入或检索，不能直接修改 LLM cache 二进制文件。动态环境事实不属于 AX 长期记忆；AX 动态记忆权威数据也不写入 LLM RAG cache。
 
 ## 9. 与 LLM 协议的关系
 
@@ -433,10 +433,10 @@ AX 对 LLM 的所有访问都必须经过协议中心。
 - `LLM_PRIMITIVE_QUERY / TOKEN_COUNT`：用于 text / message-only 的无副作用 token 计数。
 - `LLM_PRIMITIVE_QUERY / EMBED`：用于批量文本向量化，并返回向量维度与 embedding 空间标识。
 - `LLM_PRIMITIVE_QUERY / STATUS`：用于获取模型、上下文配置和 embedding 空间快照。
-- `LLM_CACHE_MANAGE` / 静态知识检索能力：用于复用 LLM 模块的外部静态知识库能力；玩家可见 CHAT 的最终 prompt 由 AX 组装为 message-only。
+- `LLM_CACHE_MANAGE` / RAG 检索能力：用于复用 LLM 模块的 shared 静态知识库能力，以及 AX 私有记忆检索投影的 uid/entryId 命中；玩家可见 CHAT 的最终 prompt 由 AX 组装为 message-only。
 - `LLM_REQUEST` 的 result / stream terminal usage：用于观察 CHAT / TASK 的实际调用成本。
 
-embedding 向量不混入普通 prompt result。AX 私有记忆由 AX 自己检索、映射、拼接后作为普通 message chunk 注入；外部知识库、规则库和模组资料可以复用 LLM 的静态知识检索或 cache 管理能力，但玩家可见 CHAT 的最终 prompt 仍由 AX 整理为 message-only。静态知识检索结果进入 prompt 前应先被适配为 AX 自己的知识命中对象，再按直接静态路径或动态事实路径渲染进 `<game_context>`，不要把 LLM rag chunk 当作 AX prompt 编排层的内部结构。
+embedding 向量不混入普通 prompt result。AX 私有记忆由 AX 自己加载权威 E、映射 STM、拼接后作为普通 message chunk 注入；LLM 私有 RAG 投影只负责返回候选 entryId。外部知识库、规则库和模组资料可以复用 LLM 的静态知识检索或 cache 管理能力，但玩家可见 CHAT 的最终 prompt 仍由 AX 整理为 message-only。静态知识检索结果进入 prompt 前应先被适配为 AX 自己的知识命中对象，再按直接静态路径或动态事实路径渲染进 `<game_context>`，不要把 LLM rag chunk 当作 AX prompt 编排层的内部结构。
 
 后台压缩使用 `lane=TASK`。玩家可见对话使用 `lane=CHAT`，并携带 IA 授权上下文。
 

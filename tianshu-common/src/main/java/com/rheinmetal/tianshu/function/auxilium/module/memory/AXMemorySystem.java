@@ -186,6 +186,10 @@ public final class AXMemorySystem {
         );
     }
 
+    public void invalidateRetrievalIndex(AXScope scope) {
+        retrievalIndexCache.invalidate(scope);
+    }
+
     private AXMemoryRetrievalIndex buildRetrievalIndex(
             AXScope scope,
             String embeddingNamespace,

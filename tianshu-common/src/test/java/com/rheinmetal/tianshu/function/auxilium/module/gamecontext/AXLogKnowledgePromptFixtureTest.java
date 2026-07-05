@@ -203,7 +203,7 @@ class AXLogKnowledgePromptFixtureTest {
         }
     }
 
-    private static final class LogLineKnowledgePlanner implements AXStaticKnowledgePlanner {
+    private static final class LogLineKnowledgePlanner implements AXGameContextKnowledgePlanner {
         private final List<String> lines;
 
         private LogLineKnowledgePlanner(List<String> lines) {

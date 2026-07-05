@@ -6,8 +6,8 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 
 import java.util.List;
 
-public interface AXStaticKnowledgePlanner {
-    AXStaticKnowledgePlanner NONE = (request, context, budget) -> List.of();
+public interface AXGameContextKnowledgePlanner {
+    AXGameContextKnowledgePlanner NONE = (request, context, budget) -> List.of();
 
     List<AXKnowledgeHit> plan(AXRequest request, AXContextSnapshot context, AXContextBudget budget);
 }
