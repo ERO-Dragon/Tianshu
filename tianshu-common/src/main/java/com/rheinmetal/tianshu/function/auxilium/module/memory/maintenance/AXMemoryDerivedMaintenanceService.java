@@ -57,7 +57,7 @@ public final class AXMemoryDerivedMaintenanceService {
                         previous,
                         next,
                         block.sourceTurnCount(),
-                        block.estimatedTokens(),
+                        block.tokenCount(),
                         block.content(),
                         block.attachedEventIds()
                 ));
@@ -75,8 +75,8 @@ public final class AXMemoryDerivedMaintenanceService {
         List<AXStmBlock> blocks = memorySystem.stmBlocks().loadAll(scope);
         List<AXMemoryEvent> events = memorySystem.events().loadAll(scope);
         List<AXAttachedWorldEvent> attached = memorySystem.attachedWorldEvents().loadAll(scope);
-        int stmTokens = blocks.stream().mapToInt(AXStmBlock::estimatedTokens).sum();
-        int eventTokens = events.stream().mapToInt(AXMemoryEvent::estimatedTokens).sum();
+        int stmTokens = blocks.stream().mapToInt(AXStmBlock::tokenCount).sum();
+        int eventTokens = events.stream().mapToInt(AXMemoryEvent::tokenCount).sum();
         long earliest = events.stream().mapToLong(AXMemoryEvent::happenedAtMillis).filter(value -> value > 0L).min().orElse(0L);
         long latest = events.stream().mapToLong(AXMemoryEvent::happenedAtMillis).filter(value -> value > 0L).max().orElse(earliest);
         int vectorCount = memorySystem.vectors().loadAllNamespaces(scope).size();

@@ -23,16 +23,11 @@ public record AXMemoryBlockView(
         return block == null ? "" : block.content();
     }
 
-    public int estimatedTokens() {
+    public int tokenCount() {
         if (block == null) {
             return 0;
         }
-        int total = block.estimatedTokens();
-        AXTokenEstimator estimator = new AXTokenEstimator();
-        for (String message : attachedMessages) {
-            total += estimator.estimate(message);
-        }
-        return Math.max(0, total);
+        return block.tokenCount();
     }
 
     public static AXMemoryBlockView of(AXStmBlock block) {

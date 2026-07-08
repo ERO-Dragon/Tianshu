@@ -14,6 +14,15 @@ public final class AXCurrentInputPromptContributor implements AXPromptContributo
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
         String text = context.request() == null ? "" : context.request().userText();
-        builder.addDialogueTurn("user", text);
+        builder.addDialogueTurn("user", limit(text, context.budget().maxCurrentInputChars()));
+    }
+
+    private String limit(String value, int maxChars) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        int limit = Math.max(0, maxChars);
+        String stripped = value.strip();
+        return limit > 0 && stripped.length() > limit ? stripped.substring(0, limit).strip() : stripped;
     }
 }

@@ -38,13 +38,14 @@ public final class AXSharedKnowledgePlanner implements AXGameContextKnowledgePla
             return List.of();
         }
         AXContextBudget effectiveBudget = budget == null ? AXContextBudget.DEFAULT : budget;
+        int knowledgeLimit = Math.max(1, effectiveBudget.maxKnowledgeRagItems());
         List<AXKnowledgeHit> hits = new ArrayList<>();
-        hits.addAll(search(DIRECT_STATIC_TAGS, query, Math.max(1, effectiveBudget.maxStaticContentItems()), AXKnowledgeHit.QueryPath.INPUT_RAG));
-        List<String> dynamicFacts = searchDynamicFacts(query, context, Math.max(1, effectiveBudget.maxDynamicContentItems()));
+        hits.addAll(search(DIRECT_STATIC_TAGS, query, knowledgeLimit, AXKnowledgeHit.QueryPath.INPUT_RAG));
+        List<String> dynamicFacts = searchDynamicFacts(query, context, knowledgeLimit);
         if (!dynamicFacts.isEmpty()) {
             hits.add(AXKnowledgeHit.dynamicFacts(DYNAMIC_INLINE_UID, dynamicFacts));
             String dynamicQuery = dynamicQuery(query, dynamicFacts);
-            hits.addAll(search(DYNAMIC_STATIC_TAGS, dynamicQuery, Math.max(1, effectiveBudget.maxDynamicContentItems()), AXKnowledgeHit.QueryPath.DYNAMIC_RAG));
+            hits.addAll(search(DYNAMIC_STATIC_TAGS, dynamicQuery, knowledgeLimit, AXKnowledgeHit.QueryPath.DYNAMIC_RAG));
         }
         return hits.stream()
                 .filter(hit -> hit != null && !hit.facts().isEmpty())

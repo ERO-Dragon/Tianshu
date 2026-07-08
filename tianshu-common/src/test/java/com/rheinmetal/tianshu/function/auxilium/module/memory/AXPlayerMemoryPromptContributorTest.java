@@ -35,7 +35,7 @@ class AXPlayerMemoryPromptContributorTest {
         new AXPlayerMemoryPromptContributor().contribute(new AXPromptBuildContext(
                 new AXRequest("request", "之前发生了什么？", ""),
                 new AXContextSnapshot(scope, memory, AXRecentDialogueSnapshot.empty(), List.of(), ""),
-                new AXContextBudget(4000, 4, 8, 4),
+                AXContextBudget.DEFAULT,
                 AXPromptLanguage.ZH_CN,
                 AXPromptProfile.defaultFor(null, AXPromptLanguage.ZH_CN)
         ), builder);

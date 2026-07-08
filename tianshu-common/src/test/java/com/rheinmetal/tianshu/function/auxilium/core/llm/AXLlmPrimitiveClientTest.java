@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,6 +47,29 @@ class AXLlmPrimitiveClientTest {
 
         assertEquals(7, result.get().tokenCount());
         assertEquals(LLMPrimitiveResultPayload.STATUS_COMPLETED, result.get().status());
+    }
+
+    @Test
+    void blockingMessageTokenCountUsesPrimitiveResponse() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> request = new AtomicReference<>();
+        registerPrimitiveProvider(runtime, request);
+        AXLlmPrimitiveClient client = new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L);
+        AtomicReference<OptionalInt> result = new AtomicReference<>();
+
+        Thread waiter = new Thread(() -> result.set(client.countMessageTokens("tokens", "system", "hello")));
+        waiter.start();
+        await(() -> request.get() != null);
+        runtime.submit(EnvelopeBuilder.responseTo(
+                "module.llm.test",
+                request.get(),
+                PayloadType.LLM_PRIMITIVE_RESULT,
+                LLMPrimitiveResultPayload.tokenCount("tokens", 9)
+        ).build());
+        await(() -> result.get() != null);
+
+        assertEquals("system", ((LLMPrimitiveQueryPayload) request.get().payload()).messages().get(0).role());
+        assertEquals(9, result.get().orElseThrow());
     }
 
     private static void registerPrimitiveProvider(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {

@@ -11,7 +11,7 @@
     "descriptionKey": "tianshu.gui.llm.model.gemma4_12b_it.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 7381381760,
-    "contextSize": 8192,
+    "contextSize": 16384,
     "sampling": {
       "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
@@ -30,7 +30,7 @@
     "descriptionKey": "tianshu.gui.llm.model.gemma4_12b_it.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 6716355328,
-    "contextSize": 8192,
+    "contextSize": 16384,
     "sampling": {
       "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
@@ -47,7 +47,7 @@
     "descriptionKey": "tianshu.gui.llm.model.gemma4_e4b_uncensored.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 5335285728,
-    "contextSize": 16384,
+    "contextSize": 8192,
     "sampling": {
       "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
@@ -66,7 +66,7 @@
     "descriptionKey": "tianshu.gui.llm.model.gemma4_e4b_uncensored.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 4215693760,
-    "contextSize": 16384,
+    "contextSize": 8192,
     "sampling": {
       "standard": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 64, "minP": 0.0 }
@@ -83,7 +83,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 1270808032,
-    "contextSize": 16384,
+    "contextSize": 4096,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -100,7 +100,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 1329851808,
-    "contextSize": 16384,
+    "contextSize": 4096,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -117,7 +117,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_2b.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 1384902048,
-    "contextSize": 16384,
+    "contextSize": 4096,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -134,7 +134,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_4b_uncensored.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 2707513696,
-    "contextSize": 16384,
+    "contextSize": 8192,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -151,7 +151,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_4b.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 2834975040,
-    "contextSize": 16384,
+    "contextSize": 8192,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -168,7 +168,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_4b.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 2990664000,
-    "contextSize": 16384,
+    "contextSize": 8192,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -185,7 +185,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 5627044224,
-    "contextSize": 16384,
+    "contextSize": 12288,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -202,7 +202,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 5868826976,
-    "contextSize": 16384,
+    "contextSize": 12288,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }
@@ -219,7 +219,7 @@
     "descriptionKey": "tianshu.gui.llm.model.qwen35_9b_deepseek.description",
     "thinkingCapability": "supported",
     "downloadSizeBytes": 6135034208,
-    "contextSize": 16384,
+    "contextSize": 12288,
     "sampling": {
       "standard": { "temperature": 0.7, "topP": 0.8, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 },
       "thinking": { "temperature": 1.0, "topP": 0.95, "topK": 20, "minP": 0.0, "penaltyRepeat": 1.0, "penaltyPresent": 1.5 }

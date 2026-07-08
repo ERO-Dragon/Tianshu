@@ -40,6 +40,8 @@ class AXPromptResourceRepositoryTest {
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.en_us.default.json")));
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.zh_cn.default.json")));
         assertEquals("你是天枢 Minecraft 模组中的随行聊天助手。", profile.identity());
+        assertTrue(profile.systemProfiles().shortProfile().behaviorRules().contains("简洁"));
+        assertTrue(profile.systemProfiles().fullProfile().behaviorRules().contains("信息不足"));
         assertTrue(profile.sectionOrder().contains("ax_system"));
         assertTrue(profile.sectionOrder().contains("game_context"));
         assertTrue(profile.sectionOrder().contains("player_memory"));
@@ -82,9 +84,21 @@ class AXPromptResourceRepositoryTest {
                 layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
                 """
                 {
-                  "schemaVersion": 1,
-                  "identity": "测试身份",
-                  "behaviorRules": "测试规则",
+                  "schemaVersion": 2,
+                  "systemProfiles": {
+                    "short": {
+                      "identity": "短身份",
+                      "behaviorRules": "短规则"
+                    },
+                    "standard": {
+                      "identity": "测试身份",
+                      "behaviorRules": "测试规则"
+                    },
+                    "full": {
+                      "identity": "完整身份",
+                      "behaviorRules": "完整规则"
+                    }
+                  },
                   "sectionOrder": [
                     "ax_system",
                     "game_context",
@@ -100,6 +114,8 @@ class AXPromptResourceRepositoryTest {
 
         assertEquals("测试身份", profile.identity());
         assertEquals("测试规则", profile.behaviorRules());
+        assertEquals("短规则", profile.systemProfiles().shortProfile().behaviorRules());
+        assertEquals("完整规则", profile.systemProfiles().fullProfile().behaviorRules());
         assertEquals(List.of("ax_system", "game_context", "current_input"), profile.sectionOrder());
     }
 }

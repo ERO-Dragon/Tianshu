@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.function.auxilium.module.recentdialogue;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXHashing;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.AXTokenEstimator;
 
 public record AXRawTurn(
         String id,
@@ -13,7 +12,7 @@ public record AXRawTurn(
         String worldId,
         String iaSessionId,
         String iaTurnId,
-        int estimatedTokens,
+        int tokenCount,
         int characterCount,
         String contentHash,
         String speakerName
@@ -28,11 +27,11 @@ public record AXRawTurn(
             String worldId,
             String iaSessionId,
             String iaTurnId,
-            int estimatedTokens,
+            int tokenCount,
             int characterCount,
             String contentHash
     ) {
-        this(id, role, content, createdAtMillis, worldId, iaSessionId, iaTurnId, estimatedTokens, characterCount, contentHash, "");
+        this(id, role, content, createdAtMillis, worldId, iaSessionId, iaTurnId, tokenCount, characterCount, contentHash, "");
     }
 
     public AXRawTurn {
@@ -44,7 +43,7 @@ public record AXRawTurn(
         iaSessionId = iaSessionId == null ? "" : iaSessionId.trim();
         iaTurnId = iaTurnId == null ? "" : iaTurnId.trim();
         characterCount = characterCount <= 0 ? content.length() : characterCount;
-        estimatedTokens = estimatedTokens <= 0 ? new AXTokenEstimator().estimate(content) : estimatedTokens;
+        tokenCount = Math.max(0, tokenCount);
         contentHash = contentHash == null || contentHash.isBlank() ? AXHashing.sha256Short(role + "\n" + speakerName + "\n" + content) : contentHash.trim();
         id = id == null || id.isBlank()
                 ? "raw_" + Long.toUnsignedString(createdAtMillis, 36) + "_" + AXHashing.sha256Short(worldId + "\n" + iaSessionId + "\n" + iaTurnId + "\n" + role + "\n" + speakerName + "\n" + content)
@@ -101,6 +100,10 @@ public record AXRawTurn(
         return "game_chat".equals(role);
     }
 
+    public AXRawTurn withTokenCount(int value) {
+        return new AXRawTurn(id, role, content, createdAtMillis, worldId, iaSessionId, iaTurnId, value, characterCount, contentHash, speakerName);
+    }
+
     public JsonObject toJson() {
         JsonObject json = new JsonObject();
         json.addProperty("schemaVersion", SCHEMA_VERSION);
@@ -111,7 +114,7 @@ public record AXRawTurn(
         json.addProperty("worldId", worldId);
         json.addProperty("iaSessionId", iaSessionId);
         json.addProperty("iaTurnId", iaTurnId);
-        json.addProperty("estimatedTokens", estimatedTokens);
+        json.addProperty("tokenCount", tokenCount);
         json.addProperty("characterCount", characterCount);
         json.addProperty("contentHash", contentHash);
         json.addProperty("speakerName", speakerName);
@@ -130,7 +133,7 @@ public record AXRawTurn(
                 readString(json, "worldId"),
                 readString(json, "iaSessionId"),
                 readString(json, "iaTurnId"),
-                readInt(json, "estimatedTokens", 0),
+                readInt(json, "tokenCount", 0),
                 readInt(json, "characterCount", 0),
                 readString(json, "contentHash"),
                 readString(json, "speakerName")

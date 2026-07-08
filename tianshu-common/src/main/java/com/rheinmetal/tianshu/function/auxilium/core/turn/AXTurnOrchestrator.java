@@ -210,7 +210,12 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             statusPublisher.retrievingMemory();
         }
         memoryRetriever.retrieve(
-                new AXMemoryRetrievalRequest(scope, request, budget.contextBudget().maxMemoryItems(), budget.contextBudget().memoryTokenBudget()),
+                new AXMemoryRetrievalRequest(
+                        scope,
+                        request,
+                        budget.contextBudget().maxRetrievedMemoryItems(),
+                        budget.contextBudget().retrievedMemoryTokenBudget()
+                ),
                 memory -> submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, memory, budget.contextBudget())
         );
     }

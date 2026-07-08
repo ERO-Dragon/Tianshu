@@ -7,7 +7,6 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXHashing;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.AXTokenEstimator;
 
 public record AXStmBlock(
         String id,
@@ -19,7 +18,7 @@ public record AXStmBlock(
         String previousStmId,
         String nextStmId,
         int sourceTurnCount,
-        int estimatedTokens,
+        int tokenCount,
         String content,
         List<String> attachedEventIds
 ) {
@@ -34,7 +33,7 @@ public record AXStmBlock(
         previousStmId = previousStmId == null ? "" : previousStmId.trim();
         nextStmId = nextStmId == null ? "" : nextStmId.trim();
         sourceTurnCount = Math.max(0, sourceTurnCount);
-        estimatedTokens = estimatedTokens <= 0 ? new AXTokenEstimator().estimate(content) : estimatedTokens;
+        tokenCount = Math.max(0, tokenCount);
         contentHash = contentHash == null || contentHash.isBlank() ? AXHashing.sha256Short(content) : contentHash.trim();
         id = id == null || id.isBlank()
                 ? "stm_" + Long.toUnsignedString(createdAtMillis, 36) + "_" + AXHashing.sha256Short(worldId + "\n" + sourceFromMillis + "\n" + sourceToMillis + "\n" + content)
@@ -50,6 +49,23 @@ public record AXStmBlock(
         return id.isBlank() || content.isBlank();
     }
 
+    public AXStmBlock withTokenCount(int value) {
+        return new AXStmBlock(
+                id,
+                contentHash,
+                worldId,
+                createdAtMillis,
+                sourceFromMillis,
+                sourceToMillis,
+                previousStmId,
+                nextStmId,
+                sourceTurnCount,
+                value,
+                content,
+                attachedEventIds
+        );
+    }
+
     public JsonObject toJson() {
         JsonObject json = new JsonObject();
         json.addProperty("schemaVersion", SCHEMA_VERSION);
@@ -62,7 +78,7 @@ public record AXStmBlock(
         json.addProperty("previousStmId", previousStmId);
         json.addProperty("nextStmId", nextStmId);
         json.addProperty("sourceTurnCount", sourceTurnCount);
-        json.addProperty("estimatedTokens", estimatedTokens);
+        json.addProperty("tokenCount", tokenCount);
         json.addProperty("content", content);
         JsonArray eventIds = new JsonArray();
         attachedEventIds.forEach(eventIds::add);
@@ -84,7 +100,7 @@ public record AXStmBlock(
                 readString(json, "previousStmId"),
                 readString(json, "nextStmId"),
                 readInt(json, "sourceTurnCount", 0),
-                readInt(json, "estimatedTokens", readInt(json, "sourceEstimatedTokens", 0)),
+                readInt(json, "tokenCount", 0),
                 readString(json, "content"),
                 readStringArray(json, "attachedEventIds")
         );

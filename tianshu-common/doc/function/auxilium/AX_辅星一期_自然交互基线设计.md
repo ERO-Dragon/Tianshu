@@ -251,7 +251,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 - Raw Turn、STM、E 的完整记忆链路。
 - E 检索到 STM 映射注入。
 - STM 链式发散和模型预算自适应。
-- `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 用于预算估算。
+- `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 用于 message-only prompt 的精确 token 计数和预算校验。
 - `LLM_PRIMITIVE_QUERY / EMBED` 用于 E 向量化。
 - 向量组重建、聚类、有效映射索引、stats 和 compaction。
 
@@ -293,7 +293,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 
 以下内容已经在设计上纳入一期，但代码里还没有完全做到位，先保留在文档末尾，不在这里硬补：
 
-- 记忆检索和 prompt 预算已经接入 LLM `STATUS.contextTokenBudget`、`AXMemoryWindowPolicy.fromBudget`、`AXContextBudget.fromPolicy` 这些入口；它们仍只是模型窗口下的 baseline 布局，不能描述成固定百分比分区。后续需要继续结合本轮密度评估，让近期对话、玩家记忆、静态内容、动态内容按收益动态裁剪；不得再引入文档未定义的额外 prompt 分区。
+- 记忆检索和 prompt 预算已经接入 LLM `STATUS.contextTokenBudget`、`AXMemoryWindowPolicy.fromBudget`、`AXContextBudget.fromPolicy` 这些入口；`contextTokenBudget` 按单次请求输入 + 输出总上限处理，AX 默认只取其中 60% 作为 CHAT/TASK 输入目标并保留输出、thinking/CoT 与安全余量。CHAT baseline 已覆盖 `ax_system`、`game_context` 知识池、`player_memory` 检索/近期 STM、`recent_dialogue` raw 窗口和 `current_input`；`ax_system` 已改为通过 LLM `TOKEN_COUNT` 精确计数后选择 short / standard / full 人设档位，而不是按字符裁剪完整版。后续需要继续结合本轮密度评估和命中分数动态裁剪，不得再引入文档未定义的额外 prompt 分区。
 - 二期 agent 化的工具协作还只是边界规划，尚未形成独立的工具注册与执行子系统。
 
 以下条目已在本次整改中完成：

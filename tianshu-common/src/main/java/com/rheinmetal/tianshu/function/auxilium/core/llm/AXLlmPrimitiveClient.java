@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -37,6 +38,43 @@ public final class AXLlmPrimitiveClient {
 
     public void requestTokenCount(String requestId, String text, Completion completion) {
         submit(LLMPrimitiveQueryPayload.tokenCount(requestId, text == null ? "" : text, List.of(), List.of()), completion);
+    }
+
+    public void requestMessageTokenCount(String requestId, String role, String content, Completion completion) {
+        submit(LLMPrimitiveQueryPayload.tokenCount(
+                requestId,
+                "",
+                List.of(new LLMPrimitiveQueryPayload.MessageItemPayload(role, content)),
+                List.of()
+        ), completion);
+    }
+
+    public OptionalInt countTokens(String requestId, String text) {
+        CompletableFuture<LLMPrimitiveResultPayload> future = new CompletableFuture<>();
+        requestTokenCount(requestId, text, future::complete);
+        return awaitTokenCount(future);
+    }
+
+    public OptionalInt countMessageTokens(String requestId, String role, String content) {
+        CompletableFuture<LLMPrimitiveResultPayload> future = new CompletableFuture<>();
+        requestMessageTokenCount(requestId, role, content, future::complete);
+        return awaitTokenCount(future);
+    }
+
+    private OptionalInt awaitTokenCount(CompletableFuture<LLMPrimitiveResultPayload> future) {
+        try {
+            long waitMillis = timeoutMillis <= 0L ? 10_000L : timeoutMillis + 100L;
+            LLMPrimitiveResultPayload result = future.get(waitMillis, TimeUnit.MILLISECONDS);
+            if (result == null || !LLMPrimitiveResultPayload.STATUS_COMPLETED.equals(result.status())) {
+                return OptionalInt.empty();
+            }
+            if (!LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT.equals(result.queryType())) {
+                return OptionalInt.empty();
+            }
+            return OptionalInt.of(result.tokenCount());
+        } catch (Exception ignored) {
+            return OptionalInt.empty();
+        }
     }
 
     public void submit(LLMPrimitiveQueryPayload payload, Completion completion) {

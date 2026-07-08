@@ -7,7 +7,6 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXHashing;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.AXTokenEstimator;
 
 public record AXMemoryEvent(
         String id,
@@ -21,7 +20,7 @@ public record AXMemoryEvent(
         boolean spatiallyBound,
         long createdAtMillis,
         long happenedAtMillis,
-        int estimatedTokens,
+        int tokenCount,
         List<String> entityTags
 ) {
     public static final int SCHEMA_VERSION = 1;
@@ -36,7 +35,7 @@ public record AXMemoryEvent(
         position = position == null ? "" : position.trim();
         createdAtMillis = createdAtMillis <= 0L ? System.currentTimeMillis() : createdAtMillis;
         happenedAtMillis = happenedAtMillis <= 0L ? createdAtMillis : happenedAtMillis;
-        estimatedTokens = estimatedTokens <= 0 ? new AXTokenEstimator().estimate(fact) : estimatedTokens;
+        tokenCount = Math.max(0, tokenCount);
         entityTags = entityTags == null ? List.of() : entityTags.stream()
                 .filter(value -> value != null && !value.isBlank())
                 .map(String::trim)
@@ -49,6 +48,24 @@ public record AXMemoryEvent(
 
     public boolean isEmpty() {
         return id.isBlank() || fact.isBlank();
+    }
+
+    public AXMemoryEvent withTokenCount(int value) {
+        return new AXMemoryEvent(
+                id,
+                fact,
+                factHash,
+                stmId,
+                sourceKind,
+                worldId,
+                dimension,
+                position,
+                spatiallyBound,
+                createdAtMillis,
+                happenedAtMillis,
+                value,
+                entityTags
+        );
     }
 
     public JsonObject toJson() {
@@ -65,7 +82,7 @@ public record AXMemoryEvent(
         json.addProperty("spatiallyBound", spatiallyBound);
         json.addProperty("createdAtMillis", createdAtMillis);
         json.addProperty("happenedAtMillis", happenedAtMillis);
-        json.addProperty("estimatedTokens", estimatedTokens);
+        json.addProperty("tokenCount", tokenCount);
         JsonArray tags = new JsonArray();
         entityTags.forEach(tags::add);
         json.add("entityTags", tags);
@@ -88,7 +105,7 @@ public record AXMemoryEvent(
                 readBoolean(json, "spatiallyBound"),
                 readLong(json, "createdAtMillis", 0L),
                 readLong(json, "happenedAtMillis", readLong(json, "eventAtMillis", 0L)),
-                readInt(json, "estimatedTokens", 0),
+                readInt(json, "tokenCount", 0),
                 readStringArray(json, "entityTags")
         );
     }

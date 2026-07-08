@@ -13,7 +13,8 @@ public record AXPromptBuildContext(
         AXContextBudget budget,
         AXPromptLanguage language,
         AXPromptProfile profile,
-        AXPromptTexts texts
+        AXPromptTexts texts,
+        AXTokenCounter tokenCounter
 ) {
     public AXPromptBuildContext(
             AXRequest request,
@@ -22,7 +23,18 @@ public record AXPromptBuildContext(
             AXPromptLanguage language,
             AXPromptProfile profile
     ) {
-        this(request, context, budget, language, profile, null);
+        this(request, context, budget, language, profile, null, null);
+    }
+
+    public AXPromptBuildContext(
+            AXRequest request,
+            AXContextSnapshot context,
+            AXContextBudget budget,
+            AXPromptLanguage language,
+            AXPromptProfile profile,
+            AXPromptTexts texts
+    ) {
+        this(request, context, budget, language, profile, texts, null);
     }
 
     public AXPromptBuildContext {
@@ -30,5 +42,6 @@ public record AXPromptBuildContext(
         language = language == null ? AXPromptLanguage.EN_US : language;
         profile = profile == null ? AXPromptProfile.defaultFor(null, language) : profile;
         texts = texts == null ? AXPromptTexts.builtin(language) : texts;
+        tokenCounter = tokenCounter == null ? AXTokenCounter.unavailable() : tokenCounter;
     }
 }

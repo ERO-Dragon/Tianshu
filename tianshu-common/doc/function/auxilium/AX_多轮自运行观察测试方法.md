@@ -75,7 +75,7 @@ tianshu-neoforge/run/logs/latest.log
 tianshu-neoforge/run/logs/debug.log
 ```
 
-测试会把日志中的有效行作为一条条 `AXKnowledgeHit` 内容放入 `game_context.static_content`。这只是 AX 语义边界内的测试替身，不生成正式 jsonl，也不写入未来静态 RAG 数据库；正式 RAG schema 完成后再由静态知识接入链路替换这个 planner。
+测试会把日志中的有效行作为一条条 `AXKnowledgeHit` 内容放入 `<game_context>` 的静态知识组。它只是在 AX 语义边界内的测试替身，不生成正式 jsonl，也不写入未来静态 RAG 数据库；正式 RAG schema 完成后再由静态知识接入链路替换这个 planner。
 
 ## 6. 报告位置
 
@@ -105,7 +105,7 @@ tianshu-common/build/reports/ax/long-run-observer-smoke.md
 - LLM 协议应把可见文本和 `thinkingContent` 结构化分离；AX 写入 STM/E 时只消费可见文本，不再维护思考标签文本过滤补丁。
 - E 抽取优先按严格 JSON array 解析；JSON 失败时降级按行解析，剥除 markdown 围栏与控制符，保留行首编号或列表标记去除后的纯文本事实。
 - 包含 Unicode replacement character 的 fact 不入库；超长（>512 字符）fact 不入库；重复 fact 去重。
-- E 只补齐代码能确定的客观元数据：stmId、worldId、createdAtMillis、happenedAtMillis、sourceKind、token 估算等。
+- E 只补齐代码能确定的客观元数据：stmId、worldId、createdAtMillis、happenedAtMillis、sourceKind、真实 `tokenCount` 等；无法取得真实 token 数时写入 `0`。
 - 不做实体、位置、维度、标签的 if-contains 推断。
 
 ## 8. TASK + think 与 ctx 预算

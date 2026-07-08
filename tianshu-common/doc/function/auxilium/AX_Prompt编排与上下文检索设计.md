@@ -182,7 +182,7 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 ```
 
 动态环境命中后，应优先把动态事实规范化为稳定标识，例如物品 ID、方块 ID、实体 ID、模组 ID、维度 ID 或结构名，而不是把完整环境快照塞进 query。
-这里的“临时动态事实检索”只检索本轮动态候选，不写持久 RAG cache，也不直接作为最终 CHAT 的 `rag` chunk 注入；它产出的命中动态事实与随后命中的静态知识一起进入 `game_context.dynamic_content`。
+这里的“临时动态事实检索”只检索本轮动态候选，不写持久 RAG cache，也不直接作为最终 CHAT 的 `rag` chunk 注入；它产出的命中动态事实与随后命中的静态知识一起进入 `<game_context>` 的动态内容组。
 当前 LLM 协议已通过 `LLM_CACHE_MANAGE / SEARCH_INLINE_CONTENTS` 提供“只检索、不生成、不落盘”的内联 RAG 查询动作；AX 通过该动作召回命中动态事实，不在自身模块内复刻轻量 RAG 实现，也不把全部动态候选直接拿去做 `main/addon` 静态召回。
 
 ## 7. 玩家记忆注入
@@ -248,10 +248,8 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 
 ```text
 message chunk:
-  system: ax_system + 编排说明
-  system: game_context
-  system: player_memory
-  system: recent_dialogue
+  system: ax_system + game_context + player_memory
+  user/assistant: recent_dialogue 按原角色展开
   user: current_input
 ```
 
@@ -259,21 +257,43 @@ message chunk:
 
 XML-like 包裹、列表前缀、小标题和聊天行格式都属于 prompt 排版资源，不应硬编码在 Java 业务逻辑里。AX common 内置 `ax_prompt_texts.json` 作为默认目录，运行时可释放到 AX 配置目录供后续覆盖；Java contributor 只负责选择语义槽位、传入变量并决定 LLM message role。
 
-`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`recent_dialogue`、`current_input`。`identity`、`behaviorRules` 这类内容属于 `ax_system` 内部字段，不应作为独立顶层区块参与排序。为兼容早期已释放配置，读取旧的 `identity` / `rules` / `persona` / `scope` 排序项时，可映射为 `ax_system`。
+`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`recent_dialogue`、`current_input`。`systemProfiles.short/standard/full` 中的身份与行为规则属于 `ax_system` 内部字段，不应作为独立顶层区块参与排序。为兼容早期已释放配置，读取旧的 `identity` / `rules` / `persona` / `scope` 排序项时，可映射为 `ax_system`。
 
-AX 的身份、行为规则和默认分区顺序也属于 prompt profile 资源。common 内置 `general_ax.<lang>.default.json`，运行时同样释放到 AX 配置目录；Java 只负责读取 profile 和组装 message，不在流程代码中写死具体提示词内容。
+AX 的身份、行为规则和默认分区顺序也属于 prompt profile 资源。common 内置 `general_ax.<lang>.default.json`，运行时同样释放到 AX 配置目录；Java 只负责读取 profile、按 `chatSystemTokenBudget` 选择 short / standard / full 档位并组装 message，不在流程代码中写死具体提示词内容。system 档位选择应通过 LLM `TOKEN_COUNT` 对最终 system message 做精确计数，优先选择能完整落入 token 预算的最高信息量档位；只有最短档仍超预算时，才继续用 `TOKEN_COUNT` 对裁剪候选做安全校验，不能继续只靠字符截断完整版。
 
 ## 9. 预算策略
 
-AX 不在本文写死上下文配比。预算分配先按模型档位和任务类型选布局档，再按本轮上下文密度做动态裁剪。
+预算分配先按 lane 区分布局，再按本轮上下文密度做动态裁剪。LLM 暴露的 `contextTokenBudget` 是当前请求输入 + 输出的安全总上限，不是 AX 每轮应该填满的 prompt 输入长度，也不是物理上分给 CHAT/TASK 的两块 ctx。AX 在这个共同上限上分别建立 CHAT 输入目标和 TASK 输入目标，并显式预留输出空间。
 
-- `current_input` 是生成锚点，通常只有少量 token，默认应完整保留，不作为预算分配的主要矛盾。
+- 默认 CHAT/TASK 输入目标为 `contextTokenBudget` 的 60%；剩余 40% 是输出预留、thinking/CoT 余量和运行时安全空间。预算是上限，不要求填满。
+- `current_input` 是生成锚点，语音对话下通常只有 50-100 token，默认应完整保留，不作为预算分配的主要矛盾。
 - 真正要动态区分的是不同模型的“甜点窗口”：小模型优先保留最近对话和最小必要 `game_context`；中模型可以同时容纳较完整的 `game_context`、记忆和静态知识；更大模型才扩展到更长的记忆链和更丰富的知识命中。
-- 同一模型内部，预算不按固定比例常量实现，而按本轮任务、上下文密度、命中质量和剩余窗口动态选取。
+- 同一模型内部，一期实现先采用 baseline 比例，并要求所有输入内容都属于明确槽位；后续再按本轮任务、上下文密度、命中质量和剩余窗口动态重分配。
 - 当窗口不足时，优先裁剪低收益、可重建或可替换内容；不要截断完整轮次、完整 STM 或已成型的知识命中块。
-- 预算策略只规定选择原则，不规定硬编码比例、固定排序和静态阈值。
+- 预算策略规定 baseline 与选择原则；实现侧可以用比例生成运行时预算，但不能把这些比例误当成新的 prompt 顶层分区。
 
 `AXMemory` 的检索预算也要按这个原则分层，不得退化为单一 Top-K。Hot / Warm / Cold 的比例、阈值和发散深度都应由预算策略配置化提供，而不是硬编码。
+
+当前 CHAT baseline 输入槽位为：
+
+```text
+ax_system                  10%
+game_context.knowledge_rag 30%  （直接静态 RAG、动态事实、动态事实引导静态 RAG 共享同一池）
+player_memory.retrieved    25%  （E 命中后折叠出的 STM 链）
+player_memory.recent       10%  （尚未被分解/长期化的近期 STM）
+recent_dialogue.raw        20%  （Raw Turn 滚动窗口，按完整问答轮边界裁剪）
+current_input              5%
+```
+
+当前 TASK baseline 输入槽位为：
+
+```text
+task_system                12.5%
+task_instruction           12.5%
+task_payload               75%
+```
+
+`retrievedMemoryTokenBudget` 不是独立 prompt 分区，只是 `player_memory` 在检索阶段的候选召回预算。最终进入 prompt 的仍然只有折叠后的 STM 内容。`knowledgeRagTokenBudget` 也不是 `game_context` 下的新顶层区块，而是直接静态知识、动态事实、动态事实引导静态知识共享的知识召回池。
 
 ## 10. 一期 core
 

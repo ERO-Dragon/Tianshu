@@ -133,7 +133,7 @@ E 不应该保存完整父 STM 文本。需要恢复语境时，通过所属 STM
 
 ### 3.4 Token 统计
 
-所有带正文的对象都应保留容量统计信息，至少包括估算 token 数，必要时包括字符数和估算器版本。
+所有带正文的历史对象都应保留 `tokenCount` 容量统计信息。`tokenCount` 表示通过 LLM 层 tokenizer / chat template 能力取得的真实 token 数；如果当前无法取得真实计数，应写入 `0` 表示未知，不在 AX 内做近似推断。
 
 用途：
 
@@ -142,9 +142,9 @@ E 不应该保存完整父 STM 文本。需要恢复语境时，通过所属 STM
 - 记忆注入预算计算。
 - 后台任务成本估计。
 
-Token 数是 AX 的工程容量元数据，用于提前控制窗口和注入预算，不作为最终 prompt 准入校验。需要贴近当前模型时，AX 可通过协议中心调用 `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 获取 text / message-only 输入的真实 tokenizer 计数；该能力不用于带 `rag` chunk 的完整请求，也不要求提供 embedding token count。
+历史对象上的 `tokenCount` 是 AX 的工程容量元数据，用于提前控制窗口和注入预算。最终 message-only prompt 的预算准入同样通过协议中心调用 `LLM_PRIMITIVE_QUERY / TOKEN_COUNT` 获取当前 tokenizer / chat template 下的真实计数；该能力不用于带 `rag` chunk 的完整请求，也不要求提供 embedding token count。
 
-模型切换时，历史 token 统计不需要强制后台重算。AX 可以继续使用既有统计，并在新写入或关键预算计算时按需更新。CHAT / TASK 的 usage 回传可作为本次调用成本观察，不应成为记忆主链路的硬依赖。
+模型切换时，历史 `tokenCount` 不需要强制后台重算。AX 可以继续使用既有真实计数，并在新写入或关键预算计算时按需更新；未知值仍保持为 `0`。CHAT / TASK 的 usage 回传可作为本次调用成本观察，不应成为记忆主链路的硬依赖。
 
 ## 4. 三级流转
 
@@ -155,7 +155,7 @@ Token 数是 AX 的工程容量元数据，用于提前控制窗口和注入预�
 规则：
 
 - 用纯对话容量监控窗口。
-- 以完整轮次为切割粒度。
+- 以完整问答轮为切割粒度；同一个 IA turn 下的 user/assistant 以及夹在中间的游戏聊天消息必须作为同一边界处理，不能只截掉半个问答。
 - 世界事件可以借道进入当前上下文，让 LLM 立即感知。
 - 借道事件不计入纯对话压缩阈值。
 - 借道事件不进入纯聊天压缩通道。
@@ -356,7 +356,7 @@ Raw Turn、STM、E 都属于可追溯历史的来源，但不要求每次新增�
 - Raw Turn 适合按批 checkpoint，而不是逐条同步持久化。
 - STM 可以使用 JSONL 或分段 JSONL，按块追加。
 - E 可以使用 JSONL 保存元数据，但不建议把完整向量内联进 JSONL。
-- STM 和 E 都应携带 token 估算信息，便于预算统计。
+- STM 和 E 都应携带真实 `tokenCount`，便于离线预算统计；无法取得真实计数时写入 `0`，不在 AX 内推断。
 
 JSONL 的优势是简单、可检查、易迁移；缺点是随机读取和大规模向量存储不适合。因此 JSONL 更适合作为权威元数据，而不是高性能索引。追加式 JSONL 应允许启动时跳过或修复尾部半行；需要整体重写、裁剪或 compaction 时，必须写临时文件后再替换目标文件。
 

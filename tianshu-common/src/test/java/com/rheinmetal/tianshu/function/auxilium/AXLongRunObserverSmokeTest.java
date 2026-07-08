@@ -636,7 +636,7 @@ class AXLongRunObserverSmokeTest {
             Set<String> terms = queryTerms(request == null ? "" : request.userText());
             List<String> matches = lines.stream()
                     .filter(line -> matches(line, terms))
-                    .limit(Math.max(1, Math.min(8, budget == null ? 8 : budget.maxStaticContentItems())))
+                    .limit(Math.max(1, Math.min(8, budget == null ? 8 : budget.maxKnowledgeRagItems())))
                     .toList();
             if (matches.isEmpty()) {
                 matches = lines.stream().limit(4).toList();
@@ -722,22 +722,7 @@ class AXLongRunObserverSmokeTest {
             TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
             AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("ax")));
             AXJsonStore jsonStore = new AXJsonStore(env);
-            AXMemoryWindowPolicy windowPolicy = new AXMemoryWindowPolicy(
-                    8000,
-                    2000,
-                    2000,
-                    1500,
-                    1000,
-                    1000,
-                    25,
-                    40,
-                    25,
-                    40,
-                    28000,
-                    120000,
-                    3,
-                    0L
-            );
+            AXMemoryWindowPolicy windowPolicy = AXMemoryWindowPolicy.fromBudget(8000, 3, 0L);
             AXMemorySystem memorySystem = new AXMemorySystem(layout, jsonStore, windowPolicy);
             AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(windowPolicy);
             AXLlmClient llmClient = new AXLlmClient(axAdapter);
@@ -826,8 +811,8 @@ class AXLongRunObserverSmokeTest {
             AXMemoryRetrievalRequest request = new AXMemoryRetrievalRequest(
                     scope,
                     new AXRequest("longrun.diagnostic." + round, question, ""),
-                    AXContextBudget.DEFAULT.maxMemoryItems(),
-                    AXContextBudget.DEFAULT.memoryTokenBudget()
+                    AXContextBudget.DEFAULT.maxRetrievedMemoryItems(),
+                    AXContextBudget.DEFAULT.retrievedMemoryTokenBudget()
             );
             return memoryRetriever.retrieveAsync(request).get(180, TimeUnit.SECONDS);
         }

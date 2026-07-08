@@ -29,7 +29,7 @@ public final class AXRecentDialoguePromptContributor implements AXPromptContribu
 
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
-        if (context.context() == null || context.context().recentDialogue() == null || context.budget().maxShortTermTurns() <= 0) {
+        if (context.context() == null || context.context().recentDialogue() == null || context.budget().maxRecentRawDialogueTurns() <= 0) {
             return;
         }
         List<AXRawTurn> turns = context.context().recentDialogue().turns();
@@ -38,7 +38,7 @@ public final class AXRecentDialoguePromptContributor implements AXPromptContribu
         }
         List<AXRawTurn> selected = turns.stream()
                 .filter(turn -> turn != null && !turn.isEmpty())
-                .skip(Math.max(0, turns.size() - context.budget().maxShortTermTurns()))
+                .skip(Math.max(0, turns.size() - context.budget().maxRecentRawDialogueTurns()))
                 .sorted(Comparator.comparingLong(AXRawTurn::createdAtMillis))
                 .toList();
         for (AXRawTurn turn : selected) {

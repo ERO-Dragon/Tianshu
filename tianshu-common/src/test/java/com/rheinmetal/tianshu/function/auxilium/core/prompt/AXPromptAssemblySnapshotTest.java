@@ -59,7 +59,7 @@ class AXPromptAssemblySnapshotTest {
                 List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                 "IA delivery 附带上下文"
         );
-        AXContextBudget budget = new AXContextBudget(4000, 4, 8, 4);
+        AXContextBudget budget = AXContextBudget.DEFAULT;
         AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
                 null,
                 AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
@@ -134,7 +134,7 @@ class AXPromptAssemblySnapshotTest {
                 List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                 "IA delivery 附带上下文"
         );
-        AXContextBudget budget = new AXContextBudget(4000, 4, 8, 4);
+        AXContextBudget budget = AXContextBudget.DEFAULT;
         AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
                 new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())),
                 AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),

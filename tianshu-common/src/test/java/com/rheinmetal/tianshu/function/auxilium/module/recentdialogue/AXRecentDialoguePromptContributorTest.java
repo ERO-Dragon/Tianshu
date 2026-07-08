@@ -33,7 +33,7 @@ class AXRecentDialoguePromptContributorTest {
         new AXRecentDialoguePromptContributor().contribute(new AXPromptBuildContext(
                 new AXRequest("request", "当前问题", ""),
                 new AXContextSnapshot(scope, null, recentDialogue, List.of(), ""),
-                new AXContextBudget(4000, 4, 8, 4),
+                AXContextBudget.DEFAULT,
                 AXPromptLanguage.ZH_CN,
                 AXPromptProfile.defaultFor(null, AXPromptLanguage.ZH_CN)
         ), builder);

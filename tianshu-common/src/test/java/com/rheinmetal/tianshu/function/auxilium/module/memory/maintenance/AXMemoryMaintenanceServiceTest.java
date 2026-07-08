@@ -56,15 +56,35 @@ class AXMemoryMaintenanceServiceTest {
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
         AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
         AXMemoryWindowPolicy policy = new AXMemoryWindowPolicy(
-                8000, 4000, 20, 10, 5, 5,
-                0, 0, 1, 200, 28000, 120000, 2, 0L
+                8000,
+                4800,
+                3200,
+                480,
+                1440,
+                1200,
+                480,
+                960,
+                240,
+                4800,
+                3200,
+                600,
+                600,
+                3600,
+                20,
+                4000,
+                10,
+                200,
+                28000,
+                120000,
+                2,
+                0L
         );
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
                 new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()),
                 policy
         );
-        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(policy);
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(policy, (requestId, role, content) -> java.util.OptionalInt.of(3000));
         recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "我在看资源重载后的日志。", "session", "turn-1"));
         recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "assistant", "我会关注缓存和模块加载。", "session", "turn-1"));
 
@@ -177,10 +197,9 @@ class AXMemoryMaintenanceServiceTest {
                 defaults.queueCapacity()
         ), (envelope, context) -> {
             LLMPrimitiveQueryPayload payload = (LLMPrimitiveQueryPayload) envelope.payload();
-            LLMPrimitiveResultPayload result = LLMPrimitiveResultPayload.runtime(
-                    payload.requestId(),
-                    LLMRuntimeSnapshotPayload.unavailable()
-            );
+            LLMPrimitiveResultPayload result = LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT.equals(payload.queryType())
+                    ? LLMPrimitiveResultPayload.tokenCount(payload.requestId(), 12)
+                    : LLMPrimitiveResultPayload.runtime(payload.requestId(), LLMRuntimeSnapshotPayload.unavailable());
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.primitive.memory-test",
                     envelope,

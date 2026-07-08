@@ -269,12 +269,12 @@ public final class AXMemoryRetriever {
                 if (candidate == null || candidate.isEmpty() || !seen.add(candidate.id())) {
                     continue;
                 }
-                if (tier.tokenBudget() > 0 && tokens[0] + candidate.estimatedTokens() > tier.tokenBudget()) {
+                if (tier.tokenBudget() > 0 && tokens[0] + candidate.tokenCount() > tier.tokenBudget()) {
                     seen.remove(candidate.id());
                     continue;
                 }
                 selected.add(new SelectedBlock(candidate, blockOrder.getOrDefault(candidate.id(), Integer.MAX_VALUE)));
-                tokens[0] += candidate.estimatedTokens();
+                tokens[0] += candidate.tokenCount();
                 selectedAny = true;
             }
             if (selectedAny) {

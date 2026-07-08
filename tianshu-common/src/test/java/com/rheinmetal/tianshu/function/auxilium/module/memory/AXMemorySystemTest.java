@@ -311,43 +311,36 @@ class AXMemorySystemTest {
     }
 
     private AXMemorySystem memorySystem(AXStorageLayout layout) {
-        AXMemoryWindowPolicy policy = new AXMemoryWindowPolicy(
-                8000,
-                2000,
-                2000,
-                1500,
-                1000,
-                1000,
-                25,
-                40,
-                25,
-                40,
-                28000,
-                120000,
-                3,
-                60000L
-        );
+        AXMemoryWindowPolicy policy = AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L);
         return new AXMemorySystem(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()), policy);
     }
 
     private AXRecentDialogueSystem recentDialogueSystem() {
         AXMemoryWindowPolicy policy = new AXMemoryWindowPolicy(
-                8000,
-                2000,
-                2000,
-                1500,
                 1000,
                 1000,
-                25,
-                40,
-                25,
-                40,
-                28000,
-                120000,
+                0,
+                100,
+                300,
+                250,
+                100,
+                1000,
+                50,
+                1000,
+                0,
+                125,
+                125,
+                750,
+                10,
+                1000,
+                10,
+                1000,
+                10000,
+                10000,
                 3,
                 60000L
         );
-        return new AXRecentDialogueSystem(policy);
+        return new AXRecentDialogueSystem(policy, (requestId, role, content) -> java.util.OptionalInt.of(4));
     }
 
     private AXStorageLayout layout() {

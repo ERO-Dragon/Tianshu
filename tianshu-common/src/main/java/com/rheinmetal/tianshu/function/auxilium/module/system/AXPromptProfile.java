@@ -14,16 +14,26 @@ import java.util.Optional;
 public record AXPromptProfile(
         AXPromptTask task,
         AXPromptLanguage language,
-        String identity,
-        String behaviorRules,
+        AXSystemProfileSet systemProfiles,
         List<String> sectionOrder
 ) {
     public AXPromptProfile {
         task = task == null ? AXPromptTask.GENERAL_AX : task;
         language = language == null ? AXPromptLanguage.EN_US : language;
-        identity = identity == null ? "" : identity.trim();
-        behaviorRules = behaviorRules == null ? "" : behaviorRules.trim();
+        systemProfiles = systemProfiles == null ? AXSystemProfileSet.single("", "") : systemProfiles;
         sectionOrder = sectionOrder == null ? List.of() : List.copyOf(sectionOrder);
+    }
+
+    public AXPromptProfile(AXPromptTask task, AXPromptLanguage language, String identity, String behaviorRules, List<String> sectionOrder) {
+        this(task, language, AXSystemProfileSet.single(identity, behaviorRules), sectionOrder);
+    }
+
+    public String identity() {
+        return systemProfiles.standardProfile().identity();
+    }
+
+    public String behaviorRules() {
+        return systemProfiles.standardProfile().behaviorRules();
     }
 
     public static AXPromptProfile defaultFor(AXPromptTask task, AXPromptLanguage language) {
@@ -32,8 +42,7 @@ public record AXPromptProfile(
         return loadBuiltin(effectiveTask, effectiveLanguage).orElseGet(() -> new AXPromptProfile(
                 effectiveTask,
                 effectiveLanguage,
-                "",
-                "",
+                AXSystemProfileSet.single("", ""),
                 DEFAULT_SECTION_ORDER
         ));
     }
@@ -57,16 +66,43 @@ public record AXPromptProfile(
     }
 
     private static AXPromptProfile fromJson(AXPromptTask task, AXPromptLanguage language, JsonObject json) {
-        String identity = readString(json, "identity", "");
-        String behaviorRules = readString(json, "behaviorRules", "");
+        AXSystemProfileSet systemProfiles = readSystemProfiles(json, AXSystemProfileSet.single("", ""));
         List<String> sectionOrder = readStringArray(json, "sectionOrder");
         if (sectionOrder.isEmpty()) {
             sectionOrder = DEFAULT_SECTION_ORDER;
         }
-        return new AXPromptProfile(task, language, identity, behaviorRules, sectionOrder);
+        return new AXPromptProfile(task, language, systemProfiles, sectionOrder);
     }
 
-    private static String readString(JsonObject json, String key, String fallback) {
+    static AXSystemProfileSet readSystemProfiles(JsonObject json, AXSystemProfileSet fallback) {
+        AXSystemProfileSet effectiveFallback = fallback == null ? AXSystemProfileSet.single("", "") : fallback;
+        AXSystemProfileContent topLevel = new AXSystemProfileContent(
+                readString(json, "identity", effectiveFallback.standardProfile().identity()),
+                readString(json, "behaviorRules", effectiveFallback.standardProfile().behaviorRules())
+        );
+        if (json == null || !json.has("systemProfiles") || !json.get("systemProfiles").isJsonObject()) {
+            return AXSystemProfileSet.single(topLevel.identity(), topLevel.behaviorRules());
+        }
+        JsonObject profiles = json.getAsJsonObject("systemProfiles");
+        return new AXSystemProfileSet(
+                readSystemProfile(profiles, "short", topLevel),
+                readSystemProfile(profiles, "standard", topLevel),
+                readSystemProfile(profiles, "full", topLevel)
+        );
+    }
+
+    private static AXSystemProfileContent readSystemProfile(JsonObject profiles, String key, AXSystemProfileContent fallback) {
+        if (profiles == null || key == null || !profiles.has(key) || !profiles.get(key).isJsonObject()) {
+            return fallback;
+        }
+        JsonObject profile = profiles.getAsJsonObject(key);
+        return new AXSystemProfileContent(
+                readString(profile, "identity", fallback == null ? "" : fallback.identity()),
+                readString(profile, "behaviorRules", fallback == null ? "" : fallback.behaviorRules())
+        );
+    }
+
+    static String readString(JsonObject json, String key, String fallback) {
         if (json == null || key == null || !json.has(key) || json.get(key).isJsonNull()) {
             return fallback;
         }

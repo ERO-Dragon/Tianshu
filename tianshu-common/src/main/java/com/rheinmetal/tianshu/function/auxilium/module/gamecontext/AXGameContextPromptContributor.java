@@ -31,11 +31,12 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
         }
         List<String> lines = new java.util.ArrayList<>();
         List<AXKnowledgeHit> knowledgeHits = knowledgePlanner.plan(context.request(), context.context(), context.budget());
-        List<String> dynamicContent = dynamicContent(context, knowledgeHits);
+        int knowledgeLimit = Math.max(0, context.budget().maxKnowledgeRagItems());
+        List<String> dynamicContent = dynamicContent(context, knowledgeHits, knowledgeLimit);
         if (!dynamicContent.isEmpty()) {
             lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_DYNAMIC_CONTENT_TITLE, dynamicContent));
         }
-        List<String> staticContent = staticContent(context, knowledgeHits);
+        List<String> staticContent = staticContent(context, knowledgeHits, Math.max(0, knowledgeLimit - dynamicContent.size()));
         if (!staticContent.isEmpty()) {
             lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_STATIC_CONTENT_TITLE, staticContent));
         }
@@ -63,8 +64,7 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
                 .toList();
     }
 
-    private List<String> dynamicContent(AXPromptBuildContext context, List<AXKnowledgeHit> hits) {
-        int limit = context.budget().maxDynamicContentItems();
+    private List<String> dynamicContent(AXPromptBuildContext context, List<AXKnowledgeHit> hits, int limit) {
         List<String> selectedDynamicFacts = knowledgeFacts(hits, AXKnowledgeHit.QueryPath.DYNAMIC_FACT, limit);
         List<String> lines = new java.util.ArrayList<>(selectedDynamicFacts.isEmpty()
                 ? dynamicFacts(context, limit)
@@ -78,8 +78,8 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
                 .toList();
     }
 
-    private List<String> staticContent(AXPromptBuildContext context, List<AXKnowledgeHit> hits) {
-        return knowledgeFacts(hits, AXKnowledgeHit.QueryPath.INPUT_RAG, context.budget().maxStaticContentItems());
+    private List<String> staticContent(AXPromptBuildContext context, List<AXKnowledgeHit> hits, int limit) {
+        return knowledgeFacts(hits, AXKnowledgeHit.QueryPath.INPUT_RAG, limit);
     }
 
     private List<String> knowledgeFacts(List<AXKnowledgeHit> hits, AXKnowledgeHit.QueryPath queryPath, int limit) {

@@ -10,8 +10,8 @@ public record AXMemoryStatsSnapshot(
         int memoryEventCount,
         int attachedWorldEventCount,
         int vectorCount,
-        int estimatedStmTokens,
-        int estimatedEventTokens,
+        int stmTokenCount,
+        int eventTokenCount,
         long earliestEventMillis,
         long latestEventMillis
 ) {
@@ -25,8 +25,8 @@ public record AXMemoryStatsSnapshot(
         memoryEventCount = Math.max(0, memoryEventCount);
         attachedWorldEventCount = Math.max(0, attachedWorldEventCount);
         vectorCount = Math.max(0, vectorCount);
-        estimatedStmTokens = Math.max(0, estimatedStmTokens);
-        estimatedEventTokens = Math.max(0, estimatedEventTokens);
+        stmTokenCount = Math.max(0, stmTokenCount);
+        eventTokenCount = Math.max(0, eventTokenCount);
         earliestEventMillis = Math.max(0L, earliestEventMillis);
         latestEventMillis = Math.max(earliestEventMillis, latestEventMillis);
     }
@@ -40,8 +40,8 @@ public record AXMemoryStatsSnapshot(
         json.addProperty("memoryEventCount", memoryEventCount);
         json.addProperty("attachedWorldEventCount", attachedWorldEventCount);
         json.addProperty("vectorCount", vectorCount);
-        json.addProperty("estimatedStmTokens", estimatedStmTokens);
-        json.addProperty("estimatedEventTokens", estimatedEventTokens);
+        json.addProperty("stmTokenCount", stmTokenCount);
+        json.addProperty("eventTokenCount", eventTokenCount);
         json.addProperty("earliestEventMillis", earliestEventMillis);
         json.addProperty("latestEventMillis", latestEventMillis);
         return json;
@@ -59,8 +59,8 @@ public record AXMemoryStatsSnapshot(
                 readInt(json, "memoryEventCount", 0),
                 readInt(json, "attachedWorldEventCount", 0),
                 readInt(json, "vectorCount", 0),
-                readInt(json, "estimatedStmTokens", 0),
-                readInt(json, "estimatedEventTokens", 0),
+                readInt(json, "stmTokenCount", 0),
+                readInt(json, "eventTokenCount", 0),
                 readLong(json, "earliestEventMillis", 0L),
                 readLong(json, "latestEventMillis", 0L)
         );

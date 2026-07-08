@@ -128,7 +128,7 @@ public final class AXModule implements TianshuManagedModule {
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
         memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
-        recentDialogueSystem = new AXRecentDialogueSystem(memoryPolicy);
+        recentDialogueSystem = new AXRecentDialogueSystem(memoryPolicy, retrievalPrimitiveClient::countMessageTokens);
         AXMemoryTaskPromptRepository memoryTaskPromptRepository = new AXMemoryTaskPromptRepository(storageLayout, promptLanguageProvider);
         AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
                 adapter,
@@ -147,7 +147,8 @@ public final class AXModule implements TianshuManagedModule {
                 promptRepository,
                 promptLanguageProvider,
                 new AXSharedKnowledgePlanner(ragClient),
-                null
+                null,
+                retrievalPrimitiveClient::countMessageTokens
         );
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
         AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator);

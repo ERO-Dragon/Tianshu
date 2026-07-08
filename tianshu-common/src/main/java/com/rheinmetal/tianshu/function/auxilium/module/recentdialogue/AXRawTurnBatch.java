@@ -7,7 +7,7 @@ public record AXRawTurnBatch(
         List<AXRawTurn> turns,
         long sourceFromMillis,
         long sourceToMillis,
-        int estimatedTokens,
+        int tokenCount,
         int characterCount
 ) {
     public AXRawTurnBatch {
@@ -16,13 +16,13 @@ public record AXRawTurnBatch(
                 .toList();
         long from = sourceFromMillis;
         long to = sourceToMillis;
-        int tokens = Math.max(0, estimatedTokens);
+        int tokens = Math.max(0, tokenCount);
         int chars = Math.max(0, characterCount);
         if (!turns.isEmpty()) {
             from = turns.stream().mapToLong(AXRawTurn::createdAtMillis).min().orElse(from);
             to = turns.stream().mapToLong(AXRawTurn::createdAtMillis).max().orElse(to);
             if (tokens <= 0) {
-                tokens = turns.stream().mapToInt(AXRawTurn::estimatedTokens).sum();
+                tokens = turns.stream().mapToInt(AXRawTurn::tokenCount).sum();
             }
             if (chars <= 0) {
                 chars = turns.stream().mapToInt(AXRawTurn::characterCount).sum();
@@ -30,7 +30,7 @@ public record AXRawTurnBatch(
         }
         sourceFromMillis = Math.max(0L, from);
         sourceToMillis = Math.max(sourceFromMillis, to);
-        estimatedTokens = tokens;
+        tokenCount = tokens;
         characterCount = chars;
         batchId = batchId == null || batchId.isBlank()
                 ? buildBatchId(turns, sourceFromMillis, sourceToMillis)

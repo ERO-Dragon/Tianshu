@@ -55,7 +55,7 @@ public final class AXStmBlockStore {
                     previous.id(),
                     normalized.nextStmId(),
                     normalized.sourceTurnCount(),
-                    normalized.estimatedTokens(),
+                    normalized.tokenCount(),
                     normalized.content(),
                     normalized.attachedEventIds()
             );

@@ -60,22 +60,8 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 
 class AXTurnOrchestratorTest {
-    private static final AXRecentDialogueSystem RECENT_DIALOGUE_SYSTEM = new AXRecentDialogueSystem(new AXMemoryWindowPolicy(
-            8000,
-            2000,
-            2000,
-            1500,
-            1000,
-            1000,
-            25,
-            40,
-            25,
-            40,
-            28000,
-            120000,
-            3,
-            60000L
-    ));
+    private static final AXRecentDialogueSystem RECENT_DIALOGUE_SYSTEM =
+            new AXRecentDialogueSystem(AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L));
 
     @Test
     void streamsOnlyLlmReturnedTextAndAppendsFinalSuffix() {

@@ -22,14 +22,21 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
 
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
-        if (context.context() == null || context.context().memory() == null || context.budget().maxMemoryItems() <= 0) {
+        if (context.context() == null || context.context().memory() == null) {
             return;
         }
         List<AXMemoryBlockView> retrieved = context.context().memory().retrievedPlayerMemoryBlocks();
         List<AXMemoryBlockView> recent = context.context().memory().recentPlayerMemoryBlocks();
-        int blockLimit = Math.max(0, context.budget().maxMemoryItems());
-        List<AXMemoryBlockView> selectedRetrieved = selectBlocks(retrieved, blockLimit, new LinkedHashSet<>());
-        List<AXMemoryBlockView> selectedRecent = selectBlocks(recent, Math.max(0, blockLimit - selectedRetrieved.size()), seenKeys(selectedRetrieved));
+        List<AXMemoryBlockView> selectedRetrieved = selectBlocks(
+                retrieved,
+                context.budget().maxRetrievedMemoryItems(),
+                new LinkedHashSet<>()
+        );
+        List<AXMemoryBlockView> selectedRecent = selectBlocks(
+                recent,
+                context.budget().maxRecentMemoryItems(),
+                seenKeys(selectedRetrieved)
+        );
         if (selectedRetrieved.isEmpty() && selectedRecent.isEmpty()) {
             return;
         }
