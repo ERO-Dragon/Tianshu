@@ -20,7 +20,6 @@ public record AXMemoryEvent(
         boolean spatiallyBound,
         long createdAtMillis,
         long happenedAtMillis,
-        int tokenCount,
         List<String> entityTags
 ) {
     public static final int SCHEMA_VERSION = 1;
@@ -35,7 +34,6 @@ public record AXMemoryEvent(
         position = position == null ? "" : position.trim();
         createdAtMillis = createdAtMillis <= 0L ? System.currentTimeMillis() : createdAtMillis;
         happenedAtMillis = happenedAtMillis <= 0L ? createdAtMillis : happenedAtMillis;
-        tokenCount = Math.max(0, tokenCount);
         entityTags = entityTags == null ? List.of() : entityTags.stream()
                 .filter(value -> value != null && !value.isBlank())
                 .map(String::trim)
@@ -48,24 +46,6 @@ public record AXMemoryEvent(
 
     public boolean isEmpty() {
         return id.isBlank() || fact.isBlank();
-    }
-
-    public AXMemoryEvent withTokenCount(int value) {
-        return new AXMemoryEvent(
-                id,
-                fact,
-                factHash,
-                stmId,
-                sourceKind,
-                worldId,
-                dimension,
-                position,
-                spatiallyBound,
-                createdAtMillis,
-                happenedAtMillis,
-                value,
-                entityTags
-        );
     }
 
     public JsonObject toJson() {
@@ -82,7 +62,6 @@ public record AXMemoryEvent(
         json.addProperty("spatiallyBound", spatiallyBound);
         json.addProperty("createdAtMillis", createdAtMillis);
         json.addProperty("happenedAtMillis", happenedAtMillis);
-        json.addProperty("tokenCount", tokenCount);
         JsonArray tags = new JsonArray();
         entityTags.forEach(tags::add);
         json.add("entityTags", tags);
@@ -91,7 +70,7 @@ public record AXMemoryEvent(
 
     public static AXMemoryEvent fromJson(JsonObject json) {
         if (json == null) {
-            return new AXMemoryEvent("", "", "", "", "", "", "", "", false, 0L, 0L, 0, List.of());
+            return new AXMemoryEvent("", "", "", "", "", "", "", "", false, 0L, 0L, List.of());
         }
         return new AXMemoryEvent(
                 readString(json, "id"),
@@ -105,7 +84,6 @@ public record AXMemoryEvent(
                 readBoolean(json, "spatiallyBound"),
                 readLong(json, "createdAtMillis", 0L),
                 readLong(json, "happenedAtMillis", readLong(json, "eventAtMillis", 0L)),
-                readInt(json, "tokenCount", 0),
                 readStringArray(json, "entityTags")
         );
     }
@@ -125,14 +103,6 @@ public record AXMemoryEvent(
     private static long readLong(JsonObject json, String key, long fallback) {
         try {
             return json.has(key) && !json.get(key).isJsonNull() ? json.get(key).getAsLong() : fallback;
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    private static int readInt(JsonObject json, String key, int fallback) {
-        try {
-            return json.has(key) && !json.get(key).isJsonNull() ? json.get(key).getAsInt() : fallback;
         } catch (Exception e) {
             return fallback;
         }

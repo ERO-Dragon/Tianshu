@@ -5,15 +5,18 @@ import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 final class VectorStore {
 
+    private static final double VECTOR_WEIGHT = 0.70D;
+    private static final double BM25_WEIGHT = 0.30D;
+
     private final String uid;
     private final List<Entry> entries = new ArrayList<>();
+    private final Bm25Index bm25Index = new Bm25Index(DefaultRagTextAnalyzer.INSTANCE);
 
     VectorStore(String uid) {
         this.uid = uid == null ? "" : uid;
@@ -32,9 +35,11 @@ final class VectorStore {
                 return false;
             }
             entries.set(index, next);
+            bm25Index.upsert(next.entryId(), next.content());
             return true;
         }
         entries.add(next);
+        bm25Index.upsert(next.entryId(), next.content());
         return true;
     }
 
@@ -57,12 +62,19 @@ final class VectorStore {
             return false;
         }
         entries.set(index, next);
+        if (updateContent) {
+            bm25Index.upsert(next.entryId(), next.content());
+        }
         return true;
     }
 
     synchronized boolean deleteEntry(String entryId) {
         String id = normalizeEntryId(entryId);
-        return !id.isBlank() && entries.removeIf(entry -> entry.entryId().equals(id));
+        boolean removed = !id.isBlank() && entries.removeIf(entry -> entry.entryId().equals(id));
+        if (removed) {
+            bm25Index.delete(id);
+        }
+        return removed;
     }
 
     synchronized boolean hasEntry(String entryId) {
@@ -86,9 +98,13 @@ final class VectorStore {
         return entries.size();
     }
 
-    List<RagCacheManager.RagEntrySearchResult> searchEntries(float[] queryVector, String queryText, int topK, float threshold) {
+    Map<String, Double> bm25Scores(String queryText) {
+        return bm25Index.score(queryText);
+    }
+
+    List<RagCacheManager.RagEntrySearchResult> searchEntries(float[] queryVector, Map<String, Double> bm25Scores, int topK, float threshold) {
         List<Entry> snapshot = snapshot();
-        if (snapshot.isEmpty() || queryVector == null || queryVector.length == 0) {
+        if (snapshot.isEmpty()) {
             return List.of();
         }
 
@@ -96,9 +112,9 @@ final class VectorStore {
         float effectiveThreshold = threshold > 0f && threshold <= 1f ? threshold : 0.7f;
         List<ScoredEntry> scored = new ArrayList<>();
         for (Entry entry : snapshot) {
-            float vectorScore = entry.vector() == null || entry.vector().length == 0 ? 0f : VectorMath.cosineSimilarity(queryVector, entry.vector());
-            float lexicalScore = lexicalScore(queryText, entry.content());
-            float score = entry.content().isBlank() ? vectorScore : Math.max(vectorScore, lexicalScore);
+            double vectorScore = vectorScore(queryVector, entry.vector());
+            double bm25Score = bm25Scores == null ? 0D : bm25Scores.getOrDefault(entry.entryId(), 0D);
+            double score = hybridScore(vectorScore, bm25Score);
             if (score >= effectiveThreshold) {
                 scored.add(new ScoredEntry(entry, score));
             }
@@ -112,7 +128,7 @@ final class VectorStore {
     }
 
     List<RagSearchResult> search(float[] queryVector, String queryText, int topK, float threshold) {
-        return searchEntries(queryVector, queryText, topK, threshold).stream()
+        return searchEntries(queryVector, bm25Scores(queryText), topK, threshold).stream()
                 .filter(result -> !result.content().isBlank())
                 .map(result -> new RagSearchResult(result.content(), result.score()))
                 .collect(Collectors.toList());
@@ -142,39 +158,6 @@ final class VectorStore {
         return -1;
     }
 
-    private static float lexicalScore(String queryText, String content) {
-        Set<String> queryTerms = terms(queryText);
-        if (queryTerms.isEmpty() || content == null || content.isBlank()) {
-            return 0f;
-        }
-        Set<String> contentTerms = terms(content);
-        if (contentTerms.isEmpty()) {
-            return 0f;
-        }
-        int hits = 0;
-        for (String term : queryTerms) {
-            if (contentTerms.contains(term)) {
-                hits++;
-            }
-        }
-        return hits <= 0 ? 0f : (float) hits / (float) queryTerms.size();
-    }
-
-    private static Set<String> terms(String text) {
-        if (text == null || text.isBlank()) {
-            return Set.of();
-        }
-        String normalized = text.toLowerCase();
-        String[] parts = normalized.split("[^\\p{IsAlphabetic}\\p{IsDigit}\\p{IsIdeographic}]+");
-        Set<String> terms = new LinkedHashSet<>();
-        for (String part : parts) {
-            if (!part.isBlank()) {
-                terms.add(part);
-            }
-        }
-        return terms;
-    }
-
     private static String normalizeEntryId(String entryId) {
         return entryId == null ? "" : entryId.trim();
     }
@@ -185,6 +168,34 @@ final class VectorStore {
 
     private static float[] copyVector(float[] vector) {
         return vector == null ? null : Arrays.copyOf(vector, vector.length);
+    }
+
+    private static double vectorScore(float[] queryVector, float[] entryVector) {
+        if (queryVector == null || queryVector.length == 0 || entryVector == null || entryVector.length == 0) {
+            return 0D;
+        }
+        float score = VectorMath.cosineSimilarity(queryVector, entryVector);
+        if (Float.isNaN(score) || Float.isInfinite(score)) {
+            return 0D;
+        }
+        return Math.max(0D, Math.min(1D, score));
+    }
+
+    private static double hybridScore(double vectorScore, double bm25Score) {
+        double numerator = 0D;
+        double denominator = 0D;
+        if (vectorScore > 0D) {
+            numerator += vectorScore * VECTOR_WEIGHT;
+            denominator += VECTOR_WEIGHT;
+        }
+        if (bm25Score > 0D) {
+            numerator += bm25Score * BM25_WEIGHT;
+            denominator += BM25_WEIGHT;
+        }
+        if (denominator <= 0D) {
+            return 0D;
+        }
+        return Math.max(0D, Math.min(1D, numerator / denominator));
     }
 
     record EntrySnapshot(String entryId, String content, float[] vector) {

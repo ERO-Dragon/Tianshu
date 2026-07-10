@@ -14,7 +14,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 public final class AXSharedKnowledgePlanner implements AXGameContextKnowledgePlanner {
-    private static final List<String> DIRECT_STATIC_TAGS = List.of("main");
+    private static final List<String> DIRECT_STATIC_TAGS = List.of("main", "addon");
     private static final List<String> DYNAMIC_STATIC_TAGS = List.of("main", "addon");
     private static final float DEFAULT_THRESHOLD = 0.7F;
     private static final String DYNAMIC_INLINE_UID = "module.ax.dynamic_facts.inline";

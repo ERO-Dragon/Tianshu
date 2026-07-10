@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEvent;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEventStore;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEventBuffer;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVector;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVectorStore;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
@@ -32,7 +32,7 @@ public final class AXMemorySystem {
     private final AXMemoryWindowPolicy windowPolicy;
     private final AXStmBlockStore stmBlockStore;
     private final AXMemoryEventStore eventStore;
-    private final AXAttachedWorldEventStore attachedWorldEventStore;
+    private final AXAttachedWorldEventBuffer attachedWorldEventBuffer;
     private final AXEventVectorStore vectorStore;
     private final AXMemoryStatsStore statsStore;
     private final AXMemoryStorageManifestStore manifestStore;
@@ -60,7 +60,7 @@ public final class AXMemorySystem {
         this.windowPolicy = policy == null ? AXMemoryWindowPolicy.DEFAULT : policy;
         this.stmBlockStore = new AXStmBlockStore(layout, jsonStore);
         this.eventStore = new AXMemoryEventStore(layout, jsonStore);
-        this.attachedWorldEventStore = new AXAttachedWorldEventStore(layout, jsonStore);
+        this.attachedWorldEventBuffer = new AXAttachedWorldEventBuffer();
         this.vectorStore = new AXEventVectorStore(layout, jsonStore);
         this.statsStore = new AXMemoryStatsStore(layout, jsonStore);
         this.manifestStore = new AXMemoryStorageManifestStore(layout, jsonStore);
@@ -100,10 +100,10 @@ public final class AXMemorySystem {
         if (event == null || event.isEmpty()) {
             return;
         }
-        if (!storageReadyForWrite(scope)) {
+        if (scope == null || !scope.writable()) {
             return;
         }
-        attachedWorldEventStore.appendAll(scope, List.of(event));
+        attachedWorldEventBuffer.append(scope, event);
     }
 
     public void appendEventVector(AXScope scope, AXEventVector vector) {
@@ -121,17 +121,14 @@ public final class AXMemorySystem {
         Set<String> attachedIds = stmBlockStore.loadAll(scope).stream()
                 .flatMap(block -> block.attachedEventIds().stream())
                 .collect(Collectors.toSet());
-        return attachedWorldEventStore.loadAll(scope).stream()
-                .filter(event -> event.happenedAtMillis() >= fromMillis && event.happenedAtMillis() <= toMillis)
-                .filter(event -> !attachedIds.contains(event.id()))
-                .toList();
+        return attachedWorldEventBuffer.loadInRange(scope, fromMillis, toMillis, attachedIds);
     }
 
     public List<AXMemoryBlockView> memoryBlockViews(AXScope scope, List<AXStmBlock> blocks) {
         if (scope == null || !scope.writable() || blocks == null || blocks.isEmpty()) {
             return List.of();
         }
-        java.util.Map<String, String> attachedTextsById = attachedWorldEventStore.loadAll(scope).stream()
+        java.util.Map<String, String> attachedTextsById = attachedWorldEventBuffer.loadAll(scope).stream()
                 .collect(Collectors.toMap(
                         AXAttachedWorldEvent::id,
                         AXMemorySystem::attachedText,
@@ -157,8 +154,8 @@ public final class AXMemorySystem {
         return eventStore;
     }
 
-    public AXAttachedWorldEventStore attachedWorldEvents() {
-        return attachedWorldEventStore;
+    public AXAttachedWorldEventBuffer attachedWorldEventBuffer() {
+        return attachedWorldEventBuffer;
     }
 
     public AXEventVectorStore vectors() {

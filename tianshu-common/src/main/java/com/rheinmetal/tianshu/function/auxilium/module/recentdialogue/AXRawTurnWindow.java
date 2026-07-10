@@ -7,6 +7,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,6 +73,40 @@ public final class AXRawTurnWindow {
         }
         synchronized (turns) {
             return List.copyOf(turns);
+        }
+    }
+
+    public Map<String, List<AXRawTurn>> snapshotAll() {
+        Map<String, List<AXRawTurn>> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Deque<AXRawTurn>> entry : turnsByWorld.entrySet()) {
+            Deque<AXRawTurn> turns = entry.getValue();
+            if (turns == null) {
+                continue;
+            }
+            synchronized (turns) {
+                result.put(entry.getKey(), List.copyOf(turns));
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    public void replace(AXScope scope, List<AXRawTurn> turns) {
+        if (!writable(scope)) {
+            return;
+        }
+        Deque<AXRawTurn> next = new ArrayDeque<>();
+        if (turns != null) {
+            for (AXRawTurn turn : turns) {
+                if (turn != null && !turn.isEmpty()) {
+                    next.addLast(turn);
+                }
+            }
+        }
+        trim(next);
+        Deque<AXRawTurn> existing = turnsByWorld.computeIfAbsent(scope.worldId(), ignored -> new ArrayDeque<>());
+        synchronized (existing) {
+            existing.clear();
+            existing.addAll(next);
         }
     }
 

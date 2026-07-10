@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -81,14 +83,60 @@ class PersistentRagCacheManagerTest {
         assertEquals("cluster-b", results.get(0).entryId());
     }
 
+    @Test
+    void bm25SearchStillWorksWhenQueryEmbeddingFails() {
+        CountingEmbeddingService embeddings = new CountingEmbeddingService();
+        PersistentRagCacheManager cache = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+
+        cache.upsert("memory", "target", "diamond pickaxe in ender chest", new float[]{0f, 1f});
+        cache.upsert("memory", "other", "player went fishing", new float[]{0f, 1f});
+
+        embeddings.failSingleEmbed = true;
+        List<RagCacheManager.RagEntrySearchResult> results = cache.searchEntries("memory", "where is the diamond pickaxe", 1, 0.7f);
+
+        assertEquals(1, results.size());
+        assertEquals("target", results.get(0).entryId());
+    }
+
+    @Test
+    void upsertBatchesDiskWritesUntilScheduledFlushRuns() {
+        CountingEmbeddingService embeddings = new CountingEmbeddingService();
+        ManualRagPersistenceScheduler scheduler = new ManualRagPersistenceScheduler();
+        PersistentRagCacheManager cache = new PersistentRagCacheManager(
+                new FakeGameEnvironment(),
+                embeddings,
+                tempDir,
+                "test",
+                Runnable::run,
+                scheduler
+        );
+
+        cache.upsert("memory", "entry-a", "first memory", null);
+        cache.upsert("memory", "entry-b", "second memory", null);
+
+        assertEquals(1, scheduler.scheduledCount);
+        assertEquals(false, Files.exists(tempDir.resolve("memory.bin")));
+
+        scheduler.runScheduled();
+
+        assertEquals(true, Files.isRegularFile(tempDir.resolve("memory.bin")));
+        PersistentRagCacheManager reloaded = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+        assertEquals(true, reloaded.hasEntry("memory", "entry-a"));
+        assertEquals(true, reloaded.hasEntry("memory", "entry-b"));
+    }
+
     private static final class CountingEmbeddingService implements EmbeddingService {
         private int singleCalls;
         private int batchCalls;
         private final java.util.ArrayList<Integer> batchSizes = new java.util.ArrayList<>();
+        private boolean failSingleEmbed;
 
         @Override
         public float[] embed(String text) {
             singleCalls++;
+            if (failSingleEmbed) {
+                throw new IllegalStateException("embedding unavailable");
+            }
             return new float[]{1f, 0f};
         }
 
@@ -106,6 +154,23 @@ class PersistentRagCacheManagerTest {
         @Override
         public int getEmbeddingDimension() {
             return 2;
+        }
+    }
+
+    private static final class ManualRagPersistenceScheduler implements RagPersistenceScheduler {
+        private final List<Runnable> scheduled = new ArrayList<>();
+        private int scheduledCount;
+
+        @Override
+        public void schedule(Runnable task, Duration delay) {
+            scheduledCount++;
+            scheduled.add(task);
+        }
+
+        void runScheduled() {
+            List<Runnable> tasks = new ArrayList<>(scheduled);
+            scheduled.clear();
+            tasks.forEach(Runnable::run);
         }
     }
 

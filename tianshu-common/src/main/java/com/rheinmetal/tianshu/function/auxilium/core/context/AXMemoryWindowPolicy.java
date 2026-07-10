@@ -46,8 +46,8 @@ public record AXMemoryWindowPolicy(
     static final double RATIO_CHAT_SYSTEM = 0.10;
     static final double RATIO_KNOWLEDGE_RAG = 0.30;
     static final double RATIO_RETRIEVED_MEMORY = 0.25;
-    static final double RATIO_RECENT_MEMORY = 0.10;
-    static final double RATIO_RECENT_RAW = 0.20;
+    static final double RATIO_RECENT_MEMORY = 0.05;
+    static final double RATIO_RECENT_RAW = 0.25;
     static final double RATIO_CURRENT_INPUT = 0.05;
 
     // TASK baseline input-slot ratios. TASK prompts do not use the CHAT five-block layout.

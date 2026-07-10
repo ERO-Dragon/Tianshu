@@ -55,7 +55,7 @@ class AXSharedKnowledgePlannerTest {
                         LLMCacheManagePayload.ACTION_SEARCH_TAGS
                 ),
                 provider.requests.stream().map(LLMCacheManagePayload::action).toList());
-        assertEquals(List.of("main"), provider.requests.get(0).tags());
+        assertEquals(List.of("main", "addon"), provider.requests.get(0).tags());
         assertEquals(List.of("main", "addon"), provider.requests.get(2).tags());
         assertTrue(provider.requests.get(1).contents().contains(anvil.text()));
         assertTrue(provider.requests.get(1).contents().contains(goat.text()));

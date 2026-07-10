@@ -61,7 +61,6 @@ public record AXAttachedWorldEvent(
                 !position.isBlank(),
                 System.currentTimeMillis(),
                 happenedAtMillis,
-                0,
                 tags
         );
     }

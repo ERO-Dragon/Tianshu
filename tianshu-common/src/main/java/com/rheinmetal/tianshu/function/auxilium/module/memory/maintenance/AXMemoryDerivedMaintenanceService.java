@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryStatsSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
 
@@ -74,9 +73,7 @@ public final class AXMemoryDerivedMaintenanceService {
     private AXMemoryStatsSnapshot rebuildStats(AXScope scope) {
         List<AXStmBlock> blocks = memorySystem.stmBlocks().loadAll(scope);
         List<AXMemoryEvent> events = memorySystem.events().loadAll(scope);
-        List<AXAttachedWorldEvent> attached = memorySystem.attachedWorldEvents().loadAll(scope);
         int stmTokens = blocks.stream().mapToInt(AXStmBlock::tokenCount).sum();
-        int eventTokens = events.stream().mapToInt(AXMemoryEvent::tokenCount).sum();
         long earliest = events.stream().mapToLong(AXMemoryEvent::happenedAtMillis).filter(value -> value > 0L).min().orElse(0L);
         long latest = events.stream().mapToLong(AXMemoryEvent::happenedAtMillis).filter(value -> value > 0L).max().orElse(earliest);
         int vectorCount = memorySystem.vectors().loadAllNamespaces(scope).size();
@@ -86,10 +83,8 @@ public final class AXMemoryDerivedMaintenanceService {
                 System.currentTimeMillis(),
                 blocks.size(),
                 events.size(),
-                attached.size(),
                 vectorCount,
                 stmTokens,
-                eventTokens,
                 earliest,
                 latest
         );

@@ -6,8 +6,12 @@ import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 public final class DefaultRagCacheManager implements RagCacheManager {
 
@@ -16,11 +20,17 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     private final IGameEnvironment env;
     private final EmbeddingService embeddingService;
+    private final Executor ragSearchExecutor;
     private final ConcurrentMap<String, VectorStore> stores = new ConcurrentHashMap<>();
 
     public DefaultRagCacheManager(IGameEnvironment env, EmbeddingService embeddingService) {
+        this(env, embeddingService, Runnable::run);
+    }
+
+    public DefaultRagCacheManager(IGameEnvironment env, EmbeddingService embeddingService, Executor ragSearchExecutor) {
         this.env = Objects.requireNonNull(env, "env");
         this.embeddingService = Objects.requireNonNull(embeddingService, "embeddingService");
+        this.ragSearchExecutor = ragSearchExecutor == null ? Runnable::run : ragSearchExecutor;
     }
 
     @Override
@@ -99,15 +109,16 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     @Override
     public List<RagEntrySearchResult> searchEntries(String uid, String queryText, int topK, float threshold) {
+        return searchEntries(uid, queryText, embedQueryVector(queryText), topK, threshold);
+    }
+
+    @Override
+    public List<RagEntrySearchResult> searchEntries(String uid, String queryText, float[] queryVector, int topK, float threshold) {
         if (uid == null || uid.isBlank() || queryText == null || queryText.isBlank()) {
             return List.of();
         }
 
         try {
-            float[] queryVector = embeddingService.embed(queryText);
-            if (!isUsableVector(queryVector)) {
-                return List.of();
-            }
             VectorStore store = stores.get(uid);
             if (store == null || store.isEmpty()) {
                 return List.of();
@@ -115,7 +126,8 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
             int effectiveTopK = topK > 0 ? topK : DEFAULT_TOP_K;
             float effectiveThreshold = threshold > 0f && threshold <= 1f ? threshold : DEFAULT_THRESHOLD;
-            return store.searchEntries(VectorMath.normalize(queryVector), queryText, effectiveTopK, effectiveThreshold);
+            CompletableFuture<Map<String, Double>> bm25Scores = bm25ScoresAsync(store, queryText);
+            return store.searchEntries(normalizeVector(queryVector), bm25Scores.join(), effectiveTopK, effectiveThreshold);
         } catch (Exception e) {
             env.error("[RAG] Failed to search for uid: " + uid, e);
             return List.of();
@@ -139,6 +151,10 @@ public final class DefaultRagCacheManager implements RagCacheManager {
     }
 
     @Override
+    public void flush() {
+    }
+
+    @Override
     public void clear() {
         stores.clear();
         env.info("[RAG] Cleared all caches");
@@ -156,6 +172,23 @@ public final class DefaultRagCacheManager implements RagCacheManager {
 
     private static float[] normalizeVector(float[] vector) {
         return isUsableVector(vector) ? VectorMath.normalize(vector) : null;
+    }
+
+    private float[] embedQueryVector(String queryText) {
+        try {
+            return embeddingService.embed(queryText);
+        } catch (Exception e) {
+            env.error("[RAG] Failed to embed query text", e);
+            return null;
+        }
+    }
+
+    private CompletableFuture<Map<String, Double>> bm25ScoresAsync(VectorStore store, String queryText) {
+        try {
+            return CompletableFuture.supplyAsync(() -> store.bm25Scores(queryText), ragSearchExecutor);
+        } catch (RejectedExecutionException e) {
+            return CompletableFuture.completedFuture(store.bm25Scores(queryText));
+        }
     }
 
     private static boolean isUsableVector(float[] vector) {

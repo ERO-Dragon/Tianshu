@@ -33,6 +33,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceWorldEve
 import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryMaintenanceService;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryTaskPromptRepository;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
+import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurnCheckpointStore;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
@@ -128,7 +129,8 @@ public final class AXModule implements TianshuManagedModule {
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
         memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
-        recentDialogueSystem = new AXRecentDialogueSystem(memoryPolicy, retrievalPrimitiveClient::countMessageTokens);
+        AXRawTurnCheckpointStore rawTurnCheckpointStore = new AXRawTurnCheckpointStore(storageLayout, jsonStore);
+        recentDialogueSystem = new AXRecentDialogueSystem(memoryPolicy, retrievalPrimitiveClient::countMessageTokens, rawTurnCheckpointStore);
         AXMemoryTaskPromptRepository memoryTaskPromptRepository = new AXMemoryTaskPromptRepository(storageLayout, promptLanguageProvider);
         AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
                 adapter,
@@ -209,6 +211,9 @@ public final class AXModule implements TianshuManagedModule {
     public void stop() {
         if (maintenanceCoordinator != null) {
             maintenanceCoordinator.stop();
+        }
+        if (recentDialogueSystem != null) {
+            recentDialogueSystem.checkpointAll();
         }
         if (llmClient != null) {
             llmClient.clear();

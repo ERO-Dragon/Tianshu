@@ -17,8 +17,8 @@ class AXMemoryWindowPolicyTest {
         assertEquals(480, p.chatSystemTokenBudget());
         assertEquals(1440, p.knowledgeRagTokenBudget());
         assertEquals(1200, p.retrievedMemoryTokenBudget());
-        assertEquals(480, p.recentMemoryTokenBudget());
-        assertEquals(960, p.recentRawDialogueTokenBudget());
+        assertEquals(240, p.recentMemoryTokenBudget());
+        assertEquals(1200, p.recentRawDialogueTokenBudget());
         assertEquals(240, p.currentInputTokenBudget());
 
         assertEquals(4800, p.taskInputTokenBudget());
@@ -45,8 +45,8 @@ class AXMemoryWindowPolicyTest {
         assertEquals(180, p.chatSystemTokenBudget());
         assertEquals(540, p.knowledgeRagTokenBudget());
         assertEquals(450, p.retrievedMemoryTokenBudget());
-        assertEquals(180, p.recentMemoryTokenBudget());
-        assertEquals(360, p.recentRawDialogueTokenBudget());
+        assertEquals(90, p.recentMemoryTokenBudget());
+        assertEquals(450, p.recentRawDialogueTokenBudget());
         assertEquals(90, p.currentInputTokenBudget());
 
         double scale = 3000.0 / 8000.0;
@@ -68,8 +68,8 @@ class AXMemoryWindowPolicyTest {
         assertEquals(720, p.chatSystemTokenBudget());
         assertEquals(2160, p.knowledgeRagTokenBudget());
         assertEquals(1800, p.retrievedMemoryTokenBudget());
-        assertEquals(720, p.recentMemoryTokenBudget());
-        assertEquals(1440, p.recentRawDialogueTokenBudget());
+        assertEquals(360, p.recentMemoryTokenBudget());
+        assertEquals(1800, p.recentRawDialogueTokenBudget());
         assertEquals(360, p.currentInputTokenBudget());
     }
 
@@ -122,13 +122,13 @@ class AXMemoryWindowPolicyTest {
         AXContextBudget small = AXContextBudget.fromPolicy(AXMemoryWindowPolicy.fromBudget(3000, 3, 60000L));
         AXContextBudget large = AXContextBudget.fromPolicy(AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L));
 
-        assertEquals(3, small.maxRecentRawDialogueTurns());
-        assertEquals(9, large.maxRecentRawDialogueTurns());
+        assertEquals(4, small.maxRecentRawDialogueTurns());
+        assertEquals(12, large.maxRecentRawDialogueTurns());
 
         assertEquals(4, small.maxRetrievedMemoryItems());
         assertEquals(12, large.maxRetrievedMemoryItems());
         assertEquals(1, small.maxRecentMemoryItems());
-        assertEquals(4, large.maxRecentMemoryItems());
+        assertEquals(2, large.maxRecentMemoryItems());
         assertEquals(5, small.maxKnowledgeRagItems());
         assertEquals(14, large.maxKnowledgeRagItems());
         assertEquals(180, small.systemTokenBudget());

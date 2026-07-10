@@ -337,12 +337,22 @@ LLM 只理解“库”和“条目”：
 - `uid` 是一个 RAG 库，可以对应一个簇、一个模组知识库或任意调用方定义的集合。
 - `entryId` 是该 uid 内的条目 id，用于写入、patch、delete，以及检索命中后原样返回。
 - `modid` 和 `tags` 只用于共享库发现；LLM 不校验 modid 真实性，依赖模组开发者自觉。
+- 调用方只传自然语言 `queryText`，不传关键词。LLM 内部用统一 analyzer 对 `queryText` 和条目 `content` 做 term 化，再执行 BM25 + embedding hybrid retrieval。
 
 共享检索规则：
 - `SEARCH_UID`：只检索指定 uid。
 - `SEARCH_MODID`：检索该 modid 下所有 `SHARED` 的 uid；同一个 modid 可以有多个 uid。
 - `SEARCH_TAGS`：检索所有 `SHARED` 且命中任意 tag 的 uid。
 - `SEARCH_INLINE_CONTENTS`：只检索请求携带的 `contents`，不注册库、不写入 cache、不触发生成。返回的 `entryId` 是输入列表中的稳定下标字符串。
+
+BM25 与 embedding 边界：
+- BM25 是 LLM RAG 内部的词法召回/排序组件，不要求上层传关键词。
+- 默认 analyzer 支持英文/数字词与 CJK ngram，可匹配文本中实际出现的专有名词；同义词、别名、错字修复仍应由 IR/AX 等上游在形成 `queryText` 前完成。
+- 持久 RAG 只落盘条目 `entryId`、`content`、`vector`；BM25 倒排索引属于可重建运行态索引，会在加载 cache 或写入变更时由 `content` 重建，不单独持久化。
+- 持久 RAG 在 `upsert` / `patch` / `delete` 时维护 BM25 倒排索引；查询时 BM25 与 query embedding 并行执行，默认按 embedding 70% / BM25 30% 融合，并按可用信号重新归一。
+- `SEARCH_MODID` / `SEARCH_TAGS` 命中多个 uid 时，同一次请求只生成一次 query embedding，并复用到各 uid 检索。
+- 如果 query embedding 暂不可用，检索会退化为 BM25-only；如果 BM25 无命中，仍可使用 vector-only。
+- 只有向量、没有文本的条目不会进入 BM25，只参与 vector-only 检索；同时有文本和向量的条目参与 hybrid retrieval；只有文本、没有向量的条目会在写入时生成向量，生成失败时仍可参与 BM25-only。
 
 AX 记忆检索示例：
 - 已知某个二级簇时：`uid = ax.memory.cluster.<clusterId>`，`entryId = eventId`，`content = E.factText`。
@@ -364,6 +374,12 @@ manifest.txt
 ```
 
 二进制文件内部带 namespace 校验。namespace 绑定当前 LLM 模型和 embedding 模型组合；模型组合变化后，旧 cache 会被忽略并等待重新索引。
+
+持久化写入策略：
+- `UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY` 会先更新内存中的 RAG 条目、向量索引和 BM25 索引，检索立即可见。
+- 磁盘写入按 `uid` 标记 dirty，并做约 1 秒 debounce 合并 flush；同一 uid 的高频写入会合并为一次整库文件重写。
+- `CLEAR_UID` 会立即移除内存条目并删除对应磁盘文件。
+- LLM 服务 `shutdown` 会 flush 所有 dirty uid，降低 write-behind 的数据丢失窗口。
 
 ---
 

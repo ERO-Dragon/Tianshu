@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.module.recentdialogue;
 
+import com.rheinmetal.tianshu.function.auxilium.storage.AXHashing;
+
 import java.util.List;
 
 public record AXRawTurnBatch(
@@ -47,6 +49,27 @@ public record AXRawTurnBatch(
 
     public List<String> turnIds() {
         return turns.stream().map(AXRawTurn::id).toList();
+    }
+
+    public String sourceHash() {
+        if (turns.isEmpty()) {
+            return "";
+        }
+        StringBuilder source = new StringBuilder()
+                .append(sourceFromMillis).append('\n')
+                .append(sourceToMillis).append('\n');
+        for (AXRawTurn turn : turns) {
+            source.append(turn.id()).append('\n')
+                    .append(turn.role()).append('\n')
+                    .append(turn.createdAtMillis()).append('\n')
+                    .append(turn.contentHash()).append('\n');
+        }
+        return AXHashing.sha256Short(source.toString());
+    }
+
+    public String stmId() {
+        String hash = sourceHash();
+        return hash.isBlank() ? "" : "stm_" + hash;
     }
 
     private static String buildBatchId(List<AXRawTurn> turns, long from, long to) {

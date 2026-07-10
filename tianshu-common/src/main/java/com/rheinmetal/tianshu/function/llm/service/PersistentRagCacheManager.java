@@ -8,16 +8,22 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class PersistentRagCacheManager implements RagCacheManager {
 
@@ -28,22 +34,37 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     private static final int MAX_TEXT_BYTES = 1_048_576;
     private static final int MAX_ENTRY_ID_BYTES = 4_096;
     private static final int MAX_VECTOR_DIMENSION = 65_536;
+    private static final Duration FLUSH_DEBOUNCE = Duration.ofSeconds(1);
 
     private final IGameEnvironment env;
     private final EmbeddingService embeddingService;
     private final Path cacheDirectory;
     private final String namespace;
+    private final Executor ragSearchExecutor;
+    private final RagPersistenceScheduler ragPersistenceScheduler;
     private final ConcurrentMap<String, VectorStore> stores = new ConcurrentHashMap<>();
+    private final Set<String> dirtyUids = ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean flushScheduled = new AtomicBoolean(false);
 
     public PersistentRagCacheManager(IGameEnvironment env, EmbeddingService embeddingService, Path cacheDirectory) {
         this(env, embeddingService, cacheDirectory, "default");
     }
 
     public PersistentRagCacheManager(IGameEnvironment env, EmbeddingService embeddingService, Path cacheDirectory, String namespace) {
+        this(env, embeddingService, cacheDirectory, namespace, Runnable::run);
+    }
+
+    public PersistentRagCacheManager(IGameEnvironment env, EmbeddingService embeddingService, Path cacheDirectory, String namespace, Executor ragSearchExecutor) {
+        this(env, embeddingService, cacheDirectory, namespace, ragSearchExecutor, RagPersistenceScheduler.immediate());
+    }
+
+    public PersistentRagCacheManager(IGameEnvironment env, EmbeddingService embeddingService, Path cacheDirectory, String namespace, Executor ragSearchExecutor, RagPersistenceScheduler ragPersistenceScheduler) {
         this.env = Objects.requireNonNull(env, "env");
         this.embeddingService = Objects.requireNonNull(embeddingService, "embeddingService");
         this.cacheDirectory = Objects.requireNonNull(cacheDirectory, "cacheDirectory");
         this.namespace = namespace == null || namespace.isBlank() ? "default" : namespace.trim();
+        this.ragSearchExecutor = ragSearchExecutor == null ? Runnable::run : ragSearchExecutor;
+        this.ragPersistenceScheduler = ragPersistenceScheduler == null ? RagPersistenceScheduler.immediate() : ragPersistenceScheduler;
         initialize();
     }
 
@@ -59,8 +80,8 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             }
             float[] effectiveVector = normalizeVector(resolveVector(content, vector));
             if (store.upsert(entryId, content, effectiveVector)) {
-                saveStore(uid);
-                env.info("[RAG] Upserted and persisted entry for uid: " + uid);
+                markDirty(uid);
+                env.info("[RAG] Upserted entry for uid: " + uid);
             }
         } catch (Exception e) {
             env.error("[RAG] Failed to upsert entry for uid: " + uid, e);
@@ -76,8 +97,8 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             VectorStore store = stores.computeIfAbsent(uid.trim(), VectorStore::new);
             float[] effectiveVector = updateVector ? normalizeVector(resolveVector(content, vector)) : null;
             if (store.patch(entryId, content, effectiveVector, updateContent, updateVector)) {
-                saveStore(uid);
-                env.info("[RAG] Patched and persisted entry for uid: " + uid);
+                markDirty(uid);
+                env.info("[RAG] Patched entry for uid: " + uid);
             }
         } catch (Exception e) {
             env.error("[RAG] Failed to patch entry for uid: " + uid, e);
@@ -92,7 +113,7 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         loadStoreIfNeeded(uid);
         VectorStore store = stores.get(uid.trim());
         if (store != null && store.deleteEntry(entryId)) {
-            saveStore(uid);
+            markDirty(uid);
             env.info("[RAG] Deleted entry from uid: " + uid);
         }
     }
@@ -102,10 +123,12 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         if (isBlank(uid)) {
             return;
         }
-        stores.remove(uid.trim());
-        deleteStoreFile(uid);
-        updateManifest(uid, false);
-        env.info("[RAG] Cleared uid: " + uid);
+        String cleanUid = uid.trim();
+        stores.remove(cleanUid);
+        dirtyUids.remove(cleanUid);
+        deleteStoreFile(cleanUid);
+        updateManifest(cleanUid, false);
+        env.info("[RAG] Cleared uid: " + cleanUid);
     }
 
     @Override
@@ -120,14 +143,15 @@ public final class PersistentRagCacheManager implements RagCacheManager {
 
     @Override
     public List<RagEntrySearchResult> searchEntries(String uid, String queryText, int topK, float threshold) {
+        return searchEntries(uid, queryText, embedQueryVector(queryText), topK, threshold);
+    }
+
+    @Override
+    public List<RagEntrySearchResult> searchEntries(String uid, String queryText, float[] queryVector, int topK, float threshold) {
         if (isBlank(uid) || isBlank(queryText)) {
             return List.of();
         }
         try {
-            float[] queryVector = embeddingService.embed(queryText);
-            if (!isUsableVector(queryVector)) {
-                return List.of();
-            }
             loadStoreIfNeeded(uid);
             VectorStore store = stores.get(uid.trim());
             if (store == null || store.isEmpty()) {
@@ -135,7 +159,8 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             }
             int effectiveTopK = topK > 0 ? topK : DEFAULT_TOP_K;
             float effectiveThreshold = threshold > 0f && threshold <= 1f ? threshold : DEFAULT_THRESHOLD;
-            return store.searchEntries(VectorMath.normalize(queryVector), queryText, effectiveTopK, effectiveThreshold);
+            CompletableFuture<Map<String, Double>> bm25Scores = bm25ScoresAsync(store, queryText);
+            return store.searchEntries(normalizeVector(queryVector), bm25Scores.join(), effectiveTopK, effectiveThreshold);
         } catch (Exception e) {
             env.error("[RAG] Failed to search for uid: " + uid, e);
             return List.of();
@@ -173,8 +198,14 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     }
 
     @Override
+    public void flush() {
+        flushDirtyUids();
+    }
+
+    @Override
     public void clear() {
         stores.clear();
+        dirtyUids.clear();
         try {
             if (Files.exists(cacheDirectory)) {
                 try (var walk = Files.walk(cacheDirectory)) {
@@ -272,13 +303,13 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         }
     }
 
-    private void saveStore(String uid) {
+    private boolean saveStore(String uid) {
         String cleanUid = uid == null ? "" : uid.trim();
         VectorStore store = stores.get(cleanUid);
         if (store == null || store.isEmpty()) {
             deleteStoreFile(cleanUid);
             updateManifest(cleanUid, false);
-            return;
+            return true;
         }
 
         List<VectorStore.EntrySnapshot> entries = store.getEntries();
@@ -309,8 +340,55 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             }
             moveIntoPlace(tmp, vectorsFile(cleanUid));
             updateManifest(cleanUid, true);
+            return true;
         } catch (Exception e) {
             env.error("[RAG] Failed to save store for uid: " + uid, e);
+            return false;
+        }
+    }
+
+    private void markDirty(String uid) {
+        String cleanUid = uid == null ? "" : uid.trim();
+        if (cleanUid.isBlank()) {
+            return;
+        }
+        dirtyUids.add(cleanUid);
+        scheduleFlush();
+    }
+
+    private void scheduleFlush() {
+        if (!flushScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            ragPersistenceScheduler.schedule(this::runScheduledFlush, FLUSH_DEBOUNCE);
+        } catch (RejectedExecutionException e) {
+            flushScheduled.set(false);
+            flushDirtyUids();
+        }
+    }
+
+    private void runScheduledFlush() {
+        try {
+            flushDirtyUids();
+        } finally {
+            flushScheduled.set(false);
+            if (!dirtyUids.isEmpty()) {
+                scheduleFlush();
+            }
+        }
+    }
+
+    private void flushDirtyUids() {
+        Set<String> snapshot = new LinkedHashSet<>(dirtyUids);
+        if (snapshot.isEmpty()) {
+            return;
+        }
+        dirtyUids.removeAll(snapshot);
+        for (String uid : snapshot) {
+            if (!saveStore(uid)) {
+                dirtyUids.add(uid);
+            }
         }
     }
 
@@ -424,6 +502,23 @@ public final class PersistentRagCacheManager implements RagCacheManager {
 
     private static float[] normalizeVector(float[] vector) {
         return isUsableVector(vector) ? VectorMath.normalize(vector) : null;
+    }
+
+    private float[] embedQueryVector(String queryText) {
+        try {
+            return embeddingService.embed(queryText);
+        } catch (Exception e) {
+            env.error("[RAG] Failed to embed query text", e);
+            return null;
+        }
+    }
+
+    private CompletableFuture<Map<String, Double>> bm25ScoresAsync(VectorStore store, String queryText) {
+        try {
+            return CompletableFuture.supplyAsync(() -> store.bm25Scores(queryText), ragSearchExecutor);
+        } catch (RejectedExecutionException e) {
+            return CompletableFuture.completedFuture(store.bm25Scores(queryText));
+        }
     }
 
     private static boolean isUsableVector(float[] vector) {

@@ -153,6 +153,22 @@ class LLMServiceTest {
     }
 
     @Test
+    void sharedTagSearchEmbedsQueryOnceAcrossMultipleLibraries() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+        service.registerRagLibrary("library-a", "moda", "SHARED", List.of("main"));
+        service.registerRagLibrary("library-b", "modb", "SHARED", List.of("main"));
+        service.upsertRagEntry("library-a", "entry-a", "diamond pickaxe in chest", new float[]{1f, 0f});
+        service.upsertRagEntry("library-b", "entry-b", "diamond ore near cave", new float[]{1f, 0f});
+        client.embedCalls = 0;
+
+        List<LLMService.RagLibrarySearchResult> results = service.searchSharedRagLibrariesByTags(List.of("main"), "diamond", 2, 0.1f);
+
+        assertEquals(1, client.embedCalls);
+        assertEquals(2, results.size());
+    }
+
+    @Test
     void tokenCountRejectsRagChunksWithoutSearchOrCacheMutation() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);
@@ -285,6 +301,7 @@ class LLMServiceTest {
         private boolean lastTaskPreemptible;
         private int searchCalls;
         private int tokenCountCalls;
+        private int embedCalls;
         private String lastSearchQuery;
         private List<String> lastSearchTexts = List.of();
         private boolean ready = true;
@@ -393,6 +410,7 @@ class LLMServiceTest {
 
         @Override
         public float[] embed(String text) {
+            embedCalls++;
             return new float[]{1f, 0f};
         }
 

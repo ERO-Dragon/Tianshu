@@ -67,7 +67,6 @@ class AXMemorySystemTest {
                 true,
                 1100L,
                 950L,
-                0,
                 List.of("minecraft:village")
         );
         AXEventVector vector = new AXEventVector(
@@ -95,10 +94,13 @@ class AXMemorySystemTest {
 
         JsonObject manifest = JsonParser.parseString(Files.readString(layout.worldManifestFile(scope), StandardCharsets.UTF_8)).getAsJsonObject();
         assertEquals(AXMemoryStorageManifestStore.LAYOUT_VERSION, manifest.get("layoutVersion").getAsInt());
+        assertEquals(AXRawTurn.SCHEMA_VERSION, manifest.getAsJsonObject("schemas").get("rawTurn").getAsInt());
         assertEquals(AXStmBlock.SCHEMA_VERSION, manifest.getAsJsonObject("schemas").get("stmBlock").getAsInt());
-        assertEquals(AXAttachedWorldEvent.SCHEMA_VERSION, manifest.getAsJsonObject("schemas").get("attachedWorldEvent").getAsInt());
+        assertEquals("raw_turns/raw_turn_checkpoint.jsonl", manifest.getAsJsonObject("files").get("rawTurnCheckpoint").getAsString());
         assertEquals("stm_blocks/stm_blocks.jsonl", manifest.getAsJsonObject("files").get("stmBlocks").getAsString());
-        assertEquals("events/attached_world_events.jsonl", manifest.getAsJsonObject("files").get("attachedWorldEvents").getAsString());
+        assertFalse(manifest.getAsJsonObject("files").has("attachedWorldEvents"));
+        assertFalse(manifest.getAsJsonObject("files").getAsJsonArray("appendOnly").contains(JsonParser.parseString("\"rawTurnCheckpoint\"")));
+        assertFalse(manifest.getAsJsonObject("files").getAsJsonArray("appendOnly").contains(JsonParser.parseString("\"attachedWorldEvents\"")));
         assertFalse(manifest.getAsJsonObject("derivedArtifacts").get("authority").getAsBoolean());
         assertTrue(manifest.getAsJsonObject("derivedArtifacts").getAsJsonArray("rebuildable").contains(JsonParser.parseString("\"l1Clusters\"")));
 
@@ -108,10 +110,11 @@ class AXMemorySystemTest {
     }
 
     @Test
-    void attachedWorldEventsAreStoredAppendOnlyAndDeduplicatedByKey() {
+    void attachedWorldEventsStayInRuntimeBufferAndAreDeduplicatedByKey() {
         AXStorageLayout layout = layout();
         AXMemorySystem memorySystem = memorySystem(layout);
         AXScope scope = scope();
+        long now = System.currentTimeMillis();
         AXAttachedWorldEvent first = new AXAttachedWorldEvent(
                 "",
                 "player_death",
@@ -119,7 +122,7 @@ class AXMemorySystemTest {
                 scope.worldId(),
                 "minecraft:overworld",
                 "10,64,20",
-                1000L,
+                now,
                 "",
                 "玩家在主世界死亡一次。",
                 List.of("minecraft:death")
@@ -131,17 +134,17 @@ class AXMemorySystemTest {
                 scope.worldId(),
                 "minecraft:overworld",
                 "10,64,20",
-                1001L,
+                now + 1L,
                 "",
                 "玩家在主世界死亡一次。",
                 List.of("minecraft:death")
         );
 
         memorySystem.ensureStorageManifest(scope);
-        memorySystem.attachedWorldEvents().appendAll(scope, List.of(first, duplicate));
+        memorySystem.attachedWorldEventBuffer().appendAll(scope, List.of(first, duplicate));
 
-        assertEquals(1, memorySystem.attachedWorldEvents().loadAll(scope).size());
-        assertTrue(Files.isRegularFile(layout.attachedWorldEventsFile(scope)));
+        assertEquals(1, memorySystem.attachedWorldEventBuffer().loadAll(scope).size());
+        assertFalse(Files.exists(layout.eventsRoot(scope).resolve("attached_world_events.jsonl")));
     }
 
     @Test
@@ -220,7 +223,7 @@ class AXMemorySystemTest {
         manifest.getAsJsonObject("schemas").addProperty("memoryEvent", AXMemoryEvent.SCHEMA_VERSION + 1);
         Files.writeString(layout.worldManifestFile(scope), manifest.toString(), StandardCharsets.UTF_8);
 
-        memorySystem.appendMemoryEvent(scope, new AXMemoryEvent("", "不会写入的 E。", "", "stm_block", "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, 0, List.of()));
+        memorySystem.appendMemoryEvent(scope, new AXMemoryEvent("", "不会写入的 E。", "", "stm_block", "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, List.of()));
 
         assertFalse(Files.exists(layout.eventsFile(scope)));
     }
@@ -231,7 +234,7 @@ class AXMemorySystemTest {
         AXMemorySystem memorySystem = memorySystem(layout);
         AXScope scope = scope();
         AXStmBlock block = new AXStmBlock("", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "玩家把钻石镐放进末影箱。", List.of());
-        AXMemoryEvent event = new AXMemoryEvent("", "玩家把钻石镐放进末影箱。", "", block.id(), "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, 0, List.of("minecraft:diamond_pickaxe"));
+        AXMemoryEvent event = new AXMemoryEvent("", "玩家把钻石镐放进末影箱。", "", block.id(), "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, List.of("minecraft:diamond_pickaxe"));
 
         memorySystem.appendStmBlock(scope, block);
         memorySystem.appendMemoryEvent(scope, event);
@@ -292,7 +295,7 @@ class AXMemorySystemTest {
         AXStmBlock s1 = new AXStmBlock("stm_s1", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "第一段。", List.of());
         AXStmBlock s2 = new AXStmBlock("stm_s2", "", scope.worldId(), 2000L, 1900L, 1950L, "", "", 1, 0, "第二段。", List.of());
         memorySystem.stmBlocks().rewrite(scope, List.of(s1, s2));
-        AXMemoryEvent event = new AXMemoryEvent("", "玩家做了一件事。", "", s2.id(), "stm_fact", scope.worldId(), "", "", false, 2100L, 1950L, 0, List.of());
+        AXMemoryEvent event = new AXMemoryEvent("", "玩家做了一件事。", "", s2.id(), "stm_fact", scope.worldId(), "", "", false, 2100L, 1950L, List.of());
         memorySystem.events().appendAll(scope, List.of(event));
         memorySystem.vectors().appendAll(scope, List.of(new AXEventVector(event.id(), event.factHash(), "embed", "embed:v1", 2, new float[]{1.0F, 0.0F}, 2200L)));
 

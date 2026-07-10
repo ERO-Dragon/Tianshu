@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -27,6 +28,7 @@ public final class LlmEngineProvider {
     private final ITianshuConfig config;
     private final InferenceResourcePolicy resourcePolicy;
     private final Consumer<LlmStatusPayload> inferenceStatusListener;
+    private final Executor modelLoadExecutor;
     private JavaLlamaServer aiService;
     private volatile boolean embeddingConfigured;
 
@@ -42,12 +44,21 @@ public final class LlmEngineProvider {
         this(env, config, InferenceResourcePolicy.systemDefault(), inferenceStatusListener);
     }
 
+    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, Consumer<LlmStatusPayload> inferenceStatusListener, Executor modelLoadExecutor) {
+        this(env, config, InferenceResourcePolicy.systemDefault(), inferenceStatusListener, modelLoadExecutor);
+    }
+
     public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener) {
+        this(env, config, resourcePolicy, inferenceStatusListener, Runnable::run);
+    }
+
+    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener, Executor modelLoadExecutor) {
         this.env = env;
         this.config = config;
         this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
         this.inferenceStatusListener = inferenceStatusListener == null ? status -> {
         } : inferenceStatusListener;
+        this.modelLoadExecutor = modelLoadExecutor == null ? Runnable::run : modelLoadExecutor;
     }
 
     private JavaLlamaServer createAiService() {
@@ -285,7 +296,7 @@ public final class LlmEngineProvider {
                     onFailed.run();
                 }
             }
-        });
+        }, modelLoadExecutor);
     }
 
     public void stop() {

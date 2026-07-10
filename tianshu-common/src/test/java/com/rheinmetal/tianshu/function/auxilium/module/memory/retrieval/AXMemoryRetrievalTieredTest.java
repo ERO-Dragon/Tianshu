@@ -157,7 +157,7 @@ class AXMemoryRetrievalTieredTest {
     }
 
     private static AXMemoryEvent event(AXScope scope, AXStmBlock stm, String fact) {
-        return new AXMemoryEvent("", fact, "", stm.id(), "stm_fact", scope.worldId(), "", "", false, 10L, 10L, 0, List.of());
+        return new AXMemoryEvent("", fact, "", stm.id(), "stm_fact", scope.worldId(), "", "", false, 10L, 10L, List.of());
     }
 
     private static AXEventVector vector(AXMemoryEvent event, float[] vector) {

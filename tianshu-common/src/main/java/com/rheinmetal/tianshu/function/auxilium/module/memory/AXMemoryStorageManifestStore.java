@@ -12,10 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVector;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
+import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 
 public final class AXMemoryStorageManifestStore {
     public static final int MANIFEST_SCHEMA_VERSION = 1;
@@ -57,24 +57,28 @@ public final class AXMemoryStorageManifestStore {
 
     public static Map<String, Integer> currentSchemas() {
         Map<String, Integer> schemas = new LinkedHashMap<>();
+        schemas.put("rawTurn", AXRawTurn.SCHEMA_VERSION);
         schemas.put("stmBlock", AXStmBlock.SCHEMA_VERSION);
         schemas.put("memoryEvent", AXMemoryEvent.SCHEMA_VERSION);
-        schemas.put("attachedWorldEvent", AXAttachedWorldEvent.SCHEMA_VERSION);
         schemas.put("eventVector", AXEventVector.SCHEMA_VERSION);
         return Map.copyOf(schemas);
     }
 
     public static Map<String, String> requiredFiles() {
         Map<String, String> files = new LinkedHashMap<>();
+        files.put("rawTurnCheckpoint", "raw_turns/raw_turn_checkpoint.jsonl");
         files.put("stmBlocks", "stm_blocks/stm_blocks.jsonl");
         files.put("events", "events/events.jsonl");
-        files.put("attachedWorldEvents", "events/attached_world_events.jsonl");
         files.put("eventVectors", "vectors/<embeddingNamespace>/event_vectors.jsonl");
         return Map.copyOf(files);
     }
 
     public static List<String> appendOnlyFileKeys() {
-        return List.of("stmBlocks", "events", "attachedWorldEvents", "eventVectors");
+        return List.of("stmBlocks", "events", "eventVectors");
+    }
+
+    public static List<String> deprecatedFileKeys() {
+        return List.of("attachedWorldEvents");
     }
 
     public static List<String> rebuildableArtifactKeys() {
@@ -94,10 +98,11 @@ public final class AXMemoryStorageManifestStore {
     private boolean ensureFiles(JsonObject manifest) {
         JsonObject files = object(manifest, "files");
         boolean changed = !manifest.has("files");
+        changed |= removeKeys(files, deprecatedFileKeys());
         for (Map.Entry<String, String> file : requiredFiles().entrySet()) {
             changed |= addString(files, file.getKey(), file.getValue());
         }
-        changed |= addArray(files, "appendOnly", appendOnlyFileKeys());
+        changed |= putArrayIfDifferent(files, "appendOnly", appendOnlyFileKeys());
         manifest.add("files", files);
         return changed;
     }
@@ -156,6 +161,19 @@ public final class AXMemoryStorageManifestStore {
         if (json.has(key)) {
             return false;
         }
+        putArray(json, key, values);
+        return true;
+    }
+
+    private boolean putArrayIfDifferent(JsonObject json, String key, List<String> values) {
+        if (arrayEquals(json, key, values)) {
+            return false;
+        }
+        putArray(json, key, values);
+        return true;
+    }
+
+    private void putArray(JsonObject json, String key, List<String> values) {
         JsonArray array = new JsonArray();
         if (values != null) {
             for (String value : values) {
@@ -165,6 +183,38 @@ public final class AXMemoryStorageManifestStore {
             }
         }
         json.add(key, array);
+    }
+
+    private boolean arrayEquals(JsonObject json, String key, List<String> values) {
+        if (!json.has(key) || !json.get(key).isJsonArray()) {
+            return false;
+        }
+        JsonArray array = json.getAsJsonArray(key);
+        List<String> expected = values == null ? List.of() : values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+        if (array.size() != expected.size()) {
+            return false;
+        }
+        for (int i = 0; i < expected.size(); i++) {
+            if (array.get(i) == null || array.get(i).isJsonNull() || !expected.get(i).equals(array.get(i).getAsString())) {
+                return false;
+            }
+        }
         return true;
+    }
+
+    private boolean removeKeys(JsonObject json, List<String> keys) {
+        boolean changed = false;
+        if (json == null || keys == null) {
+            return false;
+        }
+        for (String key : keys) {
+            if (key != null && json.has(key)) {
+                json.remove(key);
+                changed = true;
+            }
+        }
+        return changed;
     }
 }

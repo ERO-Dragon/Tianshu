@@ -56,6 +56,10 @@ public final class AXStorageLayout {
         return worldRoot(scope).resolve("raw_turns");
     }
 
+    public Path rawTurnCheckpointFile(AXScope scope) {
+        return rawTurnsRoot(scope).resolve("raw_turn_checkpoint.jsonl");
+    }
+
     public Path stmBlocksRoot(AXScope scope) {
         return worldRoot(scope).resolve("stm_blocks");
     }
@@ -70,10 +74,6 @@ public final class AXStorageLayout {
 
     public Path eventsFile(AXScope scope) {
         return eventsRoot(scope).resolve("events.jsonl");
-    }
-
-    public Path attachedWorldEventsFile(AXScope scope) {
-        return eventsRoot(scope).resolve("attached_world_events.jsonl");
     }
 
     public Path vectorsRoot(AXScope scope) {

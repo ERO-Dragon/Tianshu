@@ -18,11 +18,15 @@ public interface RagCacheManager {
 
     List<RagEntrySearchResult> searchEntries(String uid, String queryText, int topK, float threshold);
 
+    List<RagEntrySearchResult> searchEntries(String uid, String queryText, float[] queryVector, int topK, float threshold);
+
     List<RagSearchResult> search(String uid, String queryText, int topK, float threshold);
 
     boolean hasCache(String uid);
 
     CacheStats getStats();
+
+    void flush();
 
     void clear();
 

@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -141,19 +142,27 @@ public final class AXMemoryMaintenanceService {
                     batch.sourceFromMillis(),
                     batch.sourceToMillis() + WORLD_EVENT_ATTACHMENT_GRACE_MILLIS
             );
-            AXStmBlock stm = compress(scope, batch, attachedWorldEvents).join();
+            AXStmBlock stm = existingStmFor(scope, batch)
+                    .orElseGet(() -> compress(scope, batch, attachedWorldEvents).join());
             if (stm != null && !stm.isEmpty()) {
-                memorySystem.appendStmBlock(scope, stm);
-                if (recentDialogueSystem != null) {
-                    recentDialogueSystem.confirmConsumed(scope, batch);
+                if (existingStmFor(scope, batch).isEmpty()) {
+                    memorySystem.appendStmBlock(scope, stm);
+                    stm = existingStmFor(scope, batch).orElse(null);
+                    if (stm == null || stm.isEmpty()) {
+                        return;
+                    }
                 }
                 compressed = true;
-                List<AXMemoryEvent> events = new ArrayList<>(extractEvents(scope, stm).join());
-                events.addAll(worldEventLinker.directEventsFor(stm, attachedWorldEvents));
-                events = withTokenCounts(scope, events);
-                if (!events.isEmpty()) {
-                    memorySystem.ensureStorageManifest(scope);
-                    memorySystem.events().appendAll(scope, events);
+                if (!hasEventsForStm(scope, stm)) {
+                    List<AXMemoryEvent> events = new ArrayList<>(extractEvents(scope, stm).join());
+                    events.addAll(worldEventLinker.directEventsFor(stm, attachedWorldEvents));
+                    if (!events.isEmpty()) {
+                        memorySystem.ensureStorageManifest(scope);
+                        memorySystem.events().appendAll(scope, events);
+                    }
+                }
+                if (recentDialogueSystem != null) {
+                    recentDialogueSystem.confirmConsumed(scope, batch);
                 }
             }
         }
@@ -177,7 +186,7 @@ public final class AXMemoryMaintenanceService {
                     return;
                 }
                 future.complete(new AXStmBlock(
-                        "",
+                        batch.stmId(),
                         "",
                         scope.worldId(),
                         System.currentTimeMillis(),
@@ -198,6 +207,23 @@ public final class AXMemoryMaintenanceService {
             }
         });
         return withTaskTimeout(future, envelope, null);
+    }
+
+    private Optional<AXStmBlock> existingStmFor(AXScope scope, AXRawTurnBatch batch) {
+        if (batch == null || batch.isEmpty() || batch.stmId().isBlank()) {
+            return Optional.empty();
+        }
+        return memorySystem.stmBlocks().loadAll(scope).stream()
+                .filter(block -> batch.stmId().equals(block.id()))
+                .findFirst();
+    }
+
+    private boolean hasEventsForStm(AXScope scope, AXStmBlock stm) {
+        if (stm == null || stm.id().isBlank()) {
+            return false;
+        }
+        return memorySystem.events().loadAll(scope).stream()
+                .anyMatch(event -> stm.id().equals(event.stmId()));
     }
 
     private CompletableFuture<List<AXMemoryEvent>> extractEvents(AXScope scope, AXStmBlock stm) {
@@ -389,7 +415,6 @@ public final class AXMemoryMaintenanceService {
                     false,
                     System.currentTimeMillis(),
                     stm.sourceToMillis(),
-                    0,
                     List.of()
             ));
         }
@@ -403,26 +428,6 @@ public final class AXMemoryMaintenanceService {
         }
         OptionalInt counted = primitiveClient.countTokens("ax.memory.stm.token", text);
         return counted.orElse(0);
-    }
-
-    private List<AXMemoryEvent> withTokenCounts(AXScope scope, List<AXMemoryEvent> events) {
-        if (events == null || events.isEmpty()) {
-            return List.of();
-        }
-        List<AXMemoryEvent> counted = new ArrayList<>(events.size());
-        for (AXMemoryEvent event : events) {
-            if (event == null || event.isEmpty()) {
-                continue;
-            }
-            if (event.tokenCount() > 0) {
-                counted.add(event);
-                continue;
-            }
-            String worldId = scope == null || scope.worldId() == null || scope.worldId().isBlank() ? event.worldId() : scope.worldId();
-            OptionalInt tokenCount = primitiveClient.countTokens("ax.memory.event.token." + worldId + "." + event.id(), event.fact());
-            counted.add(tokenCount.isPresent() ? event.withTokenCount(tokenCount.getAsInt()) : event);
-        }
-        return counted;
     }
 
     private String cleanModelTaskText(String text) {

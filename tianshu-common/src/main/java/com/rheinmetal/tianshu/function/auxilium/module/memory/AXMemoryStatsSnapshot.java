@@ -8,10 +8,8 @@ public record AXMemoryStatsSnapshot(
         long generatedAtMillis,
         int stmBlockCount,
         int memoryEventCount,
-        int attachedWorldEventCount,
         int vectorCount,
         int stmTokenCount,
-        int eventTokenCount,
         long earliestEventMillis,
         long latestEventMillis
 ) {
@@ -23,10 +21,8 @@ public record AXMemoryStatsSnapshot(
         generatedAtMillis = generatedAtMillis <= 0L ? System.currentTimeMillis() : generatedAtMillis;
         stmBlockCount = Math.max(0, stmBlockCount);
         memoryEventCount = Math.max(0, memoryEventCount);
-        attachedWorldEventCount = Math.max(0, attachedWorldEventCount);
         vectorCount = Math.max(0, vectorCount);
         stmTokenCount = Math.max(0, stmTokenCount);
-        eventTokenCount = Math.max(0, eventTokenCount);
         earliestEventMillis = Math.max(0L, earliestEventMillis);
         latestEventMillis = Math.max(earliestEventMillis, latestEventMillis);
     }
@@ -38,10 +34,8 @@ public record AXMemoryStatsSnapshot(
         json.addProperty("generatedAtMillis", generatedAtMillis);
         json.addProperty("stmBlockCount", stmBlockCount);
         json.addProperty("memoryEventCount", memoryEventCount);
-        json.addProperty("attachedWorldEventCount", attachedWorldEventCount);
         json.addProperty("vectorCount", vectorCount);
         json.addProperty("stmTokenCount", stmTokenCount);
-        json.addProperty("eventTokenCount", eventTokenCount);
         json.addProperty("earliestEventMillis", earliestEventMillis);
         json.addProperty("latestEventMillis", latestEventMillis);
         return json;
@@ -57,17 +51,15 @@ public record AXMemoryStatsSnapshot(
                 readLong(json, "generatedAtMillis", 0L),
                 readInt(json, "stmBlockCount", 0),
                 readInt(json, "memoryEventCount", 0),
-                readInt(json, "attachedWorldEventCount", 0),
                 readInt(json, "vectorCount", 0),
                 readInt(json, "stmTokenCount", 0),
-                readInt(json, "eventTokenCount", 0),
                 readLong(json, "earliestEventMillis", 0L),
                 readLong(json, "latestEventMillis", 0L)
         );
     }
 
     public static AXMemoryStatsSnapshot empty(String worldId) {
-        return new AXMemoryStatsSnapshot(SCHEMA_VERSION, worldId, System.currentTimeMillis(), 0, 0, 0, 0, 0, 0, 0L, 0L);
+        return new AXMemoryStatsSnapshot(SCHEMA_VERSION, worldId, System.currentTimeMillis(), 0, 0, 0, 0, 0L, 0L);
     }
 
     private static String readString(JsonObject json, String key) {

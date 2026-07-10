@@ -30,6 +30,7 @@ public final class LlmModule implements TianshuManagedModule {
     private final ITianshuConfig config;
     private final ProtocolRuntime runtime;
     private final LlmRagCacheLayout ragCacheLayout;
+    private final LlmExecutor llmExecutor;
     private final LlmEngineProvider engineProvider;
     private final LlmProtocolAdapter adapter;
     private final Object lifecycleLock = new Object();
@@ -44,8 +45,9 @@ public final class LlmModule implements TianshuManagedModule {
         this.config = config;
         this.runtime = runtime;
         this.ragCacheLayout = new LlmRagCacheLayout(config);
+        this.llmExecutor = new LlmExecutor(runtime.executors());
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
-        this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus);
+        this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus, llmExecutor.modelLoadExecutor());
     }
 
     @Override
@@ -186,6 +188,8 @@ public final class LlmModule implements TianshuManagedModule {
                         .cacheDirectory(ragCacheLayout.cacheDirectory())
                         .cacheNamespace(ragCacheLayout.cacheNamespace())
                         .embeddingConfigured(engineProvider.isEmbeddingConfigured())
+                        .ragSearchExecutor(llmExecutor.cpuExecutor())
+                        .ragPersistenceScheduler(llmExecutor.ragPersistenceScheduler())
                         .build();
                 adapter.setLlmService(llmService);
                 markCapabilitiesReady();

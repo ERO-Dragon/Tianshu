@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 public class LLMService {
@@ -60,9 +61,16 @@ public class LLMService {
         EmbeddingService embeddingAdapter = new ClientEmbeddingAdapter(inferenceClient);
         this.embeddingService = embeddingAdapter;
         if (builder.usePersistentCache) {
-            this.ragCache = new PersistentRagCacheManager(env, embeddingAdapter, builder.cacheDirectory, builder.cacheNamespace);
+            this.ragCache = new PersistentRagCacheManager(
+                    env,
+                    embeddingAdapter,
+                    builder.cacheDirectory,
+                    builder.cacheNamespace,
+                    builder.ragSearchExecutor,
+                    builder.ragPersistenceScheduler
+            );
         } else {
-            this.ragCache = new DefaultRagCacheManager(env, embeddingAdapter);
+            this.ragCache = new DefaultRagCacheManager(env, embeddingAdapter, builder.ragSearchExecutor);
         }
         this.ragLibraryRegistry = new RagLibraryRegistry(env, builder.usePersistentCache ? builder.cacheDirectory : null);
 
@@ -232,6 +240,10 @@ public class LLMService {
         return ragCache.searchEntries(uid, queryText, topK, threshold);
     }
 
+    public List<RagCacheManager.RagEntrySearchResult> searchRagEntries(String uid, String queryText, float[] queryVector, int topK, float threshold) {
+        return ragCache.searchEntries(uid, queryText, queryVector, topK, threshold);
+    }
+
     public RagLibraryRegistry.RagLibraryMeta registerRagLibrary(String uid, String modid, String visibility, List<String> tags) {
         ragLibraryRegistry.register(uid, modid, visibility, tags);
         return ragLibraryRegistry.meta(uid);
@@ -254,11 +266,11 @@ public class LLMService {
     }
 
     public List<RagLibrarySearchResult> searchSharedRagLibrariesByModid(String modid, String queryText, int topK, float threshold) {
-        return searchLibraries(ragLibraryRegistry.sharedByModid(modid), queryText, topK, threshold);
+        return searchLibraries(ragLibraryRegistry.sharedByModid(modid), queryText, embedQueryVector(queryText), topK, threshold);
     }
 
     public List<RagLibrarySearchResult> searchSharedRagLibrariesByTags(List<String> tags, String queryText, int topK, float threshold) {
-        return searchLibraries(ragLibraryRegistry.sharedByTags(tags), queryText, topK, threshold);
+        return searchLibraries(ragLibraryRegistry.sharedByTags(tags), queryText, embedQueryVector(queryText), topK, threshold);
     }
 
     public List<RagCacheManager.RagEntrySearchResult> searchInlineRagContents(List<String> contents, String queryText, int topK, float threshold) {
@@ -281,7 +293,7 @@ public class LLMService {
         }
     }
 
-    private List<RagLibrarySearchResult> searchLibraries(List<RagLibraryRegistry.RagLibraryMeta> libraries, String queryText, int topK, float threshold) {
+    private List<RagLibrarySearchResult> searchLibraries(List<RagLibraryRegistry.RagLibraryMeta> libraries, String queryText, float[] queryVector, int topK, float threshold) {
         if (libraries == null || libraries.isEmpty()) {
             return List.of();
         }
@@ -290,7 +302,7 @@ public class LLMService {
             if (library == null || library.uid().isBlank()) {
                 continue;
             }
-            List<RagCacheManager.RagEntrySearchResult> entries = searchRagEntries(library.uid(), queryText, topK, threshold);
+            List<RagCacheManager.RagEntrySearchResult> entries = searchRagEntries(library.uid(), queryText, queryVector, topK, threshold);
             if (!entries.isEmpty()) {
                 results.add(new RagLibrarySearchResult(library.uid(), library, entries));
             }
@@ -442,6 +454,7 @@ public class LLMService {
     }
 
     public void shutdown() {
+        ragCache.flush();
         env.info("[LLMService] Shutdown complete");
     }
 
@@ -697,6 +710,18 @@ public class LLMService {
 
     private static String safeMessage(Throwable throwable) {
         return throwable.getMessage() != null ? throwable.getMessage() : throwable.getClass().getSimpleName();
+    }
+
+    private float[] embedQueryVector(String queryText) {
+        if (queryText == null || queryText.isBlank()) {
+            return null;
+        }
+        try {
+            return embeddingService.embed(queryText);
+        } catch (Exception e) {
+            env.error("[LLMService] Failed to embed RAG query text", e);
+            return null;
+        }
     }
 
     private String configName() {
@@ -979,6 +1004,8 @@ public class LLMService {
         private java.nio.file.Path cacheDirectory;
         private String cacheNamespace = "default";
         private boolean embeddingConfigured;
+        private Executor ragSearchExecutor = Runnable::run;
+        private RagPersistenceScheduler ragPersistenceScheduler = RagPersistenceScheduler.immediate();
 
         public Builder env(IGameEnvironment env) {
             this.env = env;
@@ -1027,6 +1054,16 @@ public class LLMService {
 
         public Builder embeddingConfigured(boolean embeddingConfigured) {
             this.embeddingConfigured = embeddingConfigured;
+            return this;
+        }
+
+        public Builder ragSearchExecutor(Executor ragSearchExecutor) {
+            this.ragSearchExecutor = ragSearchExecutor == null ? Runnable::run : ragSearchExecutor;
+            return this;
+        }
+
+        public Builder ragPersistenceScheduler(RagPersistenceScheduler ragPersistenceScheduler) {
+            this.ragPersistenceScheduler = ragPersistenceScheduler == null ? RagPersistenceScheduler.immediate() : ragPersistenceScheduler;
             return this;
         }
 

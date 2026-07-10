@@ -45,6 +45,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
+import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurnBatch;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
 
 class AXMemoryMaintenanceServiceTest {
     @TempDir
@@ -125,6 +127,62 @@ class AXMemoryMaintenanceServiceTest {
         assertEquals("AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d\u3002", secondFact);
         assertTrue(memorySystem.events().loadAll(scope).stream()
                 .allMatch(event -> memorySystem.stmBlocks().loadAll(scope).get(0).id().equals(event.stmId())));
+    }
+
+    @Test
+    void existingStmForRawBatchSkipsCompressionAndConfirmsAfterEvents() throws Exception {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
+        AXMemoryWindowPolicy policy = maintenancePolicy();
+        AXMemorySystem memorySystem = new AXMemorySystem(
+                new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()),
+                policy
+        );
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(policy, (requestId, role, content) -> java.util.OptionalInt.of(3000));
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "我在看资源重载后的日志。", "session", "turn-1"));
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "assistant", "我会关注缓存和模块加载。", "session", "turn-1"));
+        AXRawTurnBatch batch = recentDialogueSystem.selectCompressionBatch(scope);
+        memorySystem.appendStmBlock(scope, new AXStmBlock(
+                batch.stmId(),
+                "",
+                scope.worldId(),
+                System.currentTimeMillis(),
+                batch.sourceFromMillis(),
+                batch.sourceToMillis(),
+                "",
+                "",
+                batch.turns().size(),
+                12,
+                "玩家在调试资源重载日志，并关注缓存和模块加载。",
+                List.of()
+        ));
+
+        RecordingLlmModule llm = new RecordingLlmModule(1);
+        registerLlm(runtime, llm);
+        registerPrimitive(runtime);
+        AXMemoryMaintenanceService service = new AXMemoryMaintenanceService(
+                adapter,
+                memorySystem,
+                recentDialogueSystem,
+                new AXLlmClient(adapter),
+                new AXLlmPrimitiveClient(adapter, 2_000L),
+                new AXMemoryTaskPromptRepository(
+                        new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                        AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN)
+                )
+        );
+
+        assertTrue(service.requestMaintenance(scope));
+        await(() -> memorySystem.events().loadAll(scope).size() == 2
+                && recentDialogueSystem.snapshot(scope).turns().isEmpty());
+
+        assertEquals(1, memorySystem.stmBlocks().loadAll(scope).size());
+        assertEquals(1, llm.requests.size());
+        assertEquals(batch.stmId(), memorySystem.stmBlocks().loadAll(scope).get(0).id());
+        assertTrue(memorySystem.events().loadAll(scope).stream()
+                .allMatch(event -> batch.stmId().equals(event.stmId())));
     }
 
     @Test
@@ -218,9 +276,44 @@ class AXMemoryMaintenanceServiceTest {
         assertTrue(condition.getAsBoolean());
     }
 
+    private static AXMemoryWindowPolicy maintenancePolicy() {
+        return new AXMemoryWindowPolicy(
+                8000,
+                4800,
+                3200,
+                480,
+                1440,
+                1200,
+                480,
+                960,
+                240,
+                4800,
+                3200,
+                600,
+                600,
+                3600,
+                20,
+                4000,
+                10,
+                200,
+                28000,
+                120000,
+                2,
+                0L
+        );
+    }
+
     private static final class RecordingLlmModule {
         private final List<LLMPromptRequestPayload> requests = new ArrayList<>();
         private final AtomicInteger count = new AtomicInteger();
+
+        RecordingLlmModule() {
+            this(0);
+        }
+
+        RecordingLlmModule(int initialCount) {
+            count.set(Math.max(0, initialCount));
+        }
 
         void handle(TianshuEnvelope envelope, ProtocolContext context) {
             LLMPromptRequestPayload payload = (LLMPromptRequestPayload) envelope.payload();

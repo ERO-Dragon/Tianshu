@@ -169,7 +169,7 @@ LLM 模块只提供能力：
 
 ## 7. 记忆与 Prompt
 
-AX 的私有记忆权威数据不进入 LLM shared RAG 库。`AXRecentDialogue` 持有实时上下文窗口：窗口内保留近期完整 Raw Turn，容量超限时从最老完整轮次开始剥离只读快照。剥离出的纯聊天内容交给 `AXMemory` 后台压缩为 STM，明确世界事件先作为 STM 附属事件视图绑定；随后才进入原子化、私有 RAG 投影检索、E -> STM 折叠和 STM 注入链路。静态知识库可以复用 LLM 的 shared RAG cache，但进入最终 prompt 前必须先被 AX 适配成知识命中结果，再渲染到 `<game_context>`。
+AX 的私有记忆权威数据不进入 LLM shared RAG 库。`AXRecentDialogue` 持有实时上下文窗口：窗口内保留近期完整 Raw Turn，容量超限时从最老完整轮次开始剥离只读快照。剥离出的纯聊天内容交给 `AXMemory` 后台压缩为 STM；世界事件只进入运行时附属事件视图，只有策略允许的事件才转成 E 持久化，随后才进入原子化、私有 RAG 投影检索、E -> STM 折叠和 STM 注入链路。静态知识库可以复用 LLM 的 shared RAG cache，但进入最终 prompt 前必须先被 AX 适配成知识命中结果，再渲染到 `<game_context>`。
 
 Prompt 编排与记忆策略的硬约束见对应专题文档。这里只强调一点：一期不是“静态、动态、记忆”的无差别拼接，而是 `core` 统一收口、`module` 各自供料、最后按预算装配成一个 message chunk。
 
@@ -195,12 +195,13 @@ config/Tianshu/module/ax/cache/
 - AX 私有记忆的权威 Raw Turn、STM、E 不写入 LLM RAG cache；可重建的检索投影可以写入 AX 私有 uid。
 - 静态知识库通过 `LLM_CACHE_MANAGE` 写入 LLM RAG cache。
 - 动态环境不持久化为长期记忆。
+- 世界事件不作为事件日志持久化；只保留运行时短窗口，必要时由策略转成 E。
 - 派生索引和 stats 可重建，不应污染权威记忆数据。
 
 持久化红线：
 
 - Raw Turn、STM、E、向量组元数据等权威记录必须带版本标识。
-- 附属世界事件是 STM 的旁证，不等同于 E。
+- 附属世界事件是运行时旁证，不等同于 E，不作为 `world_events` 文件落盘。
 - 需要 compaction 时写出新快照，再原子替换。
 - 业务代码不得散落物理路径。
 

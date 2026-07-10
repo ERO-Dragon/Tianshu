@@ -27,7 +27,9 @@ public record AXContextBudget(
         AXMemoryWindowPolicy effectivePolicy = policy == null ? AXMemoryWindowPolicy.DEFAULT : policy;
         int systemTokenBudget = effectivePolicy.chatSystemTokenBudget();
         int maxRetrievedMemoryItems = Math.max(0, effectivePolicy.retrievedMemoryTokenBudget() / 100);
-        int maxRecentMemoryItems = Math.max(0, effectivePolicy.recentMemoryTokenBudget() / 100);
+        int maxRecentMemoryItems = effectivePolicy.recentMemoryTokenBudget() <= 0
+                ? 0
+                : Math.max(1, effectivePolicy.recentMemoryTokenBudget() / 100);
         int maxRecentRawDialogueTurns = Math.max(0, effectivePolicy.recentRawDialogueTokenBudget() / 100);
         int maxKnowledgeRagItems = Math.max(0, effectivePolicy.knowledgeRagTokenBudget() / 100);
         int maxCurrentInputChars = Math.max(1000, effectivePolicy.currentInputTokenBudget() * 2);
