@@ -7,22 +7,20 @@ import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegist
 import com.rheinmetal.tianshu.client.gui.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsSaveResult;
-import com.rheinmetal.tianshu.client.gui.settings.session.SettingsValidationResult;
+import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
 
 import net.minecraft.network.chat.Component;
 
-import java.util.List;
 import java.util.Objects;
 
 public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private final TianshuCoreManager coreManager;
-    private final AXClientConfig config;
+    private final ClientConfig config;
 
-    public AXSettingsRegistrySource(TianshuCoreManager coreManager, AXClientConfig config) {
+    public AXSettingsRegistrySource(TianshuCoreManager coreManager, ClientConfig config) {
         this.coreManager = coreManager;
         this.config = config;
     }
@@ -38,24 +36,19 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
                 .title(ax("title"))
                 .description(ax("description"))
                 .order(35)
-                .panel((panel, panelContext) -> buildPanel(panel, panelContext, session))
+                .panel((panel, panelContext) -> buildPanel(panel, session))
                 .build());
     }
 
-    private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, AXSettingsSession session) {
-        panel.options("ax.output", ax("section.output"), options -> options
-                        .text("ax.identity.wake_word", ax("option.wake_word"), session.wakeWord)
-                        .select("ax.output.mode", ax("option.output_mode"), List.of(AXOutputMode.values()), session.outputMode, this::modeLabel)
-                        .text("ax.output.voice_style", ax("option.voice_style"), session.voiceStyle, () -> session.outputMode.get().ttsEnabled()))
-                .status("ax.output.status", ax("section.status"), status -> status
-                        .row("ax.output.wake_word", ax("row.wake_word"), () -> Component.literal(session.wakeWord.get()))
-                        .row("ax.output.current_mode", ax("row.output_mode"), () -> modeLabel(session.outputMode.get()))
-                        .row("ax.output.config_path", ax("row.config_path"), () -> Component.literal(config.path() == null ? "-" : config.path().toString())));
-    }
-
-    private Component modeLabel(AXOutputMode mode) {
-        AXOutputMode effective = mode == null ? AXOutputMode.UI_ONLY : mode;
-        return ax("mode." + effective.name().toLowerCase(java.util.Locale.ROOT));
+    private void buildPanel(ModuleSettingsPanel panel, AXSettingsSession session) {
+        panel.enable("ax.enabled", ax("enabled"), session.enabled)
+                .options("ax.identity", ax("section.identity"), session.enabled::get, options -> options
+                        .text("ax.identity.wake_word", ax("option.wake_word"), session.wakeWord, session.enabled::get))
+                .toggles("ax.reply", ax("section.reply"), session.enabled::get, toggles -> toggles
+                        .toggle("ax.reply.speech", ax("option.reply_speech"), session.replySpeechEnabled, session.enabled::get))
+                .toggles("ax.behavior", ax("section.behavior"), session.enabled::get, toggles -> toggles
+                        .toggle("ax.behavior.thinking", ax("option.chat_thinking"), session.chatThinkingEnabled, session.enabled::get)
+                        .toggle("ax.behavior.interrupt", ax("option.interrupt_on_speech"), session.interruptOnPlayerSpeech, session.enabled::get));
     }
 
     private static Component ax(String key, Object... args) {
@@ -63,18 +56,22 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
     }
 
     private static final class AXSettingsSession implements com.rheinmetal.tianshu.client.gui.settings.session.ModuleSettingsSession {
-        private final AXClientConfig config;
+        private final ClientConfig config;
         private final TianshuCoreManager coreManager;
+        private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> wakeWord;
-        private final MutableSettingsValue<AXOutputMode> outputMode;
-        private final MutableSettingsValue<String> voiceStyle;
+        private final MutableSettingsValue<Boolean> replySpeechEnabled;
+        private final MutableSettingsValue<Boolean> chatThinkingEnabled;
+        private final MutableSettingsValue<Boolean> interruptOnPlayerSpeech;
 
-        private AXSettingsSession(AXClientConfig config, TianshuCoreManager coreManager) {
+        private AXSettingsSession(ClientConfig config, TianshuCoreManager coreManager) {
             this.config = Objects.requireNonNull(config, "config");
             this.coreManager = Objects.requireNonNull(coreManager, "coreManager");
-            this.wakeWord = new MutableSettingsValue<>(config::wakeWord, config::setWakeWord, value -> value != null && !value.isBlank());
-            this.outputMode = new MutableSettingsValue<>(config::outputMode, config::setOutputMode, Objects::nonNull);
-            this.voiceStyle = new MutableSettingsValue<>(config::ttsVoiceStyle, config::setTtsVoiceStyle, value -> value != null && !value.isBlank());
+            this.enabled = new MutableSettingsValue<>(config::assistantEnabled, config::setAxEnabled);
+            this.wakeWord = new MutableSettingsValue<>(config::wakeWord, config::setAxWakeWord);
+            this.replySpeechEnabled = new MutableSettingsValue<>(config::isAxReplySpeechEnabled, config::setAxReplySpeechEnabled);
+            this.chatThinkingEnabled = new MutableSettingsValue<>(config::chatThinkingEnabled, config::setAxChatThinkingEnabled);
+            this.interruptOnPlayerSpeech = new MutableSettingsValue<>(config::interruptOnPlayerSpeech, config::setAxInterruptOnPlayerSpeech);
         }
 
         @Override
@@ -84,26 +81,48 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
 
         @Override
         public boolean dirty() {
-            return wakeWord.dirty() || outputMode.dirty() || voiceStyle.dirty();
-        }
-
-        @Override
-        public SettingsValidationResult validate() {
-            if (!wakeWord.valid()) {
-                return SettingsValidationResult.failure(ax("validation.wake_word_empty"));
-            }
-            return SettingsValidationResult.successful();
+            return enabled.dirty()
+                    || wakeWord.dirty()
+                    || replySpeechEnabled.dirty()
+                    || chatThinkingEnabled.dirty()
+                    || interruptOnPlayerSpeech.dirty();
         }
 
         @Override
         public SettingsSaveResult save() {
             boolean changed = dirty();
-            boolean wakeWordChanged = wakeWord.dirty();
+            if (!changed) {
+                return SettingsSaveResult.unchanged(ax("message.saved"));
+            }
+            boolean enabledBefore = config.assistantEnabled();
+            String wakeWordBefore = config.wakeWord();
+            boolean replySpeechBefore = config.isAxReplySpeechEnabled();
+            boolean chatThinkingBefore = config.chatThinkingEnabled();
+            boolean interruptBefore = config.interruptOnPlayerSpeech();
+
+            config.setAxEnabled(enabled.get());
+            config.setAxWakeWord(wakeWord.get());
+            config.setAxReplySpeechEnabled(replySpeechEnabled.get());
+            config.setAxChatThinkingEnabled(chatThinkingEnabled.get());
+            config.setAxInterruptOnPlayerSpeech(interruptOnPlayerSpeech.get());
+            try {
+                config.save();
+            } catch (RuntimeException exception) {
+                config.setAxEnabled(enabledBefore);
+                config.setAxWakeWord(wakeWordBefore);
+                config.setAxReplySpeechEnabled(replySpeechBefore);
+                config.setAxChatThinkingEnabled(chatThinkingBefore);
+                config.setAxInterruptOnPlayerSpeech(interruptBefore);
+                return SettingsSaveResult.failure(ax("message.save_failed"), SettingsSaveResult.FailureType.SAVE);
+            }
+
+            boolean runtimeRegistrationChanged = enabled.dirty() || wakeWord.dirty();
+            enabled.save();
             wakeWord.save();
-            outputMode.save();
-            voiceStyle.save();
-            config.save();
-            if (wakeWordChanged) {
+            replySpeechEnabled.save();
+            chatThinkingEnabled.save();
+            interruptOnPlayerSpeech.save();
+            if (runtimeRegistrationChanged) {
                 coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
             }
             return SettingsSaveResult.success(ax("message.saved"), changed, false, false);
@@ -111,9 +130,11 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
 
         @Override
         public void reset() {
+            enabled.reset();
             wakeWord.reset();
-            outputMode.reset();
-            voiceStyle.reset();
+            replySpeechEnabled.reset();
+            chatThinkingEnabled.reset();
+            interruptOnPlayerSpeech.reset();
         }
     }
 }

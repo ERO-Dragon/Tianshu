@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.prompt;
 
 import java.util.Map;
-import java.util.Objects;
 
 public final class AXPromptSectionRenderer {
     private AXPromptSectionRenderer() {
@@ -24,19 +23,5 @@ public final class AXPromptSectionRenderer {
         }
         String effectiveVariableName = variableName == null || variableName.isBlank() ? "content" : variableName.trim();
         return render(context, key, Map.of(effectiveVariableName, value.trim()));
-    }
-
-    public static String joinLines(Iterable<String> lines) {
-        StringBuilder builder = new StringBuilder();
-        for (String line : Objects.requireNonNullElse(lines, java.util.List.<String>of())) {
-            if (line == null || line.isBlank()) {
-                continue;
-            }
-            if (!builder.isEmpty()) {
-                builder.append('\n');
-            }
-            builder.append(line.trim());
-        }
-        return builder.toString();
     }
 }

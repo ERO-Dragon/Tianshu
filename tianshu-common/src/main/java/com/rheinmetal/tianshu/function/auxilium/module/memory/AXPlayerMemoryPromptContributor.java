@@ -41,11 +41,11 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
             return;
         }
         List<String> sections = new java.util.ArrayList<>();
-        String retrievedSection = renderGroup(context, AXPromptTexts.PLAYER_MEMORY_RETRIEVED_TITLE, selectedRetrieved);
+        String retrievedSection = renderHistoryGroup(context, AXPromptTexts.PLAYER_MEMORY_REMEMBERED_HISTORY_GROUP, selectedRetrieved);
         if (!retrievedSection.isBlank()) {
             sections.add(retrievedSection);
         }
-        String recentSection = renderGroup(context, AXPromptTexts.PLAYER_MEMORY_RECENT_TITLE, selectedRecent);
+        String recentSection = renderHistoryGroup(context, AXPromptTexts.PLAYER_MEMORY_RECENT_HISTORY_GROUP, selectedRecent);
         if (!recentSection.isBlank()) {
             sections.add(recentSection);
         }
@@ -56,23 +56,19 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
         builder.addContextSection(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_PLAYER_MEMORY, content));
     }
 
-    private String renderGroup(AXPromptBuildContext context, String titleKey, List<AXMemoryBlockView> blocks) {
+    private String renderHistoryGroup(AXPromptBuildContext context, String groupTemplateKey, List<AXMemoryBlockView> blocks) {
         if (blocks == null || blocks.isEmpty()) {
             return "";
         }
-        String title = context.texts().text(titleKey);
-        String body = blocks.stream()
-                .map(view -> render(context, view))
+        String summaries = blocks.stream()
+                .map(view -> renderMemorySummary(context, view))
                 .filter(text -> text != null && !text.isBlank())
-                .map(text -> AXPromptSectionRenderer.renderLine(context, AXPromptTexts.PLAYER_MEMORY_BLOCK_LINE, "content", text))
+                .map(text -> AXPromptSectionRenderer.renderLine(context, AXPromptTexts.PLAYER_MEMORY_SUMMARY_LINE, "summary", text))
                 .collect(Collectors.joining("\n"));
-        if (body.isBlank()) {
+        if (summaries.isBlank()) {
             return "";
         }
-        if (title.isBlank()) {
-            return body;
-        }
-        return title + "\n" + body;
+        return AXPromptSectionRenderer.render(context, groupTemplateKey, Map.of("summaries", summaries));
     }
 
     private List<AXMemoryBlockView> selectBlocks(List<AXMemoryBlockView> blocks, int limit, LinkedHashSet<String> seen) {
@@ -120,15 +116,27 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
         return view.block().contentHash();
     }
 
-    private String render(AXPromptBuildContext context, AXMemoryBlockView view) {
-        StringBuilder builder = new StringBuilder(view.content());
-        if (!view.attachedMessages().isEmpty()) {
-            String title = context.texts().text(AXPromptTexts.PLAYER_MEMORY_ATTACHED_TITLE);
-            builder.append('\n').append(AXPromptSectionRenderer.render(context, AXPromptTexts.PLAYER_MEMORY_ATTACHED_HEADER, Map.of("title", title)));
-            for (String message : view.attachedMessages()) {
-                builder.append('\n').append(AXPromptSectionRenderer.render(context, AXPromptTexts.PLAYER_MEMORY_ATTACHED_LINE, Map.of("message", message)));
-            }
+    private String renderMemorySummary(AXPromptBuildContext context, AXMemoryBlockView view) {
+        if (view.attachedMessages().isEmpty()) {
+            return view.content();
         }
-        return builder.toString();
+        String events = view.attachedMessages().stream()
+                .map(event -> AXPromptSectionRenderer.renderLine(
+                        context,
+                        AXPromptTexts.PLAYER_MEMORY_CONCURRENT_EVENT_LINE,
+                        "event",
+                        event
+                ))
+                .filter(text -> text != null && !text.isBlank())
+                .collect(Collectors.joining("\n"));
+        if (events.isBlank()) {
+            return view.content();
+        }
+        String eventGroup = AXPromptSectionRenderer.render(
+                context,
+                AXPromptTexts.PLAYER_MEMORY_CONCURRENT_EVENTS_GROUP,
+                Map.of("events", events)
+        );
+        return eventGroup.isBlank() ? view.content() : view.content() + "\n" + eventGroup;
     }
 }

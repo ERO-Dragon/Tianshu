@@ -1,6 +1,9 @@
 package com.rheinmetal.tianshu.config;
 
 import com.rheinmetal.tianshu.constant.TriggerMode;
+import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import net.minecraft.client.Minecraft;
@@ -11,7 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
+public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, AXAssistantSettings, AXOutputSettings {
 
     public static final ModConfigSpec SPEC;
 
@@ -30,6 +33,11 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     public static final ModConfigSpec.BooleanValue LLM_FRAME_GUARD_ENABLED;
     public static final ModConfigSpec.IntValue LLM_FRAME_GUARD_TARGET_FPS;
     public static final ModConfigSpec.BooleanValue LLM_MTP_ENABLED;
+    public static final ModConfigSpec.BooleanValue AX_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> AX_WAKE_WORD;
+    public static final ModConfigSpec.BooleanValue AX_REPLY_SPEECH_ENABLED;
+    public static final ModConfigSpec.BooleanValue AX_CHAT_THINKING_ENABLED;
+    public static final ModConfigSpec.BooleanValue AX_INTERRUPT_ON_PLAYER_SPEECH;
     public static final ModConfigSpec.BooleanValue PRESENCE_HUD_ENABLED;
     public static final ModConfigSpec.BooleanValue PRESENCE_STATUS_TEXT_ENABLED;
     public static final ModConfigSpec.BooleanValue PRESENCE_ASR_STATUS_VISIBLE;
@@ -76,6 +84,14 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
         LLM_FRAME_GUARD_ENABLED = builder.define("frameGuardEnabled", true);
         LLM_FRAME_GUARD_TARGET_FPS = builder.defineInRange("frameGuardTargetFps", 60, 15, 240);
         LLM_MTP_ENABLED = builder.define("mtpEnabled", false);
+        builder.pop();
+
+        builder.comment("AX 辅星设置").push("ax");
+        AX_ENABLED = builder.define("enabled", true);
+        AX_WAKE_WORD = builder.define("wakeWord", AXAssistantSettings.DEFAULT_WAKE_WORD);
+        AX_REPLY_SPEECH_ENABLED = builder.define("replySpeechEnabled", true);
+        AX_CHAT_THINKING_ENABLED = builder.define("chatThinkingEnabled", false);
+        AX_INTERRUPT_ON_PLAYER_SPEECH = builder.define("interruptOnPlayerSpeech", true);
         builder.pop();
 
         builder.comment("映迹 HUD 显示设置").push("presence");
@@ -298,6 +314,56 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig {
     @Override
     public void setLlmMtpEnabled(boolean enabled) {
         LLM_MTP_ENABLED.set(enabled);
+    }
+
+    @Override
+    public boolean assistantEnabled() {
+        return AX_ENABLED.get();
+    }
+
+    public void setAxEnabled(boolean enabled) {
+        AX_ENABLED.set(enabled);
+    }
+
+    @Override
+    public String wakeWord() {
+        String value = AX_WAKE_WORD.get();
+        return value == null ? "" : value.trim();
+    }
+
+    public void setAxWakeWord(String wakeWord) {
+        AX_WAKE_WORD.set(wakeWord == null ? "" : wakeWord.trim());
+    }
+
+    @Override
+    public AXOutputMode outputMode() {
+        return AX_REPLY_SPEECH_ENABLED.get() ? AXOutputMode.TTS_ONLY : AXOutputMode.DISABLED;
+    }
+
+    public boolean isAxReplySpeechEnabled() {
+        return AX_REPLY_SPEECH_ENABLED.get();
+    }
+
+    public void setAxReplySpeechEnabled(boolean enabled) {
+        AX_REPLY_SPEECH_ENABLED.set(enabled);
+    }
+
+    @Override
+    public boolean chatThinkingEnabled() {
+        return AX_CHAT_THINKING_ENABLED.get();
+    }
+
+    public void setAxChatThinkingEnabled(boolean enabled) {
+        AX_CHAT_THINKING_ENABLED.set(enabled);
+    }
+
+    @Override
+    public boolean interruptOnPlayerSpeech() {
+        return AX_INTERRUPT_ON_PLAYER_SPEECH.get();
+    }
+
+    public void setAxInterruptOnPlayerSpeech(boolean enabled) {
+        AX_INTERRUPT_ON_PLAYER_SPEECH.set(enabled);
     }
 
     public boolean isPresenceHudEnabled() {

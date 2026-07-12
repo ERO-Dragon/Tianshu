@@ -14,7 +14,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void recentWindowKeepsCompleteDialogueRoundBoundary() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 1000, 1000, 1000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 1000, 1100, 1000, 1000, 10000));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -27,7 +27,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void interleavedGameChatStaysInsideDialogueRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(20, 1000, 1000, 1000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 1000, 1100, 1000, 1000, 10000));
         window.append(scope, turn("u1", "user", "帮我看附近", "turn-1", 10));
         window.append(scope, gameChat("g1", "Steve", "附近有村庄吗？", 5));
         window.append(scope, turn("a1", "assistant", "我会结合聊天判断", "turn-1", 10));
@@ -39,7 +39,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void compressionBatchPeelsCompleteOldestDialogueRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 20, 10, 15));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 20, 30, 10, 20, 10000));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -50,6 +50,55 @@ class AXRawTurnWindowTest {
         assertEquals(List.of("u1", "a1"), batch.turnIds());
     }
 
+    @Test
+    void compressionWaitsUntilRawKeepUpperLimitIsExceeded() {
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 20, 40, 10, 20, 10000));
+        window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
+        window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
+        window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
+
+        assertEquals(List.of(), window.selectCompressionBatch(scope).turnIds());
+    }
+
+    @Test
+    void recentWindowRejectsOversizedRoundInsteadOfSplittingIt() {
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(15, 1000, 1100, 1000, 1000, 10000));
+        window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
+        window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
+
+        assertEquals(List.of(), window.recent(scope));
+    }
+
+    @Test
+    void hardCapacityTrimRemovesWholeOldestRound() {
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 1, 1, 1, 1, 25));
+        window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
+        window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
+        window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
+
+        assertEquals(List.of("u2"), window.snapshot(scope).stream().map(AXRawTurn::id).toList());
+    }
+
+    @Test
+    void hardCapacityTrimDoesNotSplitNewestRound() {
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 1, 1, 1, 1, 15));
+        window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
+        window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
+
+        assertEquals(List.of("u1", "a1"), window.snapshot(scope).stream().map(AXRawTurn::id).toList());
+    }
+
+    @Test
+    void hardCapacityTrimKeepsGameChatWithInProgressDialogueRound() {
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 1, 1, 1, 1, 12));
+        window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
+        window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
+        window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
+        window.append(scope, gameChat("g2", "Steve", "补充信息", 5));
+
+        assertEquals(List.of("u2", "g2"), window.snapshot(scope).stream().map(AXRawTurn::id).toList());
+    }
+
     private AXRawTurn turn(String id, String role, String content, String turnId, int tokens) {
         return new AXRawTurn(id, role, content, System.currentTimeMillis(), scope.worldId(), "session", turnId, tokens, content.length(), "");
     }
@@ -58,7 +107,14 @@ class AXRawTurnWindowTest {
         return new AXRawTurn(id, "game_chat", content, System.currentTimeMillis(), scope.worldId(), "", "presence.chat", tokens, content.length(), "", speaker);
     }
 
-    private AXMemoryWindowPolicy policy(int rawDialogueBudget, int keepTarget, int compressTarget, int compressMax) {
+    private AXMemoryWindowPolicy policy(
+            int rawDialogueBudget,
+            int keepTarget,
+            int keepMax,
+            int compressTarget,
+            int compressMax,
+            int maxRawTokens
+    ) {
         return new AXMemoryWindowPolicy(
                 1000,
                 1000,
@@ -75,10 +131,10 @@ class AXRawTurnWindowTest {
                 125,
                 750,
                 keepTarget,
-                Math.max(keepTarget, keepTarget + 100),
+                keepMax,
                 compressTarget,
                 compressMax,
-                10000,
+                maxRawTokens,
                 10000,
                 3,
                 60000L

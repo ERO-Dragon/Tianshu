@@ -3,8 +3,8 @@ package com.rheinmetal.tianshu.client.lifecycle;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
-import com.rheinmetal.tianshu.client.auxilium.prompt.MinecraftAXPromptLanguageProvider;
 import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
+import com.rheinmetal.tianshu.client.language.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
@@ -96,7 +96,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
-                new MinecraftAXPromptLanguageProvider(),
+                ClientLanguagePolicy::currentPromptLanguage,
                 assistantSettings(axOutputSettings),
                 axOutputSettings,
                 axChatOutputSink,

@@ -11,5 +11,8 @@ public interface AXLlmRequestHandler {
     default void onCancelled(AXTurnCancellation cancellation) {
     }
 
+    default void onCancellationResult(LLMPromptResultPayload payload) {
+    }
+
     void onResult(LLMPromptResultPayload payload);
 }

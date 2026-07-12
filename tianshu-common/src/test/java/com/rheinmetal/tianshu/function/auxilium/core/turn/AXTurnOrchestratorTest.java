@@ -6,8 +6,11 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicKnowledgeFormatter;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXKnowledgeHit;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
@@ -17,6 +20,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
+import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
@@ -28,6 +32,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -47,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -118,6 +124,97 @@ class AXTurnOrchestratorTest {
         await(() -> spoken.size() == 2);
         assertEquals("This is the first sentence. This is the final suffix.", chatSink.text.toString());
         assertEquals(List.of("This is the first sentence.", "This is the final suffix."), spoken);
+    }
+
+    @Test
+    void completedAssistantTurnUsesLlmCompletionTokensInRecentDialogue() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXScope scope = writableScope();
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(
+                AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L),
+                (requestId, role, content) -> java.util.OptionalInt.of(999)
+        );
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> scope,
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null, recentDialogueSystem),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                recentDialogueSystem,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+        );
+
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+
+        await(() -> llmRequest.get() != null);
+        LLMPromptRequestPayload requestPayload = (LLMPromptRequestPayload) llmRequest.get().payload();
+        LLMPromptResultPayload.TokenUsagePayload usage = new LLMPromptResultPayload.TokenUsagePayload(120, 7, 3, 10, 130);
+        llmClient.handleResult(
+                llmRequest.get().envelopeId(),
+                LLMPromptResultPayload.completed(requestPayload.requestId(), "assistant completed text", "thinking", List.of(), usage)
+        );
+
+        await(() -> recentDialogueSystem.snapshot(scope).turns().size() == 2);
+        assertEquals(999, recentDialogueSystem.snapshot(scope).turns().get(0).tokenCount());
+        assertEquals(7, recentDialogueSystem.snapshot(scope).turns().get(1).tokenCount());
+    }
+
+    @Test
+    void cancelledAssistantPartialTurnUsesLlmCompletionTokensInRecentDialogue() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXScope scope = writableScope();
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(
+                AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L),
+                (requestId, role, content) -> java.util.OptionalInt.of(999)
+        );
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> scope,
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null, recentDialogueSystem),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                recentDialogueSystem,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+        );
+
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+
+        await(() -> llmRequest.get() != null);
+        LLMPromptRequestPayload requestPayload = (LLMPromptRequestPayload) llmRequest.get().payload();
+        llmClient.handleStreamChunk(
+                llmRequest.get().envelopeId(),
+                LLMPromptStreamChunkPayload.chunk(requestPayload.requestId(), "partial assistant text", 0)
+        );
+        assertTrue(llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("test interruption")));
+        LLMPromptResultPayload.TokenUsagePayload usage = new LLMPromptResultPayload.TokenUsagePayload(120, 5, 2, 7, 127);
+        llmClient.handleResult(
+                llmRequest.get().envelopeId(),
+                LLMPromptResultPayload.cancelled(requestPayload.requestId(), "partial assistant text", "thinking", List.of(), usage)
+        );
+
+        await(() -> recentDialogueSystem.snapshot(scope).turns().size() == 2);
+        assertEquals(999, recentDialogueSystem.snapshot(scope).turns().get(0).tokenCount());
+        assertEquals(5, recentDialogueSystem.snapshot(scope).turns().get(1).tokenCount());
     }
 
     @Test
@@ -264,7 +361,7 @@ class AXTurnOrchestratorTest {
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 null,
-                new AXDynamicFactClient(adapter, 2_000L),
+                dynamicFactClient(adapter, 2_000L),
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
                 new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
                 null,
@@ -293,14 +390,18 @@ class AXTurnOrchestratorTest {
                 PresenceContextSnapshotPayload.success(
                         ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
                         List.of(new PresenceContextSnapshotPayload.FactPayload(
-                                "crosshair",
-                                "玩家准星指向 minecraft:enchanting_table",
+                                PresenceContextFactIds.INTERACTION_CONTEXT,
+                                "",
                                 95,
                                 "presence.test",
                                 "minecraft:enchanting_table",
                                 List.of("crosshair"),
                                 System.currentTimeMillis(),
-                                1_000L
+                                1_000L,
+                                Map.of(
+                                        "crosshairTargetTypeId", "minecraft:enchanting_table",
+                                        "crosshairTargetDistance", "4.0"
+                                )
                         ))
                 )
         ).build());
@@ -310,7 +411,7 @@ class AXTurnOrchestratorTest {
         assertTrue(payload.chunks().stream()
                 .flatMap(chunk -> chunk.messageContent().stream())
                 .anyMatch(message -> message.content().contains("<game_context>")
-                        && message.content().contains("minecraft:enchanting_table")));
+                        && message.content().contains("enchanting table")));
     }
 
     @Test
@@ -325,7 +426,7 @@ class AXTurnOrchestratorTest {
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 null,
-                new AXDynamicFactClient(adapter, 2_000L),
+                dynamicFactClient(adapter, 2_000L),
                 new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
                 new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
                 null,
@@ -367,7 +468,7 @@ class AXTurnOrchestratorTest {
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
                 null,
-                new AXDynamicFactClient(adapter, 2_000L),
+                dynamicFactClient(adapter, 2_000L),
                 new AXContextCollector(null),
                 new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
                 null,
@@ -411,6 +512,14 @@ class AXTurnOrchestratorTest {
         return () -> AXOutputMode.UI_AND_TTS;
     }
 
+    private static AXDynamicFactClient dynamicFactClient(AXProtocolAdapter adapter, long timeoutMillis) {
+        return new AXDynamicFactClient(
+                adapter,
+                new AXDynamicKnowledgeFormatter(null, AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN)),
+                timeoutMillis
+        );
+    }
+
     private static DialogueDeliveryPayload delivery() {
         return new DialogueDeliveryPayload(
                 "session",
@@ -436,6 +545,10 @@ class AXTurnOrchestratorTest {
                 PayloadType.DIALOGUE_DELIVERY,
                 delivery()
         ).build();
+    }
+
+    private static AXScope writableScope() {
+        return new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
     }
 
     private static AXTurnOrchestrator statusOrchestrator(

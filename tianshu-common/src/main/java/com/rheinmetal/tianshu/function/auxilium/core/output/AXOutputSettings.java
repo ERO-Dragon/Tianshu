@@ -14,8 +14,4 @@ public interface AXOutputSettings {
         AXOutputMode mode = outputMode();
         return mode != null && mode.ttsEnabled();
     }
-
-    default String ttsVoiceStyle() {
-        return "ax";
-    }
 }

@@ -48,7 +48,7 @@ public final class AXRawTurnWindow {
         int tokens = 0;
         for (int i = groups.size() - 1; i >= 0; i--) {
             TurnGroup group = groups.get(i);
-            if (!selectedGroups.isEmpty() && tokens + group.tokenCount() > policy.recentRawDialogueTokenBudget()) {
+            if (tokens + group.tokenCount() > policy.recentRawDialogueTokenBudget()) {
                 break;
             }
             selectedGroups.add(group);
@@ -121,7 +121,7 @@ public final class AXRawTurnWindow {
         synchronized (turns) {
             List<TurnGroup> groups = turnGroups(new ArrayList<>(turns));
             int totalTokens = groups.stream().mapToInt(TurnGroup::compressibleTokens).sum();
-            if (totalTokens <= policy.recentRawKeepTokenTarget()) {
+            if (totalTokens <= policy.recentRawKeepTokenMax()) {
                 return AXRawTurnBatch.empty();
             }
             int removableBudget = Math.max(0, totalTokens - policy.recentRawKeepTokenTarget());
@@ -181,17 +181,21 @@ public final class AXRawTurnWindow {
     }
 
     private void trim(Deque<AXRawTurn> turns) {
-        int tokens = 0;
-        int characters = 0;
-        for (AXRawTurn turn : turns) {
-            tokens += turn.tokenCount();
-            characters += turn.characterCount();
-        }
-        while (!turns.isEmpty() && (tokens > policy.maxRawTokenCount() || characters > policy.maxRawCharacters())) {
-            AXRawTurn removed = turns.removeFirst();
+        List<TurnGroup> groups = turnGroups(new ArrayList<>(turns));
+        int tokens = groups.stream().mapToInt(TurnGroup::tokenCount).sum();
+        int characters = groups.stream().mapToInt(TurnGroup::characterCount).sum();
+        for (int i = 0; i < groups.size() - 1 && exceedsRawCapacity(tokens, characters); i++) {
+            TurnGroup removed = groups.get(i);
+            for (int turnIndex = 0; turnIndex < removed.turns().size(); turnIndex++) {
+                turns.removeFirst();
+            }
             tokens -= removed.tokenCount();
             characters -= removed.characterCount();
         }
+    }
+
+    private boolean exceedsRawCapacity(int tokens, int characters) {
+        return tokens > policy.maxRawTokenCount() || characters > policy.maxRawCharacters();
     }
 
     private boolean writable(AXScope scope) {
@@ -227,9 +231,11 @@ public final class AXRawTurnWindow {
                     end = cursor;
                     continue;
                 }
-                if (!candidateKey.isBlank()) {
-                    break;
+                if (candidateKey.isBlank()) {
+                    end = cursor;
+                    continue;
                 }
+                break;
             }
             List<AXRawTurn> groupTurns = new ArrayList<>();
             for (int cursor = index; cursor <= end; cursor++) {
@@ -263,6 +269,10 @@ public final class AXRawTurnWindow {
 
         private int tokenCount() {
             return turns.stream().mapToInt(AXRawTurn::tokenCount).sum();
+        }
+
+        private int characterCount() {
+            return turns.stream().mapToInt(AXRawTurn::characterCount).sum();
         }
 
         private int compressibleTokens() {

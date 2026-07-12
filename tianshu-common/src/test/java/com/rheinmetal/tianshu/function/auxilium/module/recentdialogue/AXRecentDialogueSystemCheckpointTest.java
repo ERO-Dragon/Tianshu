@@ -111,7 +111,7 @@ class AXRecentDialogueSystemCheckpointTest {
                 125,
                 750,
                 20,
-                1000,
+                30,
                 10,
                 15,
                 10000,

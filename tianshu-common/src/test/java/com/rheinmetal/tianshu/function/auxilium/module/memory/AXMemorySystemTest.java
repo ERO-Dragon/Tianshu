@@ -335,7 +335,7 @@ class AXMemorySystemTest {
                 125,
                 750,
                 10,
-                1000,
+                10,
                 10,
                 1000,
                 10000,

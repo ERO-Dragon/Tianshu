@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.prompt;
 
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
+import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
@@ -42,11 +43,11 @@ class AXPromptAssemblySnapshotTest {
         AXMemorySnapshot memory = new AXMemorySnapshot(
                 "测试人格",
                 List.of(new AXMemoryBlockView(
-                        stm(scope, "retrieved", "检索命中的 STM：玩家之前问过铁砧。", 1000L),
+                        stm(scope, "retrieved", "玩家之前问过铁砧。", 1000L),
                         List.of("玩家死亡一次。")
                 )),
                 List.of(new AXMemoryBlockView(
-                        stm(scope, "recent", "近期 STM：玩家正在整理装备。", 2000L),
+                        stm(scope, "recent", "玩家正在整理装备。", 2000L),
                         List.of("玩家解锁成就：Stone Age")
                 ))
         );
@@ -98,11 +99,41 @@ class AXPromptAssemblySnapshotTest {
         assertTrue(joined.contains("正常对话长度"));
         assertTrue(joined.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(joined.contains("minecraft:anvil | 铁砧可以修复工具。"));
-        assertTrue(joined.contains("检索命中的 STM"));
-        assertTrue(joined.contains("近期 STM"));
+        assertTrue(joined.contains("你记得此前与玩家发生过这些事情"));
+        assertTrue(joined.contains("最近与玩家发生了这些事情"));
+        assertTrue(!joined.contains("STM"));
         assertTrue(joined.contains("玩家死亡一次。"));
         assertTrue(joined.contains("玩家解锁成就：Stone Age"));
         assertTrue(!joined.contains("IA delivery 附带上下文"));
+    }
+
+    @Test
+    void chatThinkingSettingIsForwardedWithoutCapturingThinkingContent() {
+        AXAssistantSettings settings = new AXAssistantSettings() {
+            @Override
+            public String wakeWord() {
+                return DEFAULT_WAKE_WORD;
+            }
+
+            @Override
+            public boolean chatThinkingEnabled() {
+                return true;
+            }
+        };
+        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
+                new AXPromptOrchestrator(null, null, null),
+                settings
+        );
+
+        LLMPromptRequestPayload payload = builder.buildChatRequest(
+                new AXRequest("thinking", "请仔细想想", ""),
+                AXContextSnapshot.empty(),
+                AXContextBudget.DEFAULT
+        );
+
+        assertTrue(payload.thinking());
+        assertTrue(!payload.captureThinkingContent());
+        assertEquals("CHAT", payload.lane());
     }
 
     @Test
@@ -113,12 +144,15 @@ class AXPromptAssemblySnapshotTest {
                 layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
                 """
                 {
-                  "schemaVersion": 1,
-                  "identity": "测试身份",
-                  "behaviorRules": "测试规则",
+                  "schemaVersion": 3,
+                  "systemPrompts": {
+                    "short": "测试 system prompt",
+                    "standard": "测试 system prompt",
+                    "full": "测试 system prompt"
+                  },
                   "sectionOrder": [
                     "game_context",
-                    "identity",
+                    "ax_system",
                     "player_memory",
                     "current_input"
                   ]

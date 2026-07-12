@@ -6,4 +6,16 @@ public interface AXAssistantSettings {
     AXAssistantSettings DEFAULT = () -> DEFAULT_WAKE_WORD;
 
     String wakeWord();
+
+    default boolean assistantEnabled() {
+        return true;
+    }
+
+    default boolean chatThinkingEnabled() {
+        return false;
+    }
+
+    default boolean interruptOnPlayerSpeech() {
+        return true;
+    }
 }

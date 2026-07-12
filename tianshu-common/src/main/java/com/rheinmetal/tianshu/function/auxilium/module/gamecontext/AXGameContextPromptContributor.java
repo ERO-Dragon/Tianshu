@@ -34,11 +34,11 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
         int knowledgeLimit = Math.max(0, context.budget().maxKnowledgeRagItems());
         List<String> dynamicContent = dynamicContent(context, knowledgeHits, knowledgeLimit);
         if (!dynamicContent.isEmpty()) {
-            lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_DYNAMIC_CONTENT_TITLE, dynamicContent));
+            lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_CURRENT_SITUATION_INTRO, dynamicContent));
         }
         List<String> staticContent = staticContent(context, knowledgeHits, Math.max(0, knowledgeLimit - dynamicContent.size()));
         if (!staticContent.isEmpty()) {
-            lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_STATIC_CONTENT_TITLE, staticContent));
+            lines.add(renderGroup(context, AXPromptTexts.GAME_CONTEXT_RELEVANT_KNOWLEDGE_INTRO, staticContent));
         }
         String content = lines.stream()
                 .filter(text -> text != null && !text.isBlank())

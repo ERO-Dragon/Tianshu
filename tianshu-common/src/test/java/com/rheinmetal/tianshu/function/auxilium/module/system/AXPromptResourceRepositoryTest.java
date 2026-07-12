@@ -27,7 +27,12 @@ class AXPromptResourceRepositoryTest {
         AXPromptTexts texts = repository.loadTexts(AXPromptLanguage.ZH_CN);
 
         assertTrue(Files.isRegularFile(layout.promptTextsFile()));
-        assertEquals("<recent_dialogue>\n内容\n</recent_dialogue>", texts.render(AXPromptTexts.SECTION_RECENT_DIALOGUE, Map.of("content", "内容")));
+        assertEquals("以下信息与玩家当前所处的情况相关：", texts.text(AXPromptTexts.GAME_CONTEXT_CURRENT_SITUATION_INTRO));
+        assertEquals(
+                "你记得此前与玩家发生过这些事情：\n- 玩家曾询问铁砧。",
+                texts.render(AXPromptTexts.PLAYER_MEMORY_REMEMBERED_HISTORY_GROUP, Map.of("summaries", "- 玩家曾询问铁砧。"))
+        );
+        assertEquals("", texts.text("section.recent_dialogue"));
     }
 
     @Test
@@ -39,9 +44,9 @@ class AXPromptResourceRepositoryTest {
 
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.en_us.default.json")));
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.zh_cn.default.json")));
-        assertEquals("你是天枢 Minecraft 模组中的随行聊天助手。", profile.identity());
-        assertTrue(profile.systemProfiles().shortProfile().behaviorRules().contains("简洁"));
-        assertTrue(profile.systemProfiles().fullProfile().behaviorRules().contains("信息不足"));
+        assertTrue(profile.systemPrompts().standardPrompt().contains("随行聊天助手"));
+        assertTrue(profile.systemPrompts().shortPrompt().contains("简洁"));
+        assertTrue(profile.systemPrompts().fullPrompt().contains("信息不足"));
         assertTrue(profile.sectionOrder().contains("ax_system"));
         assertTrue(profile.sectionOrder().contains("game_context"));
         assertTrue(profile.sectionOrder().contains("player_memory"));
@@ -55,13 +60,13 @@ class AXPromptResourceRepositoryTest {
                 layout.promptTextsFile(),
                         """
                         {
-                          "schemaVersion": 1,
+                          "schemaVersion": 2,
                           "texts": {
-                            "section.recent_dialogue": {
-                              "zh_cn": "[RECENT]\\n{{content}}\\n[/RECENT]"
+                            "game_context.current_situation_intro": {
+                              "zh_cn": "当前情况："
                             },
-                            "recent_dialogue.line": {
-                              "zh_cn": "* {{speaker}}: {{message}}"
+                            "game_context.fact_line": {
+                              "zh_cn": "* {{fact}}"
                             }
                           }
                         }
@@ -72,8 +77,8 @@ class AXPromptResourceRepositoryTest {
 
         AXPromptTexts texts = repository.loadTexts(AXPromptLanguage.ZH_CN);
 
-        assertEquals("[RECENT]\n内容\n[/RECENT]", texts.render(AXPromptTexts.SECTION_RECENT_DIALOGUE, Map.of("content", "内容")));
-        assertEquals("* Steve: 你好", texts.render(AXPromptTexts.RECENT_DIALOGUE_LINE, Map.of("speaker", "Steve", "message", "你好")));
+        assertEquals("当前情况：", texts.text(AXPromptTexts.GAME_CONTEXT_CURRENT_SITUATION_INTRO));
+        assertEquals("* 铁砧", texts.render(AXPromptTexts.GAME_CONTEXT_FACT_LINE, Map.of("fact", "铁砧")));
     }
 
     @Test
@@ -84,20 +89,11 @@ class AXPromptResourceRepositoryTest {
                 layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
                 """
                 {
-                  "schemaVersion": 2,
-                  "systemProfiles": {
-                    "short": {
-                      "identity": "短身份",
-                      "behaviorRules": "短规则"
-                    },
-                    "standard": {
-                      "identity": "测试身份",
-                      "behaviorRules": "测试规则"
-                    },
-                    "full": {
-                      "identity": "完整身份",
-                      "behaviorRules": "完整规则"
-                    }
+                  "schemaVersion": 3,
+                  "systemPrompts": {
+                    "short": "完整的短提示词",
+                    "standard": "完整的测试提示词",
+                    "full": "完整的完整提示词"
                   },
                   "sectionOrder": [
                     "ax_system",
@@ -112,10 +108,9 @@ class AXPromptResourceRepositoryTest {
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 
-        assertEquals("测试身份", profile.identity());
-        assertEquals("测试规则", profile.behaviorRules());
-        assertEquals("短规则", profile.systemProfiles().shortProfile().behaviorRules());
-        assertEquals("完整规则", profile.systemProfiles().fullProfile().behaviorRules());
+        assertEquals("完整的测试提示词", profile.systemPrompts().standardPrompt());
+        assertEquals("完整的短提示词", profile.systemPrompts().shortPrompt());
+        assertEquals("完整的完整提示词", profile.systemPrompts().fullPrompt());
         assertEquals(List.of("ax_system", "game_context", "current_input"), profile.sectionOrder());
     }
 }

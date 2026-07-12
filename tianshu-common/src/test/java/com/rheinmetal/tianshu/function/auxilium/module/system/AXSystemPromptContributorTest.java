@@ -21,10 +21,9 @@ class AXSystemPromptContributorTest {
         new AXSystemPromptContributor().contribute(buildContext(8), builder);
 
         String content = builder.build().messages().get(0).content();
-        assertTrue(content.contains("short identity"));
-        assertTrue(content.contains("brief rule"));
-        assertFalse(content.contains("standard identity"));
-        assertFalse(content.contains("full identity"));
+        assertTrue(content.contains("short complete prompt"));
+        assertFalse(content.contains("standard complete prompt"));
+        assertFalse(content.contains("full complete prompt"));
     }
 
     @Test
@@ -34,28 +33,31 @@ class AXSystemPromptContributorTest {
         new AXSystemPromptContributor().contribute(buildContext(200), builder);
 
         String content = builder.build().messages().get(0).content();
-        assertTrue(content.contains("full identity"));
-        assertTrue(content.contains("full rule"));
+        assertTrue(content.contains("full complete prompt"));
+    }
+
+    @Test
+    void keepsShortestSystemPromptWholeWhenEveryProfileExceedsItsSlot() {
+        AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
+
+        new AXSystemPromptContributor().contribute(buildContext(1), builder);
+
+        assertTrue(builder.build().messages().get(0).content().contains("short complete prompt"));
     }
 
     private AXPromptBuildContext buildContext(int systemTokenBudget) {
-        AXSystemProfileSet profiles = new AXSystemProfileSet(
-                new AXSystemProfileContent("short identity", "brief rule"),
-                new AXSystemProfileContent("standard identity with several extra words", "standard rule with several extra words"),
-                new AXSystemProfileContent("full identity with many extra descriptive words for the assistant profile", "full rule with many extra policy words for grounded reliable immersive assistant behavior")
+        AXSystemPromptSet prompts = new AXSystemPromptSet(
+                "short complete prompt",
+                "standard complete prompt with several extra words for reliable behavior",
+                "full complete prompt with many extra descriptive words for grounded reliable immersive assistant behavior"
         );
         return new AXPromptBuildContext(
                 new AXRequest("request", "hello", ""),
                 AXContextSnapshot.empty(),
                 new AXContextBudget(systemTokenBudget, 0, 0, 0, 0, 1000, 0, 0),
                 AXPromptLanguage.EN_US,
-                new AXPromptProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, profiles, List.of("ax_system")),
+                new AXPromptProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, prompts, List.of("ax_system")),
                 new AXPromptTexts(AXPromptLanguage.EN_US, Map.of(
-                        AXPromptTexts.SYSTEM_TITLE_IDENTITY, "Identity",
-                        AXPromptTexts.SYSTEM_TITLE_BEHAVIOR_RULES, "Rules",
-                        AXPromptTexts.SYSTEM_TITLE_SECTION_RULES, "Section rules",
-                        AXPromptTexts.SYSTEM_SECTION_RULES, "",
-                        AXPromptTexts.SYSTEM_PARAGRAPH, "{{title}}\n{{content}}",
                         AXPromptTexts.SECTION_AX_SYSTEM, "<ax_system>\n{{content}}\n</ax_system>"
                 )),
                 (requestId, role, content) -> java.util.OptionalInt.of(countWords(content))

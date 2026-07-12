@@ -44,11 +44,13 @@ public final class AXLlmClient {
         PendingRequest request = handlers.get(requestEnvelopeId);
         if (request == null || request.expired(nowMillis.getAsLong())) {
             handlers.remove(requestEnvelopeId);
-            adapter.unregisterLlmResponses(requestEnvelopeId);
             if (request != null) {
-                request.handler().onCancelled(AXTurnCancellation.expired("AX LLM request expired"));
+                cancelAndForget(requestEnvelopeId, request, AXTurnCancellation.expired("AX LLM request expired"));
             }
             return false;
+        }
+        if (request.cancelling()) {
+            return true;
         }
         request.handler().onStreamChunk(payload);
         return true;
@@ -59,15 +61,20 @@ public final class AXLlmClient {
             return false;
         }
         PendingRequest request = handlers.remove(requestEnvelopeId);
-        if (request == null || request.expired(nowMillis.getAsLong())) {
+        if (request == null) {
             adapter.unregisterLlmResponses(requestEnvelopeId);
-            if (request != null) {
-                request.handler().onCancelled(AXTurnCancellation.expired("AX LLM request expired"));
-            }
+            return false;
+        }
+        adapter.unregisterLlmResponses(requestEnvelopeId);
+        if (request.cancelling()) {
+            request.handler().onCancellationResult(payload);
+            return true;
+        }
+        if (request.expired(nowMillis.getAsLong())) {
+            request.notifyCancelled(AXTurnCancellation.expired("AX LLM request expired"));
             return false;
         }
         request.handler().onResult(payload);
-        adapter.unregisterLlmResponses(requestEnvelopeId);
         return true;
     }
 
@@ -76,14 +83,13 @@ public final class AXLlmClient {
                 ? AXTurnCancellation.moduleUnloaded("AX LLM client cancelled")
                 : cancellation;
         handlers.forEach((requestEnvelopeId, request) -> {
-            request.handler().onCancelled(effective);
-            adapter.unregisterLlmResponses(requestEnvelopeId);
+            cancelAndForget(requestEnvelopeId, request, effective);
         });
         handlers.clear();
     }
 
     public boolean cancelChatRequests(AXTurnCancellation cancellation) {
-        return cancelRequestsByLane("CHAT", cancellation == null
+        return cancelChatRequestsByLane(cancellation == null
                 ? AXTurnCancellation.playerInterrupted("AX chat request cancelled")
                 : cancellation);
     }
@@ -99,8 +105,7 @@ public final class AXLlmClient {
         AXTurnCancellation effective = cancellation == null
                 ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
                 : cancellation;
-        request.handler().onCancelled(effective);
-        adapter.unregisterLlmResponses(requestEnvelopeId);
+        cancelAndForget(requestEnvelopeId, request, effective);
         return true;
     }
 
@@ -112,8 +117,7 @@ public final class AXLlmClient {
         handlers.entrySet().removeIf(entry -> {
             boolean expired = entry.getValue().expired(nowMillis.getAsLong());
             if (expired) {
-                adapter.unregisterLlmResponses(entry.getKey());
-                entry.getValue().handler().onCancelled(AXTurnCancellation.expired("AX LLM request expired"));
+                cancelAndForget(entry.getKey(), entry.getValue(), AXTurnCancellation.expired("AX LLM request expired"));
             }
             return expired;
         });
@@ -122,7 +126,7 @@ public final class AXLlmClient {
     private TianshuEnvelope submit(TianshuEnvelope envelope, AXLlmRequestHandler handler) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(handler, "handler");
-        handlers.put(envelope.envelopeId(), new PendingRequest(handler, envelope.header().expireAt(), payloadLane(envelope)));
+        handlers.put(envelope.envelopeId(), new PendingRequest(envelope, handler, envelope.header().expireAt(), payloadLane(envelope)));
         adapter.registerLlmPromptStreamChunkResponse(envelope.envelopeId(), this::handleStreamChunkResponse);
         adapter.registerLlmPromptResultResponse(envelope.envelopeId(), this::handleResultResponse);
         sweepExpired();
@@ -155,26 +159,54 @@ public final class AXLlmClient {
         }
     }
 
-    private boolean cancelRequestsByLane(String lane, AXTurnCancellation cancellation) {
-        String expectedLane = lane == null ? "" : lane.trim().toUpperCase();
-        if (expectedLane.isBlank()) {
-            return false;
-        }
+    private boolean cancelChatRequestsByLane(AXTurnCancellation cancellation) {
         AXTurnCancellation effective = cancellation == null
                 ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
                 : cancellation;
         AtomicBoolean cancelled = new AtomicBoolean(false);
         handlers.entrySet().removeIf(entry -> {
             PendingRequest request = entry.getValue();
-            if (request == null || !expectedLane.equals(request.lane())) {
+            if (request == null || !"CHAT".equals(request.lane())) {
                 return false;
             }
-            request.handler().onCancelled(effective);
-            adapter.unregisterLlmResponses(entry.getKey());
+            cancelAndAwaitTerminalResult(request, effective);
             cancelled.set(true);
-            return true;
+            return false;
         });
         return cancelled.get();
+    }
+
+    private void cancelAndAwaitTerminalResult(PendingRequest request, AXTurnCancellation cancellation) {
+        AXTurnCancellation effective = cancellation == null
+                ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
+                : cancellation;
+        if (!request.markCancelling()) {
+            return;
+        }
+        try {
+            request.notifyCancelled(effective);
+        } finally {
+            adapter.cancelLlmRequest(request.envelope(), cancellationReasonCode(effective), effective.message());
+        }
+    }
+
+    private void cancelAndForget(String requestEnvelopeId, PendingRequest request, AXTurnCancellation cancellation) {
+        AXTurnCancellation effective = cancellation == null
+                ? AXTurnCancellation.moduleUnloaded("AX LLM request cancelled")
+                : cancellation;
+        try {
+            adapter.unregisterLlmResponses(requestEnvelopeId);
+            adapter.cancelLlmRequest(request.envelope(), cancellationReasonCode(effective), effective.message());
+        } finally {
+            request.notifyCancelled(effective);
+        }
+    }
+
+    private static String cancellationReasonCode(AXTurnCancellation cancellation) {
+        if (cancellation == null || cancellation.releaseReason() == null) {
+            return "AX_LLM_REQUEST_CANCELLED";
+        }
+        return "AX_" + cancellation.releaseReason().name();
     }
 
     private String payloadLane(TianshuEnvelope envelope) {
@@ -184,9 +216,47 @@ public final class AXLlmClient {
         return "CHAT";
     }
 
-    private record PendingRequest(AXLlmRequestHandler handler, long expireAtMillis, String lane) {
-        private PendingRequest {
-            lane = lane == null || lane.isBlank() ? "CHAT" : lane.trim().toUpperCase();
+    private static final class PendingRequest {
+        private final TianshuEnvelope envelope;
+        private final AXLlmRequestHandler handler;
+        private final long expireAtMillis;
+        private final String lane;
+        private final AtomicBoolean cancelling = new AtomicBoolean(false);
+        private final AtomicBoolean cancellationNotified = new AtomicBoolean(false);
+
+        private PendingRequest(TianshuEnvelope envelope, AXLlmRequestHandler handler, long expireAtMillis, String lane) {
+            Objects.requireNonNull(envelope, "envelope");
+            Objects.requireNonNull(handler, "handler");
+            this.envelope = envelope;
+            this.handler = handler;
+            this.expireAtMillis = expireAtMillis;
+            this.lane = lane == null || lane.isBlank() ? "CHAT" : lane.trim().toUpperCase();
+        }
+
+        private TianshuEnvelope envelope() {
+            return envelope;
+        }
+
+        private AXLlmRequestHandler handler() {
+            return handler;
+        }
+
+        private String lane() {
+            return lane;
+        }
+
+        private boolean cancelling() {
+            return cancelling.get();
+        }
+
+        private boolean markCancelling() {
+            return cancelling.compareAndSet(false, true);
+        }
+
+        private void notifyCancelled(AXTurnCancellation cancellation) {
+            if (cancellationNotified.compareAndSet(false, true)) {
+                handler.onCancelled(cancellation);
+            }
         }
 
         private boolean expired(long nowMillis) {

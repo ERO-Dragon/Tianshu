@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.client.presence.context;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInventoryItem;
 import com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus;
@@ -82,6 +84,7 @@ public final class PresenceContextFactMapper {
         values.put("maxHealth", formatDecimal(status.maxHealth()));
         values.put("hunger", Integer.toString(status.hunger()));
         values.put("experienceLevel", Integer.toString(status.experienceLevel()));
+        values.put("dimensionId", snapshot.dimensionId());
         String text = tr("tianshu.presence.context.player_status",
                 formatDecimal(status.health()),
                 formatDecimal(status.maxHealth()),
@@ -142,6 +145,7 @@ public final class PresenceContextFactMapper {
         values.put("items", counts.entrySet().stream()
                 .map(entry -> valueToken(ids.get(entry.getKey())) + ":" + entry.getValue().count)
                 .collect(Collectors.joining("|")));
+        values.put("inventoryItemsJson", inventoryItemsJson(snapshot.inventoryItems()));
         String text = tr("tianshu.presence.context.inventory", itemsText);
         return fact(PresenceContextFactIds.PLAYER_INVENTORY, text, 78, "player_inventory", List.of("inventory", "items"), now, values);
     }
@@ -166,6 +170,7 @@ public final class PresenceContextFactMapper {
                 .filter(effect -> effect != null && !effect.effectId().isBlank())
                 .map(effect -> valueToken(effect.effectId()) + ":" + effect.amplifier() + ":" + effect.durationTicks())
                 .collect(Collectors.joining("|")));
+        values.put("activeEffectsJson", activeEffectsJson(snapshot.activeEffects()));
         String text = tr("tianshu.presence.context.effects", effectsText);
         return fact(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS, text, 76, "player", List.of("player", "effects"), now, values);
     }
@@ -299,6 +304,43 @@ public final class PresenceContextFactMapper {
 
     private Map<String, String> orderedMap() {
         return new LinkedHashMap<>();
+    }
+
+    private String inventoryItemsJson(List<PresenceInventoryItem> items) {
+        JsonArray array = new JsonArray();
+        if (items != null) {
+            for (PresenceInventoryItem item : items) {
+                if (item == null || item.count() <= 0) {
+                    continue;
+                }
+                JsonObject json = new JsonObject();
+                json.addProperty("itemId", item.itemId());
+                json.addProperty("displayName", item.displayName());
+                json.addProperty("count", item.count());
+                json.addProperty("maxStackSize", item.maxStackSize());
+                array.add(json);
+            }
+        }
+        return array.toString();
+    }
+
+    private String activeEffectsJson(List<PresencePotionEffect> effects) {
+        JsonArray array = new JsonArray();
+        if (effects != null) {
+            for (PresencePotionEffect effect : effects) {
+                if (effect == null || effect.effectId().isBlank()) {
+                    continue;
+                }
+                JsonObject json = new JsonObject();
+                json.addProperty("effectId", effect.effectId());
+                json.addProperty("displayName", effect.displayName());
+                json.addProperty("durationTicks", effect.durationTicks());
+                json.addProperty("amplifier", effect.amplifier());
+                json.addProperty("beneficial", effect.beneficial());
+                array.add(json);
+            }
+        }
+        return array.toString();
     }
 
     private static final class InventoryAmount {

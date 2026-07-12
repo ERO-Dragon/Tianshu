@@ -116,11 +116,7 @@ public final class AXPromptOrchestrator {
     }
 
     private String normalizeSectionId(String sectionId) {
-        String normalized = sectionId == null ? "" : sectionId.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case "identity", "rules", "persona", "scope" -> AXSystemPromptContributor.SECTION_ID;
-            default -> normalized;
-        };
+        return sectionId == null ? "" : sectionId.trim().toLowerCase(Locale.ROOT);
     }
 
     private AXPromptProfile loadProfile(AXPromptLanguage language) {

@@ -18,28 +18,48 @@ public record AXPromptTexts(
 ) {
     private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/function/auxilium/prompts/ax_prompt_texts.json";
 
-    public static final String SYSTEM_TITLE_IDENTITY = "system.title.identity";
-    public static final String SYSTEM_TITLE_BEHAVIOR_RULES = "system.title.behavior_rules";
-    public static final String SYSTEM_TITLE_SECTION_RULES = "system.title.section_rules";
-    public static final String SYSTEM_SECTION_RULES = "system.section_rules";
-    public static final String SYSTEM_PARAGRAPH = "system.paragraph";
     public static final String SECTION_AX_SYSTEM = "section.ax_system";
     public static final String SECTION_GAME_CONTEXT = "section.game_context";
-    public static final String GAME_CONTEXT_DYNAMIC_CONTENT_TITLE = "game_context.dynamic_content_title";
-    public static final String GAME_CONTEXT_STATIC_CONTENT_TITLE = "game_context.static_content_title";
+    public static final String GAME_CONTEXT_CURRENT_SITUATION_INTRO = "game_context.current_situation_intro";
+    public static final String GAME_CONTEXT_RELEVANT_KNOWLEDGE_INTRO = "game_context.relevant_knowledge_intro";
     public static final String GAME_CONTEXT_FACT_LINE = "game_context.fact_line";
+    public static final String DYNAMIC_KNOWLEDGE_PLAYER_STATUS = "dynamic_knowledge.player.status";
+    public static final String DYNAMIC_KNOWLEDGE_WORLD_ENVIRONMENT = "dynamic_knowledge.world.environment";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_ITEMS = "dynamic_knowledge.inventory.items";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_ITEM = "dynamic_knowledge.inventory.item";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_SEPARATOR = "dynamic_knowledge.inventory.separator";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_FEW = "dynamic_knowledge.inventory.amount.few";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_LESS_THAN_HALF_STACK = "dynamic_knowledge.inventory.amount.less_than_half_stack";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_HALF_STACK = "dynamic_knowledge.inventory.amount.half_stack";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_MORE_THAN_HALF_STACK = "dynamic_knowledge.inventory.amount.more_than_half_stack";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_ONE_STACK = "dynamic_knowledge.inventory.amount.one_stack";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_ONE_STACK_MORE = "dynamic_knowledge.inventory.amount.one_stack_more";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_MULTI_STACK = "dynamic_knowledge.inventory.amount.multi_stack";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_AMOUNT_MULTI_STACK_MORE = "dynamic_knowledge.inventory.amount.multi_stack_more";
+    public static final String DYNAMIC_KNOWLEDGE_INVENTORY_STACK_COUNT_PREFIX = "dynamic_knowledge.inventory.stack_count.";
+    public static final String DYNAMIC_KNOWLEDGE_EFFECTS_ACTIVE = "dynamic_knowledge.effects.active";
+    public static final String DYNAMIC_KNOWLEDGE_EFFECTS_ENTRY = "dynamic_knowledge.effects.entry";
+    public static final String DYNAMIC_KNOWLEDGE_EFFECT_LEVEL_PREFIX = "dynamic_knowledge.effect.level.";
+    public static final String DYNAMIC_KNOWLEDGE_DURATION_SECONDS = "dynamic_knowledge.duration.seconds";
+    public static final String DYNAMIC_KNOWLEDGE_DURATION_MINUTES = "dynamic_knowledge.duration.minutes";
+    public static final String DYNAMIC_KNOWLEDGE_DURATION_MINUTES_SECONDS = "dynamic_knowledge.duration.minutes_seconds";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION = "dynamic_knowledge.interaction";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION_HELD_ITEM = "dynamic_knowledge.interaction.held_item";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION_SCREEN = "dynamic_knowledge.interaction.screen";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION_USE_KEY = "dynamic_knowledge.interaction.use_key";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION_ATTACK_KEY = "dynamic_knowledge.interaction.attack_key";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION_SNEAKING = "dynamic_knowledge.interaction.sneaking";
+    public static final String DYNAMIC_KNOWLEDGE_INTERACTION_CROSSHAIR = "dynamic_knowledge.interaction.crosshair";
+    public static final String DYNAMIC_KNOWLEDGE_VALUE_UNKNOWN = "dynamic_knowledge.value.unknown";
+    public static final String DYNAMIC_KNOWLEDGE_WEATHER_CLEAR = "dynamic_knowledge.weather.clear";
+    public static final String DYNAMIC_KNOWLEDGE_WEATHER_RAIN = "dynamic_knowledge.weather.rain";
+    public static final String DYNAMIC_KNOWLEDGE_WEATHER_THUNDER = "dynamic_knowledge.weather.thunder";
     public static final String SECTION_PLAYER_MEMORY = "section.player_memory";
-    public static final String PLAYER_MEMORY_RETRIEVED_TITLE = "player_memory.retrieved_title";
-    public static final String PLAYER_MEMORY_RECENT_TITLE = "player_memory.recent_title";
-    public static final String PLAYER_MEMORY_BLOCK_LINE = "player_memory.block_line";
-    public static final String PLAYER_MEMORY_ATTACHED_TITLE = "player_memory.attached_messages.title";
-    public static final String PLAYER_MEMORY_ATTACHED_HEADER = "player_memory.attached_messages.header";
-    public static final String PLAYER_MEMORY_ATTACHED_LINE = "player_memory.attached_messages.line";
-    public static final String SECTION_RECENT_DIALOGUE = "section.recent_dialogue";
-    public static final String RECENT_DIALOGUE_LINE = "recent_dialogue.line";
-    public static final String RECENT_DIALOGUE_USER_SPEAKER = "recent_dialogue.user_speaker";
-    public static final String RECENT_DIALOGUE_ASSISTANT_SPEAKER = "recent_dialogue.assistant_speaker";
-    public static final String RECENT_DIALOGUE_UNKNOWN_SPEAKER = "recent_dialogue.unknown_speaker";
+    public static final String PLAYER_MEMORY_REMEMBERED_HISTORY_GROUP = "player_memory.remembered_history_group";
+    public static final String PLAYER_MEMORY_RECENT_HISTORY_GROUP = "player_memory.recent_history_group";
+    public static final String PLAYER_MEMORY_SUMMARY_LINE = "player_memory.summary_line";
+    public static final String PLAYER_MEMORY_CONCURRENT_EVENTS_GROUP = "player_memory.concurrent_events_group";
+    public static final String PLAYER_MEMORY_CONCURRENT_EVENT_LINE = "player_memory.concurrent_event_line";
 
     public AXPromptTexts {
         language = language == null ? AXPromptLanguage.EN_US : language;
@@ -63,10 +83,6 @@ public record AXPromptTexts(
             }
         }
         return result;
-    }
-
-    public static AXPromptTexts empty(AXPromptLanguage language) {
-        return new AXPromptTexts(language, Map.of());
     }
 
     public static AXPromptTexts builtin(AXPromptLanguage language) {

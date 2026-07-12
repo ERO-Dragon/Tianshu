@@ -3,9 +3,6 @@ package com.rheinmetal.tianshu.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
-import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudRenderer;
-import com.rheinmetal.tianshu.client.gui.auxilium.AXChatHudState;
-import com.rheinmetal.tianshu.client.gui.auxilium.AXClientConfig;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.llm.ClientLlmRuntimeBridge;
@@ -31,6 +28,7 @@ import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
 import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.platform.NeoForgeAXWorldIdentityProvider;
 import com.rheinmetal.tianshu.platform.NeoForgeEnvironment;
@@ -72,9 +70,6 @@ public class TianshuClient {
     private static NeoForgeEnvironment env;
     private static ClientConfig config;
     private static AudioManager audioManager;
-    private static AXClientConfig axConfig;
-    private static AXChatHudState axChatHudState;
-    private static AXChatHudRenderer axChatHudRenderer;
     private static TianshuCoreManager coreManager;
     private static TianshuSettingsModule settingsModule;
     private static TianshuSettingsContributorRegistry externalSettingsContributors;
@@ -93,7 +88,7 @@ public class TianshuClient {
         TianshuSettingsRegistrySource asrSource = new AsrSettingsRegistrySource(coreManager, config, audioManager);
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config);
-        TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, axConfig);
+        TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config, coreManager);
         return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource, presenceSource);
     }
@@ -128,9 +123,6 @@ public class TianshuClient {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
         env = new NeoForgeEnvironment();
         config = new ClientConfig();
-        axConfig = new AXClientConfig(config.getRootPath().resolve("ax"));
-        axChatHudState = new AXChatHudState();
-        axChatHudRenderer = new AXChatHudRenderer(axChatHudState, axConfig);
         presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(), new NeoForgePresenceTextProvider());
         presenceHudRenderer = new PresenceHudRenderer(presenceRuntime::currentHudDisplay, new ClientConfigPresenceHudSettings(config));
         PresenceClientHooks.bind(presenceRuntime);
@@ -149,8 +141,8 @@ public class TianshuClient {
                 context.voiceInputGate(),
                 context.interruptionSignal(),
                 new NeoForgeAXWorldIdentityProvider(),
-                axConfig,
-                axChatHudState,
+                config,
+                AXChatOutputSink.NOOP,
                 List.of(presenceRuntime.moduleInstaller(context.protocolRuntime()))
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();
@@ -315,9 +307,6 @@ public class TianshuClient {
         ClientLlmRuntimeBridge.markFrame();
         if (presenceHudRenderer != null) {
             presenceHudRenderer.render(event.getGuiGraphics(), 0.0F);
-        }
-        if (axChatHudRenderer != null) {
-            axChatHudRenderer.render(event.getGuiGraphics(), 0.0F);
         }
     }
 

@@ -18,15 +18,13 @@ import java.util.concurrent.TimeUnit;
 
 public final class AXDynamicFactClient {
     private final AXProtocolAdapter adapter;
+    private final AXDynamicKnowledgeFormatter formatter;
     private final long timeoutMillis;
     private final ConcurrentMap<String, PendingQuery> pending = new ConcurrentHashMap<>();
 
-    public AXDynamicFactClient(AXProtocolAdapter adapter) {
-        this(adapter, 300L);
-    }
-
-    public AXDynamicFactClient(AXProtocolAdapter adapter, long timeoutMillis) {
+    public AXDynamicFactClient(AXProtocolAdapter adapter, AXDynamicKnowledgeFormatter formatter, long timeoutMillis) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.formatter = Objects.requireNonNull(formatter, "formatter");
         this.timeoutMillis = Math.max(0L, timeoutMillis);
     }
 
@@ -100,7 +98,8 @@ public final class AXDynamicFactClient {
         List<AXDynamicFact> facts = List.of();
         if (envelope.payload() instanceof PresenceContextSnapshotPayload payload && payload.success()) {
             facts = payload.facts().stream()
-                    .map(this::toFact)
+                    .map(formatter::format)
+                    .filter(Objects::nonNull)
                     .filter(fact -> !fact.isEmpty())
                     .toList();
         }
@@ -125,20 +124,6 @@ public final class AXDynamicFactClient {
         }
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
         query.completion().complete(List.of());
-    }
-
-    private AXDynamicFact toFact(PresenceContextSnapshotPayload.FactPayload fact) {
-        return new AXDynamicFact(
-                fact.factId(),
-                fact.text(),
-                fact.priority(),
-                fact.source(),
-                fact.subject(),
-                fact.tags(),
-                fact.updatedAtMillis(),
-                fact.ttlMillis(),
-                fact.nativeValues()
-        );
     }
 
     private List<String> focusIds(DialogueDeliveryPayload delivery) {

@@ -14,26 +14,14 @@ import java.util.Optional;
 public record AXPromptProfile(
         AXPromptTask task,
         AXPromptLanguage language,
-        AXSystemProfileSet systemProfiles,
+        AXSystemPromptSet systemPrompts,
         List<String> sectionOrder
 ) {
     public AXPromptProfile {
         task = task == null ? AXPromptTask.GENERAL_AX : task;
         language = language == null ? AXPromptLanguage.EN_US : language;
-        systemProfiles = systemProfiles == null ? AXSystemProfileSet.single("", "") : systemProfiles;
+        systemPrompts = systemPrompts == null ? AXSystemPromptSet.single("") : systemPrompts;
         sectionOrder = sectionOrder == null ? List.of() : List.copyOf(sectionOrder);
-    }
-
-    public AXPromptProfile(AXPromptTask task, AXPromptLanguage language, String identity, String behaviorRules, List<String> sectionOrder) {
-        this(task, language, AXSystemProfileSet.single(identity, behaviorRules), sectionOrder);
-    }
-
-    public String identity() {
-        return systemProfiles.standardProfile().identity();
-    }
-
-    public String behaviorRules() {
-        return systemProfiles.standardProfile().behaviorRules();
     }
 
     public static AXPromptProfile defaultFor(AXPromptTask task, AXPromptLanguage language) {
@@ -42,7 +30,7 @@ public record AXPromptProfile(
         return loadBuiltin(effectiveTask, effectiveLanguage).orElseGet(() -> new AXPromptProfile(
                 effectiveTask,
                 effectiveLanguage,
-                AXSystemProfileSet.single("", ""),
+                AXSystemPromptSet.single(""),
                 DEFAULT_SECTION_ORDER
         ));
     }
@@ -66,39 +54,24 @@ public record AXPromptProfile(
     }
 
     private static AXPromptProfile fromJson(AXPromptTask task, AXPromptLanguage language, JsonObject json) {
-        AXSystemProfileSet systemProfiles = readSystemProfiles(json, AXSystemProfileSet.single("", ""));
+        AXSystemPromptSet systemPrompts = readSystemPrompts(json, AXSystemPromptSet.single(""));
         List<String> sectionOrder = readStringArray(json, "sectionOrder");
         if (sectionOrder.isEmpty()) {
             sectionOrder = DEFAULT_SECTION_ORDER;
         }
-        return new AXPromptProfile(task, language, systemProfiles, sectionOrder);
+        return new AXPromptProfile(task, language, systemPrompts, sectionOrder);
     }
 
-    static AXSystemProfileSet readSystemProfiles(JsonObject json, AXSystemProfileSet fallback) {
-        AXSystemProfileSet effectiveFallback = fallback == null ? AXSystemProfileSet.single("", "") : fallback;
-        AXSystemProfileContent topLevel = new AXSystemProfileContent(
-                readString(json, "identity", effectiveFallback.standardProfile().identity()),
-                readString(json, "behaviorRules", effectiveFallback.standardProfile().behaviorRules())
-        );
-        if (json == null || !json.has("systemProfiles") || !json.get("systemProfiles").isJsonObject()) {
-            return AXSystemProfileSet.single(topLevel.identity(), topLevel.behaviorRules());
+    static AXSystemPromptSet readSystemPrompts(JsonObject json, AXSystemPromptSet fallback) {
+        AXSystemPromptSet effectiveFallback = fallback == null ? AXSystemPromptSet.single("") : fallback;
+        if (json == null || !json.has("systemPrompts") || !json.get("systemPrompts").isJsonObject()) {
+            return effectiveFallback;
         }
-        JsonObject profiles = json.getAsJsonObject("systemProfiles");
-        return new AXSystemProfileSet(
-                readSystemProfile(profiles, "short", topLevel),
-                readSystemProfile(profiles, "standard", topLevel),
-                readSystemProfile(profiles, "full", topLevel)
-        );
-    }
-
-    private static AXSystemProfileContent readSystemProfile(JsonObject profiles, String key, AXSystemProfileContent fallback) {
-        if (profiles == null || key == null || !profiles.has(key) || !profiles.get(key).isJsonObject()) {
-            return fallback;
-        }
-        JsonObject profile = profiles.getAsJsonObject(key);
-        return new AXSystemProfileContent(
-                readString(profile, "identity", fallback == null ? "" : fallback.identity()),
-                readString(profile, "behaviorRules", fallback == null ? "" : fallback.behaviorRules())
+        JsonObject prompts = json.getAsJsonObject("systemPrompts");
+        return new AXSystemPromptSet(
+                readString(prompts, "short", effectiveFallback.shortPrompt()),
+                readString(prompts, "standard", effectiveFallback.standardPrompt()),
+                readString(prompts, "full", effectiveFallback.fullPrompt())
         );
     }
 

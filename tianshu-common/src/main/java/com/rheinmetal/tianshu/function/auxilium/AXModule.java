@@ -26,6 +26,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicKnowledgeFormatter;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXSharedKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceChatMessageMapper;
@@ -153,9 +154,9 @@ public final class AXModule implements TianshuManagedModule {
                 retrievalPrimitiveClient::countMessageTokens
         );
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
-        AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator);
+        AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator, assistantSettings);
         AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, memoryPolicy);
-        dynamicFactClient = new AXDynamicFactClient(adapter);
+        dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), 300L);
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
         AXTurnOrchestrator turnOrchestrator = new AXTurnOrchestrator(
@@ -257,7 +258,7 @@ public final class AXModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX ASR speech activity payload is invalid", null);
             return;
         }
-        if (payload.speaking()) {
+        if (payload.speaking() && assistantSettings.interruptOnPlayerSpeech()) {
             if (llmClient != null) {
                 llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
             }

@@ -42,7 +42,7 @@ AX 只能在获得 IA 授权后处理玩家可见对话。后台记忆压缩、�
 `module` 下按五块并列组织：
 
 - `AXSystem`：人设、行为规则、预设提示词和 system 区块渲染。
-- `AXGameContext`：静态内容与动态内容组装；动态内容包含命中的动态事实，以及这些动态事实命中的静态 RAG 内容。
+- `AXGameContext`：内部按静态与动态路径组装；进入 CHAT 时渲染为模型可理解的“当前处境相关信息”和“当前问题相关游戏知识”，其中当前处境相关信息包含命中的动态事实及其关联出的静态 RAG 内容。
 - `AXMemory`：STM、E、检索、压缩、原子化和索引；消费 `AXRecentDialogue` 剥离出的只读 Raw Turn 快照。
 - `AXRecentDialogue`：实时上下文窗口与近期完整对话时间线，持有 Raw Turn / Raw Turn Window。
 - `AXCurrentInput`：当前输入规范化与 user 区块渲染。
@@ -74,6 +74,7 @@ AX
     AXGameContext
       dynamic facts
         AXDynamicFactClient
+        AXDynamicKnowledgeFormatter
         AXContextCollector
         AXDynamicFact
       static knowledge
@@ -145,7 +146,7 @@ AX 负责：
 - 注册为 IA participant。
 - 校验 IA 投递的 session / turn / owner。
 - 维护辅星人格、语气和行为边界。
-- 通过协议中心获取动态环境快照。
+- 通过协议中心获取动态环境客观快照，并在 AX 内部转换为动态知识候选。
 - 管理 AX 私有记忆系统。
 - 接入静态知识库 RAG。
 - 规划 prompt 分区和 token 预算。
@@ -166,6 +167,8 @@ LLM 模块只提供能力：
 - `LLM_REQUEST`：CHAT / TASK 推理。
 - `LLM_PRIMITIVE_QUERY`：token count、embedding、status。
 - `LLM_CACHE_MANAGE`：shared 静态知识库 RAG 管理，以及 AX 私有记忆检索投影的 uid/entryId 检索。
+
+Presence / 映迹只提供客观上下文事实和结构化字段，不负责 AX prompt 语义加工。AX 通过 `AXDynamicKnowledgeFormatter` 消费 Presence `nativeValues`，生成用于临时动态 RAG 和 `<game_context>` 的模型友好动态知识文本；例如背包物品数量会在 AX 内部表达为“少量 / 半组 / 一组 / 多组”，而不是要求 Presence 输出 AX 专属文本。
 
 ## 7. 记忆与 Prompt
 
@@ -294,7 +297,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 
 以下内容已经在设计上纳入一期，但代码里还没有完全做到位，先保留在文档末尾，不在这里硬补：
 
-- 记忆检索和 prompt 预算已经接入 LLM `STATUS.contextTokenBudget`、`AXMemoryWindowPolicy.fromBudget`、`AXContextBudget.fromPolicy` 这些入口；`contextTokenBudget` 按单次请求输入 + 输出总上限处理，AX 默认只取其中 60% 作为 CHAT/TASK 输入目标并保留输出、thinking/CoT 与安全余量。CHAT baseline 已覆盖 `ax_system`、`game_context` 知识池、`player_memory` 检索/近期 STM、`recent_dialogue` raw 窗口和 `current_input`；`ax_system` 已改为通过 LLM `TOKEN_COUNT` 精确计数后选择 short / standard / full 人设档位，而不是按字符裁剪完整版。后续需要继续结合本轮密度评估和命中分数动态裁剪，不得再引入文档未定义的额外 prompt 分区。
+- 记忆检索和 prompt 预算已经接入 LLM `STATUS.contextTokenBudget`、`AXMemoryWindowPolicy.fromBudget`、`AXContextBudget.fromPolicy` 这些入口；`contextTokenBudget` 按单次请求输入 + 输出总上限处理，AX 默认只取其中 60% 作为 CHAT/TASK 输入目标并保留输出、thinking/CoT 与安全余量。CHAT baseline 已覆盖 `ax_system`、`game_context` 知识池、`player_memory` 检索/近期摘要、`recent_dialogue` raw 窗口和 `current_input`；`ax_system` 通过 LLM `TOKEN_COUNT` 精确计数后选择 short / standard / full 完整 system prompt 档位，三档都作为原子文本，不按字符截断。后续需要继续结合本轮密度评估和命中分数动态裁剪，不得再引入文档未定义的额外 prompt 分区。
 - 二期 agent 化的工具协作还只是边界规划，尚未形成独立的工具注册与执行子系统。
 
 以下条目已在本次整改中完成：

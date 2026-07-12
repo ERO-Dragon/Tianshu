@@ -247,10 +247,15 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     }
 
     private void appendTurn(AXScope scope, String role, String content, String iaSessionId, String iaTurnId) {
+        appendTurn(scope, role, content, iaSessionId, iaTurnId, 0);
+    }
+
+    private void appendTurn(AXScope scope, String role, String content, String iaSessionId, String iaTurnId, int tokenCount) {
         if (recentDialogueSystem == null || content == null || content.isBlank()) {
             return;
         }
-        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, role, content, iaSessionId, iaTurnId));
+        AXRawTurn turn = AXRawTurn.dialogue(scope, role, content, iaSessionId, iaTurnId);
+        recentDialogueSystem.append(scope, tokenCount > 0 ? turn.withTokenCount(tokenCount) : turn);
     }
 
     private boolean isChatLane(LLMPromptRequestPayload payload) {
@@ -294,18 +299,24 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                     sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
                     return;
                 }
-                appendTurn(scope, "assistant", text, delivery.sessionId(), delivery.turnId());
+                appendAssistantVisibleText(text, payload);
                 if (maintenanceCoordinator != null) {
                     maintenanceCoordinator.afterAssistantAnswer(scope);
                 }
                 sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
                 return;
             }
+            appendAssistantVisibleText(finalText(payload), payload);
             if (statusPublisher != null) {
                 statusPublisher.failed(resultFailureReason(payload));
             }
             failOutput(payload == null ? "LLM returned no result" : payload.errorMessage(), "output.failure_notice_failed");
             sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
+        }
+
+        @Override
+        public void onCancellationResult(LLMPromptResultPayload payload) {
+            appendAssistantVisibleText(finalText(payload), payload);
         }
 
         @Override
@@ -345,6 +356,20 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         private String finalText(LLMPromptResultPayload payload) {
             String resultText = payload == null ? "" : payload.text();
             return resultText == null || resultText.isBlank() ? streamed.toString() : resultText;
+        }
+
+        private void appendAssistantVisibleText(String text, LLMPromptResultPayload payload) {
+            if (text == null || text.isBlank()) {
+                return;
+            }
+            appendTurn(scope, "assistant", text, delivery.sessionId(), delivery.turnId(), visibleCompletionTokens(payload));
+        }
+
+        private int visibleCompletionTokens(LLMPromptResultPayload payload) {
+            if (payload == null || payload.usage() == null) {
+                return 0;
+            }
+            return Math.max(0, payload.usage().completionTokens());
         }
 
         private void appendFinalSuffix(String text) {

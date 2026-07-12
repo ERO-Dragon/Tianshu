@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
+import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicKnowledgeFormatter;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
@@ -53,6 +54,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -759,7 +761,7 @@ class AXLongRunObserverSmokeTest {
                     new AXDialogueInputMapper(),
                     new AXInputNormalizer(),
                     maintenanceCoordinator,
-                    new AXDynamicFactClient(axAdapter, 2_000L),
+                    new AXDynamicFactClient(axAdapter, new AXDynamicKnowledgeFormatter(promptRepository, languageProvider), 2_000L),
                     new AXContextCollector(memorySystem, recentDialogueSystem),
                     new AXLlmPromptRequestBuilder(promptOrchestrator),
                     AXContextBudget.DEFAULT,
@@ -1090,24 +1092,38 @@ class AXLongRunObserverSmokeTest {
                             requestId,
                             List.of(
                                     new PresenceContextSnapshotPayload.FactPayload(
-                                            "dimension",
-                                            "当前维度：主世界；观察轮次：" + index,
+                                            PresenceContextFactIds.WORLD_ENVIRONMENT,
+                                            "",
                                             80,
                                             "presence.longrun",
                                             "minecraft:overworld",
                                             List.of("dimension"),
                                             System.currentTimeMillis(),
-                                            30_000L
+                                            30_000L,
+                                            Map.of(
+                                                    "dimensionId", "minecraft:overworld",
+                                                    "biomeId", "minecraft:plains",
+                                                    "biomeDisplayName", "平原",
+                                                    "raining", "false",
+                                                    "thundering", "false",
+                                                    "dayTimeTicks", Integer.toString(index)
+                                            )
                                     ),
                                     new PresenceContextSnapshotPayload.FactPayload(
-                                            "focus",
-                                            "玩家正在检查日志、记忆压缩、提示词组装的长期迭代效果。",
+                                            PresenceContextFactIds.INTERACTION_CONTEXT,
+                                            "",
                                             95,
                                             "presence.longrun",
                                             "ax-longrun",
                                             List.of("debug", "memory"),
                                             System.currentTimeMillis(),
-                                            30_000L
+                                            30_000L,
+                                            Map.of(
+                                                    "screenKind", "CHAT",
+                                                    "interactionKeyDown", "false",
+                                                    "attackKeyDown", "false",
+                                                    "sneaking", "false"
+                                            )
                                     )
                             )
                     )

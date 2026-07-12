@@ -111,6 +111,10 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return submitPrepared(envelope);
     }
 
+    public TianshuEnvelope cancelLlmRequest(TianshuEnvelope envelope, String reasonCode, String message) {
+        return cancelEnvelope(envelope, reasonCode, message);
+    }
+
     public ProtocolTaskHandle submitAxTask(String taskId, ExecutionLane lane, Runnable task) {
         return submitTask(taskSpec(lane == null ? ExecutionLane.LONG : lane)
                 .taskId(taskId)

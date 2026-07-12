@@ -51,6 +51,9 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
 
     @Override
     public void install(TianshuModuleHost moduleHost, ModuleServiceRegistry moduleServices) {
+        if (!assistantSettings.assistantEnabled()) {
+            return;
+        }
         moduleHost.registerOptionalModule(new AXModule(env, config, protocolRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, outputSettings, chatOutputSink));
     }
 }

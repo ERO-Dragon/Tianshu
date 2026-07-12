@@ -40,12 +40,12 @@ class AXGameContextPromptContributorTest {
 
         String content = builder.build().messages().get(0).content();
         assertTrue(content.contains("<game_context>"));
-        assertTrue(content.contains("动态内容"));
+        assertTrue(content.contains("以下信息与玩家当前所处的情况相关"));
         assertTrue(content.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(content.contains("当前指向铁砧时"));
-        assertTrue(content.contains("静态内容"));
+        assertTrue(content.contains("以下是与玩家当前问题相关的游戏知识"));
         assertTrue(content.contains("铁砧可以修复工具。"));
-        assertOrdered(content, "动态内容", "玩家准星指向 minecraft:anvil", "当前指向铁砧时", "静态内容");
+        assertOrdered(content, "玩家当前所处的情况", "玩家准星指向 minecraft:anvil", "当前指向铁砧时", "玩家当前问题相关的游戏知识");
     }
 
     private static void assertOrdered(String text, String... fragments) {

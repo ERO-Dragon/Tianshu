@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import java.util.Objects;
 
 public final class AXOutputProcessor {
+    private static final String AX_TTS_VOICE_STYLE = "ax";
+
     private final AXProtocolAdapter adapter;
     private final AXOutputSettings settings;
     private final AXChatOutputSink chatSink;
@@ -98,7 +100,7 @@ public final class AXOutputProcessor {
                     context.ttsTurnId(),
                     context.ttsSessionId(),
                     TtsPlaybackPlacement.QUEUE_AFTER_SESSION,
-                    settings.ttsVoiceStyle()
+                    AX_TTS_VOICE_STYLE
             );
             if (parent == null) {
                 adapter.speakTts(payload);

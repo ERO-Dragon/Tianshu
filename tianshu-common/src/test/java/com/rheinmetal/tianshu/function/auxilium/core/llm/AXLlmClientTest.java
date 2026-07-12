@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.llm;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
@@ -11,6 +12,7 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -21,8 +23,10 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 
@@ -41,13 +45,24 @@ class AXLlmClientTest {
                 LLMPromptRequestPayload.EMPTY
         ).build();
 
-        client.submit(parent, request("chat", "CHAT"), chat);
-        client.submitDetached(request("task", "TASK"), task);
+        TianshuEnvelope chatEnvelope = client.submit(parent, request("chat", "CHAT"), chat);
+        TianshuEnvelope taskEnvelope = client.submitDetached(request("task", "TASK"), task);
 
         client.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
 
         assertEquals(1, chat.cancelled.get());
         assertEquals(0, task.cancelled.get());
+        assertEquals(EnvelopeStatus.CANCELLED, runtime.lifecycle().statusOf(chatEnvelope.envelopeId()));
+        assertEquals(EnvelopeStatus.RUNNING, runtime.lifecycle().statusOf(taskEnvelope.envelopeId()));
+
+        assertTrue(client.handleStreamChunk(chatEnvelope.envelopeId(), LLMPromptStreamChunkPayload.chunk("chat", "ignored", 0)));
+        assertEquals(0, chat.streamChunks.get());
+
+        LLMPromptResultPayload.TokenUsagePayload usage = new LLMPromptResultPayload.TokenUsagePayload(120, 12, 8, 20, 140);
+        assertTrue(client.handleResult(chatEnvelope.envelopeId(), LLMPromptResultPayload.cancelled("chat", "partial", "thinking", List.of(), usage)));
+        assertEquals(0, chat.results.get());
+        assertEquals(1, chat.cancellationResults.get());
+        assertEquals(usage, chat.lastTerminalUsage.get());
     }
 
     @Test
@@ -111,6 +126,15 @@ class AXLlmClientTest {
 
     private static final class RecordingHandler implements AXLlmRequestHandler {
         private final AtomicInteger cancelled = new AtomicInteger();
+        private final AtomicInteger results = new AtomicInteger();
+        private final AtomicInteger streamChunks = new AtomicInteger();
+        private final AtomicInteger cancellationResults = new AtomicInteger();
+        private final AtomicReference<LLMPromptResultPayload.TokenUsagePayload> lastTerminalUsage = new AtomicReference<>();
+
+        @Override
+        public void onStreamChunk(LLMPromptStreamChunkPayload payload) {
+            streamChunks.incrementAndGet();
+        }
 
         @Override
         public void onCancelled(AXTurnCancellation cancellation) {
@@ -118,7 +142,14 @@ class AXLlmClientTest {
         }
 
         @Override
+        public void onCancellationResult(LLMPromptResultPayload payload) {
+            cancellationResults.incrementAndGet();
+            lastTerminalUsage.set(payload == null ? null : payload.usage());
+        }
+
+        @Override
         public void onResult(LLMPromptResultPayload payload) {
+            results.incrementAndGet();
         }
     }
 }

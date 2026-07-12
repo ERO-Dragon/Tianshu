@@ -83,8 +83,8 @@ class AXLogKnowledgePromptFixtureTest {
         assertEquals("message", payload.chunks().get(0).type());
         assertOrdered(joined, "<ax_system>", "<game_context>", "<player_memory>", request.userText());
         assertTrue(joined.contains("<game_context>"));
-        assertTrue(joined.contains("动态内容"));
-        assertTrue(joined.contains("静态内容"));
+        assertTrue(joined.contains("以下信息与玩家当前所处的情况相关"));
+        assertTrue(joined.contains("以下是与玩家当前问题相关的游戏知识"));
         assertTrue(joined.contains("IR named object index loaded from cache"));
         assertTrue(joined.contains("当前维度：主世界"));
         assertTrue(joined.contains("玩家之前问过资源重载后物品索引为什么会变慢"));

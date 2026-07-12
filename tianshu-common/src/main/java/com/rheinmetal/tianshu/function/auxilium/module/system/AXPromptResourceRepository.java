@@ -68,20 +68,12 @@ public final class AXPromptResourceRepository {
 
     private AXPromptProfile toProfile(AXPromptResourceKey key, JsonObject json) {
         AXPromptProfile fallback = AXPromptProfile.defaultFor(key.task(), key.language());
-        AXSystemProfileSet systemProfiles = AXPromptProfile.readSystemProfiles(json, fallback.systemProfiles());
+        AXSystemPromptSet systemPrompts = AXPromptProfile.readSystemPrompts(json, fallback.systemPrompts());
         List<String> sectionOrder = readStringArray(json, "sectionOrder");
         if (sectionOrder.isEmpty()) {
             sectionOrder = fallback.sectionOrder();
         }
-        return new AXPromptProfile(key.task(), key.language(), systemProfiles, sectionOrder);
-    }
-
-    private String readString(JsonObject json, String key, String fallback) {
-        if (json == null || key == null || !json.has(key) || json.get(key).isJsonNull()) {
-            return fallback;
-        }
-        String value = json.get(key).getAsString();
-        return value == null || value.isBlank() ? fallback : value;
+        return new AXPromptProfile(key.task(), key.language(), systemPrompts, sectionOrder);
     }
 
     private List<String> readStringArray(JsonObject json, String key) {

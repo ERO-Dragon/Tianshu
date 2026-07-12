@@ -9,8 +9,8 @@
 相关文档：
 
 - [AX_记忆策略设计.md](./AX_记忆策略设计.md)：定义 Raw Turn、STM、E、检索、存储和记忆注入边界。
-- [AX_辅星自然交互基线设计.md](./AX_辅星自然交互基线设计.md)：定义一期边界。
-- [AX_辅星技能协作设计.md](./AX_辅星技能协作设计.md)：定义二期边界。
+- [AX_辅星一期_自然交互基线设计.md](./AX_辅星一期_自然交互基线设计.md)：定义一期边界。
+- [AX_辅星二期_技能协作设计.md](./AX_辅星二期_技能协作设计.md)：定义二期边界。
 - [../llm/LLM接口设计.md](../llm/LLM接口设计.md)：定义 LLM_REQUEST、LLM_PRIMITIVE_QUERY、LLM_CACHE_MANAGE 等协议能力。
 
 ## 2. 核心原则
@@ -54,21 +54,26 @@ AX 的 prompt 输入不是简单的“静态、动态、记忆”三个池子并
 
 ```text
 message chunk:
-  ax_system
-  game_context
-    static_content
-    dynamic_content
-  player_memory
-    retrieved_stm
-    recent_stm
-  recent_dialogue
-  current_input
+  system:
+    ax_system
+    game_context
+      与玩家当前处境相关的信息
+      与玩家当前问题相关的游戏知识
+    player_memory
+      记得的过往互动与事件
+      最近发生的互动与事件
+  user/assistant:
+    recent_dialogue
+  user:
+    current_input
 ```
 
 `game_context` 内部只承载两类组装内容：
 
 - `static_content`：仅由当前输入直接检索静态 RAG 库得到的命中内容。
 - `dynamic_content`：先用当前输入检索动态环境得到的命中动态事实，以及用这些动态事实扩展静态 RAG query 得到的命中内容。
+
+`static_content` / `dynamic_content` 是 AX 内部的取数与预算类型，不作为标题暴露给 CHAT 模型。渲染时分别转换为“与玩家当前问题相关的游戏知识”和“与玩家当前处境相关的信息”；后者仍同时包含命中的动态事实及其关联出的游戏知识。
 
 玩家记忆、静态内容、动态内容、近期对话和当前输入都由 AX 排版为普通 message 注入。静态知识库可以复用 LLM 的 RAG cache 能力，但最终进入玩家可见 CHAT 请求前，应先由 AX 获得命中内容，再放入 `<game_context>`，避免 LLM 模块在最终请求中追加位置不受控的 rag prompt。
 
@@ -118,9 +123,19 @@ message chunk:
 ```text
 AX
   -> PRESENCE.QUERY_CONTEXT
-  -> NeoForge 映迹模块或其他平台动态环境 provider 回传本轮事实候选
-  -> AX 过滤、排序后作为 dynamic_content 的动态事实部分进入 <game_context>
+  -> NeoForge 映迹模块或其他平台动态环境 provider 回传本轮客观事实候选
+  -> AX 将客观事实转换为模型可理解的动态知识候选
+  -> AX 对动态知识候选做临时检索、过滤和排序
+  -> 命中的动态知识作为 dynamic_content 的动态事实部分进入 <game_context>
 ```
+
+职责边界：
+
+- Presence / 映迹只负责采集和回传客观事实，不负责 AX 的 prompt 语义加工。它可以提供 `FactPayload.text` 作为通用可读描述，但 AX 的动态 RAG 不应依赖该文本作为权威输入。
+- Presence 必须在 `nativeValues` 中提供 AX 动态知识生成所需的结构化字段，例如维度、生物群系、天气、时间、玩家状态、手持物品、准星目标、背包物品 `itemId/displayName/count/maxStackSize`、状态效果 `effectId/displayName/durationTicks/amplifier`。
+- AX 通过 `AXDynamicKnowledgeFormatter` 把 `nativeValues` 转换为本轮动态知识候选，例如把背包数量转换成“少量 / 半组 / 一组 / 多组”等小模型更容易理解的表达。
+- 这些动态知识文本属于 AX prompt 资源，放在 `ax_prompt_texts.json`；NeoForge lang 只保留 Presence 自己的通用显示/描述文本。
+- 若某条 Presence fact 缺少生成 AX 动态知识所需的结构化字段，AX 应丢弃该候选，而不是回退到透传 Presence 文本。
 
 原因：
 
@@ -131,8 +146,9 @@ AX
 
 ```text
 当前输入：“这个怎么用？”
-  -> 动态环境检索命中：玩家准星指向 minecraft:enchanting_table
-  -> dynamic_content 动态事实：玩家准星指向 minecraft:enchanting_table
+  -> Presence 回传客观字段：crosshairTargetTypeId=minecraft:enchanting_table
+  -> AX 动态知识候选：准星指向 enchanting table，距离约 4.0 格
+  -> dynamic_content 动态事实：准星指向 enchanting table，距离约 4.0 格
   -> 静态知识 query 材料：enchanting table / 附魔台 / 当前输入
   -> 静态知识 RAG 召回附魔台用法
 ```
@@ -169,7 +185,7 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 ```text
 直接静态 RAG:
   当前输入
-    -> SEARCH_TAGS(tags=[main])
+    -> SEARCH_TAGS(tags=[main, addon])
     -> static knowledge query hit
 
 动态引导静态 RAG:
@@ -184,6 +200,20 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 动态环境命中后，应优先把动态事实规范化为稳定标识，例如物品 ID、方块 ID、实体 ID、模组 ID、维度 ID 或结构名，而不是把完整环境快照塞进 query。
 这里的“临时动态事实检索”只检索本轮动态候选，不写持久 RAG cache，也不直接作为最终 CHAT 的 `rag` chunk 注入；它产出的命中动态事实与随后命中的静态知识一起进入 `<game_context>` 的动态内容组。
 当前 LLM 协议已通过 `LLM_CACHE_MANAGE / SEARCH_INLINE_CONTENTS` 提供“只检索、不生成、不落盘”的内联 RAG 查询动作；AX 通过该动作召回命中动态事实，不在自身模块内复刻轻量 RAG 实现，也不把全部动态候选直接拿去做 `main/addon` 静态召回。
+
+动态事实候选的构造顺序为：
+
+```text
+Presence 客观 nativeValues
+  -> AXDynamicKnowledgeFormatter
+  -> AX 动态知识候选文本
+  -> LLM_CACHE_MANAGE / SEARCH_INLINE_CONTENTS 临时召回
+  -> 命中的动态事实
+  -> 当前输入 + 命中的动态事实，继续 SEARCH_TAGS(tags=[main, addon])
+  -> 命中的动态事实 + 动态引导静态知识，共同进入 <game_context> 的当前处境相关信息
+```
+
+注意，`SEARCH_INLINE_CONTENTS` 只用于本轮候选检索，不创建库、不持久化、不改变 LLM shared RAG cache。AX 仍然是动态事实文本的所有者和 prompt 排版者。
 
 ## 7. 玩家记忆注入
 
@@ -224,27 +254,28 @@ AX 不直接写 LLM cache 文件，不直接访问 RAG cache 二进制索引。
 
 ```xml
 <ax_system>
-辅星身份、语气、行为边界、安全约束、回答风格
+一条完整、自洽的 system prompt
 </ax_system>
 
 <game_context>
-静态内容、动态事实、动态事实路径 RAG 命中
+以下信息与玩家当前所处的情况相关：
+- 命中的动态事实
+- 由动态事实关联出的游戏知识
+
+以下是与玩家当前问题相关的游戏知识：
+- 由当前输入直接命中的游戏知识
 </game_context>
 
 <player_memory>
-先放 E 检索命中的 STM，再放近期 STM；附属消息跟随对应 STM
+你记得此前与玩家发生过这些事情：
+- 由检索链路选出的历史摘要
+
+最近与玩家发生了这些事情：
+- 尚未长期化的近期摘要
 </player_memory>
-
-<recent_dialogue>
-实时窗口内的近期完整对话轮次。AX/玩家对话和游戏聊天栏消息按时间线交错呈现。
-</recent_dialogue>
-
-<current_input>
-玩家当前输入
-</current_input>
 ```
 
-实现上不要求这些标签全部在同一个 system message 中。标签是 prompt 排版约定，不是存储协议。最终可拆成：
+`recent_dialogue` 不再渲染成文本区块，而是按原角色展开为历史 `user/assistant` 消息；`current_input` 是最后一条 `user` 消息。最终结构为：
 
 ```text
 message chunk:
@@ -255,11 +286,11 @@ message chunk:
 
 不在玩家可见文本里解释这些标签或内部机制。
 
-XML-like 包裹、列表前缀、小标题和聊天行格式都属于 prompt 排版资源，不应硬编码在 Java 业务逻辑里。AX common 内置 `ax_prompt_texts.json` 作为默认目录，运行时可释放到 AX 配置目录供后续覆盖；Java contributor 只负责选择语义槽位、传入变量并决定 LLM message role。
+XML-like 包裹、自然语义引子、列表前缀和事件行格式都属于 prompt 排版资源，不应硬编码在 Java 业务逻辑里。AX common 内置 `ax_prompt_texts.json` 作为默认目录，运行时可释放到 AX 配置目录供后续覆盖；Java contributor 只负责选择语义槽位、传入变量并决定 LLM message role。`STM`、`E`、RAG、静态/动态检索路径等内部实现术语不得出现在 CHAT 的标题或引子中。
 
-`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`recent_dialogue`、`current_input`。`systemProfiles.short/standard/full` 中的身份与行为规则属于 `ax_system` 内部字段，不应作为独立顶层区块参与排序。为兼容早期已释放配置，读取旧的 `identity` / `rules` / `persona` / `scope` 排序项时，可映射为 `ax_system`。
+`general_ax.*.default.json` 中的 `sectionOrder` 只描述顶层 prompt 区块顺序，例如 `ax_system`、`game_context`、`player_memory`、`recent_dialogue`、`current_input`。`systemPrompts.short/standard/full` 各自是一条完整 system prompt，不再拆成 `identity`、`behaviorRules` 或额外的分区约束段落，也不接受这些旧字段作为排序别名。
 
-AX 的身份、行为规则和默认分区顺序也属于 prompt profile 资源。common 内置 `general_ax.<lang>.default.json`，运行时同样释放到 AX 配置目录；Java 只负责读取 profile、按 `chatSystemTokenBudget` 选择 short / standard / full 档位并组装 message，不在流程代码中写死具体提示词内容。system 档位选择应通过 LLM `TOKEN_COUNT` 对最终 system message 做精确计数，优先选择能完整落入 token 预算的最高信息量档位；只有最短档仍超预算时，才继续用 `TOKEN_COUNT` 对裁剪候选做安全校验，不能继续只靠字符截断完整版。
+AX 的完整 system prompt 和默认分区顺序属于 prompt profile 资源。common 内置 `general_ax.<lang>.default.json`，运行时同样释放到 AX 配置目录；Java 只负责读取 profile、按 `chatSystemTokenBudget` 选择 short / standard / full 档位并组装 message，不在流程代码中写死具体提示词内容。system 档位选择通过 LLM `TOKEN_COUNT` 对包裹后的完整 system 区块精确计数，优先选择能完整落入 token 预算的最高信息量档位；三档都是原子文本，不做字符截断，最短档作为不可再拆的最低语义单元。
 
 ## 9. 预算策略
 
@@ -280,8 +311,8 @@ AX 的身份、行为规则和默认分区顺序也属于 prompt profile 资源�
 ax_system                  10%
 game_context.knowledge_rag 30%  （直接静态 RAG、动态事实、动态事实引导静态 RAG 共享同一池）
 player_memory.retrieved    25%  （E 命中后折叠出的 STM 链）
-player_memory.recent       10%  （尚未被分解/长期化的近期 STM）
-recent_dialogue.raw        20%  （Raw Turn 滚动窗口，按完整问答轮边界裁剪）
+player_memory.recent        5%  （尚未被分解/长期化的近期 STM，至少保留一块）
+recent_dialogue.raw        25%  （Raw Turn 滚动窗口，按完整问答轮边界裁剪）
 current_input              5%
 ```
 

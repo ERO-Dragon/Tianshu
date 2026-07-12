@@ -41,8 +41,9 @@ class AXPlayerMemoryPromptContributorTest {
         ), builder);
 
         String content = builder.build().messages().get(0).content();
+        assertTrue(content.contains("你记得此前与玩家发生过这些事情"));
         assertTrue(content.contains("玩家准备挖矿。"));
-        assertTrue(content.contains("附属消息"));
+        assertTrue(content.contains("当时还发生了"));
         assertTrue(content.contains("玩家解锁成就：Stone Age"));
         assertTrue(content.contains("玩家死亡一次。"));
     }
