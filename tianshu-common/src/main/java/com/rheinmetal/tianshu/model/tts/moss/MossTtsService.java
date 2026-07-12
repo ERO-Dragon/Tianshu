@@ -41,6 +41,7 @@ public class MossTtsService implements AutoCloseable {
     static final String SAMPLE_MODE_GREEDY = "greedy";
     static final String SAMPLE_MODE_FIXED = "fixed";
     static final String SAMPLE_MODE_FULL = "full";
+    private static final int STREAMING_DECODE_CHUNK_FRAMES = 4;
     private static final Gson GSON = new Gson();
 
     private final IGameEnvironment env;
@@ -1012,7 +1013,7 @@ public class MossTtsService implements AutoCloseable {
         private final Map<String, OnnxTensor> stateFeeds;
         private final Map<String, String> outputToInputName;
         private final List<List<Integer>> pendingFrames = new ArrayList<>();
-        private int nextFrameBudget = 2;
+        private int nextFrameBudget = STREAMING_DECODE_CHUNK_FRAMES;
         private boolean closed;
 
         private StreamingCodecDecoder() throws OrtException {
@@ -1047,11 +1048,7 @@ public class MossTtsService implements AutoCloseable {
             int frameCount = force ? pendingFrames.size() : Math.min(nextFrameBudget, pendingFrames.size());
             List<List<Integer>> frameChunk = new ArrayList<>(pendingFrames.subList(0, frameCount));
             pendingFrames.subList(0, frameCount).clear();
-            DecodeResult decoded = decodeFrameChunk(frameChunk);
-            if (!force) {
-                nextFrameBudget = nextFrameBudget == 2 ? 4 : 8;
-            }
-            return decoded;
+            return decodeFrameChunk(frameChunk);
         }
 
         private DecodeResult decodeFrameChunk(List<List<Integer>> frameChunk) throws Exception {
