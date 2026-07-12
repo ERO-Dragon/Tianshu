@@ -9,6 +9,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -88,6 +89,7 @@ public final class ProtocolExecutorManager implements AutoCloseable {
             handle.setFuture(future);
             return handle;
         } catch (RejectedExecutionException exception) {
+            handle.setFailureCause(exception);
             handle.setState(ProtocolTaskState.REJECTED);
             return handle;
         }
@@ -123,6 +125,7 @@ public final class ProtocolExecutorManager implements AutoCloseable {
             }
         } catch (Exception exception) {
             if (handle.state() != ProtocolTaskState.CANCELLED) {
+                handle.setFailureCause(exception);
                 handle.setState(ProtocolTaskState.FAILED);
             }
         } finally {
@@ -226,6 +229,7 @@ public final class ProtocolExecutorManager implements AutoCloseable {
                 Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable, this::finishOne));
                 task.handle.setFuture(future);
             } catch (RejectedExecutionException exception) {
+                task.handle.setFailureCause(exception);
                 task.handle.setState(ProtocolTaskState.REJECTED);
                 finishOne();
             }
@@ -271,6 +275,7 @@ public final class ProtocolExecutorManager implements AutoCloseable {
     private static final class ManagedTaskHandle implements ProtocolTaskHandle {
         private final ProtocolTaskSpec spec;
         private final AtomicReference<ProtocolTaskState> state = new AtomicReference<>(ProtocolTaskState.ACCEPTED);
+        private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
         private volatile Future<?> future;
 
         private ManagedTaskHandle(ProtocolTaskSpec spec) {
@@ -283,6 +288,10 @@ public final class ProtocolExecutorManager implements AutoCloseable {
 
         private void setState(ProtocolTaskState state) {
             this.state.set(state);
+        }
+
+        private void setFailureCause(Throwable failureCause) {
+            this.failureCause.set(failureCause);
         }
 
         @Override
@@ -308,6 +317,11 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         @Override
         public ProtocolTaskState state() {
             return state.get();
+        }
+
+        @Override
+        public Optional<Throwable> failureCause() {
+            return Optional.ofNullable(failureCause.get());
         }
 
         @Override

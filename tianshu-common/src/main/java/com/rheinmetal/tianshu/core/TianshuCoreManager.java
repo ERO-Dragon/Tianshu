@@ -20,10 +20,21 @@ import com.rheinmetal.tianshu.core.runtime.RuntimeEnginePhase;
 import com.rheinmetal.tianshu.core.runtime.RuntimeInterruptionService;
 import com.rheinmetal.tianshu.core.runtime.RuntimeReadinessState;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleDeclaration;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
 import java.util.List;
 import java.util.Optional;
@@ -90,10 +101,12 @@ public class TianshuCoreManager {
         return moduleServices.require(type);
     }
 
+    @Deprecated
     public ProtocolRuntime protocolRuntime() {
         return protocolRuntime;
     }
 
+    @Deprecated
     public ProtocolRuntime getProtocolRuntime() {
         return protocolRuntime();
     }
@@ -103,11 +116,11 @@ public class TianshuCoreManager {
     }
 
     public boolean isEnvironmentReady() {
-        return true;
+        return status().acceptsRuntimeRequests();
     }
 
     public boolean isEnvironmentSetupCompleted() {
-        return true;
+        return lifecycleCoordinator.isInitialized();
     }
 
     public boolean isEngineReady() {
@@ -124,6 +137,55 @@ public class TianshuCoreManager {
 
     public boolean isCapabilityReady(RuntimeCapability capability) {
         return runtimeState.capabilities().isReady(capability);
+    }
+
+    public void registerIntegrationModule(IntegrationModuleDeclaration declaration) {
+        protocolRuntime.integrationModules().register(declaration);
+    }
+
+    public void unregisterIntegrationModule(String moduleId) {
+        protocolRuntime.integrationModules().unregister(moduleId);
+    }
+
+    public VoiceTriggerRegistrationResult registerVoiceTrigger(VoiceTriggerRegistration registration) {
+        return protocolRuntime.voiceTriggers().register(registration);
+    }
+
+    public void unregisterVoiceTriggers(String moduleId) {
+        protocolRuntime.voiceTriggers().unregisterModule(moduleId);
+    }
+
+    public void submitModuleStatus(ModuleStatus status) {
+        if (status == null) {
+            return;
+        }
+        submit(EnvelopeBuilder.eventTopic(
+                status.moduleId(),
+                ProtocolTopics.MODULE_STATUS,
+                PayloadType.MODULE_STATUS,
+                new ModuleStatusPayload(status)
+        ).build());
+    }
+
+    public List<ModuleStatus> queryModuleStatuses(ModuleStatusQuery query) {
+        ModuleStatusCache cache = protocolRuntime.moduleStatusCache();
+        if (query == null) {
+            return cache.all();
+        }
+        if (query.hasModuleFilter() && query.hasTypeFilter()) {
+            return cache.latest(query.moduleId(), query.statusType()).stream().toList();
+        }
+        if (query.hasModuleFilter()) {
+            return cache.byModule(query.moduleId());
+        }
+        if (query.hasTypeFilter()) {
+            return cache.byType(query.statusType());
+        }
+        return cache.all();
+    }
+
+    public void submit(TianshuEnvelope envelope) {
+        protocolRuntime.submit(envelope);
     }
 
     public RuntimeEnginePhase getEnginePhase() {

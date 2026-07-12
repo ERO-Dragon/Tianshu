@@ -6,10 +6,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProtocolExecutorManagerTest {
@@ -86,6 +88,20 @@ class ProtocolExecutorManagerTest {
         assertEquals(List.of("running", "high", "normal", "low"), List.copyOf(events));
     }
 
+    @Test
+    void failedTaskRetainsFailureCause() throws Exception {
+        RuntimeException failure = new RuntimeException("boom");
+
+        ProtocolTaskHandle handle = executors.submit(spec("failure-cause", Priority.NORMAL, 1, 1), () -> {
+            throw failure;
+        });
+
+        awaitState(handle, ProtocolTaskState.FAILED);
+        Optional<Throwable> cause = handle.failureCause();
+        assertTrue(cause.isPresent());
+        assertSame(failure, cause.get());
+    }
+
     private static ProtocolTaskSpec spec(String key, Priority priority, int maxConcurrency, int queueCapacity) {
         return ProtocolTaskSpec.builder()
                 .moduleId("test")
@@ -106,5 +122,16 @@ class ProtocolExecutorManagerTest {
             Thread.sleep(10L);
         }
         assertEquals(expected, events.size());
+    }
+
+    private static void awaitState(ProtocolTaskHandle handle, ProtocolTaskState expected) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 2000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (handle.state() == expected) {
+                return;
+            }
+            Thread.sleep(10L);
+        }
+        assertEquals(expected, handle.state());
     }
 }

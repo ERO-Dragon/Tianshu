@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.protocol.runtime;
 
+import java.util.Optional;
+
 public interface ProtocolTaskHandle {
     String taskId();
 
@@ -10,6 +12,8 @@ public interface ProtocolTaskHandle {
     ExecutionLane lane();
 
     ProtocolTaskState state();
+
+    Optional<Throwable> failureCause();
 
     boolean cancel(String reason);
 
