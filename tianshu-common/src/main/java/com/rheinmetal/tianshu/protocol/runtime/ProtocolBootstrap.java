@@ -16,8 +16,20 @@ public final class ProtocolBootstrap {
         return runtime;
     }
 
+    public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, ProtocolRuntimePolicy runtimePolicy) {
+        ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, runtimePolicy);
+        registerTopics(runtime);
+        return runtime;
+    }
+
     public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry) {
         ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, voiceTriggerRegistry);
+        registerTopics(runtime);
+        return runtime;
+    }
+
+    public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
+        ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, voiceTriggerRegistry, runtimePolicy);
         registerTopics(runtime);
         return runtime;
     }

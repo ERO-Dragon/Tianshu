@@ -38,6 +38,11 @@ class ProtocolExecutionPolicyTest {
         assertEquals(ExecutionLane.MAIN, policy.resolveLane(envelope(ThreadPolicy.MUST_MAIN), registration(ThreadPolicy.ASYNC_WORKER, BrokerType.BOUNDED_QUEUE)));
     }
 
+    @Test
+    void ordinaryAnyThreadWorkDoesNotDefaultToMainLane() {
+        assertEquals(ExecutionLane.CPU, policy.resolveLane(envelope(ThreadPolicy.ANY), registration(ThreadPolicy.ANY, BrokerType.BOUNDED_QUEUE)));
+    }
+
     private static com.rheinmetal.tianshu.protocol.TianshuEnvelope envelope(ThreadPolicy threadPolicy) {
         return EnvelopeBuilder.create()
                 .sourceId("test.source")

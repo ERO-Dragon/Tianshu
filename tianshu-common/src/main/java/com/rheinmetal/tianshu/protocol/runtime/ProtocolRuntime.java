@@ -48,8 +48,8 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     private final TopicSubscriptionRegistry topicSubscriptionRegistry = new TopicSubscriptionRegistry();
     private final EnvelopeLifecycleStore lifecycleStore = new EnvelopeLifecycleStore();
     private final CancellationRegistry cancellationRegistry = new CancellationRegistry(lifecycleStore);
-    private final DeadLetterQueue deadLetterQueue = new DeadLetterQueue(512, lifecycleStore);
-    private final StormGuard stormGuard = new StormGuard(200, 32);
+    private final DeadLetterQueue deadLetterQueue;
+    private final StormGuard stormGuard;
     private final VoiceTriggerRegistry voiceTriggerRegistry;
     private final IntegrationModuleRegistry integrationModuleRegistry = new IntegrationModuleRegistry();
     private final ModuleStatusCache moduleStatusCache = new ModuleStatusCache();
@@ -62,8 +62,19 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     }
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry) {
+        this(mainThreadExecutor, voiceTriggerRegistry, ProtocolRuntimePolicy.defaults());
+    }
+
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, ProtocolRuntimePolicy runtimePolicy) {
+        this(mainThreadExecutor, new VoiceTriggerRegistry(), runtimePolicy);
+    }
+
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
+        ProtocolRuntimePolicy effectivePolicy = runtimePolicy == null ? ProtocolRuntimePolicy.defaults() : runtimePolicy;
+        this.deadLetterQueue = new DeadLetterQueue(effectivePolicy.deadLetterCapacity(), lifecycleStore);
+        this.stormGuard = new StormGuard(effectivePolicy.defaultStormLimitPerSecond(), effectivePolicy.maxTraceDepth());
         this.voiceTriggerRegistry = voiceTriggerRegistry == null ? new VoiceTriggerRegistry() : voiceTriggerRegistry;
-        this.executorManager = new ProtocolExecutorManager(mainThreadExecutor);
+        this.executorManager = new ProtocolExecutorManager(mainThreadExecutor, effectivePolicy.executorPolicy());
         this.brokerRegistry = new BrokerRegistry(mainThreadExecutor, executorManager);
         this.context = new RuntimeContext();
         subscribeModuleStatusCache();

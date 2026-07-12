@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -24,25 +25,31 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Set;
 
 public final class ProtocolExecutorManager implements AutoCloseable {
     private final MainThreadExecutor mainThreadExecutor;
     private final Map<ExecutionLane, ThreadPoolExecutor> executors = new EnumMap<>(ExecutionLane.class);
     private final Map<String, TaskGroup> taskGroups = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Set<ManagedTaskHandle> activeHandles = ConcurrentHashMap.newKeySet();
     private final ScheduledThreadPoolExecutor scheduledExecutor;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public ProtocolExecutorManager(MainThreadExecutor mainThreadExecutor) {
+        this(mainThreadExecutor, ProtocolExecutorPolicy.defaults());
+    }
+
+    public ProtocolExecutorManager(MainThreadExecutor mainThreadExecutor, ProtocolExecutorPolicy executorPolicy) {
         this.mainThreadExecutor = Objects.requireNonNull(mainThreadExecutor, "mainThreadExecutor");
-        int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
-        executors.put(ExecutionLane.CPU, fixedExecutor(ExecutionLane.CPU, Math.max(1, processors / 2), 64));
-        executors.put(ExecutionLane.IO, fixedExecutor(ExecutionLane.IO, Math.max(2, Math.min(4, processors / 2)), 64));
-        executors.put(ExecutionLane.AUDIO_IO, fixedExecutor(ExecutionLane.AUDIO_IO, 1, 128));
-        executors.put(ExecutionLane.TTS_FAST, fixedExecutor(ExecutionLane.TTS_FAST, 1, 4));
-        executors.put(ExecutionLane.TTS_AUTOREGRESSIVE, fixedExecutor(ExecutionLane.TTS_AUTOREGRESSIVE, 1, 1));
-        executors.put(ExecutionLane.ASR_STREAM, fixedExecutor(ExecutionLane.ASR_STREAM, 1, 8));
-        executors.put(ExecutionLane.MODEL_LOAD, fixedExecutor(ExecutionLane.MODEL_LOAD, 1, 2));
-        executors.put(ExecutionLane.LONG, fixedExecutor(ExecutionLane.LONG, 2, 8));
-        this.scheduledExecutor = new ScheduledThreadPoolExecutor(1, threadFactory(ExecutionLane.SCHEDULED));
+        ProtocolExecutorPolicy effectivePolicy = executorPolicy == null ? ProtocolExecutorPolicy.defaults() : executorPolicy;
+        for (ExecutionLane lane : ExecutionLane.values()) {
+            if (lane == ExecutionLane.MAIN || lane == ExecutionLane.SCHEDULED) {
+                continue;
+            }
+            ProtocolExecutorPolicy.LanePolicy lanePolicy = effectivePolicy.lane(lane);
+            executors.put(lane, fixedExecutor(lane, lanePolicy.threads(), lanePolicy.queueCapacity()));
+        }
+        this.scheduledExecutor = new ScheduledThreadPoolExecutor(effectivePolicy.scheduledThreads(), threadFactory(ExecutionLane.SCHEDULED));
         this.scheduledExecutor.setRemoveOnCancelPolicy(true);
     }
 
@@ -58,17 +65,25 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         Callable<T> effectiveTask = Objects.requireNonNull(task, "task");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
+        if (closed.get()) {
+            rejectClosed(handle);
+            return handle;
+        }
         if (effective.lane() == ExecutionLane.MAIN) {
+            activeHandles.add(handle);
             handle.setState(ProtocolTaskState.QUEUED);
             mainThreadExecutor.execute(() -> runManaged(handle, effectiveTask, null));
             return handle;
         }
         if (effective.lane() == ExecutionLane.SCHEDULED) {
+            handle.setFailureCause(new RejectedExecutionException("SCHEDULED lane submit is not supported; use schedule"));
             handle.setState(ProtocolTaskState.REJECTED);
             return handle;
         }
+        activeHandles.add(handle);
         TaskGroup group = taskGroups.computeIfAbsent(effective.concurrencyKey(), TaskGroup::new);
         if (!group.offer(new QueuedTask<>(handle, effectiveTask))) {
+            activeHandles.remove(handle);
             handle.setState(ProtocolTaskState.REJECTED);
         }
         return handle;
@@ -78,6 +93,11 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         Objects.requireNonNull(task, "task");
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
+        if (closed.get()) {
+            rejectClosed(handle);
+            return handle;
+        }
+        activeHandles.add(handle);
         long delayMillis = Math.max(0L, delay == null ? 0L : delay.toMillis());
         Runnable wrapped = () -> runManaged(handle, () -> {
             task.run();
@@ -95,6 +115,11 @@ public final class ProtocolExecutorManager implements AutoCloseable {
         }
     }
 
+    private void rejectClosed(ManagedTaskHandle handle) {
+        handle.setFailureCause(new RejectedExecutionException("Protocol executor manager is closed"));
+        handle.setState(ProtocolTaskState.REJECTED);
+    }
+
     public ProtocolExecutorSnapshot snapshot() {
         List<ProtocolLaneSnapshot> lanes = new ArrayList<>();
         int running = 0;
@@ -104,6 +129,9 @@ public final class ProtocolExecutorManager implements AutoCloseable {
             running += executor.getActiveCount();
             queued += executor.getQueue().size();
             lanes.add(new ProtocolLaneSnapshot(entry.getKey(), executor.getPoolSize(), executor.getActiveCount(), executor.getQueue().size(), executor.getCompletedTaskCount(), 0L));
+        }
+        for (TaskGroup group : taskGroups.values()) {
+            queued += group.queuedCount();
         }
         lanes.add(new ProtocolLaneSnapshot(ExecutionLane.SCHEDULED, scheduledExecutor.getPoolSize(), scheduledExecutor.getActiveCount(), scheduledExecutor.getQueue().size(), scheduledExecutor.getCompletedTaskCount(), 0L));
         lanes.add(new ProtocolLaneSnapshot(ExecutionLane.MAIN, 0, 0, 0, 0L, 0L));
@@ -129,6 +157,7 @@ public final class ProtocolExecutorManager implements AutoCloseable {
                 handle.setState(ProtocolTaskState.FAILED);
             }
         } finally {
+            activeHandles.remove(handle);
             if (onFinish != null) {
                 onFinish.run();
             }
@@ -241,6 +270,21 @@ public final class ProtocolExecutorManager implements AutoCloseable {
             }
             drain();
         }
+
+        private int queuedCount() {
+            synchronized (this) {
+                return queue.size();
+            }
+        }
+
+        private void cancelQueued(String reason) {
+            synchronized (this) {
+                QueuedTask<?> task;
+                while ((task = queue.poll()) != null) {
+                    task.handle.cancel(reason);
+                }
+            }
+        }
     }
 
     private static final class QueuedTask<T> implements Comparable<QueuedTask<?>> {
@@ -266,10 +310,19 @@ public final class ProtocolExecutorManager implements AutoCloseable {
 
     @Override
     public void close() {
-        for (ThreadPoolExecutor executor : executors.values()) {
-            executor.shutdown();
+        if (closed.compareAndSet(false, true)) {
+            for (ManagedTaskHandle handle : activeHandles) {
+                handle.cancel("executor_closed");
+            }
+            for (TaskGroup group : taskGroups.values()) {
+                group.cancelQueued("executor_closed");
+            }
+            taskGroups.clear();
+            for (ThreadPoolExecutor executor : executors.values()) {
+                executor.shutdownNow();
+            }
+            scheduledExecutor.shutdownNow();
         }
-        scheduledExecutor.shutdown();
     }
 
     private static final class ManagedTaskHandle implements ProtocolTaskHandle {

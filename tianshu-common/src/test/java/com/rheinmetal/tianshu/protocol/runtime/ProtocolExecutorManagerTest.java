@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -102,10 +103,114 @@ class ProtocolExecutorManagerTest {
         assertSame(failure, cause.get());
     }
 
+    @Test
+    void executorPolicyControlsLaneCapacity() throws Exception {
+        ProtocolExecutorPolicy policy = ProtocolExecutorPolicy.builder()
+                .lane(ExecutionLane.CPU, 1, 1)
+                .build();
+        try (ProtocolExecutorManager customExecutors = new ProtocolExecutorManager(Runnable::run, policy)) {
+            CountDownLatch firstStarted = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+
+            ProtocolTaskHandle running = customExecutors.submit(spec("executor-capacity", Priority.NORMAL, 3, 3), () -> {
+                firstStarted.countDown();
+                release.await(2, TimeUnit.SECONDS);
+                return null;
+            });
+            assertTrue(firstStarted.await(2, TimeUnit.SECONDS));
+
+            ProtocolTaskHandle queuedInExecutor = customExecutors.submit(spec("executor-capacity", Priority.NORMAL, 3, 3), () -> {});
+            ProtocolTaskHandle rejectedByExecutor = customExecutors.submit(spec("executor-capacity", Priority.NORMAL, 3, 3), () -> {});
+
+            assertEquals(ProtocolTaskState.RUNNING, running.state());
+            assertEquals(ProtocolTaskState.QUEUED, queuedInExecutor.state());
+            assertEquals(ProtocolTaskState.REJECTED, rejectedByExecutor.state());
+            assertTrue(rejectedByExecutor.failureCause().isPresent());
+
+            release.countDown();
+        }
+    }
+
+    @Test
+    void submitAfterCloseRejectsMainLaneWithoutDispatching() {
+        executors.close();
+        AtomicBoolean ran = new AtomicBoolean(false);
+
+        ProtocolTaskHandle handle = executors.submit(spec("closed-main", Priority.NORMAL, 1, 1, ExecutionLane.MAIN), () -> ran.set(true));
+
+        assertEquals(ProtocolTaskState.REJECTED, handle.state());
+        assertTrue(handle.failureCause().isPresent());
+        assertEquals(false, ran.get());
+    }
+
+    @Test
+    void submitToScheduledLaneIsRejectedWithDiagnosticCause() {
+        ProtocolTaskHandle handle = executors.submit(spec("scheduled-submit", Priority.NORMAL, 1, 1, ExecutionLane.SCHEDULED), () -> {});
+
+        assertEquals(ProtocolTaskState.REJECTED, handle.state());
+        assertTrue(handle.failureCause().isPresent());
+        assertTrue(handle.failureCause().get().getMessage().contains("schedule"));
+    }
+
+    @Test
+    void cancellationDuringRunIsNotOverwrittenByCompletion() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        ProtocolTaskHandle handle = executors.submit(spec("cancel-running", Priority.NORMAL, 1, 1), () -> {
+            started.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return null;
+        });
+
+        assertTrue(started.await(2, TimeUnit.SECONDS));
+        assertTrue(handle.cancel("test_cancel"));
+        release.countDown();
+
+        awaitState(handle, ProtocolTaskState.CANCELLED);
+        assertEquals(ProtocolTaskState.CANCELLED, handle.state());
+    }
+
+    @Test
+    void closeRejectsScheduledTasksWithoutGrowingQueues() {
+        executors.close();
+
+        ProtocolTaskHandle handle = executors.schedule(spec("closed-scheduled", Priority.NORMAL, 1, 1, ExecutionLane.SCHEDULED), () -> {}, java.time.Duration.ofMillis(100));
+
+        assertEquals(ProtocolTaskState.REJECTED, handle.state());
+        assertTrue(handle.failureCause().isPresent());
+        assertEquals(0, executors.snapshot().queuedTasks());
+    }
+
+    @Test
+    void closeCancelsQueuedTasksAndClearsGroups() throws Exception {
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        ProtocolTaskHandle running = executors.submit(spec("close-group", Priority.NORMAL, 1, 4), () -> {
+            firstStarted.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return null;
+        });
+        assertTrue(firstStarted.await(2, TimeUnit.SECONDS));
+        ProtocolTaskHandle queued = executors.submit(spec("close-group", Priority.NORMAL, 1, 4), () -> {});
+
+        executors.close();
+
+        assertEquals(ProtocolTaskState.CANCELLED, queued.state());
+        assertEquals(0, executors.snapshot().queuedTasks());
+        release.countDown();
+        awaitState(running, ProtocolTaskState.CANCELLED);
+    }
+
     private static ProtocolTaskSpec spec(String key, Priority priority, int maxConcurrency, int queueCapacity) {
+        return spec(key, priority, maxConcurrency, queueCapacity, ExecutionLane.CPU);
+    }
+
+    private static ProtocolTaskSpec spec(String key, Priority priority, int maxConcurrency, int queueCapacity, ExecutionLane lane) {
         return ProtocolTaskSpec.builder()
                 .moduleId("test")
-                .lane(ExecutionLane.CPU)
+                .lane(lane)
                 .concurrencyKey(key)
                 .priority(priority)
                 .maxConcurrency(maxConcurrency)
