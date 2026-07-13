@@ -32,6 +32,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'org.apache.commons:commons-compress:1.26.0'
     testRuntimeOnly 'it.unimi.dsi:fastutil:8.5.15'
     testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'
     testRuntimeOnly files({

@@ -15,28 +15,19 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.Reader;
-import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.Socket;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class AsrModelDownloader {
@@ -45,9 +36,18 @@ public class AsrModelDownloader {
     private static final String HF_MIRROR = "https://hf-mirror.com";
     private static final String REVISION = "main";
     private static final Gson GSON = new Gson();
+    private static final ModelDownloadHttpClient.RetryPolicy TREE_RETRY =
+            new ModelDownloadHttpClient.RetryPolicy(1, 10_000, 15_000, 0L);
+    private static final ModelDownloadHttpClient.RetryPolicy HF_FILE_RETRY =
+            new ModelDownloadHttpClient.RetryPolicy(3, 15_000, 120_000, 1_000L);
+    private static final ModelDownloadHttpClient.RetryPolicy ARCHIVE_RETRY =
+            new ModelDownloadHttpClient.RetryPolicy(5, 60_000, 60_000, 1_000L);
 
     private final IGameEnvironment env;
-    private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
+    private final ModelDownloadSourcePolicy sources;
+    private final ModelDownloadHttpClient http;
+    private final Supplier<String> preferredHfBaseSupplier;
+    private final BooleanSupplier githubReachable;
 
     public interface DownloadProgressCallback {
         void onProgress(String label, int percent);
@@ -67,7 +67,27 @@ public class AsrModelDownloader {
     }
 
     public AsrModelDownloader(IGameEnvironment env) {
-        this.env = env;
+        this(
+                env,
+                new ModelDownloadSourcePolicy(HF_OFFICIAL, HF_MIRROR),
+                new ModelDownloadHttpClient(env),
+                HuggingFaceDownloader::getActiveBaseUrl,
+                AsrModelDownloader::isGithubReachable
+        );
+    }
+
+    AsrModelDownloader(
+            IGameEnvironment env,
+            ModelDownloadSourcePolicy sources,
+            ModelDownloadHttpClient http,
+            Supplier<String> preferredHfBaseSupplier,
+            BooleanSupplier githubReachable
+    ) {
+        this.env = Objects.requireNonNull(env, "env");
+        this.sources = Objects.requireNonNull(sources, "sources");
+        this.http = Objects.requireNonNull(http, "http");
+        this.preferredHfBaseSupplier = Objects.requireNonNull(preferredHfBaseSupplier, "preferredHfBaseSupplier");
+        this.githubReachable = Objects.requireNonNull(githubReachable, "githubReachable");
     }
 
     public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) {
@@ -87,9 +107,7 @@ public class AsrModelDownloader {
     }
 
     public void cancelActiveTransfers() {
-        for (HttpURLConnection connection : activeConnections) {
-            connection.disconnect();
-        }
+        http.cancelActiveTransfers();
     }
 
     private void doDownload(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
@@ -113,6 +131,10 @@ public class AsrModelDownloader {
             callback.onComplete();
         } catch (Exception e) {
             deleteRecursivelyIfExists(stagingDir);
+            DownloadCancelledException cancelled = findDownloadCancelled(e);
+            if (cancelled != null) {
+                throw cancelled;
+            }
             throw e;
         }
     }
@@ -133,15 +155,15 @@ public class AsrModelDownloader {
 
     private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         callback.onProgress("Checking network", 2);
-        String baseUrl = resolveHfBaseUrl();
+        String preferredBase = preferredHfBaseSupplier.get();
         String repoId = info.remoteRepoId();
         if (repoId.isBlank()) {
             throw new IOException("ASR model [" + info.getDisplayName() + "] has no HuggingFace repo id");
         }
-        env.info("ASR HF download: repo=" + repoId + " source=" + baseUrl);
+        env.info("ASR_HF_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
 
         callback.onProgress("Resolving file list", 5);
-        List<String> repoFiles = fetchFileTree(baseUrl, repoId, REVISION);
+        List<String> repoFiles = fetchFileTree(preferredBase, repoId, REVISION, control);
         control.awaitReady();
         List<SourceTarget> downloads = resolveRequestedFiles(requiredFiles, repoFiles);
         env.info("ASR selected files: " + downloads.stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
@@ -152,8 +174,13 @@ public class AsrModelDownloader {
             SourceTarget item = downloads.get(i);
             Path localPath = stagingDir.resolve(item.targetPath()).normalize();
             ensureWithinTarget(localPath, stagingDir);
-            String resolveUrl = buildResolveUrl(baseUrl, repoId, REVISION, item.sourcePath());
-            downloadSingleFile(resolveUrl, localPath, 3, control);
+            http.download(
+                    sources.huggingFaceFileCandidates(preferredBase, repoId, REVISION, item.sourcePath()),
+                    localPath,
+                    HF_FILE_RETRY,
+                    adapt(control),
+                    null
+            );
             control.awaitReady();
             int percent = 5 + (int) (((i + 1) / (double) total) * 90);
             callback.onProgress("Downloading model files", percent);
@@ -162,9 +189,13 @@ public class AsrModelDownloader {
 
     private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         callback.onProgress("Checking network", 2);
-        boolean useProxy = shouldUseGithubProxy(githubProxyUrl);
-        String finalUrl = buildGithubDownloadUrl(info.downloadUrl, githubProxyUrl, useProxy);
-        env.info("ASR archive download: url=" + finalUrl + " (useProxy=" + useProxy + ")");
+        boolean proxyFirst = shouldUseGithubProxy(githubProxyUrl);
+        List<URI> candidates = sources.githubArchiveCandidates(
+                info.downloadUrl,
+                githubProxyUrl,
+                proxyFirst
+        );
+        env.info("ASR_ARCHIVE_RESOLVE candidates=" + candidates.size() + " proxyFirst=" + proxyFirst);
 
         Path archivePath = targetDir.resolveSibling(targetDir.getFileName() + archiveSuffix(info.downloadUrl));
         Path extractDir = targetDir.resolveSibling(targetDir.getFileName() + "-extract");
@@ -172,10 +203,16 @@ public class AsrModelDownloader {
         deleteRecursivelyIfExists(extractDir);
         try {
             callback.onProgress("Downloading archive", 5);
-            downloadSingleFileWithProgress(finalUrl, archivePath, 5, 60_000, control, (downloaded, total) -> {
-                int percent = total > 0 ? Math.min(80, (int) (downloaded * 75 / total) + 5) : 40;
-                callback.onProgress("Downloading archive", percent);
-            });
+            http.download(
+                    candidates,
+                    archivePath,
+                    ARCHIVE_RETRY,
+                    adapt(control),
+                    (downloaded, total) -> {
+                        int percent = total > 0 ? Math.min(80, (int) (downloaded * 75 / total) + 5) : 40;
+                        callback.onProgress("Downloading archive", percent);
+                    }
+            );
             control.awaitReady();
 
             callback.onProgress("Extracting model", 82);
@@ -248,36 +285,17 @@ public class AsrModelDownloader {
         }
     }
 
-    private String resolveHfBaseUrl() {
-        try {
-            String activeUrl = HuggingFaceDownloader.getActiveBaseUrl();
-            if (HF_OFFICIAL.equals(activeUrl)) {
-                env.info("HuggingFace official endpoint is reachable");
-                return HF_OFFICIAL;
-            }
-        } catch (Exception ignored) {
-        }
-        env.info("Using HuggingFace mirror");
-        return HF_MIRROR;
+    private boolean shouldUseGithubProxy(String githubProxyUrl) {
+        return githubProxyUrl != null && !githubProxyUrl.isBlank() && !githubReachable.getAsBoolean();
     }
 
-    private boolean shouldUseGithubProxy(String githubProxyUrl) {
-        if (githubProxyUrl == null || githubProxyUrl.isBlank()) return false;
+    private static boolean isGithubReachable() {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("github.com", 443), 300);
-            env.info("GitHub official endpoint is reachable");
-            return false;
-        } catch (IOException e) {
-            env.info("GitHub official endpoint is unreachable, using proxy");
             return true;
+        } catch (IOException unreachable) {
+            return false;
         }
-    }
-
-    private String buildGithubDownloadUrl(String downloadUrl, String proxyUrl, boolean useProxy) {
-        if (!useProxy || proxyUrl == null || proxyUrl.isBlank()) return downloadUrl;
-        String normalizedProxy = proxyUrl.endsWith("/") ? proxyUrl : proxyUrl + "/";
-        if (downloadUrl.startsWith(normalizedProxy)) return downloadUrl;
-        return normalizedProxy + downloadUrl;
     }
 
     private String archiveSuffix(String downloadUrl) {
@@ -307,36 +325,35 @@ public class AsrModelDownloader {
         throw new IOException("Unsupported ASR model archive type: " + downloadUrl);
     }
 
-    private List<String> fetchFileTree(String baseUrl, String repoId, String revision) throws Exception {
-        String url = String.format(
-                "%s/api/models/%s/tree/%s?recursive=true&expand=false",
-                baseUrl,
-                encodeRepoId(repoId),
-                URLEncoder.encode(revision, StandardCharsets.UTF_8)
+    private List<String> fetchFileTree(
+            String preferredBase,
+            String repoId,
+            String revision,
+            DownloadControl control
+    ) throws IOException {
+        String json = http.readUtf8(
+                sources.huggingFaceTreeCandidates(preferredBase, repoId, revision),
+                TREE_RETRY,
+                adapt(control)
         );
-
-        HttpURLConnection conn = openConnection(url);
-        conn.setConnectTimeout((int) Duration.ofSeconds(10).toMillis());
-        conn.setReadTimeout((int) Duration.ofSeconds(15).toMillis());
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("User-Agent", "Tianshu-ASR-Downloader/1.0");
-
-        int code = conn.getResponseCode();
-        if (code != 200) throw new IOException("HF tree API failed. repo=" + repoId + " code=" + code);
-
-        try (InputStream is = conn.getInputStream(); Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-            JsonArray root = GSON.fromJson(reader, JsonArray.class);
-            List<String> result = new ArrayList<>();
-            for (JsonElement element : root) {
-                JsonObject node = element.getAsJsonObject();
-                if (!"file".equalsIgnoreCase(node.get("type").getAsString())) continue;
+        JsonArray root = GSON.fromJson(json, JsonArray.class);
+        if (root == null) {
+            throw new IOException("ASR_HF_TREE_RESPONSE_INVALID repo=" + repoId);
+        }
+        List<String> result = new ArrayList<>();
+        for (JsonElement element : root) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject node = element.getAsJsonObject();
+            if (node.has("type") && node.has("path")
+                    && "file".equalsIgnoreCase(node.get("type").getAsString())) {
                 result.add(node.get("path").getAsString());
             }
-            return result;
-        } finally {
-            closeConnection(conn);
         }
+        return List.copyOf(result);
     }
+
 
     private List<String> listRelativeFiles(Path root) throws IOException {
         try (var walk = Files.walk(root)) {
@@ -346,141 +363,6 @@ public class AsrModelDownloader {
         }
     }
 
-    private String buildResolveUrl(String baseUrl, String repoId, String revision, String filePath) {
-        String encodedPath = Arrays.stream(filePath.split("/"))
-                .map(s -> URLEncoder.encode(s, StandardCharsets.UTF_8))
-                .collect(Collectors.joining("/"));
-        return String.format(
-                "%s/%s/resolve/%s/%s",
-                baseUrl,
-                encodeRepoId(repoId),
-                URLEncoder.encode(revision, StandardCharsets.UTF_8),
-                encodedPath
-        );
-    }
-
-    private String encodeRepoId(String repoId) {
-        String[] parts = repoId.split("/", 2);
-        if (parts.length == 2) {
-            return URLEncoder.encode(parts[0], StandardCharsets.UTF_8) + "/" + URLEncoder.encode(parts[1], StandardCharsets.UTF_8);
-        }
-        return URLEncoder.encode(repoId, StandardCharsets.UTF_8);
-    }
-
-    private HttpURLConnection openConnection(String url) throws IOException {
-        try {
-            HttpURLConnection connection = (HttpURLConnection) new URI(url).toURL().openConnection();
-            activeConnections.add(connection);
-            return connection;
-        } catch (URISyntaxException e) {
-            throw new IOException("Invalid download URL: " + url, e);
-        }
-    }
-
-    private void closeConnection(HttpURLConnection connection) {
-        if (connection == null) {
-            return;
-        }
-        activeConnections.remove(connection);
-        connection.disconnect();
-    }
-
-    private void downloadSingleFile(String url, Path target, int maxRetries, DownloadControl control) throws IOException {
-        Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.deleteIfExists(tmp);
-
-        IOException lastException = null;
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                HttpURLConnection conn = openConnection(url);
-                conn.setConnectTimeout((int) Duration.ofSeconds(15).toMillis());
-                conn.setReadTimeout((int) Duration.ofSeconds(120).toMillis());
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "Tianshu-ASR-Downloader/1.0");
-
-                if (conn.getResponseCode() != 200) throw new IOException("HTTP " + conn.getResponseCode());
-
-                try (InputStream in = conn.getInputStream(); OutputStream out = Files.newOutputStream(tmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = in.read(buf)) != -1) {
-                        control.awaitReady();
-                        out.write(buf, 0, len);
-                    }
-                } finally {
-                    closeConnection(conn);
-                }
-
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                env.info("Downloaded: " + target.getFileName());
-                return;
-            } catch (IOException e) {
-                if (isDownloadCancelled(e)) {
-                    throw e;
-                }
-                lastException = e;
-                control.awaitReady();
-                env.warn("Download retry " + attempt + "/" + maxRetries + ": " + target.getFileName() + " - " + e.getMessage());
-                try {
-                    sleepWithControl(1000L * attempt, control);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Download thread was interrupted", ignored);
-                }
-            }
-        }
-        throw new IOException("Download failed after " + maxRetries + " retries: " + url, lastException);
-    }
-
-    private void downloadSingleFileWithProgress(String urlString, Path targetPath, int maxRetries, int timeoutMillis, DownloadControl control, ProgressListener listener) throws IOException {
-        IOException last = null;
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            control.awaitReady();
-            HttpURLConnection conn = null;
-            Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".downloading");
-            try {
-                Files.createDirectories(targetPath.getParent());
-                conn = openConnection(urlString);
-                conn.setConnectTimeout(timeoutMillis);
-                conn.setReadTimeout(timeoutMillis);
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "Tianshu-ASR-Downloader/1.0");
-                int code = conn.getResponseCode();
-                if (code != 200) throw new IOException("HTTP " + code);
-                long total = conn.getContentLengthLong();
-                long downloaded = 0L;
-                try (InputStream in = conn.getInputStream(); OutputStream out = Files.newOutputStream(tempPath)) {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = in.read(buffer)) != -1) {
-                        control.awaitReady();
-                        out.write(buffer, 0, read);
-                        downloaded += read;
-                        listener.onProgress(downloaded, total);
-                    }
-                }
-                Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                return;
-            } catch (IOException e) {
-                if (isDownloadCancelled(e)) {
-                    throw e;
-                }
-                last = e;
-                Files.deleteIfExists(tempPath);
-                control.awaitReady();
-                try {
-                    sleepWithControl(1000L * attempt, control);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Download thread was interrupted", interrupted);
-                }
-            } finally {
-                closeConnection(conn);
-            }
-        }
-        throw last != null ? last : new IOException("Download failed");
-    }
 
     private void extractTarBz2(Path archive, Path targetDir) throws IOException {
         try (InputStream fis = Files.newInputStream(archive);
@@ -585,39 +467,33 @@ public class AsrModelDownloader {
         }
     }
 
-    private void sleepWithControl(long millis, DownloadControl control) throws IOException, InterruptedException {
-        if (millis <= 0L) {
-            return;
-        }
-        long deadline = System.currentTimeMillis() + millis;
-        while (true) {
-            control.awaitReady();
-            long remaining = deadline - System.currentTimeMillis();
-            if (remaining <= 0L) {
-                return;
+    private static ModelDownloadHttpClient.DownloadControl adapt(DownloadControl control) {
+        return () -> {
+            try {
+                control.awaitReady();
+            } catch (DownloadCancelledException cancelled) {
+                throw new ModelDownloadHttpClient.DownloadCancelledException(
+                        "ASR_MODEL_DOWNLOAD_CANCELLED",
+                        cancelled
+                );
             }
-            Thread.sleep(Math.min(remaining, 200L));
-        }
+        };
     }
 
-    private boolean isDownloadCancelled(IOException exception) {
-        Throwable current = exception;
+    private static DownloadCancelledException findDownloadCancelled(Throwable failure) {
+        Throwable current = failure;
         while (current != null) {
-            if (current instanceof DownloadCancelledException) {
-                return true;
+            if (current instanceof DownloadCancelledException cancelled) {
+                return cancelled;
             }
             current = current.getCause();
         }
-        return false;
+        return null;
     }
 
     private record SourceTarget(String sourcePath, String targetPath) {
         private String display() {
             return sourcePath + " -> " + targetPath;
         }
-    }
-
-    private interface ProgressListener {
-        void onProgress(long downloaded, long total);
     }
 }

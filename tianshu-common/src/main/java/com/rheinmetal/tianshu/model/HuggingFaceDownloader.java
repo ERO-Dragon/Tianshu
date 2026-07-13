@@ -6,25 +6,33 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 
-import java.io.*;
-import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 public class HuggingFaceDownloader {
-
     private static final String HF_OFFICIAL = "https://huggingface.co";
     private static final String HF_MIRROR = "https://hf-mirror.com";
+    private static final String VOCODER_REPO = "csukuangfj/sherpa-onnx-vocoders";
+    private static final String MAIN_REVISION = "main";
     private static final Gson GSON = new Gson();
+    private static final ModelDownloadHttpClient.RetryPolicy TREE_RETRY =
+            new ModelDownloadHttpClient.RetryPolicy(1, 10_000, 15_000, 0L);
 
-    private static volatile String activeBaseUrl = null;
+    private static volatile String activeBaseUrl;
 
     private final IGameEnvironment env;
-    private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
+    private final ModelDownloadSourcePolicy sources;
+    private final ModelDownloadHttpClient http;
+    private final Supplier<String> preferredBaseSupplier;
 
     @FunctionalInterface
     public interface DownloadControl {
@@ -35,20 +43,39 @@ public class HuggingFaceDownloader {
         default void onFileListResolved(int totalFiles) {
         }
 
-        default void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
+        default void onFileProgress(
+                String filePath,
+                int fileIndex,
+                int totalFiles,
+                long downloadedBytes,
+                long totalBytes
+        ) {
         }
     }
 
     public HuggingFaceDownloader(IGameEnvironment env) {
-        this.env = env;
+        this(
+                env,
+                new ModelDownloadSourcePolicy(HF_OFFICIAL, HF_MIRROR),
+                new ModelDownloadHttpClient(env),
+                HuggingFaceDownloader::getActiveBaseUrl
+        );
+    }
+
+    HuggingFaceDownloader(
+            IGameEnvironment env,
+            ModelDownloadSourcePolicy sources,
+            ModelDownloadHttpClient http,
+            Supplier<String> preferredBaseSupplier
+    ) {
+        this.env = Objects.requireNonNull(env, "env");
+        this.sources = Objects.requireNonNull(sources, "sources");
+        this.http = Objects.requireNonNull(http, "http");
+        this.preferredBaseSupplier = Objects.requireNonNull(preferredBaseSupplier, "preferredBaseSupplier");
     }
 
     public void cancelActiveTransfers() {
-        for (HttpURLConnection connection : activeConnections) {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+        http.cancelActiveTransfers();
     }
 
     public static synchronized String getActiveBaseUrl() {
@@ -58,7 +85,7 @@ public class HuggingFaceDownloader {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("huggingface.co", 443), 300);
             activeBaseUrl = HF_OFFICIAL;
-        } catch (IOException e) {
+        } catch (IOException unreachable) {
             activeBaseUrl = HF_MIRROR;
         }
         return activeBaseUrl;
@@ -89,47 +116,40 @@ public class HuggingFaceDownloader {
     ) throws Exception {
         Objects.requireNonNull(repoId, "repoId");
         Objects.requireNonNull(targetDir, "targetDir");
-
-        env.info("正在解析模型文件列表...");
-
+        Objects.requireNonNull(revision, "revision");
         Files.createDirectories(targetDir);
 
-        String baseUrl = getActiveBaseUrl();
-        env.info("HuggingFace 下载: repo=" + repoId + " source=" + baseUrl);
-
+        String preferredBase = preferredBaseSupplier.get();
+        env.info("HF_REPOSITORY_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
         checkControl(control);
-        List<String> allFiles = fetchFileTree(baseUrl, repoId, revision);
-
-        List<String> toDownload = allFiles.stream()
-                .filter(path -> !shouldSkipFile(path))
-                .collect(Collectors.toList());
-
-        env.info("需要下载 " + toDownload.size() + " 个文件（已过滤 " + (allFiles.size() - toDownload.size()) + " 个）");
+        List<String> allFiles = fetchFileTree(preferredBase, repoId, revision, control);
+        List<String> toDownload = allFiles.stream().filter(path -> !shouldSkipFile(path)).toList();
         if (progress != null) {
             progress.onFileListResolved(toDownload.size());
         }
 
-        int totalFiles = toDownload.size();
-        for (int i = 0; i < totalFiles; i++) {
+        for (int index = 0; index < toDownload.size(); index++) {
             checkControl(control);
-            String filePath = toDownload.get(i);
-            int fileIndex = i + 1;
+            String filePath = toDownload.get(index);
+            int fileIndex = index + 1;
             Path localPath = targetDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, targetDir);
-
-            if (skipExisting && Files.exists(localPath) && Files.size(localPath) > 0) {
-                if (progress != null) {
-                    progress.onFileProgress(filePath, fileIndex, totalFiles, 1, 1);
-                }
+            if (skipExisting && Files.isRegularFile(localPath) && Files.size(localPath) > 0L) {
+                notifySkipped(progress, filePath, fileIndex, toDownload.size());
                 continue;
             }
-
-            String resolveUrl = buildResolveUrl(baseUrl, repoId, revision, filePath);
-            downloadFile(resolveUrl, localPath, maxRetries, control, (downloaded, total) -> {
-                if (progress != null) {
-                    progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
-                }
-            });
+            downloadRepositoryFile(
+                    preferredBase,
+                    repoId,
+                    revision,
+                    filePath,
+                    localPath,
+                    maxRetries,
+                    control,
+                    progress,
+                    fileIndex,
+                    toDownload.size()
+            );
         }
     }
 
@@ -137,250 +157,206 @@ public class HuggingFaceDownloader {
         downloadVocoder(vocoderDir, maxRetries, null, null);
     }
 
-    public void downloadVocoder(Path vocoderDir, int maxRetries, DownloadControl control, DownloadProgressListener progress) throws Exception {
+    public void downloadVocoder(
+            Path vocoderDir,
+            int maxRetries,
+            DownloadControl control,
+            DownloadProgressListener progress
+    ) throws Exception {
+        Objects.requireNonNull(vocoderDir, "vocoderDir");
         Files.createDirectories(vocoderDir);
-        String baseUrl = getActiveBaseUrl();
-        String repoId = "csukuangfj/sherpa-onnx-vocoders";
+        String preferredBase = preferredBaseSupplier.get();
         checkControl(control);
-        List<String> allFiles = fetchFileTree(baseUrl, repoId, "main");
-        List<String> toDownload = allFiles.stream()
-                .filter(filePath -> filePath.toLowerCase().endsWith(".onnx") && !shouldSkipFile(filePath))
-                .collect(Collectors.toList());
+        List<String> toDownload = fetchFileTree(preferredBase, VOCODER_REPO, MAIN_REVISION, control)
+                .stream()
+                .filter(filePath -> filePath.toLowerCase(Locale.ROOT).endsWith(".onnx"))
+                .filter(filePath -> !shouldSkipFile(filePath))
+                .toList();
         if (progress != null) {
             progress.onFileListResolved(toDownload.size());
         }
-        int totalFiles = toDownload.size();
-        for (int i = 0; i < totalFiles; i++) {
+        for (int index = 0; index < toDownload.size(); index++) {
             checkControl(control);
-            String filePath = toDownload.get(i);
-            int fileIndex = i + 1;
+            String filePath = toDownload.get(index);
+            int fileIndex = index + 1;
             Path localPath = vocoderDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, vocoderDir);
-            if (!Files.exists(localPath) || Files.size(localPath) == 0) {
-                String resolveUrl = buildResolveUrl(baseUrl, repoId, "main", filePath);
-                downloadFile(resolveUrl, localPath, maxRetries, control, (downloaded, total) -> {
-                    if (progress != null) {
-                        progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
-                    }
-                });
-            } else if (progress != null) {
-                progress.onFileProgress(filePath, fileIndex, totalFiles, 1, 1);
+            if (Files.isRegularFile(localPath) && Files.size(localPath) > 0L) {
+                notifySkipped(progress, filePath, fileIndex, toDownload.size());
+                continue;
             }
+            downloadRepositoryFile(
+                    preferredBase,
+                    VOCODER_REPO,
+                    MAIN_REVISION,
+                    filePath,
+                    localPath,
+                    maxRetries,
+                    control,
+                    progress,
+                    fileIndex,
+                    toDownload.size()
+            );
         }
     }
 
-    public void downloadSingleFile(String repoId, String filePath, Path targetFile, String revision, int maxRetries) throws Exception {
+    public void downloadSingleFile(
+            String repoId,
+            String filePath,
+            Path targetFile,
+            String revision,
+            int maxRetries
+    ) throws Exception {
         downloadSingleFile(repoId, filePath, targetFile, revision, maxRetries, null, null);
     }
 
-    public void downloadSingleFile(String repoId, String filePath, Path targetFile, String revision, int maxRetries, DownloadControl control, DownloadProgressListener progress) throws Exception {
+    public void downloadSingleFile(
+            String repoId,
+            String filePath,
+            Path targetFile,
+            String revision,
+            int maxRetries,
+            DownloadControl control,
+            DownloadProgressListener progress
+    ) throws Exception {
         Objects.requireNonNull(repoId, "repoId");
         Objects.requireNonNull(filePath, "filePath");
         Objects.requireNonNull(targetFile, "targetFile");
-
-        Files.createDirectories(targetFile.getParent());
-        ensureWithinTarget(targetFile, targetFile.getParent());
-
-        if (Files.exists(targetFile) && Files.size(targetFile) > 0) {
-            env.info("文件已存在，跳过: " + targetFile.getFileName());
-            if (progress != null) {
-                progress.onFileListResolved(1);
-                progress.onFileProgress(filePath, 1, 1, 1, 1);
-            }
+        Objects.requireNonNull(revision, "revision");
+        Path absoluteTarget = targetFile.toAbsolutePath().normalize();
+        Path parent = absoluteTarget.getParent();
+        if (parent == null) {
+            throw new IOException("HF_TARGET_HAS_NO_PARENT target=" + targetFile);
+        }
+        Files.createDirectories(parent);
+        ensureWithinTarget(absoluteTarget, parent);
+        if (Files.isRegularFile(absoluteTarget) && Files.size(absoluteTarget) > 0L) {
+            notifySkipped(progress, filePath, 1, 1);
             return;
         }
-
-        String primary = getActiveBaseUrl();
-        String fallback = HF_OFFICIAL.equals(primary) ? HF_MIRROR : HF_OFFICIAL;
-
-        String primaryUrl = buildResolveUrl(primary, repoId, revision, filePath);
-        String fallbackUrl = buildResolveUrl(fallback, repoId, revision, filePath);
-
-        env.info("单文件下载: repo=" + repoId + " file=" + filePath + " primary=" + primary);
         if (progress != null) {
             progress.onFileListResolved(1);
         }
+        String preferredBase = preferredBaseSupplier.get();
+        downloadRepositoryFile(
+                preferredBase,
+                repoId,
+                revision,
+                filePath,
+                absoluteTarget,
+                maxRetries,
+                control,
+                progress,
+                1,
+                1
+        );
+    }
 
-        try {
-            downloadFile(primaryUrl, targetFile, maxRetries, control, (downloaded, total) -> {
-                if (progress != null) {
-                    progress.onFileProgress(filePath, 1, 1, downloaded, total);
+    private List<String> fetchFileTree(
+            String preferredBase,
+            String repoId,
+            String revision,
+            DownloadControl control
+    ) throws IOException {
+        String json = http.readUtf8(
+                sources.huggingFaceTreeCandidates(preferredBase, repoId, revision),
+                TREE_RETRY,
+                adapt(control)
+        );
+        JsonArray root = GSON.fromJson(json, JsonArray.class);
+        if (root == null) {
+            throw new IOException("HF_TREE_RESPONSE_INVALID repo=" + repoId);
+        }
+        List<String> result = new ArrayList<>();
+        for (JsonElement element : root) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject node = element.getAsJsonObject();
+            if (!node.has("type") || !node.has("path")) {
+                continue;
+            }
+            if ("file".equalsIgnoreCase(node.get("type").getAsString())) {
+                result.add(node.get("path").getAsString());
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private void downloadRepositoryFile(
+            String preferredBase,
+            String repoId,
+            String revision,
+            String filePath,
+            Path target,
+            int maxRetries,
+            DownloadControl control,
+            DownloadProgressListener progress,
+            int fileIndex,
+            int totalFiles
+    ) throws IOException {
+        http.download(
+                sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath),
+                target,
+                fileRetry(maxRetries),
+                adapt(control),
+                (downloaded, total) -> {
+                    if (progress != null) {
+                        progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
+                    }
                 }
-            });
-        } catch (IOException e) {
-            checkControl(control);
-            env.warn("主源下载失败，切换到回退源: " + fallback + " - " + e.getMessage());
-            downloadFile(fallbackUrl, targetFile, maxRetries, control, (downloaded, total) -> {
-                if (progress != null) {
-                    progress.onFileProgress(filePath, 1, 1, downloaded, total);
-                }
-            });
+        );
+        env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
+    }
+
+    private static ModelDownloadHttpClient.RetryPolicy fileRetry(int maxRetries) {
+        return new ModelDownloadHttpClient.RetryPolicy(maxRetries, 15_000, 120_000, 1_000L);
+    }
+
+    private static ModelDownloadHttpClient.DownloadControl adapt(DownloadControl control) {
+        return control == null ? () -> {} : control::checkCancelled;
+    }
+
+    private static void checkControl(DownloadControl control) throws IOException {
+        if (control != null) {
+            control.checkCancelled();
         }
     }
 
-    private boolean shouldSkipFile(String path) {
-        String lowerPath = path.toLowerCase();
+    private static void notifySkipped(
+            DownloadProgressListener progress,
+            String filePath,
+            int fileIndex,
+            int totalFiles
+    ) {
+        if (progress != null) {
+            if (totalFiles == 1) {
+                progress.onFileListResolved(1);
+            }
+            progress.onFileProgress(filePath, fileIndex, totalFiles, 1L, 1L);
+        }
+    }
 
+    private static boolean shouldSkipFile(String path) {
+        String lowerPath = path.toLowerCase(Locale.ROOT);
         if (lowerPath.startsWith("dict/") || lowerPath.startsWith("dict\\")) {
             return true;
         }
         if (lowerPath.endsWith(".py")) {
             return true;
         }
-
-        String fileName = lowerPath;
         int lastSlash = lowerPath.lastIndexOf('/');
-        if (lastSlash != -1) {
-            fileName = lowerPath.substring(lastSlash + 1);
-        }
-
-        if (fileName.equals(".gitattributes")) {
-            return true;
-        }
-        if (fileName.startsWith("readme.") || fileName.equals("readme")) {
-            return true;
-        }
-
-        return false;
+        String fileName = lastSlash >= 0 ? lowerPath.substring(lastSlash + 1) : lowerPath;
+        return fileName.equals(".gitattributes")
+                || fileName.equals("readme")
+                || fileName.startsWith("readme.");
     }
 
-    private List<String> fetchFileTree(String baseUrl, String repoId, String revision) throws Exception {
-        String encodedRepoId = encodeRepoId(repoId);
-        String url = String.format(
-                "%s/api/models/%s/tree/%s?recursive=true&expand=false",
-                baseUrl,
-                encodedRepoId,
-                URLEncoder.encode(revision, StandardCharsets.UTF_8)
-        );
-
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout((int) Duration.ofSeconds(10).toMillis());
-        conn.setReadTimeout((int) Duration.ofSeconds(15).toMillis());
-        conn.setRequestMethod("GET");
-
-        int code = conn.getResponseCode();
-        if (code != 200) {
-            throw new IOException("HF tree API failed. repo=" + repoId + " code=" + code);
-        }
-
-        try (InputStream is = conn.getInputStream();
-             Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-            JsonArray root = GSON.fromJson(reader, JsonArray.class);
-            List<String> result = new ArrayList<>();
-            for (JsonElement element : root) {
-                JsonObject node = element.getAsJsonObject();
-                if (!"file".equalsIgnoreCase(node.get("type").getAsString())) {
-                    continue;
-                }
-                result.add(node.get("path").getAsString());
-            }
-            return result;
-        } finally {
-            conn.disconnect();
-        }
-    }
-
-    private String buildResolveUrl(String baseUrl, String repoId, String revision, String filePath) {
-        String[] segments = filePath.split("/");
-        String encodedPath = Arrays.stream(segments)
-                .map(s -> URLEncoder.encode(s, StandardCharsets.UTF_8))
-                .collect(Collectors.joining("/"));
-
-        return String.format(
-                "%s/%s/resolve/%s/%s",
-                baseUrl,
-                encodeRepoId(repoId),
-                URLEncoder.encode(revision, StandardCharsets.UTF_8),
-                encodedPath
-        );
-    }
-
-    private String encodeRepoId(String repoId) {
-        String[] parts = repoId.split("/", 2);
-        if (parts.length == 2) {
-            return URLEncoder.encode(parts[0], StandardCharsets.UTF_8) + "/" + URLEncoder.encode(parts[1], StandardCharsets.UTF_8);
-        }
-        return URLEncoder.encode(repoId, StandardCharsets.UTF_8);
-    }
-
-    private interface FileProgressListener {
-        void onProgress(long downloaded, long total);
-    }
-
-    private void downloadFile(String url, Path target, int maxRetries) throws IOException {
-        downloadFile(url, target, maxRetries, null, null);
-    }
-
-    private void downloadFile(String url, Path target, int maxRetries, DownloadControl control, FileProgressListener progress) throws IOException {
-        Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.deleteIfExists(tmp);
-        IOException lastException = null;
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            checkControl(control);
-            HttpURLConnection conn = null;
-            try {
-                conn = (HttpURLConnection) new URL(url).openConnection();
-                activeConnections.add(conn);
-                conn.setConnectTimeout((int) Duration.ofSeconds(15).toMillis());
-                conn.setReadTimeout((int) Duration.ofSeconds(120).toMillis());
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "Tianshu-HF-Downloader/1.0");
-
-                if (conn.getResponseCode() != 200) {
-                    throw new IOException("HTTP " + conn.getResponseCode());
-                }
-
-                long total = conn.getContentLengthLong();
-                long downloaded = 0L;
-                try (InputStream in = conn.getInputStream();
-                     OutputStream out = Files.newOutputStream(tmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = in.read(buf)) != -1) {
-                        checkControl(control);
-                        out.write(buf, 0, len);
-                        downloaded += len;
-                        if (progress != null) {
-                            progress.onProgress(downloaded, total);
-                        }
-                    }
-                }
-
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                env.info("下载完成: " + target.getFileName());
-                return;
-            } catch (IOException e) {
-                lastException = e;
-                Files.deleteIfExists(tmp);
-                checkControl(control);
-                env.warn("下载重试 " + attempt + "/" + maxRetries + ": " + target.getFileName() + " - " + e.getMessage());
-                try {
-                    Thread.sleep(1000L * attempt);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("下载线程被中断", interrupted);
-                }
-            } finally {
-                if (conn != null) {
-                    activeConnections.remove(conn);
-                    conn.disconnect();
-                }
-            }
-        }
-        throw new IOException("下载失败，重试 " + maxRetries + " 次后仍不成功: " + url, lastException);
-    }
-
-    private void checkControl(DownloadControl control) throws IOException {
-        if (control != null) {
-            control.checkCancelled();
-        }
-    }
-
-    private void ensureWithinTarget(Path path, Path targetDir) throws IOException {
-        if (!path.toAbsolutePath().normalize().startsWith(targetDir.toAbsolutePath().normalize())) {
-            throw new IOException("路径穿越检测: " + path);
+    private static void ensureWithinTarget(Path path, Path targetDir) throws IOException {
+        Path normalizedPath = path.toAbsolutePath().normalize();
+        Path normalizedTarget = targetDir.toAbsolutePath().normalize();
+        if (!normalizedPath.startsWith(normalizedTarget)) {
+            throw new IOException("HF_UNSAFE_TARGET_PATH path=" + path);
         }
     }
 }
