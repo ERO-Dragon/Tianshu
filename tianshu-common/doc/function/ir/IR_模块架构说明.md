@@ -19,7 +19,11 @@ IR 当前主要由以下部分组成：
 - `IrModule`：主编排入口。
 - `IrProtocolAdapter`：协议收发封装。
 - `IrInputMapper` / `IrInputPreprocessor`：输入映射与预处理。
-- `IrItemEnhancer` / `IrItemEnhancementResult`：物品名称修复与物品 ID 提取。
+- `IrNamedObjectEnhancer` / `IrNamedObjectEnhancementResult`：命名对象（物品、实体）名称修复与结构化 ID 提取。
+- `IRCommandService`：命名对象索引的构建、快照和读写生命周期。
+- `CommandParser`：命令片段切分、候选采纳和解析结果编排。
+- `CommandCandidateRanker`：基于索引的候选检索、拼音相似度评分与排序。
+- `CommandTextRepairer`：只根据已排序候选执行保守的命名对象文本修复。
 - `IrWakeWordEnhancer`：基于已注册 wake word 的保守修复。
 - `IrVoiceTriggerIndexer` / `IrVoiceTriggerMatcher`：wake word / extra word 命中特征提取。
 - `IrDialogueArbitrationRequestMapper`：将 IR 结果映射为 `DialogueArbitrationRequestPayload`。
@@ -53,7 +57,7 @@ IA 仲裁 owner 并定向投递 DialogueDeliveryPayload
 
 ## 4. 物品增强
 
-物品增强通过 `IrItemEnhancer` 抽象完成。增强结果由 `IrItemEnhancementResult` 承载：
+命名对象增强通过 `IrNamedObjectEnhancer` 抽象完成。增强结果由 `IrNamedObjectEnhancementResult` 承载：
 
 - `repairedText`：修复后的自然语言正文。
 - `matchedItemNames`：命中物品的显示名，主要用于 UI、上下文提示或调试。
@@ -61,6 +65,15 @@ IA 仲裁 owner 并定向投递 DialogueDeliveryPayload
 - `matched`：是否命中。
 
 `repairedText` 只做自然语言修复，不把正文改成资源 ID。
+
+`IRCommandService` 内部的索引检索、候选评分和文本修复保持为包内协作：
+
+- `CommandParser` 只负责片段边界和候选采纳，不承载评分或文本替换细节。
+- `CommandCandidateRanker` 复用单次解析的 LCS 工作区，避免在同一解析流程中重复分配评分缓冲区。
+- `CommandTextRepairer` 只消费已排序候选，不重新查询索引，保证“候选判断”和“文本修复”可以独立维护。
+- `CommandParserPolicy` 是包内不可变算法策略；它不承载语言内容，也不作为玩家 GUI 配置。
+
+这些 core 协作类不依赖 Minecraft 或 NeoForge 类型，也不调度或占用 MC 主线程。它们是同步、纯计算组件；调用方应继续通过协议执行路径运行解析，而不是把大词典检索放进游戏 tick 热路径。
 
 示例：
 
@@ -140,7 +153,7 @@ IrInputPreprocessor
   ├─ voiceText
   └─ filteredText
         ↓
-IrItemEnhancer
+IrNamedObjectEnhancer
   ├─ repairedText
   └─ matchedItemIds
         ↓
