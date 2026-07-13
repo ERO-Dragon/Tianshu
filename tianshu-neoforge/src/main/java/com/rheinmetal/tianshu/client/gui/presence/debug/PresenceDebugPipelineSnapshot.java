@@ -9,7 +9,6 @@ import com.rheinmetal.tianshu.function.llm.LlmProtocolAdapter;
 import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
-import java.util.Comparator;
 import java.util.List;
 
 public final class PresenceDebugPipelineSnapshot {
@@ -34,13 +33,8 @@ public final class PresenceDebugPipelineSnapshot {
 
     private Row row(ModuleEntry entry) {
         ModuleStatus status = null;
-        if (coreManager != null && coreManager.protocolRuntime() != null) {
-            status = coreManager.protocolRuntime()
-                    .moduleStatusCache()
-                    .byModule(entry.moduleId())
-                    .stream()
-                    .max(Comparator.comparingLong(ModuleStatus::updatedAtMillis))
-                    .orElse(null);
+        if (coreManager != null) {
+            status = coreManager.latestModuleStatus(entry.moduleId()).orElse(null);
         }
         return new Row(entry.moduleId(), entry.labelKey(), status);
     }

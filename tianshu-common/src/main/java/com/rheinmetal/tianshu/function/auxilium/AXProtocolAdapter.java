@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -259,6 +261,18 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
             return null;
         }
         return publishTopic(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, new ModuleStatusPayload(status));
+    }
+
+    public int dialogueParticipantRegistrationProviderCount() {
+        return runtime().capabilities().findCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER).size();
+    }
+
+    public TianshuEnvelope registerDialogueParticipant(DialogueParticipantRegisterPayload payload) {
+        return commandCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER, PayloadType.DIALOGUE_PARTICIPANT_REGISTER, payload);
+    }
+
+    public TianshuEnvelope unregisterDialogueParticipant(DialogueParticipantUnregisterPayload payload) {
+        return commandCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER, PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER, payload);
     }
 
     public TianshuEnvelope speakTts(TtsSpeakPayload payload) {

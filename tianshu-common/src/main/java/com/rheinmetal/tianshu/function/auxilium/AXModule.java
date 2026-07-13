@@ -45,7 +45,6 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.DefaultAXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
-import com.rheinmetal.tianshu.function.ia.IaModuleService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
@@ -182,10 +181,8 @@ public final class AXModule implements TianshuManagedModule {
         adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
         adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
-        context.services().find(IaModuleService.class).ifPresent(service -> participantRegistrar = new AXParticipantRegistrar(service, assistantSettings));
-        if (participantRegistrar != null) {
-            participantRegistrar.register();
-        }
+        participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
+        participantRegistrar.register();
     }
 
     @Override

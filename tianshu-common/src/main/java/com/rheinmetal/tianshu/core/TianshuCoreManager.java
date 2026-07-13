@@ -101,16 +101,6 @@ public class TianshuCoreManager {
         return moduleServices.require(type);
     }
 
-    @Deprecated
-    public ProtocolRuntime protocolRuntime() {
-        return protocolRuntime;
-    }
-
-    @Deprecated
-    public ProtocolRuntime getProtocolRuntime() {
-        return protocolRuntime();
-    }
-
     public List<TianshuManagedModule> managedModules() {
         return moduleHost.managedModules();
     }
@@ -182,6 +172,16 @@ public class TianshuCoreManager {
             return cache.byType(query.statusType());
         }
         return cache.all();
+    }
+
+    public Optional<ModuleStatus> latestModuleStatus(String moduleId) {
+        String normalizedModuleId = moduleId == null ? "" : moduleId.trim();
+        if (normalizedModuleId.isEmpty()) {
+            return Optional.empty();
+        }
+        return queryModuleStatuses(new ModuleStatusQuery(normalizedModuleId, ""))
+                .stream()
+                .max(java.util.Comparator.comparingLong(ModuleStatus::updatedAtMillis));
     }
 
     public void submit(TianshuEnvelope envelope) {
