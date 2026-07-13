@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 
@@ -55,10 +55,10 @@ class AXParticipantRegistrarTest {
         assertEquals("天枢", registerPayload.descriptor().displayName());
         assertEquals(AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY, registerPayload.descriptor().routeCapability());
         assertEquals(DialogueClaimProfile.defaultOwnerWithRules(
-                com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule.anyStrong(
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule.anyStrong(
                         "ax.wake_word",
-                        com.rheinmetal.tianshu.function.ia.model.DialogueAttentionDecay.SLOW,
-                        com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition.wakeWord("天枢")
+                        com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay.SLOW,
+                        com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition.wakeWord("天枢")
                 )
         ), registerPayload.descriptor().claimProfile());
 

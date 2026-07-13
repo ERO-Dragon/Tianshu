@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.ia.context;
 
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;

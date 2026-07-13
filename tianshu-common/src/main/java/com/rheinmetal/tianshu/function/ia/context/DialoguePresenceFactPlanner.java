@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.ia.context;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimConditionType;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimMode;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimConditionType;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 
 import java.util.LinkedHashSet;

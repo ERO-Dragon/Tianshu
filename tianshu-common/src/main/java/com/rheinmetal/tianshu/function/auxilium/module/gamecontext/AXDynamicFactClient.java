@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.gamecontext;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;

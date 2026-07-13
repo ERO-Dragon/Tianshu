@@ -1,16 +1,16 @@
 package com.rheinmetal.tianshu.function.ia.claim;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaim;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimMode;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimOperator;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
-import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimOperator;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 
 import java.util.ArrayList;
 import java.util.Comparator;

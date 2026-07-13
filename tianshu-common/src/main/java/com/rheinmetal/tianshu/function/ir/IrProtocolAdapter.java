@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;

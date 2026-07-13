@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.function.ia.gateway;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
-import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionState;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessPolicy;
@@ -86,7 +86,7 @@ class DialogueMessageGatewayTest {
         }
 
         @Override
-        public DialogueAccessDecision authorizePublicEvent(com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload payload) {
+        public DialogueAccessDecision authorizePublicEvent(com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload payload) {
             return DialogueAccessDecision.allow();
         }
     }
@@ -95,7 +95,7 @@ class DialogueMessageGatewayTest {
         private int deliverCount;
 
         @Override
-        public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload payload) {
+        public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload payload) {
             return null;
         }
 
@@ -105,7 +105,7 @@ class DialogueMessageGatewayTest {
         }
 
         @Override
-        public TianshuEnvelope deliverToCapability(TianshuEnvelope parent, String capabilityId, com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload payload) {
+        public TianshuEnvelope deliverToCapability(TianshuEnvelope parent, String capabilityId, com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload payload) {
             deliverCount++;
             return null;
         }

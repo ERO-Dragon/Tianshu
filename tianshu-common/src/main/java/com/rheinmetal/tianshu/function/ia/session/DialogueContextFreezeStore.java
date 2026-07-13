@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.session;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 
 import java.time.Duration;
 import java.util.Optional;

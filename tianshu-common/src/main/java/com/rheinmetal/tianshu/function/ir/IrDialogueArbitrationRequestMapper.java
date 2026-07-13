@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
 import com.rheinmetal.tianshu.function.ir.input.IrPreparedInput;

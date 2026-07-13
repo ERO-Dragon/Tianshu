@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.ia.control;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueReleaseReason;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionControlAction;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;

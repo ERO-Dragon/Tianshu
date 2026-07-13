@@ -1,20 +1,20 @@
 package com.rheinmetal.tianshu.function.ia.claim;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
-import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionDecay;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaim;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimCondition;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimRule;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimStrength;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimStrength;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

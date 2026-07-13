@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.function.ia.policy;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationDecision;
-import com.rheinmetal.tianshu.function.ia.model.DialogueAttentionState;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaim;
-import com.rheinmetal.tianshu.function.ia.model.DialogueClaimMode;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 
 import java.util.Comparator;
 import java.util.List;

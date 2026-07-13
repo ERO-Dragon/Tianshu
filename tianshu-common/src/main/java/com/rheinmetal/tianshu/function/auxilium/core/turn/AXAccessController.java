@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.TargetMode;

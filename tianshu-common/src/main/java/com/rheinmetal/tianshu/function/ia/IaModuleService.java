@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.ia;
 
 import com.rheinmetal.tianshu.function.ia.diagnostics.DialogueDiagnosticsSnapshot;
 import com.rheinmetal.tianshu.function.ia.diagnostics.DialogueDiagnosticsView;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueParticipantLifecycleCoordinator;

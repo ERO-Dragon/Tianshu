@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.security;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

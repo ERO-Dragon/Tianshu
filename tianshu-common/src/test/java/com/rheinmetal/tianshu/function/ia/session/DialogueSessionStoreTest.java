@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.ia.session;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.function.ia.model.DialogueReleaseReason;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionState;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

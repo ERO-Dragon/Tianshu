@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.ia.registry;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.FailurePolicy;

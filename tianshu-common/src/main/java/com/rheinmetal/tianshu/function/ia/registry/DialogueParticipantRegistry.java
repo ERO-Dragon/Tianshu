@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.registry;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 
 import java.util.List;
 import java.util.Map;

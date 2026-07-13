@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.function.ia.context;
 
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 
 import java.util.LinkedHashMap;

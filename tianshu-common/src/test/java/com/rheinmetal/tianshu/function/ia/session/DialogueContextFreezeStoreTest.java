@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.ia.session;
 
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

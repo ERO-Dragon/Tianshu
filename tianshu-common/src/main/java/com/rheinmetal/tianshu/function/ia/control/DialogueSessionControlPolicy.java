@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.ia.control;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionControlAction;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionState;
 
 public final class DialogueSessionControlPolicy {
     public DialogueSessionControlDecision decide(DialogueSession session, DialogueSessionControlAction action, long nowMillis) {

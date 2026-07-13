@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.function.auxilium.module.currentinput;
 
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
-import com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef;
-import com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

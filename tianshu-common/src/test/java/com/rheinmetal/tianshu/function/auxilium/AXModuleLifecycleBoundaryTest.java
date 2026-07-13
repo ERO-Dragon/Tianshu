@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;

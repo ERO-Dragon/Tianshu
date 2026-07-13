@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -287,7 +287,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return commandCapability(ProtocolCapabilities.TTS_CONTROL, PayloadType.CUSTOM, payload);
     }
 
-    public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.payload.DialogueSessionControlPayload payload) {
+    public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload payload) {
         return commandCapability(parent, ProtocolCapabilities.DIALOGUE_SESSION_CONTROL, PayloadType.DIALOGUE_SESSION_CONTROL, payload);
     }
 }

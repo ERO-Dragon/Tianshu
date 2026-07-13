@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueReleaseReason;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 
 public record AXTurnCancellation(String message, DialogueReleaseReason releaseReason) {
     public AXTurnCancellation {

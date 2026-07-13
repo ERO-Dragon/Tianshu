@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.output;
 
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 
 import java.util.Objects;
 

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationResultPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationResultPayload;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
@@ -874,7 +874,7 @@ class LlmProtocolAdapterTest {
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE,
                 PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST,
-                com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationRequestPayload.class,
+                com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationRequestPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.REQUEST),
                 Priority.LOW,

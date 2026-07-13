@@ -1,16 +1,16 @@
 package com.rheinmetal.tianshu.function.ia;
 
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationRequestPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueArbitrationResultPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationRequestPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueLlmUsageAuthorizationResultPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueOwnerPreviewPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueParticipantUnregisterPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionControlPayload;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationResultPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationResultPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueOwnerPreviewPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;

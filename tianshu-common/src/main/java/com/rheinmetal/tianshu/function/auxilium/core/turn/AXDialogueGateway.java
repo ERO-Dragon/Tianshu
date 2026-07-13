@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
-import com.rheinmetal.tianshu.function.ia.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 

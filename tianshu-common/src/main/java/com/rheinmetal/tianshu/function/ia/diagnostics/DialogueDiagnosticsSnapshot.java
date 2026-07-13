@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.diagnostics;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
 
 import java.util.List;
 

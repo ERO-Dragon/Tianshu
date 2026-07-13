@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.security;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
 
 public final class DialogueLlmUsageAuthorizationPolicy {
     private final DialogueAccessPolicy accessPolicy;

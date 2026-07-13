@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.security;
 
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
-import com.rheinmetal.tianshu.function.ia.payload.DialogueSessionEventPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload;
 
 public final class DialogueAccessController implements DialogueAccessPolicy {
     public DialogueAccessDecision authorizeDialogueBodyDelivery(DialogueSession session, String moduleId, String participantId) {

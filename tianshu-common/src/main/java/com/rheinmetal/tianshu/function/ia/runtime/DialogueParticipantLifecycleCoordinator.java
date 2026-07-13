@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.function.ia.runtime;
 
 import com.rheinmetal.tianshu.function.ia.event.DialogueEventPublisher;
-import com.rheinmetal.tianshu.function.ia.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.function.ia.model.DialogueReleaseReason;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSession;
-import com.rheinmetal.tianshu.function.ia.model.DialogueSessionEventType;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionEventType;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
 import com.rheinmetal.tianshu.function.ia.session.DialogueSessionStore;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
