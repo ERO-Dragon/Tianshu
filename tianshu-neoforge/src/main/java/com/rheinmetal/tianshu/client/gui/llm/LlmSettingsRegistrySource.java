@@ -635,7 +635,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onError(String message) {
                     runOnClient(() -> {
-                        context.showStatus(message == null || message.isBlank() ? llm("status.download_failed") : Component.literal(message), 4000);
+                        context.showStatus(localizedDownloadMessage(message), 4000);
                         refreshSettingsScreen();
                     });
                 }
@@ -719,9 +719,19 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 return llm("download.progress", label, snapshot.percent());
             }
             if (!snapshot.errorMessage().isBlank()) {
-                return Component.literal(snapshot.errorMessage());
+                return localizedDownloadMessage(snapshot.errorMessage());
             }
             return llm("status.idle");
+        }
+
+        private Component localizedDownloadMessage(String message) {
+            if (message == null || message.isBlank()) {
+                return llm("status.download_failed");
+            }
+            if (message.startsWith("tianshu.")) {
+                return Component.translatable(message);
+            }
+            return Component.literal(message);
         }
 
         private void runOnClient(Runnable runnable) {

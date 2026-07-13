@@ -4,8 +4,6 @@ import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot;
 
-import java.util.Objects;
-
 public final class LlmInferenceGovernor {
     private static final float CHAT_DEFAULT_PRIORITY = 0.72f;
     private static final float TASK_DEFAULT_PRIORITY = 0.62f;
@@ -17,11 +15,15 @@ public final class LlmInferenceGovernor {
     private static final double GPU_BUSY = 0.82D;
     private static final double GPU_IDLE = 0.55D;
 
-    private final ITianshuConfig config;
+    private final LlmInferenceDefaults defaults;
     private final LlmPerformanceProvider performanceProvider;
 
     public LlmInferenceGovernor(ITianshuConfig config, LlmPerformanceProvider performanceProvider) {
-        this.config = Objects.requireNonNull(config, "config");
+        this(LlmInferenceDefaults.from(config), performanceProvider);
+    }
+
+    LlmInferenceGovernor(LlmInferenceDefaults defaults, LlmPerformanceProvider performanceProvider) {
+        this.defaults = defaults == null ? LlmInferenceDefaults.safe() : defaults;
         this.performanceProvider = performanceProvider == null ? LlmPerformanceProvider.UNAVAILABLE : performanceProvider;
     }
 
@@ -35,13 +37,13 @@ public final class LlmInferenceGovernor {
     private LlmInferencePolicy effectivePolicy(LlmInferencePolicy override) {
         boolean frameGuard = override != null && override.frameGuardEnabled() != null
                 ? override.frameGuardEnabled()
-                : config.isLlmFrameGuardEnabled();
+                : defaults.frameGuardEnabled();
         int targetFps = override != null && override.targetFps() != null
                 ? override.targetFps()
-                : config.getLlmFrameGuardTargetFps();
+                : defaults.targetFps();
         boolean mtp = override != null && override.mtpEnabled() != null
                 ? override.mtpEnabled()
-                : config.isLlmMtpEnabled();
+                : defaults.mtpEnabled();
         return new LlmInferencePolicy(frameGuard, targetFps, mtp);
     }
 
@@ -63,7 +65,7 @@ public final class LlmInferenceGovernor {
             return fallbackFpsOnlyPriority(snapshot, policy.targetFps(), taskLane);
         }
 
-        int targetFps = policy.targetFps() == null ? config.getLlmFrameGuardTargetFps() : policy.targetFps();
+        int targetFps = policy.targetFps() == null ? defaults.targetFps() : policy.targetFps();
         boolean fpsLow = snapshot.fps() > 0 && snapshot.fps() < Math.round(targetFps * 0.92D);
         boolean fpsHealthy = snapshot.fps() >= targetFps;
         boolean gpuBusy = snapshot.gpuUtilization() >= GPU_BUSY;
@@ -82,7 +84,7 @@ public final class LlmInferenceGovernor {
     }
 
     private Float fallbackFpsOnlyPriority(LlmPerformanceSnapshot snapshot, Integer targetFps, boolean taskLane) {
-        int effectiveTarget = targetFps == null ? config.getLlmFrameGuardTargetFps() : targetFps;
+        int effectiveTarget = targetFps == null ? defaults.targetFps() : targetFps;
         if (snapshot.fps() > 0 && snapshot.fps() < Math.round(effectiveTarget * 0.85D)) {
             return taskLane ? 0.32f : 0.38f;
         }

@@ -166,7 +166,7 @@ public final class LlmModule implements TianshuManagedModule {
             }
         }
 
-        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting", "LLM 核心加载中"));
+        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting", ""));
         engineProvider.startAsync(() -> {
             synchronized (lifecycleLock) {
                 if (destroyed || moduleService == null || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
@@ -176,7 +176,7 @@ public final class LlmModule implements TianshuManagedModule {
                 if (aiService == null) {
                     markCapabilitiesFailed("LLM service failed to start");
                     moduleService.markFailed("LLM service failed to start");
-                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", "LLM 核心启动失败"));
+                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", ""));
                     return;
                 }
                 llmService = LLMService.builder()
@@ -195,13 +195,13 @@ public final class LlmModule implements TianshuManagedModule {
                 markCapabilitiesReady();
                 moduleService.markReady();
             }
-            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready", "LLM 核心已就绪"));
+            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready", ""));
         }, () -> {
             markCapabilitiesFailed("LLM service failed to start");
             if (moduleService != null) {
                 moduleService.markFailed("LLM service failed to start");
             }
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", "LLM 核心启动失败"));
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", ""));
             synchronized (lifecycleLock) {
                 adapter.setLlmService(null);
                 LLMService failedService = llmService;

@@ -25,6 +25,17 @@ import java.util.function.Consumer;
 
 public final class LlmModelService {
     private static final long PROGRESS_UPDATE_INTERVAL_MILLIS = 200L;
+    private static final String STATUS_IDLE_KEY = "tianshu.gui.llm.status.idle";
+    private static final String STATUS_DOWNLOADING_KEY = "tianshu.gui.llm.status.downloading";
+    private static final String STATUS_DOWNLOAD_COMPLETE_KEY = "tianshu.gui.llm.status.download_complete";
+    private static final String STATUS_DOWNLOAD_FAILED_KEY = "tianshu.gui.llm.status.download_failed";
+    private static final String STATUS_CANCELLED_KEY = "tianshu.gui.llm.status.cancelled";
+    private static final String STATUS_CANCELLING_KEY = "tianshu.gui.llm.status.cancelling";
+    private static final String ERROR_MODEL_INFO_MISSING_KEY = "tianshu.gui.llm.error.model_info_missing";
+    private static final String ERROR_MODEL_PATH_UNRESOLVED_KEY = "tianshu.gui.llm.error.model_path_unresolved";
+    private static final String ERROR_DOWNLOAD_BUSY_KEY = "tianshu.gui.llm.error.download_busy";
+    private static final String ERROR_DOWNLOAD_QUEUE_FULL_KEY = "tianshu.gui.llm.error.download_queue_full";
+    private static final String ERROR_DOWNLOAD_FAILED_KEY = "tianshu.gui.llm.error.download_failed";
 
     public interface DownloadProgressCallback {
         void onProgress(String label, int percent);
@@ -49,7 +60,7 @@ public final class LlmModelService {
         }
 
         public static DownloadSnapshot idle() {
-            return new DownloadSnapshot(false, false, false, "", "空闲", 0, "", System.currentTimeMillis());
+            return new DownloadSnapshot(false, false, false, "", STATUS_IDLE_KEY, 0, "", System.currentTimeMillis());
         }
     }
 
@@ -116,22 +127,22 @@ public final class LlmModelService {
 
     public void downloadModel(LlmModelInfo info, DownloadProgressCallback callback) {
         if (info == null) {
-            if (callback != null) callback.onError("LLM 模型信息为空");
+            if (callback != null) callback.onError(ERROR_MODEL_INFO_MISSING_KEY);
             return;
         }
         Path modelDir = resolveModelDir(info);
         if (modelDir == null) {
-            if (callback != null) callback.onError("无法解析 LLM 模型目录");
+            if (callback != null) callback.onError(ERROR_MODEL_PATH_UNRESOLVED_KEY);
             return;
         }
         DownloadTask task = new DownloadTask(info.name, modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.llm.download_busy", "LLM 模型下载已在进行");
-            if (callback != null) callback.onError("已有 LLM 模型正在下载");
+            publishFailed("tianshu.presence.module.llm.download_busy", "");
+            if (callback != null) callback.onError(ERROR_DOWNLOAD_BUSY_KEY);
             return;
         }
-        updateDownload(true, false, false, info.name, "下载中", 0, "");
-        publishWaiting("tianshu.presence.module.llm.download_started", "LLM 模型下载中");
+        updateDownload(true, false, false, info.name, STATUS_DOWNLOADING_KEY, 0, "");
+        publishWaiting("tianshu.presence.module.llm.download_started", "");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.llm")
@@ -144,9 +155,9 @@ public final class LlmModelService {
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
-            updateDownload(false, false, false, info.name, "Download queue is full", 0, "Download queue is full");
-            publishFailed("tianshu.presence.module.llm.download_queue_full", "LLM 模型下载队列已满");
-            if (callback != null) callback.onError("Download queue is full");
+            updateDownload(false, false, false, info.name, STATUS_DOWNLOAD_FAILED_KEY, 0, ERROR_DOWNLOAD_QUEUE_FULL_KEY);
+            publishFailed("tianshu.presence.module.llm.download_queue_full", "");
+            if (callback != null) callback.onError(ERROR_DOWNLOAD_QUEUE_FULL_KEY);
         }
     }
 
@@ -158,7 +169,7 @@ public final class LlmModelService {
         }
         task.session().pause();
         updateDownload(true, true, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
-        publishWaiting("tianshu.presence.module.llm.download_paused", "LLM 模型下载已暂停");
+        publishWaiting("tianshu.presence.module.llm.download_paused", "");
     }
 
     public void resumeDownload() {
@@ -169,7 +180,7 @@ public final class LlmModelService {
         }
         task.session().resume();
         updateDownload(true, false, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
-        publishWaiting("tianshu.presence.module.llm.download_resumed", "LLM 模型下载已恢复");
+        publishWaiting("tianshu.presence.module.llm.download_resumed", "");
     }
 
     public void cancelDownload() {
@@ -189,8 +200,8 @@ public final class LlmModelService {
                         .build(),
                 task.session()::cancelActiveTransfers
         );
-        updateDownload(true, false, true, task.modelName(), "正在取消", current.percent(), "");
-        publishWaiting("tianshu.presence.module.llm.download_cancelling", "正在取消 LLM 模型下载");
+        updateDownload(true, false, true, task.modelName(), STATUS_CANCELLING_KEY, current.percent(), "");
+        publishWaiting("tianshu.presence.module.llm.download_cancelling", "");
     }
 
     public boolean isDownloading() {
@@ -208,7 +219,7 @@ public final class LlmModelService {
             deleteRecursively(modelDir);
             return true;
         } catch (IOException e) {
-            env.error("删除 LLM 模型失败", e);
+            env.error("Failed to delete LLM model", e);
             return false;
         }
     }
@@ -280,7 +291,7 @@ public final class LlmModelService {
             if (task.session().isCancelled() || isDownloadCancelled(e)) {
                 finishDownloadCancelled(task, callback);
             } else {
-                finishDownloadError(task, callback, e.getMessage() == null ? "LLM 模型下载失败" : e.getMessage());
+                finishDownloadError(task, callback, e.getMessage());
             }
         }
     }
@@ -312,7 +323,7 @@ public final class LlmModelService {
                 deleteTemporaryDownloadFiles(modelDir);
                 deleteDirectoryIfEmpty(modelDir);
             } catch (IOException e) {
-                env.warn("清理未完成的 LLM 模型下载失败: " + modelDir + " - " + e.getMessage());
+                env.warn("Failed to clean incomplete LLM model download: " + modelDir + " - " + e.getMessage());
             }
         }
     }
@@ -355,8 +366,8 @@ public final class LlmModelService {
         if (!finishTask(task)) {
             return;
         }
-        updateDownload(false, false, false, task.modelName(), "下载完成", 100, "");
-        publishReady("tianshu.presence.module.llm.download_complete", "LLM 模型下载完成");
+        updateDownload(false, false, false, task.modelName(), STATUS_DOWNLOAD_COMPLETE_KEY, 100, "");
+        publishReady("tianshu.presence.module.llm.download_complete", "");
         if (callback != null) callback.onComplete();
     }
 
@@ -365,8 +376,8 @@ public final class LlmModelService {
             return;
         }
         cleanupCancelledDownload(task);
-        updateDownload(false, false, false, task.modelName(), "下载已取消", downloadSnapshot.get().percent(), "");
-        publishReady("tianshu.presence.module.llm.download_cancelled", "LLM 模型下载已取消");
+        updateDownload(false, false, false, task.modelName(), STATUS_CANCELLED_KEY, downloadSnapshot.get().percent(), "");
+        publishReady("tianshu.presence.module.llm.download_cancelled", "");
         if (callback != null) callback.onCancelled();
     }
 
@@ -374,9 +385,12 @@ public final class LlmModelService {
         if (!finishTask(task)) {
             return;
         }
-        updateDownload(false, false, false, task.modelName(), "下载失败", downloadSnapshot.get().percent(), message);
-        publishFailed("tianshu.presence.module.llm.download_failed", "LLM 模型下载失败");
-        if (callback != null) callback.onError(message);
+        if (message != null && !message.isBlank()) {
+            env.warn("LLM model download failed: " + message);
+        }
+        updateDownload(false, false, false, task.modelName(), STATUS_DOWNLOAD_FAILED_KEY, downloadSnapshot.get().percent(), ERROR_DOWNLOAD_FAILED_KEY);
+        publishFailed("tianshu.presence.module.llm.download_failed", "");
+        if (callback != null) callback.onError(ERROR_DOWNLOAD_FAILED_KEY);
     }
 
     private void publishReady(String messageKey, String fallbackTitle) {
@@ -402,7 +416,7 @@ public final class LlmModelService {
         try {
             deleteRecursivelyIfExists(modelDir);
         } catch (IOException e) {
-            env.warn("清理已取消的 LLM 模型目录失败: " + modelDir + " - " + e.getMessage());
+            env.warn("Failed to clean cancelled LLM model directory: " + modelDir + " - " + e.getMessage());
         }
     }
 
@@ -468,7 +482,7 @@ public final class LlmModelService {
             if (!isCurrentTask(task) || task.session().isCancelled()) {
                 return;
             }
-            String safeLabel = label == null ? "" : label.trim();
+            String safeLabel = STATUS_DOWNLOADING_KEY;
             int safePercent = Math.max(0, Math.min(100, percent));
             long now = System.currentTimeMillis();
             boolean changed = safePercent != lastPercent || !safeLabel.equals(lastLabel);

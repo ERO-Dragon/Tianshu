@@ -44,7 +44,7 @@ class LLMServiceTest {
     }
 
     @Test
-    void ragPromptAndHitsDoNotApplyTokenBudgetWithoutLibsCount() {
+    void ragPromptAndHitsRemainWholeWhenTheyFitTokenBudget() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);
         LLMRequest request = LLMRequest.of(
@@ -58,6 +58,22 @@ class LLMServiceTest {
                 "system".equals(message.role) && message.content.contains("abcdefghijklmnop")));
         assertEquals(1, result.ragHits().size());
         assertEquals("abcdefghijklmnop", result.ragHits().get(0).hits().get(0).content());
+    }
+
+    @Test
+    void ragTokenBudgetKeepsOnlyWholeResultsThatFitTokenizerCount() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        client.countMessageCharacters = true;
+        LLMService service = service(client);
+
+        LLMService.LLMResult result = service.chat(LLMRequest.of(
+                Chunk.message(MessageItem.user("query")),
+                Chunk.rag("memory", "", List.of("1234", "5678"), false, true, 4)
+        ));
+
+        assertEquals("1. 1234", client.lastMessages.get(0).content.trim());
+        assertEquals(1, result.ragHits().get(0).hits().size());
+        assertEquals("1234", result.ragHits().get(0).hits().get(0).content());
     }
 
     @Test
@@ -150,6 +166,32 @@ class LLMServiceTest {
         assertEquals(1, result.ragHits().size());
         assertTrue(client.lastMessages.stream().anyMatch(message ->
                 "system".equals(message.role) && message.content.contains("one")));
+    }
+
+    @Test
+    void blankRagPromptAddsOnlyRetrievedContents() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+
+        service.chat(LLMRequest.of(
+                Chunk.message(MessageItem.user("query text")),
+                Chunk.rag("dynamic", "", List.of("first fact", "second fact"), false, false, 1000)
+        ));
+
+        assertEquals("1. first fact\n2. second fact", client.lastMessages.get(0).content.trim());
+    }
+
+    @Test
+    void explicitRagPromptRemainsTheCallerOwnedPrefix() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        LLMService service = service(client);
+
+        service.chat(LLMRequest.of(
+                Chunk.message(MessageItem.user("query text")),
+                Chunk.rag("dynamic", "Caller prompt:", List.of("fact"), false, false, 1000)
+        ));
+
+        assertEquals("Caller prompt:\n1. fact", client.lastMessages.get(0).content.trim());
     }
 
     @Test
@@ -308,6 +350,7 @@ class LLMServiceTest {
         private boolean chatQueueCapacity = true;
         private boolean taskQueueCapacity = true;
         private boolean thinkingSupported = true;
+        private boolean countMessageCharacters;
         private CompletableFuture<String> taskStreamFuture = CompletableFuture.completedFuture("streamed");
         private Consumer<String> taskStreamTokenConsumer = ignored -> {};
 
@@ -434,6 +477,9 @@ class LLMServiceTest {
         @Override
         public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
             tokenCountCalls++;
+            if (countMessageCharacters) {
+                return messages == null ? 0 : messages.stream().mapToInt(message -> message.content.length()).sum();
+            }
             return messages == null ? 0 : messages.size();
         }
 

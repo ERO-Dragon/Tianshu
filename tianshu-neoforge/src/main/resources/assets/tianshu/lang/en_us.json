@@ -340,6 +340,11 @@
   "tianshu.gui.llm.status.paused": "Paused",
   "tianshu.gui.llm.status.cancelled": "Cancelled",
   "tianshu.gui.llm.status.cancelling": "Cancelling",
+  "tianshu.gui.llm.error.model_info_missing": "LLM model information is unavailable",
+  "tianshu.gui.llm.error.model_path_unresolved": "The LLM model directory could not be resolved",
+  "tianshu.gui.llm.error.download_busy": "Another LLM model download is already running",
+  "tianshu.gui.llm.error.download_queue_full": "The LLM model download queue is full",
+  "tianshu.gui.llm.error.download_failed": "LLM model download failed",
   "tianshu.gui.llm.mtp.status.supported": "Supported, not calibrated",
   "tianshu.gui.llm.mtp.status.calibrated": "Supported, recommended draftMax=%s",
 

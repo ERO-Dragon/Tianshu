@@ -340,6 +340,11 @@
   "tianshu.gui.llm.status.paused": "已暂停",
   "tianshu.gui.llm.status.cancelled": "已取消",
   "tianshu.gui.llm.status.cancelling": "正在取消",
+  "tianshu.gui.llm.error.model_info_missing": "LLM 模型信息不可用",
+  "tianshu.gui.llm.error.model_path_unresolved": "无法解析 LLM 模型目录",
+  "tianshu.gui.llm.error.download_busy": "已有其他 LLM 模型正在下载",
+  "tianshu.gui.llm.error.download_queue_full": "LLM 模型下载队列已满",
+  "tianshu.gui.llm.error.download_failed": "LLM 模型下载失败",
   "tianshu.gui.llm.mtp.status.supported": "支持，尚未校准",
   "tianshu.gui.llm.mtp.status.calibrated": "支持，推荐 draftMax=%s",
 

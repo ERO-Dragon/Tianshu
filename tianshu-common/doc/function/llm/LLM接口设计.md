@@ -23,6 +23,19 @@ LLM 模块对外提供三个协议能力：
 | `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManageResultPayload` | cache 管理结果 |
 | `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveResultPayload` | 原语查询结果，按请求类型返回 token、vector 或状态快照 |
 
+### 1.1 模块内部职责边界
+
+`LLMService` 是稳定的模块内 facade，现有调用方不需要迁移。其内部职责按下面的边界协作：
+
+- `LlmRequestPreparer`：规范化消息、合并 system message、组装 sampler、RAG chunk 和 inference options。
+- `LlmRagService`：管理 RAG cache/library、检索、token budget、RAG hits 和注入文本组装。
+- `LlmRuntimeInspector`：提供 readiness、队列、MTP、context budget、embedding metadata 和 runtime snapshot。
+- `LlmEmbeddingServiceAdapter`：隔离 embedding 调用边界。
+
+`LlmProtocolAdapter` 只保留 capability/topic 注册、协议 transport 和稳定 public API。协议 payload 映射由 `LlmPromptPayloadMapper` 完成，CHAT/TASK 授权、admission、执行、取消和错误分类由 `LlmPromptRequestHandler` 完成，流式累计状态由 `LlmStreamState` 同步维护。
+
+这些拆分不改变 chat/task、stream、thinking、usage、finish、取消、MTP 或 RAG 协议语义。模型推理、embedding、RAG 检索、持久化和模型下载都必须在受管后台执行 lane 中运行，不得占用 Minecraft 主线程。
+
 ---
 
 ## 2. `ProtocolCapabilities.LLM_REQUEST`
@@ -125,10 +138,10 @@ TASK 请求不走 CHAT 的 IA 授权，但会进入 LLM 模块的 TASK admission
 | `messageContent` | 空列表 | `type=message` 时使用，按顺序加入消息上下文。 |
 | `ragContent` | 空列表 | `type=rag` 时使用。非空时可被增量索引进 RAG cache。 |
 | `uid` | 空字符串 | RAG 库标识；LLM 只按 uid 分桶，不理解世界、全局、模块、聚类等上层语义。 |
-| `prompt` | 空字符串 | RAG 命中内容注入模型前的提示前缀。 |
+| `prompt` | 空字符串 | 调用方显式提供的 RAG 前缀。空值不会生成默认提示引子，只注入编号后的检索正文。 |
 | `useCache` | `true` | `true` 使用 LLM 模块持久 RAG cache；`false` 仅对本次 `ragContent` 走 libs 内联检索。 |
 | `includeRagHits` | `true` | 是否在最终 `LLMPromptResultPayload` 中返回命中的 RAG 内容。 |
-| `memoryRagTokenBudget` | `1000` | 本 chunk 注入模型的 RAG 文本预算。 |
+| `memoryRagTokenBudget` | `1000` | 本 chunk 检索正文的 token 预算；按命中顺序贪心选择完整条目，不截断单条知识。 |
 
 `message` chunk 示例：
 
@@ -151,6 +164,13 @@ LLMPromptRequestPayload.ChunkPayload.rag(
     1000
 );
 ```
+
+RAG 组装规则：
+
+- `prompt` 为空时，模型只收到 `1. ...`、`2. ...` 形式的命中正文，不附加任何默认语言提示。
+- `prompt` 非空时，该文本由调用方拥有并原样作为前缀保留。
+- `memoryRagTokenBudget <= 0` 时不注入检索正文；大于零时按检索排名逐条尝试，只有整条加入后仍在预算内才保留。
+- token budget 只约束命中正文，不截断调用方显式 `prompt`。如果当前 tokenizer 不支持计数或计数失败，为保持推理可用性会退化为保留完整命中结果。
 
 ### 2.3 MessageItemPayload 字段
 
@@ -217,6 +237,8 @@ LLMPromptRequestPayload.ChunkPayload.rag(
 | `errorMessage` | `null` | 仅 `finishType=FAILED` 时携带底层错误信息。 |
 
 流式请求使用结构化双通道：正文 token 放在 `text`；thinking token 放在 `thinkingContent`。结束包会携带本次汇总后的 `thinkingContent`，最终 `LLMPromptResultPayload` 也会带同一语义的汇总结果。
+
+正文、thinking、chunk index、RAG metadata 和 terminal snapshot 由单一同步状态对象维护。普通分片与结束回调即使来自不同线程，也必须从同一快照生成，避免 terminal chunk 丢失已经发布的 thinking 或可见正文。
 
 ### 2.7 RagHitPayload 字段
 

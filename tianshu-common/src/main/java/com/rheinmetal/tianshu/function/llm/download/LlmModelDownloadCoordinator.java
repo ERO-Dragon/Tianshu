@@ -24,6 +24,7 @@ public final class LlmModelDownloadCoordinator {
         private final LlmModelDownloader downloader;
         private final AtomicBoolean paused = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final Object pauseMonitor = new Object();
         private volatile boolean cancelNotified;
 
         private DownloadSession(LlmModelDownloader downloader) {
@@ -47,12 +48,18 @@ public final class LlmModelDownloadCoordinator {
         public void resume() {
             if (!cancelled.get()) {
                 paused.set(false);
+                synchronized (pauseMonitor) {
+                    pauseMonitor.notifyAll();
+                }
             }
         }
 
         public void cancel() {
             cancelled.set(true);
             paused.set(false);
+            synchronized (pauseMonitor) {
+                pauseMonitor.notifyAll();
+            }
         }
 
         public void cancelActiveTransfers() {
@@ -66,19 +73,18 @@ public final class LlmModelDownloadCoordinator {
             downloader.downloadSync(info, targetDir, callback, this::awaitReady);
         }
 
-        private void awaitReady() throws IOException {
+        void awaitReady() throws IOException {
             if (cancelled.get()) {
                 throw new LlmModelDownloader.DownloadCancelledException();
             }
-            while (paused.get()) {
-                if (cancelled.get()) {
-                    throw new LlmModelDownloader.DownloadCancelledException();
-                }
-                try {
-                    Thread.sleep(200L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Download thread was interrupted", e);
+            synchronized (pauseMonitor) {
+                while (paused.get() && !cancelled.get()) {
+                    try {
+                        pauseMonitor.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Download thread was interrupted", e);
+                    }
                 }
             }
             if (cancelled.get()) {
