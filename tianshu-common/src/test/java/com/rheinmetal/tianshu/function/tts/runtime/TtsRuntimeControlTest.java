@@ -47,7 +47,7 @@ class TtsRuntimeControlTest {
     void submitStreamRejectsNullChunkWhenRunning() {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
         TtsRuntime runtime = runtime(engine, new ArrayList<>());
-        runtime.prepare();
+        prepareRuntime(runtime);
         AtomicReference<TtsFailure> failureRef = new AtomicReference<>();
 
         TtsOperationResult result = runtime.submitStream(null, null, failureRef::set);
@@ -62,7 +62,7 @@ class TtsRuntimeControlTest {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         TtsOperationResult first = runtime.submitStream(chunk("stream-1", "hello", false), null, null);
         TtsOperationResult last = runtime.submitStream(chunk("stream-1", " world", true), null, null);
@@ -79,7 +79,7 @@ class TtsRuntimeControlTest {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
         List<byte[]> chunks = Collections.synchronizedList(new ArrayList<>());
         List<Boolean> lastFlags = Collections.synchronizedList(new ArrayList<>());
         java.util.concurrent.CountDownLatch completed = new java.util.concurrent.CountDownLatch(1);
@@ -109,7 +109,7 @@ class TtsRuntimeControlTest {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
         AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
         CountDownLatch failed = new CountDownLatch(1);
 
@@ -139,7 +139,7 @@ class TtsRuntimeControlTest {
     void queuedSynthesisTaskExpiresBeforeItStarts() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         TtsRuntime runtime = runtime(engine, Collections.synchronizedList(new ArrayList<>()));
-        runtime.prepare();
+        prepareRuntime(runtime);
         AtomicReference<TtsFailure> expiredFailure = new AtomicReference<>();
         CountDownLatch expired = new CountDownLatch(1);
 
@@ -168,7 +168,7 @@ class TtsRuntimeControlTest {
     void stopRequestCancelsQueuedSynthesisTask() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         TtsRuntime runtime = runtime(engine, Collections.synchronizedList(new ArrayList<>()));
-        runtime.prepare();
+        prepareRuntime(runtime);
         AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
         CountDownLatch failed = new CountDownLatch(1);
 
@@ -201,7 +201,7 @@ class TtsRuntimeControlTest {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("running"), null, null);
         assertTrue(engine.awaitStarted());
@@ -221,7 +221,7 @@ class TtsRuntimeControlTest {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("stream-1:part-a"), null, null);
         assertTrue(engine.awaitStarted());
@@ -241,7 +241,7 @@ class TtsRuntimeControlTest {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("stream-1:part-a"), null, null);
         assertTrue(engine.awaitStarted());
@@ -265,7 +265,7 @@ class TtsRuntimeControlTest {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("running"), null, null);
         assertTrue(engine.awaitStarted());
@@ -287,7 +287,7 @@ class TtsRuntimeControlTest {
         FailingSynthesisEngine engine = new FailingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
         AtomicReference<TtsFailure> failureRef = new AtomicReference<>();
 
         TtsOperationResult result = runtime.submit(request("failing"), null, failureRef::set);
@@ -295,6 +295,18 @@ class TtsRuntimeControlTest {
         assertTrue(result.accepted());
         assertTrue(awaitState(statuses, "failing", TtsSessionState.FAILED));
         assertEquals(TtsFailureCode.SYNTHESIS_FAILED, failureRef.get().code());
+    }
+
+    private static void prepareRuntime(TtsRuntime runtime) {
+        CountDownLatch prepared = new CountDownLatch(1);
+        TtsOperationResult result = runtime.prepare(initialized -> prepared.countDown());
+        assertTrue(result.accepted());
+        try {
+            assertTrue(prepared.await(2, TimeUnit.SECONDS));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while preparing TTS runtime", exception);
+        }
     }
 
     private TtsRuntime runtime(TtsSynthesisEngine engine, List<TtsSession> statuses) {

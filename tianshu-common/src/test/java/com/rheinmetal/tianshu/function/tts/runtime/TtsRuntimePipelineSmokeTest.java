@@ -32,7 +32,7 @@ class TtsRuntimePipelineSmokeTest {
         PipelineEngine engine = new PipelineEngine();
         SlowAudioBridge audioBridge = new SlowAudioBridge();
         TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, ignored -> {}, ignored -> {});
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("long-1", "这是一句比较长的回复，用来制造足够长的播放缓冲。"), null, null);
         runtime.submit(request("short-1", "好的。"), null, null);
@@ -59,7 +59,7 @@ class TtsRuntimePipelineSmokeTest {
         SlowAudioBridge audioBridge = new SlowAudioBridge();
         List<TtsSession> statuses = java.util.Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, statuses::add, ignored -> {});
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("long-1", "long playback"), null, null);
         assertTrue(engine.awaitInvocations(1), "first speech should be synthesized");
@@ -85,7 +85,7 @@ class TtsRuntimePipelineSmokeTest {
         SlowAudioBridge audioBridge = new SlowAudioBridge();
         List<TtsSession> statuses = java.util.Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, statuses::add, ignored -> {});
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(interruptRequest("interrupt-1", "first interrupt"), null, null);
         assertTrue(engine.awaitInvocations(1), "first interrupt request should be synthesized");
@@ -100,6 +100,18 @@ class TtsRuntimePipelineSmokeTest {
         assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("interrupt-2") && session.state() == TtsSessionState.CANCELLED));
 
         runtime.stopAll("test done");
+    }
+
+    private static void prepareRuntime(TtsRuntime runtime) {
+        CountDownLatch prepared = new CountDownLatch(1);
+        TtsOperationResult result = runtime.prepare(initialized -> prepared.countDown());
+        assertTrue(result.accepted());
+        try {
+            assertTrue(prepared.await(2, TimeUnit.SECONDS));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while preparing TTS runtime", exception);
+        }
     }
 
     private static TtsRequest request(String requestId, String text) {

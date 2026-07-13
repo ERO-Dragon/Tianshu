@@ -3,8 +3,9 @@ package com.rheinmetal.tianshu.function.tts.synthesis;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
-import com.rheinmetal.tianshu.model.tts.moss.MossTtsService;
+import com.rheinmetal.tianshu.function.tts.synthesis.moss.MossTtsService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,6 +43,7 @@ public final class MossTtsBackend implements TtsBackend {
             env.info("MOSS-TTS backend initialized, sampleRate=" + sampleRate + "Hz");
             return true;
         } catch (Throwable t) {
+            TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("MOSS-TTS backend initialization failed", t);
             shutdown();
             return false;
@@ -89,6 +91,7 @@ public final class MossTtsBackend implements TtsBackend {
                 env.info("MOSS-TTS synthesis completed: " + request.text());
             }
         } catch (Throwable t) {
+            TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("MOSS-TTS synthesis failed: " + request.text(), t);
             throw new IllegalStateException("MOSS-TTS synthesis failed", t);
         }

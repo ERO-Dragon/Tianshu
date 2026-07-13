@@ -5,6 +5,7 @@ import com.k2fsa.sherpa.onnx.OfflineTts;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.model.ModelSettings;
 
 import java.util.Map;
@@ -43,6 +44,7 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
             env.info("Sherpa ONNX TTS backend initialized, sampleRate=" + sampleRate + "Hz, speakers=" + tts.getNumSpeakers());
             return true;
         } catch (Throwable t) {
+            TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("Sherpa ONNX TTS backend initialization failed", t);
             shutdown();
             return false;
@@ -90,6 +92,7 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
                 env.info("Sherpa ONNX TTS synthesis completed: " + request.text());
             }
         } catch (Throwable t) {
+            TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("Sherpa ONNX TTS synthesis failed: " + request.text(), t);
             throw new IllegalStateException("Sherpa ONNX TTS synthesis failed", t);
         }
@@ -147,6 +150,7 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
                 env.info("ZipVoice synthesis completed: " + request.text());
             }
         } catch (Throwable t) {
+            TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("ZipVoice synthesis failed: " + request.text(), t);
             throw new IllegalStateException("ZipVoice synthesis failed", t);
         }

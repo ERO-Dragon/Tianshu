@@ -17,6 +17,7 @@ import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
 import com.rheinmetal.tianshu.function.tts.TtsModelService;
 import com.rheinmetal.tianshu.function.tts.TtsModuleService;
 import com.rheinmetal.tianshu.function.tts.TtsVoiceLibraryService;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsFailure;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsOperationResult;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile;
 import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsApplier;
@@ -330,12 +331,12 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 previewStatus = tts("status.preview_complete");
             }), failure -> runOnClient(() -> {
                 previewRunning.set(false);
-                previewStatus = failure == null || failure.message().isBlank() ? tts("status.preview_failed") : Component.literal(failure.message());
+                previewStatus = failureStatus(failure);
                 context.showStatus(previewStatus, 4000);
             }));
             if (!result.accepted()) {
                 previewRunning.set(false);
-                previewStatus = result.failure() == null ? tts("status.preview_failed") : Component.literal(result.failure().message());
+                previewStatus = failureStatus(result.failure());
                 context.showStatus(previewStatus, 4000);
             }
         }
@@ -420,6 +421,20 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             return previewStatus;
         }
 
+        private Component failureStatus(TtsFailure failure) {
+            if (failure == null || failure.code() == null) {
+                return tts("status.preview_failed");
+            }
+            return tts("failure." + failure.code().name().toLowerCase(Locale.ROOT));
+        }
+
+        private Component localizedKey(String key, String fallbackSuffix) {
+            if (key != null && key.startsWith("tianshu.gui.tts.")) {
+                return Component.translatable(key);
+            }
+            return tts(fallbackSuffix);
+        }
+
         private Component downloadStatus() {
             TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
             if (status != null && status.downloading()) {
@@ -427,7 +442,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                         ? tts("status.cancelling")
                         : status.paused()
                         ? tts("status.paused")
-                        : status.label() == null || status.label().isBlank() ? tts("status.downloading") : Component.literal(status.label());
+                        : status.label() == null || status.label().isBlank() ? tts("status.downloading") : localizedKey(status.label(), "status.downloading");
                 return tts("download.progress", label, Math.max(0, Math.min(100, status.progress())));
             }
             return tts("status.idle");
@@ -463,7 +478,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onError(String message) {
                     runOnClient(() -> {
-                        Component downloadLabel = message == null ? tts("status.download_failed") : Component.literal(message);
+                        Component downloadLabel = localizedKey(message, "status.download_failed");
                         context.showStatus(downloadLabel, 4000);
                         refreshSettingsScreen();
                     });

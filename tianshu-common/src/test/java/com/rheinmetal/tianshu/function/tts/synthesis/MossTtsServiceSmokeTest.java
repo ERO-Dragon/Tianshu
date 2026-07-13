@@ -2,9 +2,10 @@ package com.rheinmetal.tianshu.function.tts.synthesis;
 
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
+import com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
-import com.rheinmetal.tianshu.model.tts.moss.MossTtsService;
-import com.rheinmetal.tianshu.model.tts.moss.WavWriter;
+import com.rheinmetal.tianshu.function.tts.synthesis.moss.MossTtsService;
+import com.rheinmetal.tianshu.function.tts.synthesis.moss.WavWriter;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,7 @@ class MossTtsServiceSmokeTest {
     void synthesizesShortVoiceCloneSample() throws Exception {
         Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("TIANSHU_MOSS_SMOKE")),
                 "Set TIANSHU_MOSS_SMOKE=true to run the real MOSS-TTS smoke test");
+        NativeLibraryLoader.ensureLoaded();
 
         Path modelDir = resolveExistingPath(
                 Path.of("libs", "MOSS-TTS-Nano-main", "model"),
@@ -60,6 +62,8 @@ class MossTtsServiceSmokeTest {
             List<Integer> frameCounts = new ArrayList<>();
             List<Integer> streamChunkCounts = new ArrayList<>();
             List<Integer> sampleCounts = new ArrayList<>();
+            List<Long> audioMillisList = new ArrayList<>();
+            List<Double> rtfList = new ArrayList<>();
             Files.createDirectories(outputDir);
             boolean streaming = smokeStreaming();
             long synthAllStart = System.nanoTime();
@@ -96,6 +100,14 @@ class MossTtsServiceSmokeTest {
                 frameCounts.add(frameCount);
                 streamChunkCounts.add(chunks.size());
                 sampleCounts.add(merged[0].length);
+                long audioMillis = merged[0].length * 1000L / service.getSampleRate();
+                double rtf = audioMillis <= 0L ? Double.POSITIVE_INFINITY : synthMillis / (double) audioMillis;
+                audioMillisList.add(audioMillis);
+                rtfList.add(rtf);
+                double maxRtf = smokeMaxRtf();
+                if (Double.isFinite(maxRtf)) {
+                    assertTrue(rtf <= maxRtf, "MOSS RTF " + rtf + " exceeded configured maximum " + maxRtf);
+                }
             }
             long synthAllMillis = elapsedMillis(synthAllStart);
 
@@ -120,7 +132,8 @@ class MossTtsServiceSmokeTest {
                         + ", frames=" + frameCounts.get(i)
                         + ", streamChunks=" + streamChunkCounts.get(i)
                         + ", samples=" + sampleCounts.get(i)
-                        + ", audioMillis=" + (sampleCounts.get(i) * 1000L / service.getSampleRate())
+                        + ", audioMillis=" + audioMillisList.get(i)
+                        + ", rtf=" + String.format(java.util.Locale.ROOT, "%.4f", rtfList.get(i))
                         + ", text=" + texts.get(i));
             }
             System.out.println("  synthAllMillis=" + synthAllMillis);
@@ -225,6 +238,19 @@ class MossTtsServiceSmokeTest {
             return Math.max(1, Integer.parseInt(value.trim()));
         } catch (NumberFormatException ignored) {
             return 1;
+        }
+    }
+
+    private static double smokeMaxRtf() {
+        String value = System.getenv("TIANSHU_MOSS_MAX_RTF");
+        if (value == null || value.isBlank()) {
+            return Double.NaN;
+        }
+        try {
+            double parsed = Double.parseDouble(value.trim());
+            return parsed > 0.0D ? parsed : Double.NaN;
+        } catch (NumberFormatException ignored) {
+            return Double.NaN;
         }
     }
 

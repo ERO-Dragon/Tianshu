@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
-import com.rheinmetal.tianshu.function.tts.text.TtsSentenceSegmenter;
 import com.rheinmetal.tianshu.function.tts.text.TtsStreamBuffer;
+import com.rheinmetal.tianshu.text.SentenceSegmenter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +24,7 @@ public final class TtsStreamRegistry {
             }
             return List.of();
         }
-        TtsStreamBuffer buffer = streams.computeIfAbsent(chunk.streamId(), ignored -> new TtsStreamBuffer(new TtsSentenceSegmenter()));
+        TtsStreamBuffer buffer = streams.computeIfAbsent(chunk.streamId(), ignored -> new TtsStreamBuffer(new SentenceSegmenter()));
         List<String> segments = new ArrayList<>(buffer.appendSegments(chunk.text()));
         if (chunk.last()) {
             buffer.flush().ifPresent(segments::add);

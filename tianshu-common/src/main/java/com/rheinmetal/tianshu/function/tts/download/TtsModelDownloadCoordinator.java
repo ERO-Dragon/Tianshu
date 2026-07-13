@@ -41,6 +41,7 @@ public final class TtsModelDownloadCoordinator {
         private final IGameEnvironment env;
         private final HuggingFaceDownloader hfDownloader;
         private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
+        private final Object pauseMonitor = new Object();
         private final AtomicBoolean paused = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
@@ -58,20 +59,28 @@ public final class TtsModelDownloadCoordinator {
         }
 
         public void pause() {
-            if (!cancelled.get()) {
-                paused.set(true);
+            synchronized (pauseMonitor) {
+                if (!cancelled.get()) {
+                    paused.set(true);
+                }
             }
         }
 
         public void resume() {
-            if (!cancelled.get()) {
-                paused.set(false);
+            synchronized (pauseMonitor) {
+                if (!cancelled.get()) {
+                    paused.set(false);
+                }
+                pauseMonitor.notifyAll();
             }
         }
 
         public void cancel() {
-            cancelled.set(true);
-            paused.set(false);
+            synchronized (pauseMonitor) {
+                cancelled.set(true);
+                paused.set(false);
+                pauseMonitor.notifyAll();
+            }
             cancelActiveTransfers();
         }
 
@@ -104,7 +113,7 @@ public final class TtsModelDownloadCoordinator {
                     conn.setRequestProperty("User-Agent", "Tianshu-Downloader/1.0");
                     int code = conn.getResponseCode();
                     if (code != 200) {
-                        throw new IOException("HTTP 错误: " + code);
+                        throw new IOException("HTTP request failed with status " + code);
                     }
                     long total = conn.getContentLengthLong();
                     long downloaded = 0L;
@@ -135,22 +144,21 @@ public final class TtsModelDownloadCoordinator {
                     }
                 }
             }
-            throw last != null ? last : new IOException("下载失败");
+            throw last != null ? last : new IOException("Archive download failed");
         }
 
         public void awaitReady() throws IOException {
             if (cancelled.get() || Thread.currentThread().isInterrupted()) {
                 throw new DownloadCancelledException();
             }
-            while (paused.get()) {
-                if (cancelled.get() || Thread.currentThread().isInterrupted()) {
-                    throw new DownloadCancelledException();
-                }
-                try {
-                    Thread.sleep(200L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Download thread was interrupted", e);
+            synchronized (pauseMonitor) {
+                while (paused.get() && !cancelled.get()) {
+                    try {
+                        pauseMonitor.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Download thread was interrupted", e);
+                    }
                 }
             }
             if (cancelled.get() || Thread.currentThread().isInterrupted()) {

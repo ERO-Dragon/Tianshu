@@ -23,7 +23,7 @@ public final class TtsModelResolver {
             return Optional.empty();
         }
         if (!Files.isDirectory(modelDir)) {
-            env.warn("TTS 模型目录不存在: " + modelDir);
+            env.warn("tts.model.directory_missing: " + modelDir);
             return Optional.empty();
         }
         TtsModelInfo info = modelService.resolveCurrentModelInfo();

@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.model.tts.moss;
+package com.rheinmetal.tianshu.function.tts.synthesis.moss;
 
 import java.io.IOException;
 import java.io.OutputStream;

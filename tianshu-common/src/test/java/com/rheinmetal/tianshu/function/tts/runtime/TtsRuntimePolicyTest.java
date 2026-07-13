@@ -36,7 +36,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("first", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
@@ -55,7 +55,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("first", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
@@ -75,7 +75,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("first", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
@@ -94,7 +94,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("low", TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
@@ -113,7 +113,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
@@ -135,7 +135,7 @@ class TtsRuntimePolicyTest {
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         List<TtsPlaybackState> playbackStates = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses, playbackStates);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("speak-1", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
@@ -158,7 +158,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("first", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
@@ -176,7 +176,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
         AtomicReference<TtsFailure> failureRef = new AtomicReference<>();
 
         runtime.submit(request("running", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
@@ -200,7 +200,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("running", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
@@ -219,7 +219,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("speak-1", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
@@ -242,7 +242,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
@@ -262,7 +262,7 @@ class TtsRuntimePolicyTest {
         FakeAudioBridge audioBridge = new FakeAudioBridge();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        runtime.prepare();
+        prepareRuntime(runtime);
 
         runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitFirstChunk("running"));
@@ -276,6 +276,18 @@ class TtsRuntimePolicyTest {
         audioBridge.finishCallback();
         assertTrue(awaitOptionalState(statuses, "running", TtsSessionState.COMPLETED, 500));
         assertEquals(List.of(1, 2, 9), audioBridge.playedMarkers());
+    }
+
+    private static void prepareRuntime(TtsRuntime runtime) {
+        CountDownLatch prepared = new CountDownLatch(1);
+        TtsOperationResult result = runtime.prepare(initialized -> prepared.countDown());
+        assertTrue(result.accepted());
+        try {
+            assertTrue(prepared.await(2, TimeUnit.SECONDS));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while preparing TTS runtime", exception);
+        }
     }
 
     private TtsRuntime runtime(TtsSynthesisEngine engine, FakeAudioBridge audioBridge, List<TtsSession> statuses) {

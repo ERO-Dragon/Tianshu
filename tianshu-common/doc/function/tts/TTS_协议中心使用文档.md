@@ -309,7 +309,7 @@ TtsControlPayload payload = new TtsControlPayload(
 | `STOP_CURRENT` | 停止当前正在播放的本地播报。 |
 | `STOP` | `targetRequestId` 为空时停止全部；非空时停止指定请求，也可取消纯合成任务。 |
 | `STOP_SOURCE` | 停止指定来源的本地播报。 |
-| `RELOAD_MODEL` | 重载 TTS 模型。 |
+| `RELOAD_MODEL` | 异步重载 TTS 模型；协议任务在 `MODEL_LOAD` 完成后才 complete/fail。 |
 | `LOAD_VOICE` | 加载音色克隆 profile。 |
 | `IMPORT_VOICE` | 从调用方传入的音频字节导入音色样本，并立刻加载。 |
 | `UNLOAD_VOICE` | 卸载指定音色。 |
@@ -328,6 +328,8 @@ TTS 会发布 `TTS.PLAYBACK` topic，payload 为 `TtsPlaybackStatusPayload`。
 | `ALERTING` | 正在播放插话、提醒或打断式播报。 |
 
 这个 topic 是模块级状态，不暴露内部 session 阶段。
+
+模型 prepare、reload、switch 和设置页 preview 都在 TTS 的 `MODEL_LOAD` lane 执行，不占用协议调用线程或 Minecraft 主线程。调用方不应在发送 `RELOAD_MODEL` 后自行 sleep；以协议 complete/fail 为最终结果。
 
 ## 8. 接入建议
 

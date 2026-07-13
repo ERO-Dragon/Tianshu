@@ -1,15 +1,17 @@
 package com.rheinmetal.tianshu.function.tts.text;
 
+import com.rheinmetal.tianshu.text.SentenceSegmenter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 public final class TtsStreamBuffer {
-    private final TtsSentenceSegmenter segmenter;
+    private final SentenceSegmenter segmenter;
     private final StringBuilder buffer = new StringBuilder();
 
-    public TtsStreamBuffer(TtsSentenceSegmenter segmenter) {
-        this.segmenter = segmenter == null ? new TtsSentenceSegmenter() : segmenter;
+    public TtsStreamBuffer(SentenceSegmenter segmenter) {
+        this.segmenter = segmenter == null ? new SentenceSegmenter() : segmenter;
     }
 
     public synchronized Optional<String> append(String text) {
@@ -38,7 +40,7 @@ public final class TtsStreamBuffer {
     }
 
     private Optional<String> drainNext() {
-        TtsSentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary(buffer.toString());
+        SentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary(buffer.toString());
         if (!boundary.shouldFlush()) {
             return Optional.empty();
         }

@@ -24,7 +24,6 @@ import java.util.function.Consumer;
 public final class TtsModuleService {
     private final AtomicReference<TtsRuntime> runtime = new AtomicReference<>();
     private final AtomicReference<TtsModelService> modelService = new AtomicReference<>();
-    private final Object previewModelLock = new Object();
 
     public void bindRuntime(TtsRuntime ttsRuntime) {
         runtime.set(Objects.requireNonNull(ttsRuntime));
@@ -106,25 +105,6 @@ public final class TtsModuleService {
             notifyFailure(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
-        synchronized (previewModelLock) {
-            String originalModel = models.currentConfiguredModelName();
-            TtsControlResult switchResult = current.useModel(previewModel.name);
-            if (!switchResult.accepted()) {
-                TtsFailure failure = switchResult.failure() == null
-                        ? TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS preview model reload failed")
-                        : switchResult.failure();
-                notifyFailure(onFailure, failure);
-                return TtsOperationResult.rejected(failure);
-            }
-            TtsOperationResult result = submitPreviewWithRestore(current, originalModel, text, voiceProfile, onComplete, onFailure);
-            if (!result.accepted()) {
-                restoreModelAfterPreview(current, originalModel, null);
-            }
-            return result;
-        }
-    }
-
-    private TtsOperationResult submitPreviewWithRestore(TtsRuntime current, String originalModel, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
         String requestId = "tts-preview:" + UUID.randomUUID();
         TtsRequest request = new TtsRequest(
                 requestId,
@@ -138,7 +118,7 @@ public final class TtsModuleService {
                 voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile,
                 false
         );
-        return current.submitWithModel(originalModel, request, onComplete, onFailure);
+        return current.previewWithModel(previewModel.name, models.currentConfiguredModelName(), request, onComplete, onFailure);
     }
 
     private TtsOperationResult submitPreview(TtsRuntime current, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
@@ -156,20 +136,6 @@ public final class TtsModuleService {
                 false
         );
         return current.submit(request, onComplete == null ? () -> {} : onComplete, onFailure == null ? ignored -> {} : onFailure);
-    }
-
-    private void restoreModelAfterPreview(TtsRuntime current, String originalModel, Runnable onRestored) {
-        synchronized (previewModelLock) {
-            try {
-                if (originalModel != null && !originalModel.isBlank()) {
-                    current.useModel(originalModel);
-                }
-            } finally {
-                if (onRestored != null) {
-                    onRestored.run();
-                }
-            }
-        }
     }
 
     public TtsControlResult stopPreview(String reason) {

@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsPlaybackPolicy;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequestSource;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntime;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsOperationResult;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsStreamChunk;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile;
 import com.rheinmetal.tianshu.function.tts.synthesis.DefaultTtsSynthesisEngine;
@@ -90,15 +91,21 @@ public final class TtsModule implements TianshuManagedModule {
             moduleService.bindRuntime(ttsRuntime);
         }
         context.services().register(TtsRuntime.class, ttsRuntime);
-        boolean initialized = ttsRuntime.prepare();
+        TtsOperationResult preparation = ttsRuntime.prepare(initialized -> completePreparation(context, initialized));
+        if (!preparation.accepted()) {
+            completePreparation(context, false);
+        }
+    }
+
+    private void completePreparation(ModuleRuntimeContext context, boolean initialized) {
         if (initialized) {
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.SYNTHESIS, moduleId());
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.PLAYBACK, moduleId());
-            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.tts.ready", "灵音共鸣已就绪"));
+            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.tts.ready", ""));
         } else {
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS synthesis engine initialization failed");
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.PLAYBACK, moduleId());
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.tts.failed", "TTS 合成引擎初始化失败"));
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.tts.failed", ""));
         }
     }
 
@@ -206,16 +213,23 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         if (payload.action() == TtsControlPayload.Action.RELOAD_MODEL) {
-            publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.tts.reload_started", "TTS 模型重载中"));
-            TtsControlResult result = ttsRuntime == null
-                    ? moduleService.reloadModel()
-                    : ttsRuntime.reloadModel();
-            if (result != null && result.accepted()) {
-                publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.tts.reload_complete", "TTS 模型重载完成"));
-            } else {
-                publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.tts.reload_failed", "TTS 模型重载失败"));
+            publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.tts.reload_started", ""));
+            if (ttsRuntime == null) {
+                completeOrFailControl(context, envelope.envelopeId(), moduleService.reloadModel());
+                return;
             }
-            completeOrFailControl(context, envelope.envelopeId(), result);
+            TtsOperationResult submitted = ttsRuntime.reloadModel(result -> {
+                if (result != null && result.accepted()) {
+                    publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.tts.reload_complete", ""));
+                } else {
+                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.tts.reload_failed", ""));
+                }
+                completeOrFailControl(context, envelope.envelopeId(), result);
+            });
+            if (!submitted.accepted()) {
+                TtsControlResult rejected = TtsControlResult.rejected(TtsControlAction.RELOAD_MODEL, submitted.failure());
+                completeOrFailControl(context, envelope.envelopeId(), rejected);
+            }
             return;
         }
         if (payload.action() == TtsControlPayload.Action.LOAD_VOICE) {
@@ -414,7 +428,7 @@ public final class TtsModule implements TianshuManagedModule {
     private void failProtocol(ProtocolContext context, String envelopeId, String fallbackCode, TtsFailure failure) {
         String code = failure == null ? fallbackCode : "TTS_" + failure.code().name();
         String message = failure == null ? "" : failure.message();
-        context.fail(envelopeId, code, message, null);
+        context.fail(envelopeId, code, message, failure == null ? null : failure.cause());
     }
 
     private void publishPlaybackStatus(TtsPlaybackState state) {

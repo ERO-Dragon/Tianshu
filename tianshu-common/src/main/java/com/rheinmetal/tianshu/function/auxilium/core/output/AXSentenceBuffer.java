@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.function.auxilium.core.output;
 
-import com.rheinmetal.tianshu.function.tts.text.TtsSentenceSegmenter;
+import com.rheinmetal.tianshu.text.SentenceSegmenter;
 
 import java.util.ArrayList;
 import java.util.List;
 
 final class AXSentenceBuffer {
-    private final TtsSentenceSegmenter segmenter = new TtsSentenceSegmenter(12, 24, 180);
+    private final SentenceSegmenter segmenter = new SentenceSegmenter(12, 24, 180);
     private final StringBuilder buffer = new StringBuilder();
 
     List<String> append(String text) {
@@ -28,7 +28,7 @@ final class AXSentenceBuffer {
     private List<String> drain(boolean force) {
         List<String> result = new ArrayList<>();
         while (!buffer.isEmpty()) {
-            TtsSentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary(buffer.toString());
+            SentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary(buffer.toString());
             if (!boundary.shouldFlush()) {
                 break;
             }

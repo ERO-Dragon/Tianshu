@@ -25,7 +25,7 @@ public class TtsVoiceLibraryService {
             Files.createDirectories(dir);
             env.openFolder(dir);
         } catch (Exception e) {
-            env.error("打开音色库目录失败", e);
+            env.error("tts.voice_library.open_failed", e);
         }
     }
 
@@ -77,7 +77,7 @@ public class TtsVoiceLibraryService {
             Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
             return target.getFileName().toString();
         } catch (IOException e) {
-            env.error("导入 TTS 音色失败", e);
+            env.error("tts.voice_library.import_failed", e);
             return "";
         }
     }

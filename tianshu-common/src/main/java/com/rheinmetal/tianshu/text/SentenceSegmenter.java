@@ -1,9 +1,9 @@
-package com.rheinmetal.tianshu.function.tts.text;
+package com.rheinmetal.tianshu.text;
 
 import java.util.Locale;
 import java.util.Set;
 
-public final class TtsSentenceSegmenter {
+public final class SentenceSegmenter {
     private static final int DEFAULT_MIN_LENGTH = 24;
     private static final int DEFAULT_PREFERRED_LENGTH = 90;
     private static final int DEFAULT_MAX_LENGTH = 180;
@@ -15,15 +15,15 @@ public final class TtsSentenceSegmenter {
     private final int preferredLength;
     private final int maxLength;
 
-    public TtsSentenceSegmenter() {
+    public SentenceSegmenter() {
         this(DEFAULT_MIN_LENGTH, DEFAULT_PREFERRED_LENGTH, DEFAULT_MAX_LENGTH);
     }
 
-    public TtsSentenceSegmenter(int maxLength) {
+    public SentenceSegmenter(int maxLength) {
         this(DEFAULT_MIN_LENGTH, Math.max(40, maxLength / 2), maxLength);
     }
 
-    public TtsSentenceSegmenter(int minLength, int preferredLength, int maxLength) {
+    public SentenceSegmenter(int minLength, int preferredLength, int maxLength) {
         this.minLength = Math.max(8, minLength);
         this.maxLength = Math.max(this.minLength + 1, maxLength);
         this.preferredLength = Math.min(Math.max(this.minLength + 1, preferredLength), this.maxLength);

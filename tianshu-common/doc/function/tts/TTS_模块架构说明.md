@@ -23,11 +23,18 @@ TTS 不直接依赖 Minecraft GUI，也不把内部 session 状态作为公共 A
 | 模块装配 | `TtsModule` | 接入宿主生命周期，注册协议能力，装配 runtime、模型服务和后端。 |
 | 协议边界 | `TtsProtocolAdapter` | 注册 `TTS_SPEAK`、`TTS_SYNTHESIZE`、`TTS_CONTROL`，发布播放状态，发送音频响应。 |
 | 本地服务 | `TtsModuleService` | 面向 GUI 和本地调用方提供 snapshot、preview、stop、reload 等服务。 |
-| 运行时 | `TtsRuntime` | 处理请求校验、播放策略、合成调度、控制动作、失败结果和状态发布。 |
+| 运行时 facade | `TtsRuntime` | 保持提交、控制、snapshot 和状态发布入口，编排模块内协作者。 |
+| 合成调度 | `TtsSynthesisScheduler` | 统一 synthesis lane、业务优先级和单后端并发边界。 |
+| 纯合成任务 | `TtsSynthesisTaskCoordinator` | 管理 TTL、stream/full PCM、任务取消和终态单次回调。 |
+| 模型生命周期 | `TtsModelLifecycleCoordinator` | 在 `MODEL_LOAD` 串行执行 prepare、reload、switch、preview restore 和 shutdown。 |
 | 会话管理 | `TtsSessionManager` | 管理本地播放 session、分组取消、终态保护和 active 定位。 |
-| 流式文本 | `TtsStreamRegistry` / `TtsStreamBuffer` | 聚合上游文本 chunk，按句提交给 runtime。 |
+| 流式文本 | `TtsStreamRegistry` / `TtsStreamBuffer` / `SentenceSegmenter` | 聚合上游文本 chunk；无状态分句器位于共享 `text` 包，供 AX/TTS 共同使用。 |
 | 合成层 | `TtsSynthesisEngine` / `TtsBackend` | 统一调用 Sherpa ONNX、MOSS 等后端。 |
-| 播放层 | `TtsPlaybackController` | 将 PCM 交给 `IAudioBridge`，处理播放、取消和完成回调。 |
+| MOSS facade | `MossTtsService` | 保持既有公开合成 API，编排模型、帧生成和 codec，不直接持有 ORT session 或 KV cache。 |
+| MOSS 模型资源 | `MossModelRuntime` | 单一持有 ORT environment、tokenizer、manifest、metadata 和 named sessions。 |
+| MOSS 自回归生成 | `MossFrameGenerator` / `MossTensorState` | 生成 audio-code frame；global past 直接接管 ONNX tensor handle 并在 decode step 间单一交接。 |
+| MOSS codec | `MossAudioCodec` | 参考音频编码、full decode、四帧 streaming decode 和 codec state 生命周期。 |
+| 播放层 | `TtsPlaybackController` | 维护 session admission slot，只让 active session 以严格 FIFO 写入 `IAudioBridge`。 |
 | 模型资源 | `TtsModelService` / `TtsVoiceLibraryService` | 解析模型、音色样本和后续资源管理入口。 |
 | 音色克隆 | `TtsVoiceCloneRegistry` | 受控加载 voice library 内的参考音频，并用 `voiceId` 暴露给 speak/synthesize。 |
 
@@ -65,6 +72,8 @@ TTS_SPEAK
 ```text
 TTS_SYNTHESIZE
   -> TtsRuntime.synthesize
+  -> TtsSynthesisTaskCoordinator
+  -> TtsSynthesisScheduler
   -> TtsSynthesisEngine
   -> TtsAudioPayload response
 ```
@@ -101,6 +110,8 @@ TTS_CONTROL / TtsModuleService
 
 TTS 不再提供“暂停当前句子并插话后恢复”的策略。需要立即插话时使用 `CANCEL_SENTENCE_AND_PLAY` 或 `CANCEL_SESSION_AND_PLAY`；需要保留原播报时使用 `INSERT_AFTER_SENTENCE` 或 `INSERT_AFTER_SESSION`。
 
+业务优先级只参与 session admission 和合成任务排序，不进入音频桥内部命令排序。等待播放的 session 保存后端交出的 PCM 引用；只有 active slot 会通过单一 `AUDIO_IO` pump 执行 `start -> feed* -> finish`。取消 active session 时先写入终态，使尚未执行的 feed 自动失效，再在同一 FIFO 边界执行 stop 和下一 slot 激活。
+
 ## 6. 音色克隆缓存
 
 音色克隆入口统一由 `TTS_CONTROL` 管理。外部模块只注册 `voiceId`，后续 `TTS_SPEAK` 和 `TTS_SYNTHESIZE` 通过 `voiceStyle=voiceId` 引用，不直接携带参考音频。
@@ -122,6 +133,18 @@ TTS 不再提供“暂停当前句子并插话后恢复”的策略。需要立�
 
 MOSS 后端可以继续在 backend 内按 `samplePath + mtime + size` 缓存 prompt codes；ZipVoice 不需要每次读文件，直接使用 profile 中已解码的 float 数组。
 
+### 6.1 MOSS 推理边界
+
+MOSS 具体推理实现位于 `function.tts.synthesis.moss`，不再放在通用 `model` 包。其资源和热路径边界如下：
+
+- `MossModelRuntime` 只管理模型下载入口、metadata、tokenizer、session 和统一关闭。
+- `MossFrameGenerator` 管理 request rows、sampling、prefill/decode 和 local decoder。
+- `MossTensorState` 是 global KV past 的单一 owner。prefill/decode 输出直接转交 `OnnxTensor` handle，不允许经过 `getValue()`、Java 数组和新 tensor 重建；local cached-step 因 `OrtSession.Result` 生命周期约束保留原有 clone。
+- `MossAudioCodec` 管理 prompt encode、full decode、streaming state 和音频 chunk 合并。实时 streaming 固定每四个生成 frame 解码一次，不能在普通清洁中改变该节奏。
+- `MossTtsService` 只保留公开入口、文本切分、内置音色解析、协作者编排和公开结果类型。
+
+MOSS 的真实模型 smoke 位于 `src/test`，必须显式设置 `TIANSHU_MOSS_SMOKE=true` 才运行。standalone 测试先调用底层 `NativeLibraryLoader.ensureLoaded()`，复用游戏中的 Sherpa ORT 超集加载顺序。smoke 类、生成 WAV 和性能输出不得进入正式 jar，也不得由 production bootstrap 自动执行。
+
 ## 7. 线程和调度
 
 TTS 不自行创建散装线程，所有后台工作进入 `ProtocolExecutorManager`：
@@ -131,9 +154,11 @@ TTS 不自行创建散装线程，所有后台工作进入 `ProtocolExecutorMana
 | 快速 TTS 合成 | `TTS_FAST` | 非自回归或较轻量后端，最大并发 1。 |
 | 自回归 TTS 合成 | `TTS_AUTOREGRESSIVE` | MOSS 等较重后端，最大并发 1。 |
 | 音频播放 IO | `AUDIO_IO` | 串行写入平台音频桥。 |
-| 模型加载 | `MODEL_LOAD` | 后续模型重载、资源准备使用。 |
+| 模型加载 | `MODEL_LOAD` | prepare、reload、model switch、preview switch/restore 和 shutdown，按模块 key 串行。 |
 
 合成和播放分离：合成任务可以在当前音频仍播放时预合成后续句子，播放层通过 `TtsPlaybackController` 串行写入音频桥。
+
+模型初始化和切换不在调用线程执行。`TtsModule.prepare()` 只提交后台准备，并在完成回调中更新 capability；GUI preview 先进入独占模型生命周期，普通合成不会使用临时 preview 模型。模型下载暂停使用条件等待，resume/cancel 主动唤醒，不使用轮询 sleep。
 
 ## 8. 状态暴露
 
@@ -173,7 +198,7 @@ NeoForge GUI 应通过服务层读取摘要、试听、停止和重载，不直�
 - `TtsSynthesisEngine`
 - `TtsBackend`
 
-玩家界面应展示“语音服务可用性、当前语音、试听、停止、重载”等玩家能理解的概念，不展示内部枚举和后端细节。
+玩家界面应展示“语音服务可用性、当前语音、试听、停止、重载”等玩家能理解的概念，不展示内部枚举和后端细节。common 只传递稳定 failure code 和资源键；NeoForge 根据 `en_us.json` / `zh_cn.json` 本地化，不直接显示底层异常 message。
 
 ## 10. 失败模型
 
@@ -191,7 +216,7 @@ NeoForge GUI 应通过服务层读取摘要、试听、停止和重载，不直�
 - `CANCELLED`
 - `UNKNOWN`
 
-失败码用于模块间稳定传递和测试断言。玩家 GUI 应翻译成简短提示，不直接显示枚举名。
+失败码用于模块间稳定传递和测试断言。`TtsFailure` 同时保留原始 cause；普通异常和可选 native `LinkageError` 可以转换为结构化失败，严重 JVM `Error` 继续抛出。玩家 GUI 应翻译成简短提示，不直接显示枚举名或底层诊断文本。
 
 ## 11. 测试重点
 
@@ -205,6 +230,9 @@ NeoForge GUI 应通过服务层读取摘要、试听、停止和重载，不直�
 - 合成和播放分离后的长短句交叉
 - TTS topic 的三态发布
 - `TtsModuleService` 的 preview、stopPreview、stopAll、reloadModel
+- MOSS package/资源/generation/codec 边界、global tensor handle ownership 和四帧 streaming cadence
+- 正式 universal native runtime 下的 MOSS full/streaming 真实模型输出、首包、样本数和 RTF
+- 正式 jar 不包含 smoke 类、测试资源或生成 WAV
 
 测试目标不是验证 mock 调用次数，而是锁定调度、取消、恢复、失败语义和协议边界。
 
