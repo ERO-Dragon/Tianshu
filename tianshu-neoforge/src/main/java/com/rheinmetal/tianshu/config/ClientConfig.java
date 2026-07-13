@@ -88,7 +88,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
 
         builder.comment("AX 辅星设置").push("ax");
         AX_ENABLED = builder.define("enabled", true);
-        AX_WAKE_WORD = builder.define("wakeWord", AXAssistantSettings.DEFAULT_WAKE_WORD);
+        AX_WAKE_WORD = builder.define("wakeWord", "");
         AX_REPLY_SPEECH_ENABLED = builder.define("replySpeechEnabled", true);
         AX_CHAT_THINKING_ENABLED = builder.define("chatThinkingEnabled", false);
         AX_INTERRUPT_ON_PLAYER_SPEECH = builder.define("interruptOnPlayerSpeech", true);

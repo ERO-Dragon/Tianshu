@@ -18,6 +18,7 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
     private final AXWorldIdentityProvider worldIdentityProvider;
     private final AXPromptLanguageProvider promptLanguageProvider;
     private final AXAssistantSettings assistantSettings;
+    private final AXRuntimePolicy runtimePolicy;
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
 
@@ -39,12 +40,27 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
+        this(env, config, protocolRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
+    }
+
+    public AXModuleInstaller(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            ProtocolRuntime protocolRuntime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXRuntimePolicy runtimePolicy,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink
+    ) {
         this.env = env;
         this.config = config;
         this.protocolRuntime = protocolRuntime;
         this.worldIdentityProvider = worldIdentityProvider;
         this.promptLanguageProvider = promptLanguageProvider;
         this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
+        this.runtimePolicy = runtimePolicy == null ? AXRuntimePolicy.defaults() : runtimePolicy;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
     }
@@ -54,6 +70,6 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
         if (!assistantSettings.assistantEnabled()) {
             return;
         }
-        moduleHost.registerOptionalModule(new AXModule(env, config, protocolRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, outputSettings, chatOutputSink));
+        moduleHost.registerOptionalModule(new AXModule(env, config, protocolRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, runtimePolicy, outputSettings, chatOutputSink));
     }
 }

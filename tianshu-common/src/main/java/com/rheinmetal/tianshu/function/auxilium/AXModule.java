@@ -62,6 +62,7 @@ public final class AXModule implements TianshuManagedModule {
     private final AXWorldIdentityProvider worldIdentityProvider;
     private final AXPromptLanguageProvider promptLanguageProvider;
     private final AXAssistantSettings assistantSettings;
+    private final AXRuntimePolicy runtimePolicy;
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
     private final AXProtocolAdapter adapter;
@@ -99,12 +100,27 @@ public final class AXModule implements TianshuManagedModule {
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
+        this(env, config, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
+    }
+
+    public AXModule(
+            IGameEnvironment env,
+            ITianshuConfig config,
+            ProtocolRuntime runtime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXRuntimePolicy runtimePolicy,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink
+    ) {
         this.env = env;
         this.config = config;
         this.runtime = runtime;
         this.worldIdentityProvider = worldIdentityProvider;
         this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : promptLanguageProvider;
         this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
+        this.runtimePolicy = runtimePolicy == null ? AXRuntimePolicy.defaults() : runtimePolicy;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
         this.adapter = new AXProtocolAdapter(runtime);
@@ -117,11 +133,22 @@ public final class AXModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        adapter.registerDialogueInputCapability(this::handleDialogueDelivery);
+        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
+        adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
+        adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
+    }
+
+    @Override
+    public void prepare(ModuleRuntimeContext context) {
+        if (dialogueGateway != null) {
+            return;
+        }
         llmClient = new AXLlmClient(adapter);
         turnStatusPublisher = new AXTurnStatusPublisher(adapter);
-        retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, 1_000L);
-        maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, 30_000L);
-        ragClient = new AXLlmRagClient(adapter, 2_000L);
+        retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.retrievalPrimitiveTimeoutMillis());
+        maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.maintenancePrimitiveTimeoutMillis());
+        ragClient = new AXLlmRagClient(adapter, runtimePolicy.ragTimeoutMillis());
         storageLayout = new AXStorageLayout(config);
         AXJsonStore jsonStore = new AXJsonStore(env);
         AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.fromConfig(config);
@@ -155,7 +182,7 @@ public final class AXModule implements TianshuManagedModule {
         AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
         AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator, assistantSettings);
         AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, memoryPolicy);
-        dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), 300L);
+        dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), runtimePolicy.dynamicFactTimeoutMillis());
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
         AXTurnOrchestrator turnOrchestrator = new AXTurnOrchestrator(
@@ -177,16 +204,8 @@ public final class AXModule implements TianshuManagedModule {
                 turnStatusPublisher
         );
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
-        adapter.registerDialogueInputCapability(dialogueGateway::handleDelivery);
-        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
-        adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
-        adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
         participantRegistrar.register();
-    }
-
-    @Override
-    public void prepare(ModuleRuntimeContext context) {
     }
 
     @Override
@@ -231,6 +250,7 @@ public final class AXModule implements TianshuManagedModule {
         if (participantRegistrar != null) {
             participantRegistrar.unregister();
         }
+        dialogueGateway = null;
     }
 
     @Override
@@ -248,6 +268,15 @@ public final class AXModule implements TianshuManagedModule {
         memorySystem = null;
         dialogueGateway = null;
         turnStatusPublisher = null;
+    }
+
+    private void handleDialogueDelivery(TianshuEnvelope envelope, ProtocolContext context) throws Exception {
+        AXDialogueGateway currentGateway = dialogueGateway;
+        if (currentGateway == null) {
+            context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX runtime is not prepared", null);
+            return;
+        }
+        currentGateway.handleDelivery(envelope, context);
     }
 
     private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {

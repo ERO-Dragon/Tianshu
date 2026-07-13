@@ -16,7 +16,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class AXParticipantRegistrar {
     public static final String PARTICIPANT_ID = "tianshu.AX";
-    public static final String DISPLAY_NAME = "辅星";
     private final AXProtocolAdapter adapter;
     private final AXAssistantSettings settings;
     private final AtomicBoolean registered = new AtomicBoolean(false);
@@ -27,6 +26,10 @@ public final class AXParticipantRegistrar {
     }
 
     public void register() {
+        List<String> wakeWords = wakeWords();
+        if (wakeWords.isEmpty()) {
+            return;
+        }
         if (adapter.dialogueParticipantRegistrationProviderCount() <= 0) {
             return;
         }
@@ -36,13 +39,13 @@ public final class AXParticipantRegistrar {
         adapter.registerDialogueParticipant(new DialogueParticipantRegisterPayload(new DialogueParticipantDescriptor(
                 PARTICIPANT_ID,
                 AXModule.MODULE_ID,
-                DISPLAY_NAME,
+                wakeWords.get(0),
                 0,
                 List.of(),
                 List.of(),
                 List.of(),
-                claimProfile(),
-                voiceTriggerGroup(),
+                claimProfile(wakeWords),
+                voiceTriggerGroup(wakeWords),
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 DialogueTurnProcessingPolicy.DEFAULT
         ), System.currentTimeMillis()));
@@ -60,11 +63,7 @@ public final class AXParticipantRegistrar {
         ));
     }
 
-    private DialogueClaimProfile claimProfile() {
-        List<String> wakeWords = wakeWords();
-        if (wakeWords.isEmpty()) {
-            return DialogueClaimProfile.DEFAULT_OWNER;
-        }
+    private DialogueClaimProfile claimProfile(List<String> wakeWords) {
         return DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
                 "ax.wake_word",
                 DialogueAttentionDecay.SLOW,
@@ -72,8 +71,8 @@ public final class AXParticipantRegistrar {
         ));
     }
 
-    private DialogueVoiceTriggerGroup voiceTriggerGroup() {
-        return DialogueVoiceTriggerGroup.of(wakeWords(), List.of());
+    private DialogueVoiceTriggerGroup voiceTriggerGroup(List<String> wakeWords) {
+        return DialogueVoiceTriggerGroup.of(wakeWords, List.of());
     }
 
     private List<String> wakeWords() {

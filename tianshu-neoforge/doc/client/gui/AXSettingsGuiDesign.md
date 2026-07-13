@@ -66,7 +66,7 @@ AX 设置归入天枢统一的 NeoForge 客户端配置 `config/tianshu-client.t
 ```toml
 [ax]
 enabled = true
-wakeWord = "天枢"
+wakeWord = ""
 replySpeechEnabled = true
 chatThinkingEnabled = false
 interruptOnPlayerSpeech = true
