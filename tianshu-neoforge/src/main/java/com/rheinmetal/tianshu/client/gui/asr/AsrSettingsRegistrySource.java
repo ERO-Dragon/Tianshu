@@ -480,7 +480,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                         selectedModelName.set("");
                     }
                     context.showStatus(asr("message.deleted", displayName), 3000);
-                    coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                    coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
                 } else {
                     context.showStatus(asr("message.delete_failed"), 3000);
                 }
@@ -718,7 +718,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
                 @Override
                 public void restartRuntime(com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason reason) {
-                    coreManager.restartRuntimeAsync(reason, null);
+                    coreManager.refreshRuntime(reason);
                 }
             }, audioBridge);
         }

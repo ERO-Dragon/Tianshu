@@ -10,7 +10,7 @@
 
 | 方向 | 协议 | PayloadType | Payload | PacketType |
 | --- | --- | --- | --- | --- |
-| 外部模块 -> IR | `ProtocolCapabilities.IR_PARSE` | `PayloadType.IR_PARSE` | `IrParsePayload` | `COMMAND`、兼容 `REQUEST` |
+| 外部模块 -> IR | `ProtocolCapabilities.IR_PARSE` | `PayloadType.IR_PARSE` | `IrParsePayload` | `COMMAND` |
 | ASR -> IR | `ProtocolTopics.INPUT_ASR_FINAL_TEXT` | `ASR_TEXT` | `AsrTextPayload` | `EVENT` |
 | IR -> 观察者 | `ProtocolTopics.IR_RESULT` | `IR_RESULT` | `IrResultPayload` | `EVENT` |
 | IR -> IA | `ProtocolCapabilities.DIALOGUE_ARBITRATE` | `DIALOGUE_ARBITRATION_REQUEST` | `DialogueArbitrationRequestPayload` | `COMMAND` |
@@ -33,9 +33,7 @@ TianshuEnvelope envelope = EnvelopeBuilder.commandToCapability(
         "酒狐帮我种地",
         1,
         42L,
-        "example:chat",
-        0,
-        false
+        "example:chat"
     )
 ).build();
 
@@ -53,23 +51,17 @@ protocolRuntime.submit(envelope);
 | `turnId` | `int` | 调用方会话内的轮次编号。 |
 | `sessionId` | `long` | 调用方会话标识，用于贯穿 IR、IA 和后续 owner 链路。 |
 | `source` | `String` | 稳定来源说明，例如 `example:chat`。 |
-| `repairDepth` | `int` | 兼容字段；当前 IR 输入映射不使用它，调用方应填 `0`，不得依赖其改变算法。 |
-| `llmAllowed` | `boolean` | 兼容字段；当前 IR 不根据它调用 LLM，调用方不得把它当作授权开关。 |
 
 不要把 Minecraft 实体、物品对象或可变集合塞进 payload。文本关联的物品和实体信息由 Presence 快照提供，IR 只处理不可变协议数据。
 
-## 4. COMMAND 与 REQUEST 的区别
+## 4. COMMAND-only 语义
 
-`IR_PARSE` 当前为了兼容同时接受 `PacketType.COMMAND` 和 `PacketType.REQUEST`，但 IR 不为它发送业务 response payload。无论使用哪一种，解析观察结果都发布到 `ProtocolTopics.IR_RESULT`，实际对话路由通过 `ProtocolCapabilities.DIALOGUE_ARBITRATE` 交给 IA。
-
-因此新调用方应使用 `COMMAND`：
+`IR_PARSE` 只接受 `PacketType.COMMAND`。解析观察结果发布到 `ProtocolTopics.IR_RESULT`，实际对话路由通过 `ProtocolCapabilities.DIALOGUE_ARBITRATE` 进入 IA。
 
 - 不要为 `IR_PARSE` 注册 `IrResultPayload` response handler。
-- 不要等待一个不存在的请求返回包。
+- 不要发送 `PacketType.REQUEST`。
 - 如果需要观察结果，订阅 `IR.RESULT`，并用 `sessionId + turnId` 关联。
 - `IR.RESULT` 是调试和链路可视化事件，不是 owner 授权，也不包含 IA 的最终仲裁结论。
-
-兼容 `REQUEST` 只表示源信封会在 IR 处理结束后由协议上下文 complete/fail，不应扩展为新的业务语义。
 
 ## 5. 订阅 IR 结果
 
@@ -127,9 +119,8 @@ IR 可能向 `ProtocolCapabilities.PRESENCE_QUERY_CONTEXT` 请求 `INTERACTION_C
 ## 9. 最小接入检查表
 
 - [ ] 通过自己的 adapter 发送 `ProtocolCapabilities.IR_PARSE`。
-- [ ] 新调用使用 `COMMAND`，不等待 IR response payload。
+- [ ] 使用 `COMMAND`，不发送 IR `REQUEST`，也不等待 response payload。
 - [ ] 使用稳定 `sessionId + turnId` 关联观察事件。
-- [ ] 不把 `repairDepth`、`llmAllowed` 当作当前有效策略开关。
 - [ ] 不把 `IR.RESULT.targetCapability` 当作可直投 owner。
 - [ ] handler 不阻塞协议线程或 Minecraft 主线程。
 - [ ] 需要对话 owner 时遵循 IA participant/session 协议。

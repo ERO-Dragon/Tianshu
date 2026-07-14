@@ -53,7 +53,7 @@ public class TtsModelInfo {
     public List<String> lexiconFiles;
     public List<String> ruleFsts;
     public String voicesFile;
-    public String downloadUrl;
+    public String downloadUri;
     public String archiveSubDir;
     public String displayName;
     public String description;

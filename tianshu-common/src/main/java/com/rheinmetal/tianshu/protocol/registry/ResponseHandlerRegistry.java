@@ -50,20 +50,7 @@ public final class ResponseHandlerRegistry {
     }
 
     public void unregisterModule(String moduleId) {
-        if (moduleId == null || moduleId.isBlank()) {
-            return;
-        }
-        String normalizedModuleId = moduleId.trim();
-        responseHandlers.entrySet().removeIf(entry -> {
-            List<HandlerRegistration> remaining = entry.getValue().stream()
-                    .filter(registration -> !registration.moduleDescriptor().moduleId().equals(normalizedModuleId))
-                    .toList();
-            if (remaining.isEmpty()) {
-                return true;
-            }
-            entry.setValue(List.copyOf(remaining));
-            return false;
-        });
+        HandlerRegistrationRegistrySupport.unregisterModule(responseHandlers, moduleId);
     }
 
     public List<String> requestEnvelopeIds() {

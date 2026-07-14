@@ -123,7 +123,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
             chatThinkingEnabled.save();
             interruptOnPlayerSpeech.save();
             if (runtimeRegistrationChanged) {
-                coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
             }
             return SettingsSaveResult.success(ax("message.saved"), changed, false, false);
         }

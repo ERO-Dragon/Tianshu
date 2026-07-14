@@ -38,7 +38,7 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CompletableFuture;
 
 
 public class TianshuCoreManager {
@@ -54,7 +54,6 @@ public class TianshuCoreManager {
     private final RuntimeInterruptionService interruptionService;
     private final TianshuModuleAssembler moduleAssembler;
     private final CoreModuleLifecycleCoordinator lifecycleCoordinator;
-    private final AtomicBoolean restarting = new AtomicBoolean(false);
 
     public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge) {
         this(env, config, audioBridge, null);
@@ -89,6 +88,7 @@ public class TianshuCoreManager {
                 voiceResourceManager,
                 runtimeState,
                 state,
+                interruptionService,
                 this::assembleManagedModules
         );
     }
@@ -204,32 +204,17 @@ public class TianshuCoreManager {
         return status().acceptsRuntimeRequests();
     }
 
-    public void initWorkers() {
-        lifecycleCoordinator.initializeIfNeeded();
+    public CompletableFuture<CoreRuntimeStatus> startRuntimeSession() {
+        return lifecycleCoordinator.startSession();
     }
 
     private void assembleManagedModules() {
         moduleAssembler.assemble(moduleHost, moduleServices);
     }
 
-    public void restartRuntimeAsync(RuntimeRefreshReason reason, Runnable onComplete) {
-        if (!restarting.compareAndSet(false, true)) {
-            env.warn("运行时正在重启，忽略重复请求");
-            return;
-        }
-        state.setPhase(RuntimeEnginePhase.RESTARTING);
-        RuntimeRefreshReason refreshReason = reason == null ? RuntimeRefreshReason.RESTART_REQUESTED : reason;
-        boolean submitted = lifecycleCoordinator.submitRefresh(refreshReason, () -> {
-            restarting.set(false);
-            state.refreshPhase(lifecycleCoordinator.isInitialized());
-            if (onComplete != null) {
-                onComplete.run();
-            }
-        });
-        if (!submitted) {
-            restarting.set(false);
-            state.refreshPhase(lifecycleCoordinator.isInitialized());
-        }
+    public CompletableFuture<CoreRuntimeStatus> refreshRuntime(RuntimeRefreshReason reason) {
+        RuntimeRefreshReason refreshReason = reason == null ? RuntimeRefreshReason.RESOURCE_CHANGED : reason;
+        return lifecycleCoordinator.refresh(refreshReason);
     }
 
     public long interruptOngoingProcessing() {
@@ -237,44 +222,13 @@ public class TianshuCoreManager {
         return interruptionService.interruptOngoingProcessing(RuntimeInterruptPayload.Reason.USER_INPUT, "runtime_interrupt");
     }
 
-    public void destroy() {
+    public CompletableFuture<CoreRuntimeStatus> destroy() {
         env.info("核心管理器：销毁全部资源");
-
-        interruptionService.interruptOngoingProcessing(RuntimeInterruptPayload.Reason.CLIENT_SHUTDOWN, "client_shutdown");
-
-        lifecycleCoordinator.destroyModules();
-        protocolRuntime.close();
-
-        state.reset();
-        state.setPhase(RuntimeEnginePhase.DESTROYED);
+        return lifecycleCoordinator.destroy();
     }
 
-    public void stopRuntimeSession() {
+    public CompletableFuture<CoreRuntimeStatus> stopRuntimeSession() {
         env.info("Core manager: stopping runtime session");
-        interruptionService.interruptOngoingProcessing(RuntimeInterruptPayload.Reason.CLIENT_SHUTDOWN, "client_world_unload");
-        lifecycleCoordinator.stopSession();
-        state.reset();
-        state.setPhase(RuntimeEnginePhase.IDLE);
-    }
-
-    public void onEnvSetupFinished() {
-        env.info("环境配置完成，刷新模块生命周期");
-        if (lifecycleCoordinator.isInitialized()) {
-            lifecycleCoordinator.submitRefresh(RuntimeRefreshReason.ENVIRONMENT_READY, null);
-        } else {
-            initWorkers();
-        }
-    }
-
-    public void refreshRuntimeAsync(RuntimeRefreshReason reason, Runnable onComplete) {
-        RuntimeRefreshReason refreshReason = reason == null ? RuntimeRefreshReason.RESOURCE_CHANGED : reason;
-        if (lifecycleCoordinator.isInitialized()) {
-            lifecycleCoordinator.submitRefresh(refreshReason, onComplete);
-        } else {
-            initWorkers();
-            if (onComplete != null) {
-                onComplete.run();
-            }
-        }
+        return lifecycleCoordinator.stopSession();
     }
 }

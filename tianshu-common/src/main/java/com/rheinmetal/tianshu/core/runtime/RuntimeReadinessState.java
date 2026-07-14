@@ -10,15 +10,4 @@ public class RuntimeReadinessState {
     public void setPhase(RuntimeEnginePhase phase) {
         this.phase = phase;
     }
-
-    public void refreshPhase(boolean running) {
-        if (phase == RuntimeEnginePhase.DESTROYED || phase == RuntimeEnginePhase.RESTARTING || phase == RuntimeEnginePhase.INITIALIZING) {
-            return;
-        }
-        phase = running ? RuntimeEnginePhase.FULLY_READY : RuntimeEnginePhase.IDLE;
-    }
-
-    public void reset() {
-        phase = RuntimeEnginePhase.IDLE;
-    }
 }

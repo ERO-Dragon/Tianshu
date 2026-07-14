@@ -376,6 +376,24 @@ PayloadType.DIALOGUE_OWNER_PREVIEW
 4. 清理本地 pending 请求。
 ```
 
+### 10.4 退出世界后再次进入
+
+IA 的 participant、owner、session、attention 和 owner preview 都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。
+
+因此外部模组必须把 participant 注册视为世界会话启动步骤：
+
+```text
+退出世界
+  ↓
+取消本模块 pending 请求并释放/注销当前会话资源
+  ↓
+再次进入世界，等待天枢模块会话启动
+  ↓
+重新注册 delivery capability 对应的 participant
+```
+
+不要缓存旧 `sessionId`、旧 owner preview 或“已经注册”的本地标记并跨世界复用。重新注册仍使用原有 `DIALOGUE_PARTICIPANT_REGISTER` 契约，不存在额外的恢复接口或兼容入口。
+
 ## 11. 不允许的接入方式
 
 外部模组不得：

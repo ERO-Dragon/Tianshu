@@ -49,7 +49,7 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
                 PayloadType.IR_PARSE,
                 IrParsePayload.class,
                 BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
+                EnumSet.of(PacketType.COMMAND),
                 Priority.LOW,
                 CompletionPolicy.MANUAL_COMPLETE,
                 handler,

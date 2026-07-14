@@ -50,7 +50,7 @@ final class ModelDownloadSourcePolicy {
         return List.copyOf(candidates);
     }
 
-    List<URI> githubArchiveCandidates(String directUrl, String proxyBaseUrl, boolean proxyFirst) {
+    static List<URI> githubArchiveCandidates(String directUrl, String proxyBaseUrl, boolean proxyFirst) {
         String direct = requireNonBlank(directUrl, "directUrl");
         String proxyBase = proxyBaseUrl == null || proxyBaseUrl.isBlank()
                 ? ""
@@ -109,7 +109,9 @@ final class ModelDownloadSourcePolicy {
             base = base.substring(0, base.length() - 1);
         }
         URI uri = URI.create(base);
-        if (uri.getScheme() == null || uri.getHost() == null) {
+        String scheme = uri.getScheme();
+        if (uri.getHost() == null
+                || (!("http".equalsIgnoreCase(scheme)) && !("https".equalsIgnoreCase(scheme)))) {
             throw new IllegalArgumentException(name + " must be an absolute HTTP(S) URL");
         }
         return base;

@@ -162,6 +162,8 @@ TTS 不自行创建散装线程，所有后台工作进入 `ProtocolExecutorMana
 
 模型初始化和切换不在调用线程执行。`TtsModule.prepare()` 只提交后台准备，并在完成回调中更新 capability；GUI preview 先进入独占模型生命周期，普通合成不会使用临时 preview 模型。模型下载暂停使用条件等待，resume/cancel 主动唤醒，不使用轮询 sleep。
 
+archive 模型下载由 model 域的 `ModelArchiveDownloader` 负责。`TtsModelService` 只读取 catalog `downloadUri`、转换为 HTTP(S) `URI`、管理 staging/extract/commit；direct/proxy 候选、HTTP 重试、活动连接取消、长度校验和临时文件不再散落在 TTS coordinator 中。旧 `downloadUrl` 字段和字符串 archive API 已删除，不提供兼容读取。
+
 ## 8. 状态暴露
 
 内部 session 状态用于 runtime 调度：

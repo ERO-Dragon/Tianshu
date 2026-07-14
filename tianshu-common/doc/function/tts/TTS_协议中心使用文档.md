@@ -339,3 +339,19 @@ TTS 会发布 `TTS.PLAYBACK` topic，payload 为 `TtsPlaybackStatusPayload`。
 - 联动模组内置音色克隆：先读取 jar/resource 为 `byte[]`，用 `IMPORT_VOICE` 导入，再在 `voiceStyle` 填 `voiceId`。
 - 不要在 `TTS_SPEAK` 和 `TTS_SYNTHESIZE` 里传参考音频。
 - 不要依赖 TTS 内部 session 状态，只使用公开 payload、能力和 topic。
+
+## 9. 模型下载不是公共 URL 接口
+
+TTS 模型归档来源只存在于内置 catalog 的 `downloadUri` 字段，并在模块内部转换为 `URI`。外部模块和玩家配置不提交模型 URL，也不能通过 TTS protocol payload 覆盖下载来源。
+
+archive 下载链为：
+
+```text
+TtsModelService
+  -> TtsModelDownloadCoordinator
+  -> ModelArchiveDownloader
+  -> direct/proxy URI candidates
+  -> shared model HTTP transport
+```
+
+配置 GitHub proxy 时，transport 先尝试 proxy URI，再降级 direct URI；未配置时只使用 direct URI。重试、取消、长度校验、`.downloading` 临时文件和成功后的原子替换由 model transport 统一负责。TTS service 不拼接 URL 字符串，也不直接创建 HTTP connection。

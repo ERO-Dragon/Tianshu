@@ -470,7 +470,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 public void onComplete() {
                     runOnClient(() -> {
                         context.showStatus(tts("message.download_complete"), 3000);
-                        coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                        coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
                         refreshSettingsScreen();
                     });
                 }
@@ -546,7 +546,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                         selectedModelName.set("");
                     }
                     context.showStatus(tts("message.deleted", displayName), 3000);
-                    coreManager.refreshRuntimeAsync(RuntimeRefreshReason.RESOURCE_CHANGED, null);
+                    coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
                 } else {
                     context.showStatus(tts("message.delete_failed"), 3000);
                 }
@@ -759,7 +759,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
                 @Override
                 public void restartRuntime(RuntimeRefreshReason reason) {
-                    coreManager.restartRuntimeAsync(reason, null);
+                    coreManager.refreshRuntime(reason);
                 }
             });
         }

@@ -30,20 +30,7 @@ public final class CapabilityRegistry {
     }
 
     public void unregisterModule(String moduleId) {
-        if (moduleId == null || moduleId.isBlank()) {
-            return;
-        }
-        String normalizedModuleId = moduleId.trim();
-        capabilityHandlers.entrySet().removeIf(entry -> {
-            List<HandlerRegistration> remaining = entry.getValue().stream()
-                    .filter(registration -> !registration.moduleDescriptor().moduleId().equals(normalizedModuleId))
-                    .toList();
-            if (remaining.isEmpty()) {
-                return true;
-            }
-            entry.setValue(Collections.unmodifiableList(remaining));
-            return false;
-        });
+        HandlerRegistrationRegistrySupport.unregisterModule(capabilityHandlers, moduleId);
     }
 
     public ValidationResult validate(TianshuEnvelope envelope, HandlerRegistration registration) {

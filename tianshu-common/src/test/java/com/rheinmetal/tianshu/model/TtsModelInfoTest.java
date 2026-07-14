@@ -5,10 +5,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TtsModelInfoTest {
@@ -22,6 +24,17 @@ class TtsModelInfoTest {
         assertNotNull(find(catalog, "MOSS-TTS-Nano-100M-ONNX"));
         assertNotNull(find(catalog, "ZipVoice-int8"));
         assertNotNull(find(catalog, "kokoro-multi-lang-v1_1"));
+    }
+
+    @Test
+    void catalogUsesDownloadUriWithoutLegacyDownloadUrlField() throws Exception {
+        TtsModelInfo.invalidateCatalogCache();
+        TtsModelInfo zipVoice = find(TtsModelInfo.loadCatalog(), "ZipVoice-int8");
+
+        String value = (String) TtsModelInfo.class.getField("downloadUri").get(zipVoice);
+
+        assertTrue(URI.create(value).isAbsolute());
+        assertThrows(NoSuchFieldException.class, () -> TtsModelInfo.class.getField("downloadUrl"));
     }
 
     @Test

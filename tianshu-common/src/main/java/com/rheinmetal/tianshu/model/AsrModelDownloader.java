@@ -190,7 +190,7 @@ public class AsrModelDownloader {
     private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
         callback.onProgress("Checking network", 2);
         boolean proxyFirst = shouldUseGithubProxy(githubProxyUrl);
-        List<URI> candidates = sources.githubArchiveCandidates(
+        List<URI> candidates = ModelDownloadSourcePolicy.githubArchiveCandidates(
                 info.downloadUrl,
                 githubProxyUrl,
                 proxyFirst

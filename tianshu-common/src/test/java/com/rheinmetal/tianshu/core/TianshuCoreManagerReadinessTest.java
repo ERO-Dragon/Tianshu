@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,7 +18,7 @@ class TianshuCoreManagerReadinessTest {
     Path tempDir;
 
     @Test
-    void environmentReadinessFollowsCoreLifecycle() {
+    void environmentReadinessFollowsCoreLifecycle() throws Exception {
         TianshuCoreManager coreManager = new TianshuCoreManager(
                 new TestLlmSupport.FakeGameEnvironment(),
                 new TestLlmSupport.FakeConfig(tempDir),
@@ -27,12 +28,13 @@ class TianshuCoreManagerReadinessTest {
         assertFalse(coreManager.isEnvironmentReady());
         assertFalse(coreManager.isEnvironmentSetupCompleted());
 
-        coreManager.initWorkers();
+        coreManager.startRuntimeSession().get(5, TimeUnit.SECONDS);
 
         assertTrue(coreManager.isEnvironmentReady());
         assertTrue(coreManager.isEnvironmentSetupCompleted());
+        assertTrue(coreManager.isEngineReady());
 
-        coreManager.destroy();
+        coreManager.destroy().get(5, TimeUnit.SECONDS);
 
         assertFalse(coreManager.isEnvironmentReady());
         assertFalse(coreManager.isEnvironmentSetupCompleted());

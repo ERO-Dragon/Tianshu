@@ -163,6 +163,8 @@ CREATED -> ACCEPTED -> QUEUED -> DISPATCHED -> RUNNING -> COMPLETED
 |---|---|
 | `PROPAGATE_CANCEL` | 按取消范围传播。 |
 | `FALLBACK` | 允许模块派生降级信封。 |
+
+模块卸载由宿主统一调用 `ProtocolRuntime.unregisterModule(moduleId)`。协议中心会同时清理该模块的 capability provider、topic subscription、未完成请求的 response handler、voice trigger 和 module descriptor；如果某个 capability、topic 或 request 仍有其他模块的登记，只移除目标模块的条目，不得影响其他 provider / subscriber / handler。该清理可用于世界退出后的模块重装配，不要求业务模块直接修改协议内部注册表。
 | `IGNORE` | 只清理当前信封。 |
 | `RETRY` | 在 Broker 允许时重试。 |
 | `REPORT_ONLY` | 记录和上报，不传播取消。 |

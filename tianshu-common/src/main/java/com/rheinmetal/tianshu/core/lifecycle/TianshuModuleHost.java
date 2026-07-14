@@ -14,17 +14,18 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class TianshuModuleHost {
     private final IGameEnvironment env;
-    private final List<TianshuModuleInstallation> installations = new ArrayList<>();
+    private final List<TianshuModuleInstallation> installations = new CopyOnWriteArrayList<>();
     private final List<TianshuModuleInstallation> registered = new ArrayList<>();
     private final List<TianshuModuleInstallation> prepared = new ArrayList<>();
     private final List<TianshuModuleInstallation> started = new ArrayList<>();
-    private final Map<String, ModuleLifecycleStatus> moduleStatuses = new LinkedHashMap<>();
+    private final Map<String, ModuleLifecycleStatus> moduleStatuses = new ConcurrentHashMap<>();
 
     public TianshuModuleHost(IGameEnvironment env) {
         this.env = env;
@@ -64,7 +65,9 @@ public class TianshuModuleHost {
     }
 
     public Collection<ModuleLifecycleStatus> moduleStatuses() {
-        return List.copyOf(moduleStatuses.values());
+        return moduleStatuses.values().stream()
+                .sorted(java.util.Comparator.comparing(ModuleLifecycleStatus::moduleId))
+                .toList();
     }
 
     public List<TianshuManagedModule> managedModules() {
@@ -184,7 +187,10 @@ public class TianshuModuleHost {
             return firstFailure;
         } catch (Exception exception) {
             ModuleLifecycleException failure = new ModuleLifecycleException(installation.moduleId(), phase, exception);
-            markStatus(installation, ModuleLifecycleState.FAILED, phase, exception.getMessage());
+            ModuleLifecycleStatus current = moduleStatuses.get(installation.moduleId());
+            if (current == null || !current.failed()) {
+                markStatus(installation, ModuleLifecycleState.FAILED, phase, exception.getMessage());
+            }
             if (!installation.required()) {
                 env.warn("可选模块清理阶段失败，module=" + installation.moduleId() + ", phase=" + phase);
                 return firstFailure;
@@ -198,6 +204,10 @@ public class TianshuModuleHost {
     }
 
     private void markCleanupStatus(TianshuModuleInstallation installation, ModuleLifecyclePhase phase) {
+        ModuleLifecycleStatus current = moduleStatuses.get(installation.moduleId());
+        if (current != null && current.failed()) {
+            return;
+        }
         if (phase == ModuleLifecyclePhase.STOP) {
             markStatus(installation, ModuleLifecycleState.STOPPED, phase, null);
         } else if (phase == ModuleLifecyclePhase.DESTROY) {

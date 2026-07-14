@@ -37,7 +37,6 @@
 - `start(ModuleRuntimeContext context)`
 - `stop()`
 - `destroy()`
-- `unregister()`
 
 不同阶段的建议职责如下。
 
@@ -132,9 +131,9 @@ module.my_feature
 
 ### 3.7 unregister
 
-`unregister` 阶段用于撤销协议注册和服务注册。
+`unregister` 是 Core 宿主的清理阶段，不是 `TianshuManagedModule` 的回调方法。宿主会依据稳定 `moduleId` 从 `ProtocolRuntime` 撤销 capability、response handler、topic subscription 和 voice trigger，并清空本轮 module service registry。
 
-模块不应假设 unregister 一定能访问 prepare 阶段创建的资源。
+模块自己的资源必须在 `stop()` / `destroy()` 中释放，不能把清理责任留给不存在的 `unregister()` 回调。
 
 ## 4. 模块装配
 
@@ -351,6 +350,13 @@ CoreManager 不参与这个链路。CoreManager 只负责模块生命周期托�
 ## 10. 线程与任务
 
 模块不应自行随意创建长期线程。
+
+Core 调用 `register/prepare/start/stop/destroy` 时使用独立的 `Tianshu-Core-Lifecycle` worker，不在 Minecraft 主线程同步执行这些生命周期回调。该 worker 不是功能任务调度器：
+
+- 生命周期回调负责建立或释放模块资源边界。
+- capability/topic 通信和功能任务继续提交给 `ModuleProtocolAccess` 与 `ProtocolExecutorManager` 的既有 lane。
+- 模块不得把持续推理、下载、音频流或长期维护循环直接占在 Core lifecycle worker 上。
+- 生命周期中启动的内部 worker 必须在 `stop` / `destroy` 中确定性关闭。
 
 优先使用协议运行时提供的任务入口：
 

@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,6 +38,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IrModuleProtocolFlowTest {
     private ProtocolRuntime runtime;
+
+    @Test
+    void parseCapabilityAcceptsCommandsOnly() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        IrModule ir = new IrModule(runtime);
+        ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+
+        assertEquals(
+                EnumSet.of(PacketType.COMMAND),
+                runtime.capabilities()
+                        .findCapability(ProtocolCapabilities.IR_PARSE)
+                        .get(0)
+                        .capabilityDescriptor()
+                        .acceptedPacketTypes()
+        );
+    }
+
+    @Test
+    void parsePayloadContainsOnlyActiveInputFields() {
+        assertEquals(
+                List.of("text", "rawText", "turnId", "sessionId", "source"),
+                Arrays.stream(IrParsePayload.class.getRecordComponents())
+                        .map(component -> component.getName())
+                        .toList()
+        );
+    }
 
     @AfterEach
     void closeRuntime() {
@@ -104,7 +131,7 @@ class IrModuleProtocolFlowTest {
                 "test",
                 ProtocolCapabilities.IR_PARSE,
                 PayloadType.IR_PARSE,
-                new IrParsePayload("   ", "", 12, 34L, "chat", 0, true)
+                new IrParsePayload("   ", "", 12, 34L, "chat")
         ).build());
 
         IrResultPayload result = irResults.awaitPayload(IrResultPayload.class);

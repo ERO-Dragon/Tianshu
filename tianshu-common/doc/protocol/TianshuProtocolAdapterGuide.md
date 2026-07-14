@@ -64,6 +64,7 @@ public TianshuEnvelope speak(TtsSpeakPayload payload) {
 - TTS 播报；
 - 停止或控制某个资源；
 - IA 会话控制；
+- `IR_PARSE` 文本输入；
 - GUI 打开/关闭这类动作意图。
 
 ## 4. 发送能力请求
@@ -86,7 +87,6 @@ public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
 - `LLM.CACHE_MANAGE`
 - `TTS_SYNTHESIZE`
 - `DIALOGUE.LLM_USAGE_AUTHORIZE`
-- `IR_PARSE`
 
 `TTS_SYNTHESIZE` 用于“只合成音频，不由 TTS 本地播放”的场景。调用方发送 `TtsSynthesisRequestPayload` 后，通过响应处理器接收一个或多个 `TtsAudioPayload / TTS_AUDIO` 响应包，之后自行决定 2D、3D、实体或方块声源播放方式。需要取消时复用 `TTS_CONTROL`：`STOP + targetRequestId` 取消指定播放或纯合成请求，空 target 表示全部停止。
 
@@ -217,6 +217,8 @@ submitPrepared(request);
 ```
 
 最终响应到达后，调用方应注销该请求的响应处理器。请求过期、模块停止或业务取消时也必须清理。
+
+宿主卸载整个模块时会按 `moduleId` 统一清理该模块尚存的 response handler、capability 和 topic subscription。共享 capability、共享 topic 或同一请求下的其他模块 handler 会保留；业务 adapter 不应为了规避卸载竞态而创建备用注册路径。
 
 服务方只需要回信：
 

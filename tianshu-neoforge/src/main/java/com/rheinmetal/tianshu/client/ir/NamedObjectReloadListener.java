@@ -15,8 +15,10 @@ public final class NamedObjectReloadListener implements ResourceManagerReloadLis
 
     @Override
     public void onResourceManagerReload(ResourceManager resourceManager) {
-        reloadKeywords(resourceManager);
-        ClientNamedObjectIndexManager.rebuildIndex("client resource reload");
+        ClientNamedObjectIndexManager.reloadAsync(
+                "client resource reload",
+                () -> reloadKeywords(resourceManager)
+        );
     }
 
     private void reloadKeywords(ResourceManager resourceManager) {

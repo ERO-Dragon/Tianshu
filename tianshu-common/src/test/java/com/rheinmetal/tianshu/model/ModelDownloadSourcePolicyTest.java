@@ -95,4 +95,17 @@ class ModelDownloadSourcePolicyTest {
                 "main"
         ));
     }
+
+    @Test
+    void rejectsNonHttpSourceAndProxyBases() {
+        assertThrows(IllegalArgumentException.class, () -> new ModelDownloadSourcePolicy(
+                "file:///tmp/models",
+                "http://mirror.test"
+        ));
+        assertThrows(IllegalArgumentException.class, () -> ModelDownloadSourcePolicy.githubArchiveCandidates(
+                "https://github.com/org/model/archive/main.zip",
+                "ftp://proxy.test",
+                true
+        ));
+    }
 }

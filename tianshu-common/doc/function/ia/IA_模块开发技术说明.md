@@ -534,6 +534,22 @@ attention 是隐性状态，不向用户暴露具体数值。面向 UI 的状态
 
 仲裁机关只表达任务意图和边界，不直接控制底层线程。IA 内部需要延迟或定时执行时，也应使用 `ProtocolRuntime.executors().schedule(...)` 这类协议中心执行入口，不能自建私有线程池或绕开模块宿主生命周期。
 
+### 12.1 生命周期与世界会话边界
+
+IA 的 owner preview refresh 由 IA 内部 coordinator 表达生命周期语义，但实际线程仍由协议中心 `SCHEDULED` lane 持有。coordinator 保证同一 IA 实例只有一条刷新链，并用调度代际隔离重复 `prepare`、`stop -> prepare` 和已经排队的旧回调。`stop` 返回前会等待已经开始的短小 preview 内存态刷新结束，并取消其下一次续期；这里不包含模型推理、网络等待或 Minecraft 主线程工作。
+
+单次 refresh 抛出异常时，该调度代际停止并由 Protocol task handle 保留 failure cause，不以固定周期持续制造失败；后续显式 prepare 可以重新启动新的调度代际。
+
+IA 的 runtime 资源遵循以下边界：
+
+- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、标记仲裁能力 ready，并启动单条 preview refresh 链。
+- 重复 `prepare` 不增加第二条 refresh 链；若 runtime context 发生替换，先解绑旧 voice registry 和旧 capability 状态。
+- `stop` 停止 refresh、解绑 voice trigger，并撤销 `ARBITRATION` ready 状态。
+- `destroy` 可重复执行，并清空 participant、session、attention、冻结上下文、Presence pending 请求和 owner preview。
+- Protocol 已关闭时，`stop` / `destroy` 仍只做幂等资源释放，不尝试创建替代线程或兼容分支。
+
+Core 在世界退出时按 `stop -> destroy -> unregister` 清理模块，再次进入世界时重新运行 assembler 并创建新的 IA 实例。因此 participant、owner、session、attention 和 preview 都不跨世界继承；各功能模块或外部模组必须在新世界会话重新注册 participant。
+
 ## 13. common 与 Minecraft 解耦
 
 仲裁机关主体应位于 common 层，不依赖 NeoForge 或 Minecraft 客户端类。

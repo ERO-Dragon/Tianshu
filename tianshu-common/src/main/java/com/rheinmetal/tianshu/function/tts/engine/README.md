@@ -7,7 +7,7 @@
 ```text
 模型 catalog
   -> TtsModelService / TtsModelDownloadCoordinator
-  -> HuggingFaceDownloader
+  -> HuggingFaceDownloader / ModelArchiveDownloader
   -> ModelDownloadSourcePolicy
   -> ModelDownloadHttpClient
   -> config/tts/models/<model>
@@ -50,6 +50,7 @@ TTS catalog 的模型条目以 `TtsModelInfo` 为准，常用字段包括：
 - file path 逐段编码并保留目录 `/`。
 - HF official 与 HF Mirror 始终同时保留；连通性探测只决定顺序。
 - GitHub direct 与用户配置的 GitHub proxy 同样保留双候选；该逻辑主要供 ASR archive 使用。
+- TTS archive catalog 使用 `downloadUri`，由 `ModelArchiveDownloader` 复用同一 direct/proxy 候选策略；不保留字符串 URL 拼接入口。
 
 ### 3.2 传输
 
@@ -74,6 +75,12 @@ TTS catalog 的模型条目以 `TtsModelInfo` 为准，常用字段包括：
 - TTS 所需的文件过滤和 progress 回调。
 
 tree 请求与每个 file 请求都独立使用 official/mirror 候选，不能恢复成“探测一次后全程只用一个域名”。
+
+### 3.4 Archive facade
+
+`ModelArchiveDownloader` 是跨功能模块可用的窄归档下载端口，只接收 direct/proxy `URI`、目标路径、重试策略、pause/cancel control 和 progress listener。它不暴露底层 `ModelDownloadHttpClient`，也不负责解压或模型完整性判断。
+
+TTS catalog 的归档字段为 `downloadUri`。旧 `downloadUrl` 字段不再解析；catalog、service 和 coordinator 不提供兼容分支。
 
 ## 4. 文件过滤
 

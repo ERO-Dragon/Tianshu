@@ -2,7 +2,7 @@
 
 ## 1. 模块定位
 
-IR 模块是天枢语音/文本链路中的输入修复与文本特征提取层。它接收 ASR final text 或兼容的 `IR_PARSE` 输入，输出 IA 仲裁所需的文本侧结果：
+IR 模块是天枢语音/文本链路中的输入修复与文本特征提取层。它接收 ASR final text 或显式的 `IR_PARSE` command，输出 IA 仲裁所需的文本侧结果：
 
 - 修复后的自然语言正文。
 - 归一化/过滤后的文本视图。
@@ -48,7 +48,7 @@ IA 仲裁 owner 并定向投递 DialogueDeliveryPayload
 不同入口会先映射成 `IrInputText`：
 
 - ASR final text。
-- `IR_PARSE` 兼容输入。
+- `IR_PARSE` command 输入。
 
 `IrInputPreprocessor` 会产生两个文本视图：
 
@@ -86,6 +86,16 @@ matchedItemIds：minecraft:netherite_ingot
 ```
 
 NeoForge 侧可通过客户端增强器接入 Minecraft 物品字典、上下文和本地化信息；common 层只接收修复结果和结构化 ID，不依赖 Minecraft 活对象。
+
+NeoForge 的 `ClientNamedObjectIndexManager` 是客户端进程级资源，不是世界会话资源：
+
+- `TianshuClient.init()` 在游戏启动阶段调用 `initializeAsync()`，由单一 `Tianshu-IR-Index` worker 构建或恢复索引。
+- 世界登录/退出不重建也不清空该索引，不同世界复用同一份物品/实体注册表索引。
+- 客户端资源 reload 通过同一 worker 串行重载关键词并重建索引，避免与正在进行的构建并发写入。
+- `IRCommandService` 的读写锁允许协议解析读取当前完整快照；重建提交新快照时不会暴露半成品。
+- 最终客户端 shutdown 才关闭 index worker。
+
+该 worker 只拥有 IR 索引构建和缓存 IO，不承担协议 handler 或通用功能调度；IR 请求解析仍由 Protocol executor lane 执行。
 
 ## 5. Wake Word 修复与匹配
 

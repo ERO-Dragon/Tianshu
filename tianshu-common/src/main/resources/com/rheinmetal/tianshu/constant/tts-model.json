@@ -14,7 +14,7 @@
     "performanceScore": 8,
     "recommendationScore": 9,
     "size": 364816464,
-    "downloadUrl": null
+    "downloadUri": null
   },
   {
     "name": "vits-melo-tts-zh_en",
@@ -29,7 +29,7 @@
     "performanceScore": 8,
     "recommendationScore": 8,
     "size": 162529280,
-    "downloadUrl": null
+    "downloadUri": null
   },
   {
     "name": "MOSS-TTS-Nano-100M-ONNX",
@@ -43,7 +43,7 @@
     "performanceScore": 4,
     "recommendationScore": 8,
     "size": 104857600,
-    "downloadUrl": null
+    "downloadUri": null
   },
   {
     "name": "ZipVoice-int8",
@@ -60,6 +60,6 @@
     "performanceScore": 6,
     "recommendationScore": 8,
     "size": 314572800,
-    "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-zh-en-emilia.tar.bz2"
+    "downloadUri": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-zh-en-emilia.tar.bz2"
   }
 ]

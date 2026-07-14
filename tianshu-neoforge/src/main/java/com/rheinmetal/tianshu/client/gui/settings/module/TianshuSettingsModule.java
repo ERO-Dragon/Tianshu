@@ -17,7 +17,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
 public final class TianshuSettingsModule {
-    private final TianshuCoreManager coreManager;
     private final SettingsCoordinator coordinator;
     private final TianshuSettingsRegistrySource registrySource;
     private final VanillaModuleSettingsRendererProvider rendererProvider;
@@ -31,7 +30,6 @@ public final class TianshuSettingsModule {
     }
 
     public TianshuSettingsModule(TianshuCoreManager coreManager, TianshuSettingsRegistrySource registrySource) {
-        this.coreManager = coreManager;
         this.coordinator = new SettingsCoordinator(new SettingsSessionRegistry(), SettingsEventPublisher.NOOP);
         this.registrySource = registrySource == null ? (registry, context) -> {} : registrySource;
         this.rendererProvider = new VanillaModuleSettingsRendererProvider();
@@ -42,9 +40,6 @@ public final class TianshuSettingsModule {
     }
 
     public Screen createScreen() {
-        if (coreManager != null) {
-            coreManager.initWorkers();
-        }
         ModuleSettingsContext context = new TianshuSettingsContext(coordinator);
         return TianshuSettingsScreen.create(context, registrySource, rendererProvider);
     }

@@ -17,15 +17,11 @@ import com.rheinmetal.tianshu.function.ia.gateway.DialogueMessageGateway;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionState;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimConditionType;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionEventType;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationRequestPayload;
@@ -37,8 +33,10 @@ import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPa
 import com.rheinmetal.tianshu.function.ia.policy.DialogueArbitrationPolicy;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
+import com.rheinmetal.tianshu.function.ia.runtime.DialogueVoiceTriggerSynchronizer;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueLifecycleSweeper;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueParticipantLifecycleCoordinator;
+import com.rheinmetal.tianshu.function.ia.runtime.OwnerPreviewRefreshCoordinator;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
 import com.rheinmetal.tianshu.function.ia.security.DialogueLlmUsageAuthorizationPolicy;
@@ -51,21 +49,14 @@ import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
-import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
-import com.rheinmetal.tianshu.protocol.voice.VoiceCommandScope;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,7 +65,6 @@ public final class IaModule implements TianshuManagedModule {
     private static final Duration OWNER_PREVIEW_REFRESH_INTERVAL = Duration.ofMillis(500L);
     private static final Duration SPEECH_CONTEXT_RETENTION = Duration.ofSeconds(30L);
 
-    private final ProtocolRuntime protocolRuntime;
     private final IaProtocolAdapter adapter;
     private final DialogueParticipantRegistry participantRegistry;
     private final DialogueSessionStore sessionStore;
@@ -96,13 +86,11 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueDiagnosticsView diagnosticsView;
     private final IaModuleService moduleService;
     private final Map<String, DialogueOwnerPreviewPayload> ownerPreviews = new ConcurrentHashMap<>();
-    private final Set<String> voiceTriggerSyncedModules = ConcurrentHashMap.newKeySet();
-    private volatile ProtocolTaskHandle ownerPreviewRefreshTask;
-    private volatile boolean ownerPreviewRefreshActive;
+    private final DialogueVoiceTriggerSynchronizer voiceTriggerSynchronizer;
+    private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
     private ModuleRuntimeContext runtimeContext;
 
     public IaModule(ProtocolRuntime runtime) {
-        this.protocolRuntime = runtime;
         this.adapter = new IaProtocolAdapter(runtime);
         this.participantRegistry = new DialogueParticipantRegistry();
         this.sessionStore = new DialogueSessionStore();
@@ -123,6 +111,20 @@ public final class IaModule implements TianshuManagedModule {
         this.presenceFactPlanner = new DialoguePresenceFactPlanner();
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
         this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
+        this.voiceTriggerSynchronizer = new DialogueVoiceTriggerSynchronizer();
+        this.ownerPreviewRefreshCoordinator = new OwnerPreviewRefreshCoordinator(
+                (task, delay) -> runtime.executors().schedule(
+                        ProtocolTaskSpec.builder()
+                                .moduleId(moduleId())
+                                .lane(ExecutionLane.SCHEDULED)
+                                .taskId("ia.owner-preview-refresh")
+                                .build(),
+                        task,
+                        delay
+                ),
+                OWNER_PREVIEW_REFRESH_INTERVAL,
+                this::refreshOwnerPreviewState
+        );
     }
 
     @Override
@@ -144,35 +146,42 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     @Override
-    public void prepare(ModuleRuntimeContext context) {
-        runtimeContext = context;
-        syncVoiceTriggersFromParticipants();
-        context.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
-        startOwnerPreviewRefresh();
+    public synchronized void prepare(ModuleRuntimeContext context) {
+        ModuleRuntimeContext nextContext = Objects.requireNonNull(context, "context");
+        if (runtimeContext != null && runtimeContext != nextContext) {
+            deactivateRuntime();
+        }
+        runtimeContext = nextContext;
+        voiceTriggerSynchronizer.bind(nextContext.voiceResources(), participantRegistry.snapshot());
+        nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
+        ownerPreviewRefreshCoordinator.start();
     }
 
     @Override
-    public void stop() {
-        stopOwnerPreviewRefresh();
+    public synchronized void stop() {
+        deactivateRuntime();
         long now = System.currentTimeMillis();
-        clearSyncedVoiceTriggers();
         participantLifecycleCoordinator.unregisterModule(null, moduleId(), now);
     }
 
     @Override
-    public void destroy() {
-        stopOwnerPreviewRefresh();
-        clearSyncedVoiceTriggers();
+    public synchronized void destroy() {
+        deactivateRuntime();
         participantRegistry.clear();
         sessionStore.clear();
         attentionMemory.clear();
         contextFreezeStore.clear();
         presenceContextClient.clear();
         ownerPreviews.clear();
+        runtimeContext = null;
+    }
+
+    private void deactivateRuntime() {
+        ownerPreviewRefreshCoordinator.stop();
+        voiceTriggerSynchronizer.unbind();
         if (runtimeContext != null) {
             runtimeContext.runtimeState().capabilities().remove(IaRuntimeCapabilities.ARBITRATION);
         }
-        runtimeContext = null;
     }
 
     private void handleParticipantRegister(TianshuEnvelope envelope, ProtocolContext context) {
@@ -315,7 +324,7 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleParticipantsChanged() {
-        syncVoiceTriggersFromParticipants();
+        voiceTriggerSynchronizer.synchronize(participantRegistry.snapshot());
     }
 
     private void requestPresenceContext(
@@ -338,124 +347,6 @@ public final class IaModule implements TianshuManagedModule {
                 presenceFactPlanner.plan(participants),
                 completion
         );
-    }
-
-    private void syncVoiceTriggersFromParticipants() {
-        VoiceResourceAccess resources = runtimeContext == null ? null : runtimeContext.voiceResources();
-        if (resources == null || resources.voiceTriggers() == null) {
-            return;
-        }
-        Map<String, VoiceTriggerWords> desiredTriggers = voiceTriggersByModule(participantRegistry.snapshot());
-        for (String syncedModule : Set.copyOf(voiceTriggerSyncedModules)) {
-            if (!desiredTriggers.containsKey(syncedModule)) {
-                resources.voiceTriggers().unregisterModule(syncedModule);
-                voiceTriggerSyncedModules.remove(syncedModule);
-            }
-        }
-        for (Map.Entry<String, VoiceTriggerWords> entry : desiredTriggers.entrySet()) {
-            VoiceTriggerWords words = entry.getValue();
-            resources.voiceTriggers().register(new VoiceTriggerRegistration(
-                    entry.getKey(),
-                    words.wakeWords(),
-                    words.extraWords(),
-                    VoiceCommandCategory.GENERAL,
-                    words.priority(),
-                    VoiceCommandScope.CLIENT,
-                    true
-            ));
-            voiceTriggerSyncedModules.add(entry.getKey());
-        }
-    }
-
-    private void clearSyncedVoiceTriggers() {
-        VoiceResourceAccess resources = runtimeContext == null ? null : runtimeContext.voiceResources();
-        if (resources == null || resources.voiceTriggers() == null) {
-            voiceTriggerSyncedModules.clear();
-            return;
-        }
-        for (String moduleId : Set.copyOf(voiceTriggerSyncedModules)) {
-            resources.voiceTriggers().unregisterModule(moduleId);
-        }
-        voiceTriggerSyncedModules.clear();
-    }
-
-    private List<String> extractWakeWords(DialogueParticipantDescriptor descriptor) {
-        if (descriptor.claimProfile() == null || descriptor.claimProfile().mode() != DialogueClaimMode.RULES) {
-            return List.of();
-        }
-        List<String> words = new ArrayList<>();
-        descriptor.claimProfile().rules().forEach(rule -> {
-            if (rule == null || rule.conditions().isEmpty()) {
-                return;
-            }
-            for (DialogueClaimCondition condition : rule.conditions()) {
-                if (condition != null && condition.type() == DialogueClaimConditionType.WAKE_WORD) {
-                    words.addAll(condition.values());
-                }
-            }
-        });
-        return words.stream()
-                .filter(word -> word != null && !word.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
-    }
-
-    private Map<String, VoiceTriggerWords> voiceTriggersByModule(List<DialogueParticipantDescriptor> participants) {
-        if (participants == null || participants.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, VoiceTriggerAccumulator> accumulators = new LinkedHashMap<>();
-        for (DialogueParticipantDescriptor participant : participants) {
-            if (participant == null || participant.moduleId().isBlank()) {
-                continue;
-            }
-            VoiceTriggerWords words = triggerWordsFor(participant);
-            if (words.empty()) {
-                continue;
-            }
-            accumulators.computeIfAbsent(participant.moduleId(), ignored -> new VoiceTriggerAccumulator())
-                    .add(words, participant.priority());
-        }
-        Map<String, VoiceTriggerWords> result = new LinkedHashMap<>();
-        for (Map.Entry<String, VoiceTriggerAccumulator> entry : accumulators.entrySet()) {
-            result.put(entry.getKey(), entry.getValue().toWords());
-        }
-        return result;
-    }
-
-    private VoiceTriggerWords triggerWordsFor(DialogueParticipantDescriptor participant) {
-        List<String> claimWakeWords = extractWakeWords(participant);
-        DialogueVoiceTriggerGroup group = participant.voiceTriggerGroup();
-        LinkedHashSet<String> wakeWords = new LinkedHashSet<>(claimWakeWords);
-        LinkedHashSet<String> extraWords = new LinkedHashSet<>();
-        if (group != null) {
-            wakeWords.addAll(group.wakeWords());
-            extraWords.addAll(group.extraWords());
-        }
-        return new VoiceTriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords), participant.priority());
-    }
-
-    private static final class VoiceTriggerAccumulator {
-        private final LinkedHashSet<String> wakeWords = new LinkedHashSet<>();
-        private final LinkedHashSet<String> extraWords = new LinkedHashSet<>();
-        private int priority;
-
-        private void add(VoiceTriggerWords words, int participantPriority) {
-            wakeWords.addAll(words.wakeWords());
-            extraWords.addAll(words.extraWords());
-            priority = Math.max(priority, participantPriority);
-        }
-
-        private VoiceTriggerWords toWords() {
-            return new VoiceTriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords), priority);
-        }
-    }
-
-    private record VoiceTriggerWords(List<String> wakeWords, List<String> extraWords, int priority) {
-        private boolean empty() {
-            return wakeWords.isEmpty() && extraWords.isEmpty();
-        }
     }
 
     private DialogueContextFrame withPlayerId(DialogueContextFrame frame, String playerId) {
@@ -527,44 +418,10 @@ public final class IaModule implements TianshuManagedModule {
         }
     }
 
-    private void startOwnerPreviewRefresh() {
-        if (ownerPreviewRefreshActive) {
-            return;
-        }
-        ownerPreviewRefreshActive = true;
-        scheduleOwnerPreviewRefresh();
-    }
-
-    private void stopOwnerPreviewRefresh() {
-        ownerPreviewRefreshActive = false;
-        ProtocolTaskHandle task = ownerPreviewRefreshTask;
-        if (task != null && !task.isDone()) {
-            task.cancel("IA stopped");
-        }
-        ownerPreviewRefreshTask = null;
-    }
-
-    private void scheduleOwnerPreviewRefresh() {
-        if (!ownerPreviewRefreshActive) {
-            return;
-        }
-        ownerPreviewRefreshTask = protocolRuntime.executors().schedule(
-                ProtocolTaskSpec.builder()
-                        .moduleId(moduleId())
-                        .lane(ExecutionLane.SCHEDULED)
-                        .taskId("ia.owner-preview-refresh")
-                        .build(),
-                () -> {
-                    if (!ownerPreviewRefreshActive) {
-                        return;
-                    }
-                    long now = System.currentTimeMillis();
-                    contextFreezeStore.sweep(now);
-                    refreshOwnerPreviews(null, now);
-                    scheduleOwnerPreviewRefresh();
-                },
-                OWNER_PREVIEW_REFRESH_INTERVAL
-        );
+    private void refreshOwnerPreviewState() {
+        long now = System.currentTimeMillis();
+        contextFreezeStore.sweep(now);
+        refreshOwnerPreviews(null, now);
     }
 
     private void handleSessionControl(TianshuEnvelope envelope, ProtocolContext context) {

@@ -12,103 +12,170 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
+/** Client-lifetime IR index with serialized asynchronous startup and resource-reload rebuilds. */
 public final class ClientNamedObjectIndexManager {
     private static final Logger LOGGER = LogUtils.getLogger();
-
     private static final IRCommandService IR_SERVICE = new IRCommandService();
     private static final ClientItemDictionaryBuilder ITEM_DICTIONARY_BUILDER = new ClientItemDictionaryBuilder();
     private static final ClientEntityDictionaryBuilder ENTITY_DICTIONARY_BUILDER = new ClientEntityDictionaryBuilder();
     private static final IRCacheStore CACHE_STORE = new IRCacheStore();
+    private static final ExecutorService INDEX_EXECUTOR = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "Tianshu-IR-Index");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final Object TASK_MONITOR = new Object();
 
     private static volatile String lastBuildReason = "uninitialized";
+    private static boolean closed;
+    private static CompletableFuture<Boolean> initializationFuture;
 
     private ClientNamedObjectIndexManager() {
     }
 
-    public static void rebuildIndex(String reason) {
-        try {
-            Map<String, List<String>> dictionary = buildDictionary();
-            if (dictionary.isEmpty()) {
-                LOGGER.warn("IR named object dictionary is empty, skip index rebuild, reason={}", reason);
-                IR_SERVICE.clear();
-                return;
+    public static CompletableFuture<Boolean> initializeAsync(String reason) {
+        if (IR_SERVICE.isReady()) {
+            return CompletableFuture.completedFuture(true);
+        }
+        synchronized (TASK_MONITOR) {
+            if (IR_SERVICE.isReady()) {
+                return CompletableFuture.completedFuture(true);
             }
-
-            String fingerprint = CACHE_STORE.buildFingerprint(dictionary);
-            IRSnapshot cachedSnapshot = tryLoadSnapshot(fingerprint, reason);
-            if (cachedSnapshot != null) {
-                IR_SERVICE.restore(cachedSnapshot);
-                lastBuildReason = reason + " [cache]";
-                LOGGER.info("IR named object index loaded from cache, objects={}, reason={}, file={}", getIndexedObjectCount(), reason, CACHE_STORE.cacheFilePath());
-                return;
+            if (initializationFuture != null && !initializationFuture.isDone()) {
+                return initializationFuture;
             }
-
-            IR_SERVICE.rebuild(dictionary);
-            trySaveSnapshot(fingerprint, reason);
-            lastBuildReason = reason;
-            LOGGER.info("IR named object index rebuilt, objects={}, reason={}, file={}", getIndexedObjectCount(), reason, CACHE_STORE.cacheFilePath());
-        } catch (Throwable throwable) {
-            LOGGER.error("IR named object index rebuild failed, reason={}", reason, throwable);
+            initializationFuture = submitRebuild(reason, null);
+            return initializationFuture;
         }
     }
 
-    public static void ensureIndex(String reason) {
-        if (!IR_SERVICE.isReady()) {
-            rebuildIndex(reason);
+    public static CompletableFuture<Boolean> reloadAsync(String reason, Runnable beforeRebuild) {
+        return submitRebuild(reason, beforeRebuild);
+    }
+
+    private static boolean ensureIndex(String reason) {
+        if (IR_SERVICE.isReady()) {
+            return true;
         }
+        initializeAsync(reason);
+        return false;
     }
 
-    public static boolean isReady() {
-        return IR_SERVICE.isReady();
-    }
-
-    public static int getIndexedObjectCount() {
+    private static int getIndexedObjectCount() {
         return IR_SERVICE.getIndexedObjectCount();
     }
 
-    public static String resolveDisplayName(String realItemId) {
+    static String resolveDisplayName(String realItemId) {
         ensureIndex("display name resolve");
         return IR_SERVICE.resolveDisplayName(realItemId);
     }
 
-    public static String resolveEntityDisplayName(String entityTypeId) {
+    static String resolveEntityDisplayName(String entityTypeId) {
         ensureIndex("entity display name resolve");
         return IR_SERVICE.resolveEntityDisplayName(entityTypeId);
     }
 
-    public static String getLastBuildReason() {
-        return lastBuildReason;
-    }
-
-    public static IRParseResult parsePlayerCommand(String rawText, boolean isFastIR) {
-        return parsePlayerCommand(rawText, isFastIR, IrContextHint.empty());
-    }
-
-    public static IRParseResult parsePlayerCommand(String rawText, boolean isFastIR, IrContextHint contextHint) {
-        ensureIndex("parse fallback");
+    static IRParseResult parsePlayerCommand(String rawText, boolean isFastIR, IrContextHint contextHint) {
+        awaitInitialization("parse fallback");
         return IR_SERVICE.parse(rawText, ClientItemContextResolver.from(contextHint), isFastIR);
     }
 
-    public static String formatPreview(IRParseResult parseResult) {
-        if (parseResult == null || !parseResult.hasUnits()) {
-            return "";
-        }
-        List<ParseUnit> units = parseResult.getUnits();
-        StringBuilder builder = new StringBuilder(units.size() * 24);
-        for (int i = 0; i < units.size(); i++) {
-            ParseUnit unit = units.get(i);
-            if (i > 0) {
-                builder.append(" | ");
+    public static void close() {
+        synchronized (TASK_MONITOR) {
+            if (closed) {
+                return;
             }
-            builder.append(unit.intent)
-                    .append(':')
-                    .append(unit.targetRealItemId);
-            if (unit.isNegated) {
-                builder.append(" [neg]");
+            closed = true;
+            INDEX_EXECUTOR.shutdownNow();
+        }
+    }
+
+    private static CompletableFuture<Boolean> submitRebuild(String reason, Runnable beforeRebuild) {
+        String buildReason = reason == null || reason.isBlank() ? "unspecified" : reason;
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        synchronized (TASK_MONITOR) {
+            if (closed) {
+                result.completeExceptionally(new RejectedExecutionException("IR index manager is closed"));
+                return result;
+            }
+            try {
+                INDEX_EXECUTOR.execute(() -> runRebuild(buildReason, beforeRebuild, result));
+            } catch (RejectedExecutionException failure) {
+                result.completeExceptionally(failure);
             }
         }
-        return builder.toString();
+        return result;
+    }
+
+    private static void runRebuild(
+            String reason,
+            Runnable beforeRebuild,
+            CompletableFuture<Boolean> result
+    ) {
+        try {
+            if (beforeRebuild != null) {
+                beforeRebuild.run();
+            }
+            result.complete(rebuildIndexNow(reason));
+        } catch (RuntimeException failure) {
+            LOGGER.error("IR named object index rebuild failed, reason={}", reason, failure);
+            result.complete(false);
+        } catch (Error failure) {
+            result.completeExceptionally(failure);
+            throw failure;
+        }
+    }
+
+    private static boolean rebuildIndexNow(String reason) {
+        Map<String, List<String>> dictionary = buildDictionary();
+        if (dictionary.isEmpty()) {
+            LOGGER.warn("IR named object dictionary is empty, clear index, reason={}", reason);
+            IR_SERVICE.clear();
+            lastBuildReason = reason + " [empty]";
+            return false;
+        }
+
+        String fingerprint = CACHE_STORE.buildFingerprint(dictionary);
+        IRSnapshot cachedSnapshot = tryLoadSnapshot(fingerprint, reason);
+        if (cachedSnapshot != null) {
+            IR_SERVICE.restore(cachedSnapshot);
+            lastBuildReason = reason + " [cache]";
+            LOGGER.info(
+                    "IR named object index loaded from cache, objects={}, reason={}, file={}",
+                    getIndexedObjectCount(),
+                    reason,
+                    CACHE_STORE.cacheFilePath()
+            );
+            return true;
+        }
+
+        IR_SERVICE.rebuild(dictionary);
+        trySaveSnapshot(fingerprint, reason);
+        lastBuildReason = reason;
+        LOGGER.info(
+                "IR named object index rebuilt, objects={}, reason={}, file={}",
+                getIndexedObjectCount(),
+                reason,
+                CACHE_STORE.cacheFilePath()
+        );
+        return true;
+    }
+
+    private static void awaitInitialization(String reason) {
+        if (IR_SERVICE.isReady()) {
+            return;
+        }
+        try {
+            initializeAsync(reason).join();
+        } catch (CompletionException failure) {
+            LOGGER.error("IR named object index initialization failed, reason={}", reason, failure.getCause());
+        }
     }
 
     private static IRSnapshot tryLoadSnapshot(String fingerprint, String reason) {

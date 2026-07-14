@@ -21,6 +21,7 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -455,7 +456,7 @@ public class TtsModelService {
             deleteRecursivelyIfExists(stagingDir);
             Files.createDirectories(stagingDir);
 
-            if (info.downloadUrl != null && !info.downloadUrl.isBlank()) {
+            if (info.downloadUri != null && !info.downloadUri.isBlank()) {
                 downloadArchiveModel(task, info, stagingDir, proxyUrl, callback);
             } else if ("moss".equals(info.getEngineType())) {
                 downloadMossModel(task, stagingDir, callback);
@@ -520,12 +521,13 @@ public class TtsModelService {
 
     private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
         Files.createDirectories(modelDir);
-        String archiveName = archiveName(info.downloadUrl);
+        URI archiveUri = requireHttpUri(info.downloadUri, "tts.download.invalid_archive_uri");
+        URI proxyBaseUri = optionalHttpUri(proxyUrl, "tts.download.invalid_proxy_uri");
+        String archiveName = archiveName(archiveUri);
         Path archivePath = modelDir.resolve(archiveName);
-        String finalUrl = buildDownloadUrl(info.downloadUrl, proxyUrl);
 
         emitProgress(task, callback, "tianshu.gui.tts.status.downloading", 5);
-        task.session().downloadArchive(finalUrl, archivePath, 5, 60_000, (downloaded, total) -> {
+        task.session().downloadArchive(archiveUri, proxyBaseUri, proxyBaseUri != null, archivePath, 5, 60_000, (downloaded, total) -> {
             int percent = total > 0 ? Math.min(85, (int) (downloaded * 80 / total) + 5) : 40;
             emitProgress(task, callback, "tianshu.gui.tts.status.downloading", percent);
         });
@@ -583,20 +585,34 @@ public class TtsModelService {
         return info == null || info.name == null ? "" : info.name;
     }
 
-    private String buildDownloadUrl(String downloadUrl, String proxyUrl) {
-        if (proxyUrl == null || proxyUrl.isBlank()) {
-            return downloadUrl;
+    private URI requireHttpUri(String value, String errorCode) throws IOException {
+        if (value == null || value.isBlank()) {
+            throw new IOException(errorCode);
         }
-        String normalizedProxy = proxyUrl.endsWith("/") ? proxyUrl : proxyUrl + "/";
-        if (downloadUrl.startsWith(normalizedProxy)) {
-            return downloadUrl;
+        try {
+            URI uri = URI.create(value.trim());
+            if (!uri.isAbsolute() || uri.getHost() == null
+                    || (!("http".equalsIgnoreCase(uri.getScheme())) && !("https".equalsIgnoreCase(uri.getScheme())))) {
+                throw new IllegalArgumentException("URI must use HTTP(S)");
+            }
+            return uri;
+        } catch (IllegalArgumentException failure) {
+            throw new IOException(errorCode, failure);
         }
-        return normalizedProxy + downloadUrl;
     }
 
-    private String archiveName(String downloadUrl) {
-        int idx = downloadUrl.lastIndexOf('/');
-        return idx >= 0 ? downloadUrl.substring(idx + 1) : "model.tar.bz2";
+    private URI optionalHttpUri(String value, String errorCode) throws IOException {
+        return value == null || value.isBlank() ? null : requireHttpUri(value, errorCode);
+    }
+
+    private String archiveName(URI archiveUri) {
+        String path = archiveUri == null ? "" : archiveUri.getPath();
+        if (path == null || path.isBlank() || path.endsWith("/")) {
+            return "model.tar.bz2";
+        }
+        int index = path.lastIndexOf('/');
+        String name = index >= 0 ? path.substring(index + 1) : path;
+        return name.isBlank() ? "model.tar.bz2" : name;
     }
 
     private void extractTarBz2(Path archive, Path targetDir) throws IOException {

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.download;
 
-import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
+import com.rheinmetal.tianshu.api.IGameEnvironment;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -18,7 +18,7 @@ class TtsModelDownloadCoordinatorTest {
     @Test
     void pausedWaiterIsReleasedByResumeWithoutPollingSleep() throws Exception {
         TtsModelDownloadCoordinator.DownloadSession session = new TtsModelDownloadCoordinator(
-                new TestLlmSupport.FakeGameEnvironment()).newSession();
+                new FakeGameEnvironment()).newSession();
         session.pause();
         CompletableFuture<Void> waiting = CompletableFuture.runAsync(() -> await(session));
 
@@ -34,7 +34,7 @@ class TtsModelDownloadCoordinatorTest {
     @Test
     void cancelWakesPausedWaiterWithCancelledFailure() throws Exception {
         TtsModelDownloadCoordinator.DownloadSession session = new TtsModelDownloadCoordinator(
-                new TestLlmSupport.FakeGameEnvironment()).newSession();
+                new FakeGameEnvironment()).newSession();
         session.pause();
         CompletableFuture<Void> waiting = CompletableFuture.runAsync(() -> await(session));
 
@@ -61,6 +61,43 @@ class TtsModelDownloadCoordinatorTest {
     private static final class DownloadAwaitException extends RuntimeException {
         private DownloadAwaitException(Throwable cause) {
             super(cause);
+        }
+    }
+
+    private static final class FakeGameEnvironment implements IGameEnvironment {
+        @Override
+        public void displayMessageToPlayer(String message) {
+        }
+
+        @Override
+        public void executeOnMainThread(Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public Path getGameDirectory() {
+            return Path.of(".");
+        }
+
+        @Override
+        public boolean isClientSide() {
+            return true;
+        }
+
+        @Override
+        public void openFolder(Path dir) {
+        }
+
+        @Override
+        public void info(String msg) {
+        }
+
+        @Override
+        public void warn(String msg) {
+        }
+
+        @Override
+        public void error(String msg, Throwable t) {
         }
     }
 }

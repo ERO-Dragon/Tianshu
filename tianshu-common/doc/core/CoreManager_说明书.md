@@ -16,7 +16,7 @@
 - 托管模块生命周期
 - 维护核心宿主生命周期状态
 - 暴露核心状态与运行时能力状态
-- 响应宿主级 `init`、`refresh`、`restart`、`destroy` 命令
+- 响应宿主级 `startRuntimeSession`、`refreshRuntime`、`stopRuntimeSession`、`destroy` 命令
 
 CoreManager 可以在没有任何功能模块的情况下启动和运行。功能模块全部视为外部可选能力，CoreManager 本身不依赖具体功能模块。
 
@@ -35,6 +35,8 @@ CoreManager 负责宿主层面的运行时编排：
 - 查询核心生命周期状态
 - 查询运行时能力状态
 - 中断当前运行时处理
+
+四个生命周期入口统一返回 `CompletableFuture<CoreRuntimeStatus>`。调用线程只提交命令，不同步执行模块的模型、磁盘、native engine 或 checkpoint 工作。
 
 ### 2.2 CoreManager 不负责的内容
 
@@ -92,11 +94,28 @@ CoreManager 的生命周期由 `CoreModuleLifecycleCoordinator` 统一协调。
 - `destroy`
 - `unregister`
 
+其中 `register/prepare/start/stop/destroy` 是 `TianshuManagedModule` 回调；`unregister` 是宿主通过协议运行时撤销模块注册的清理阶段，不是模块接口上的额外回调。
+
 CoreManager 自身只发起生命周期推进，不解释具体模块的业务含义。
+
+### 4.1 生命周期线程边界
+
+`CoreModuleLifecycleCoordinator` 使用独立的单线程 `CoreLifecycleCommandQueue` 串行执行模块生命周期。该 worker 只负责宿主生命周期，不负责功能协议任务，也不替代 `ProtocolExecutorManager`：
+
+- 功能模块通信、broker、capability/topic 和执行 lane 继续由 `ProtocolRuntime` / `ProtocolExecutorManager` 负责。
+- Core lifecycle worker 只执行模块装配与 `register/prepare/start/stop/destroy/unregister`。
+- 独立 worker 避免把“关闭 ProtocolRuntime executor”的终态动作提交给被关闭的 executor 自己。
+- 状态查询使用线程安全快照，不要求 Minecraft 主线程等待重型生命周期锁。
+
+### 4.2 世界会话重入
+
+退出世界调用 `stopRuntimeSession()`，它会清理当前模块但保留 `ProtocolRuntime`。再次进入世界调用 `startRuntimeSession()`，必须重新装配新的模块实例并完整执行生命周期。
+
+快速发生的 `start -> stop -> start`、refresh 与 destroy 由同一个命令队列确定顺序；旧会话的迟到 refresh 不得污染新会话，终态 destroy 后不得再次启动。
 
 模块生命周期注册和模块内部的业务注册不是一回事。CoreManager 只负责把模块纳入生命周期托管，不负责模块的语音关键词注册、热词表更新、ASR 热词文件重载或具体协议业务处理。语音关键词应由模块通过协议/语音注册入口主动声明和更新，再由语音资源层与 ASR 模块处理后续热词物化和引擎重载。
 
-## 5. refresh / restart 语义
+## 5. refresh 语义
 
 封版后，core 不再使用 `llmChanged` 这类产品语义参数。
 
@@ -108,6 +127,8 @@ CoreManager 自身只发起生命周期推进，不解释具体模块的业务�
 - `RESTART_REQUESTED`
 
 这些原因描述的是宿主层面的刷新触发来源，而不是某个具体功能模块的变化。
+
+`refreshRuntime(reason)` 使用 single-flight 语义：同一轮未完成刷新返回同一个 future，不重复重建模块。世界 stop 或终态 destroy 请求会使尚未开始的旧 refresh 失效。
 
 ## 6. 能力模型
 
@@ -190,7 +211,7 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 
 ## 10. 销毁语义
 
-`destroy()` 会按宿主顺序释放资源：
+`destroy()` 提交终态命令并返回同一个完成 future；重复调用不会重复销毁。命令按宿主顺序释放资源：
 
 1. 标记核心进入销毁阶段
 2. 销毁模块生命周期
@@ -199,6 +220,8 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 5. 标记核心已销毁
 
 协议运行时关闭会进一步关闭协议执行器资源。
+
+`stopRuntimeSession()` 与 `destroy()` 不同：前者回到 `CREATED / IDLE` 并允许下一次世界会话重新装配，后者进入不可恢复的 `DESTROYED`。
 
 ## 11. 封版结论
 
@@ -214,6 +237,8 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 - runtime interrupt 已交回协议侧构建和投递
 - 模块上下文使用协议窄接口
 - 模块失败状态可保留用于诊断
+- 世界退出/重进使用后台串行生命周期命令，不占用 Minecraft 主线程执行模块清理
+- Core lifecycle worker 与 Protocol executor 的职责互不重叠
 - destroy 链包含协议运行时关闭
 
 封版后允许继续演进 function、client、GUI、具体模块实现，但不应再把具体产品功能重新塞回 CoreManager。

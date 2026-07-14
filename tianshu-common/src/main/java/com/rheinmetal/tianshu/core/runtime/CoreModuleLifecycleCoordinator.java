@@ -6,12 +6,12 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class CoreModuleLifecycleCoordinator {
     private final IGameEnvironment env;
@@ -21,12 +21,18 @@ public final class CoreModuleLifecycleCoordinator {
     private final VoiceResourceManager voiceResourceManager;
     private final ModuleRuntimeState runtimeState;
     private final RuntimeReadinessState readinessState;
+    private final RuntimeInterruptionService interruptionService;
     private final Runnable moduleBuilder;
-    private final Object lifecycleLock = new Object();
+    private final CoreLifecycleCommandQueue commands = new CoreLifecycleCommandQueue();
+    private final AtomicLong sessionBarrier = new AtomicLong();
+    private final AtomicBoolean destroyRequested = new AtomicBoolean();
+    private final Object refreshMonitor = new Object();
+    private final Object destroyMonitor = new Object();
 
     private volatile boolean initialized;
     private volatile CoreLifecyclePhase phase = CoreLifecyclePhase.CREATED;
-    private volatile ProtocolTaskHandle refreshTask;
+    private CompletableFuture<CoreRuntimeStatus> refreshFuture;
+    private CompletableFuture<CoreRuntimeStatus> destroyFuture;
 
     public CoreModuleLifecycleCoordinator(
             IGameEnvironment env,
@@ -36,6 +42,7 @@ public final class CoreModuleLifecycleCoordinator {
             VoiceResourceManager voiceResourceManager,
             ModuleRuntimeState runtimeState,
             RuntimeReadinessState readinessState,
+            RuntimeInterruptionService interruptionService,
             Runnable moduleBuilder
     ) {
         this.env = env;
@@ -45,6 +52,7 @@ public final class CoreModuleLifecycleCoordinator {
         this.voiceResourceManager = voiceResourceManager;
         this.runtimeState = runtimeState;
         this.readinessState = readinessState;
+        this.interruptionService = interruptionService;
         this.moduleBuilder = moduleBuilder;
         this.voiceResourceManager.voiceTriggers().addChangeListener(this.voiceResourceManager::materialize);
     }
@@ -67,104 +75,122 @@ public final class CoreModuleLifecycleCoordinator {
         );
     }
 
-    public void initializeIfNeeded() {
-        synchronized (lifecycleLock) {
-            if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING || initialized) {
-                return;
-            }
-            runLifecycleLocked(false, CoreLifecyclePhase.INITIALIZING);
+    public CompletableFuture<CoreRuntimeStatus> startSession() {
+        if (destroyRequested.get()) {
+            return CompletableFuture.completedFuture(status());
         }
+        long barrier = sessionBarrier.get();
+        return commands.submit("start_session", () -> {
+            if (destroyRequested.get() || barrier != sessionBarrier.get() || initialized) {
+                return status();
+            }
+            runLifecycle(false, CoreLifecyclePhase.INITIALIZING, RuntimeEnginePhase.INITIALIZING);
+            return status();
+        });
     }
 
-    public void refresh(RuntimeRefreshReason reason) {
-        synchronized (lifecycleLock) {
-            if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING) {
-                env.warn("核心生命周期已销毁，忽略模块刷新请求");
-                return;
+    public CompletableFuture<CoreRuntimeStatus> refresh(RuntimeRefreshReason reason) {
+        if (destroyRequested.get()) {
+            return CompletableFuture.completedFuture(status());
+        }
+        synchronized (refreshMonitor) {
+            if (refreshFuture != null && !refreshFuture.isDone()) {
+                return refreshFuture;
             }
-
+            long barrier = sessionBarrier.get();
             RuntimeRefreshReason refreshReason = reason == null ? RuntimeRefreshReason.MANUAL : reason;
-            env.info("开始刷新模块生命周期，reason=" + refreshReason);
-            phase = CoreLifecyclePhase.REFRESHING;
-            shutdownModulesLocked();
-            runLifecycleLocked(true, CoreLifecyclePhase.REFRESHING);
-        }
-    }
-
-    public boolean submitRefresh(RuntimeRefreshReason reason, Runnable onComplete) {
-        synchronized (lifecycleLock) {
-            if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING) {
-                env.warn("核心生命周期已销毁，忽略模块刷新请求");
-                return false;
-            }
-            ProtocolTaskHandle currentTask = refreshTask;
-            if (currentTask != null && !currentTask.isDone()) {
-                env.warn("模块生命周期刷新已在队列中，忽略重复请求");
-                return false;
-            }
-            refreshTask = protocolRuntime.executors().submit(
-                    ProtocolTaskSpec.builder()
-                            .moduleId("core.lifecycle")
-                            .lane(ExecutionLane.MODEL_LOAD)
-                            .concurrencyKey("core.lifecycle:refresh")
-                            .maxConcurrency(1)
-                            .queueCapacity(1)
-                            .build(),
-                    () -> {
-                        try {
-                            refresh(reason);
-                        } finally {
-                            if (onComplete != null) {
-                                onComplete.run();
-                            }
-                        }
+            CompletableFuture<CoreRuntimeStatus> submitted = commands.submit("refresh", () -> {
+                if (destroyRequested.get() || barrier != sessionBarrier.get()) {
+                    return status();
+                }
+                if (!initialized) {
+                    runLifecycle(false, CoreLifecyclePhase.INITIALIZING, RuntimeEnginePhase.INITIALIZING);
+                    return status();
+                }
+                env.info("开始刷新模块生命周期，reason=" + refreshReason);
+                phase = CoreLifecyclePhase.REFRESHING;
+                readinessState.setPhase(RuntimeEnginePhase.RESTARTING);
+                if (!shutdownModules(true, "refresh")) {
+                    initialized = false;
+                    phase = CoreLifecyclePhase.FAILED;
+                    readinessState.setPhase(RuntimeEnginePhase.IDLE);
+                    return status();
+                }
+                runLifecycle(true, CoreLifecyclePhase.REFRESHING, RuntimeEnginePhase.RESTARTING);
+                return status();
+            });
+            refreshFuture = submitted;
+            submitted.whenComplete((ignored, failure) -> {
+                synchronized (refreshMonitor) {
+                    if (refreshFuture == submitted) {
+                        refreshFuture = null;
                     }
-            );
-            if (refreshTask.state() == ProtocolTaskState.REJECTED) {
-                refreshTask = null;
-                env.warn("模块生命周期刷新任务提交被拒绝");
-                return false;
-            }
-            return true;
+                }
+            });
+            return submitted;
         }
     }
 
-    public void destroyModules() {
-        ProtocolTaskHandle currentTask;
-        synchronized (lifecycleLock) {
-            phase = CoreLifecyclePhase.DESTROYING;
-            currentTask = refreshTask;
-            if (currentTask != null && !currentTask.isDone()) {
-                currentTask.cancel("core_destroy");
-            }
-            shutdownModulesLocked();
-            initialized = false;
-            phase = CoreLifecyclePhase.DESTROYED;
+    public CompletableFuture<CoreRuntimeStatus> stopSession() {
+        sessionBarrier.incrementAndGet();
+        if (destroyRequested.get()) {
+            return CompletableFuture.completedFuture(status());
         }
-    }
-
-    public void stopSession() {
-        ProtocolTaskHandle currentTask;
-        synchronized (lifecycleLock) {
-            if (phase == CoreLifecyclePhase.DESTROYED || phase == CoreLifecyclePhase.DESTROYING) {
-                return;
+        interruptionService.interruptOngoingProcessing(
+                com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload.Reason.CLIENT_SHUTDOWN,
+                "client_world_unload"
+        );
+        return commands.submit("stop_session", () -> {
+            if (destroyRequested.get()) {
+                return status();
             }
             phase = CoreLifecyclePhase.DESTROYING;
-            currentTask = refreshTask;
-            if (currentTask != null && !currentTask.isDone()) {
-                currentTask.cancel("core_session_stop");
-            }
-            shutdownModulesLocked();
+            shutdownModules(true, "session stop");
             initialized = false;
             phase = CoreLifecyclePhase.CREATED;
+            readinessState.setPhase(RuntimeEnginePhase.IDLE);
+            return status();
+        });
+    }
+
+    public CompletableFuture<CoreRuntimeStatus> destroy() {
+        synchronized (destroyMonitor) {
+            if (destroyFuture != null) {
+                return destroyFuture;
+            }
+            destroyRequested.set(true);
+            sessionBarrier.incrementAndGet();
+            interruptionService.interruptOngoingProcessing(
+                    com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload.Reason.CLIENT_SHUTDOWN,
+                    "client_shutdown"
+            );
+            CompletableFuture<CoreRuntimeStatus> submitted = commands.submit("destroy", () -> {
+                phase = CoreLifecyclePhase.DESTROYING;
+                try {
+                    shutdownModules(true, "destroy");
+                    protocolRuntime.close();
+                } finally {
+                    initialized = false;
+                    readinessState.setPhase(RuntimeEnginePhase.DESTROYED);
+                    phase = CoreLifecyclePhase.DESTROYED;
+                }
+                return status();
+            });
+            destroyFuture = submitted;
+            submitted.whenComplete((ignored, failure) -> commands.close());
+            return submitted;
         }
     }
 
-    private void runLifecycleLocked(boolean rebuild, CoreLifecyclePhase activePhase) {
+    private void runLifecycle(
+            boolean rebuild,
+            CoreLifecyclePhase activePhase,
+            RuntimeEnginePhase activeEnginePhase
+    ) {
         try {
             env.info("开始初始化模块生命周期...");
             phase = activePhase;
-            readinessState.setPhase(RuntimeEnginePhase.INITIALIZING);
+            readinessState.setPhase(activeEnginePhase);
 
             if (rebuild || !initialized) {
                 moduleBuilder.run();
@@ -179,49 +205,55 @@ public final class CoreModuleLifecycleCoordinator {
 
             initialized = true;
             phase = CoreLifecyclePhase.RUNNING;
-            readinessState.refreshPhase(true);
+            readinessState.setPhase(RuntimeEnginePhase.FULLY_READY);
             env.info("模块生命周期初始化完成");
         } catch (ModuleLifecycleException exception) {
             env.error("模块生命周期执行失败：module=" + exception.moduleId() + ", phase=" + exception.phase(), exception);
-            handleLifecycleFailureLocked();
+            handleLifecycleFailure();
         } catch (Exception exception) {
             env.error("模块生命周期初始化失败", exception);
-            handleLifecycleFailureLocked();
+            handleLifecycleFailure();
         }
     }
 
-    private void handleLifecycleFailureLocked() {
+    private void handleLifecycleFailure() {
         initialized = false;
         phase = CoreLifecyclePhase.FAILED;
         readinessState.setPhase(RuntimeEnginePhase.IDLE);
-        try {
-            shutdownModulesLocked(false);
-        } catch (ModuleLifecycleException exception) {
-            env.error("模块生命周期失败后的清理失败：module=" + exception.moduleId() + ", phase=" + exception.phase(), exception);
-        }
+        shutdownModules(false, "failure cleanup");
     }
 
-    private void shutdownModulesLocked() {
-        shutdownModulesLocked(true);
-    }
-
-    private void shutdownModulesLocked(boolean clearCapabilities) {
+    private boolean shutdownModules(boolean clearCapabilities, String operation) {
         try {
-            moduleHost.stopAll();
-        } finally {
             try {
-                moduleHost.destroyAll();
+                moduleHost.stopAll();
             } finally {
                 try {
-                    moduleHost.unregisterAll(protocolRuntime);
+                    moduleHost.destroyAll();
                 } finally {
-                    moduleHost.clearActiveInstallations();
-                    if (clearCapabilities) {
-                        runtimeState.capabilities().clear();
+                    try {
+                        moduleHost.unregisterAll(protocolRuntime);
+                    } finally {
+                        moduleHost.clearActiveInstallations();
+                        if (clearCapabilities) {
+                            runtimeState.capabilities().clear();
+                        }
+                        moduleServices.clear();
                     }
-                    moduleServices.clear();
                 }
             }
+            return true;
+        } catch (ModuleLifecycleException exception) {
+            env.error(
+                    "模块生命周期清理失败：operation=" + operation
+                            + ", module=" + exception.moduleId()
+                            + ", phase=" + exception.phase(),
+                    exception
+            );
+            return false;
+        } catch (Exception exception) {
+            env.error("模块生命周期清理失败：operation=" + operation, exception);
+            return false;
         }
     }
 }

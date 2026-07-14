@@ -20,6 +20,7 @@ import com.rheinmetal.tianshu.client.gui.tts.TtsSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.lifecycle.ClientTianshuModuleAssembler;
+import com.rheinmetal.tianshu.client.lifecycle.ClientOnnxRuntimeModuleInstaller;
 import com.rheinmetal.tianshu.client.ir.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.client.presence.PresenceClientHooks;
@@ -55,6 +56,7 @@ import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TianshuClient {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -64,8 +66,7 @@ public class TianshuClient {
     private static boolean wasAlwaysKeyTriggered = false;
     private static boolean isVoiceKeyPressed = false;
     private static TriggerMode lastTriggerMode = null;
-    private static boolean isOnnxRuntimeLoaded = false;
-    private static boolean worldSessionStarted = false;
+    private static final AtomicLong worldSessionGeneration = new AtomicLong();
 
     private static NeoForgeEnvironment env;
     private static ClientConfig config;
@@ -143,13 +144,17 @@ public class TianshuClient {
                 new NeoForgeAXWorldIdentityProvider(),
                 config,
                 AXChatOutputSink.NOOP,
-                List.of(presenceRuntime.moduleInstaller(context.protocolRuntime()))
+                List.of(
+                        new ClientOnnxRuntimeModuleInstaller(),
+                        presenceRuntime.moduleInstaller(context.protocolRuntime())
+                )
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();
         integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
         TianshuIntegrationAccess.publish(integrationApi);
         NeoForge.EVENT_BUS.post(new TianshuIntegrationRegisterEvent(integrationApi, externalSettingsContributors));
         settingsModule = new TianshuSettingsModule(coreManager, createSettingsRegistrySource());
+        ClientNamedObjectIndexManager.initializeAsync("client startup");
 
         NeoForge.EVENT_BUS.addListener(TianshuClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(TianshuClient::onScreenInit);
@@ -161,11 +166,21 @@ public class TianshuClient {
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) -> {
             LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
-            ClientNamedObjectIndexManager.ensureIndex("client login");
-            ensureOnnxRuntimeLoaded();
-            coreManager.initWorkers();
-            ClientLlmRuntimeBridge.bind(coreManager, config);
-            worldSessionStarted = coreManager.isInitialized();
+            long generation = worldSessionGeneration.incrementAndGet();
+            TianshuCoreManager currentCore = coreManager;
+            if (currentCore != null) {
+                currentCore.startRuntimeSession().whenComplete((status, failure) -> {
+                    if (generation != worldSessionGeneration.get()) {
+                        return;
+                    }
+                    if (failure != null || status == null || !status.coreRunning()) {
+                        LOGGER.error("天枢世界会话启动失败", failure);
+                        return;
+                    }
+                    ClientLlmRuntimeBridge.bind(currentCore, config);
+                    LOGGER.info("天枢世界会话已启动");
+                });
+            }
         });
 
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> {
@@ -177,16 +192,6 @@ public class TianshuClient {
             LOGGER.info("检测到 JVM 即将关闭，执行最终清理...");
             shutdownClient();
         }, "Tianshu-Shutdown-Hook"));
-    }
-
-    private static void ensureOnnxRuntimeLoaded() {
-        if (isOnnxRuntimeLoaded) return;
-        try {
-            LOGGER.info("正在加载Onnx自己的 onnxruntime.dll为OnnxRuntime和SherpaOnnx提供支持");
-            ai.onnxruntime.OrtEnvironment.getEnvironment();
-        } catch (Throwable ignored) {
-        }
-        isOnnxRuntimeLoaded = true;
     }
 
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
@@ -346,25 +351,26 @@ public class TianshuClient {
     }
 
     private static void stopWorldSession() {
-        if (!worldSessionStarted) {
-            isVoiceKeyPressed = false;
-            wasAlwaysKeyTriggered = false;
-            lastTriggerMode = null;
-            LOGGER.info("Ignoring world logout before Tianshu session start");
-            return;
-        }
         LOGGER.info("Stopping Tianshu world session");
-        if (coreManager != null) {
-            coreManager.stopRuntimeSession();
-        }
-        if (audioManager != null) {
-            audioManager.releaseCaptureHardware();
-        }
+        worldSessionGeneration.incrementAndGet();
+        TianshuCoreManager currentCore = coreManager;
+        AudioManager currentAudio = audioManager;
         isVoiceKeyPressed = false;
         wasAlwaysKeyTriggered = false;
         lastTriggerMode = null;
-        worldSessionStarted = false;
-        LOGGER.info("Tianshu world session stopped");
+        if (currentCore == null) {
+            LOGGER.info("Tianshu world session stopped before Core initialization");
+            return;
+        }
+        currentCore.stopRuntimeSession().whenComplete((status, failure) -> {
+            if (currentAudio != null) {
+                currentAudio.releaseCaptureHardware();
+            }
+            if (failure != null) {
+                LOGGER.error("天枢世界会话清理失败", failure);
+            }
+            LOGGER.info("Tianshu world session stopped");
+        });
     }
 
     public static void shutdownClient() {
@@ -378,17 +384,18 @@ public class TianshuClient {
             integrationApi = null;
         }
         if (coreManager != null) {
-            coreManager.destroy();
+            TianshuCoreManager currentCore = coreManager;
             coreManager = null;
+            currentCore.destroy().join();
         }
         if (audioManager != null) {
             audioManager.shutdown();
             audioManager = null;
         }
+        ClientNamedObjectIndexManager.close();
         isVoiceKeyPressed = false;
         wasAlwaysKeyTriggered = false;
         lastTriggerMode = null;
-        worldSessionStarted = false;
         LOGGER.info("天枢客户端资源清理完成");
     }
 }
