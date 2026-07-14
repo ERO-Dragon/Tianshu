@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.llm;
 import com.rheinmetal.tianshu.function.llm.service.RagPersistenceScheduler;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 
@@ -14,9 +14,9 @@ import java.util.concurrent.RejectedExecutionException;
 
 final class LlmExecutor {
 
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
 
-    LlmExecutor(ProtocolExecutorManager executorManager) {
+    LlmExecutor(ModuleExecutionAccess executorManager) {
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");
     }
 

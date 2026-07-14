@@ -22,7 +22,7 @@ import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.EnumSet;
 
@@ -32,7 +32,7 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
 
     private boolean ownedTopicsRegistered;
 
-    public PresenceProtocolAdapter(ProtocolRuntime runtime) {
+    public PresenceProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());
     }
 

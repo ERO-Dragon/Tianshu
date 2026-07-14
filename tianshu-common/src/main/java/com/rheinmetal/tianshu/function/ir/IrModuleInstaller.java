@@ -3,13 +3,13 @@ package com.rheinmetal.tianshu.function.ir;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 public class IrModuleInstaller implements TianshuFunctionModuleInstaller {
-    protected final ProtocolRuntime protocolRuntime;
+    protected final ModuleRuntimeAccess moduleRuntime;
 
-    public IrModuleInstaller(ProtocolRuntime protocolRuntime) {
-        this.protocolRuntime = protocolRuntime;
+    public IrModuleInstaller(ModuleRuntimeAccess moduleRuntime) {
+        this.moduleRuntime = moduleRuntime;
     }
 
     @Override
@@ -18,6 +18,6 @@ public class IrModuleInstaller implements TianshuFunctionModuleInstaller {
     }
 
     protected IrModule createModule() {
-        return new IrModule(protocolRuntime);
+        return new IrModule(moduleRuntime);
     }
 }

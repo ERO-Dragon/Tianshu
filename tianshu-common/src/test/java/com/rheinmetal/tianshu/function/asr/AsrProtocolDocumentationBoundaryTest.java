@@ -26,7 +26,8 @@ class AsrProtocolDocumentationBoundaryTest {
                 "AsrTextPayload",
                 "ModuleStatusPayload",
                 "RuntimeInterruptPayload",
-                "TianshuModuleAssemblyContext.protocolRuntime()"
+                "TianshuModuleAssemblyContext.moduleRuntime()",
+                "ModuleRuntimeAccess"
         )) {
             assertTrue(guide.contains(symbol), () -> "ASR protocol guide must document " + symbol);
         }

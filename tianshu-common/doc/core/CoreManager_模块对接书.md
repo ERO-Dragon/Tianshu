@@ -277,12 +277,13 @@ context.services().require(MyService.class);
 
 ## 9. 协议访问
 
-模块通过 `ModuleProtocolAccess` 访问协议中心。
+模块通过 `ModuleProtocolAccess` 访问协议通信，通过 `ModuleExecutionAccess` 提交功能任务；装配阶段统一由 `ModuleRuntimeAccess` 组合这些受控端口。
 
 模块上下文提供：
 
 - `ModuleRegistrationContext.protocol()`
 - `ModuleRuntimeContext.protocol()`
+- 装配阶段的 `TianshuModuleAssemblyContext.moduleRuntime()`，类型为 `ModuleRuntimeAccess`
 
 允许模块做：
 
@@ -291,8 +292,8 @@ context.services().require(MyService.class);
 - 订阅 topic
 - 注册请求 response handler
 - submit envelope
-- submit protocol task
-- 使用 voice trigger registry
+- 使用 `ModuleExecutionAccess.submit(...)` / `schedule(...)` 提交协议任务
+- 使用受控 `VoiceTriggerAccess` 注册自身触发词
 
 模块不应依赖协议中心内部对象，例如：
 
@@ -303,7 +304,7 @@ context.services().require(MyService.class);
 - executor manager 内部实现
 - broker registry 内部结构
 
-如果模块确实需要新的协议能力，应优先扩展协议侧窄接口，而不是把完整 `ProtocolRuntime` 泄漏给模块上下文。
+如果模块确实需要新的协议能力，应优先扩展协议侧窄接口，而不是把完整 `ProtocolRuntime` 泄漏给模块上下文。`TianshuModuleAssemblyContext` 不再提供 `protocolRuntime()` accessor；该旧符号不是外部集成契约，不保留兼容入口。
 
 ### 9.1 语音触发注册不是模块生命周期注册
 
@@ -354,13 +355,13 @@ CoreManager 不参与这个链路。CoreManager 只负责模块生命周期托�
 Core 调用 `register/prepare/start/stop/destroy` 时使用独立的 `Tianshu-Core-Lifecycle` worker，不在 Minecraft 主线程同步执行这些生命周期回调。该 worker 不是功能任务调度器：
 
 - 生命周期回调负责建立或释放模块资源边界。
-- capability/topic 通信和功能任务继续提交给 `ModuleProtocolAccess` 与 `ProtocolExecutorManager` 的既有 lane。
+- capability/topic 通信和功能任务继续提交给 `ModuleProtocolAccess` 与 `ModuleExecutionAccess` 的既有 lane；assembler 不获得 `ProtocolExecutorManager` 实体。
 - 模块不得把持续推理、下载、音频流或长期维护循环直接占在 Core lifecycle worker 上。
 - 生命周期中启动的内部 worker 必须在 `stop` / `destroy` 中确定性关闭。
 
 优先使用协议运行时提供的任务入口：
 
-- `ModuleProtocolAccess.submitTask(...)`
+- `ModuleExecutionAccess.submit(...)` / `ModuleExecutionAccess.schedule(...)`
 - 模块自己的协议适配器封装
 - 已存在的 executor lane 机制
 

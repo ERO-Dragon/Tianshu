@@ -6,12 +6,12 @@ import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 
 public class VoiceNotificationService {
-    private final ProtocolRuntime runtime;
+    private final ModuleProtocolAccess runtime;
 
-    public VoiceNotificationService(ProtocolRuntime runtime) {
+    public VoiceNotificationService(ModuleProtocolAccess runtime) {
         this.runtime = runtime;
     }
 

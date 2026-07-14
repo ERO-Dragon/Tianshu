@@ -48,7 +48,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
 
@@ -90,7 +90,7 @@ public final class IaModule implements TianshuManagedModule {
     private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
     private ModuleRuntimeContext runtimeContext;
 
-    public IaModule(ProtocolRuntime runtime) {
+    public IaModule(ModuleRuntimeAccess runtime) {
         this.adapter = new IaProtocolAdapter(runtime);
         this.participantRegistry = new DialogueParticipantRegistry();
         this.sessionStore = new DialogueSessionStore();
@@ -106,14 +106,14 @@ public final class IaModule implements TianshuManagedModule {
         this.messageGateway = new DialogueMessageGateway(adapter, accessController);
         this.lifecycleSweeper = new DialogueLifecycleSweeper(sessionStore, eventPublisher);
         this.participantLifecycleCoordinator = new DialogueParticipantLifecycleCoordinator(participantRegistry, sessionStore, eventPublisher);
-        this.participantContractValidator = new DialogueParticipantContractValidator(runtime.capabilities());
+        this.participantContractValidator = new DialogueParticipantContractValidator(runtime);
         this.presenceContextClient = new DialoguePresenceContextClient(adapter);
         this.presenceFactPlanner = new DialoguePresenceFactPlanner();
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
         this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
         this.voiceTriggerSynchronizer = new DialogueVoiceTriggerSynchronizer();
         this.ownerPreviewRefreshCoordinator = new OwnerPreviewRefreshCoordinator(
-                (task, delay) -> runtime.executors().schedule(
+                (task, delay) -> runtime.schedule(
                         ProtocolTaskSpec.builder()
                                 .moduleId(moduleId())
                                 .lane(ExecutionLane.SCHEDULED)

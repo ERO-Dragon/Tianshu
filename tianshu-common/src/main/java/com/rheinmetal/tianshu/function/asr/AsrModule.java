@@ -23,7 +23,7 @@ import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -39,7 +39,7 @@ import java.util.function.LongSupplier;
 
 public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeControl {
     private final IAudioBridge audioBridge;
-    private final ProtocolRuntime protocolRuntime;
+    private final ModuleRuntimeAccess moduleRuntime;
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final BooleanSupplier voiceInputAcceptance;
@@ -59,14 +59,14 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private volatile boolean destroyed;
     private AsrModelService modelService;
 
-    public AsrModule(IAudioBridge audioBridge, ProtocolRuntime protocolRuntime, IGameEnvironment env, ITianshuConfig config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
+    public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, ITianshuConfig config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this.audioBridge = audioBridge;
-        this.protocolRuntime = protocolRuntime;
+        this.moduleRuntime = moduleRuntime;
         this.env = env;
         this.config = config;
         this.voiceInputAcceptance = voiceInputAcceptance;
         this.interruptProcessing = interruptProcessing;
-        this.adapter = new AsrProtocolAdapter(protocolRuntime);
+        this.adapter = new AsrProtocolAdapter(moduleRuntime);
     }
 
     @Override
@@ -76,7 +76,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        modelService = new AsrModelService(env, config, audioBridge, protocolRuntime.executors(), this::asrEngine, this::isAsrReady, this::publishModuleStatus);
+        modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::asrEngine, this::isAsrReady, this::publishModuleStatus);
         context.services().register(AsrModelService.class, modelService);
         context.services().register(AsrModuleRuntimeControl.class, this);
         inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
@@ -265,7 +265,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             return;
         }
         publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.reload_started", "ASR 语音资源重载中"));
-        voiceResourceReloadTask = protocolRuntime.executors().submit(
+        voiceResourceReloadTask = moduleRuntime.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(moduleId())
                         .lane(ExecutionLane.MODEL_LOAD)

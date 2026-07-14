@@ -3,17 +3,17 @@ package com.rheinmetal.tianshu.function.ia;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 public final class IaModuleInstaller implements TianshuFunctionModuleInstaller {
-    private final ProtocolRuntime protocolRuntime;
+    private final ModuleRuntimeAccess moduleRuntime;
 
-    public IaModuleInstaller(ProtocolRuntime protocolRuntime) {
-        this.protocolRuntime = protocolRuntime;
+    public IaModuleInstaller(ModuleRuntimeAccess moduleRuntime) {
+        this.moduleRuntime = moduleRuntime;
     }
 
     @Override
     public void install(TianshuModuleHost moduleHost, ModuleServiceRegistry moduleServices) {
-        moduleHost.registerOptionalModule(new IaModule(protocolRuntime), IaRuntimeCapabilities.ARBITRATION);
+        moduleHost.registerOptionalModule(new IaModule(moduleRuntime), IaRuntimeCapabilities.ARBITRATION);
     }
 }

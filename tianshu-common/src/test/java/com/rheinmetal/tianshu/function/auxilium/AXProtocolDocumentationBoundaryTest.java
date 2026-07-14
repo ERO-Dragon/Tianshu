@@ -18,7 +18,8 @@ class AXProtocolDocumentationBoundaryTest {
         String guide = Files.readString(PROTOCOL_GUIDE, StandardCharsets.UTF_8);
 
         for (String symbol : List.of(
-                "TianshuModuleAssemblyContext.protocolRuntime()",
+                "TianshuModuleAssemblyContext.moduleRuntime()",
+                "ModuleRuntimeAccess",
                 "AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY",
                 "DialogueDeliveryPayload",
                 "ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER",

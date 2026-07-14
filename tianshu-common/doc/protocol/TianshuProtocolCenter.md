@@ -9,6 +9,7 @@
 3. **协议中心不拆业务 Payload。** Payload 是类型化黑盒。协议中心只校验 `PayloadType`、Payload Java 类型、`PacketType`、优先级和注册声明是否匹配。
 4. **模块声明能力，协议中心托管生命周期。** 模块通过 `CapabilityDescriptor`、`TopicSubscriptionDescriptor` 等声明自己能处理什么，协议中心负责排队、分发、完成、失败、取消、过期和死信。
 5. **业务编排留在业务模块。** ASR、IR、IA、AX、LLM、TTS 等流程由模块或编排模块通过信封派生完成，协议中心不硬编码业务流程。
+6. **功能模块只获得受控运行端口。** 装配器通过 `ModuleRuntimeAccess` 注入 `ModuleProtocolAccess`、`ModuleExecutionAccess` 和只读 registration view；`ProtocolRuntime`、`ProtocolExecutorManager`、registry、broker、dead-letter 和 lifecycle store 不向功能模块暴露。
 
 ## 2. 统一信封
 

@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.tts.runtime;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -15,7 +15,7 @@ final class TtsModelLifecycleCoordinator {
     private static final String MODULE_ID = "module.tts";
     private static final String CONCURRENCY_KEY = MODULE_ID + ":model-lifecycle";
 
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
     private final Consumer<TtsFailure> failureObserver;
     private LifecycleState state = LifecycleState.IDLE;
@@ -23,7 +23,7 @@ final class TtsModelLifecycleCoordinator {
     private String previewRestoreModel = "";
     private boolean previewRestoreScheduled;
 
-    TtsModelLifecycleCoordinator(ProtocolExecutorManager executorManager, TtsSynthesisEngine synthesisEngine,
+    TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
                                  Consumer<TtsFailure> failureObserver) {
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;

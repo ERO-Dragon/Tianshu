@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
@@ -25,7 +25,7 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.asr";
     public static final String SOURCE_ID = "module.asr";
 
-    public AsrProtocolAdapter(ProtocolRuntime runtime) {
+    public AsrProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());
     }
 

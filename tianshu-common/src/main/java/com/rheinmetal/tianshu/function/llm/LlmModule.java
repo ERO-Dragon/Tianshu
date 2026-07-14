@@ -13,7 +13,7 @@ import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
@@ -28,7 +28,7 @@ public final class LlmModule implements TianshuManagedModule {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final ProtocolRuntime runtime;
+    private final ModuleRuntimeAccess runtime;
     private final LlmRagCacheLayout ragCacheLayout;
     private final LlmExecutor llmExecutor;
     private final LlmEngineProvider engineProvider;
@@ -40,12 +40,12 @@ public final class LlmModule implements TianshuManagedModule {
     private LlmModelService modelService;
     private boolean destroyed;
 
-    public LlmModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
+    public LlmModule(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess runtime) {
         this.env = env;
         this.config = config;
         this.runtime = runtime;
         this.ragCacheLayout = new LlmRagCacheLayout(config);
-        this.llmExecutor = new LlmExecutor(runtime.executors());
+        this.llmExecutor = new LlmExecutor(runtime);
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
         this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus, llmExecutor.modelLoadExecutor());
     }
@@ -69,7 +69,7 @@ public final class LlmModule implements TianshuManagedModule {
                 stopRuntime();
             }
         });
-        modelService = new LlmModelService(env, config, runtime.executors(), this::publishModuleStatus);
+        modelService = new LlmModelService(env, config, runtime, this::publishModuleStatus);
         adapter.registerLLMRequestCapability(this::handleLLMRequest);
         adapter.registerLLMCacheManageCapability(this::handleLLMCacheManage);
         adapter.registerLLMPrimitiveQueryCapability(this::handleLLMPrimitiveQuery);

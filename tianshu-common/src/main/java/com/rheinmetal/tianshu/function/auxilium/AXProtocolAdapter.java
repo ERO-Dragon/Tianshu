@@ -30,7 +30,7 @@ import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
@@ -41,7 +41,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String SOURCE_ID = AXModule.MODULE_ID;
     public static final String DIALOGUE_INPUT_CAPABILITY = "AX.DIALOGUE_INPUT";
 
-    public AXProtocolAdapter(ProtocolRuntime runtime) {
+    public AXProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withSupportsStreaming(true));
     }
 
@@ -135,7 +135,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int presenceContextProviderCount() {
-        return runtime().capabilities().findCapability(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT).size();
+        return runtime().capabilityProviderCount(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT);
     }
 
     public void registerPresenceContextSnapshotResponse(String requestEnvelopeId, EnvelopeHandler handler) {
@@ -187,7 +187,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int llmPrimitiveProviderCount() {
-        return runtime().capabilities().findCapability(ProtocolCapabilities.LLM_PRIMITIVE_QUERY).size();
+        return runtime().capabilityProviderCount(ProtocolCapabilities.LLM_PRIMITIVE_QUERY);
     }
 
     public TianshuEnvelope buildLlmCacheManage(LLMCacheManagePayload payload) {
@@ -221,7 +221,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int llmCacheManageProviderCount() {
-        return runtime().capabilities().findCapability(ProtocolCapabilities.LLM_CACHE_MANAGE).size();
+        return runtime().capabilityProviderCount(ProtocolCapabilities.LLM_CACHE_MANAGE);
     }
 
     public void registerLlmPromptResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
@@ -264,7 +264,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int dialogueParticipantRegistrationProviderCount() {
-        return runtime().capabilities().findCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER).size();
+        return runtime().capabilityProviderCount(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER);
     }
 
     public TianshuEnvelope registerDialogueParticipant(DialogueParticipantRegisterPayload payload) {

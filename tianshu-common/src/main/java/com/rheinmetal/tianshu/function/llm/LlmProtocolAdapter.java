@@ -27,7 +27,7 @@ import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
@@ -42,12 +42,12 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private final LlmPromptPayloadMapper promptPayloadMapper;
     private final LlmPromptRequestHandler promptRequestHandler;
 
-    public LlmProtocolAdapter(ProtocolRuntime runtime, LLMService llmService) {
+    public LlmProtocolAdapter(ModuleRuntimeAccess runtime, LLMService llmService) {
         this(runtime, llmService, new LlmTaskAdmissionController(0));
     }
 
     public LlmProtocolAdapter(
-            ProtocolRuntime runtime,
+            ModuleRuntimeAccess runtime,
             LLMService llmService,
             LlmTaskAdmissionController taskAdmissionController
     ) {
@@ -217,7 +217,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishInferenceStatus(LlmStatusPayload status) {
-        if (status == null || runtime().topicSubscriptions().findTopic(ProtocolTopics.LLM_STATUS).isEmpty()) {
+        if (status == null || runtime().topicSubscriberCount(ProtocolTopics.LLM_STATUS) == 0) {
             return null;
         }
         return publishTopic(ProtocolTopics.LLM_STATUS, PayloadType.LLM_STATUS, status);
@@ -276,7 +276,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     boolean hasCapability(String capabilityId) {
-        return !runtime().capabilities().findCapability(capabilityId).isEmpty();
+        return runtime().capabilityProviderCount(capabilityId) > 0;
     }
 
     void unregisterAuthorizationResponse(String requestEnvelopeId) {

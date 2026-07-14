@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.asr;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -23,7 +23,7 @@ final class AsrPreviewCoordinator implements AutoCloseable {
 
     private final IGameEnvironment environment;
     private final IAudioBridge audioBridge;
-    private final ProtocolExecutorManager executors;
+    private final ModuleExecutionAccess executors;
     private final Duration recordingWindow;
     private final AtomicLong sequence = new AtomicLong();
     private final AtomicReference<Session> activeSession = new AtomicReference<>();
@@ -32,7 +32,7 @@ final class AsrPreviewCoordinator implements AutoCloseable {
     AsrPreviewCoordinator(
             IGameEnvironment environment,
             IAudioBridge audioBridge,
-            ProtocolExecutorManager executors,
+            ModuleExecutionAccess executors,
             Duration recordingWindow
     ) {
         this.environment = Objects.requireNonNull(environment, "environment");

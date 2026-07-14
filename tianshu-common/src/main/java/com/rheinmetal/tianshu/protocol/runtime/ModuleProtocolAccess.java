@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerAccess;
 
 public interface ModuleProtocolAccess {
     void registerModule(ModuleDescriptor descriptor, EnvelopeHandler handler);
@@ -21,7 +21,5 @@ public interface ModuleProtocolAccess {
 
     void submit(TianshuEnvelope envelope);
 
-    ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Runnable task);
-
-    VoiceTriggerRegistry voiceTriggers();
+    VoiceTriggerAccess voiceTriggers();
 }

@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -28,7 +28,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider
@@ -37,7 +37,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 env,
                 config,
                 audioBridge,
-                protocolRuntime,
+                moduleRuntime,
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
@@ -51,7 +51,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
@@ -62,7 +62,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 env,
                 config,
                 audioBridge,
-                protocolRuntime,
+                moduleRuntime,
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
@@ -76,7 +76,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
@@ -92,7 +92,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 env,
                 config,
                 audioBridge,
-                protocolRuntime,
+                moduleRuntime,
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
@@ -100,7 +100,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 assistantSettings(axOutputSettings),
                 axOutputSettings,
                 axChatOutputSink,
-                new ClientIrModuleInstaller(protocolRuntime)
+                new ClientIrModuleInstaller(moduleRuntime)
         ));
         this.delegate = new CompositeTianshuFunctionModuleAssembler(installers);
     }

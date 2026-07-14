@@ -4,7 +4,7 @@
 
 ## 1. 接入前提
 
-调用方应作为天枢托管模块完成装配，并在装配阶段通过 `TianshuModuleAssemblyContext.protocolRuntime()` 创建自己的协议 adapter。不要从 `TianshuCoreManager` 获取完整协议运行时，也不要直接持有 `AXModule`、`AXTurnOrchestrator`、memory 或 prompt 实现。
+调用方应作为天枢托管模块完成装配，并在装配阶段通过 `TianshuModuleAssemblyContext.moduleRuntime()` 提供的 `ModuleRuntimeAccess` 创建自己的协议 adapter。不要从 `TianshuCoreManager` 获取完整协议运行时，也不要直接持有 `AXModule`、`AXTurnOrchestrator`、memory 或 prompt 实现。
 
 ## 2. AX 的公开身份
 

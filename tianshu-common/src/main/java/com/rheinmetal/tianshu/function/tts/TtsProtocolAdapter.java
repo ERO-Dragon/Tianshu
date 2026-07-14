@@ -18,7 +18,7 @@ import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
@@ -27,7 +27,7 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.tts";
     public static final String SOURCE_ID = "module.tts";
 
-    public TtsProtocolAdapter(ProtocolRuntime runtime) {
+    public TtsProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withThreadPolicy(ThreadPolicy.IO_BLOCKING).withConcurrency(1, 64));
     }
 

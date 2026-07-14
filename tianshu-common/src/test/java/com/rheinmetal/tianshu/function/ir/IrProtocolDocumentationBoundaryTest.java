@@ -18,7 +18,8 @@ class IrProtocolDocumentationBoundaryTest {
         String guide = Files.readString(PROTOCOL_GUIDE, StandardCharsets.UTF_8);
 
         for (String symbol : List.of(
-                "TianshuModuleAssemblyContext.protocolRuntime()",
+                "TianshuModuleAssemblyContext.moduleRuntime()",
+                "ModuleRuntimeAccess",
                 "ProtocolCapabilities.IR_PARSE",
                 "PayloadType.IR_PARSE",
                 "IrParsePayload",

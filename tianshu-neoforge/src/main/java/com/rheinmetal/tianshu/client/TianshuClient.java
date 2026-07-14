@@ -138,7 +138,7 @@ public class TianshuClient {
                 context.env(),
                 context.config(),
                 context.audioBridge(),
-                context.protocolRuntime(),
+                context.moduleRuntime(),
                 context.voiceInputGate(),
                 context.interruptionSignal(),
                 new NeoForgeAXWorldIdentityProvider(),
@@ -146,7 +146,7 @@ public class TianshuClient {
                 AXChatOutputSink.NOOP,
                 List.of(
                         new ClientOnnxRuntimeModuleInstaller(),
-                        presenceRuntime.moduleInstaller(context.protocolRuntime())
+                        presenceRuntime.moduleInstaller(context.moduleRuntime())
                 )
         ));
         externalSettingsContributors = new TianshuSettingsContributorRegistry();

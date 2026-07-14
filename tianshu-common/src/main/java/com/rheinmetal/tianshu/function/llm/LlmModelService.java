@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.LlmModelManager;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -66,18 +66,18 @@ public final class LlmModelService {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final LlmModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
     private final AtomicReference<String> deletingModelName = new AtomicReference<>("");
 
-    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
+    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
     }
 
-    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = Objects.requireNonNull(env, "env");
         this.config = Objects.requireNonNull(config, "config");
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");

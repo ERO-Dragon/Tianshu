@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public final class VoiceTriggerRegistry {
+public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
     private final Map<String, VoiceTriggerRegistration> registrations = new LinkedHashMap<>();
     private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 

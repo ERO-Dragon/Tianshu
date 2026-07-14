@@ -16,6 +16,8 @@ import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
 import com.rheinmetal.tianshu.protocol.payload.TextPayload;
+import com.rheinmetal.tianshu.protocol.runtime.CapabilityRegistrationView;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolCapabilityRegistration;
 
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +40,7 @@ class DialogueParticipantContractValidatorTest {
                 Priority.LOW
         ));
 
-        ValidationResult result = new DialogueParticipantContractValidator(registry).validate(descriptor("module.maid", "MAID.DIALOGUE_INPUT"));
+        ValidationResult result = new DialogueParticipantContractValidator(view(registry)).validate(descriptor("module.maid", "MAID.DIALOGUE_INPUT"));
 
         assertTrue(result.accepted());
     }
@@ -55,7 +57,7 @@ class DialogueParticipantContractValidatorTest {
                 Priority.LOW
         ));
 
-        ValidationResult result = new DialogueParticipantContractValidator(registry).validate(descriptor("module.maid", "MAID.DIALOGUE_INPUT"));
+        ValidationResult result = new DialogueParticipantContractValidator(view(registry)).validate(descriptor("module.maid", "MAID.DIALOGUE_INPUT"));
 
         assertEquals("DIALOGUE_INPUT_PAYLOAD_TYPE_MISMATCH", result.code());
     }
@@ -72,7 +74,7 @@ class DialogueParticipantContractValidatorTest {
                 Priority.LOW
         ));
 
-        ValidationResult result = new DialogueParticipantContractValidator(registry).validate(descriptor("module.maid", "MAID.DIALOGUE_INPUT"));
+        ValidationResult result = new DialogueParticipantContractValidator(view(registry)).validate(descriptor("module.maid", "MAID.DIALOGUE_INPUT"));
 
         assertEquals("DIALOGUE_INPUT_MODULE_MISMATCH", result.code());
     }
@@ -104,5 +106,14 @@ class DialogueParticipantContractValidatorTest {
                 1,
                 16
         ), (envelope, context) -> {});
+    }
+
+    private static CapabilityRegistrationView view(CapabilityRegistry registry) {
+        return capabilityId -> registry.findCapability(capabilityId).stream()
+                .map(registration -> new ProtocolCapabilityRegistration(
+                        registration.moduleDescriptor().moduleId(),
+                        registration.capabilityDescriptor()
+                ))
+                .toList();
     }
 }

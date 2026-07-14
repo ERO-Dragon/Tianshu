@@ -14,7 +14,7 @@ import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -28,7 +28,7 @@ public final class TianshuCoreModuleInstallers {
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
@@ -38,7 +38,7 @@ public final class TianshuCoreModuleInstallers {
                 env,
                 config,
                 audioBridge,
-                protocolRuntime,
+                moduleRuntime,
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
@@ -51,7 +51,7 @@ public final class TianshuCoreModuleInstallers {
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
@@ -62,7 +62,7 @@ public final class TianshuCoreModuleInstallers {
                 env,
                 config,
                 audioBridge,
-                protocolRuntime,
+                moduleRuntime,
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
@@ -78,7 +78,7 @@ public final class TianshuCoreModuleInstallers {
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
@@ -91,7 +91,7 @@ public final class TianshuCoreModuleInstallers {
                 env,
                 config,
                 audioBridge,
-                protocolRuntime,
+                moduleRuntime,
                 voiceInputGate,
                 interruptionSignal,
                 axWorldIdentityProvider,
@@ -107,7 +107,7 @@ public final class TianshuCoreModuleInstallers {
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolRuntime protocolRuntime,
+            ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
             LongSupplier interruptionSignal,
             AXWorldIdentityProvider axWorldIdentityProvider,
@@ -118,19 +118,19 @@ public final class TianshuCoreModuleInstallers {
             TianshuFunctionModuleInstaller irInstaller
     ) {
         TianshuFunctionModuleInstaller effectiveIrInstaller = irInstaller == null
-                ? moduleHostInstaller(protocolRuntime)
+                ? moduleHostInstaller(moduleRuntime)
                 : irInstaller;
         return List.of(
-                new IaModuleInstaller(protocolRuntime),
+                new IaModuleInstaller(moduleRuntime),
                 effectiveIrInstaller,
-                new LlmModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
-                new AXModuleInstaller(env, config, protocolRuntime, axWorldIdentityProvider, promptLanguageProvider, axAssistantSettings, axOutputSettings, axChatOutputSink),
-                new TtsModuleInstaller(audioBridge, protocolRuntime, env, config),
-                new AsrModuleInstaller(audioBridge, protocolRuntime, env, config, voiceInputGate, interruptionSignal)
+                new LlmModuleInstaller(env, config, moduleRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
+                new AXModuleInstaller(env, config, moduleRuntime, axWorldIdentityProvider, promptLanguageProvider, axAssistantSettings, axOutputSettings, axChatOutputSink),
+                new TtsModuleInstaller(audioBridge, moduleRuntime, env, config),
+                new AsrModuleInstaller(audioBridge, moduleRuntime, env, config, voiceInputGate, interruptionSignal)
         );
     }
 
-    private static TianshuFunctionModuleInstaller moduleHostInstaller(ProtocolRuntime protocolRuntime) {
-        return (moduleHost, moduleServices) -> moduleHost.registerOptionalModule(new com.rheinmetal.tianshu.function.ir.IrModule(protocolRuntime));
+    private static TianshuFunctionModuleInstaller moduleHostInstaller(ModuleRuntimeAccess moduleRuntime) {
+        return (moduleHost, moduleServices) -> moduleHost.registerOptionalModule(new com.rheinmetal.tianshu.function.ir.IrModule(moduleRuntime));
     }
 }

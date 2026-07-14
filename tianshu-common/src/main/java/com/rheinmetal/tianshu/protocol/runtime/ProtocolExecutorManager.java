@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.Set;
 
-public final class ProtocolExecutorManager implements AutoCloseable {
+public final class ProtocolExecutorManager implements ModuleExecutionAccess, AutoCloseable {
     private final MainThreadExecutor mainThreadExecutor;
     private final Map<ExecutionLane, ThreadPoolExecutor> executors = new EnumMap<>(ExecutionLane.class);
     private final Map<String, TaskGroup> taskGroups = new java.util.concurrent.ConcurrentHashMap<>();

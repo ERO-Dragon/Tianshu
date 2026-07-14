@@ -15,7 +15,7 @@ ASR 当前通过协议中心公开三个事件 topic，不提供公共请求 cap
 
 topic 的信封类型均为 `PacketType.EVENT`。ASR 不通过公共 topic 接收 `BEGIN / END / COMMIT / CANCEL`，也没有可供外部模块发送 `REQUEST` 的 ASR capability。
 
-调用方应先作为天枢托管模块完成装配，并在模块装配阶段使用 `TianshuModuleAssemblyContext.protocolRuntime()` 创建自己的 `AbstractProtocolAdapter`。不要从 `TianshuCoreManager` 获取完整协议运行时，也不要长期缓存其他模块的 adapter；订阅与清理应跟随调用方自己的模块生命周期。
+调用方应先作为天枢托管模块完成装配，并在模块装配阶段使用 `TianshuModuleAssemblyContext.moduleRuntime()` 提供的 `ModuleRuntimeAccess` 创建自己的 `AbstractProtocolAdapter`。不要从 `TianshuCoreManager` 获取完整协议运行时，也不要长期缓存其他模块的 adapter；订阅与清理应跟随调用方自己的模块生命周期。
 
 ## 2. 为什么没有公共麦克风控制请求
 

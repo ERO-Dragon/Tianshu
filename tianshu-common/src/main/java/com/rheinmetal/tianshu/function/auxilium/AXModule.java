@@ -51,14 +51,14 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 public final class AXModule implements TianshuManagedModule {
     public static final String MODULE_ID = "module.ax";
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final ProtocolRuntime runtime;
+    private final ModuleRuntimeAccess runtime;
     private final AXWorldIdentityProvider worldIdentityProvider;
     private final AXPromptLanguageProvider promptLanguageProvider;
     private final AXAssistantSettings assistantSettings;
@@ -82,18 +82,18 @@ public final class AXModule implements TianshuManagedModule {
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
 
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime) {
+    public AXModule(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess runtime) {
         this(env, config, runtime, null);
     }
 
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ProtocolRuntime runtime, AXWorldIdentityProvider worldIdentityProvider) {
+    public AXModule(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess runtime, AXWorldIdentityProvider worldIdentityProvider) {
         this(env, config, runtime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModule(
             IGameEnvironment env,
             ITianshuConfig config,
-            ProtocolRuntime runtime,
+            ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
             AXAssistantSettings assistantSettings,
@@ -106,7 +106,7 @@ public final class AXModule implements TianshuManagedModule {
     public AXModule(
             IGameEnvironment env,
             ITianshuConfig config,
-            ProtocolRuntime runtime,
+            ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
             AXAssistantSettings assistantSettings,

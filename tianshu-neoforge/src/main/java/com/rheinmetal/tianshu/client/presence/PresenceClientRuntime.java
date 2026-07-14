@@ -9,7 +9,7 @@ import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
 import com.rheinmetal.tianshu.platform.PresencePlatform;
 import com.rheinmetal.tianshu.platform.PresenceTextProvider;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.Objects;
 
@@ -32,8 +32,8 @@ public final class PresenceClientRuntime {
         return stateStore.contextSnapshot();
     }
 
-    public TianshuFunctionModuleInstaller moduleInstaller(ProtocolRuntime protocolRuntime) {
-        PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(protocolRuntime);
+    public TianshuFunctionModuleInstaller moduleInstaller(ModuleRuntimeAccess moduleRuntime) {
+        PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(moduleRuntime);
         contextQueryCoordinator.bindAdapter(adapter);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
         eventCollector.setChatMessageSink(adapter::publishChatMessage);

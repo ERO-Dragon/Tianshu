@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -55,18 +55,18 @@ public class TtsModelService {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final TtsModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
 
-    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager) {
+    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
     }
 
-    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ProtocolExecutorManager executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;

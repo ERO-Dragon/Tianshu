@@ -4,7 +4,7 @@
 
 ## 1. 接入前提
 
-调用方应作为天枢托管模块完成装配，并在装配阶段通过 `TianshuModuleAssemblyContext.protocolRuntime()` 创建自己的协议 adapter。不要从 `TianshuCoreManager` 获取完整 `ProtocolRuntime`，也不要直接持有 `IrModule`、`CommandParser` 或 IR 内部 matcher。
+调用方应作为天枢托管模块完成装配，并在装配阶段通过 `TianshuModuleAssemblyContext.moduleRuntime()` 提供的 `ModuleRuntimeAccess` 创建自己的协议 adapter。不要从 `TianshuCoreManager` 获取完整 `ProtocolRuntime`，也不要直接持有 `IrModule`、`CommandParser` 或 IR 内部 matcher。
 
 ## 2. 稳定协议面
 
@@ -40,7 +40,7 @@ TianshuEnvelope envelope = EnvelopeBuilder.commandToCapability(
 protocolRuntime.submit(envelope);
 ```
 
-模块 adapter 中应把 `ProtocolRuntime` 封装起来，对业务代码提供类似 `submitText(IrParsePayload)` 的窄方法；上面的直接 submit 只展示信封结构。
+模块 adapter 中应把 `ModuleRuntimeAccess` 封装起来，对业务代码提供类似 `submitText(IrParsePayload)` 的窄方法；上面的直接 submit 只展示信封结构。
 
 `IrParsePayload` 字段：
 

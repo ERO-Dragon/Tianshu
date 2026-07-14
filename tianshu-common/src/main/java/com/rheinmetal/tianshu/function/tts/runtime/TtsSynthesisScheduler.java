@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.tts.runtime;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 
@@ -12,10 +12,10 @@ import java.util.Objects;
 public final class TtsSynthesisScheduler {
     private static final String MODULE_ID = "module.tts";
 
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
 
-    public TtsSynthesisScheduler(ProtocolExecutorManager executorManager, TtsSynthesisEngine synthesisEngine) {
+    public TtsSynthesisScheduler(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine) {
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");
         this.synthesisEngine = Objects.requireNonNull(synthesisEngine, "synthesisEngine");
     }

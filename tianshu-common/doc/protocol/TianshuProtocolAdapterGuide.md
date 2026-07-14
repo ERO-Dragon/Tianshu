@@ -28,13 +28,15 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.my_module";
     public static final String SOURCE_ID = "module.my_module";
 
-    public MyModuleProtocolAdapter(ProtocolRuntime runtime) {
-        super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());
+    public MyModuleProtocolAdapter(ModuleRuntimeAccess moduleRuntime) {
+        super(MODULE_ID, SOURCE_ID, moduleRuntime, AdapterDefaults.standard());
     }
 }
 ```
 
 `MODULE_ID` 是模块登记名，`SOURCE_ID` 是模块发信时写入信封的来源。通常两者相同。
+
+模块 adapter 只接收 `ModuleRuntimeAccess`。该端口组合了协议登记/提交、受控任务 submit/schedule 和只读注册可见性；它不暴露 `ProtocolRuntime`、`ProtocolExecutorManager` 或协议内部 registry。
 
 ## 3. 发送能力命令
 

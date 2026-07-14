@@ -8,7 +8,7 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsSessionState;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsSynthesisScheduler;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
@@ -24,13 +24,13 @@ public final class TtsPlaybackController {
     private final IAudioBridge audioBridge;
     private final IGameEnvironment env;
     private final TtsPlaybackListener listener;
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final Map<TtsSession, PlaybackSlot> slots = new LinkedHashMap<>();
     private long nextSequence;
     private PlaybackSlot activeSlot;
     private boolean bridgeTransitionPending;
 
-    public TtsPlaybackController(IAudioBridge audioBridge, IGameEnvironment env, TtsPlaybackListener listener, ProtocolExecutorManager executorManager) {
+    public TtsPlaybackController(IAudioBridge audioBridge, IGameEnvironment env, TtsPlaybackListener listener, ModuleExecutionAccess executorManager) {
         this.audioBridge = audioBridge;
         this.env = env;
         this.listener = listener;

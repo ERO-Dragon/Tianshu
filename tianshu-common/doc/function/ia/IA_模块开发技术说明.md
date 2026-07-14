@@ -532,7 +532,7 @@ attention 是隐性状态，不向用户暴露具体数值。面向 UI 的状态
 | UI 状态展示 | `MAIN` | 只投递状态，不做重逻辑。 |
 | owner preview refresh | `SCHEDULED` | 通过协议中心定时 lane 刷新 attention 衰减后的当前预览，只在 owner 变化时发布。 |
 
-仲裁机关只表达任务意图和边界，不直接控制底层线程。IA 内部需要延迟或定时执行时，也应使用 `ProtocolRuntime.executors().schedule(...)` 这类协议中心执行入口，不能自建私有线程池或绕开模块宿主生命周期。
+仲裁机关只表达任务意图和边界，不直接控制底层线程。IA 内部需要延迟或定时执行时，也应使用 `ModuleExecutionAccess.schedule(...)` 这类协议中心受控执行入口，不能自建私有线程池或绕开模块宿主生命周期。
 
 ### 12.1 生命周期与世界会话边界
 

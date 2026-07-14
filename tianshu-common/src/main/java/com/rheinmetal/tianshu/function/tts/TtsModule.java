@@ -30,13 +30,13 @@ import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 public final class TtsModule implements TianshuManagedModule {
     private final IAudioBridge audioBridge;
-    private final ProtocolRuntime runtime;
+    private final ModuleRuntimeAccess runtime;
     private final IGameEnvironment env;
     private final ITianshuConfig config;
     private final TtsProtocolAdapter adapter;
@@ -47,7 +47,7 @@ public final class TtsModule implements TianshuManagedModule {
     private TtsVoiceLibraryService voiceLibraryService;
     private TtsVoiceCloneRegistry voiceCloneRegistry;
 
-    public TtsModule(IAudioBridge audioBridge, ProtocolRuntime runtime, IGameEnvironment env, ITianshuConfig config) {
+    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, ITianshuConfig config) {
         this.audioBridge = audioBridge;
         this.runtime = runtime;
         this.env = env;
@@ -62,7 +62,7 @@ public final class TtsModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        modelService = new TtsModelService(env, config, runtime.executors(), this::publishModuleStatus);
+        modelService = new TtsModelService(env, config, runtime, this::publishModuleStatus);
         moduleService = new TtsModuleService();
         moduleService.bindModelService(modelService);
         voiceNotificationService = new VoiceNotificationService(runtime);
@@ -86,7 +86,7 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         DefaultTtsSynthesisEngine synthesisEngine = new DefaultTtsSynthesisEngine(env, config, modelService);
-        ttsRuntime = new TtsRuntime(env, runtime.executors(), synthesisEngine, audioBridge, ignored -> {}, this::publishPlaybackStatus);
+        ttsRuntime = new TtsRuntime(env, runtime, synthesisEngine, audioBridge, ignored -> {}, this::publishPlaybackStatus);
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
         }

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.core.lifecycle.module;
 
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerAccess;
 
 public class ModuleRegistrationContext {
     private final ModuleProtocolAccess protocol;
@@ -16,7 +16,7 @@ public class ModuleRegistrationContext {
         return protocol;
     }
 
-    public VoiceTriggerRegistry voiceTriggers() {
+    public VoiceTriggerAccess voiceTriggers() {
         return protocol.voiceTriggers();
     }
 

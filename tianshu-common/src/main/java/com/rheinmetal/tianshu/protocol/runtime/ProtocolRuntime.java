@@ -38,7 +38,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.function.Consumer;
 
-public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInterruptPublisher, AutoCloseable {
+public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterruptPublisher, AutoCloseable {
     private static final String RUNTIME_SOURCE_ID = "core.runtime";
 
     private final ModuleRegistry moduleRegistry = new ModuleRegistry();
@@ -152,8 +152,34 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
         }
     }
 
-    public ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Runnable task) {
+    @Override
+    public ProtocolTaskHandle submit(ProtocolTaskSpec spec, Runnable task) {
         return executorManager.submit(spec, task);
+    }
+
+    @Override
+    public <T> ProtocolTaskHandle submit(ProtocolTaskSpec spec, java.util.concurrent.Callable<T> task) {
+        return executorManager.submit(spec, task);
+    }
+
+    @Override
+    public ProtocolTaskHandle schedule(ProtocolTaskSpec spec, Runnable task, java.time.Duration delay) {
+        return executorManager.schedule(spec, task, delay);
+    }
+
+    @Override
+    public List<ProtocolCapabilityRegistration> capabilityRegistrations(String capabilityId) {
+        return capabilityRegistry.findCapability(capabilityId).stream()
+                .map(registration -> new ProtocolCapabilityRegistration(
+                        registration.moduleDescriptor().moduleId(),
+                        registration.capabilityDescriptor()
+                ))
+                .toList();
+    }
+
+    @Override
+    public int topicSubscriberCount(String topicId) {
+        return topicSubscriptionRegistry.findTopic(topicId).size();
     }
 
     private TianshuEnvelope createDeliveryEnvelope(TianshuEnvelope sourceEnvelope, boolean forceChildDelivery) {
@@ -281,7 +307,6 @@ public final class ProtocolRuntime implements ModuleProtocolAccess, RuntimeInter
     public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
     public IntegrationModuleRegistry integrationModules() { return integrationModuleRegistry; }
     public ModuleStatusCache moduleStatusCache() { return moduleStatusCache; }
-    public ProtocolExecutorManager executors() { return executorManager; }
     public ProtocolContext context() { return context; }
     public RuntimeInterruptPublisher runtimeInterrupts() { return this; }
 

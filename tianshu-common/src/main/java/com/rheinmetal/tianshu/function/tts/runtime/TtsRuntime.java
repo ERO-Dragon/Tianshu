@@ -13,7 +13,7 @@ import com.rheinmetal.tianshu.function.tts.text.TtsTextNormalizer;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 
 public final class TtsRuntime implements TtsPlaybackListener {
     private final IGameEnvironment env;
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
     private final TtsSynthesisScheduler synthesisScheduler;
     private final TtsSynthesisTaskCoordinator synthesisTaskCoordinator;
@@ -42,7 +42,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private final AtomicReference<TtsFailure> lastFailure = new AtomicReference<>();
     private final AtomicReference<TtsPlaybackState> lastPublishedState = new AtomicReference<>();
 
-    public TtsRuntime(IGameEnvironment env, ProtocolExecutorManager executorManager, TtsSynthesisEngine synthesisEngine, IAudioBridge audioBridge, Consumer<TtsSession> sessionStatusPublisher, Consumer<TtsPlaybackState> playbackStatePublisher) {
+    public TtsRuntime(IGameEnvironment env, ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine, IAudioBridge audioBridge, Consumer<TtsSession> sessionStatusPublisher, Consumer<TtsPlaybackState> playbackStatePublisher) {
         this.env = env;
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;

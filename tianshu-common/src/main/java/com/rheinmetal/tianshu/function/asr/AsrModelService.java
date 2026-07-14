@@ -9,7 +9,7 @@ import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -56,7 +56,7 @@ public class AsrModelService {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final ProtocolExecutorManager executorManager;
+    private final ModuleExecutionAccess executorManager;
     private final AsrModelDownloadCoordinator downloadCoordinator;
     private final AsrPreviewCoordinator previewCoordinator;
     private final Supplier<AsrEngine> engineSupplier;
@@ -66,7 +66,7 @@ public class AsrModelService {
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
 
-    public AsrModelService(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, ProtocolExecutorManager executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
+    public AsrModelService(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
         this(env, config, audioBridge, executorManager, engineSupplier, readySupplier, null);
     }
 
@@ -74,7 +74,7 @@ public class AsrModelService {
             IGameEnvironment env,
             ITianshuConfig config,
             IAudioBridge audioBridge,
-            ProtocolExecutorManager executorManager,
+            ModuleExecutionAccess executorManager,
             Supplier<AsrEngine> engineSupplier,
             BooleanSupplier readySupplier,
             Consumer<ModuleStatus> moduleStatusSink

@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
@@ -31,10 +31,10 @@ import java.util.concurrent.Callable;
 public abstract class AbstractProtocolAdapter {
     private final String moduleId;
     private final String sourceId;
-    private final ProtocolRuntime runtime;
+    private final ModuleRuntimeAccess runtime;
     private final AdapterDefaults defaults;
 
-    protected AbstractProtocolAdapter(String moduleId, String sourceId, ProtocolRuntime runtime, AdapterDefaults defaults) {
+    protected AbstractProtocolAdapter(String moduleId, String sourceId, ModuleRuntimeAccess runtime, AdapterDefaults defaults) {
         this.moduleId = requireText(moduleId, "moduleId");
         this.sourceId = requireText(sourceId, "sourceId");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -49,7 +49,7 @@ public abstract class AbstractProtocolAdapter {
         return sourceId;
     }
 
-    protected final ProtocolRuntime runtime() {
+    protected final ModuleRuntimeAccess runtime() {
         return runtime;
     }
 
@@ -70,11 +70,11 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Runnable task) {
-        return runtime.executors().submit(spec, task);
+        return runtime.submit(spec, task);
     }
 
     protected final <T> ProtocolTaskHandle submitTask(ProtocolTaskSpec spec, Callable<T> task) {
-        return runtime.executors().submit(spec, task);
+        return runtime.submit(spec, task);
     }
 
     protected final ProtocolTaskSpec.Builder taskSpec(ExecutionLane lane) {

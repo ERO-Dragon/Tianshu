@@ -169,6 +169,14 @@ CoreManager 不再提供：
 
 CoreManager 可以创建并持有 `ProtocolRuntime`，但不作为协议中心门面暴露完整协议运行时。
 
+装配器拿到的是 `TianshuModuleAssemblyContext.moduleRuntime()`，其类型为 `ModuleRuntimeAccess`。该端口只组合三类受控能力：
+
+- `ModuleProtocolAccess`：登记 capability/topic/response、提交 envelope 和访问受控 voice trigger 入口。
+- `ModuleExecutionAccess`：按 `ProtocolTaskSpec` submit 或 schedule 任务。
+- `ProtocolRegistrationView`：只读查询 capability provider 与 topic subscriber，不返回 registry、handler 或 executor。
+
+`ProtocolRuntime` 和 `ProtocolExecutorManager` 仍分别由 Core/Protocol 内部持有。装配器和功能模块不得从上下文取得 lifecycle store、dead-letter、broker、cancellation、executor manager 或其他协议内部对象。
+
 协议相关职责属于 protocol 层：
 
 - topic 注册与订阅

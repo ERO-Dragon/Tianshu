@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
@@ -52,11 +52,11 @@ public final class IrModule implements TianshuManagedModule {
     private ModuleProtocolAccess protocol;
     private VoiceResourceAccess voiceResources;
 
-    public IrModule(ProtocolRuntime runtime) {
+    public IrModule(ModuleRuntimeAccess runtime) {
         this(runtime, IrNamedObjectEnhancer.noop());
     }
 
-    public IrModule(ProtocolRuntime runtime, IrNamedObjectEnhancer namedObjectEnhancer) {
+    public IrModule(ModuleRuntimeAccess runtime, IrNamedObjectEnhancer namedObjectEnhancer) {
         this.adapter = new IrProtocolAdapter(runtime);
         this.preprocessor = new IrInputPreprocessor();
         this.namedObjectEnhancer = namedObjectEnhancer == null ? IrNamedObjectEnhancer.noop() : namedObjectEnhancer;

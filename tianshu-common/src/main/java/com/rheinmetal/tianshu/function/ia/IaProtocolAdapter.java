@@ -25,7 +25,7 @@ import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.EnumSet;
 
@@ -33,7 +33,7 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     public static final String MODULE_ID = "module.ia";
     public static final String SOURCE_ID = "module.ia";
 
-    public IaProtocolAdapter(ProtocolRuntime runtime) {
+    public IaProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withConcurrency(1, 64));
     }
 
@@ -138,7 +138,7 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     }
 
     public int presenceContextProviderCount() {
-        return runtime().capabilities().findCapability(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT).size();
+        return runtime().capabilityProviderCount(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT);
     }
 
     public void registerPresenceContextSnapshotResponse(String requestEnvelopeId, EnvelopeHandler handler) {
