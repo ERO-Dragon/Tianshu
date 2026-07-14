@@ -22,9 +22,10 @@ public final class AsrModelDownloadCoordinator {
 
     public static final class DownloadSession {
         private final AsrModelDownloader downloader;
+        private final Object pauseMonitor = new Object();
         private final AtomicBoolean paused = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
-        private volatile boolean cancelNotified;
+        private boolean cancelNotified;
 
         private DownloadSession(AsrModelDownloader downloader) {
             this.downloader = downloader;
@@ -39,22 +40,32 @@ public final class AsrModelDownloadCoordinator {
         }
 
         public void pause() {
-            if (!cancelled.get()) {
-                paused.set(true);
+            synchronized (pauseMonitor) {
+                if (!cancelled.get()) {
+                    paused.set(true);
+                }
             }
         }
 
         public void resume() {
-            if (!cancelled.get()) {
-                paused.set(false);
+            synchronized (pauseMonitor) {
+                if (!cancelled.get()) {
+                    paused.set(false);
+                }
+                pauseMonitor.notifyAll();
             }
         }
 
         public void cancel() {
-            cancelled.set(true);
-            paused.set(false);
-            if (!cancelNotified) {
+            boolean notifyDownloader;
+            synchronized (pauseMonitor) {
+                cancelled.set(true);
+                paused.set(false);
+                notifyDownloader = !cancelNotified;
                 cancelNotified = true;
+                pauseMonitor.notifyAll();
+            }
+            if (notifyDownloader) {
                 downloader.cancelActiveTransfers();
             }
         }
@@ -63,19 +74,18 @@ public final class AsrModelDownloadCoordinator {
             downloader.downloadSync(info, targetDir, githubProxyUrl, callback, this::awaitReady);
         }
 
-        private void awaitReady() throws IOException {
+        void awaitReady() throws IOException {
             if (cancelled.get()) {
                 throw new AsrModelDownloader.DownloadCancelledException();
             }
-            while (paused.get()) {
-                if (cancelled.get()) {
-                    throw new AsrModelDownloader.DownloadCancelledException();
-                }
-                try {
-                    Thread.sleep(200L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Download thread was interrupted", e);
+            synchronized (pauseMonitor) {
+                while (paused.get() && !cancelled.get()) {
+                    try {
+                        pauseMonitor.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Download thread was interrupted", e);
+                    }
                 }
             }
             if (cancelled.get()) {

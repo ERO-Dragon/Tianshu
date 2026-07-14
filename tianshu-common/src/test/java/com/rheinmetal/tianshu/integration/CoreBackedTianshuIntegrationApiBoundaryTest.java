@@ -20,4 +20,18 @@ class CoreBackedTianshuIntegrationApiBoundaryTest {
         assertFalse(code.contains("protocolRuntime()"));
         assertFalse(code.contains("getProtocolRuntime()"));
     }
+
+    @Test
+    void publicIntegrationContractDoesNotExposeCoreOrHostImplementations() throws Exception {
+        Path source = Path.of(
+                "src/main/java/com/rheinmetal/tianshu/integration/TianshuIntegrationApi.java"
+        );
+
+        String code = Files.readString(source, StandardCharsets.UTF_8);
+
+        assertFalse(code.contains("TianshuCoreManager"));
+        assertFalse(code.contains("ProtocolRuntime"));
+        assertFalse(code.contains("net.minecraft"));
+        assertFalse(code.contains("net.neoforged"));
+    }
 }

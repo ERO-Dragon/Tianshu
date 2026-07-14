@@ -56,13 +56,12 @@ public class AsrModelService {
 
     private final IGameEnvironment env;
     private final ITianshuConfig config;
-    private final IAudioBridge audioBridge;
     private final ProtocolExecutorManager executorManager;
     private final AsrModelDownloadCoordinator downloadCoordinator;
+    private final AsrPreviewCoordinator previewCoordinator;
     private final Supplier<AsrEngine> engineSupplier;
     private final BooleanSupplier readySupplier;
     private final Consumer<ModuleStatus> moduleStatusSink;
-    private final AtomicBoolean previewRunning = new AtomicBoolean(false);
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
@@ -82,12 +81,17 @@ public class AsrModelService {
     ) {
         this.env = env;
         this.config = config;
-        this.audioBridge = audioBridge;
         this.executorManager = executorManager;
         this.engineSupplier = engineSupplier;
         this.readySupplier = readySupplier;
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
+        this.previewCoordinator = new AsrPreviewCoordinator(
+                env,
+                audioBridge,
+                executorManager,
+                AsrPreviewCoordinator.DEFAULT_RECORDING_WINDOW
+        );
         scheduleStartupCleanup();
     }
 
@@ -384,130 +388,132 @@ public class AsrModelService {
     public void preview(PreviewCallback callback) {
         AsrEngine engine = engineSupplier.get();
         if (!readySupplier.getAsBoolean() || engine == null) {
-            callback.onError("ASR engine is not ready. Download and load a model first.");
+            callback.onError("tianshu.gui.asr.failure.engine_not_ready");
             callback.onFinish();
             return;
         }
-        submitPreview(engine, callback, false);
+        previewCoordinator.start(new SharedEnginePreviewOperation(engine), previewListener(callback));
     }
 
     public void preview(AsrModelInfo info, PreviewCallback callback) {
         if (info == null) {
-            callback.onError("ASR preview model is empty.");
+            callback.onError("tianshu.gui.asr.failure.model_empty");
             callback.onFinish();
             return;
         }
         Path modelDir = resolveModelDir(info);
         if (modelDir == null || !AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"))) {
-            callback.onError("ASR preview model is not fully downloaded.");
+            callback.onError("tianshu.gui.asr.failure.model_not_downloaded");
             callback.onFinish();
             return;
         }
-        if (!previewRunning.compareAndSet(false, true)) {
-            callback.onError("ASR preview is already running.");
-            callback.onFinish();
-            return;
-        }
-        executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId("module.asr")
-                        .lane(ExecutionLane.ASR_STREAM)
-                        .concurrencyKey("module.asr:preview")
-                        .maxConcurrency(1)
-                        .queueCapacity(1)
-                        .build(),
-                () -> runModelPreview(info, modelDir, callback)
-        );
-    }
-
-    private void submitPreview(AsrEngine engine, PreviewCallback callback, boolean closeEngineAfterPreview) {
-        if (!previewRunning.compareAndSet(false, true)) {
-            callback.onError("ASR preview is already running.");
-            callback.onFinish();
-            return;
-        }
-        executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId("module.asr")
-                        .lane(ExecutionLane.ASR_STREAM)
-                        .concurrencyKey("module.asr:preview")
-                        .maxConcurrency(1)
-                        .queueCapacity(1)
-                        .build(),
-                () -> runPreview(engine, callback, closeEngineAfterPreview)
-        );
+        previewCoordinator.start(new SelectedModelPreviewOperation(info, modelDir), previewListener(callback));
     }
 
     public boolean isPreviewRunning() {
-        return previewRunning.get();
+        return previewCoordinator.isRunning();
     }
 
     public void stopPreview() {
-        if (!previewRunning.getAndSet(false)) {
-            return;
-        }
-        try {
-            audioBridge.stopRecording();
-        } catch (Throwable ignored) {}
+        previewCoordinator.stop();
     }
 
-    private void runModelPreview(AsrModelInfo info, Path modelDir, PreviewCallback callback) {
-        AsrEngine previewEngine = new AsrEngine(env);
-        try {
-            if (!previewEngine.initialize(info, modelDir, null)) {
-                callback.onError("ASR preview model initialization failed.");
-                previewRunning.set(false);
+    void close() {
+        previewCoordinator.close();
+    }
+
+    private AsrPreviewCoordinator.Listener previewListener(PreviewCallback callback) {
+        return new AsrPreviewCoordinator.Listener() {
+            @Override
+            public void onReady() {
+                callback.onReady();
+            }
+
+            @Override
+            public void onResult(String text) {
+                callback.onResult(text);
+            }
+
+            @Override
+            public void onFailure(AsrPreviewCoordinator.Failure failure) {
+                callback.onError(previewFailureMessage(failure));
+            }
+
+            @Override
+            public void onFinish() {
                 callback.onFinish();
-                return;
             }
-            runPreview(previewEngine, callback, false);
-        } catch (Exception e) {
-            env.error("ASR preview model failed", e);
-            callback.onError("ASR preview model failed: " + e.getMessage());
-            previewRunning.set(false);
-            callback.onFinish();
-        } finally {
-            previewEngine.shutdown();
+        };
+    }
+
+    private static String previewFailureMessage(AsrPreviewCoordinator.Failure failure) {
+        return switch (failure.code()) {
+            case CLOSED -> "tianshu.gui.asr.failure.unavailable";
+            case ALREADY_RUNNING -> "tianshu.gui.asr.failure.already_running";
+            case QUEUE_REJECTED -> "tianshu.gui.asr.failure.queue_unavailable";
+            case PREPARE_FAILED -> "tianshu.gui.asr.failure.model_initialization";
+            case CAPTURE_START_FAILED -> "tianshu.gui.asr.failure.capture_start";
+            case CAPTURE_STOP_FAILED -> "tianshu.gui.asr.failure.capture_stop";
+            case EMPTY_AUDIO -> "tianshu.gui.asr.failure.no_audio";
+            case RECOGNITION_FAILED -> "tianshu.gui.asr.failure.recognition";
+            case EMPTY_RESULT -> "tianshu.gui.asr.failure.no_speech";
+        };
+    }
+
+    private static final class SharedEnginePreviewOperation implements AsrPreviewCoordinator.RecognitionOperation {
+        private final AsrEngine engine;
+
+        private SharedEnginePreviewOperation(AsrEngine engine) {
+            this.engine = engine;
+        }
+
+        @Override
+        public void prepare() {
+        }
+
+        @Override
+        public String recognize(byte[] audio) {
+            return engine.recognizeComplete(audio);
+        }
+
+        @Override
+        public void close() {
         }
     }
 
-    private void runPreview(AsrEngine engine, PreviewCallback callback, boolean closeEngineAfterPreview) {
-        try {
-            env.info("ASR preview: start recording");
-            audioBridge.startRecording();
-            callback.onReady();
+    private final class SelectedModelPreviewOperation implements AsrPreviewCoordinator.RecognitionOperation {
+        private final AsrModelInfo info;
+        private final Path modelDir;
+        private AsrEngine engine;
 
-            Thread.sleep(5000);
-            if (!previewRunning.get()) return;
+        private SelectedModelPreviewOperation(AsrModelInfo info, Path modelDir) {
+            this.info = info;
+            this.modelDir = modelDir;
+        }
 
-            byte[] audioData = audioBridge.stopRecording();
-            if (audioData == null || audioData.length == 0) {
-                callback.onError("No audio data was captured. Please check the microphone.");
-                return;
+        @Override
+        public void prepare() throws Exception {
+            engine = new AsrEngine(env);
+            if (!engine.initialize(info, modelDir, null)) {
+                throw new IllegalStateException("ASR preview model initialization failed");
             }
+        }
 
-            env.info("ASR preview: recording complete, audio length=" + audioData.length + " bytes");
-            String result = engine.recognizeComplete(audioData);
+        @Override
+        public String recognize(byte[] audio) {
+            if (engine == null) {
+                throw new IllegalStateException("ASR preview engine is not initialized");
+            }
+            return engine.recognizeComplete(audio);
+        }
 
-            if (result != null && !result.isEmpty()) {
-                env.info("ASR preview: recognition succeeded, text=" + result);
-                callback.onResult(result);
-            } else {
-                callback.onError("No speech content was recognized. Please try speaking more clearly.");
+        @Override
+        public void close() {
+            AsrEngine current = engine;
+            engine = null;
+            if (current != null) {
+                current.shutdown();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            callback.onError("ASR preview was interrupted.");
-        } catch (Exception e) {
-            env.error("ASR preview failed", e);
-            callback.onError("ASR preview failed: " + e.getMessage());
-        } finally {
-            audioBridge.stopRecording();
-            if (closeEngineAfterPreview && engine != null) {
-                engine.shutdown();
-            }
-            previewRunning.set(false);
-            callback.onFinish();
         }
     }
 

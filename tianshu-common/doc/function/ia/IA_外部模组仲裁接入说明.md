@@ -101,47 +101,35 @@ DialogueParticipantDescriptor(
 
 如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `VoiceTriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `VoiceTriggerRegistration`。
 
-注册方式可以有两种。
+### 3.1 通过协议 capability 注册
 
-### 3.1 推荐方式：通过 IaModuleService 注册
+外部模块和其他功能模块统一通过协议中心提交 participant 注册：
 
-如果模组运行在同一 module host 中，推荐从服务表获取 `IaModuleService`：
-
-```java
-context.services().find(IaModuleService.class).ifPresent(service -> {
-    service.registerParticipant(descriptor);
-});
+```text
+ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER
+PayloadType.DIALOGUE_PARTICIPANT_REGISTER
+DialogueParticipantRegisterPayload
+PacketType.COMMAND
 ```
 
-卸载或停用时必须注销：
+卸载或停用时提交：
 
-```java
-service.unregisterParticipant(moduleId, participantId);
+```text
+ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER
+PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER
+DialogueParticipantUnregisterPayload
+PacketType.COMMAND
 ```
 
-如果一个模块注册了多个 participant，模块卸载时应注销全部 participant，避免 IA 中留下失效 owner。
+不要从 module service registry 获取 IA 实现服务，也不要直接持有 IA registry。协议 capability 才是跨模块稳定契约，它负责 payload 校验、生命周期、失败观测和无 IA 组合下的 provider 检查。
+
+如果一个模块注册了多个 participant，模块卸载时应逐个通过 unregister capability 注销，避免 IA 中留下失效 owner。
 
 ### 3.2 仲裁入口语义
 
 标准语音/聊天主链路由 IR 向 `ProtocolCapabilities.DIALOGUE_ARBITRATE` 发送 `COMMAND`。IR 只负责提交已经修复和结构化的候选输入，不等待仲裁结果；IA 会在内部完成 owner 判定、session 创建/更新、正文 delivery 和 session 状态事件发布。
 
 `DIALOGUE_ARBITRATE` 也支持 `REQUEST`，但它不是主链路默认用法。只有诊断、测试或受信模块确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.DIALOGUE_ARBITRATION_RESULT` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动消费仲裁结果。
-
-### 3.3 协议方式：通过 capability 注册
-
-也可以通过协议中心向 IA capability 提交：
-
-```text
-ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER
-PayloadType.DIALOGUE_PARTICIPANT_REGISTER
-```
-
-注销时提交：
-
-```text
-ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER
-PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER
-```
 
 ## 4. 注册 delivery capability
 
@@ -364,7 +352,7 @@ PayloadType.DIALOGUE_OWNER_PREVIEW
 ```text
 1. 注册自己的 delivery capability。
 2. 构造 DialogueParticipantDescriptor。
-3. 通过 IaModuleService 或 DIALOGUE_PARTICIPANT_REGISTER 注册 participant。
+3. 通过 DIALOGUE_PARTICIPANT_REGISTER capability 注册 participant。
 ```
 
 ### 10.2 收到 IA delivery

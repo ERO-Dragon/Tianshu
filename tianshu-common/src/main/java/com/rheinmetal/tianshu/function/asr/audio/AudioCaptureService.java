@@ -71,26 +71,22 @@ public final class AudioCaptureService {
     }
 
     public void stopAll() {
-        try {
-            audioBridge.stopRecording();
-        } catch (Throwable t) {
-            env.error("停止 ASR PTT 录音失败", t);
-        }
-        try {
-            audioBridge.stopStreamRecording();
-        } catch (Throwable t) {
-            env.error("停止 ASR 流式录音失败", t);
-        }
+        attemptCleanup("tianshu.asr.audio.ptt_stop_failed", audioBridge::stopRecording);
+        attemptCleanup("tianshu.asr.audio.stream_stop_failed", audioBridge::stopStreamRecording);
         speechActivityDetector.stop();
         pttBuffer = null;
     }
 
     public void releaseHardware() {
         stopAll();
+        attemptCleanup("tianshu.asr.audio.hardware_release_failed", audioBridge::releaseCaptureHardware);
+    }
+
+    private void attemptCleanup(String diagnosticCode, Runnable cleanup) {
         try {
-            audioBridge.releaseCaptureHardware();
-        } catch (Throwable t) {
-            env.error("释放 ASR 麦克风采集硬件失败", t);
+            cleanup.run();
+        } catch (RuntimeException | LinkageError failure) {
+            env.error(diagnosticCode, failure);
         }
     }
 

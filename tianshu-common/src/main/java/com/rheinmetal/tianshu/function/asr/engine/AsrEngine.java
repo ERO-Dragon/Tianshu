@@ -51,8 +51,8 @@ public class AsrEngine {
             applyResolvedConfig(resolved);
             env.info("ASR engine initialized (kind=" + configKind + ", offline=" + offline + ")");
             return true;
-        } catch (Throwable t) {
-            env.error("ASR engine creation failed; check whether model files are valid", t);
+        } catch (RuntimeException | LinkageError failure) {
+            env.error("ASR engine creation failed; check whether model files are valid", failure);
             shutdown();
             return false;
         }
@@ -212,17 +212,29 @@ public class AsrEngine {
     }
 
     public void shutdown() {
-        if (onlineRecognizer != null) {
-            onlineRecognizer.release();
-            onlineRecognizer = null;
-        }
-        if (offlineRecognizer != null) {
-            offlineRecognizer.release();
-            offlineRecognizer = null;
-        }
+        OnlineRecognizer online = onlineRecognizer;
+        OfflineRecognizer offlineRecognizerToRelease = offlineRecognizer;
+        onlineRecognizer = null;
+        offlineRecognizer = null;
         offline = false;
         configKind = "uninitialized";
-        env.info("ASR engine closed safely");
+        boolean onlineReleased = online == null
+                || releaseRecognizer("tianshu.asr.engine.online_release_failed", online::release);
+        boolean offlineReleased = offlineRecognizerToRelease == null
+                || releaseRecognizer("tianshu.asr.engine.offline_release_failed", offlineRecognizerToRelease::release);
+        if (onlineReleased && offlineReleased) {
+            env.info("ASR engine closed safely");
+        }
+    }
+
+    private boolean releaseRecognizer(String diagnosticCode, Runnable release) {
+        try {
+            release.run();
+            return true;
+        } catch (RuntimeException | LinkageError failure) {
+            env.error(diagnosticCode, failure);
+            return false;
+        }
     }
 
 }

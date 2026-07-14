@@ -18,9 +18,9 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,7 +29,7 @@ class AXOutputProcessorTest {
     @Test
     void uiAndTtsModeStreamsUiAndSpeaksCompletedSentences() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        List<String> spoken = new ArrayList<>();
+        List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_AND_TTS), chatSink);
@@ -49,7 +49,7 @@ class AXOutputProcessorTest {
     @Test
     void uiOnlyModeDoesNotSendTts() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        List<String> spoken = new ArrayList<>();
+        List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_ONLY), chatSink);
@@ -64,7 +64,7 @@ class AXOutputProcessorTest {
     @Test
     void ttsOnlyModeSpeaksWithoutUi() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        List<String> spoken = new ArrayList<>();
+        List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.TTS_ONLY), chatSink);
@@ -81,7 +81,7 @@ class AXOutputProcessorTest {
     @Test
     void disabledModeSuppressesUiAndTts() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        List<String> spoken = new ArrayList<>();
+        List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.DISABLED), chatSink);
@@ -97,7 +97,7 @@ class AXOutputProcessorTest {
     @Test
     void taskLaneDoesNotEmitChatOrTtsOutput() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        List<String> spoken = new ArrayList<>();
+        List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_AND_TTS), chatSink);
@@ -127,7 +127,7 @@ class AXOutputProcessorTest {
     }
 
     private static void registerTtsSink(ProtocolRuntime runtime, List<String> spoken) {
-        AdapterDefaults defaults = AdapterDefaults.standard();
+        AdapterDefaults defaults = AdapterDefaults.standard().withConcurrency(1, 64);
         runtime.registerModule(new ModuleDescriptor(
                 "module.tts.test",
                 List.of(new CapabilityDescriptor(

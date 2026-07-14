@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.llm;
 
+import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
+import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
@@ -15,26 +17,26 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
-import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 
 class AXLlmClientTest {
     @Test
-    void asrInterruptionCancelsOnlyChatRequests() {
+    void asrInterruptionCancelsOnlyChatRequests() throws InterruptedException {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        registerLlmSink(runtime);
+        CountDownLatch taskStarted = new CountDownLatch(1);
+        registerLlmSink(runtime, taskStarted);
         AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime));
         RecordingHandler chat = new RecordingHandler();
         RecordingHandler task = new RecordingHandler();
@@ -53,6 +55,7 @@ class AXLlmClientTest {
         assertEquals(1, chat.cancelled.get());
         assertEquals(0, task.cancelled.get());
         assertEquals(EnvelopeStatus.CANCELLED, runtime.lifecycle().statusOf(chatEnvelope.envelopeId()));
+        assertTrue(taskStarted.await(2, TimeUnit.SECONDS), "TASK request did not reach the LLM handler");
         assertEquals(EnvelopeStatus.RUNNING, runtime.lifecycle().statusOf(taskEnvelope.envelopeId()));
 
         assertTrue(client.handleStreamChunk(chatEnvelope.envelopeId(), LLMPromptStreamChunkPayload.chunk("chat", "ignored", 0)));
@@ -68,7 +71,7 @@ class AXLlmClientTest {
     @Test
     void sweepExpiredKeepsTaskRequestsOpenForSuspendedLlmTask() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        registerLlmSink(runtime);
+        registerLlmSink(runtime, null);
         AtomicLong nowMillis = new AtomicLong(System.currentTimeMillis());
         AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime), nowMillis::get);
         RecordingHandler chat = new RecordingHandler();
@@ -97,7 +100,7 @@ class AXLlmClientTest {
         );
     }
 
-    private static void registerLlmSink(ProtocolRuntime runtime) {
+    private static void registerLlmSink(ProtocolRuntime runtime, CountDownLatch taskStarted) {
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.test",
@@ -118,10 +121,15 @@ class AXLlmClientTest {
                 defaults.supportsStreaming(),
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
-        ), AXLlmClientTest::holdRequest);
+        ), (envelope, context) -> holdRequest(envelope, taskStarted));
     }
 
-    private static void holdRequest(TianshuEnvelope envelope, ProtocolContext context) {
+    private static void holdRequest(TianshuEnvelope envelope, CountDownLatch taskStarted) {
+        if (taskStarted != null
+                && envelope.payload() instanceof LLMPromptRequestPayload payload
+                && "task".equals(payload.requestId())) {
+            taskStarted.countDown();
+        }
     }
 
     private static final class RecordingHandler implements AXLlmRequestHandler {

@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AudioCaptureServiceTest {
     @Test
@@ -38,6 +40,45 @@ class AudioCaptureServiceTest {
         assertEquals(List.of(true, false), states);
     }
 
+    @Test
+    void ordinaryStopFailureDoesNotPreventRemainingHardwareCleanup() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        bridge.stopRecordingFailure = new IllegalStateException("PTT stop failed");
+        AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment());
+
+        service.releaseHardware();
+
+        assertEquals(1, bridge.stopRecordingCalls);
+        assertEquals(1, bridge.stopStreamRecordingCalls);
+        assertEquals(1, bridge.releaseCaptureHardwareCalls);
+    }
+
+    @Test
+    void nativeStopFailureDoesNotPreventRemainingHardwareCleanup() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        bridge.stopRecordingFailure = new UnsatisfiedLinkError("native recorder missing");
+        AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment());
+
+        service.releaseHardware();
+
+        assertEquals(1, bridge.stopRecordingCalls);
+        assertEquals(1, bridge.stopStreamRecordingCalls);
+        assertEquals(1, bridge.releaseCaptureHardwareCalls);
+    }
+
+    @Test
+    void fatalJvmFailureIsNotDowngradedDuringCleanup() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        OutOfMemoryError fatal = new OutOfMemoryError("fatal");
+        bridge.stopRecordingFailure = fatal;
+        AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment());
+
+        assertSame(fatal, assertThrows(OutOfMemoryError.class, service::releaseHardware));
+        assertEquals(1, bridge.stopRecordingCalls);
+        assertEquals(0, bridge.stopStreamRecordingCalls);
+        assertEquals(0, bridge.releaseCaptureHardwareCalls);
+    }
+
     private static void repeat(int count, Runnable runnable) {
         for (int i = 0; i < count; i++) {
             runnable.run();
@@ -56,6 +97,10 @@ class AudioCaptureServiceTest {
 
     private static final class FakeAudioBridge implements IAudioBridge {
         private Consumer<byte[]> streamConsumer;
+        private Throwable stopRecordingFailure;
+        private int stopRecordingCalls;
+        private int stopStreamRecordingCalls;
+        private int releaseCaptureHardwareCalls;
 
         @Override
         public void ensureHardwareRunning() {
@@ -63,6 +108,7 @@ class AudioCaptureServiceTest {
 
         @Override
         public void releaseCaptureHardware() {
+            releaseCaptureHardwareCalls++;
         }
 
         @Override
@@ -71,6 +117,8 @@ class AudioCaptureServiceTest {
 
         @Override
         public byte[] stopRecording() {
+            stopRecordingCalls++;
+            throwFailure(stopRecordingFailure);
             return new byte[0];
         }
 
@@ -81,6 +129,7 @@ class AudioCaptureServiceTest {
 
         @Override
         public void stopStreamRecording() {
+            stopStreamRecordingCalls++;
             streamConsumer = null;
         }
 
@@ -153,6 +202,15 @@ class AudioCaptureServiceTest {
             Consumer<byte[]> consumer = streamConsumer;
             if (consumer != null) {
                 consumer.accept(audio);
+            }
+        }
+
+        private static void throwFailure(Throwable failure) {
+            if (failure instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (failure instanceof Error error) {
+                throw error;
             }
         }
     }

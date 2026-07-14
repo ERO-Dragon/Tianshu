@@ -10,7 +10,7 @@
 - 主干能力探测
 - VoiceTrigger 指令词注册
 - Dialogue / IA 参与者接入
-- 状态摘要提交与查询
+- 模块状态提交与查询
 - GUI / 设置页绘制贡献
 - 生命周期与资源刷新事件
 
@@ -63,7 +63,7 @@ if (TianshuIntegrationAccess.isAvailable()) {
 }
 ```
 
-注意：推荐优先使用事件注册。静态访问仅适合延迟查询或兜底判断。
+注意：推荐优先使用事件注册。静态访问仅适合延迟查询或兜底判断。宿主关闭或重载时静态入口会再次变为 unavailable，外部模组不得永久缓存一次 `isAvailable()` 的结果；需要长期持有 API 时，应跟随宿主注册/关闭生命周期更新引用。
 
 ## 模块声明注册
 
@@ -76,7 +76,7 @@ IntegrationModuleDeclaration declaration = new IntegrationModuleDeclaration(
         "1.0.0",
         Set.of(
                 IntegrationCapability.VOICE_TRIGGER,
-                IntegrationCapability.STATE_SUMMARY_PROVIDER,
+                IntegrationCapability.MODULE_STATUS_PROVIDER,
                 IntegrationCapability.GUI_RENDER_CONTRIBUTOR
         )
 );
@@ -165,48 +165,42 @@ new VoiceTriggerDeliveryTarget("example_radar", "EXAMPLE_RADAR.VOICE_TRIGGER")
 - `sourceText`
 - `normalizedText`
 - `moduleId`
-- `matchedHotwords`
+- `matchedWakeWords`
 - `matchedCommandWords`
 - `sourceChannel`
 - `confidence`
 - `matchedItemNames`
 - `matchedItemIds`
-- `matchedEntityRefs`
 - `timestamp`
 - `sessionId`
 - `turnId`
 
-## 状态摘要
+## 模块状态
 
-外部模组可以提交轻量状态，供天枢、GUI 或 Dialogue/IA 使用：
+外部模组可以提交轻量状态，供天枢、GUI 或 Dialogue/IA 使用。玩家可见语言内容优先提供资源键；`fallbackMessage` 只是资源缺失时的降级文本：
 
 ```java
-StateSummary summary = new StateSummary(
+ModuleStatus status = ModuleStatus.keyed(
         "example_radar",
         "threat_overview",
-        "雷达状态",
-        List.of("附近敌对实体 3 个", "最近目标 12 格"),
-        StateSummarySeverity.WARNING,
-        System.currentTimeMillis(),
+        "example_radar.status.threat_overview",
+        "Radar warning",
+        ModuleStatusSeverity.WARNING,
         5000L,
-        true,
-        true,
-        StateSummaryVisibility.PUBLIC,
-        Map.of("source", "radar"),
-        ""
+        Map.of("hostile_count", "3", "nearest_distance", "12")
 );
 
-api.submitStateSummary(summary);
+api.submitModuleStatus(status);
 ```
 
-查询状态摘要：
+查询模块状态：
 
 ```java
-StateSummaryQuery query = new StateSummaryQuery("example_radar", "threat_overview", false, StateSummaryVisibility.PUBLIC);
-List<StateSummary> summaries = api.queryStateSummaries(query);
+ModuleStatusQuery query = new ModuleStatusQuery("example_radar", "threat_overview");
+List<ModuleStatus> statuses = api.queryModuleStatuses(query);
 ```
 
-状态摘要应保持轻量，不应承载复杂业务模型或大型数据。
+`moduleId` 或 `statusType` 传空字符串表示不按该字段过滤；两者都为空时查询当前缓存中的全部未过期状态。模块状态应保持轻量，不应承载复杂业务模型或大型数据。
 
 ## 设置页贡献
 
@@ -301,7 +295,7 @@ api.submit(envelope);
 查询型能力应优先使用主干提供的专门窄接口，例如：
 
 ```java
-api.queryStateSummaries(query);
+api.queryModuleStatuses(query);
 ```
 
 这只是协议中心提交入口，不代表可以直接访问主干内部 runtime 实现，也不提供同步 envelope request 语义。
@@ -319,7 +313,7 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
             "1.0.0",
             Set.of(
                     IntegrationCapability.VOICE_TRIGGER,
-                    IntegrationCapability.STATE_SUMMARY_PROVIDER,
+                    IntegrationCapability.MODULE_STATUS_PROVIDER,
                     IntegrationCapability.GUI_RENDER_CONTRIBUTOR
             )
     ));
@@ -358,7 +352,8 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 - `TianshuIntegrationAccess`
 - `IntegrationModuleDeclaration`
 - `VoiceTriggerRegistration`
-- `StateSummary`
+- `ModuleStatus`
+- `ModuleStatusQuery`
 - `GuiContributionDescriptor`
 - `CoreLifecycleEventPayload`
 - `ResourceReloadEventPayload`

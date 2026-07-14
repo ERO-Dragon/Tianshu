@@ -376,7 +376,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 public void onError(String message) {
                     runOnClient(() -> {
                         previewStateText = asr("status.preview_failed");
-                        previewResultText = message == null ? asr("status.preview_failed") : Component.literal(message);
+                        previewResultText = message == null || message.isBlank()
+                                ? asr("status.preview_failed")
+                                : message.startsWith("tianshu.")
+                                ? Component.translatable(message)
+                                : Component.literal(message);
                         context.showStatus(previewResultText, 4000);
                     });
                 }

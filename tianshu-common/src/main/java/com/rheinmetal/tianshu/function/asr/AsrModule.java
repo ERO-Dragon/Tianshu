@@ -105,6 +105,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public void stop() {
+        if (modelService != null) {
+            modelService.stopPreview();
+        }
         if (controller != null) {
             controller.stop();
         }
@@ -120,6 +123,10 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
         voiceResourceReloadQueued.set(false);
         stop();
+        if (modelService != null) {
+            modelService.close();
+            modelService = null;
+        }
         controller = null;
         audioCapture = null;
         if (inputGateway != null) {
@@ -149,8 +156,8 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
         try {
             audioBridge.releaseCaptureHardware();
-        } catch (Throwable t) {
-            env.error("释放 ASR 麦克风采集硬件失败", t);
+        } catch (RuntimeException | LinkageError failure) {
+            env.error("tianshu.asr.audio.hardware_release_failed", failure);
         }
     }
 

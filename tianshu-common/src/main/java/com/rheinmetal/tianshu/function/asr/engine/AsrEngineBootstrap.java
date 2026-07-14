@@ -57,9 +57,9 @@ public final class AsrEngineBootstrap {
             markFailed(context, moduleId, "ASR 模型文件缺失: " + e.getMessage());
             env.error("ASR 模型文件缺失: " + e.getMessage(), null);
             publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.model_files_missing", "ASR 模型文件缺失，请重新下载"));
-        } catch (Throwable t) {
-            markFailed(context, moduleId, "ASR 引擎初始化异常: " + t.getMessage());
-            env.error("ASR 引擎初始化失败", t);
+        } catch (RuntimeException | LinkageError failure) {
+            markFailed(context, moduleId, "ASR 引擎初始化异常: " + failure.getMessage());
+            env.error("ASR 引擎初始化失败", failure);
             publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.exception", "ASR 引擎初始化异常"));
         }
         engine.shutdown();

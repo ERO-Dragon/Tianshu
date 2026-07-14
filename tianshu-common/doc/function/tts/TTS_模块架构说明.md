@@ -112,6 +112,8 @@ TTS 不再提供“暂停当前句子并插话后恢复”的策略。需要立�
 
 业务优先级只参与 session admission 和合成任务排序，不进入音频桥内部命令排序。等待播放的 session 保存后端交出的 PCM 引用；只有 active slot 会通过单一 `AUDIO_IO` pump 执行 `start -> feed* -> finish`。取消 active session 时先写入终态，使尚未执行的 feed 自动失效，再在同一 FIFO 边界执行 stop 和下一 slot 激活。
 
+运行时 stop/preempt 同样遵守“状态先于副作用”：先把目标 session 转为 `CANCELLED` 并发布终态，再调用可能让阻塞合成立即返回的 `synthesisEngine.interrupt()`。这样完成回调不能在 stop 与 cancel 之间把 session 抢先写成 `COMPLETED`。
+
 ## 6. 音色克隆缓存
 
 音色克隆入口统一由 `TTS_CONTROL` 管理。外部模块只注册 `voiceId`，后续 `TTS_SPEAK` 和 `TTS_SYNTHESIZE` 通过 `voiceStyle=voiceId` 引用，不直接携带参考音频。

@@ -74,6 +74,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
         running.set(false);
         streamRegistry.clear();
         synthesisTaskCoordinator.cancelAll("runtime stopped");
+        List<TtsSession> cancelled = sessionManager.cancelAll("runtime stopped");
+        cancelled.forEach(sessionStatusPublisher);
         synthesisEngine.interrupt();
         playbackController.stopAll("runtime stopped");
         playbackBufferTracker.clear();
@@ -282,9 +284,9 @@ public final class TtsRuntime implements TtsPlaybackListener {
     public TtsControlResult stopAll(String reason) {
         streamRegistry.clear();
         synthesisTaskCoordinator.cancelAll(reason);
-        synthesisEngine.interrupt();
         List<TtsSession> cancelled = sessionManager.cancelAll(reason);
         cancelled.forEach(sessionStatusPublisher);
+        synthesisEngine.interrupt();
         playbackController.stopAll(reason);
         playbackBufferTracker.clear();
         publishPlaybackState();
@@ -299,10 +301,11 @@ public final class TtsRuntime implements TtsPlaybackListener {
             return TtsControlResult.accepted(TtsControlAction.STOP_CURRENT, 0);
         }
         blockStream(target.request().groupId());
-        if (playbackActive == null || sessionManager.active().orElse(null) == target) {
+        boolean interruptSynthesis = playbackActive == null || sessionManager.active().orElse(null) == target;
+        sessionManager.cancel(target.request().requestId(), reason);
+        if (interruptSynthesis) {
             synthesisEngine.interrupt();
         }
-        sessionManager.cancel(target.request().requestId(), reason);
         playbackController.cancel(target, reason);
         playbackBufferTracker.clear();
         TtsSession cancelled = target;
@@ -318,10 +321,11 @@ public final class TtsRuntime implements TtsPlaybackListener {
             publishPlaybackState();
             return TtsControlResult.accepted(TtsControlAction.STOP_CURRENT, 0);
         }
-        if (playbackActive == null || sessionManager.active().orElse(null) == target) {
+        boolean interruptSynthesis = playbackActive == null || sessionManager.active().orElse(null) == target;
+        sessionManager.cancel(target.request().requestId(), reason);
+        if (interruptSynthesis) {
             synthesisEngine.interrupt();
         }
-        sessionManager.cancel(target.request().requestId(), reason);
         playbackController.cancel(target, reason);
         playbackBufferTracker.clear();
         sessionStatusPublisher.accept(target);

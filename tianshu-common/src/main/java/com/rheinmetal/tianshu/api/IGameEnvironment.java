@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.api;
 
 import java.nio.file.Path;
-import java.util.function.Consumer;
 
 public interface IGameEnvironment {
 
