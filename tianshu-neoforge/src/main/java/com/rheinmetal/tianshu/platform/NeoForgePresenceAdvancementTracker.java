@@ -27,8 +27,8 @@ final class NeoForgePresenceAdvancementTracker {
     private final Set<String> completedAdvancementIds = new HashSet<>();
     private boolean baselineInitialized;
 
-    List<PresenceWorldEventPayload> collect(Object nativePacket) {
-        if (!(nativePacket instanceof ClientboundUpdateAdvancementsPacket packet)) {
+    List<PresenceWorldEventPayload> collect(ClientboundUpdateAdvancementsPacket packet) {
+        if (packet == null) {
             return List.of();
         }
         if (packet.shouldReset()) {

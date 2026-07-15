@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mixin;
 
-import com.rheinmetal.tianshu.client.presence.PresenceClientHooks;
+import com.rheinmetal.tianshu.platform.NeoForgePresenceHooks;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,6 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ClientPacketListenerMixin {
     @Inject(method = "handleUpdateAdvancementsPacket", at = @At("TAIL"))
     private void tianshu$recordAdvancementUpdate(ClientboundUpdateAdvancementsPacket packet, CallbackInfo callbackInfo) {
-        PresenceClientHooks.recordAdvancementUpdate(packet);
+        NeoForgePresenceHooks.recordAdvancementUpdate(packet);
     }
 }

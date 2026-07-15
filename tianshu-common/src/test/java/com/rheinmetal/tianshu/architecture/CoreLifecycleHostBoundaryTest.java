@@ -43,10 +43,15 @@ class CoreLifecycleHostBoundaryTest {
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/client/TianshuClient.java"),
                 StandardCharsets.UTF_8
         );
+        String runtime = Files.readString(
+                Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/runtime/TianshuClientRuntime.java"),
+                StandardCharsets.UTF_8
+        );
 
-        assertTrue(client.contains("startRuntimeSession().whenComplete"));
-        assertTrue(client.contains("stopRuntimeSession().whenComplete"));
-        assertTrue(client.contains("whenComplete"));
+        assertTrue(client.contains("lifecycleAdapter.onWorldLogin()"));
+        assertTrue(client.contains("lifecycleAdapter.onWorldLogout()"));
+        assertTrue(runtime.contains("core.start().whenComplete"));
+        assertTrue(runtime.contains("core.stop().whenComplete"));
         assertFalse(client.contains("coreManager.initWorkers()"));
         assertFalse(client.contains("coreManager.restartRuntimeAsync("));
         assertFalse(client.contains("coreManager.refreshRuntimeAsync("));
@@ -76,10 +81,11 @@ class CoreLifecycleHostBoundaryTest {
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/client/TianshuClient.java"),
                 StandardCharsets.UTF_8
         );
-        Path modulePath = neoforgeRoot.resolve(
+        Path clientRoot = Path.of("../tianshu-client/src/main/java");
+        Path modulePath = clientRoot.resolve(
                 "com/rheinmetal/tianshu/client/lifecycle/ClientOnnxRuntimeModule.java"
         );
-        Path installerPath = neoforgeRoot.resolve(
+        Path installerPath = clientRoot.resolve(
                 "com/rheinmetal/tianshu/client/lifecycle/ClientOnnxRuntimeModuleInstaller.java"
         );
 
@@ -98,25 +104,30 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void irNamedObjectIndexIsClientLifetimeAsyncResource() throws Exception {
-        Path clientRoot = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/client");
-        String client = Files.readString(clientRoot.resolve("TianshuClient.java"), StandardCharsets.UTF_8);
+        Path neoforgeClientRoot = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/client");
+        Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
+        String client = Files.readString(neoforgeClientRoot.resolve("TianshuClient.java"), StandardCharsets.UTF_8);
+        String runtime = Files.readString(
+                platformClientRoot.resolve("runtime/TianshuClientRuntime.java"),
+                StandardCharsets.UTF_8
+        );
         String manager = Files.readString(
-                clientRoot.resolve("ir/ClientNamedObjectIndexManager.java"),
+                platformClientRoot.resolve("ir/ClientNamedObjectIndexManager.java"),
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(
-                clientRoot.resolve("ir/NamedObjectReloadListener.java"),
+                neoforgeClientRoot.resolve("ir/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(client.contains("ClientNamedObjectIndexManager.initializeAsync("));
-        assertTrue(client.contains("ClientNamedObjectIndexManager.close()"));
+        assertTrue(runtime.contains("namedObjectIndexManager().initializeAsync("));
+        assertTrue(runtime.contains("namedObjectIndexManager()::close"));
         assertFalse(client.contains("ClientNamedObjectIndexManager.ensureIndex(\"client login\")"));
         assertTrue(manager.contains("ExecutorService"));
         assertTrue(manager.contains("initializeAsync("));
         assertTrue(manager.contains("reloadAsync("));
         assertFalse(manager.contains("catch (Throwable throwable)"));
-        assertTrue(reloadListener.contains("ClientNamedObjectIndexManager.reloadAsync("));
+        assertTrue(reloadListener.contains("indexManager.reloadAsync("));
     }
 
     private static String commonSource(String relativePath) throws Exception {

@@ -1,0 +1,70 @@
+package com.rheinmetal.tianshu.client.ir;
+
+import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
+import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
+import com.rheinmetal.tianshu.function.ir.enhance.IrContextHint;
+import com.rheinmetal.tianshu.function.ir.input.IrPreparedInput;
+import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
+import com.rheinmetal.tianshu.function.ir.core.ParseUnit;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+final class ClientIrNamedObjectEnhancer implements IrNamedObjectEnhancer {
+    private final ClientNamedObjectIndexManager indexManager;
+
+    ClientIrNamedObjectEnhancer(ClientNamedObjectIndexManager indexManager) {
+        this.indexManager = java.util.Objects.requireNonNull(indexManager, "indexManager");
+    }
+    @Override
+    public IrNamedObjectEnhancementResult enhance(IrPreparedInput input) {
+        return enhance(input, IrContextHint.empty());
+    }
+
+    @Override
+    public IrNamedObjectEnhancementResult enhance(IrPreparedInput input, IrContextHint contextHint) {
+        if (input == null || input.filteredText().isBlank()) {
+            return IrNamedObjectEnhancementResult.empty(input == null ? "" : input.voiceText());
+        }
+        IRParseResult parseResult = indexManager.parsePlayerCommand(input.filteredText(), true, contextHint);
+        if (parseResult == null) {
+            return IrNamedObjectEnhancementResult.empty(input.filteredText());
+        }
+        Set<String> matchedIdSet = new LinkedHashSet<>(parseResult.getMatchedItemRealIds());
+        Set<String> matchedEntityTypeSet = new LinkedHashSet<>(parseResult.getMatchedEntityTypeIds());
+        for (ParseUnit unit : parseResult.getUnits()) {
+            if (unit == null || unit.targetRealItemId == null || unit.targetRealItemId.isBlank()) {
+                continue;
+            }
+            matchedIdSet.add(unit.targetRealItemId.trim());
+        }
+
+        String repairedText = parseResult.getHealedRawText();
+        if (repairedText == null || repairedText.isBlank()) {
+            repairedText = input.filteredText();
+        }
+        if (matchedIdSet.isEmpty() && matchedEntityTypeSet.isEmpty() && repairedText.equals(input.filteredText())) {
+            return IrNamedObjectEnhancementResult.empty(input.filteredText());
+        }
+
+        List<String> matchedIds = new ArrayList<>(matchedIdSet);
+        List<String> matchedNames = new ArrayList<>();
+        for (String itemId : matchedIds) {
+            String displayName = indexManager.resolveDisplayName(itemId);
+            if (!displayName.isBlank()) {
+                matchedNames.add(displayName);
+            }
+        }
+        List<String> matchedEntityTypeIds = new ArrayList<>(matchedEntityTypeSet);
+        List<String> matchedEntityNames = new ArrayList<>();
+        for (String entityTypeId : matchedEntityTypeIds) {
+            String displayName = indexManager.resolveEntityDisplayName(entityTypeId);
+            if (!displayName.isBlank()) {
+                matchedEntityNames.add(displayName);
+            }
+        }
+        return new IrNamedObjectEnhancementResult(repairedText, matchedNames, matchedIds, matchedEntityNames, matchedEntityTypeIds, !matchedIds.isEmpty() || !matchedEntityTypeIds.isEmpty());
+    }
+}

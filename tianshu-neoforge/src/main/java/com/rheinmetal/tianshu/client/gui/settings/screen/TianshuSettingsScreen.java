@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.gui.settings.screen;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsContext;
+import com.rheinmetal.tianshu.client.gui.settings.NeoForgeUiText;
 import com.rheinmetal.tianshu.client.gui.settings.api.TextBlockLevel;
 import com.rheinmetal.tianshu.client.gui.settings.layout.ScrollState;
 import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsScreenChrome;
@@ -18,6 +19,7 @@ import com.rheinmetal.tianshu.client.gui.settings.render.SettingsScrollRegion;
 import com.rheinmetal.tianshu.client.gui.settings.render.VanillaModuleSettingsRendererProvider;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsCoordinator;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.ui.UiText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -130,16 +132,20 @@ public final class TianshuSettingsScreen extends Screen {
         });
     }
 
+    public void showExternalStatus(UiText message, long durationMillis) {
+        context.showStatus(message, durationMillis);
+    }
+
     private void buildPanel(ModuleSettingsCategory selected, ModuleSettingsPanelModel panel) {
         try {
             selected.panelFactory().build(panel, context);
         } catch (IllegalStateException exception) {
             panel.text(
                     "settings.module.unavailable",
-                    Component.translatable("tianshu.gui.settings.status.module_unavailable", exception.getMessage()),
+                    UiText.key("tianshu.gui.settings.status.module_unavailable", exception.getMessage()),
                     TextBlockLevel.ERROR
             );
-            context.showStatus(Component.translatable("tianshu.gui.settings.status.module_unavailable_short"), 4000);
+            context.showStatus(UiText.key("tianshu.gui.settings.status.module_unavailable_short"), 4000);
         }
     }
 
@@ -177,23 +183,23 @@ public final class TianshuSettingsScreen extends Screen {
 
     private void showSaveResult(SettingsSaveResult result) {
         if (result == null) {
-            showStatus(Component.translatable("tianshu.gui.settings.status.no_result"));
+            showStatus(UiText.key("tianshu.gui.settings.status.no_result"));
             return;
         }
         if (!result.success()) {
-            showStatus(result.message().getString().isBlank() ? Component.translatable("tianshu.gui.settings.status.failed") : result.message());
+            showStatus(NeoForgeUiText.isEmpty(result.message()) ? UiText.key("tianshu.gui.settings.status.failed") : result.message());
             return;
         }
         if (result.requiresRestart()) {
-            showStatus(Component.translatable("tianshu.gui.settings.status.requires_restart", result.message()));
+            showStatus(UiText.key("tianshu.gui.settings.status.requires_restart", result.message()));
         } else if (result.requiresReload()) {
-            showStatus(Component.translatable("tianshu.gui.settings.status.requires_reload", result.message()));
+            showStatus(UiText.key("tianshu.gui.settings.status.requires_reload", result.message()));
         } else {
-            showStatus(result.message().getString().isBlank() ? Component.translatable("tianshu.gui.settings.status.completed") : result.message());
+            showStatus(NeoForgeUiText.isEmpty(result.message()) ? UiText.key("tianshu.gui.settings.status.completed") : result.message());
         }
     }
 
-    private void showStatus(Component message) {
+    private void showStatus(UiText message) {
         context.showStatus(message, 3000);
     }
 
@@ -215,7 +221,7 @@ public final class TianshuSettingsScreen extends Screen {
         nestedScrollStates.compute(regionId, (ignored, current) -> (current == null ? new ScrollState(0, contentHeight, viewportHeight) : current).withMetrics(contentHeight, viewportHeight));
     }
 
-    public <T> void openSelectionPanel(Component title, List<T> values, T selected, Function<T, Component> labeler, Consumer<T> onSelect) {
+    public <T> void openSelectionPanel(UiText title, List<T> values, T selected, Function<T, UiText> labeler, Consumer<T> onSelect) {
         selectionPanel = new SelectionPanel<>(title, values, selected, labeler, value -> {
             if (onSelect != null) {
                 onSelect.accept(value);
@@ -226,9 +232,9 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     public void showActionFailure(RuntimeException exception) {
-        Component message = exception == null || exception.getMessage() == null || exception.getMessage().isBlank()
-                ? Component.translatable("tianshu.gui.settings.status.action_failed")
-                : Component.translatable("tianshu.gui.settings.status.action_failed_with_reason", exception.getMessage());
+        UiText message = exception == null || exception.getMessage() == null || exception.getMessage().isBlank()
+                ? UiText.key("tianshu.gui.settings.status.action_failed")
+                : UiText.key("tianshu.gui.settings.status.action_failed_with_reason", exception.getMessage());
         context.showStatus(message, 4000);
     }
 
@@ -450,7 +456,7 @@ public final class TianshuSettingsScreen extends Screen {
 
     private Component statusMessage() {
         if (context instanceof TianshuSettingsContext settingsContext) {
-            return settingsContext.statusMessage();
+            return NeoForgeUiText.toComponent(settingsContext.statusMessage());
         }
         return Component.empty();
     }
@@ -482,18 +488,18 @@ public final class TianshuSettingsScreen extends Screen {
         private static final int SELECTED_COLOR = 0xFFFFA0;
         private static final int NORMAL_COLOR = 0xE0E0E0;
 
-        private final Component title;
+        private final UiText title;
         private final List<T> values;
         private final T selected;
-        private final Function<T, Component> labeler;
+        private final Function<T, UiText> labeler;
         private final Consumer<T> onSelect;
         private int scrollOffset;
 
-        private SelectionPanel(Component title, List<T> values, T selected, Function<T, Component> labeler, Consumer<T> onSelect) {
-            this.title = title == null ? Component.empty() : title;
+        private SelectionPanel(UiText title, List<T> values, T selected, Function<T, UiText> labeler, Consumer<T> onSelect) {
+            this.title = title == null ? UiText.literal("") : title;
             this.values = values == null ? List.of() : List.copyOf(values);
             this.selected = selected;
-            this.labeler = labeler == null ? value -> Component.literal(String.valueOf(value)) : labeler;
+            this.labeler = labeler == null ? value -> UiText.literal(String.valueOf(value)) : labeler;
             this.onSelect = onSelect == null ? value -> {} : onSelect;
         }
 
@@ -509,7 +515,7 @@ public final class TianshuSettingsScreen extends Screen {
                 guiGraphics.fill(0, 0, screenWidth, screenHeight, 0x66000000);
                 guiGraphics.fill(x, y, x + WIDTH, y + height, BACKGROUND);
                 guiGraphics.renderOutline(x, y, WIDTH, height, BORDER);
-                guiGraphics.drawCenteredString(font, title, screenWidth / 2, y + PADDING, 0xFFFFFF);
+                guiGraphics.drawCenteredString(font, NeoForgeUiText.toComponent(title), screenWidth / 2, y + PADDING, 0xFFFFFF);
                 int entryY = y + titleHeight;
                 clampScroll();
                 guiGraphics.enableScissor(x + 1, entryY, x + WIDTH - 1, y + height - 1);
@@ -520,7 +526,7 @@ public final class TianshuSettingsScreen extends Screen {
                             break;
                         }
                         T value = values.get(idx);
-                        Component label = labeler.apply(value);
+                        Component label = NeoForgeUiText.toComponent(labeler.apply(value));
                         boolean selectedValue = value != null && value.equals(selected);
                         int rowY = entryY + i * ENTRY_HEIGHT;
                         boolean hovered = mouseX >= x && mouseX < x + WIDTH && mouseY >= rowY && mouseY < rowY + ENTRY_HEIGHT;

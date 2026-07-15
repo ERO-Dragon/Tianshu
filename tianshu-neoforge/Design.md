@@ -665,3 +665,15 @@
     - AI开启时补充外语翻译链路；AI关闭时仅播同语言内容。
     - 评估语音发送“/命令”的二次确认或禁用策略。
 }
+
+## 客户端宿主边界（2026-07-15）
+
+当前客户端采用 `tianshu-neoforge -> tianshu-client -> tianshu-common` 单向依赖。Common 持有 Core、Protocol 与功能模块；client 持有客户端 runtime、Presence、设置模型、IR 索引、音频和诊断；NeoForge 只持有加载器事件、Minecraft 对象快照转换、TOML、原版 Screen/HUD 和平台 adapter。
+
+`TianshuCoreManager` 仍是模块生命周期唯一宿主。世界登录、退出和客户端关闭经 `NeoForgeClientLifecycleAdapter` 转发给 `TianshuClientRuntime`；runtime 使用 generation 防止旧世界启动回调恢复已退出 session。客户端级 IR/诊断/GPU 资源不随世界切换重复创建，世界级 Core session 和录音硬件在 logout 时停止。
+
+Minecraft 活对象不能进入 client/common。NeoForge 必须先转换为不可变 snapshot、ID、字符串或 protocol payload。模型下载、索引、GPU 探测、推理、诊断写盘和阻塞等待严禁占用 Minecraft 主线程；主线程只做必要事件接收、快照读取、Screen/HUD 和 UI 更新。
+
+配置唯一来源保持 `config/tianshu-client.toml`。各模块通过窄设置端口访问，禁止恢复全能配置接口。共享语言、纹理和客户端数据位于 `tianshu-client`；Mixin 与 NeoForge metadata 继续留在加载器项目。
+
+详细规则见 `doc/client/NeoForge客户端架构说明.md`。

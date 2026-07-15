@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.platform;
 
+import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
 import net.minecraft.client.resources.language.I18n;
 
 public final class NeoForgePresenceTextProvider implements PresenceTextProvider {

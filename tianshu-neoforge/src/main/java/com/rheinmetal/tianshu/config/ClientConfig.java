@@ -18,7 +18,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConfiguration,
-        AXStorageConfiguration, VoiceResourceConfiguration, AXAssistantSettings, AXOutputSettings {
+        AXStorageConfiguration, VoiceResourceConfiguration, AXAssistantSettings, AXOutputSettings,
+        com.rheinmetal.tianshu.client.gui.auxilium.AxSettingsAccess,
+        com.rheinmetal.tianshu.client.gui.diagnostics.DiagnosticsSettingsAccess,
+        com.rheinmetal.tianshu.client.gui.presence.settings.PresenceSettingsAccess,
+        com.rheinmetal.tianshu.client.gui.asr.AsrSettingsAccess,
+        com.rheinmetal.tianshu.client.gui.llm.LlmSettingsAccess,
+        com.rheinmetal.tianshu.client.gui.tts.TtsSettingsAccess,
+        com.rheinmetal.tianshu.client.config.ClientDiagnosticsConfiguration {
 
     public static final ModConfigSpec SPEC;
 

@@ -56,6 +56,7 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet(sourceSets.main)
+            sourceSet(project(':tianshu-client').sourceSets.main)
             sourceSet(project(':tianshu-common').sourceSets.main)
         }
     }
@@ -66,7 +67,7 @@ configurations {
 }
 
 dependencies {
-    implementation project(':tianshu-common')
+    implementation project(':tianshu-client')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
     localRuntime fileTree('../libs') { include 'tianshu_libs-*.jar' }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
@@ -83,6 +84,7 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache")
 }
 jar {
+    from project(':tianshu-client').sourceSets.main.output
     from project(':tianshu-common').sourceSets.main.output
     // 可选：防止 common 里的 META-INF 签名文件和 neoforge 冲突导致报错
     exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'

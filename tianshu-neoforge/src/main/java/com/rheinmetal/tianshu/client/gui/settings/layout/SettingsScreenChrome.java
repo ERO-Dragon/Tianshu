@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.gui.settings.layout;
 
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
+import com.rheinmetal.tianshu.client.gui.settings.NeoForgeUiText;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -47,7 +48,7 @@ public final class SettingsScreenChrome {
         if (selected != null) {
             SettingsScreenLayout layout = layout(screenWidth, screenHeight);
             guiGraphics.drawString(font, leftTitle, layout.leftX() + 6, layout.contentTop() + 9, 0xFFFFFF, false);
-            guiGraphics.drawString(font, selected.title(), layout.rightX() + 8, layout.contentTop() + 10, 0xFFFFFF, false);
+            guiGraphics.drawString(font, NeoForgeUiText.toComponent(selected.title()), layout.rightX() + 8, layout.contentTop() + 10, 0xFFFFFF, false);
         }
         if (!status.getString().isBlank()) {
             SettingsScreenLayout layout = layout(screenWidth, screenHeight);

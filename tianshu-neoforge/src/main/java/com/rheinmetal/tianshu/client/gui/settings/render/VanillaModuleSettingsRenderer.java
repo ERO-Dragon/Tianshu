@@ -2,12 +2,14 @@ package com.rheinmetal.tianshu.client.gui.settings.render;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsListCard;
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsButtonStyle;
+import com.rheinmetal.tianshu.client.gui.settings.NeoForgeUiText;
 import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsLayout;
 import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsLayoutItem;
 import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsLayoutMetrics;
 import com.rheinmetal.tianshu.client.gui.settings.layout.SettingsViewport;
 import com.rheinmetal.tianshu.client.gui.settings.model.SettingsTemplateModel;
 import com.rheinmetal.tianshu.client.gui.settings.screen.TianshuSettingsScreen;
+import com.rheinmetal.tianshu.client.ui.UiText;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -238,7 +240,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
 
     private <T> void openSelectionPanel(SettingsTemplateModel.SelectEntry<T> select, T current) {
         if (screen != null) {
-            screen.openSelectionPanel(safeComponent(select.label(), Component.empty()), safeList(select.values()), current, select.labeler(), select.setter());
+            screen.openSelectionPanel(select.label(), safeList(select.values()), current, select.labeler(), select.setter());
         }
     }
 
@@ -333,7 +335,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             }
             boolean active = groupActive && safeBoolean(entry.enabled(), true);
             SettingsLayoutItem item = nextGridItem();
-            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeGet(entry.value(), Component.empty())), active ? 0xD0D0D0 : 0x606060), item, active);
+            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeComponent(safeGet(entry.value(), UiText.literal("")), Component.empty())), active ? 0xD0D0D0 : 0x606060), item, active);
         }
     }
 
@@ -418,7 +420,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             SettingsLayoutItem item;
             AbstractWidget listWidget;
             if (group.carder() != null) {
-                SettingsListCard card = safeApply(group.carder(), value, SettingsListCard.text(Component.empty()));
+                SettingsListCard card = safeApply(group.carder(), value, SettingsListCard.text(UiText.literal("")));
                 int cardHeight = SettingsListCardWidget.heightFor(font, card, bodyWidth);
                 item = allowPartialVisibility ? layout.nextIntersecting(cardHeight) : layout.next(cardHeight);
                 listWidget = new SettingsListCardWidget(rowX, item.screenY(), bodyWidth, cardHeight, card, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value)));
@@ -520,7 +522,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         layout.gap();
     }
 
-    private void renderGroupTitle(Component title, boolean active) {
+    private void renderGroupTitle(UiText title, boolean active) {
         finishGridRow();
         SettingsLayoutItem item = layout.row();
         addIfVisible(new SettingsTextWidget(contentX(), item.screenY(), contentWidth(), SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(title, Component.empty()), active ? 0xFFFFFF : 0x707070), item, active);
@@ -683,10 +685,10 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 .toList();
     }
 
-    private <T> Component safeLabel(Function<T, Component> function, T value) {
+    private <T> Component safeLabel(Function<T, UiText> function, T value) {
         try {
-            Component label = function == null ? null : function.apply(value);
-            return label == null ? Component.literal(String.valueOf(value)) : label;
+            UiText label = function == null ? null : function.apply(value);
+            return label == null ? Component.literal(String.valueOf(value)) : NeoForgeUiText.toComponent(label);
         } catch (RuntimeException ignored) {
             return Component.literal(String.valueOf(value));
         }
@@ -756,8 +758,8 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         return values == null ? List.of() : values;
     }
 
-    private Component safeComponent(Component value, Component fallback) {
-        return value == null ? fallback : value;
+    private Component safeComponent(UiText value, Component fallback) {
+        return value == null ? fallback : NeoForgeUiText.toComponent(value);
     }
 
     private void addIfVisible(AbstractWidget widget, SettingsLayoutItem item, boolean active) {

@@ -2,13 +2,11 @@ package com.rheinmetal.tianshu.client.gui.settings.screen;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.gui.settings.session.SettingsCoordinator;
-
-import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
+import com.rheinmetal.tianshu.client.ui.UiText;
 
 public final class TianshuSettingsContext implements ModuleSettingsContext {
     private final SettingsCoordinator settingsCoordinator;
-    private Component statusMessage = Component.empty();
+    private UiText statusMessage = UiText.literal("");
     private long statusMessageExpireAt;
 
     public TianshuSettingsContext() {
@@ -20,24 +18,19 @@ public final class TianshuSettingsContext implements ModuleSettingsContext {
     }
 
     @Override
-    public Minecraft minecraft() {
-        return Minecraft.getInstance();
-    }
-
-    @Override
     public SettingsCoordinator settingsCoordinator() {
         return settingsCoordinator;
     }
 
     @Override
-    public void showStatus(Component message, long durationMillis) {
-        this.statusMessage = message == null ? Component.empty() : message;
+    public void showStatus(UiText message, long durationMillis) {
+        this.statusMessage = message == null ? UiText.literal("") : message;
         this.statusMessageExpireAt = System.currentTimeMillis() + Math.max(0, durationMillis);
     }
 
-    public Component statusMessage() {
+    public UiText statusMessage() {
         if (System.currentTimeMillis() > statusMessageExpireAt) {
-            statusMessage = Component.empty();
+            statusMessage = UiText.literal("");
         }
         return statusMessage;
     }

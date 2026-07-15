@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.platform;
 
 import com.mojang.logging.LogUtils;
+import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.client.language.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
@@ -11,7 +12,6 @@ import com.rheinmetal.tianshu.client.presence.model.PresencePotionEffect;
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -32,11 +32,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class NeoForgePresencePlatform implements PresencePlatform {
+public final class NeoForgePresencePlatform implements ClientGameContextProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final NeoForgePresenceScreenClassifier screenClassifier = new NeoForgePresenceScreenClassifier();
-    private final NeoForgePresenceAdvancementTracker advancementTracker = new NeoForgePresenceAdvancementTracker();
 
     @Override
     public PresenceContextSnapshot captureContext(Set<PresenceContextGroup> groups, PresenceInputKind inputKind) {
@@ -77,11 +76,6 @@ public final class NeoForgePresencePlatform implements PresencePlatform {
                 live ? facts : Map.of(),
                 System.currentTimeMillis()
         );
-    }
-
-    @Override
-    public List<PresenceWorldEventPayload> collectAdvancementUpdate(Object nativePacket) {
-        return advancementTracker.collect(nativePacket);
     }
 
     private Map<String, String> facts(PresenceScreenKind screenKind) {

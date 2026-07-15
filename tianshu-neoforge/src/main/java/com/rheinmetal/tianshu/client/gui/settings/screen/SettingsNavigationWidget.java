@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.gui.settings.screen;
 
 import com.rheinmetal.tianshu.client.gui.settings.model.ModuleSettingsCategory;
+import com.rheinmetal.tianshu.client.gui.settings.NeoForgeUiText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -46,7 +47,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
                 guiGraphics.fill(getX() + 4, itemY + 10, getX() + 7, itemY + 13, 0xFFFFCC33);
                 textX += 6;
             }
-            guiGraphics.drawString(Minecraft.getInstance().font, category.title(), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
+            guiGraphics.drawString(Minecraft.getInstance().font, NeoForgeUiText.toComponent(category.title()), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
         }
         drawScrollbar(guiGraphics, visible, start);
     }

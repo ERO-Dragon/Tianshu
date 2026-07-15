@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.client.gui.settings.render;
 
 import com.rheinmetal.tianshu.client.gui.settings.api.SettingsListCard;
+import com.rheinmetal.tianshu.client.gui.settings.NeoForgeUiText;
+import com.rheinmetal.tianshu.client.ui.UiText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -29,16 +31,16 @@ final class SettingsListCardWidget extends AbstractWidget {
     private final Runnable onClick;
 
     SettingsListCardWidget(int x, int y, int width, int height, SettingsListCard card, Runnable onClick) {
-        super(x, y, width, height, card == null ? Component.empty() : card.title());
-        this.card = card == null ? SettingsListCard.text(Component.empty()) : card;
+        super(x, y, width, height, card == null ? Component.empty() : NeoForgeUiText.toComponent(card.title()));
+        this.card = card == null ? SettingsListCard.text(UiText.literal("")) : card;
         this.detailLines = wrapDetails(Minecraft.getInstance().font, this.card, width);
         this.onClick = onClick;
         this.active = false;
     }
 
     static int heightFor(Font font, SettingsListCard card, int width) {
-        SettingsListCard safeCard = card == null ? SettingsListCard.text(Component.empty()) : card;
-        int titleLines = Math.max(1, font.split(safeCard.title(), Math.max(1, width - PADDING_X * 2)).size());
+        SettingsListCard safeCard = card == null ? SettingsListCard.text(UiText.literal("")) : card;
+        int titleLines = Math.max(1, font.split(NeoForgeUiText.toComponent(safeCard.title()), Math.max(1, width - PADDING_X * 2)).size());
         int detailLines = Math.min(4, wrapDetails(font, safeCard, width).size());
         int badgeRows = safeCard.badges().isEmpty() ? 0 : 1;
         return PADDING_Y * 2 + Math.min(2, titleLines) * LINE_HEIGHT + detailLines * LINE_HEIGHT + badgeRows * (LINE_HEIGHT + 4) + 5;
@@ -47,8 +49,8 @@ final class SettingsListCardWidget extends AbstractWidget {
     private static List<FormattedCharSequence> wrapDetails(Font font, SettingsListCard card, int width) {
         List<FormattedCharSequence> lines = new ArrayList<>();
         int textWidth = Math.max(1, width - PADDING_X * 2);
-        for (Component detail : card.details()) {
-            lines.addAll(font.split(detail == null ? Component.empty() : detail, textWidth));
+        for (UiText detail : card.details()) {
+            lines.addAll(font.split(NeoForgeUiText.toComponent(detail), textWidth));
         }
         return lines;
     }
@@ -68,14 +70,15 @@ final class SettingsListCardWidget extends AbstractWidget {
         int textY = getY() + PADDING_Y;
         int contentRight = right - PADDING_X;
         int titleWidth = Math.max(1, getWidth() - PADDING_X * 2 - statusWidth(font));
-        for (FormattedCharSequence titleLine : font.split(card.title(), titleWidth)) {
+        for (FormattedCharSequence titleLine : font.split(NeoForgeUiText.toComponent(card.title()), titleWidth)) {
             guiGraphics.drawString(font, titleLine, textX, textY, TITLE_COLOR, false);
             textY += LINE_HEIGHT;
             break;
         }
-        if (!card.status().getString().isBlank()) {
-            int statusX = Math.max(textX, contentRight - font.width(card.status()));
-            guiGraphics.drawString(font, card.status(), statusX, getY() + PADDING_Y, STATUS_COLOR, false);
+        Component status = NeoForgeUiText.toComponent(card.status());
+        if (!status.getString().isBlank()) {
+            int statusX = Math.max(textX, contentRight - font.width(status));
+            guiGraphics.drawString(font, status, statusX, getY() + PADDING_Y, STATUS_COLOR, false);
         }
         int maxDetailLines = Math.max(0, Math.min(4, (bottom - textY - PADDING_Y - badgeHeight()) / LINE_HEIGHT));
         for (int i = 0; i < Math.min(maxDetailLines, detailLines.size()); i++) {
@@ -86,7 +89,8 @@ final class SettingsListCardWidget extends AbstractWidget {
     }
 
     private int statusWidth(Font font) {
-        return card.status().getString().isBlank() ? 0 : font.width(card.status()) + 8;
+        Component status = NeoForgeUiText.toComponent(card.status());
+        return status.getString().isBlank() ? 0 : font.width(status) + 8;
     }
 
     private int badgeHeight() {
@@ -98,7 +102,8 @@ final class SettingsListCardWidget extends AbstractWidget {
             return;
         }
         int badgeX = x;
-        for (Component badge : card.badges()) {
+        for (UiText badgeText : card.badges()) {
+            Component badge = NeoForgeUiText.toComponent(badgeText);
             if (badge == null || badge.getString().isBlank()) {
                 continue;
             }
