@@ -21,6 +21,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final AtomicLong generation = new AtomicLong();
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
+    private boolean worldSessionRequested;
 
     public TianshuClientRuntime(
             ClientRuntimeServices services,
@@ -75,12 +76,22 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
 
     @Override
     public void startWorldSession() {
+        synchronized (lifecycleMonitor) {
+            if (state == ClientSessionState.SHUTDOWN) {
+                return;
+            }
+            worldSessionRequested = true;
+        }
+        startRequestedWorldSession();
+    }
+
+    private void startRequestedWorldSession() {
         long requestGeneration;
         synchronized (lifecycleMonitor) {
             if (state == ClientSessionState.NEW) {
                 startClient();
             }
-            if (state != ClientSessionState.CLIENT_READY) {
+            if (!worldSessionRequested || state != ClientSessionState.CLIENT_READY) {
                 return;
             }
             state = ClientSessionState.WORLD_STARTING;
@@ -93,6 +104,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     public void stopWorldSession() {
         long requestGeneration;
         synchronized (lifecycleMonitor) {
+            worldSessionRequested = false;
             if (state != ClientSessionState.WORLD_STARTING && state != ClientSessionState.WORLD_RUNNING) {
                 return;
             }
@@ -116,6 +128,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 return;
             }
             state = ClientSessionState.SHUTDOWN;
+            worldSessionRequested = false;
             generation.incrementAndGet();
         }
         try {
@@ -157,13 +170,18 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
 
     private void completeWorldStop(long requestGeneration, Throwable failure) {
         releaseCaptureHardware.run();
+        boolean restartRequested = false;
         synchronized (lifecycleMonitor) {
             if (requestGeneration == generation.get() && state == ClientSessionState.WORLD_STOPPING) {
                 state = ClientSessionState.CLIENT_READY;
+                restartRequested = worldSessionRequested;
             }
         }
         if (failure != null) {
             onWorldFailure.accept(failure);
+        }
+        if (restartRequested) {
+            startRequestedWorldSession();
         }
     }
 

@@ -36,10 +36,12 @@ class ModuleConfigurationBoundaryTest {
     @Test
     void neoforgeKeepsOneClientTomlConfigurationOwner() throws Exception {
         List<String> specOwners = sourcesContaining(NEOFORGE_SOURCES, "new ModConfigSpec.Builder()");
-        String bootstrap = read(NEOFORGE_SOURCES.resolve("com/rheinmetal/tianshu/Tianshu.java"));
+        String bootstrap = read(NEOFORGE_SOURCES.resolve(
+                "com/rheinmetal/tianshu/neoforge/TianshuNeoForge.java"
+        ));
 
-        assertTrue(specOwners.equals(List.of("com\\rheinmetal\\tianshu\\config\\ClientConfig.java"))
-                        || specOwners.equals(List.of("com/rheinmetal/tianshu/config/ClientConfig.java")),
+        assertTrue(specOwners.equals(List.of("com\\rheinmetal\\tianshu\\neoforge\\config\\ClientConfig.java"))
+                        || specOwners.equals(List.of("com/rheinmetal/tianshu/neoforge/config/ClientConfig.java")),
                 () -> "only ClientConfig may own the tianshu-client.toml spec:\n" + String.join("\n", specOwners));
         assertTrue(bootstrap.contains("registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC)"));
         assertTrue(bootstrap.contains("MOD_ID = \"tianshu\""));

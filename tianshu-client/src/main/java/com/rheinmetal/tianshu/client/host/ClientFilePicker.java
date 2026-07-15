@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.client.host;
 
-import com.rheinmetal.tianshu.client.ui.UiText;
+import com.rheinmetal.tianshu.client.api.text.UiText;
 
 import java.nio.file.Path;
 import java.util.Optional;

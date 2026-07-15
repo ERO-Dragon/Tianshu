@@ -115,7 +115,7 @@
 
     七、集成与配置
     MR 与声学雷达共享环境感知 Provider，但扫描半径统筹取两者需求的最大值：雷达需要的半径与 MR 运行时的 32 格需求合并后下发。
-    TianshuClient 负责 MR 引擎创建、关闭动画、tick 驱动、渲染入口与配置桥接。
+    现行宿主入口由 TianshuNeoForge、NeoForgeClientBootstrap 与 NeoForgeClientEvents 分工：bootstrap 负责客户端运行时和功能装配，events 只转发 tick/渲染/输入等 Minecraft 事件；MR 自身的状态与布局逻辑不得重新堆回宿主总控类。
     FeatureManager 和用户开关共同决定 MR 是否运行；功能关闭时引擎进入 closing 流程，允许动画完成后再释放。
     ClientConfig 暴露卡片 scale、线段长度、卡片跟随系数、昼夜透明度等调试参数，用于验收阶段快速调校视觉手感。
 

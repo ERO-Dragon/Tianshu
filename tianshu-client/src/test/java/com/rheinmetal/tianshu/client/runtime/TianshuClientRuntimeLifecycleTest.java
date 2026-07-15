@@ -45,6 +45,28 @@ class TianshuClientRuntimeLifecycleTest {
     }
 
     @Test
+    void loginDuringWorldStopStartsTheNextSessionAfterStopCompletes() {
+        FakeCore core = new FakeCore();
+        TianshuClientRuntime runtime = runtime(core, new AtomicInteger(), new AtomicInteger());
+
+        runtime.startClient();
+        runtime.startWorldSession();
+        core.start.complete(true);
+        runtime.stopWorldSession();
+
+        core.start = new CompletableFuture<>();
+        runtime.startWorldSession();
+        assertEquals(1, core.starts.get());
+
+        core.stop.complete(null);
+        assertEquals(2, core.starts.get());
+        assertEquals(ClientSessionState.WORLD_STARTING, runtime.state());
+
+        core.start.complete(true);
+        assertEquals(ClientSessionState.WORLD_RUNNING, runtime.state());
+    }
+
+    @Test
     void shutdownIsIdempotentAndRejectsLaterLifecycleEvents() {
         FakeCore core = new FakeCore();
         AtomicInteger closedResources = new AtomicInteger();

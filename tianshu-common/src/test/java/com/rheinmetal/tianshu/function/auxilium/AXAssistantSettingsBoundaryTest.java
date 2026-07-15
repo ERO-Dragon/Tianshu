@@ -18,10 +18,7 @@ class AXAssistantSettingsBoundaryTest {
 
     @Test
     void neoforgeClientConfigDoesNotDefaultWakeWord() throws Exception {
-        Path clientConfig = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/config/ClientConfig.java");
-        if (!Files.exists(clientConfig)) {
-            return;
-        }
+        Path clientConfig = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/neoforge/config/ClientConfig.java");
 
         String code = Files.readString(clientConfig, StandardCharsets.UTF_8);
 

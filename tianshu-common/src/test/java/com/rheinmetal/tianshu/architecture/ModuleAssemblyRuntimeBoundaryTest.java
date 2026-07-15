@@ -21,14 +21,14 @@ class ModuleAssemblyRuntimeBoundaryTest {
         String context = read(COMMON_SOURCES.resolve(
                 "com/rheinmetal/tianshu/core/lifecycle/TianshuModuleAssemblyContext.java"
         ));
-        String client = read(NEOFORGE_SOURCES.resolve(
-                "com/rheinmetal/tianshu/client/TianshuClient.java"
+        String bootstrap = read(NEOFORGE_SOURCES.resolve(
+                "com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"
         ));
 
         assertFalse(context.contains("ProtocolRuntime"));
         assertFalse(context.contains("protocolRuntime"));
         assertTrue(context.contains("ModuleRuntimeAccess moduleRuntime"));
-        assertFalse(client.contains("context.protocolRuntime()"));
+        assertFalse(bootstrap.contains("context.protocolRuntime()"));
     }
 
     @Test
@@ -65,11 +65,7 @@ class ModuleAssemblyRuntimeBoundaryTest {
 
     @Test
     void neoforgeAssemblyDoesNotReceiveFullProtocolRuntime() throws Exception {
-        List<Path> roots = List.of(
-                NEOFORGE_SOURCES.resolve("com/rheinmetal/tianshu/client/lifecycle"),
-                NEOFORGE_SOURCES.resolve("com/rheinmetal/tianshu/client/presence"),
-                NEOFORGE_SOURCES.resolve("com/rheinmetal/tianshu/client/ir")
-        );
+        List<Path> roots = List.of(NEOFORGE_SOURCES.resolve("com/rheinmetal/tianshu/neoforge"));
         List<String> violations = new ArrayList<>();
         for (Path root : roots) {
             violations.addAll(sourcesContaining(root, "ProtocolRuntime"));

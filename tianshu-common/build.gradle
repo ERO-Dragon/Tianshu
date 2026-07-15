@@ -12,7 +12,7 @@ repositories {
     mavenCentral()
 }
 
-def extractTianshuLibsJarJar = tasks.register('extractTianshuLibsJarJar', Copy) {
+def extractTianshuLibsJarJar = tasks.register('extractTianshuLibsJarJar', Sync) {
     def libsJars = fileTree('../libs') { include 'tianshu_libs-*.jar' }
     from(libsJars.collect { zipTree(it) }) {
         include 'META-INF/jarjar/*.jar'
@@ -22,6 +22,10 @@ def extractTianshuLibsJarJar = tasks.register('extractTianshuLibsJarJar', Copy) 
         includeEmptyDirs = false
     }
     into layout.buildDirectory.dir('extracted/tianshu-libs-jarjar')
+}
+
+def tianshuLibsJarJar = fileTree(layout.buildDirectory.dir('extracted/tianshu-libs-jarjar')) {
+    include '*.jar'
 }
 
 dependencies {
@@ -35,11 +39,7 @@ dependencies {
     testImplementation 'org.apache.commons:commons-compress:1.26.0'
     testRuntimeOnly 'it.unimi.dsi:fastutil:8.5.15'
     testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'
-    testRuntimeOnly files({
-        fileTree(layout.buildDirectory.dir('extracted/tianshu-libs-jarjar').get().asFile) {
-            include '*.jar'
-        }.files
-    })
+    testRuntimeOnly tianshuLibsJarJar
 }
 
 test {

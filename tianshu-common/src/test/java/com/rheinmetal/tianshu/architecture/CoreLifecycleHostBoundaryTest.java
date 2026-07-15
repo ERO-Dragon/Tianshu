@@ -39,8 +39,8 @@ class CoreLifecycleHostBoundaryTest {
     @Test
     void neoforgeWorldEventsOnlySubmitAsyncCoreLifecycleCommands() throws Exception {
         Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java");
-        String client = Files.readString(
-                neoforgeRoot.resolve("com/rheinmetal/tianshu/client/TianshuClient.java"),
+        String events = Files.readString(
+                neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"),
                 StandardCharsets.UTF_8
         );
         String runtime = Files.readString(
@@ -48,13 +48,13 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(client.contains("lifecycleAdapter.onWorldLogin()"));
-        assertTrue(client.contains("lifecycleAdapter.onWorldLogout()"));
+        assertTrue(events.contains("lifecycleAdapter.onWorldLogin()"));
+        assertTrue(events.contains("lifecycleAdapter.onWorldLogout()"));
         assertTrue(runtime.contains("core.start().whenComplete"));
         assertTrue(runtime.contains("core.stop().whenComplete"));
-        assertFalse(client.contains("coreManager.initWorkers()"));
-        assertFalse(client.contains("coreManager.restartRuntimeAsync("));
-        assertFalse(client.contains("coreManager.refreshRuntimeAsync("));
+        assertFalse(events.contains("coreManager.initWorkers()"));
+        assertFalse(events.contains("coreManager.restartRuntimeAsync("));
+        assertFalse(events.contains("coreManager.refreshRuntimeAsync("));
 
         try (Stream<Path> files = Files.walk(neoforgeRoot)) {
             String legacyCalls = files
@@ -77,20 +77,20 @@ class CoreLifecycleHostBoundaryTest {
     @Test
     void onnxBootstrapIsARequiredLifecycleModuleInsteadOfLoginThreadWork() throws Exception {
         Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java");
-        String client = Files.readString(
-                neoforgeRoot.resolve("com/rheinmetal/tianshu/client/TianshuClient.java"),
+        String bootstrap = Files.readString(
+                neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
                 StandardCharsets.UTF_8
         );
         Path clientRoot = Path.of("../tianshu-client/src/main/java");
         Path modulePath = clientRoot.resolve(
-                "com/rheinmetal/tianshu/client/lifecycle/ClientOnnxRuntimeModule.java"
+                "com/rheinmetal/tianshu/client/runtime/module/ClientOnnxRuntimeModule.java"
         );
         Path installerPath = clientRoot.resolve(
-                "com/rheinmetal/tianshu/client/lifecycle/ClientOnnxRuntimeModuleInstaller.java"
+                "com/rheinmetal/tianshu/client/runtime/module/ClientOnnxRuntimeModuleInstaller.java"
         );
 
-        assertFalse(client.contains("ensureOnnxRuntimeLoaded()"));
-        assertFalse(client.contains("OrtEnvironment.getEnvironment()"));
+        assertFalse(bootstrap.contains("ensureOnnxRuntimeLoaded()"));
+        assertFalse(bootstrap.contains("OrtEnvironment.getEnvironment()"));
         assertTrue(Files.isRegularFile(modulePath));
         assertTrue(Files.isRegularFile(installerPath));
 
@@ -104,9 +104,12 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void irNamedObjectIndexIsClientLifetimeAsyncResource() throws Exception {
-        Path neoforgeClientRoot = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/client");
+        Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/neoforge");
         Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
-        String client = Files.readString(neoforgeClientRoot.resolve("TianshuClient.java"), StandardCharsets.UTF_8);
+        String bootstrap = Files.readString(
+                neoforgeRoot.resolve("bootstrap/NeoForgeClientBootstrap.java"),
+                StandardCharsets.UTF_8
+        );
         String runtime = Files.readString(
                 platformClientRoot.resolve("runtime/TianshuClientRuntime.java"),
                 StandardCharsets.UTF_8
@@ -116,13 +119,13 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(
-                neoforgeClientRoot.resolve("ir/NamedObjectReloadListener.java"),
+                neoforgeRoot.resolve("event/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 
         assertTrue(runtime.contains("namedObjectIndexManager().initializeAsync("));
         assertTrue(runtime.contains("namedObjectIndexManager()::close"));
-        assertFalse(client.contains("ClientNamedObjectIndexManager.ensureIndex(\"client login\")"));
+        assertFalse(bootstrap.contains("ClientNamedObjectIndexManager.ensureIndex(\"client login\")"));
         assertTrue(manager.contains("ExecutorService"));
         assertTrue(manager.contains("initializeAsync("));
         assertTrue(manager.contains("reloadAsync("));

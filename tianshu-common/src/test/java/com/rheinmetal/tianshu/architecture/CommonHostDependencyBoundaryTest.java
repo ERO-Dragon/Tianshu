@@ -16,7 +16,7 @@ class CommonHostDependencyBoundaryTest {
     private static final List<String> FORBIDDEN_HOST_PACKAGES = List.of(
             "net.minecraft.",
             "net.neoforged.",
-            "com.rheinmetal.tianshu.audio.",
+            "com.rheinmetal.tianshu.client.audio.",
             "com.rheinmetal.tianshu.client.",
             "com.rheinmetal.tianshu.config.",
             "com.rheinmetal.tianshu.platform."

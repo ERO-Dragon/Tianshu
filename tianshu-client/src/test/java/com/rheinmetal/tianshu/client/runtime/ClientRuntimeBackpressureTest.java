@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ClientRuntimeBackpressureTest {
     @Test
     void clientOwnedWorkersUseBoundedQueuesAndExplicitExecutors() throws Exception {
-        String audio = source("com/rheinmetal/tianshu/audio/AudioManager.java");
-        String gpu = source("com/rheinmetal/tianshu/client/gui/llm/GpuInfo.java");
+        String audio = source("com/rheinmetal/tianshu/client/audio/AudioManager.java");
+        String gpu = source("com/rheinmetal/tianshu/client/llm/performance/GpuInfo.java");
         String presence = source("com/rheinmetal/tianshu/client/presence/context/PresenceContextQueryCoordinator.java");
 
         assertTrue(audio.contains("new ArrayBlockingQueue<>(8)"));
