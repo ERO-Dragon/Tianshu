@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.llm.rag;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.core.scope.WorldScope;
 import com.rheinmetal.tianshu.core.scope.WorldScopeProvider;
 
@@ -10,7 +10,7 @@ public final class LlmRagPathResolver {
     private final Path ragRoot;
     private final WorldScopeProvider worldScopeProvider;
 
-    public LlmRagPathResolver(ITianshuConfig config, WorldScopeProvider worldScopeProvider) {
+    public LlmRagPathResolver(LlmConfiguration config, WorldScopeProvider worldScopeProvider) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }

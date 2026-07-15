@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.asr.control;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.asr.audio.AudioCaptureService;
@@ -20,7 +20,7 @@ import java.util.function.LongSupplier;
 
 public final class AsrController {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AsrConfiguration config;
     private final BooleanSupplier voiceInputAcceptance;
     private final BooleanSupplier asrReady;
     private final LongSupplier interruptProcessing;
@@ -33,7 +33,7 @@ public final class AsrController {
 
     public AsrController(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AsrConfiguration config,
             BooleanSupplier voiceInputAcceptance,
             BooleanSupplier asrReady,
             LongSupplier interruptProcessing,
@@ -48,7 +48,7 @@ public final class AsrController {
 
     public AsrController(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AsrConfiguration config,
             BooleanSupplier voiceInputAcceptance,
             BooleanSupplier asrReady,
             LongSupplier interruptProcessing,

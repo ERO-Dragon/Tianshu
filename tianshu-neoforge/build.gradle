@@ -69,6 +69,12 @@ dependencies {
     implementation project(':tianshu-common')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
     localRuntime fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 sourceSets.main.resources {

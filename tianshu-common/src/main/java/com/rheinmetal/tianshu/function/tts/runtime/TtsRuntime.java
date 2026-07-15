@@ -2,6 +2,9 @@ package com.rheinmetal.tianshu.function.tts.runtime;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.tts.playback.TtsPlaybackController;
 import com.rheinmetal.tianshu.function.tts.playback.TtsPlaybackListener;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink;
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public final class TtsRuntime implements TtsPlaybackListener {
@@ -559,6 +563,13 @@ public final class TtsRuntime implements TtsPlaybackListener {
             sessionStatusPublisher.accept(session);
             publishPlaybackState();
             synthesisEngine.synthesize(session.request(), new RuntimeAudioSink(session, mode));
+            env.diagnostics().publish(DiagnosticEvent.now(
+                    "module.tts",
+                    "SYNTHESIS_COMPLETED",
+                    DiagnosticSeverity.INFO,
+                    DiagnosticPrivacy.RAW_CONTENT,
+                    Map.of("requestId", session.request().requestId(), "text", session.request().text())
+            ));
             if (!session.isTerminal()) {
                 playbackController.finish(session);
                 sessionStatusPublisher.accept(session);
@@ -567,6 +578,17 @@ public final class TtsRuntime implements TtsPlaybackListener {
         } catch (Throwable t) {
             TtsFailure failure = TtsRuntimeFailurePolicy.classify(TtsFailureCode.SYNTHESIS_FAILED, t);
             failSession(session, failure);
+            env.diagnostics().publish(DiagnosticEvent.now(
+                    "module.tts",
+                    "SYNTHESIS_FAILED",
+                    DiagnosticSeverity.ERROR,
+                    DiagnosticPrivacy.RAW_CONTENT,
+                    Map.of(
+                            "requestId", session.request().requestId(),
+                            "text", session.request().text(),
+                            "failureCode", failure.code().name()
+                    )
+            ));
             env.error("tts.session.failed: " + session.request().requestId(), t);
             playbackController.stopActive("session failed");
             playbackBufferTracker.clear();

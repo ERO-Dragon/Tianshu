@@ -472,5 +472,6 @@ class TtsRuntimeControlTest {
         @Override public void info(String msg) {}
         @Override public void warn(String msg) {}
         @Override public void error(String msg, Throwable t) {}
+        @Override public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() { return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP; }
     }
 }

@@ -1,7 +1,10 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
@@ -20,6 +23,7 @@ import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -82,12 +86,14 @@ public class LLMService {
                     prepared.maxTokens(),
                     prepared.options()
             );
-            return new LLMResult(
+            LLMResult response = new LLMResult(
                     result == null ? "" : result.text(),
                     result == null ? "" : result.thinkingContent(),
                     prepared.ragHits(),
                     toUsagePayload(result == null ? null : result.usage())
             );
+            publishDialogueDiagnostic("CHAT_COMPLETED", request, response.text());
+            return response;
         } catch (Exception exception) {
             env.error("[LLMService] Chat failed", exception);
             throw new RuntimeException("LLM chat failed: " + safeMessage(exception), exception);
@@ -125,7 +131,9 @@ public class LLMService {
                     safeTokenConsumer(onThinking),
                     finishHolder::set
             );
-            return new LLMStreamResult(future.get(), toStreamFinish(finishHolder.finish()));
+            String response = future.get();
+            publishDialogueDiagnostic("STREAM_COMPLETED", request, response);
+            return new LLMStreamResult(response, toStreamFinish(finishHolder.finish()));
         } catch (Exception exception) {
             env.error("[LLMService] Stream chat failed", exception);
             throw new RuntimeException("LLM stream chat failed: " + safeMessage(exception), exception);
@@ -243,6 +251,22 @@ public class LLMService {
 
     public RagCacheManager getRagCache() {
         return ragService.cache();
+    }
+
+    private void publishDialogueDiagnostic(String code, LLMRequest request, String response) {
+        String input = request == null ? "" : request.extractMessages().stream()
+                .filter(Objects::nonNull)
+                .map(message -> (message.getRole() == null ? "" : message.getRole()) + ": "
+                        + (message.getContent() == null ? "" : message.getContent()))
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+        env.diagnostics().publish(DiagnosticEvent.now(
+                "module.llm",
+                code,
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT,
+                Map.of("input", input, "output", response == null ? "" : response)
+        ));
     }
 
     public boolean hasCache(String uid) {
@@ -613,7 +637,7 @@ public class LLMService {
 
     public static class Builder {
         private IGameEnvironment env;
-        private ITianshuConfig config;
+        private LlmConfiguration config;
         private LlmInferenceClient inferenceClient;
         private LlmInferenceGovernor inferenceGovernor;
         private LlmPerformanceProvider performanceProvider = LlmPerformanceProvider.UNAVAILABLE;
@@ -629,7 +653,7 @@ public class LLMService {
             return this;
         }
 
-        public Builder config(ITianshuConfig config) {
+        public Builder config(LlmConfiguration config) {
             this.config = config;
             return this;
         }

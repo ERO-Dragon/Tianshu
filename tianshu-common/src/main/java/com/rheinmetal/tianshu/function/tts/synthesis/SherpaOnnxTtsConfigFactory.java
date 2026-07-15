@@ -7,28 +7,24 @@ import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.utils.PathUtils;
 
 import java.io.File;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
 public final class SherpaOnnxTtsConfigFactory {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
     private final InferenceResourcePolicy resourcePolicy;
 
-    public SherpaOnnxTtsConfigFactory(IGameEnvironment env, ITianshuConfig config) {
-        this(env, config, InferenceResourcePolicy.systemDefault());
+    public SherpaOnnxTtsConfigFactory(IGameEnvironment env) {
+        this(env, InferenceResourcePolicy.systemDefault());
     }
 
-    public SherpaOnnxTtsConfigFactory(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy) {
+    public SherpaOnnxTtsConfigFactory(IGameEnvironment env, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
-        this.config = config;
         this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
     }
 
@@ -47,7 +43,7 @@ public final class SherpaOnnxTtsConfigFactory {
             return Optional.empty();
         }
         OfflineTtsConfig ttsConfig = model.modelInfo() == null
-                ? buildLegacyConfig(safeDir, resolveLegacyModelName())
+                ? buildLegacyConfig(safeDir, safeDir.getName())
                 : buildMetadataConfig(safeDir, model.modelInfo(), model.engineType(), null);
         if (ttsConfig == null) {
             return Optional.empty();
@@ -362,14 +358,6 @@ public final class SherpaOnnxTtsConfigFactory {
             result.append(new File(baseDir, relativePaths.get(i)).getAbsolutePath());
         }
         return result.toString();
-    }
-
-    private String resolveLegacyModelName() {
-        Path modelPath = config.getTtsModelPath();
-        if (modelPath != null && modelPath.getFileName() != null) {
-            return modelPath.getFileName().toString();
-        }
-        return "PiperTTS";
     }
 
     private int threadsFor(String engineType, boolean zipVoice) {

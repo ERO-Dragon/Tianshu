@@ -2,38 +2,45 @@ package com.rheinmetal.tianshu.config;
 
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, AXAssistantSettings, AXOutputSettings {
+public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConfiguration,
+        AXStorageConfiguration, VoiceResourceConfiguration, AXAssistantSettings, AXOutputSettings {
 
     public static final ModConfigSpec SPEC;
 
     public static final ModConfigSpec.BooleanValue ASR_ENABLED;
+    public static final ModConfigSpec.BooleanValue ASR_DIAGNOSTICS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> SELECTED_MIC_NAME;
     public static final ModConfigSpec.ConfigValue<String> ASR_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue ASR_HIGH_PASS_FILTER_ENABLED;
     public static final ModConfigSpec.BooleanValue ASR_RNNOISE_ENABLED;
     public static final ModConfigSpec.BooleanValue ASR_VAD_ENABLED;
     public static final ModConfigSpec.BooleanValue TTS_ENABLED;
+    public static final ModConfigSpec.BooleanValue TTS_DIAGNOSTICS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> TTS_PREVIEW_TEXT;
     public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue LLM_ENABLED;
-    public static final ModConfigSpec.IntValue LLM_GPU_LAYER_PERCENT;
+    public static final ModConfigSpec.BooleanValue LLM_DIAGNOSTICS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> LLM_GPU_DEVICE_ID;
     public static final ModConfigSpec.BooleanValue LLM_FRAME_GUARD_ENABLED;
     public static final ModConfigSpec.IntValue LLM_FRAME_GUARD_TARGET_FPS;
     public static final ModConfigSpec.BooleanValue LLM_MTP_ENABLED;
     public static final ModConfigSpec.BooleanValue AX_ENABLED;
+    public static final ModConfigSpec.BooleanValue AX_DIAGNOSTICS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> AX_WAKE_WORD;
     public static final ModConfigSpec.BooleanValue AX_REPLY_SPEECH_ENABLED;
     public static final ModConfigSpec.BooleanValue AX_CHAT_THINKING_ENABLED;
@@ -45,6 +52,8 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
     public static final ModConfigSpec.BooleanValue PRESENCE_TTS_STATUS_VISIBLE;
     public static final ModConfigSpec.BooleanValue PRESENCE_AX_STATUS_VISIBLE;
     public static final ModConfigSpec.BooleanValue PRESENCE_DEBUG_PIPELINE_ENABLED;
+    public static final ModConfigSpec.BooleanValue IA_DIAGNOSTICS_ENABLED;
+    public static final ModConfigSpec.BooleanValue IR_DIAGNOSTICS_ENABLED;
     public static final ModConfigSpec.BooleanValue AI_ENABLED;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.IntValue ASR_PORT;
@@ -63,6 +72,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
 
         builder.comment("ASR 语音识别设置").push("asr");
         ASR_ENABLED = builder.define("enabled", true);
+        ASR_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
         SELECTED_MIC_NAME = builder.define("selectedMicName", "");
         ASR_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         TRIGGER_MODE = builder.defineEnum("triggerMode", TriggerMode.PUSH_TO_TALK);
@@ -73,13 +83,14 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
 
         builder.comment("TTS 语音播报设置").push("tts");
         TTS_ENABLED = builder.define("enabled", true);
+        TTS_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
         TTS_PREVIEW_TEXT = builder.define("previewText", "这是一段天枢语音播报试听");
         TTS_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         builder.pop();
 
         builder.comment("LLM 大语言模型设置").push("llm");
         LLM_ENABLED = builder.define("enabled", true);
-        LLM_GPU_LAYER_PERCENT = builder.defineInRange("gpuLayerPercent", 100, 0, 100);
+        LLM_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
         LLM_GPU_DEVICE_ID = builder.define("gpuDeviceId", "");
         LLM_FRAME_GUARD_ENABLED = builder.define("frameGuardEnabled", true);
         LLM_FRAME_GUARD_TARGET_FPS = builder.defineInRange("frameGuardTargetFps", 60, 15, 240);
@@ -88,6 +99,7 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
 
         builder.comment("AX 辅星设置").push("ax");
         AX_ENABLED = builder.define("enabled", true);
+        AX_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
         AX_WAKE_WORD = builder.define("wakeWord", "");
         AX_REPLY_SPEECH_ENABLED = builder.define("replySpeechEnabled", true);
         AX_CHAT_THINKING_ENABLED = builder.define("chatThinkingEnabled", false);
@@ -104,6 +116,13 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         PRESENCE_DEBUG_PIPELINE_ENABLED = builder.define("debugPipelineEnabled", false);
         builder.pop();
 
+        builder.push("ia");
+        IA_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
+        builder.pop();
+        builder.push("ir");
+        IR_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
+        builder.pop();
+
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
         ASR_PORT = builder.defineInRange("asrPort", 18765, 1024, 65535);
         LLM_PORT = builder.defineInRange("llmPort", 18766, 1024, 65535);
@@ -116,12 +135,10 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         SPEC = builder.build();
     }
 
-    @Override
     public boolean isAiEnabled() {
         return AI_ENABLED.get();
     }
 
-    @Override
     public void setAiEnabled(boolean enabled) {
         AI_ENABLED.set(enabled);
     }
@@ -131,9 +148,16 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return ASR_ENABLED.get();
     }
 
-    @Override
     public void setAsrEnabled(boolean enabled) {
         ASR_ENABLED.set(enabled);
+    }
+
+    public boolean isAsrDiagnosticsEnabled() {
+        return ASR_DIAGNOSTICS_ENABLED.get();
+    }
+
+    public void setAsrDiagnosticsEnabled(boolean enabled) {
+        ASR_DIAGNOSTICS_ENABLED.set(enabled);
     }
 
     @Override
@@ -141,22 +165,18 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return TRIGGER_MODE.get();
     }
 
-    @Override
     public void setTriggerMode(TriggerMode mode) {
         TRIGGER_MODE.set(mode);
     }
 
-    @Override
     public int getAsrPort() {
         return ASR_PORT.get();
     }
 
-    @Override
     public int getLlmPort() {
         return LLM_PORT.get();
     }
 
-    @Override
     public int getTtsPort() {
         return TTS_PORT.get();
     }
@@ -167,7 +187,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return normalizeAsrModelName(configured);
     }
 
-    @Override
     public void setCustomAsrName(String name) {
         CUSTOM_ASR_NAME.set(normalizeAsrModelName(name));
     }
@@ -177,7 +196,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return SELECTED_MIC_NAME.get();
     }
 
-    @Override
     public void setSelectedMicName(String name) {
         SELECTED_MIC_NAME.set(name == null ? "" : name);
     }
@@ -195,7 +213,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return ASR_RNNOISE_ENABLED.get();
     }
 
-    @Override
     public void setAsrRnnoiseEnabled(boolean enabled) {
         ASR_RNNOISE_ENABLED.set(enabled);
     }
@@ -205,7 +222,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return ASR_HIGH_PASS_FILTER_ENABLED.get();
     }
 
-    @Override
     public void setAsrHighPassFilterEnabled(boolean enabled) {
         ASR_HIGH_PASS_FILTER_ENABLED.set(enabled);
     }
@@ -215,7 +231,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return ASR_VAD_ENABLED.get();
     }
 
-    @Override
     public void setAsrVadEnabled(boolean enabled) {
         ASR_VAD_ENABLED.set(enabled);
     }
@@ -225,9 +240,16 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return TTS_ENABLED.get();
     }
 
-    @Override
     public void setTtsEnabled(boolean enabled) {
         TTS_ENABLED.set(enabled);
+    }
+
+    public boolean isTtsDiagnosticsEnabled() {
+        return TTS_DIAGNOSTICS_ENABLED.get();
+    }
+
+    public void setTtsDiagnosticsEnabled(boolean enabled) {
+        TTS_DIAGNOSTICS_ENABLED.set(enabled);
     }
 
     public String getTtsPreviewText() {
@@ -251,7 +273,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return CUSTOM_LLM_NAME.get();
     }
 
-    @Override
     public void setCustomLlmName(String name) {
         CUSTOM_LLM_NAME.set(name);
     }
@@ -261,19 +282,16 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return LLM_ENABLED.get();
     }
 
-    @Override
     public void setLlmEnabled(boolean enabled) {
         LLM_ENABLED.set(enabled);
     }
 
-    @Override
-    public int getLlmGpuLayerPercent() {
-        return LLM_GPU_LAYER_PERCENT.get();
+    public boolean isLlmDiagnosticsEnabled() {
+        return LLM_DIAGNOSTICS_ENABLED.get();
     }
 
-    @Override
-    public void setLlmGpuLayerPercent(int percent) {
-        LLM_GPU_LAYER_PERCENT.set(percent);
+    public void setLlmDiagnosticsEnabled(boolean enabled) {
+        LLM_DIAGNOSTICS_ENABLED.set(enabled);
     }
 
     @Override
@@ -281,7 +299,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return LLM_GPU_DEVICE_ID.get();
     }
 
-    @Override
     public void setLlmGpuDeviceId(String deviceId) {
         LLM_GPU_DEVICE_ID.set(deviceId == null ? "" : deviceId.trim());
     }
@@ -291,7 +308,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return LLM_FRAME_GUARD_ENABLED.get();
     }
 
-    @Override
     public void setLlmFrameGuardEnabled(boolean enabled) {
         LLM_FRAME_GUARD_ENABLED.set(enabled);
     }
@@ -301,7 +317,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return LLM_FRAME_GUARD_TARGET_FPS.get();
     }
 
-    @Override
     public void setLlmFrameGuardTargetFps(int fps) {
         LLM_FRAME_GUARD_TARGET_FPS.set(Math.max(15, Math.min(240, fps)));
     }
@@ -311,7 +326,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return LLM_MTP_ENABLED.get();
     }
 
-    @Override
     public void setLlmMtpEnabled(boolean enabled) {
         LLM_MTP_ENABLED.set(enabled);
     }
@@ -323,6 +337,14 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
 
     public void setAxEnabled(boolean enabled) {
         AX_ENABLED.set(enabled);
+    }
+
+    public boolean isAxDiagnosticsEnabled() {
+        return AX_DIAGNOSTICS_ENABLED.get();
+    }
+
+    public void setAxDiagnosticsEnabled(boolean enabled) {
+        AX_DIAGNOSTICS_ENABLED.set(enabled);
     }
 
     @Override
@@ -422,22 +444,40 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         PRESENCE_DEBUG_PIPELINE_ENABLED.set(enabled);
     }
 
+    public boolean isIaDiagnosticsEnabled() {
+        return IA_DIAGNOSTICS_ENABLED.get();
+    }
+
+    public void setIaDiagnosticsEnabled(boolean enabled) {
+        IA_DIAGNOSTICS_ENABLED.set(enabled);
+    }
+
+    public boolean isIrDiagnosticsEnabled() {
+        return IR_DIAGNOSTICS_ENABLED.get();
+    }
+
+    public void setIrDiagnosticsEnabled(boolean enabled) {
+        IR_DIAGNOSTICS_ENABLED.set(enabled);
+    }
+
     @Override
     public String getCustomTtsName() {
         return CUSTOM_TTS_NAME.get();
     }
 
-    @Override
     public void setCustomTtsName(String name) {
         CUSTOM_TTS_NAME.set(name);
     }
 
-    @Override
     public Path getRootPath() {
         return getGameConfigDir().resolve("module");
     }
 
     @Override
+    public Path storageRoot() {
+        return getRootPath().resolve("ax").resolve("cache");
+    }
+
     public Path getGameConfigDir() {
         return Paths.get(Minecraft.getInstance().gameDirectory.getAbsolutePath(), "config/Tianshu");
     }
@@ -480,104 +520,9 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
     }
 
     @Override
-    public Path getLlmModelPath() {
-        String name = getCustomLlmName();
-        return getLlmBasePath().resolve("model").resolve(name == null ? "" : name.trim());
-    }
-
-    @Override
-    public Path getTtsModelPath() {
-        String name = getCustomTtsName();
-        return getTtsBasePath().resolve("model").resolve(name == null ? "" : name.trim());
-    }
-
-    @Override
-    public Path getLlmGgufFilePath() {
-        String modelName = getCustomLlmName();
-        if (modelName == null || modelName.isBlank()) {
-            return null;
-        }
-        modelName = modelName.trim();
-        Path modelDir = getLlmBasePath().resolve("model").resolve(modelName);
-
-        if (modelName.toLowerCase().endsWith(".gguf")) {
-            return getLlmBasePath().resolve("model").resolve(modelName);
-        }
-        if (Files.isDirectory(modelDir)) {
-            com.rheinmetal.tianshu.model.LlmModelInfo catalogInfo = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName);
-            if (catalogInfo != null) {
-                Path catalogFile = modelDir.resolve(catalogInfo.getModelFile());
-                if (Files.isRegularFile(catalogFile)) {
-                    return catalogFile;
-                }
-            }
-            Path preferred = modelDir.resolve("model.gguf");
-            if (Files.isRegularFile(preferred)) {
-                return preferred;
-            }
-            try (var stream = Files.list(modelDir)) {
-                Path ggufFile = stream
-                    .filter(p -> Files.isRegularFile(p) && p.getFileName().toString().toLowerCase().endsWith(".gguf"))
-                    .sorted((a, b) -> a.getFileName().toString().compareToIgnoreCase(b.getFileName().toString()))
-                    .findFirst()
-                    .orElse(null);
-                if (ggufFile != null) {
-                    return ggufFile;
-                }
-            } catch (IOException e) {
-            }
-        }
-        com.rheinmetal.tianshu.model.LlmModelInfo catalogInfo = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName);
-        return modelDir.resolve(catalogInfo != null ? catalogInfo.getModelFile() : "model.gguf");
-    }
-
-    @Override
     public String getLlmEmbeddingModelName() {
         com.rheinmetal.tianshu.model.LlmModelInfo embedding = com.rheinmetal.tianshu.model.LlmModelManager.getDefaultEmbeddingModel(getClientLanguageTag());
         return embedding != null ? embedding.name : "";
-    }
-
-    @Override
-    public int getLlmContextSize() {
-        String modelName = getCustomLlmName();
-        if (modelName != null && !modelName.isBlank()) {
-            com.rheinmetal.tianshu.model.LlmModelInfo info = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName.trim());
-            if (info != null) return info.getContextSize();
-        }
-        com.rheinmetal.tianshu.model.LlmModelInfo defaultModel = getDefaultLlmModelInfo();
-        return defaultModel != null ? defaultModel.getContextSize() : 4096;
-    }
-
-    @Override
-    public int getLlmPromptTokenBudget() {
-        String modelName = getCustomLlmName();
-        if (modelName != null && !modelName.isBlank()) {
-            com.rheinmetal.tianshu.model.LlmModelInfo info = com.rheinmetal.tianshu.model.LlmModelManager.getModelByName(modelName.trim());
-            if (info != null) return info.getPromptTokenBudget();
-        }
-        com.rheinmetal.tianshu.model.LlmModelInfo defaultModel = getDefaultLlmModelInfo();
-        return defaultModel != null ? defaultModel.getPromptTokenBudget() : 3000;
-    }
-
-    @Override
-    public int getLlmChatContextSize() {
-        return getLlmContextSize();
-    }
-
-    @Override
-    public int getLlmTaskContextSize() {
-        return getLlmContextSize();
-    }
-
-    @Override
-    public int getLlmEmbeddingContextSize() {
-        com.rheinmetal.tianshu.model.LlmModelInfo embedding = com.rheinmetal.tianshu.model.LlmModelManager.getDefaultEmbeddingModel(getClientLanguageTag());
-        return embedding != null ? embedding.getContextSize() : 4096;
-    }
-
-    private com.rheinmetal.tianshu.model.LlmModelInfo getDefaultLlmModelInfo() {
-        java.util.List<com.rheinmetal.tianshu.model.LlmModelInfo> catalog = com.rheinmetal.tianshu.model.LlmModelManager.getAllModels();
-        return catalog.isEmpty() ? null : catalog.get(0);
     }
 
     private String getClientLanguageTag() {
@@ -591,7 +536,6 @@ public class ClientConfig implements com.rheinmetal.tianshu.api.ITianshuConfig, 
         return java.util.Locale.getDefault().getLanguage();
     }
 
-    @Override
     public void save() {
         SPEC.save();
     }

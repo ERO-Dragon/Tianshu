@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.auxilium.core.context;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 
 /**
  * Auxilium memory window policy.
@@ -125,14 +124,4 @@ public record AXMemoryWindowPolicy(
         );
     }
 
-    public static AXMemoryWindowPolicy fromConfig(ITianshuConfig config) {
-        if (config == null) {
-            return DEFAULT;
-        }
-        return fromBudget(
-                config.getLlmPromptTokenBudget(),
-                config.getLlmAXShortTermChatBlockLimit(),
-                config.getLlmAXConversationPauseMillis()
-        );
-    }
 }

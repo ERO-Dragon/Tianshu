@@ -307,6 +307,40 @@ class IaModuleProtocolFlowTest {
     }
 
     @Test
+    void readyArbitrationWithoutParticipantsRejectsSilentlyWithoutPresenceLookup() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(java.nio.file.Path.of("build/test-ia-no-participant"));
+        VoiceResourceManager voiceResources = new VoiceResourceManager(new TestLlmSupport.FakeGameEnvironment(), config);
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        MutablePresenceContextHandler presence = new MutablePresenceContextHandler();
+        registerPresenceContextHandler(presence);
+        ModuleServiceRegistry services = new ModuleServiceRegistry();
+        ModuleRuntimeState runtimeState = new ModuleRuntimeState();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, services));
+        ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
+        subscribeSessionEvents(new RecordingHandler());
+        subscribeOwnerPreview(new RecordingHandler());
+        DialogueArbitrationRequestPayload payload = request("req-empty", "player", "turn-empty", 903L, "无人处理", List.of(), List.of());
+        TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
+                "module.ir",
+                ProtocolCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                payload
+        ).build();
+        RecordingHandler resultHandler = new RecordingHandler();
+        registerResponseHandler(requestEnvelope, PayloadType.DIALOGUE_ARBITRATION_RESULT, DialogueArbitrationResultPayload.class, resultHandler);
+
+        runtime.submit(requestEnvelope);
+
+        DialogueArbitrationResultPayload result = resultHandler.awaitPayload(DialogueArbitrationResultPayload.class);
+        assertTrue(runtimeState.capabilities().isReady(IaRuntimeCapabilities.ARBITRATION));
+        assertFalse(result.accepted());
+        assertEquals("NO_PARTICIPANT", result.reason());
+        assertEquals(0, presence.requestCount());
+        assertTrue(runtime.deadLetters().snapshot(16).isEmpty());
+    }
+
+    @Test
     void llmAuthorizationAllowsCurrentOwnerAndRejectsNonOwnerAfterDelivery() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         IaModule ia = new IaModule(runtime);

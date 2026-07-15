@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.function.tts.synthesis;
 import com.k2fsa.sherpa.onnx.GenerationConfig;
 import com.k2fsa.sherpa.onnx.OfflineTts;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.model.ModelSettings;
@@ -21,9 +20,9 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
     private float defaultSpeed = 1.0f;
     private int defaultSpeakerId;
 
-    public SherpaOnnxTtsBackend(IGameEnvironment env, ITianshuConfig config) {
+    public SherpaOnnxTtsBackend(IGameEnvironment env) {
         this.env = env;
-        this.configFactory = new SherpaOnnxTtsConfigFactory(env, config);
+        this.configFactory = new SherpaOnnxTtsConfigFactory(env);
     }
 
     @Override

@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.synthesis;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
@@ -23,7 +22,7 @@ public final class MossTtsBackend implements TtsBackend {
     private Path voiceSamplePath;
     private CachedMossVoice cachedVoice;
 
-    public MossTtsBackend(IGameEnvironment env, ITianshuConfig config) {
+    public MossTtsBackend(IGameEnvironment env) {
         this.env = env;
     }
 

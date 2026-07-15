@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.download.LlmModelDownloadCoordinator;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
@@ -65,7 +65,7 @@ public final class LlmModelService {
     }
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final LlmConfiguration config;
     private final ModuleExecutionAccess executorManager;
     private final LlmModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
@@ -73,11 +73,11 @@ public final class LlmModelService {
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
     private final AtomicReference<String> deletingModelName = new AtomicReference<>("");
 
-    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager) {
+    public LlmModelService(IGameEnvironment env, LlmConfiguration config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
     }
 
-    public LlmModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+    public LlmModelService(IGameEnvironment env, LlmConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = Objects.requireNonNull(env, "env");
         this.config = Objects.requireNonNull(config, "config");
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");

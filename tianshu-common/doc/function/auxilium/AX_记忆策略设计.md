@@ -348,6 +348,9 @@ config/Tianshu/module/ax/cache/
 - 读路径必须容忍旧 `schemaVersion`、缺失新增字段和未知字段。
 - 写路径写当前版本字段；迁移逻辑集中在存储层或迁移器，不散落在业务流程。
 - 任何全量重写、compaction 或迁移都必须先写临时文件，再原子替换目标文件。
+- 不得仅因数据来自旧 AX 版本就清空、归档或放弃 raw checkpoint、STM、memory event 等权威记忆；同一世界在退出、重进、客户端重启和版本升级后必须继续读取。
+- event vector、retrieval index 和统计属于可重建派生数据；它们的 schema 或 embedding namespace 不兼容时应失效重建，而不是牵连删除权威记忆。
+- prompt profile、prompt text 和 memory task prompt 是可编辑资源，不属于玩家记忆 schema。内置资源可以更新，但已释放的玩家文件不得被静默覆盖；缺失 key 通过内置资源回退。
 - 可重建索引可以替换，但 Raw Turn、STM、E 和向量组元数据不能被索引重建过程破坏。
 
 ### 8.1 权威数据

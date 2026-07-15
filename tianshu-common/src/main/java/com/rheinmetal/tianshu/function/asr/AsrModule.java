@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -41,7 +41,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AsrConfiguration config;
     private final BooleanSupplier voiceInputAcceptance;
     private final LongSupplier interruptProcessing;
     private final AtomicBoolean voiceResourceReloadQueued = new AtomicBoolean(false);
@@ -59,7 +59,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private volatile boolean destroyed;
     private AsrModelService modelService;
 
-    public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, ITianshuConfig config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
+    public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this.audioBridge = audioBridge;
         this.moduleRuntime = moduleRuntime;
         this.env = env;

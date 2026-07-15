@@ -517,5 +517,13 @@
   "tianshu.presence.context.screen.other": "other screen",
   "tianshu.presence.context.dimension.minecraft.overworld": "Overworld",
   "tianshu.presence.context.dimension.minecraft.the_nether": "Nether",
-  "tianshu.presence.context.dimension.minecraft.the_end": "End"
+  "tianshu.presence.context.dimension.minecraft.the_end": "End",
+  "tianshu.gui.common.section.diagnostics": "Diagnostics",
+  "tianshu.gui.common.option.diagnostics_enabled": "Record detailed diagnostics for this module (may include raw content)",
+  "tianshu.gui.ir.title": "IR",
+  "tianshu.gui.ir.description": "Voice command parsing and intent recognition",
+  "tianshu.gui.ir.message.saved": "IR diagnostic settings saved",
+  "tianshu.gui.ia.title": "IA",
+  "tianshu.gui.ia.description": "Dialogue participant arbitration and session coordination",
+  "tianshu.gui.ia.message.saved": "IA diagnostic settings saved"
 }

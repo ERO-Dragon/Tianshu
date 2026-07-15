@@ -138,3 +138,6 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 - [ ] 不发布伪造 Presence 或 ASR 活动事件。
 - [ ] 不在 handler 或 Minecraft 主线程执行阻塞任务。
 - [ ] 不读取 AX 内部 memory、prompt、timeout 或 pending request 实现。
+## 诊断记录
+
+AX 设置面板中的“诊断记录”开关控制 `module.ax` 的对话调试记录。开启后允许记录交付文本、会话标识和阶段信息；关闭时不会写入集中诊断文件。AX 不自行落盘，也不创建诊断线程。

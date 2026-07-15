@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.client.lifecycle;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
 import com.rheinmetal.tianshu.client.language.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
@@ -10,6 +9,7 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.CompositeTianshuFunctionModuleAssembler;
 import com.rheinmetal.tianshu.function.TianshuCoreModuleInstallers;
+import com.rheinmetal.tianshu.function.TianshuFunctionConfigurations;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
@@ -26,7 +26,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
 
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -35,7 +35,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
     ) {
         this(
                 env,
-                config,
+                configurations,
                 audioBridge,
                 moduleRuntime,
                 voiceInputGate,
@@ -49,7 +49,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
 
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -60,7 +60,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
     ) {
         this(
                 env,
-                config,
+                configurations,
                 audioBridge,
                 moduleRuntime,
                 voiceInputGate,
@@ -74,7 +74,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
 
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -90,7 +90,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
         }
         installers.addAll(TianshuCoreModuleInstallers.clientCore(
                 env,
-                config,
+                configurations,
                 audioBridge,
                 moduleRuntime,
                 voiceInputGate,

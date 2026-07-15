@@ -248,5 +248,10 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 - 世界退出/重进使用后台串行生命周期命令，不占用 Minecraft 主线程执行模块清理
 - Core lifecycle worker 与 Protocol executor 的职责互不重叠
 - destroy 链包含协议运行时关闭
+- Core 不再持有或向装配上下文暴露完整配置；只接收语音资源物化所需的 `VoiceResourceConfiguration`
 
 封版后允许继续演进 function、client、GUI、具体模块实现，但不应再把具体产品功能重新塞回 CoreManager。
+
+### 11.1 配置所有权
+
+NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一读写宿主。common 不创建第二份 TOML，也不保存 GUI 配置。`TianshuClient` 在组合根把同一个宿主配置映射为 ASR、LLM、TTS 和 AX 的窄读取端口；`TianshuModuleAssemblyContext` 只提供环境、音频桥、模块运行时和生命周期信号，不提供配置总接口。

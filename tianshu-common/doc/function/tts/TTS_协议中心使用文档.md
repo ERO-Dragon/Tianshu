@@ -126,7 +126,7 @@ TTS 提供两种音色入口：
 
 参考音频建议使用短 WAV 文件，例如 `maid_default.wav`。
 
-文件需要位于 `config.getVoiceLibraryPath()` 指向的目录内。玩家可以在 TTS 设置页打开这个目录；同进程联动模组如果能访问天枢服务，也可以通过 `TtsVoiceLibraryService.importVoiceSample(Path source)` 导入文件，并拿到导入后的文件名。
+文件需要位于 TTS voice library 目录（当前宿主布局为 `config/Tianshu/module/tts/voices/`）内。玩家可以在 TTS 设置页打开这个目录；同进程联动模组如果能访问天枢服务，也可以通过 `TtsVoiceLibraryService.importVoiceSample(Path source)` 导入文件，并拿到导入后的文件名。
 
 对玩家或配置侧已有文件来说，最简单的方式是：
 
@@ -355,3 +355,6 @@ TtsModelService
 ```
 
 配置 GitHub proxy 时，transport 先尝试 proxy URI，再降级 direct URI；未配置时只使用 direct URI。重试、取消、长度校验、`.downloading` 临时文件和成功后的原子替换由 model transport 统一负责。TTS service 不拼接 URL 字符串，也不直接创建 HTTP connection。
+## 诊断记录
+
+TTS 设置面板中的“诊断记录”开关控制 `module.tts` 的合成、模型和播放诊断。开启后允许记录调试所需的文本与状态；关闭时不写入集中诊断文件。TTS backend 不自行创建诊断文件或线程。

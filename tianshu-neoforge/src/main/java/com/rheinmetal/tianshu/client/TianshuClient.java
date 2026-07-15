@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.audio.AudioManager;
 import com.rheinmetal.tianshu.client.gui.auxilium.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.asr.AsrSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.gui.diagnostics.InternalModuleDiagnosticsSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.llm.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.gui.llm.LlmSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.gui.presence.hud.ClientConfigPresenceHudSettings;
@@ -20,12 +21,15 @@ import com.rheinmetal.tianshu.client.gui.tts.TtsSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.lifecycle.ClientTianshuModuleAssembler;
+import com.rheinmetal.tianshu.function.TianshuFunctionConfigurations;
 import com.rheinmetal.tianshu.client.lifecycle.ClientOnnxRuntimeModuleInstaller;
 import com.rheinmetal.tianshu.client.ir.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.client.presence.PresenceClientHooks;
 import com.rheinmetal.tianshu.config.ClientConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
+import com.rheinmetal.tianshu.diagnostics.ClientDiagnosticPolicy;
+import com.rheinmetal.tianshu.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
 import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -75,6 +79,7 @@ public class TianshuClient {
     private static TianshuSettingsModule settingsModule;
     private static TianshuSettingsContributorRegistry externalSettingsContributors;
     private static CoreBackedTianshuIntegrationApi integrationApi;
+    private static ClientDiagnosticRouter diagnosticRouter;
 
     private static PresenceClientRuntime presenceRuntime;
     private static PresenceHudRenderer presenceHudRenderer;
@@ -91,7 +96,8 @@ public class TianshuClient {
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config, coreManager);
-        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource, presenceSource);
+        TianshuSettingsRegistrySource internalDiagnosticsSource = new InternalModuleDiagnosticsSettingsRegistrySource(config);
+        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, asrSource, llmSource, ttsSource, axSource, internalDiagnosticsSource, presenceSource);
     }
 
     private static void beginVoiceInput() {
@@ -122,8 +128,10 @@ public class TianshuClient {
 
     public static void init() {
         LOGGER.info("天枢 AI 客户端事件开始注册...");
-        env = new NeoForgeEnvironment();
         config = new ClientConfig();
+        env = new NeoForgeEnvironment();
+        diagnosticRouter = new ClientDiagnosticRouter(Minecraft.getInstance().gameDirectory.toPath(), new ClientDiagnosticPolicy(config));
+        env.bindDiagnostics(diagnosticRouter);
         presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(), new NeoForgePresenceTextProvider());
         presenceHudRenderer = new PresenceHudRenderer(presenceRuntime::currentHudDisplay, new ClientConfigPresenceHudSettings(config));
         PresenceClientHooks.bind(presenceRuntime);
@@ -136,7 +144,7 @@ public class TianshuClient {
 
         coreManager = new TianshuCoreManager(env, config, audioManager, context -> new ClientTianshuModuleAssembler(
                 context.env(),
-                context.config(),
+                new TianshuFunctionConfigurations(config, config, config, config),
                 context.audioBridge(),
                 context.moduleRuntime(),
                 context.voiceInputGate(),
@@ -391,6 +399,10 @@ public class TianshuClient {
         if (audioManager != null) {
             audioManager.shutdown();
             audioManager = null;
+        }
+        if (diagnosticRouter != null) {
+            diagnosticRouter.close();
+            diagnosticRouter = null;
         }
         ClientNamedObjectIndexManager.close();
         isVoiceKeyPressed = false;

@@ -83,6 +83,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
+                .toggles("asr.diagnostics", common("section.diagnostics"), group -> group
+                        .toggle("asr.diagnostics.enabled", common("option.diagnostics_enabled"), draft.diagnosticsEnabled))
                 .options("as.main", asr("section.main"), draft::buildMainOptions)
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
@@ -115,6 +117,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final TianshuCoreManager coreManager;
         private final ModuleSettingsContext context;
         private final MutableSettingsValue<Boolean> enabled;
+        private final MutableSettingsValue<Boolean> diagnosticsEnabled;
         private final MutableSettingsValue<String> selectedMic;
         private final MutableSettingsValue<TriggerMode> triggerMode;
         private final MutableSettingsValue<String> selectedModelName;
@@ -138,6 +141,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.context = context;
             this.catalog = AsrModelManager.getAllModels();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
+            this.diagnosticsEnabled = new MutableSettingsValue<>(config::isAsrDiagnosticsEnabled, config::setAsrDiagnosticsEnabled);
             this.selectedMic = new MutableSettingsValue<>(this::currentMicName, ignored -> {}, Objects::nonNull);
             this.triggerMode = new MutableSettingsValue<>(config::getTriggerMode, config::setTriggerMode, Objects::nonNull);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
@@ -183,6 +187,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
+                    || diagnosticsEnabled.dirty()
                     || selectedMic.dirty()
                     || triggerMode.dirty()
                     || selectedModelName.dirty()
@@ -207,6 +212,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         public SettingsSaveResult save() {
             AsrSettingsSnapshot before = AsrSettingsSnapshot.from(config);
             enabled.save();
+            diagnosticsEnabled.save();
             triggerMode.save();
             highPassFilterEnabled.save();
             vadEnabled.save();
@@ -225,6 +231,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
+            diagnosticsEnabled.reset();
             selectedMic.reset();
             triggerMode.reset();
             selectedModelName.reset();

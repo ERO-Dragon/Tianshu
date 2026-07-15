@@ -1,16 +1,19 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.llm.model.LlmModelPathResolver;
 
 record LlmServiceMetadata(String modelName, String embeddingModelName, int configuredContextSize) {
-    static LlmServiceMetadata from(ITianshuConfig config) {
-        return config == null
-                ? new LlmServiceMetadata("", "", 0)
-                : new LlmServiceMetadata(
-                        config.getCustomLlmName(),
-                        config.getLlmEmbeddingModelName(),
-                        config.getLlmContextSize()
-                );
+    static LlmServiceMetadata from(LlmConfiguration config) {
+        if (config == null) {
+            return new LlmServiceMetadata("", "", 0);
+        }
+        LlmModelPathResolver modelProfile = new LlmModelPathResolver(config);
+        return new LlmServiceMetadata(
+                config.getCustomLlmName(),
+                config.getLlmEmbeddingModelName(),
+                modelProfile.chatContextSize()
+        );
     }
 
     LlmServiceMetadata {

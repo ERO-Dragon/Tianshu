@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot;
 
@@ -18,7 +18,7 @@ public final class LlmInferenceGovernor {
     private final LlmInferenceDefaults defaults;
     private final LlmPerformanceProvider performanceProvider;
 
-    public LlmInferenceGovernor(ITianshuConfig config, LlmPerformanceProvider performanceProvider) {
+    public LlmInferenceGovernor(LlmConfiguration config, LlmPerformanceProvider performanceProvider) {
         this(LlmInferenceDefaults.from(config), performanceProvider);
     }
 

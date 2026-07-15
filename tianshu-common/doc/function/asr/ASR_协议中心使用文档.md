@@ -153,3 +153,6 @@ ASR 只在 `sessionId` 命中当前活动输入时停止该 session。这个 top
 - [ ] 不直接访问 ASR controller、engine、audio bridge 或下载器。
 - [ ] 不把 runtime interrupt 当普通录音控制接口。
 - [ ] 不假设 ASR 提供请求响应 capability。
+## 诊断记录
+
+ASR 设置面板中的“诊断记录”开关独立控制 `module.asr` 的结构化诊断。开启后可记录识别原文、输入模式和会话标识；关闭时事件不会进入诊断文件。文件由 NeoForge 宿主异步集中写入，ASR 不自行创建文件或线程。

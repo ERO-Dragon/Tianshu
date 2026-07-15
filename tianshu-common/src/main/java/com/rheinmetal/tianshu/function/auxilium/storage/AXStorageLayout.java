@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.auxilium.storage;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 
 import java.nio.file.Path;
@@ -8,11 +7,11 @@ import java.nio.file.Path;
 public final class AXStorageLayout {
     private final Path root;
 
-    public AXStorageLayout(ITianshuConfig config) {
-        if (config == null) {
-            throw new IllegalArgumentException("config is required");
+    public AXStorageLayout(AXStorageConfiguration configuration) {
+        if (configuration == null || configuration.storageRoot() == null) {
+            throw new IllegalArgumentException("AX storage configuration is required");
         }
-        this.root = config.getRootPath().resolve("ax").resolve("cache");
+        this.root = configuration.storageRoot().normalize();
     }
 
     public Path root() {

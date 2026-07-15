@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.synthesis;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.function.tts.TtsModelService;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsBackendSnapshot;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
@@ -13,21 +13,23 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
     private final IGameEnvironment env;
     private final TtsModelService modelService;
     private final TtsModelResolver modelResolver;
+    private final TtsActiveModelSelection modelSelection;
     private final TtsEngineProvider engineProvider;
     private volatile boolean initialized;
     private volatile TtsResolvedModel loadedModel;
     private volatile TtsBackend activeBackend;
 
-    public DefaultTtsSynthesisEngine(IGameEnvironment env, ITianshuConfig config, TtsModelService modelService) {
+    public DefaultTtsSynthesisEngine(IGameEnvironment env, TtsConfiguration config, TtsModelService modelService) {
         this.env = env;
         this.modelService = modelService;
         this.modelResolver = new TtsModelResolver(env, modelService);
-        this.engineProvider = new TtsEngineProvider(env, config);
+        this.modelSelection = new TtsActiveModelSelection(config::getCustomTtsName);
+        this.engineProvider = new TtsEngineProvider(env);
     }
 
     @Override
     public synchronized boolean initialize() {
-        Optional<TtsResolvedModel> resolved = modelResolver.resolveCurrent();
+        Optional<TtsResolvedModel> resolved = modelResolver.resolve(modelSelection.currentModelName());
         if (resolved.isEmpty()) {
             initialized = false;
             activeBackend = null;
@@ -54,7 +56,7 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
         if (model != null) {
             return model.autoregressive();
         }
-        Optional<TtsResolvedModel> resolved = modelResolver.resolveCurrent();
+        Optional<TtsResolvedModel> resolved = modelResolver.resolve(modelSelection.currentModelName());
         return resolved.map(TtsResolvedModel::autoregressive).orElse(false);
     }
 
@@ -69,7 +71,7 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
         TtsResolvedModel model = loadedModel;
         TtsBackend backend = activeBackend;
         if (model == null) {
-            Optional<TtsResolvedModel> resolved = modelResolver.resolveCurrent();
+            Optional<TtsResolvedModel> resolved = modelResolver.resolve(modelSelection.currentModelName());
             if (resolved.isEmpty()) {
                 return TtsBackendSnapshot.unavailable();
             }
@@ -106,14 +108,14 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
         if (info == null) {
             return false;
         }
-        modelService.useModel(info.name);
+        modelSelection.activate(info.name);
         shutdown();
         return initialize();
     }
 
     @Override
     public synchronized void clearModel() {
-        modelService.clearModel();
+        modelSelection.clear();
         shutdown();
     }
 

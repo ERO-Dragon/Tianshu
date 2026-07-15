@@ -64,7 +64,7 @@ TTS catalog 的模型条目以 `TtsModelInfo` 为准，常用字段包括：
 - 成功后原子移动；文件系统不支持原子移动时使用同文件系统替换。
 - 全部来源失败时保留各来源 cause。
 
-当前没有 HTTP Range 断点续传，也没有跨启动下载恢复。`skipExisting=true` 只是跳过已经存在的非空目标，不能称为断点续传。
+共享 model transport 已支持受 validator 保护的 HTTP Range 跨尝试/跨启动恢复。只有服务端明确支持 bytes range，且 strong ETag 或 Last-Modified、远端总长度、本地片段和 `Content-Range` 全部一致时才追加；Range 被忽略、validator 改变、metadata 损坏或来源切换时自动从头下载。`skipExisting=true` 仍然只表示跳过已经存在的非空最终目标，不参与续传判断。
 
 ### 3.3 Hugging Face facade
 

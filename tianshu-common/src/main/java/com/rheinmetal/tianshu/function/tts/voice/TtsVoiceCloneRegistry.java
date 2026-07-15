@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.voice;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsControlAction;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsControlResult;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsFailure;
@@ -20,11 +20,11 @@ public final class TtsVoiceCloneRegistry {
     private static final int MAX_IMPORTED_AUDIO_BYTES = 20 * 1024 * 1024;
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final TtsConfiguration config;
     private final TtsReferenceAudioLoader referenceAudioLoader = new TtsReferenceAudioLoader();
     private final Map<String, TtsVoiceCloneProfile> profiles = new ConcurrentHashMap<>();
 
-    public TtsVoiceCloneRegistry(IGameEnvironment env, ITianshuConfig config) {
+    public TtsVoiceCloneRegistry(IGameEnvironment env, TtsConfiguration config) {
         this.env = env;
         this.config = config;
     }

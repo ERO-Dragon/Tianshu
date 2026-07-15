@@ -87,6 +87,8 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
         panel.enable("tts.enabled", tts("enabled"), draft.enabled)
+                .toggles("tts.diagnostics", common("section.diagnostics"), toggles -> toggles
+                        .toggle("tts.diagnostics.enabled", common("option.diagnostics_enabled"), draft.diagnosticsEnabled))
                 .options("tts.main", tts("section.main"), draft::buildMainOptions)
                 .actions("tts.preview", tts("section.preview"), actions -> actions
                         .button("tts.preview.start", tts("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
@@ -125,6 +127,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final TianshuCoreManager coreManager;
         private final ModuleSettingsContext context;
         private final MutableSettingsValue<Boolean> enabled;
+        private final MutableSettingsValue<Boolean> diagnosticsEnabled;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> previewText;
         private final MutableSettingsValue<Double> speed;
@@ -151,6 +154,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                     .sorted(Comparator.comparing(info -> info.name, String.CASE_INSENSITIVE_ORDER))
                     .toList();
             this.enabled = new MutableSettingsValue<>(config::isTtsEnabled, config::setTtsEnabled);
+            this.diagnosticsEnabled = new MutableSettingsValue<>(config::isTtsDiagnosticsEnabled, config::setTtsDiagnosticsEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             ModelSettings.TtsSettings settings = modelSettings(resolveModel(this.selectedModelName.get()));
             this.previewText = new MutableSettingsValue<>(config::getTtsPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
@@ -194,6 +198,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
+                    || diagnosticsEnabled.dirty()
                     || selectedModelName.dirty()
                     || previewText.dirty()
                     || speed.dirty()
@@ -223,6 +228,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         public SettingsSaveResult save() {
             TtsSettingsSnapshot before = TtsSettingsSnapshot.from(config);
             enabled.save();
+            diagnosticsEnabled.save();
             previewText.save();
             githubProxyUrl.save();
             config.setCustomTtsName(selectedModelName.get());
@@ -237,6 +243,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
+            diagnosticsEnabled.reset();
             selectedModelName.reset();
             previewText.reset();
             speed.reset();

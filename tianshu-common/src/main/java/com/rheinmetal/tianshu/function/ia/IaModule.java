@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -89,6 +92,7 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueVoiceTriggerSynchronizer voiceTriggerSynchronizer;
     private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
     private ModuleRuntimeContext runtimeContext;
+    private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
 
     public IaModule(ModuleRuntimeAccess runtime) {
         this.adapter = new IaProtocolAdapter(runtime);
@@ -152,6 +156,7 @@ public final class IaModule implements TianshuManagedModule {
             deactivateRuntime();
         }
         runtimeContext = nextContext;
+        diagnostics = nextContext.diagnostics();
         voiceTriggerSynchronizer.bind(nextContext.voiceResources(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         ownerPreviewRefreshCoordinator.start();
@@ -182,6 +187,7 @@ public final class IaModule implements TianshuManagedModule {
         if (runtimeContext != null) {
             runtimeContext.runtimeState().capabilities().remove(IaRuntimeCapabilities.ARBITRATION);
         }
+        diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
     }
 
     private void handleParticipantRegister(TianshuEnvelope envelope, ProtocolContext context) {
@@ -231,6 +237,16 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+        if (participants.isEmpty()) {
+            continueArbitration(
+                    envelope,
+                    context,
+                    payload,
+                    DialogueContextFrame.empty(payload.playerId()),
+                    now
+            );
+            return;
+        }
         Optional<DialogueContextFrame> frozenContext = frozenContextFor(payload, now);
         if (frozenContext.isPresent()) {
             continueArbitration(envelope, context, payload, frozenContext.get(), now);
@@ -268,6 +284,19 @@ public final class IaModule implements TianshuManagedModule {
         Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(payload.playerId(), participants, now);
         DialogueArbitrationInput input = DialogueArbitrationInput.from(payload, withPlayerId(contextFrame, payload.playerId()));
         DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, claimEngine.collectLocalClaims(participants, input), attentionState);
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
+                decision.accepted() ? DiagnosticSeverity.INFO : DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.RAW_CONTENT,
+                Map.of(
+                        "requestId", payload.requestId(),
+                        "playerId", payload.playerId(),
+                        "repairedText", payload.repairedText(),
+                        "normalizedText", payload.normalizedText(),
+                        "reason", decision.reason() == null ? "" : decision.reason()
+                )
+        ));
         if (!decision.accepted()) {
             publishOwnerPreviewIfChanged(envelope, emptyPreview(payload.playerId(), now));
             DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);

@@ -120,7 +120,7 @@ TTS 不再提供“暂停当前句子并插话后恢复”的策略。需要立�
 
 当前有两种音色来源：
 
-- `LOAD_VOICE`：加载 `config.getVoiceLibraryPath()` 目录内已经存在的参考音频。
+- `LOAD_VOICE`：加载 `TtsConfiguration.getVoiceLibraryPath()` 所指 voice library 目录内已经存在的参考音频；当前 NeoForge 布局为 `config/Tianshu/module/tts/voices/`。
 - `IMPORT_VOICE`：由资源拥有者读取 jar/resource 中的音频为 `byte[]`，TTS 校验后写入 voice library 的 owner 子目录，并立刻加载。
 
 `TtsVoiceCloneRegistry` 是音色样本和 clone profile 的唯一管理入口。它负责：
@@ -248,3 +248,9 @@ NeoForge GUI 应通过服务层读取摘要、试听、停止和重载，不直�
 - 合成和播放分层，外部需要 3D 声源时走纯合成。
 - GUI 通过服务边界接入，不穿透 runtime。
 - 内部状态有限暴露，topic 只发布模块级状态。
+
+## 13. 配置与模型激活边界
+
+TTS common 只依赖只读 `TtsConfiguration`，配置仍统一来自 NeoForge 的 `config/tianshu-client.toml`。GUI 持久选择与运行时激活模型是两个状态：GUI 选择由宿主保存；preview/switch 只改变 `TtsActiveModelSelection`，不会临时改写持久配置。preview 结束后由 `TtsModelLifecycleCoordinator` 恢复原模型。
+
+backend 初始化只消费已经解析完成的 `TtsResolvedModel.modelDir()`。Sherpa 配置工厂和 MOSS backend 不再反向读取持久模型选择，因此临时 preview 不会出现“生命周期认为切到预览模型、底层却仍加载配置模型”的分叉。未来 Qwen/Fish 作为新的 backend/model descriptor 接入，仍由玩家在 GUI 显式选择，不静默切换后端。

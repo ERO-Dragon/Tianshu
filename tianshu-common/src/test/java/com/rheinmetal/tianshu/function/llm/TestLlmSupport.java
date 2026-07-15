@@ -1,8 +1,12 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.constant.TriggerMode;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,13 +29,14 @@ public final class TestLlmSupport {
         @Override public void info(String msg) { infos.add(msg); }
         @Override public void warn(String msg) { warnings.add(msg); }
         @Override public void error(String msg, Throwable t) { errors.add(msg); }
+        @Override public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() { return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP; }
     }
 
-    public static final class FakeConfig implements ITianshuConfig {
+    public static final class FakeConfig implements AsrConfiguration, LlmConfiguration, TtsConfiguration,
+            AXStorageConfiguration, VoiceResourceConfiguration {
         private final Path root;
         private boolean aiEnabled = true;
         private String customLlmName = "test-llm";
-        private Path llmGgufFilePath;
         private int taskAdmissionQueueSize = 0;
         private int taskAgingBoostPerRequest = 1;
         private int libsChatQueueSize = 1;
@@ -50,11 +55,6 @@ public final class TestLlmSupport {
             return this;
         }
 
-        public FakeConfig llmGgufFilePath(Path path) {
-            this.llmGgufFilePath = path;
-            return this;
-        }
-
         public FakeConfig taskAdmissionQueueSize(int value) {
             this.taskAdmissionQueueSize = value;
             return this;
@@ -70,32 +70,24 @@ public final class TestLlmSupport {
             return this;
         }
 
-        @Override public boolean isAiEnabled() { return aiEnabled; }
-        @Override public void setAiEnabled(boolean enabled) { this.aiEnabled = enabled; }
+        @Override public boolean isAsrEnabled() { return aiEnabled; }
+        @Override public boolean isLlmEnabled() { return aiEnabled; }
+        @Override public boolean isTtsEnabled() { return aiEnabled; }
         @Override public TriggerMode getTriggerMode() { return TriggerMode.ALWAYS; }
-        @Override public void setTriggerMode(TriggerMode mode) {}
-        @Override public int getAsrPort() { return 0; }
-        @Override public int getLlmPort() { return 0; }
-        @Override public int getTtsPort() { return 0; }
+        @Override public String getSelectedMicName() { return ""; }
+        @Override public boolean isAsrRnnoiseEnabled() { return false; }
+        @Override public boolean isAsrHighPassFilterEnabled() { return true; }
+        @Override public boolean isAsrVadEnabled() { return false; }
         @Override public String getCustomAsrName() { return ""; }
-        @Override public void setCustomAsrName(String name) {}
         @Override public String getCustomLlmName() { return customLlmName; }
-        @Override public void setCustomLlmName(String name) { this.customLlmName = name; }
         @Override public String getCustomTtsName() { return ""; }
-        @Override public void setCustomTtsName(String name) {}
-        @Override public Path getRootPath() { return root; }
-        @Override public Path getGameConfigDir() { return root.resolve("config"); }
         @Override public Path getAsrBasePath() { return root.resolve("asr"); }
         @Override public Path getLlmBasePath() { return root.resolve("llm"); }
         @Override public Path getTtsBasePath() { return root.resolve("tts"); }
-        @Override public Path getAsrModelPath() { return getAsrBasePath().resolve("model"); }
-        @Override public Path getLlmModelPath() { return getLlmBasePath().resolve("model"); }
-        @Override public Path getTtsModelPath() { return getTtsBasePath().resolve("model"); }
-        @Override public Path getLlmGgufFilePath() { return llmGgufFilePath; }
         @Override public Path getVoiceLibraryPath() { return getTtsBasePath().resolve("voice"); }
+        @Override public Path storageRoot() { return root.resolve("ax").resolve("cache"); }
         @Override public int getLlmTaskAdmissionQueueSize() { return taskAdmissionQueueSize; }
         @Override public int getLlmTaskAgingBoostPerRequest() { return taskAgingBoostPerRequest; }
         @Override public int getLlmLibsChatQueueSize() { return libsChatQueueSize; }
-        @Override public void save() {}
     }
 }

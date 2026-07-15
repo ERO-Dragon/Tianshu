@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -27,7 +27,7 @@ public final class LlmModule implements TianshuManagedModule {
     );
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final LlmConfiguration config;
     private final ModuleRuntimeAccess runtime;
     private final LlmRagCacheLayout ragCacheLayout;
     private final LlmExecutor llmExecutor;
@@ -40,7 +40,7 @@ public final class LlmModule implements TianshuManagedModule {
     private LlmModelService modelService;
     private boolean destroyed;
 
-    public LlmModule(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess runtime) {
+    public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime) {
         this.env = env;
         this.config = config;
         this.runtime = runtime;

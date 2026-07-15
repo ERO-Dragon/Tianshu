@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.protocol.voice;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,16 +17,16 @@ import java.util.function.Consumer;
 
 public class VoiceResourceManager implements VoiceResourceAccess {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final VoiceResourceConfiguration configuration;
     private final AtomicLong version = new AtomicLong();
     private final List<Consumer<VoiceResourceSnapshot>> snapshotListeners = new CopyOnWriteArrayList<>();
     private final VoiceTriggerRegistry triggerRegistry = new VoiceTriggerRegistry();
 
     private volatile VoiceResourceSnapshot currentSnapshot;
 
-    public VoiceResourceManager(IGameEnvironment env, ITianshuConfig config) {
+    public VoiceResourceManager(IGameEnvironment env, VoiceResourceConfiguration configuration) {
         this.env = env;
-        this.config = config;
+        this.configuration = configuration;
     }
 
     public VoiceTriggerRegistry voiceTriggers() {
@@ -91,7 +90,7 @@ public class VoiceResourceManager implements VoiceResourceAccess {
 
     @Override
     public Path resolveHotwordsFile(String language) {
-        return config.getAsrBasePath().resolve("hotwords").resolve(language).resolve("hotwords.txt");
+        return configuration.getAsrBasePath().resolve("hotwords").resolve(language).resolve("hotwords.txt");
     }
 
     @Override

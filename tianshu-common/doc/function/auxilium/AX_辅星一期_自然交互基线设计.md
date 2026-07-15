@@ -308,3 +308,7 @@ LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、
 - ~~`AXGameContext` 与 `AXMemory` 虽然已经按并列模块思路收口，但当前上下文装配链路里仍保留了少量显式传递，后续还可以继续减耦。~~ **已完成**：两模块并列，无显式传递，融合只在 `AXContextCollector` 末端装配。
 - ~~`AXRecentDialogue` / `AXMemory` 的代码边界仍需继续整改：Raw Turn Window 应由 `AXRecentDialogue` 持有，`AXMemory` 只消费剥离出的只读快照；当前代码里仍残留部分记忆侧持有或调度 Raw Turn 的旧路径。~~ **已完成**：`AXRawTurnWindow` 由 `AXRecentDialogueSystem` 持有，memory 侧只消费 `AXRawTurnBatch` 只读快照。
 - ~~`AXMemory` 内部的子模块化拆分还在进行中，当前已经开始把 prompt 编排拆成 `core/module`，但记忆内部的 `retrieval / maintenance / event / stm` 还没有全部完全落到同等层级。~~ **已完成**：`module/memory/` 下 `event/`、`maintenance/`、`retrieval/`（含 `index/`）、`shortterm/` 四子目录已到位。
+
+## 14. 配置与存储端口
+
+AX 不再接收跨模块配置总接口。模块只获得 `AXStorageConfiguration.storageRoot()`、`AXAssistantSettings`、`AXOutputSettings` 和内部稳定 policy；记忆窗口策略不再借用 LLM 配置命名空间。NeoForge 仍通过单一 `config/tianshu-client.toml` 提供玩家设置，AX 权威记忆继续写入独立的世界分层存储，不与 TOML 配置文件混合。

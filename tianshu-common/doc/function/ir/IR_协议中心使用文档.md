@@ -124,3 +124,6 @@ IR 可能向 `ProtocolCapabilities.PRESENCE_QUERY_CONTEXT` 请求 `INTERACTION_C
 - [ ] 不把 `IR.RESULT.targetCapability` 当作可直投 owner。
 - [ ] handler 不阻塞协议线程或 Minecraft 主线程。
 - [ ] 需要对话 owner 时遵循 IA participant/session 协议。
+## 诊断记录
+
+IR 设置面板中的“诊断记录”开关控制 `module.ir` 的解析诊断。开启后允许记录解析输入和匹配过程；关闭时不落盘。诊断写入由宿主集中异步处理，IR 不自行写 debug 文件。

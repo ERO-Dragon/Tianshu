@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot;
@@ -16,13 +16,13 @@ public final class LlmModuleService implements LlmPerformanceProvider {
         void stop();
     }
 
-    private final ITianshuConfig config;
+    private final LlmConfiguration config;
     private final AtomicReference<LlmRuntimeState> state = new AtomicReference<>(LlmRuntimeState.STOPPED);
     private final AtomicReference<String> failureMessage = new AtomicReference<>("");
     private final AtomicReference<RuntimeController> runtimeController = new AtomicReference<>();
     private final AtomicReference<LlmPerformanceProvider> performanceProvider = new AtomicReference<>(LlmPerformanceProvider.UNAVAILABLE);
 
-    public LlmModuleService(ITianshuConfig config) {
+    public LlmModuleService(LlmConfiguration config) {
         this.config = Objects.requireNonNull(config, "config");
     }
 

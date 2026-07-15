@@ -99,5 +99,10 @@ class TtsModelDownloadCoordinatorTest {
         @Override
         public void error(String msg, Throwable t) {
         }
+
+        @Override
+        public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() {
+            return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
+        }
     }
 }

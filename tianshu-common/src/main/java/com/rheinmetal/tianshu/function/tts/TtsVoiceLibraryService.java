@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,9 +12,9 @@ import java.util.List;
 
 public class TtsVoiceLibraryService {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final TtsConfiguration config;
 
-    public TtsVoiceLibraryService(IGameEnvironment env, ITianshuConfig config) {
+    public TtsVoiceLibraryService(IGameEnvironment env, TtsConfiguration config) {
         this.env = env;
         this.config = config;
     }

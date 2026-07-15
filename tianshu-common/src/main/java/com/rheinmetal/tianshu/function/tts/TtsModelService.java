@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.function.tts.download.TtsModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
@@ -54,7 +54,7 @@ public class TtsModelService {
     }
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final TtsConfiguration config;
     private final ModuleExecutionAccess executorManager;
     private final TtsModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
@@ -62,11 +62,11 @@ public class TtsModelService {
     private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
 
-    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager) {
+    public TtsModelService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
     }
 
-    public TtsModelService(IGameEnvironment env, ITianshuConfig config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+    public TtsModelService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;
@@ -95,16 +95,6 @@ public class TtsModelService {
     public String currentConfiguredModelName() {
         String configured = config.getCustomTtsName();
         return configured == null ? "" : configured.trim();
-    }
-
-    public void useModel(String modelName) {
-        if (modelName != null && !modelName.isBlank()) {
-            config.setCustomTtsName(modelName.trim());
-        }
-    }
-
-    public void clearModel() {
-        config.setCustomTtsName("");
     }
 
     public ModelSettings.TtsSettings loadSettings(TtsModelInfo info) {
@@ -153,11 +143,15 @@ public class TtsModelService {
     }
 
     public TtsModelInfo resolveCurrentModelInfo() {
-        String configured = currentConfiguredModelName();
+        return resolveModelInfo(currentConfiguredModelName());
+    }
+
+    public TtsModelInfo resolveModelInfo(String modelName) {
+        String configured = modelName == null ? "" : modelName.trim();
         if (configured.isBlank()) {
             return null;
         }
-        Path modelPath = config.getTtsBasePath().resolve("model").resolve(configured);
+        Path modelPath = resolveSelectedModelPath(configured);
         String dirName = modelPath.getFileName().toString();
         List<TtsModelInfo> matchedZipVoice = new ArrayList<>();
         for (TtsModelInfo info : catalog()) {
@@ -183,15 +177,19 @@ public class TtsModelService {
     }
 
     public Path resolveCurrentModelDir() {
-        String configured = currentConfiguredModelName();
+        return resolveModelDir(currentConfiguredModelName());
+    }
+
+    public Path resolveModelDir(String modelName) {
+        String configured = modelName == null ? "" : modelName.trim();
         if (configured.isBlank()) {
             return null;
         }
-        TtsModelInfo info = resolveCurrentModelInfo();
+        TtsModelInfo info = resolveModelInfo(configured);
         if (info != null) {
             return resolveModelDir(info);
         }
-        return config.getTtsBasePath().resolve("model").resolve(configured);
+        return resolveSelectedModelPath(configured);
     }
 
     public Path resolveModelDir(TtsModelInfo info) {
@@ -204,6 +202,15 @@ public class TtsModelService {
 
     private Path modelBasePath() {
         return config.getTtsBasePath().resolve("model");
+    }
+
+    private Path resolveSelectedModelPath(String modelName) {
+        Path modelRoot = modelBasePath().normalize();
+        Path modelPath = modelRoot.resolve(modelName).normalize();
+        if (!modelPath.startsWith(modelRoot)) {
+            throw new IllegalArgumentException("TTS model selection escapes the model root");
+        }
+        return modelPath;
     }
 
     private void scheduleStartupCleanup() {

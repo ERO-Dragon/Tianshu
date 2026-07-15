@@ -199,7 +199,7 @@ public final class CoreModuleLifecycleCoordinator {
             }
 
             voiceResourceManager.materialize();
-            ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, voiceResourceManager, runtimeState);
+            ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, voiceResourceManager, runtimeState, env.diagnostics());
             moduleHost.prepareAll(runtimeContext);
             moduleHost.startAll(runtimeContext);
 

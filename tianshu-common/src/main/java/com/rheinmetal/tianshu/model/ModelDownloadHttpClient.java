@@ -18,12 +18,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Executes model-download HTTP requests while keeping source selection outside transport. */
 final class ModelDownloadHttpClient {
     private static final int BUFFER_SIZE = 8192;
     private static final long CONTROL_POLL_MILLIS = 100L;
+    private static final Pattern CONTENT_RANGE = Pattern.compile("bytes\\s+(\\d+)-(\\d+)/(\\d+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern UNSATISFIED_CONTENT_RANGE = Pattern.compile("bytes\\s+\\*/(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final IGameEnvironment env;
     private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
@@ -51,20 +56,17 @@ final class ModelDownloadHttpClient {
         }
         Files.createDirectories(parent);
         Path temporary = absoluteTarget.resolveSibling(absoluteTarget.getFileName() + ".downloading");
+        Path metadataFile = absoluteTarget.resolveSibling(absoluteTarget.getFileName() + ".downloading.meta");
         try {
             executeCandidates(candidates, policy, control, (candidate, retryPolicy) -> {
-                Files.deleteIfExists(temporary);
-                try {
-                    downloadOnce(candidate, temporary, retryPolicy, control, progress);
-                    moveIntoPlace(temporary, absoluteTarget);
-                    return Boolean.TRUE;
-                } catch (IOException failure) {
-                    Files.deleteIfExists(temporary);
-                    throw failure;
-                }
+                downloadOnce(candidate, temporary, metadataFile, retryPolicy, control, progress);
+                moveIntoPlace(temporary, absoluteTarget);
+                Files.deleteIfExists(metadataFile);
+                return Boolean.TRUE;
             });
-        } finally {
-            Files.deleteIfExists(temporary);
+        } catch (IOException failure) {
+            cleanupUntrustedPartial(temporary, metadataFile, validateCandidates(candidates));
+            throw failure;
         }
     }
 
@@ -101,37 +103,167 @@ final class ModelDownloadHttpClient {
     private void downloadOnce(
             URI candidate,
             Path temporary,
+            Path metadataFile,
             RetryPolicy policy,
             DownloadControl control,
             ProgressListener progress
     ) throws IOException {
-        HttpURLConnection connection = open(candidate, policy);
+        ResumeState resume = loadResumeState(candidate, temporary, metadataFile).orElse(null);
+        HttpURLConnection connection = open(candidate, policy, resume);
         try {
-            requireSuccessful(connection, candidate);
-            long expectedLength = connection.getContentLengthLong();
-            long downloaded = 0L;
-            try (InputStream input = connection.getInputStream();
-                 OutputStream output = Files.newOutputStream(
-                         temporary,
-                         StandardOpenOption.CREATE,
-                         StandardOpenOption.TRUNCATE_EXISTING,
-                         StandardOpenOption.WRITE
-                 )) {
-                byte[] buffer = new byte[BUFFER_SIZE];
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    checkControl(control);
-                    output.write(buffer, 0, read);
-                    downloaded += read;
-                    if (progress != null) {
-                        progress.onProgress(downloaded, expectedLength);
-                    }
-                }
+            int status = connection.getResponseCode();
+            if (resume != null && status == 416 && completePartialConfirmed(connection, resume)) {
+                return;
             }
-            validateLength(candidate, expectedLength, downloaded, true);
+            if (resume != null && status == 416) {
+                restartFull(candidate, temporary, metadataFile, policy, control, progress, connection, "range_not_satisfiable");
+                return;
+            }
+            if (resume != null && status == HttpURLConnection.HTTP_PARTIAL) {
+                try {
+                    appendPartial(candidate, temporary, connection, resume, control, progress);
+                } catch (ResumeRejectedException rejected) {
+                    restartFull(candidate, temporary, metadataFile, policy, control, progress, connection, rejected.getMessage());
+                }
+                return;
+            }
+            if (resume != null && status == HttpURLConnection.HTTP_OK) {
+                env.info("MODEL_DOWNLOAD_RESUME_RESTART source=" + candidate + " reason=range_not_honored");
+                downloadFull(candidate, temporary, metadataFile, connection, control, progress);
+                return;
+            }
+            requireSuccessfulStatus(status, candidate);
+            if (status != HttpURLConnection.HTTP_OK) {
+                throw new IOException("MODEL_DOWNLOAD_UNEXPECTED_PARTIAL_RESPONSE source=" + candidate + " status=" + status);
+            }
+            downloadFull(candidate, temporary, metadataFile, connection, control, progress);
         } finally {
             close(connection);
         }
+    }
+
+    private void restartFull(
+            URI candidate,
+            Path temporary,
+            Path metadataFile,
+            RetryPolicy policy,
+            DownloadControl control,
+            ProgressListener progress,
+            HttpURLConnection previousConnection,
+            String reason
+    ) throws IOException {
+        env.info("MODEL_DOWNLOAD_RESUME_RESTART source=" + candidate + " reason=" + reason);
+        Files.deleteIfExists(metadataFile);
+        Files.deleteIfExists(temporary);
+        close(previousConnection);
+        HttpURLConnection fresh = open(candidate, policy);
+        try {
+            requireSuccessful(fresh, candidate);
+            if (fresh.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                throw new IOException("MODEL_DOWNLOAD_EXPECTED_FULL_RESPONSE source=" + candidate
+                        + " status=" + fresh.getResponseCode());
+            }
+            downloadFull(candidate, temporary, metadataFile, fresh, control, progress);
+        } finally {
+            close(fresh);
+        }
+    }
+
+    private void downloadFull(
+            URI candidate,
+            Path temporary,
+            Path metadataFile,
+            HttpURLConnection connection,
+            DownloadControl control,
+            ProgressListener progress
+    ) throws IOException {
+        long expectedLength = connection.getContentLengthLong();
+        Optional<ModelDownloadResumeMetadata> metadata = ModelDownloadResumeMetadata.fromResponse(candidate, connection);
+        Files.deleteIfExists(temporary);
+        Files.deleteIfExists(metadataFile);
+        if (metadata.isPresent()) {
+            metadata.get().write(metadataFile);
+        }
+        long downloaded = 0L;
+        try (InputStream input = connection.getInputStream();
+             OutputStream output = Files.newOutputStream(
+                     temporary,
+                     StandardOpenOption.CREATE,
+                     StandardOpenOption.TRUNCATE_EXISTING,
+                     StandardOpenOption.WRITE
+             )) {
+            downloaded = copy(input, output, 0L, expectedLength, control, progress);
+        } catch (IOException failure) {
+            cleanupIfNotResumable(temporary, metadataFile);
+            throw failure;
+        }
+        try {
+            validateLength(candidate, expectedLength, downloaded, true);
+        } catch (IOException failure) {
+            cleanupIfNotResumable(temporary, metadataFile);
+            throw failure;
+        }
+    }
+
+    private void appendPartial(
+            URI candidate,
+            Path temporary,
+            HttpURLConnection connection,
+            ResumeState resume,
+            DownloadControl control,
+            ProgressListener progress
+    ) throws IOException {
+        ContentRange range = parseContentRange(connection.getHeaderField("Content-Range"));
+        if (range == null
+                || range.start() != resume.localLength()
+                || range.total() != resume.metadata().totalLength()
+                || !resume.metadata().matchesResponse(connection)) {
+            throw new ResumeRejectedException("response_mismatch");
+        }
+        long expectedRemaining = resume.metadata().totalLength() - resume.localLength();
+        if (connection.getContentLengthLong() >= 0L && connection.getContentLengthLong() != expectedRemaining) {
+            throw new ResumeRejectedException("length_mismatch");
+        }
+        long downloaded;
+        try (InputStream input = connection.getInputStream();
+             OutputStream output = Files.newOutputStream(
+                     temporary,
+                     StandardOpenOption.CREATE,
+                     StandardOpenOption.APPEND,
+                     StandardOpenOption.WRITE
+             )) {
+            downloaded = copy(
+                    input,
+                    output,
+                    resume.localLength(),
+                    resume.metadata().totalLength(),
+                    control,
+                    progress
+            );
+        }
+        validateLength(candidate, resume.metadata().totalLength(), downloaded, true);
+    }
+
+    private long copy(
+            InputStream input,
+            OutputStream output,
+            long initialLength,
+            long totalLength,
+            DownloadControl control,
+            ProgressListener progress
+    ) throws IOException {
+        long downloaded = initialLength;
+        byte[] buffer = new byte[BUFFER_SIZE];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            checkControl(control);
+            output.write(buffer, 0, read);
+            downloaded += read;
+            if (progress != null) {
+                progress.onProgress(downloaded, totalLength);
+            }
+        }
+        return downloaded;
     }
 
     private <T> T executeCandidates(
@@ -187,6 +319,10 @@ final class ModelDownloadHttpClient {
     }
 
     private HttpURLConnection open(URI candidate, RetryPolicy policy) throws IOException {
+        return open(candidate, policy, null);
+    }
+
+    private HttpURLConnection open(URI candidate, RetryPolicy policy, ResumeState resume) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) candidate.toURL().openConnection();
         activeConnections.add(connection);
         try {
@@ -194,6 +330,10 @@ final class ModelDownloadHttpClient {
             connection.setReadTimeout(policy.readTimeoutMillis());
             connection.setRequestMethod("GET");
             connection.setRequestProperty("User-Agent", "Tianshu-Model-Downloader/1.0");
+            if (resume != null) {
+                connection.setRequestProperty("Range", "bytes=" + resume.localLength() + "-");
+                connection.setRequestProperty("If-Range", resume.metadata().validator());
+            }
             return connection;
         } catch (IOException | RuntimeException failure) {
             close(connection);
@@ -203,8 +343,93 @@ final class ModelDownloadHttpClient {
 
     private static void requireSuccessful(HttpURLConnection connection, URI candidate) throws IOException {
         int status = connection.getResponseCode();
+        requireSuccessfulStatus(status, candidate);
+    }
+
+    private static void requireSuccessfulStatus(int status, URI candidate) throws IOException {
         if (status < 200 || status >= 300) {
             throw new IOException("MODEL_DOWNLOAD_HTTP_STATUS source=" + candidate + " status=" + status);
+        }
+    }
+
+    private Optional<ResumeState> loadResumeState(URI candidate, Path temporary, Path metadataFile) throws IOException {
+        Optional<ModelDownloadResumeMetadata> metadata = ModelDownloadResumeMetadata.read(metadataFile);
+        if (metadata.isEmpty()) {
+            if (Files.exists(metadataFile) || Files.exists(temporary)) {
+                Files.deleteIfExists(metadataFile);
+                Files.deleteIfExists(temporary);
+            }
+            return Optional.empty();
+        }
+        if (!metadata.get().source().equals(candidate)) {
+            return Optional.empty();
+        }
+        long localLength = Files.isRegularFile(temporary) ? Files.size(temporary) : -1L;
+        if (localLength <= 0L || localLength > metadata.get().totalLength()) {
+            Files.deleteIfExists(metadataFile);
+            Files.deleteIfExists(temporary);
+            return Optional.empty();
+        }
+        return Optional.of(new ResumeState(metadata.get(), localLength));
+    }
+
+    private void cleanupIfNotResumable(Path temporary, Path metadataFile) throws IOException {
+        Optional<ModelDownloadResumeMetadata> metadata = ModelDownloadResumeMetadata.read(metadataFile);
+        long localLength = Files.isRegularFile(temporary) ? Files.size(temporary) : 0L;
+        if (metadata.isEmpty() || localLength <= 0L || localLength >= metadata.get().totalLength()) {
+            Files.deleteIfExists(metadataFile);
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private void cleanupUntrustedPartial(Path temporary, Path metadataFile, List<URI> candidates) throws IOException {
+        Optional<ModelDownloadResumeMetadata> metadata = ModelDownloadResumeMetadata.read(metadataFile);
+        long localLength = Files.isRegularFile(temporary) ? Files.size(temporary) : 0L;
+        boolean trusted = metadata.isPresent()
+                && candidates.contains(metadata.get().source())
+                && localLength > 0L
+                && localLength <= metadata.get().totalLength();
+        if (!trusted) {
+            Files.deleteIfExists(metadataFile);
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private ContentRange parseContentRange(String value) {
+        if (value == null) {
+            return null;
+        }
+        Matcher matcher = CONTENT_RANGE.matcher(value.trim());
+        if (!matcher.matches()) {
+            return null;
+        }
+        try {
+            long start = Long.parseLong(matcher.group(1));
+            long end = Long.parseLong(matcher.group(2));
+            long total = Long.parseLong(matcher.group(3));
+            return start >= 0L && end >= start && total > end ? new ContentRange(start, end, total) : null;
+        } catch (NumberFormatException invalid) {
+            return null;
+        }
+    }
+
+    private boolean completePartialConfirmed(HttpURLConnection connection, ResumeState resume) {
+        if (resume.localLength() != resume.metadata().totalLength()
+                || !resume.metadata().matchesResponse(connection)) {
+            return false;
+        }
+        String value = connection.getHeaderField("Content-Range");
+        if (value == null) {
+            return false;
+        }
+        Matcher matcher = UNSATISFIED_CONTENT_RANGE.matcher(value.trim());
+        if (!matcher.matches()) {
+            return false;
+        }
+        try {
+            return Long.parseLong(matcher.group(1)) == resume.metadata().totalLength();
+        } catch (NumberFormatException invalid) {
+            return false;
         }
     }
 
@@ -329,5 +554,17 @@ final class ModelDownloadHttpClient {
     @FunctionalInterface
     private interface CandidateOperation<T> {
         T run(URI candidate, RetryPolicy policy) throws IOException;
+    }
+
+    private record ResumeState(ModelDownloadResumeMetadata metadata, long localLength) {
+    }
+
+    private record ContentRange(long start, long end, long total) {
+    }
+
+    private static final class ResumeRejectedException extends IOException {
+        private ResumeRejectedException(String message) {
+            super(message);
+        }
     }
 }

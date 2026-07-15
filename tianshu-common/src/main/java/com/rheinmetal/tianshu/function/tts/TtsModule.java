@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -38,7 +38,7 @@ public final class TtsModule implements TianshuManagedModule {
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess runtime;
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final TtsConfiguration config;
     private final TtsProtocolAdapter adapter;
     private TtsRuntime ttsRuntime;
     private TtsModuleService moduleService;
@@ -47,7 +47,7 @@ public final class TtsModule implements TianshuManagedModule {
     private TtsVoiceLibraryService voiceLibraryService;
     private TtsVoiceCloneRegistry voiceCloneRegistry;
 
-    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, ITianshuConfig config) {
+    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config) {
         this.audioBridge = audioBridge;
         this.runtime = runtime;
         this.env = env;

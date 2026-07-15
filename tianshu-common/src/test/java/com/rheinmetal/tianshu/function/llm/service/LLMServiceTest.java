@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
@@ -508,33 +508,13 @@ class LLMServiceTest {
         @Override public void info(String msg) {}
         @Override public void warn(String msg) {}
         @Override public void error(String msg, Throwable t) {}
+        @Override public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() { return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP; }
     }
 
-    private static final class FakeConfig implements ITianshuConfig {
-        @Override public boolean isAiEnabled() { return true; }
-        @Override public void setAiEnabled(boolean enabled) {}
-        @Override public com.rheinmetal.tianshu.constant.TriggerMode getTriggerMode() { return com.rheinmetal.tianshu.constant.TriggerMode.PUSH_TO_TALK; }
-        @Override public void setTriggerMode(com.rheinmetal.tianshu.constant.TriggerMode mode) {}
-        @Override public int getAsrPort() { return 0; }
-        @Override public int getLlmPort() { return 0; }
-        @Override public int getTtsPort() { return 0; }
-        @Override public String getCustomAsrName() { return ""; }
-        @Override public void setCustomAsrName(String name) {}
+    private static final class FakeConfig implements LlmConfiguration {
+        @Override public boolean isLlmEnabled() { return true; }
         @Override public String getCustomLlmName() { return ""; }
-        @Override public void setCustomLlmName(String name) {}
-        @Override public String getCustomTtsName() { return ""; }
-        @Override public void setCustomTtsName(String name) {}
-        @Override public Path getRootPath() { return Path.of("."); }
-        @Override public Path getGameConfigDir() { return Path.of("."); }
-        @Override public Path getAsrBasePath() { return Path.of("."); }
         @Override public Path getLlmBasePath() { return Path.of("."); }
-        @Override public Path getTtsBasePath() { return Path.of("."); }
-        @Override public Path getAsrModelPath() { return null; }
-        @Override public Path getLlmModelPath() { return null; }
-        @Override public Path getTtsModelPath() { return null; }
-        @Override public Path getLlmGgufFilePath() { return null; }
-        @Override public Path getVoiceLibraryPath() { return Path.of("."); }
         @Override public String getLlmEmbeddingModelName() { return "test-embedding"; }
-        @Override public void save() {}
     }
 }

@@ -1,6 +1,9 @@
 package com.rheinmetal.tianshu.function.asr.recognition;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
@@ -11,6 +14,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.Map;
 
 public final class AsrRecognitionService {
     private final IGameEnvironment env;
@@ -42,6 +46,7 @@ public final class AsrRecognitionService {
                 env.info("ASR 开始完整识别，音频长度=" + (audioData == null ? 0 : audioData.length) + " bytes");
                 String result = engine().recognizeComplete(audioData);
                 if (isMeaningfulText(result)) {
+                    publishDiagnostic("RECOGNITION_COMPLETE", DiagnosticSeverity.INFO, result, inputMode, sessionId);
                     onResult.accept(new AsrRecognitionResult(result, result, sessionId, inputMode));
                 } else {
                     env.info("ASR 完整识别结果为空");
@@ -167,8 +172,23 @@ public final class AsrRecognitionService {
         }
         AsrRecognitionResult result = normalizeStreamingText(text, runtime.sessionId(), inputMode);
         if (result != null && result.hasText() && isCurrentRuntime(runtime)) {
+            publishDiagnostic("STREAM_RESULT", DiagnosticSeverity.INFO, result.text(), inputMode, runtime.sessionId());
             onResult.accept(result);
         }
+    }
+
+    private void publishDiagnostic(String code, DiagnosticSeverity severity, String text, String inputMode, long sessionId) {
+        env.diagnostics().publish(DiagnosticEvent.now(
+                AsrProtocolAdapter.MODULE_ID,
+                code,
+                severity,
+                DiagnosticPrivacy.RAW_CONTENT,
+                Map.of(
+                        "sessionId", Long.toString(sessionId),
+                        "inputMode", inputMode == null ? "" : inputMode,
+                        "text", text == null ? "" : text
+                )
+        ));
     }
 
     private AsrRecognitionResult normalizeStreamingText(String text, long sessionId, String inputMode) {

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.platform;
 
 import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
 
@@ -10,6 +11,11 @@ import java.nio.file.Path;
 public class NeoForgeEnvironment implements IGameEnvironment {
 
     private static final Logger LOGGER = LogUtils.getLogger();
+    private volatile DiagnosticSink diagnosticSink = DiagnosticSink.NOOP;
+
+    public void bindDiagnostics(DiagnosticSink diagnosticSink) {
+        this.diagnosticSink = diagnosticSink == null ? DiagnosticSink.NOOP : diagnosticSink;
+    }
 
     @Override
     public void displayMessageToPlayer(String message) {
@@ -67,5 +73,10 @@ public class NeoForgeEnvironment implements IGameEnvironment {
         } else {
             LOGGER.error(msg);
         }
+    }
+
+    @Override
+    public DiagnosticSink diagnostics() {
+        return diagnosticSink;
     }
 }

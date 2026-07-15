@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.asr.download.AsrModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
@@ -55,7 +55,7 @@ public class AsrModelService {
     }
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AsrConfiguration config;
     private final ModuleExecutionAccess executorManager;
     private final AsrModelDownloadCoordinator downloadCoordinator;
     private final AsrPreviewCoordinator previewCoordinator;
@@ -66,13 +66,13 @@ public class AsrModelService {
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
 
-    public AsrModelService(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
+    public AsrModelService(IGameEnvironment env, AsrConfiguration config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
         this(env, config, audioBridge, executorManager, engineSupplier, readySupplier, null);
     }
 
     public AsrModelService(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AsrConfiguration config,
             IAudioBridge audioBridge,
             ModuleExecutionAccess executorManager,
             Supplier<AsrEngine> engineSupplier,

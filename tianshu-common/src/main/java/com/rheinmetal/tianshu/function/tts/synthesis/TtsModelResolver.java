@@ -18,7 +18,11 @@ public final class TtsModelResolver {
     }
 
     public Optional<TtsResolvedModel> resolveCurrent() {
-        Path modelDir = modelService.resolveCurrentModelDir();
+        return resolve(modelService.currentConfiguredModelName());
+    }
+
+    public Optional<TtsResolvedModel> resolve(String modelName) {
+        Path modelDir = modelService.resolveModelDir(modelName);
         if (modelDir == null) {
             return Optional.empty();
         }
@@ -26,7 +30,7 @@ public final class TtsModelResolver {
             env.warn("tts.model.directory_missing: " + modelDir);
             return Optional.empty();
         }
-        TtsModelInfo info = modelService.resolveCurrentModelInfo();
+        TtsModelInfo info = modelService.resolveModelInfo(modelName);
         return Optional.of(new TtsResolvedModel(modelDir, info, TtsResolvedModel.resolveBackendType(info)));
     }
 }

@@ -32,6 +32,16 @@ class ModuleAssemblyRuntimeBoundaryTest {
     }
 
     @Test
+    void assemblyContextDoesNotExposeAggregateHostConfiguration() throws Exception {
+        String context = read(COMMON_SOURCES.resolve(
+                "com/rheinmetal/tianshu/core/lifecycle/TianshuModuleAssemblyContext.java"
+        ));
+
+        assertFalse(context.contains("ITianshuConfig"));
+        assertFalse(context.contains("ITianshuConfig config"));
+    }
+
+    @Test
     void functionModulesDoNotReceiveFullProtocolRuntime() throws Exception {
         List<String> violations = sourcesContaining(FUNCTION_SOURCES, "ProtocolRuntime");
 

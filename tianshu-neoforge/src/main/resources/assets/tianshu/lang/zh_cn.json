@@ -517,5 +517,13 @@
   "tianshu.presence.context.screen.other": "其他界面",
   "tianshu.presence.context.dimension.minecraft.overworld": "主世界",
   "tianshu.presence.context.dimension.minecraft.the_nether": "下界",
-  "tianshu.presence.context.dimension.minecraft.the_end": "末地"
+  "tianshu.presence.context.dimension.minecraft.the_end": "末地",
+  "tianshu.gui.common.section.diagnostics": "诊断记录",
+  "tianshu.gui.common.option.diagnostics_enabled": "记录该模块的详细诊断（可能包含原始内容）",
+  "tianshu.gui.ir.title": "识意",
+  "tianshu.gui.ir.description": "语音指令解析与意图识别",
+  "tianshu.gui.ir.message.saved": "识意诊断设置已保存",
+  "tianshu.gui.ia.title": "思衡",
+  "tianshu.gui.ia.description": "对话参与仲裁与会话协调",
+  "tianshu.gui.ia.message.saved": "思衡诊断设置已保存"
 }

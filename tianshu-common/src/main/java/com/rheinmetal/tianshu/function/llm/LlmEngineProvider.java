@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.llm.model.LlmModelPathResolver;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.libs.llm.InferenceEvent;
@@ -25,36 +26,38 @@ public final class LlmEngineProvider {
     private static final String MANUAL_CPU_DEVICE_ID = "cpu:manual";
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final LlmConfiguration config;
+    private final LlmModelPathResolver modelPaths;
     private final InferenceResourcePolicy resourcePolicy;
     private final Consumer<LlmStatusPayload> inferenceStatusListener;
     private final Executor modelLoadExecutor;
     private JavaLlamaServer aiService;
     private volatile boolean embeddingConfigured;
 
-    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config) {
+    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config) {
         this(env, config, InferenceResourcePolicy.systemDefault(), null);
     }
 
-    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy) {
+    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config, InferenceResourcePolicy resourcePolicy) {
         this(env, config, resourcePolicy, null);
     }
 
-    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, Consumer<LlmStatusPayload> inferenceStatusListener) {
+    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config, Consumer<LlmStatusPayload> inferenceStatusListener) {
         this(env, config, InferenceResourcePolicy.systemDefault(), inferenceStatusListener);
     }
 
-    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, Consumer<LlmStatusPayload> inferenceStatusListener, Executor modelLoadExecutor) {
+    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config, Consumer<LlmStatusPayload> inferenceStatusListener, Executor modelLoadExecutor) {
         this(env, config, InferenceResourcePolicy.systemDefault(), inferenceStatusListener, modelLoadExecutor);
     }
 
-    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener) {
+    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener) {
         this(env, config, resourcePolicy, inferenceStatusListener, Runnable::run);
     }
 
-    public LlmEngineProvider(IGameEnvironment env, ITianshuConfig config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener, Executor modelLoadExecutor) {
+    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config, InferenceResourcePolicy resourcePolicy, Consumer<LlmStatusPayload> inferenceStatusListener, Executor modelLoadExecutor) {
         this.env = env;
         this.config = config;
+        this.modelPaths = new LlmModelPathResolver(config);
         this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
         this.inferenceStatusListener = inferenceStatusListener == null ? status -> {
         } : inferenceStatusListener;
@@ -62,7 +65,7 @@ public final class LlmEngineProvider {
     }
 
     private JavaLlamaServer createAiService() {
-        Path modelPath = config.getLlmGgufFilePath();
+        Path modelPath = modelPaths.resolveChatModel();
         embeddingConfigured = false;
         if (modelPath == null) {
             return null;
@@ -71,7 +74,7 @@ public final class LlmEngineProvider {
         String deviceId = resolveDeviceId(config.getLlmGpuDeviceId());
         boolean cpuOnly = isCpuDevice(deviceId);
         int gpuLayers = cpuOnly ? 0 : resourcePolicy.fullGpuLayers();
-        int requestedContextSize = Math.max(1, config.getLlmContextSize());
+        int requestedContextSize = Math.max(1, modelPaths.chatContextSize());
         LlmContextBudgetPolicy budgetPolicy = LlmContextBudgetPolicy.defaults();
         int plannedContextSize = planContextSize(modelPath, requestedContextSize, deviceId, cpuOnly, gpuLayers, budgetPolicy);
         env.info("LLM context selected: requested=" + requestedContextSize
@@ -103,16 +106,16 @@ public final class LlmEngineProvider {
         if (deviceId != null && !cpuOnly) {
             builder.device(deviceId);
         }
-        Path mtpDraftPath = config.getLlmMtpDraftGgufFilePath();
+        Path mtpDraftPath = modelPaths.resolveMtpDraftModel();
         if (mtpDraftPath != null) {
             builder.mtpDraftModel(mtpDraftPath.toString());
         }
 
-        Path embeddingPath = config.getLlmEmbeddingGgufFilePath();
+        Path embeddingPath = modelPaths.resolveEmbeddingModel();
         if (embeddingPath != null) {
             embeddingConfigured = true;
             builder.embeddingModel(embeddingPath.toString())
-                    .embeddingContextSize(config.getLlmEmbeddingContextSize())
+                    .embeddingContextSize(modelPaths.embeddingContextSize())
                     .embeddingThreads(Math.max(1, Math.min(processors, resourcePolicy.llmGpuHelperThreads())))
                     .embeddingAlias(blankToNull(config.getLlmEmbeddingModelName()))
                     .embeddingGpuLayers(gpuLayers);

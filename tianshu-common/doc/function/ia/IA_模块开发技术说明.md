@@ -542,7 +542,7 @@ IA 的 owner preview refresh 由 IA 内部 coordinator 表达生命周期语义�
 
 IA 的 runtime 资源遵循以下边界：
 
-- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、标记仲裁能力 ready，并启动单条 preview refresh 链。
+- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、标记仲裁能力 ready，并启动单条 preview refresh 链。ready 表示 IA 服务可以接收并给出仲裁结论，不要求当前已经存在 owner；participant 为空时直接以 `NO_PARTICIPANT` 拒绝，不查询 Presence、不创建会话，也不触发 LLM/TTS。
 - 重复 `prepare` 不增加第二条 refresh 链；若 runtime context 发生替换，先解绑旧 voice registry 和旧 capability 状态。
 - `stop` 停止 refresh、解绑 voice trigger，并撤销 `ARBITRATION` ready 状态。
 - `destroy` 可重复执行，并清空 participant、session、attention、冻结上下文、Presence pending 请求和 owner preview。

@@ -75,6 +75,12 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 );
 ```
 
+## 7. 配置与模型解析边界
+
+LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoForge 的 `config/tianshu-client.toml`；setter 和保存不进入 common。`LlmModelPathResolver` 根据所选模型标识、LLM 模块根和内置 catalog 解析 chat/embedding GGUF，并拒绝越过模型根目录的选择。catalog 指定文件优先，其次才是目录内按文件名确定性排序的 GGUF。
+
+模型 context size、prompt token budget 和 embedding context size 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有推理 builder、GPU device、MTP、frame guard 或协议请求语义。
+
 协议提交时使用：
 
 | 项 | 值 |
@@ -521,3 +527,6 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
     LLMPromptRequestPayload.InferencePolicyPayload.followGlobal()
 );
 ```
+## 诊断记录
+
+LLM 设置面板中的“诊断记录”开关控制 `module.llm` 的推理诊断。开启后允许记录请求消息和生成结果，用于调试 prompt、上下文和输出链路；关闭时事件不会进入诊断文件。文件写入由 NeoForge 宿主异步集中完成。

@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.core;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.EmptyTianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblerFactory;
@@ -33,6 +32,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
@@ -44,7 +44,6 @@ import java.util.concurrent.CompletableFuture;
 public class TianshuCoreManager {
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
@@ -55,23 +54,21 @@ public class TianshuCoreManager {
     private final TianshuModuleAssembler moduleAssembler;
     private final CoreModuleLifecycleCoordinator lifecycleCoordinator;
 
-    public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge) {
-        this(env, config, audioBridge, null);
+    public TianshuCoreManager(IGameEnvironment env, VoiceResourceConfiguration voiceResourceConfiguration, IAudioBridge audioBridge) {
+        this(env, voiceResourceConfiguration, audioBridge, null);
     }
 
-    public TianshuCoreManager(IGameEnvironment env, ITianshuConfig config, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
+    public TianshuCoreManager(IGameEnvironment env, VoiceResourceConfiguration voiceResourceConfiguration, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
         this.env = env;
-        this.config = config;
         this.moduleHost = new TianshuModuleHost(env);
         this.moduleServices = new ModuleServiceRegistry();
-        this.voiceResourceManager = new VoiceResourceManager(env, config);
+        this.voiceResourceManager = new VoiceResourceManager(env, voiceResourceConfiguration);
         this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread, voiceResourceManager.voiceTriggers());
         this.runtimeState = new ModuleRuntimeState();
         this.state = runtimeState.readiness();
         this.interruptionService = new RuntimeInterruptionService(protocolRuntime.runtimeInterrupts());
         TianshuModuleAssemblyContext moduleAssemblyContext = new TianshuModuleAssemblyContext(
                 env,
-                config,
                 audioBridge,
                 protocolRuntime,
                 this::runtimeReadyForRequests,

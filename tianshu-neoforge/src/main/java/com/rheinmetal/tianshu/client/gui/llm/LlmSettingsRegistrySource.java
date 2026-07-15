@@ -88,6 +88,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled)
+                .toggles("llm.diagnostics", common("section.diagnostics"), toggles -> toggles
+                        .toggle("llm.diagnostics.enabled", common("option.diagnostics_enabled"), draft.diagnosticsEnabled))
                 .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
                 .compound("llm.load", llm("section.load_settings"), draft.enabled::get,
                         draft::buildLoadOptions,
@@ -115,6 +117,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final LlmModuleService moduleService;
         private final LlmModelService modelService;
         private final MutableSettingsValue<Boolean> enabled;
+        private final MutableSettingsValue<Boolean> diagnosticsEnabled;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> selectedGpuDeviceId;
         private final MutableSettingsValue<Boolean> frameGuardEnabled;
@@ -131,6 +134,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.moduleService = coreManager.requireService(LlmModuleService.class);
             this.modelService = coreManager.requireService(LlmModelService.class);
             this.enabled = new MutableSettingsValue<>(config::isLlmEnabled, config::setLlmEnabled);
+            this.diagnosticsEnabled = new MutableSettingsValue<>(config::isLlmDiagnosticsEnabled, config::setLlmDiagnosticsEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.selectedGpuDeviceId = new MutableSettingsValue<>(this::currentDeviceTargetId, ignored -> {}, Objects::nonNull);
             this.frameGuardEnabled = new MutableSettingsValue<>(config::isLlmFrameGuardEnabled, config::setLlmFrameGuardEnabled);
@@ -202,6 +206,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
+                    || diagnosticsEnabled.dirty()
                     || selectedModelName.dirty()
                     || selectedGpuDeviceId.dirty()
                     || frameGuardEnabled.dirty()
@@ -224,6 +229,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsSaveResult save() {
             enabled.save();
+            diagnosticsEnabled.save();
             config.setCustomLlmName(selectedModelName.get());
             selectedModelName.save();
             config.setLlmGpuDeviceId(persistedDeviceTargetId());
@@ -241,6 +247,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
+            diagnosticsEnabled.reset();
             selectedModelName.reset();
             selectedGpuDeviceId.reset();
             frameGuardEnabled.reset();

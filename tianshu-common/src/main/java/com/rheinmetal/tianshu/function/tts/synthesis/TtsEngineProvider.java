@@ -1,17 +1,14 @@
 package com.rheinmetal.tianshu.function.tts.synthesis;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 
 public final class TtsEngineProvider {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
     private TtsBackend backend;
     private TtsResolvedModel loadedModel;
 
-    public TtsEngineProvider(IGameEnvironment env, ITianshuConfig config) {
+    public TtsEngineProvider(IGameEnvironment env) {
         this.env = env;
-        this.config = config;
     }
 
     public synchronized TtsBackend acquire(TtsResolvedModel model) {
@@ -39,8 +36,8 @@ public final class TtsEngineProvider {
 
     private TtsBackend createBackend(TtsBackendType backendType) {
         return switch (backendType) {
-            case MOSS -> new MossTtsBackend(env, config);
-            case SHERPA -> new SherpaOnnxTtsBackend(env, config);
+            case MOSS -> new MossTtsBackend(env);
+            case SHERPA -> new SherpaOnnxTtsBackend(env);
         };
     }
 

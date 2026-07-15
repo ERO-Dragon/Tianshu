@@ -16,7 +16,7 @@ public record AsrSettingsSnapshot(
         modelName = modelName == null ? "" : modelName.trim();
     }
 
-    public static AsrSettingsSnapshot from(com.rheinmetal.tianshu.api.ITianshuConfig config) {
+    public static AsrSettingsSnapshot from(AsrConfiguration config) {
         String modelName = resolveModelName(config);
         return new AsrSettingsSnapshot(
                 config.isAsrEnabled(),
@@ -29,7 +29,7 @@ public record AsrSettingsSnapshot(
         );
     }
 
-    private static String resolveModelName(com.rheinmetal.tianshu.api.ITianshuConfig config) {
+    private static String resolveModelName(AsrConfiguration config) {
         String customName = config.getCustomAsrName();
         return customName == null ? "" : customName.trim();
     }

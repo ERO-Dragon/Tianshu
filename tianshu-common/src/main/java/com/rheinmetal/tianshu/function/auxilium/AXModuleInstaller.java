@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
@@ -9,11 +8,12 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
+import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AXStorageConfiguration storageConfiguration;
     private final ModuleRuntimeAccess moduleRuntime;
     private final AXWorldIdentityProvider worldIdentityProvider;
     private final AXPromptLanguageProvider promptLanguageProvider;
@@ -22,17 +22,17 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
 
-    public AXModuleInstaller(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess moduleRuntime) {
-        this(env, config, moduleRuntime, null);
+    public AXModuleInstaller(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess moduleRuntime) {
+        this(env, storageConfiguration, moduleRuntime, null);
     }
 
-    public AXModuleInstaller(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess moduleRuntime, AXWorldIdentityProvider worldIdentityProvider) {
-        this(env, config, moduleRuntime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
+    public AXModuleInstaller(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess moduleRuntime, AXWorldIdentityProvider worldIdentityProvider) {
+        this(env, storageConfiguration, moduleRuntime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModuleInstaller(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AXStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess moduleRuntime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
@@ -40,12 +40,12 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
-        this(env, config, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
+        this(env, storageConfiguration, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
     }
 
     public AXModuleInstaller(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AXStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess moduleRuntime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
@@ -55,7 +55,7 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
             AXChatOutputSink chatOutputSink
     ) {
         this.env = env;
-        this.config = config;
+        this.storageConfiguration = storageConfiguration;
         this.moduleRuntime = moduleRuntime;
         this.worldIdentityProvider = worldIdentityProvider;
         this.promptLanguageProvider = promptLanguageProvider;
@@ -70,6 +70,6 @@ public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
         if (!assistantSettings.assistantEnabled()) {
             return;
         }
-        moduleHost.registerOptionalModule(new AXModule(env, config, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, runtimePolicy, outputSettings, chatOutputSink));
+        moduleHost.registerOptionalModule(new AXModule(env, storageConfiguration, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, runtimePolicy, outputSettings, chatOutputSink));
     }
 }

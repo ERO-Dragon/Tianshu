@@ -131,6 +131,8 @@ PacketType.COMMAND
 
 `DIALOGUE_ARBITRATE` 也支持 `REQUEST`，但它不是主链路默认用法。只有诊断、测试或受信模块确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.DIALOGUE_ARBITRATION_RESULT` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动消费仲裁结果。
 
+IA capability ready 只表示仲裁服务可响应，不表示已经注册了 owner。当前没有 participant 时，`REQUEST` 返回 `accepted=false / reason=NO_PARTICIPANT`；普通 COMMAND 同样结束为拒绝，不产生玩家提示、Presence 查询、对话 delivery、LLM 或 TTS 请求。
+
 ## 4. 注册 delivery capability
 
 模组必须注册一个用于接收正文投递的 capability，并把该 capability ID 写入 `DialogueParticipantDescriptor.routeCapability`。
@@ -477,3 +479,6 @@ turnId = delivery.turnId
 8. LLM 输出必须绑定原始请求返回，不做底层 LLM 公共广播。
 9. 所有跨模块公开通信走协议中心 capability 或 topic，请求结果走协议响应处理器。
 10. 模组必须处理注销、释放、处理期限延长和超时。
+## 诊断记录
+
+IA 设置面板中的“诊断记录”开关控制 `module.ia` 的仲裁与会话诊断。开启后允许记录调试所需的对话载荷；关闭时不写入集中诊断文件。外部模组仍只能通过协议中心交互，不能直接访问诊断写入器。

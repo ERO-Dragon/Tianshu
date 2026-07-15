@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 
 record LlmInferenceDefaults(boolean frameGuardEnabled, int targetFps, boolean mtpEnabled) {
     private static final int SAFE_TARGET_FPS = 60;
 
-    static LlmInferenceDefaults from(ITianshuConfig config) {
+    static LlmInferenceDefaults from(LlmConfiguration config) {
         return config == null
                 ? safe()
                 : new LlmInferenceDefaults(

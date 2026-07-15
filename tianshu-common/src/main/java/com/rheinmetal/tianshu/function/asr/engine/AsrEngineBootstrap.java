@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.asr.engine;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.function.asr.AsrRuntimeCapabilities;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
@@ -16,14 +16,14 @@ import java.util.function.Consumer;
 
 public final class AsrEngineBootstrap {
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AsrConfiguration config;
     private final Consumer<AsrEngineBootstrapStatus> statusSink;
 
-    public AsrEngineBootstrap(IGameEnvironment env, ITianshuConfig config) {
+    public AsrEngineBootstrap(IGameEnvironment env, AsrConfiguration config) {
         this(env, config, null);
     }
 
-    public AsrEngineBootstrap(IGameEnvironment env, ITianshuConfig config, Consumer<AsrEngineBootstrapStatus> statusSink) {
+    public AsrEngineBootstrap(IGameEnvironment env, AsrConfiguration config, Consumer<AsrEngineBootstrapStatus> statusSink) {
         this.env = env;
         this.config = config;
         this.statusSink = statusSink == null ? ignored -> {} : statusSink;

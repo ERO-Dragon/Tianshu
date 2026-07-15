@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
 import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
@@ -26,7 +25,7 @@ public final class TianshuCoreModuleInstallers {
 
     public static List<TianshuFunctionModuleInstaller> clientCore(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -36,7 +35,7 @@ public final class TianshuCoreModuleInstallers {
     ) {
         return clientCore(
                 env,
-                config,
+                configurations,
                 audioBridge,
                 moduleRuntime,
                 voiceInputGate,
@@ -49,7 +48,7 @@ public final class TianshuCoreModuleInstallers {
 
     public static List<TianshuFunctionModuleInstaller> clientCore(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -60,7 +59,7 @@ public final class TianshuCoreModuleInstallers {
     ) {
         return clientCore(
                 env,
-                config,
+                configurations,
                 audioBridge,
                 moduleRuntime,
                 voiceInputGate,
@@ -76,7 +75,7 @@ public final class TianshuCoreModuleInstallers {
 
     public static List<TianshuFunctionModuleInstaller> clientCore(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -89,7 +88,7 @@ public final class TianshuCoreModuleInstallers {
     ) {
         return clientCore(
                 env,
-                config,
+                configurations,
                 audioBridge,
                 moduleRuntime,
                 voiceInputGate,
@@ -105,7 +104,7 @@ public final class TianshuCoreModuleInstallers {
 
     public static List<TianshuFunctionModuleInstaller> clientCore(
             IGameEnvironment env,
-            ITianshuConfig config,
+            TianshuFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             BooleanSupplier voiceInputGate,
@@ -123,10 +122,10 @@ public final class TianshuCoreModuleInstallers {
         return List.of(
                 new IaModuleInstaller(moduleRuntime),
                 effectiveIrInstaller,
-                new LlmModuleInstaller(env, config, moduleRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
-                new AXModuleInstaller(env, config, moduleRuntime, axWorldIdentityProvider, promptLanguageProvider, axAssistantSettings, axOutputSettings, axChatOutputSink),
-                new TtsModuleInstaller(audioBridge, moduleRuntime, env, config),
-                new AsrModuleInstaller(audioBridge, moduleRuntime, env, config, voiceInputGate, interruptionSignal)
+                new LlmModuleInstaller(env, configurations.llm(), moduleRuntime, axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)),
+                new AXModuleInstaller(env, configurations.ax(), moduleRuntime, axWorldIdentityProvider, promptLanguageProvider, axAssistantSettings, axOutputSettings, axChatOutputSink),
+                new TtsModuleInstaller(audioBridge, moduleRuntime, env, configurations.tts()),
+                new AsrModuleInstaller(audioBridge, moduleRuntime, env, configurations.asr(), voiceInputGate, interruptionSignal)
         );
     }
 

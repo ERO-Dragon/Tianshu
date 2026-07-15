@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.asr;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
@@ -15,11 +15,11 @@ public final class AsrModuleInstaller implements TianshuFunctionModuleInstaller 
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AsrConfiguration config;
     private final BooleanSupplier voiceInputGate;
     private final LongSupplier interruptionSignal;
 
-    public AsrModuleInstaller(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, ITianshuConfig config, BooleanSupplier voiceInputGate, LongSupplier interruptionSignal) {
+    public AsrModuleInstaller(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputGate, LongSupplier interruptionSignal) {
         this.audioBridge = audioBridge;
         this.moduleRuntime = moduleRuntime;
         this.env = env;

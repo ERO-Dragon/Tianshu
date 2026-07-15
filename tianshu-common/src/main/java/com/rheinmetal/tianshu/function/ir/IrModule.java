@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.ir;
 
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -29,6 +32,7 @@ import com.rheinmetal.tianshu.function.ir.routing.IrRoutingPolicy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -51,6 +55,7 @@ public final class IrModule implements TianshuManagedModule {
     private volatile List<IrCompiledVoiceTrigger> voiceTriggerIndex = List.of();
     private ModuleProtocolAccess protocol;
     private VoiceResourceAccess voiceResources;
+    private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
 
     public IrModule(ModuleRuntimeAccess runtime) {
         this(runtime, IrNamedObjectEnhancer.noop());
@@ -81,6 +86,7 @@ public final class IrModule implements TianshuManagedModule {
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
+        diagnostics = context == null ? com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP : context.diagnostics();
         voiceResources = context == null ? null : context.voiceResources();
         refreshVoiceTriggerIndex(currentVoiceTriggerRegistrations());
     }
@@ -132,6 +138,13 @@ public final class IrModule implements TianshuManagedModule {
         IrInputText voiceInput = wakeWordEnhancer.enhance(inputWithNamedObjectRepair(prepared, namedObjectEnhancement), index);
         IrMatchBatch batch = matcher.match(voiceInput, index);
         IrRoutingDecision decision = routingPolicy.decide(voiceInput, batch);
+        publishDiagnostic("PARSE_DECISION", decision.kind() == IrRouteKind.NO_MATCH ? DiagnosticSeverity.DEBUG : DiagnosticSeverity.INFO,
+                Map.of(
+                        "rawText", input.rawText(),
+                        "normalizedText", voiceInput.text(),
+                        "decision", decision.kind().name(),
+                        "reason", decision.reason() == null ? "" : decision.reason()
+                ));
         if (decision.kind() == IrRouteKind.NO_MATCH) {
             publishNoMatch(envelope, voiceInput, decision.reason());
             completeIfNeeded(context, envelope, completeSourceEnvelope);
@@ -292,6 +305,14 @@ public final class IrModule implements TianshuManagedModule {
                 turnId,
                 sessionId
         ));
+        publishDiagnostic("NO_MATCH", DiagnosticSeverity.DEBUG, Map.of(
+                "rawText", input == null ? "" : input.rawText(),
+                "reason", reason == null ? "" : reason
+        ));
+    }
+
+    private void publishDiagnostic(String code, DiagnosticSeverity severity, Map<String, String> attributes) {
+        diagnostics.publish(DiagnosticEvent.now(IrProtocolAdapter.MODULE_ID, code, severity, DiagnosticPrivacy.RAW_CONTENT, attributes));
     }
 
     private String targetSummary(List<IrVoiceMatch> matches) {

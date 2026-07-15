@@ -1,7 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.ITianshuConfig;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -44,8 +46,10 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.DefaultAXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
+import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
@@ -53,11 +57,13 @@ import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
+import java.util.Map;
+
 public final class AXModule implements TianshuManagedModule {
     public static final String MODULE_ID = "module.ax";
 
     private final IGameEnvironment env;
-    private final ITianshuConfig config;
+    private final AXStorageConfiguration storageConfiguration;
     private final ModuleRuntimeAccess runtime;
     private final AXWorldIdentityProvider worldIdentityProvider;
     private final AXPromptLanguageProvider promptLanguageProvider;
@@ -82,17 +88,17 @@ public final class AXModule implements TianshuManagedModule {
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
 
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess runtime) {
-        this(env, config, runtime, null);
+    public AXModule(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime) {
+        this(env, storageConfiguration, runtime, null);
     }
 
-    public AXModule(IGameEnvironment env, ITianshuConfig config, ModuleRuntimeAccess runtime, AXWorldIdentityProvider worldIdentityProvider) {
-        this(env, config, runtime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
+    public AXModule(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime, AXWorldIdentityProvider worldIdentityProvider) {
+        this(env, storageConfiguration, runtime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModule(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AXStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
@@ -100,12 +106,12 @@ public final class AXModule implements TianshuManagedModule {
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
-        this(env, config, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
+        this(env, storageConfiguration, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
     }
 
     public AXModule(
             IGameEnvironment env,
-            ITianshuConfig config,
+            AXStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
@@ -115,7 +121,7 @@ public final class AXModule implements TianshuManagedModule {
             AXChatOutputSink chatOutputSink
     ) {
         this.env = env;
-        this.config = config;
+        this.storageConfiguration = storageConfiguration;
         this.runtime = runtime;
         this.worldIdentityProvider = worldIdentityProvider;
         this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : promptLanguageProvider;
@@ -149,9 +155,9 @@ public final class AXModule implements TianshuManagedModule {
         retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.retrievalPrimitiveTimeoutMillis());
         maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.maintenancePrimitiveTimeoutMillis());
         ragClient = new AXLlmRagClient(adapter, runtimePolicy.ragTimeoutMillis());
-        storageLayout = new AXStorageLayout(config);
+        storageLayout = new AXStorageLayout(storageConfiguration);
         AXJsonStore jsonStore = new AXJsonStore(env);
-        AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.fromConfig(config);
+        AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.DEFAULT;
         scopeProvider = worldIdentityProvider == null
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
@@ -275,6 +281,20 @@ public final class AXModule implements TianshuManagedModule {
         if (currentGateway == null) {
             context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX runtime is not prepared", null);
             return;
+        }
+        if (envelope.payload() instanceof DialogueDeliveryPayload payload) {
+            env.diagnostics().publish(DiagnosticEvent.now(
+                    MODULE_ID,
+                    "DIALOGUE_DELIVERY",
+                    DiagnosticSeverity.INFO,
+                    DiagnosticPrivacy.RAW_CONTENT,
+                    Map.of(
+                            "sessionId", payload.sessionId(),
+                            "requestId", payload.requestId(),
+                            "repairedText", payload.repairedText(),
+                            "normalizedText", payload.normalizedText()
+                    )
+            ));
         }
         currentGateway.handleDelivery(envelope, context);
     }
