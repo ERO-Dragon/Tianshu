@@ -1,46 +1,50 @@
-package com.rheinmetal.tianshu.client.settings.module.diagnostics;
+package com.rheinmetal.tianshu.client.settings.module;
 
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
+import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
-import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSession;
+import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
-import com.rheinmetal.tianshu.client.api.text.UiText;
 
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public final class InternalModuleDiagnosticsSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private final DiagnosticsSettingsAccess config;
+public abstract class ModuleDiagnosticsSettingsRegistrySource implements TianshuSettingsRegistrySource {
+    private final String moduleId;
+    private final String translationPrefix;
+    private final int order;
+    private final Supplier<Boolean> getter;
+    private final Consumer<Boolean> setter;
+    private final Runnable configSave;
 
-    public InternalModuleDiagnosticsSettingsRegistrySource(DiagnosticsSettingsAccess config) {
-        this.config = Objects.requireNonNull(config, "config");
-    }
-
-    @Override
-    public void contribute(TianshuSettingsRegistry registry, ModuleSettingsContext context) {
-        if (registry == null || context == null) {
-            return;
-        }
-        register(registry, context, "module.ir", "ir", 15, config::isIrDiagnosticsEnabled, config::setIrDiagnosticsEnabled);
-        register(registry, context, "module.ia", "ia", 40, config::isIaDiagnosticsEnabled, config::setIaDiagnosticsEnabled);
-    }
-
-    private void register(
-            TianshuSettingsRegistry registry,
-            ModuleSettingsContext context,
+    protected ModuleDiagnosticsSettingsRegistrySource(
             String moduleId,
             String translationPrefix,
             int order,
             Supplier<Boolean> getter,
-            Consumer<Boolean> setter
+            Consumer<Boolean> setter,
+            Runnable configSave
     ) {
-        DiagnosticsSession session = new DiagnosticsSession(moduleId, getter, setter, translationPrefix, config::save);
+        this.moduleId = Objects.requireNonNull(moduleId, "moduleId");
+        this.translationPrefix = Objects.requireNonNull(translationPrefix, "translationPrefix");
+        this.order = order;
+        this.getter = Objects.requireNonNull(getter, "getter");
+        this.setter = Objects.requireNonNull(setter, "setter");
+        this.configSave = Objects.requireNonNull(configSave, "configSave");
+    }
+
+    @Override
+    public final void contribute(TianshuSettingsRegistry registry, ModuleSettingsContext context) {
+        if (registry == null || context == null) {
+            return;
+        }
+        DiagnosticsSession session = new DiagnosticsSession(moduleId, translationPrefix, getter, setter, configSave);
         context.settingsSessions().registerOrReplace(session);
         registry.registerCategory(ModuleSettingsCategory.builder(moduleId)
                 .title(module(translationPrefix, "title"))
@@ -50,7 +54,7 @@ public final class InternalModuleDiagnosticsSettingsRegistrySource implements Ti
                 .build());
     }
 
-    private void buildPanel(ModuleSettingsPanel panel, DiagnosticsSession session) {
+    private static void buildPanel(ModuleSettingsPanel panel, DiagnosticsSession session) {
         panel.toggles(session.moduleId() + ".diagnostics", common("section.diagnostics"), toggles -> toggles
                 .toggle(session.moduleId() + ".diagnostics.enabled", common("option.diagnostics_enabled"), session.enabled));
     }
@@ -69,7 +73,13 @@ public final class InternalModuleDiagnosticsSettingsRegistrySource implements Ti
         private final Runnable configSave;
         private final MutableSettingsValue<Boolean> enabled;
 
-        private DiagnosticsSession(String moduleId, Supplier<Boolean> getter, Consumer<Boolean> setter, String translationPrefix, Runnable configSave) {
+        private DiagnosticsSession(
+                String moduleId,
+                String translationPrefix,
+                Supplier<Boolean> getter,
+                Consumer<Boolean> setter,
+                Runnable configSave
+        ) {
             this.moduleId = moduleId;
             this.translationPrefix = translationPrefix;
             this.configSave = configSave;

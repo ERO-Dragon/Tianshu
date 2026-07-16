@@ -48,6 +48,22 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         return UiText.key("tianshu.gui.common." + key, args);
     }
 
+    static SettingsValidationResult validateModelSelection(boolean enabled, String selectedModelName, AsrModelInfo selected, boolean installed) {
+        if (!enabled) {
+            return SettingsValidationResult.successful();
+        }
+        if (selectedModelName == null || selectedModelName.isBlank()) {
+            return SettingsValidationResult.failure(asr("validation.model_required"));
+        }
+        if (selected == null) {
+            return SettingsValidationResult.failure(asr("validation.invalid_model"));
+        }
+        if (!installed) {
+            return SettingsValidationResult.failure(asr("validation.model_not_installed"));
+        }
+        return SettingsValidationResult.successful();
+    }
+
     private final TianshuCoreManager coreManager;
     private final AsrSettingsAccess config;
     private final IAudioBridge audioBridge;
@@ -210,14 +226,13 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         @Override
         public SettingsValidationResult validate() {
-            if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || resolveModel(selectedModelName.get()) == null)) {
-                return SettingsValidationResult.failure(asr("validation.invalid_model"));
-            }
             AsrModelInfo selected = resolveModel(selectedModelName.get());
-            if (enabled.get() && selected != null && !isDownloaded(selected)) {
-                return SettingsValidationResult.failure(asr("validation.model_not_installed"));
-            }
-            return SettingsValidationResult.successful();
+            return validateModelSelection(
+                    enabled.get(),
+                    selectedModelName.get(),
+                    selectedModelName.valid() ? selected : null,
+                    selected != null && isDownloaded(selected)
+            );
         }
 
         @Override

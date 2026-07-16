@@ -250,6 +250,7 @@
   "tianshu.gui.asr.lang.tr": "Turkish",
   "tianshu.gui.asr.model.selected": "%s (%s)",
   "tianshu.gui.asr.validation.invalid_model": "Please select a valid ASR model",
+  "tianshu.gui.asr.validation.model_required": "Download and select an ASR model first",
   "tianshu.gui.asr.validation.model_not_installed": "Please select an installed ASR model",
   "tianshu.gui.asr.message.saved": "ASR settings saved",
   "tianshu.gui.asr.message.model_not_downloaded": "The recognition model is not downloaded",

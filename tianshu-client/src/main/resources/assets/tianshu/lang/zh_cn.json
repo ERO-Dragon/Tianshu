@@ -250,6 +250,7 @@
   "tianshu.gui.asr.lang.tr": "土耳其语",
   "tianshu.gui.asr.model.selected": "%s（%s）",
   "tianshu.gui.asr.validation.invalid_model": "请选择有效的 ASR 模型",
+  "tianshu.gui.asr.validation.model_required": "请先下载并选择 ASR 模型",
   "tianshu.gui.asr.validation.model_not_installed": "请选择已安装的 ASR 模型",
   "tianshu.gui.asr.message.saved": "ASR 设置已保存",
   "tianshu.gui.asr.message.model_not_downloaded": "识别模型尚未下载",
