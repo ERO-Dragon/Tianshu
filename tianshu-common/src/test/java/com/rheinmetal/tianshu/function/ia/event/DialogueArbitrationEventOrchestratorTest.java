@@ -59,6 +59,11 @@ class DialogueArbitrationEventOrchestratorTest {
         private final List<DialogueSessionEventPayload> events = new ArrayList<>();
 
         @Override
+        public boolean hasCapabilityProvider(String capabilityId) {
+            return true;
+        }
+
+        @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
             events.add(payload);
             return null;

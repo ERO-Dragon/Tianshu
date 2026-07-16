@@ -43,10 +43,8 @@ class DialogueAttentionMemoryTest {
                 moduleId,
                 participantId,
                 1,
-                List.of(),
-                List.of(),
-                List.of(),
                 DialogueClaimProfile.DISABLED,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
                 "ROUTE." + participantId,
                 DialogueTurnProcessingPolicy.DEFAULT
         );

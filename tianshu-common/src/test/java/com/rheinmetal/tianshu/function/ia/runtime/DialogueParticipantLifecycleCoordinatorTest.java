@@ -41,8 +41,9 @@ class DialogueParticipantLifecycleCoordinatorTest {
         assertTrue(registry.find("module.owner", "participant.two").isPresent());
         assertEquals(DialogueSessionState.RELEASED, store.find(firstSession.sessionId()).orElseThrow().state());
         assertEquals(DialogueSessionState.CLAIMED, store.find(secondSession.sessionId()).orElseThrow().state());
-        assertEquals(1, port.events.size());
+        assertEquals(2, port.events.size());
         assertEquals(firstSession.sessionId(), port.events.get(0).sessionId());
+        assertEquals(com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, port.events.get(1).eventType());
     }
 
     @Test
@@ -69,7 +70,7 @@ class DialogueParticipantLifecycleCoordinatorTest {
         assertEquals(DialogueSessionState.RELEASED, store.find(firstSession.sessionId()).orElseThrow().state());
         assertEquals(DialogueSessionState.RELEASED, store.find(secondSession.sessionId()).orElseThrow().state());
         assertEquals(DialogueSessionState.CLAIMED, store.find(otherSession.sessionId()).orElseThrow().state());
-        assertEquals(2, port.events.size());
+        assertEquals(4, port.events.size());
     }
 
     private DialogueParticipantLifecycleCoordinator coordinator(DialogueParticipantRegistry registry, DialogueSessionStore store, RecordingPort port) {
@@ -77,11 +78,16 @@ class DialogueParticipantLifecycleCoordinatorTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, 1, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private static final class RecordingPort implements DialogueProtocolPort {
         private final List<DialogueSessionEventPayload> events = new ArrayList<>();
+
+        @Override
+        public boolean hasCapabilityProvider(String capabilityId) {
+            return true;
+        }
 
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {

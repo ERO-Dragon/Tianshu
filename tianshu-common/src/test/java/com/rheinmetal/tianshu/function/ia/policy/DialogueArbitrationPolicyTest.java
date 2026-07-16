@@ -144,10 +144,10 @@ class DialogueArbitrationPolicyTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, List.of(), List.of(), List.of(), DialogueClaimProfile.DISABLED, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private DialogueParticipantDescriptor defaultOwner() {
-        return new DialogueParticipantDescriptor("default", "module.default", "default", 0, List.of(), List.of(), List.of(), DialogueClaimProfile.DEFAULT_OWNER, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor("default", "module.default", "default", 0, DialogueClaimProfile.DEFAULT_OWNER, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 }

@@ -6,13 +6,13 @@ import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 
 public final class DialoguePresenceContextClient {
     private final IaProtocolAdapter adapter;
@@ -38,7 +38,8 @@ public final class DialoguePresenceContextClient {
             String playerId,
             String userText,
             List<String> requestedFactIds,
-            Completion completion
+            Completion completion,
+            Runnable cancelled
     ) {
         Objects.requireNonNull(completion, "completion");
         if (parent == null || adapter.presenceContextProviderCount() <= 0) {
@@ -58,10 +59,15 @@ public final class DialoguePresenceContextClient {
                 requestedFactIds
         );
         TianshuEnvelope queryEnvelope = adapter.buildPresenceContextQuery(parent, payload);
-        pending.put(queryEnvelope.envelopeId(), new PendingQuery(playerId, completion));
+        PendingQuery pendingQuery = new PendingQuery(playerId, completion, cancelled);
+        pending.put(queryEnvelope.envelopeId(), pendingQuery);
         adapter.registerPresenceContextSnapshotResponse(queryEnvelope.envelopeId(), this::handleResponse);
+        pendingQuery.timeoutHandle = adapter.schedulePresenceTimeout(
+                queryEnvelope.envelopeId(),
+                () -> timeout(queryEnvelope.envelopeId()),
+                Duration.ofMillis(timeoutMillis)
+        );
         adapter.submitPresenceContextQuery(queryEnvelope);
-        scheduleTimeout(queryEnvelope.envelopeId());
     }
 
     public void clear() {
@@ -69,7 +75,8 @@ public final class DialoguePresenceContextClient {
             PendingQuery query = pending.remove(requestEnvelopeId);
             adapter.unregisterPresenceContextResponses(requestEnvelopeId);
             if (query != null) {
-                query.completion().complete(DialogueContextFrame.empty(query.playerId()));
+                query.cancelTimeout("IA_PRESENCE_QUERY_CANCELLED");
+                query.cancelled().run();
             }
         }
     }
@@ -84,6 +91,7 @@ public final class DialoguePresenceContextClient {
             return;
         }
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        query.cancelTimeout("IA_PRESENCE_QUERY_COMPLETED");
         DialogueContextFrame frame = DialogueContextFrame.empty(query.playerId());
         if (envelope.payload() instanceof PresenceContextSnapshotPayload payload && payload.success()) {
             frame = mapper.toFrame(query.playerId(), payload);
@@ -92,10 +100,6 @@ public final class DialoguePresenceContextClient {
         if (context != null) {
             context.complete(envelope.envelopeId());
         }
-    }
-
-    private void scheduleTimeout(String requestEnvelopeId) {
-        CompletableFuture.delayedExecutor(timeoutMillis, TimeUnit.MILLISECONDS).execute(() -> timeout(requestEnvelopeId));
     }
 
     private void timeout(String requestEnvelopeId) {
@@ -111,6 +115,36 @@ public final class DialoguePresenceContextClient {
         void complete(DialogueContextFrame frame);
     }
 
-    private record PendingQuery(String playerId, Completion completion) {
+    private static final class PendingQuery {
+        private final String playerId;
+        private final Completion completion;
+        private final Runnable cancelled;
+        private volatile ProtocolTaskHandle timeoutHandle;
+
+        private PendingQuery(String playerId, Completion completion, Runnable cancelled) {
+            this.playerId = playerId;
+            this.completion = completion;
+            this.cancelled = cancelled == null ? () -> {
+            } : cancelled;
+        }
+
+        private void cancelTimeout(String reason) {
+            ProtocolTaskHandle handle = timeoutHandle;
+            if (handle != null && !handle.isDone()) {
+                handle.cancel(reason);
+            }
+        }
+
+        private String playerId() {
+            return playerId;
+        }
+
+        private Completion completion() {
+            return completion;
+        }
+
+        private Runnable cancelled() {
+            return cancelled;
+        }
     }
 }

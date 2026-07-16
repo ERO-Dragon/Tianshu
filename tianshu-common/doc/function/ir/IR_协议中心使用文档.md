@@ -81,7 +81,7 @@ IR 可能请求 `INTERACTION_CONTEXT` 和 `PLAYER_INVENTORY`，用于命名对�
 
 ## 6. 线程与隐私
 
-- IR handler、索引等待和 Presence 查询不得占用 Minecraft 主线程。
+- IR handler、索引初始化触发和 Presence 查询不得占用 Minecraft 主线程；索引未就绪时解析立即降级，不等待构建完成。
 - 订阅者不得在 `IR_RESULT` handler 中执行阻塞 IO、模型推理或游戏主线程工作。
 - 不要根据 `voiceMatches.moduleId` 绕过 IA 投递正文。
 - 不要自行把玩家正文写入公共日志或私有 debug 文件。

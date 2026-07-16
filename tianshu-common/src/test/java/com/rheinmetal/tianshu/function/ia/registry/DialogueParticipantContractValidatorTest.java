@@ -85,9 +85,8 @@ class DialogueParticipantContractValidatorTest {
                 moduleId,
                 "maid",
                 10,
-                List.of(),
-                List.of(),
-                List.of(),
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
                 capabilityId,
                 DialogueTurnProcessingPolicy.DEFAULT
         );

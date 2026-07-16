@@ -46,6 +46,6 @@ class DialogueParticipantRegistryTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 }

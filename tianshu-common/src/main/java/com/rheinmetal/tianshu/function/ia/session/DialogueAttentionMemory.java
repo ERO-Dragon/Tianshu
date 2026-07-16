@@ -36,7 +36,7 @@ public final class DialogueAttentionMemory {
         if (state == null) {
             return Optional.empty();
         }
-        if (!state.beatsAxAt(nowMillis) || !participantExists(state, participants)) {
+        if (!state.beatsDefaultOwnerAt(nowMillis) || !participantExists(state, participants)) {
             states.remove(key, state);
             return Optional.empty();
         }

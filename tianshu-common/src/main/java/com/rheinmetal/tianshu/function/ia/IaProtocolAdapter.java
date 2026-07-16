@@ -27,7 +27,11 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 
+import java.time.Duration;
 import java.util.EnumSet;
 
 public final class IaProtocolAdapter extends AbstractProtocolAdapter implements DialogueProtocolPort {
@@ -172,6 +176,24 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void unregisterPresenceContextResponses(String requestEnvelopeId) {
         unregisterResponseHandlers(requestEnvelopeId);
+    }
+
+    public ProtocolTaskHandle schedulePresenceTimeout(String requestEnvelopeId, Runnable task, Duration delay) {
+        return runtime().schedule(
+                ProtocolTaskSpec.builder()
+                        .moduleId(MODULE_ID)
+                        .lane(ExecutionLane.SCHEDULED)
+                        .taskId("ia.presence-timeout." + requestEnvelopeId)
+                        .envelopeId(requestEnvelopeId)
+                        .build(),
+                task,
+                delay
+        );
+    }
+
+    @Override
+    public boolean hasCapabilityProvider(String capabilityId) {
+        return runtime().capabilityProviderCount(capabilityId) > 0;
     }
 
     @Override

@@ -91,7 +91,7 @@ IR 不再包含独立 routing policy，也不包含 IA request mapper。发布�
 - 客户端关闭时释放 worker；
 - 读写锁保证解析只读取完整快照。
 
-索引构建和解析不得放入 Minecraft 主线程或 tick 热路径。
+索引构建和解析不得放入 Minecraft 主线程或 tick 热路径。首次解析发现索引未就绪时只触发后台初始化并返回未就绪结果，不同步等待构建完成；后续输入在快照可用后自动获得命名对象增强。
 
 ## 6. Wake Word 与 Extra Word
 

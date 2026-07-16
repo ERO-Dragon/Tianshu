@@ -8,7 +8,7 @@ public record DialogueAttentionState(
         DialogueAttentionDecay decay,
         long updatedAtMillis
 ) {
-    public static final double AX_BASELINE = 0.4D;
+    public static final double DEFAULT_OWNER_BASELINE = 0.4D;
 
     public DialogueAttentionState {
         playerId = requireText(playerId, "playerId");
@@ -25,8 +25,8 @@ public record DialogueAttentionState(
         return clamp(initialAttention - decay.perSecond() * elapsedSeconds);
     }
 
-    public boolean beatsAxAt(long nowMillis) {
-        return attentionAt(nowMillis) > AX_BASELINE;
+    public boolean beatsDefaultOwnerAt(long nowMillis) {
+        return attentionAt(nowMillis) > DEFAULT_OWNER_BASELINE;
     }
 
     public boolean ownedBy(String moduleId, String participantId) {

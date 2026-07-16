@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayl
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 
 public interface DialogueProtocolPort {
+    boolean hasCapabilityProvider(String capabilityId);
+
     TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload);
 
     TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload);

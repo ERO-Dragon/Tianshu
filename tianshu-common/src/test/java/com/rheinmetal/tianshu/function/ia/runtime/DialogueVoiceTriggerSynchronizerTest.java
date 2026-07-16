@@ -67,9 +67,6 @@ class DialogueVoiceTriggerSynchronizerTest {
                 "module.maid",
                 "Maid",
                 10,
-                List.of(),
-                List.of(),
-                List.of(),
                 DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
                         "maid.wake",
                         DialogueAttentionDecay.SLOW,

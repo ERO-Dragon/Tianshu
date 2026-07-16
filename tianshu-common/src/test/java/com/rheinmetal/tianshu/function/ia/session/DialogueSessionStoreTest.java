@@ -78,6 +78,6 @@ class DialogueSessionStoreTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, "owner", 1, List.of(), List.of(), List.of(), "ROUTE", new DialogueTurnProcessingPolicy(1_000L, 2_000L, true));
+        return new DialogueParticipantDescriptor(participantId, moduleId, "owner", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", new DialogueTurnProcessingPolicy(1_000L, 2_000L, true));
     }
 }

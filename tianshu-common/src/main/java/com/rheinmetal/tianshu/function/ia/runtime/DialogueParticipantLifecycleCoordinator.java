@@ -42,6 +42,9 @@ public final class DialogueParticipantLifecycleCoordinator {
         if (released == null || released.isEmpty()) {
             return;
         }
-        released.forEach(session -> eventPublisher.publish(parent, session, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.MODULE_UNLOADED, reasonCode, nowMillis));
+        released.forEach(session -> {
+            eventPublisher.publish(parent, session, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.MODULE_UNLOADED, reasonCode, nowMillis);
+            eventPublisher.publish(parent, session, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.MODULE_UNLOADED, reasonCode, nowMillis);
+        });
     }
 }

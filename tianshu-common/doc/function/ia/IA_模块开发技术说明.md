@@ -127,7 +127,7 @@ TTS 是输出能力，不是仲裁方。
 - 订阅 IR 发布的结构化分析结果，并将其作为标准语音仲裁输入。
 - 为诊断、测试和受信模块保留显式仲裁 capability。
 - 维护可参与对话的 participant 注册表。
-- 基于 wake word、手持物、身上装备、准星目标、交互状态、优先级和 attention 衰减选择 owner。
+- 基于 participant 声明的 claim 条件、claim strength、participant priority、历史 attention 和默认 owner 选择本轮 owner。attention decay 只影响历史 attention 的存续时间，不参与当前 owner 排序。
 - 创建 dialogue session。
 - 维护 session owner、turn id、processing deadline、状态和释放原因。
 - 处理 owner 处理期限延长、主动释放、超时释放。
@@ -275,8 +275,8 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 - 状态广播只发布 session 状态，不附带正文、prompt、response、完整上下文。
 - owner 定向投递只包含处理当前 turn 所需的输入和上下文。
 - 非 owner 只能获得会话状态，不能获得本轮正文。
-- 调试信息默认不包含正文；如开发模式需要查看正文，应显式开启。
-- 日志只记录 request id、session id、owner、状态和原因码，不记录玩家正文。
+- IA 模块诊断默认关闭；关闭时不记录玩家正文。
+- 用户显式开启 IA 模块诊断后，`repairedText` / `normalizedText` 可以作为 `RAW_CONTENT` 进入宿主集中管理的异步诊断落盘链路。普通日志和公共 session event 始终不携带正文。
 
 换句话说，仲裁机关本身就是授权边界。只要消息准备离开仲裁机关内部、发给参与方、UI、日志、诊断或公共 topic，就必须先经过仲裁机关的授权判断。
 
@@ -363,13 +363,13 @@ DialogueArbitrationResultPayload(
 | 字段 | 含义 |
 |---|---|
 | `requestId` | 对应的仲裁请求 ID。 |
-| `sessionId` | 仲裁机关创建或复用的会话 ID。 |
+| `sessionId` | 仲裁机关为当前 IR 最终输入创建的会话 ID。每一轮使用新 session。 |
 | `accepted` | 是否成功找到 owner。 |
 | `ownerModuleId` | 接管模块 ID。 |
 | `ownerParticipantId` | 接管参与方 ID。 |
 | `routeCapability` | 定向投递给 owner 的 capability。能力名由参与方自定义，但必须接收标准 `DIALOGUE_DELIVERY / DialogueDeliveryPayload / COMMAND`。 |
 | `reason` | 接管、拒绝或 owner 变化原因。 |
-| `processingDeadlineMillis` | 当前轮处理期限。该期限只保护本轮异步处理，不影响下一轮 owner 归属。 |
+| `processingDeadlineMillis` | 当前轮处理期限。默认初始窗口为 10 秒，owner 可续期，但绝对不能超过 session 创建时间后 180 秒。该期限只保护本轮异步处理，不影响下一轮 owner 归属。 |
 
 ## 9. 参与方模型
 
@@ -383,9 +383,6 @@ DialogueParticipantDescriptor(
     moduleId,
     displayName,
     priority,
-    supportedIntents,
-    supportedEntityTypes,
-    supportedItemIds,
     claimProfile,
     voiceTriggerGroup,
     routeCapability,
@@ -450,9 +447,9 @@ DialogueClaimRule(
 | `operator` | `ANY` 或 `ALL`，由外部模组决定多个条件的组合方式。 |
 | `conditions` | `WAKE_WORD`、`HELD_ITEM`、`EQUIPPED_ITEM`、`CROSSHAIR_ENTITY`、`NEAREST_ENTITY_WITHIN`、`CROSSHAIR_HIT`、`INTERACTION_KEY`、`SNEAKING`、`INTERACTION_TAG`、`CONTEXT_FACT`。 |
 | `strength` | 硬 claim 强度，当前固定为 `NORMAL` 或 `STRONG` 两档，避免无限参数调优。 |
-| `decay` | 本轮命中后形成的 attention 衰减速度，当前固定为 `FAST` 或 `SLOW` 两档。 |
+| `decay` | 本轮 owner 确定后形成的 attention 衰减速度，当前固定为 `FAST` 或 `SLOW` 两档。它不参与 owner 或 claim 规则的优先级排序。 |
 
-兼容字段 `supportedIntents` 当前会被转换成 `WAKE_WORD + STRONG + SLOW`；`supportedItemIds` 会转换成 `HELD_ITEM/EQUIPPED_ITEM + NORMAL + FAST`；`supportedEntityTypes` 会转换成 `CROSSHAIR_ENTITY + NORMAL + SLOW`。新接入建议直接使用 `DialogueClaimProfile.rules(...)`。
+claim profile 是 participant 对“什么情况下希望承接输入”的主观声明，`ANY` 相当于条件 OR，`ALL` 相当于条件 AND。IR 和 Presence 提供命中词、物品、实体、交互状态及 context fact 等客观输入，IA 只负责用这些客观输入计算 participant 声明的谓词，不替模块推断业务意图。
 
 IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `voiceTriggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `voiceTriggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 ASR/IR 对专有名词的识别和修复，但不会让该模块在 IA 中产生 claim。
 
@@ -529,10 +526,11 @@ session 可以因为以下原因释放：
 
 1. 每轮输入都创建新的 claimed session。
 2. 如果本轮存在硬 claim，IA 只在这些硬 claim 之间按 `strength`、`priority` 和稳定 tie-break 选择 owner。
-3. 如果本轮没有硬 claim，IA 才检查上一轮 owner 的 attention 是否仍高于 AX baseline。
+3. 如果本轮没有硬 claim，IA 才检查上一轮 owner 的 attention 是否仍高于 default owner baseline。
 4. attention 高于 default owner baseline 时继续交给上一轮 owner；否则选择 `DEFAULT_OWNER` participant，当前由 AX 注册。
-5. 新 owner 与上一轮 active session 不同时，IA 释放旧 session 并发布 `conversation.owner_changed`、`conversation.released` / `conversation.session_finished` 等状态事件。
-6. 当前轮 processing deadline 只用于回收超时异步处理，不参与下一轮归属判断。
+5. 每个新 IR turn 都会抢占并结束上一轮 active session；只有 owner 确实变化时才额外发布 `conversation.owner_changed`。
+6. 当前轮 processing deadline 默认是 10 秒，owner 可按实际异步处理需要续期，但绝对截止时间固定为 session 创建时间后 180 秒，反复续期不能绕过该上限。
+7. claim rule 的 decay 不参与 owner 排序，只决定本轮硬 claim 留下的 attention 可以延续多久。
 
 attention 是隐性状态，不向用户暴露具体数值。面向 UI 的状态只发布“当前如果说话，会被哪个模块承接”的 owner preview。
 
@@ -553,20 +551,21 @@ attention 是隐性状态，不向用户暴露具体数值。面向 UI 的状态
 | TTS 调用 | `AUDIO_IO` / `IO` | 由 TTS 模块自身管理。 |
 | UI 状态展示 | `MAIN` | 只投递状态，不做重逻辑。 |
 | owner preview refresh | `SCHEDULED` | 通过协议中心定时 lane 刷新 attention 衰减后的当前预览，只在 owner 变化时发布。 |
+| Presence query timeout | `SCHEDULED` | 由协议中心持有可取消的超时任务；响应、stop 或 destroy 时取消。 |
 
 仲裁机关只表达任务意图和边界，不直接控制底层线程。IA 内部需要延迟或定时执行时，也应使用 `ModuleExecutionAccess.schedule(...)` 这类协议中心受控执行入口，不能自建私有线程池或绕开模块宿主生命周期。
 
 ### 12.1 生命周期与世界会话边界
 
-IA 的 owner preview refresh 由 IA 内部 coordinator 表达生命周期语义，但实际线程仍由协议中心 `SCHEDULED` lane 持有。coordinator 保证同一 IA 实例只有一条刷新链，并用调度代际隔离重复 `prepare`、`stop -> prepare` 和已经排队的旧回调。`stop` 返回前会等待已经开始的短小 preview 内存态刷新结束，并取消其下一次续期；这里不包含模型推理、网络等待或 Minecraft 主线程工作。
+IA 的 owner preview refresh 和 Presence query timeout 都由 IA 表达生命周期语义，但实际线程由协议中心 `SCHEDULED` lane 持有。IA 为每次 runtime 激活分配递增 generation；`stop`、`destroy` 或重复 `prepare` 会先关闭旧 generation、取消 pending Presence/preview 任务，旧响应和已经排队的回调只能结束协议上下文，不能继续创建 session 或发送 delivery。这里不包含模型推理、网络等待或 Minecraft 主线程工作。
 
 单次 refresh 抛出异常时，该调度代际停止并由 Protocol task handle 保留 failure cause，不以固定周期持续制造失败；后续显式 prepare 可以重新启动新的调度代际。
 
 IA 的 runtime 资源遵循以下边界：
 
-- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、标记仲裁能力 ready，并启动单条 preview refresh 链。ready 表示 IA 服务可以接收并给出仲裁结论，不要求当前已经存在 owner；participant 为空时直接以 `NO_PARTICIPANT` 拒绝，不查询 Presence、不创建会话，也不触发 LLM/TTS。
+- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、激活新的 runtime generation、标记仲裁能力 ready，并启动单条 preview refresh 链。ready 表示 IA 服务可以接收并给出仲裁结论，不要求当前已经存在 owner；participant 为空时直接以 `NO_PARTICIPANT` 拒绝，不查询 Presence、不创建 active session，也不触发 delivery、LLM 或 TTS。IA 可以保留终态 `REJECTED` 审计记录。
 - 重复 `prepare` 不增加第二条 refresh 链；若 runtime context 发生替换，先解绑旧 voice registry 和旧 capability 状态。
-- `stop` 停止 refresh、解绑 voice trigger，并撤销 `ARBITRATION` ready 状态。
+- `stop` 先关闭当前 runtime generation，取消 pending Presence/preview 任务，再解绑 voice trigger 并撤销 `ARBITRATION` ready 状态。
 - `destroy` 可重复执行，并清空 participant、session、attention、冻结上下文、Presence pending 请求和 owner preview。
 - Protocol 已关闭时，`stop` / `destroy` 仍只做幂等资源释放，不尝试创建替代线程或兼容分支。
 
@@ -662,12 +661,12 @@ common DTO 可以表达：
 |---|---|
 | Participant Registry | 管理参与方注册、注销、能力描述、可见性和生命周期绑定。 |
 | Claim Engine | 根据 participant 的 claim profile 和当前输入快照收集硬 claim。 |
-| Arbitration Policy | 按硬 claim、priority、attention 衰减和默认 owner 决定本轮 owner。 |
+| Arbitration Policy | 按硬 claim strength、participant priority、历史 attention 和默认 owner 决定本轮 owner；decay 不参与排序。 |
 | Session Store | 维护 session 状态、owner、turn、processing deadline、释放原因和审计信息。 |
 | Access Control | 校验模块是否有权读取正文、控制 session、调用 LLM/TTS 或接收事件。 |
 | Message Gateway | 对入站和出站正文消息做授权检查和定向投递，拒绝旁路访问。 |
 | Event Publisher | 发布不含正文的会话状态事件。 |
-| Lifecycle Sweeper | 处理超时、owner 失效、玩家离线、世界切换和模块卸载。 |
+| Lifecycle Sweeper | 只回收 processing deadline 已过期的 active session；participant/module 注销由 Participant Lifecycle Coordinator 处理，世界切换由 Core 的 stop/destroy 生命周期处理。 |
 | Diagnostics Snapshot | 提供仅调试可见的脱敏快照，不暴露正文和完整上下文。 |
 
 推荐内部结构：

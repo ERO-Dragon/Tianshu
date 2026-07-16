@@ -27,7 +27,9 @@ class DialogueClaimEngineTest {
     @Test
     void wakeWordCreatesStrongSlowHardClaim() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor participant = descriptor("maid", 7, List.of("酒狐"), List.of(), List.of());
+        DialogueParticipantDescriptor participant = descriptor("maid", 7, DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                "maid.wake_word", DialogueAttentionDecay.SLOW, DialogueClaimCondition.wakeWord("酒狐")
+        )));
 
         List<DialogueClaim> claims = engine.collectLocalClaims(List.of(participant), request(List.of("酒狐"), List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
 
@@ -37,13 +39,17 @@ class DialogueClaimEngineTest {
         assertEquals(DialogueClaimStrength.STRONG, claim.strength());
         assertEquals(DialogueAttentionDecay.SLOW, claim.decay());
         assertEquals(7, claim.priority());
-        assertEquals("hard_claim:legacy.wake_word", claim.reason());
+        assertEquals("hard_claim:maid.wake_word", claim.reason());
     }
 
     @Test
     void legacyItemUsesGameStateOnlyAndIgnoresMatchedItemText() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor machine = descriptor("machine", 3, List.of(), List.of(), List.of("mod:wrench"));
+        DialogueParticipantDescriptor machine = descriptor("machine", 3, DialogueClaimProfile.rules(DialogueClaimRule.anyNormal(
+                "machine.item",
+                DialogueClaimCondition.heldItem("mod:wrench"),
+                DialogueClaimCondition.equippedItem("mod:wrench")
+        )));
 
         List<DialogueClaim> textOnlyClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of("mod:wrench"), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
         List<DialogueClaim> heldClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of(), new DialogueInteractionHints("mod:wrench", false, false, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player")));
@@ -52,7 +58,7 @@ class DialogueClaimEngineTest {
         assertEquals(1, heldClaims.size());
         assertEquals(DialogueClaimStrength.NORMAL, heldClaims.get(0).strength());
         assertEquals(DialogueAttentionDecay.FAST, heldClaims.get(0).decay());
-        assertEquals("hard_claim:legacy.item", heldClaims.get(0).reason());
+        assertEquals("hard_claim:machine.item", heldClaims.get(0).reason());
     }
 
     @Test
@@ -106,6 +112,27 @@ class DialogueClaimEngineTest {
         assertEquals(DialogueClaimStrength.STRONG, claims.get(0).strength());
         assertEquals(DialogueAttentionDecay.FAST, claims.get(0).decay());
         assertEquals("hard_claim:create.held_tool,create.active_tool", claims.get(0).reason());
+    }
+
+    @Test
+    void equalStrengthRulesKeepDeclarationOrderInsteadOfUsingAttentionDecay() {
+        DialogueClaimEngine engine = new DialogueClaimEngine();
+        DialogueParticipantDescriptor participant = descriptor(
+                "assistant",
+                1,
+                DialogueClaimProfile.rules(
+                        DialogueClaimRule.any("first", DialogueClaimStrength.NORMAL, DialogueAttentionDecay.FAST, DialogueClaimCondition.interactionKey()),
+                        DialogueClaimRule.any("second", DialogueClaimStrength.NORMAL, DialogueAttentionDecay.SLOW, DialogueClaimCondition.interactionKey())
+                )
+        );
+
+        List<DialogueClaim> claims = engine.collectLocalClaims(
+                List.of(participant),
+                request(List.of(), List.of(), new DialogueInteractionHints("", false, true, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player"))
+        );
+
+        assertEquals(1, claims.size());
+        assertEquals(DialogueAttentionDecay.FAST, claims.get(0).decay());
     }
 
     @Test
@@ -299,12 +326,8 @@ class DialogueClaimEngineTest {
         assertEquals(List.of("key", "value"), claims.stream().map(DialogueClaim::participantId).sorted().toList());
     }
 
-    private DialogueParticipantDescriptor descriptor(String participantId, int priority, List<String> wakeWords, List<String> entityTypes, List<String> itemIds) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, wakeWords, entityTypes, itemIds, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
-    }
-
     private DialogueParticipantDescriptor descriptor(String participantId, int priority, DialogueClaimProfile claimProfile) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, List.of(), List.of(), List.of(), claimProfile, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, claimProfile, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private DialogueArbitrationInput request(List<String> wakeWords, List<String> itemIds, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {

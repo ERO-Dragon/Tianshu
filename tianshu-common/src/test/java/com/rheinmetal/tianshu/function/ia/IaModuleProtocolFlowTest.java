@@ -432,10 +432,8 @@ class IaModuleProtocolFlowTest {
                 moduleId,
                 participantId,
                 priority,
-                List.of(),
-                List.of(),
-                List.of(),
                 profile,
+                DialogueVoiceTriggerGroup.EMPTY,
                 routeCapability,
                 DialogueTurnProcessingPolicy.DEFAULT
         );
@@ -447,9 +445,6 @@ class IaModuleProtocolFlowTest {
                 moduleId,
                 participantId,
                 priority,
-                List.of(),
-                List.of(),
-                List.of(),
                 profile,
                 voiceTriggerGroup,
                 routeCapability,

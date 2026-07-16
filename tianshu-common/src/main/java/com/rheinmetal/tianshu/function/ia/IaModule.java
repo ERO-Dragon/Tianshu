@@ -64,6 +64,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class IaModule implements TianshuManagedModule {
     private static final Duration OWNER_PREVIEW_REFRESH_INTERVAL = Duration.ofMillis(500L);
@@ -93,7 +94,9 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueVoiceTriggerSynchronizer voiceTriggerSynchronizer;
     private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
     private final IrResultArbitrationMapper irResultMapper;
+    private final AtomicLong runtimeGeneration = new AtomicLong(1L);
     private ModuleRuntimeContext runtimeContext;
+    private volatile boolean runtimeAccepting = true;
     private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
 
     public IaModule(ModuleRuntimeAccess runtime) {
@@ -156,10 +159,12 @@ public final class IaModule implements TianshuManagedModule {
     @Override
     public synchronized void prepare(ModuleRuntimeContext context) {
         ModuleRuntimeContext nextContext = Objects.requireNonNull(context, "context");
-        if (runtimeContext != null && runtimeContext != nextContext) {
+        if (runtimeContext != null) {
             deactivateRuntime();
         }
         runtimeContext = nextContext;
+        runtimeGeneration.incrementAndGet();
+        runtimeAccepting = true;
         diagnostics = nextContext.diagnostics();
         voiceTriggerSynchronizer.bind(nextContext.voiceResources(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
@@ -186,6 +191,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void deactivateRuntime() {
+        runtimeAccepting = false;
+        runtimeGeneration.incrementAndGet();
+        presenceContextClient.clear();
         ownerPreviewRefreshCoordinator.stop();
         voiceTriggerSynchronizer.unbind();
         if (runtimeContext != null) {
@@ -195,6 +203,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleParticipantRegister(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof DialogueParticipantRegisterPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue participant payload is invalid", null);
             return;
@@ -211,6 +222,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleParticipantUnregister(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof DialogueParticipantUnregisterPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue participant unregister payload is invalid", null);
             return;
@@ -227,6 +241,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleArbitration(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof DialogueArbitrationRequestPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue arbitration payload is invalid", null);
             return;
@@ -235,6 +252,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleIrResult(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof IrResultPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "IR result payload is invalid", null);
             return;
@@ -247,11 +267,15 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void processArbitration(TianshuEnvelope envelope, ProtocolContext context, DialogueArbitrationRequestPayload payload) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         long now = System.currentTimeMillis();
         lifecycleSweeper.sweep(envelope, now);
         if (payload.expiredAt(now)) {
             DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);
             eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_REJECTED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
             respondArbitrationResultIfRequested(envelope, rejectedResult(payload, rejected, "REQUEST_EXPIRED"));
             context.complete(envelope.envelopeId());
             return;
@@ -272,6 +296,7 @@ public final class IaModule implements TianshuManagedModule {
             continueArbitration(envelope, context, payload, frozenContext.get(), now);
             return;
         }
+        long generation = runtimeGeneration.get();
         requestPresenceContext(
                 envelope,
                 "IA.arbitration." + payload.requestId(),
@@ -280,7 +305,14 @@ public final class IaModule implements TianshuManagedModule {
                 payload.playerId(),
                 payload.repairedText(),
                 participants,
-                frame -> continueArbitration(envelope, context, payload, frame, System.currentTimeMillis())
+                frame -> {
+                    if (!isRuntimeGenerationActive(generation)) {
+                        context.complete(envelope.envelopeId());
+                        return;
+                    }
+                    continueArbitration(envelope, context, payload, frame, System.currentTimeMillis());
+                },
+                () -> context.complete(envelope.envelopeId())
         );
     }
 
@@ -291,10 +323,14 @@ public final class IaModule implements TianshuManagedModule {
             DialogueContextFrame contextFrame,
             long now
     ) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         lifecycleSweeper.sweep(envelope, now);
         if (payload.expiredAt(now)) {
             DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);
             eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_REJECTED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
             respondArbitrationResultIfRequested(envelope, rejectedResult(payload, rejected, "REQUEST_EXPIRED"));
             context.complete(envelope.envelopeId());
             return;
@@ -321,6 +357,7 @@ public final class IaModule implements TianshuManagedModule {
             publishOwnerPreviewIfChanged(envelope, emptyPreview(payload.playerId(), now));
             DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);
             eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_REJECTED, DialogueReleaseReason.REJECTED, decision.reason(), now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.REJECTED, decision.reason(), now);
             respondArbitrationResultIfRequested(envelope, rejectedResult(payload, rejected, decision.reason()));
             context.complete(envelope.envelopeId());
             return;
@@ -334,6 +371,7 @@ public final class IaModule implements TianshuManagedModule {
         if (!deliveryDecision.allowed()) {
             DialogueSession released = sessionStore.release(session.sessionId(), DialogueReleaseReason.ACCESS_DENIED, now);
             eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.ACCESS_DENIED, deliveryDecision.reasonCode(), now);
+            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.ACCESS_DENIED, deliveryDecision.reasonCode(), now);
             context.fail(envelope.envelopeId(), deliveryDecision.reasonCode(), deliveryDecision.message(), null);
             return;
         }
@@ -343,6 +381,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof AsrSpeechActivityPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "ASR speech activity payload is invalid", null);
             return;
@@ -350,6 +391,7 @@ public final class IaModule implements TianshuManagedModule {
         long now = payload.occurredAtMillis() > 0L ? payload.occurredAtMillis() : System.currentTimeMillis();
         if (payload.speaking()) {
             List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+            long generation = runtimeGeneration.get();
             requestPresenceContext(
                     envelope,
                     "IA.speech." + payload.sessionId(),
@@ -358,7 +400,13 @@ public final class IaModule implements TianshuManagedModule {
                     "",
                     "",
                     participants,
-                    frame -> contextFreezeStore.freeze(payload.sessionId(), frame, now)
+                    frame -> {
+                        if (isRuntimeGenerationActive(generation)) {
+                            contextFreezeStore.freeze(payload.sessionId(), frame, now);
+                        }
+                    },
+                    () -> {
+                    }
             );
         } else {
             contextFreezeStore.markEnded(payload.sessionId(), now);
@@ -384,7 +432,8 @@ public final class IaModule implements TianshuManagedModule {
             String playerId,
             String userText,
             List<DialogueParticipantDescriptor> participants,
-            DialoguePresenceContextClient.Completion completion
+            DialoguePresenceContextClient.Completion completion,
+            Runnable cancelled
     ) {
         presenceContextClient.request(
                 parent,
@@ -394,8 +443,23 @@ public final class IaModule implements TianshuManagedModule {
                 playerId,
                 userText,
                 presenceFactPlanner.plan(participants),
-                completion
+                completion,
+                cancelled
         );
+    }
+
+    private boolean rejectWhenInactive(TianshuEnvelope envelope, ProtocolContext context) {
+        if (runtimeAccepting) {
+            return false;
+        }
+        if (context != null && envelope != null) {
+            context.complete(envelope.envelopeId());
+        }
+        return true;
+    }
+
+    private boolean isRuntimeGenerationActive(long generation) {
+        return runtimeAccepting && runtimeGeneration.get() == generation;
     }
 
     private DialogueContextFrame withPlayerId(DialogueContextFrame frame, String playerId) {
@@ -474,6 +538,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleSessionControl(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof DialogueSessionControlPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue session control payload is invalid", null);
             return;
@@ -506,7 +573,11 @@ public final class IaModule implements TianshuManagedModule {
                 context.fail(envelope.envelopeId(), "SESSION_PROCESSING_EXTENSION_NOT_ALLOWED", "Dialogue session owner does not allow processing extension", null);
                 return;
             }
-            DialogueSession extended = sessionStore.extendProcessing(session.sessionId(), now, owner.get().turnProcessingPolicy().extendDeadlineAt(now, payload.requestedProcessingMillis()));
+            DialogueSession extended = sessionStore.extendProcessing(
+                    session.sessionId(),
+                    now,
+                    owner.get().turnProcessingPolicy().extendDeadlineAt(session.createdAtMillis(), now, payload.requestedProcessingMillis())
+            );
             eventPublisher.publish(envelope, extended, DialogueSessionEventType.CONVERSATION_CLAIMED, null, "PROCESSING_EXTENDED", now);
         } else if (payload.action() == DialogueSessionControlAction.INTERRUPT_ACK) {
             DialogueSession interrupted = sessionStore.interrupting(session.sessionId(), now);
@@ -521,6 +592,9 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleLlmUsageAuthorization(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
         if (!(envelope.payload() instanceof DialogueLlmUsageAuthorizationRequestPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue LLM usage authorization payload is invalid", null);
             return;

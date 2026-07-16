@@ -24,6 +24,9 @@ public final class DialogueMessageGateway {
         if (!decision.allowed()) {
             return decision;
         }
+        if (!protocolPort.hasCapabilityProvider(owner.routeCapability())) {
+            return DialogueAccessDecision.deny("OWNER_CAPABILITY_UNAVAILABLE", "Dialogue owner capability is not currently available");
+        }
         protocolPort.deliverToCapability(parent, owner.routeCapability(), DialogueDeliveryPayload.from(session.sessionId(), input));
         return DialogueAccessDecision.allow();
     }

@@ -144,9 +144,6 @@ public final class DialogueClaimEngine {
     }
 
     private static Comparator<DialogueClaimRule> ruleComparator() {
-        return Comparator
-                .comparing(DialogueClaimRule::strength)
-                .thenComparing(rule -> rule.decay() == null ? 0.0D : -rule.decay().perSecond())
-                .thenComparing(DialogueClaimRule::ruleId, Comparator.reverseOrder());
+        return Comparator.comparing(DialogueClaimRule::strength);
     }
 }

@@ -33,7 +33,7 @@ owner 释放 session 或延长当前轮处理期限
 IA 负责：
 
 - 管理 dialogue participant 注册表。
-- 根据 IR 输入、IA 捕获的轻量上下文、硬 claim、priority、attention 衰减和默认 owner 选择本轮 owner。当前默认 owner 由 AX 注册。
+- 根据 participant 声明的 claim 条件、claim strength、priority、历史 attention 和默认 owner 选择本轮 owner。attention decay 只决定历史 attention 的持续时间，不参与本轮 owner 排序。当前默认 owner 由 AX 注册。
 - 创建和维护 dialogue session。
 - 记录 session owner、turn、processing deadline、状态和释放原因。
 - 将对话正文定向投递给当前 owner。
@@ -73,9 +73,6 @@ DialogueParticipantDescriptor(
     String moduleId,
     String displayName,
     int priority,
-    List<String> supportedIntents,
-    List<String> supportedEntityTypes,
-    List<String> supportedItemIds,
     DialogueClaimProfile claimProfile,
     DialogueVoiceTriggerGroup voiceTriggerGroup,
     String routeCapability,
@@ -90,14 +87,11 @@ DialogueParticipantDescriptor(
 | `participantId` | 模组内部稳定参与方 ID，例如 `maid.default`、`npc.villager_chat`。 |
 | `moduleId` | 模组 ID，必须和后续 LLM 请求中的 requester module 一致。 |
 | `displayName` | 面向 UI 或诊断的显示名。 |
-| `priority` | 基础优先级，越高越容易在相近匹配下胜出。 |
-| `supportedIntents` | 兼容字段，当前按 wake word 处理，例如 `酒狐`、`maid`、`create`。新接入建议使用 `DialogueClaimProfile.rules(...)` 显式声明规则。 |
-| `supportedEntityTypes` | 支持的实体类型 ID。 |
-| `supportedItemIds` | 支持的物品 ID。 |
+| `priority` | participant 基础优先级，只在多个 participant 的 claim strength 相同时参与比较。 |
 | `claimProfile` | 参与 IA 仲裁的硬命中规则。只有 `WAKE_WORD` 条件会作为仲裁 wake word；`extraWords` 不参与 IA claim。 |
 | `voiceTriggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
 | `routeCapability` | IA 选中该 participant 后投递正文的 capability。能力名由模块自定义，但能力契约必须接收标准 `DialogueDeliveryPayload`。 |
-| `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理的最大时间，不决定下一轮归属。 |
+| `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理，不决定下一轮归属。默认初始窗口为 10 秒，默认绝对上限为 session 创建后 180 秒。 |
 
 如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `VoiceTriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `VoiceTriggerRegistration`。
 
@@ -131,7 +125,7 @@ PacketType.COMMAND
 
 `DIALOGUE_ARBITRATE` 是 IA 保留给诊断、测试和受信模块的显式服务端口，不是标准 IR 链路。只有确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.DIALOGUE_ARBITRATION_RESULT` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动提交仲裁请求或消费仲裁结果。
 
-IA capability ready 只表示仲裁服务可响应，不表示已经注册了 owner。当前没有 participant 时，`REQUEST` 返回 `accepted=false / reason=NO_PARTICIPANT`；普通 COMMAND 同样结束为拒绝，不产生玩家提示、Presence 查询、对话 delivery、LLM 或 TTS 请求。
+IA capability ready 只表示仲裁服务可响应，不表示已经注册了 owner。当前没有 participant 时，`REQUEST` 返回 `accepted=false / reason=NO_PARTICIPANT`；普通 COMMAND 同样结束为拒绝，不产生玩家提示、Presence 查询、对话 delivery、LLM 或 TTS 请求。IA 内部可以为诊断保留终态 `REJECTED` 审计记录，但不会形成 active session。
 
 ## 4. 注册 delivery capability
 
@@ -147,7 +141,7 @@ PacketType.COMMAND
 
 IA 不适配各模组的私有 payload。参与者可以自定义 capability 名，例如 `MAID.DIALOGUE_INPUT`、`CREATE.DIALOGUE_INPUT`，但注册 participant 时 IA 会校验 `routeCapability` 是否已经注册，且是否满足上述公共投递契约。
 
-IA 只有在该 participant 被选为 owner 后，才会把正文定向投递到这个 capability。
+IA 只有在该 participant 被选为 owner 后，才会把正文定向投递到这个 capability。注册时 IA 会验证 capability 契约；真正 delivery 前还会再次确认 provider 仍然存在，provider 已卸载时本轮 session 不会进入 ACTIVE。
 
 `DialogueDeliveryPayload` 包含：
 
@@ -316,6 +310,7 @@ IA 会校验 requester 是否为当前 session owner。非 owner 控制请求会
 
 - 短回复完成后主动 `RELEASE`。
 - 长时间 LLM / TTS / 动作流程中，在 processing deadline 接近过期前 `EXTEND_PROCESSING`。
+- 默认初始处理窗口是 10 秒；续期后的绝对截止时间不能超过 session 创建后 180 秒，重复续期不会无限延长。
 - 收到中断语义时及时 `INTERRUPT_ACK` 或释放。
 - 模块停用、实体消失、玩家离线或世界切换时释放或注销 participant。
 
@@ -328,7 +323,7 @@ ProtocolTopics.DIALOGUE_SESSION_EVENTS
 PayloadType.DIALOGUE_SESSION_EVENT
 ```
 
-事件只包含 session 状态，不包含玩家正文、prompt、LLM response 或完整上下文。
+事件只包含 session 状态，不包含玩家正文、prompt、LLM response 或完整上下文。所有 RELEASED、EXPIRED、REJECTED 等终态都会在对应原因事件后发布一次 `CONVERSATION_SESSION_FINISHED`，订阅方可以统一用它结束 UI 或本地追踪状态。
 
 状态事件适合用于：
 
@@ -381,7 +376,7 @@ PayloadType.DIALOGUE_OWNER_PREVIEW
 
 ### 10.4 退出世界后再次进入
 
-IA 的 participant、owner、session、attention 和 owner preview 都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。
+IA 的 participant、owner、session、attention 和 owner preview 都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。IA stop 会先关闭当前 runtime generation 并取消 pending Presence/preview 任务，因此旧世界响应不能在新世界继续仲裁或投递正文。
 
 因此外部模组必须把 participant 注册视为世界会话启动步骤：
 
@@ -430,7 +425,7 @@ IA 的 participant、owner、session、attention 和 owner preview 都属于当�
 - [ ] 不直接访问 JavaLlamaServer HTTP，不直接订阅或广播底层 LLM 文本。
 - [ ] 理解 `LLM_REQUEST` 的最终输出通过 result/chunk 协议响应返回。
 - [ ] 完成后会释放 session，长任务会延长当前轮处理期限。
-- [ ] 不把正文写入公共 topic、日志或诊断快照。
+- [ ] 不把正文写入公共 topic 或普通日志；只有用户显式开启 IA 模块诊断时，正文才允许进入宿主集中管理的异步诊断落盘链路。
 
 ## 13. 示例身份对齐
 

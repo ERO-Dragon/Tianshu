@@ -40,7 +40,7 @@ class DialogueMessageGatewayTest {
         RecordingPort port = new RecordingPort();
         DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
         DialogueSession session = session();
-        DialogueParticipantDescriptor owner = new DialogueParticipantDescriptor("other", "module.other", "other", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        DialogueParticipantDescriptor owner = new DialogueParticipantDescriptor("other", "module.other", "other", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
 
         DialogueAccessDecision decision = gateway.deliverToOwner(null, session, owner, request());
 
@@ -61,6 +61,19 @@ class DialogueMessageGatewayTest {
         assertEquals("DELIVERY_DENIED", decision.reasonCode());
     }
 
+    @Test
+    void doesNotDeliverWhenOwnerCapabilityIsUnavailable() {
+        RecordingPort port = new RecordingPort();
+        port.capabilityAvailable = false;
+        DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
+
+        DialogueAccessDecision decision = gateway.deliverToOwner(null, session(), owner(), request());
+
+        assertFalse(decision.allowed());
+        assertEquals(0, port.deliverCount);
+        assertEquals("OWNER_CAPABILITY_UNAVAILABLE", decision.reasonCode());
+    }
+
     private DialogueArbitrationInput request() {
         DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("r", "module.ir", "player", "1", 9L, "text", "text", List.of(), List.of(), List.of(), 100L, 200L);
         return DialogueArbitrationInput.from(request, DialogueContextFrame.empty("player"));
@@ -71,7 +84,7 @@ class DialogueMessageGatewayTest {
     }
 
     private DialogueParticipantDescriptor owner() {
-        return new DialogueParticipantDescriptor("participant.owner", "module.owner", "owner", 1, List.of(), List.of(), List.of(), "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor("participant.owner", "module.owner", "owner", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private static final class DenyingPolicy implements DialogueAccessPolicy {
@@ -93,6 +106,12 @@ class DialogueMessageGatewayTest {
 
     private static final class RecordingPort implements DialogueProtocolPort {
         private int deliverCount;
+        private boolean capabilityAvailable = true;
+
+        @Override
+        public boolean hasCapabilityProvider(String capabilityId) {
+            return capabilityAvailable;
+        }
 
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload payload) {
