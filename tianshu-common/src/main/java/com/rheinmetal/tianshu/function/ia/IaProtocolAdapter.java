@@ -22,6 +22,7 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -116,6 +117,20 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
                 EnumSet.of(PacketType.EVENT),
                 Priority.LOW,
                 CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
+    public void subscribeIrResult(EnvelopeHandler handler) {
+        subscribeTopic(
+                ProtocolTopics.IR_RESULT,
+                PayloadType.IR_RESULT,
+                IrResultPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
                 handler,
                 defaults()
         );

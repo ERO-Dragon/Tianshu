@@ -3,11 +3,21 @@ package com.rheinmetal.tianshu.protocol.voice;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VoiceTriggerRegistryTest {
+    @Test
+    void voiceTriggerContractDoesNotDuplicateIaParticipantPriority() {
+        assertFalse(Arrays.stream(VoiceTriggerRegistration.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("priority")));
+        assertFalse(Arrays.stream(com.rheinmetal.tianshu.protocol.payload.VoiceTriggerRegistryPayload.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("priority")));
+    }
+
     @Test
     void reportsExactWordConflictsWithoutRejectingRegistration() {
         VoiceTriggerRegistry registry = new VoiceTriggerRegistry();

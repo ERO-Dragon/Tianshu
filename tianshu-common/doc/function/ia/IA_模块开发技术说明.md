@@ -82,7 +82,7 @@ IR 负责：
 - 文本侧仲裁特征提取
 - 生成可供仲裁机关使用的对话候选输入
 
-仲裁机关不替代 IR。仲裁机关只处理已经经过 IR 修复和结构化之后的对话仲裁请求。
+仲裁机关不替代 IR。标准语音链路中，仲裁机关订阅 IR 发布的结构化分析结果；诊断、测试和受信模块仍可通过显式仲裁 capability 提交请求。
 
 推荐链路：
 
@@ -91,7 +91,7 @@ ASR final text
   ↓
 IR parse / repair / enrich
   ↓
-DialogueArbitrationRequest
+ProtocolTopics.IR_RESULT / IrResultPayload
   ↓
 仲裁机关仲裁
 ```
@@ -124,7 +124,8 @@ TTS 是输出能力，不是仲裁方。
 仲裁机关负责：
 
 - 注册对话仲裁 capability。
-- 接收 IR 之后的对话仲裁请求。
+- 订阅 IR 发布的结构化分析结果，并将其作为标准语音仲裁输入。
+- 为诊断、测试和受信模块保留显式仲裁 capability。
 - 维护可参与对话的 participant 注册表。
 - 基于 wake word、手持物、身上装备、准星目标、交互状态、优先级和 attention 衰减选择 owner。
 - 创建 dialogue session。
@@ -167,15 +168,17 @@ ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE
 
 | capability | 语义 |
 |---|---|
-| `DIALOGUE_ARBITRATE` | IR 或受信模块请求仲裁机关对一次对话输入进行 owner 仲裁。 |
+| `DIALOGUE_ARBITRATE` | 受信模块显式请求仲裁机关对一次对话输入进行 owner 仲裁；标准 IR 链路不使用该 capability。 |
 | `DIALOGUE_PARTICIPANT_REGISTER` | 模块注册自己为可参与对话的候选方。 |
 | `DIALOGUE_SESSION_CONTROL` | 当前 owner 对会话进行处理期限延长、释放、打断确认等控制。 |
 | `DIALOGUE_LLM_USAGE_AUTHORIZE` | LLM 模块查询某个 requester 是否有权基于当前 dialogue session 发起对话型 LLM 使用。仲裁机关只返回允许或拒绝结论，不代理、不转发、不排队任何 LLM 请求。 |
 
-`DIALOGUE_ARBITRATE` 同时接受 `COMMAND` 和 `REQUEST`，但两者语义不同：
+标准语音链路由 IA 订阅 `ProtocolTopics.IR_RESULT` 接收 `IrResultPayload`。IR 发布后即完成职责；IA 负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。
 
-- `COMMAND` 是标准对话链路。IR 把修复、结构化后的候选输入提交给仲裁机关后即完成职责；仲裁机关负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。IR 不等待、也不消费 `DialogueArbitrationResultPayload`。
-- `REQUEST` 只用于确实需要同步获知仲裁结论的诊断、测试或受信模块查询场景。调用方必须为原请求 `envelopeId` 注册 `DIALOGUE_ARBITRATION_RESULT` 响应处理器，并在最终响应、过期、取消或模块停止时清理。
+`DIALOGUE_ARBITRATE` 同时接受 `COMMAND` 和 `REQUEST`，但只作为受信服务端口：
+
+- `COMMAND` 用于无需同步结论的显式仲裁调用。
+- `REQUEST` 用于确实需要同步获知仲裁结论的诊断、测试或受信模块查询场景。调用方必须为原请求 `envelopeId` 注册 `DIALOGUE_ARBITRATION_RESULT` 响应处理器，并在最终响应、过期、取消或模块停止时清理。
 
 仲裁机关的对外协议不应追求“先能跑”的临时收敛，而应从一开始建立稳定边界：仲裁、参与方注册、会话控制、状态事件、权限校验都属于同一套体系。即使某些能力在代码实现中分阶段完成，协议模型也应按成熟形态设计，避免后续反复破坏 payload、capability 和 session 语义。
 
@@ -277,9 +280,26 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 
 换句话说，仲裁机关本身就是授权边界。只要消息准备离开仲裁机关内部、发给参与方、UI、日志、诊断或公共 topic，就必须先经过仲裁机关的授权判断。
 
-## 7. 请求契约
+## 7. 输入契约
 
-概念模型：
+标准 IR topic 输入：
+
+```java
+IrResultPayload(
+    repairedText,
+    normalizedText,
+    voiceMatches,
+    matchedItemIds,
+    matchedEntityTypeIds,
+    turnId,
+    sessionId,
+    timestampMillis
+)
+```
+
+`voiceMatches` 使用 `VoiceTriggerMatch` 保留 moduleId、matchedWakeWords、matchedExtraWords 和 confidence。IA 当前只把 wake word 用于 claim；extra word 是保留字段，不参与仲裁。IR match 顺序和 confidence 不替代 IA 的 claim strength 或 participant priority。
+
+受信 `DIALOGUE_ARBITRATE` capability 输入：
 
 ```java
 DialogueArbitrationRequestPayload(
@@ -290,8 +310,9 @@ DialogueArbitrationRequestPayload(
     sourceSessionId,
     repairedText,
     normalizedText,
-    matchedWakeWords,
+    voiceMatches,
     matchedItemIds,
+    matchedEntityTypeIds,
     timestampMillis,
     expireAtMillis
 )
@@ -302,20 +323,21 @@ DialogueArbitrationRequestPayload(
 | 字段 | 含义 |
 |---|---|
 | `requestId` | 本次仲裁请求 ID。 |
-| `sourceModuleId` | 请求来源，通常是 IR。 |
+| `sourceModuleId` | 显式请求来源模块。 |
 | `playerId` | 玩家标识。 |
 | `turnId` | 上游 turn 编号。 |
 | `sourceSessionId` | 上游 ASR/输入会话 ID，用于关联“开始说话时冻结的上下文快照”。 |
 | `repairedText` | IR 修复后的自然语言文本，例如同音错词修正；不携带物品资源 ID，仅允许进入仲裁机关和候选 owner 判断，不做公共广播。 |
 | `normalizedText` | 归一化文本。 |
-| `matchedWakeWords` | IR 命中的 wake word。 |
+| `voiceMatches` | 结构化语音词命中；IA 从中提取 wake word，保留 extra word 但当前不用于 claim。 |
 | `matchedItemIds` | IR 增强识别出的结构化物品 ID。 |
+| `matchedEntityTypeIds` | IR 增强识别出的结构化实体类型 ID。 |
 | `timestampMillis` | 请求创建时间。 |
 | `expireAtMillis` | 请求过期时间。 |
 
-仲裁请求 payload 只承载 IR 的文本侧结果：修复文本、归一化文本、命中的 wake word 和识别出的物品 ID。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 通过 `PRESENCE.QUERY_CONTEXT` 按需请求，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。
+IR topic 和显式仲裁请求都只承载文本侧结果：修复文本、归一化文本、语音词命中、物品 ID 和实体类型 ID。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 通过 `PRESENCE.QUERY_CONTEXT` 按需请求，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。
 
-IA 会订阅 `INPUT.ASR_SPEECH_ACTIVITY / ASR_SPEECH_ACTIVITY`。当 ASR 发布 `speaking=true` 时，IA 立即通过 Presence 请求并按 `sourceSessionId` 冻结一份上下文快照；当后续 IR 提交带有相同 `sourceSessionId` 的文本仲裁请求时，IA 优先消费这份冻结快照。`speaking=false` 不会立刻删除快照，因为最终文本通常在用户说完后才进入 IR；快照会短时间保留，直到被仲裁消费或过期清理。这样 claim 判断使用的是“用户开始说话时”的手持、装备、准星和按键状态，而不是 ASR 识别完成后的状态。
+IA 会订阅 `INPUT.ASR_SPEECH_ACTIVITY / ASR_SPEECH_ACTIVITY`。当 ASR 发布 `speaking=true` 时，IA 立即通过 Presence 请求并按 sessionId 冻结一份上下文快照；当后续 `IrResultPayload` 带有相同 sessionId 时，IA 优先消费这份冻结快照。`speaking=false` 不会立刻删除快照，因为最终文本通常在用户说完后才进入 IR；快照会短时间保留，直到被仲裁消费或过期清理。这样 claim 判断使用的是“用户开始说话时”的手持、装备、准星和按键状态，而不是 ASR 识别完成后的状态。
 
 实际代码中，payload 不应直接携带 Minecraft 活对象。Presence 只能把世界状态转换成 common 可理解的 ID、快照和引用描述；采集失败或超时时应降级为空 `DialogueContextFrame`，不能阻断仲裁。
 
@@ -680,7 +702,7 @@ DialogueArbiterModule
 ## 17. 推荐执行顺序
 
 ```text
-IR 输出 DialogueArbitrationRequest
+IR 发布 IrResultPayload
   ↓
 仲裁机关检查请求有效性和过期时间
   ↓

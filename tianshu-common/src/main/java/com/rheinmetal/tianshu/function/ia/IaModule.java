@@ -49,6 +49,7 @@ import com.rheinmetal.tianshu.function.ia.session.DialogueSessionStore;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -91,6 +92,7 @@ public final class IaModule implements TianshuManagedModule {
     private final Map<String, DialogueOwnerPreviewPayload> ownerPreviews = new ConcurrentHashMap<>();
     private final DialogueVoiceTriggerSynchronizer voiceTriggerSynchronizer;
     private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
+    private final IrResultArbitrationMapper irResultMapper;
     private ModuleRuntimeContext runtimeContext;
     private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
 
@@ -116,6 +118,7 @@ public final class IaModule implements TianshuManagedModule {
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
         this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
         this.voiceTriggerSynchronizer = new DialogueVoiceTriggerSynchronizer();
+        this.irResultMapper = new IrResultArbitrationMapper();
         this.ownerPreviewRefreshCoordinator = new OwnerPreviewRefreshCoordinator(
                 (task, delay) -> runtime.schedule(
                         ProtocolTaskSpec.builder()
@@ -144,6 +147,7 @@ public final class IaModule implements TianshuManagedModule {
         adapter.registerSessionControlCapability(this::handleSessionControl);
         adapter.registerLlmUsageAuthorizationCapability(this::handleLlmUsageAuthorization);
         adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
+        adapter.subscribeIrResult(this::handleIrResult);
         context.services().register(DialogueParticipantRegistry.class, participantRegistry);
         context.services().register(DialogueDiagnosticsView.class, diagnosticsView);
         context.services().register(IaModuleService.class, moduleService);
@@ -227,6 +231,22 @@ public final class IaModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue arbitration payload is invalid", null);
             return;
         }
+        processArbitration(envelope, context, payload);
+    }
+
+    private void handleIrResult(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof IrResultPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "IR result payload is invalid", null);
+            return;
+        }
+        if (payload.repairedText().isBlank() && payload.normalizedText().isBlank()) {
+            context.complete(envelope.envelopeId());
+            return;
+        }
+        processArbitration(envelope, context, irResultMapper.map(envelope, payload));
+    }
+
+    private void processArbitration(TianshuEnvelope envelope, ProtocolContext context, DialogueArbitrationRequestPayload payload) {
         long now = System.currentTimeMillis();
         lifecycleSweeper.sweep(envelope, now);
         if (payload.expiredAt(now)) {

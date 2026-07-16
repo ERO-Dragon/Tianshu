@@ -43,18 +43,18 @@ AX 发送 `DialogueParticipantRegisterPayload` / `DialogueParticipantUnregisterP
 
 ## 4. 外部文本如何到达 AX
 
-外部文本源如果希望进入标准对话链路，应按下面的顺序工作：
+当前没有面向任意外部模块的通用文本注入入口。标准玩家语音链路按下面的顺序工作：
 
 ```text
-外部模块
-  -> ProtocolCapabilities.IR_PARSE / IrParsePayload
-  -> IR 修复并提交 DIALOGUE_ARBITRATE
+ASR 发布 INPUT_ASR_FINAL_TEXT
+  -> IR 修复并发布 ProtocolTopics.IR_RESULT
+  -> IA 订阅 IR_RESULT
   -> IA 根据 participant 和上下文选择 owner
   -> 如果 AX 被选中，IA 向 AX.DIALOGUE_INPUT 投递 DialogueDeliveryPayload
   -> AX 处理本轮并通过 IA session control 完成或释放
 ```
 
-不要直接调用 `AX.DIALOGUE_INPUT`。如果你的模组希望自己成为 owner，应按 `../ia/IA_外部模组仲裁接入说明.md` 注册自己的 participant，而不是把内容塞给 AX。
+不要直接调用 `AX.DIALOGUE_INPUT`，也不要伪造 ASR 或 IR topic。如果你的模组希望自己成为 owner，应按 `../ia/IA_外部模组仲裁接入说明.md` 注册自己的 participant，而不是把内容塞给 AX。未来新增聊天或其他玩家输入来源时，应先建立统一输入协议，再接入 IR。
 
 ## 5. DialogueDeliveryPayload 边界
 
@@ -120,7 +120,7 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 
 | 需求 | 正确入口 |
 | --- | --- |
-| 把文本送入开放对话 | `IR_PARSE`，随后由 IA 仲裁。 |
+| 把任意文本注入开放对话 | 当前没有公共入口；不要伪造 ASR/IR 事件。 |
 | 自己成为对话 owner | IA participant 注册。 |
 | 直接调用模型 | LLM 公共 capability，并遵守 IA CHAT 授权。 |
 | 播放或合成语音 | TTS 公共 capability。 |
@@ -131,7 +131,7 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 ## 11. 最小接入检查表
 
 - [ ] 不直接发送 `AX.DIALOGUE_INPUT`。
-- [ ] 文本先进入 IR，再由 IA 选择 owner。
+- [ ] 不伪造 ASR final text 或 IR result 注入正文。
 - [ ] 空唤醒词时不假定 AX 已注册。
 - [ ] 不冒用 `module.ax / tianshu.AX` 身份。
 - [ ] LLM、TTS、IA 请求分别遵循对应模块文档。

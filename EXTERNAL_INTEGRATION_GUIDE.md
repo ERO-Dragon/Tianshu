@@ -121,7 +121,6 @@ VoiceTriggerRegistration registration = new VoiceTriggerRegistration(
         List.of("雷达", "警戒"),
         List.of("扫描", "附近敌人"),
         VoiceCommandCategory.INFORMATION,
-        10,
         VoiceCommandScope.CLIENT,
         true
 );
@@ -323,7 +322,6 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
             List.of("雷达"),
             List.of("扫描"),
             VoiceCommandCategory.INFORMATION,
-            10,
             VoiceCommandScope.CLIENT,
             true
     ));

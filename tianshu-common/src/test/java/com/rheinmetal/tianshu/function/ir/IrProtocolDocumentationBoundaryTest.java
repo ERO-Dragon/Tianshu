@@ -20,14 +20,11 @@ class IrProtocolDocumentationBoundaryTest {
         for (String symbol : List.of(
                 "TianshuModuleAssemblyContext.moduleRuntime()",
                 "ModuleRuntimeAccess",
-                "ProtocolCapabilities.IR_PARSE",
-                "PayloadType.IR_PARSE",
-                "IrParsePayload",
                 "ProtocolTopics.INPUT_ASR_FINAL_TEXT",
                 "ProtocolTopics.IR_RESULT",
                 "IrResultPayload",
+                "VoiceTriggerMatch",
                 "ProtocolCapabilities.DIALOGUE_ARBITRATE",
-                "DialogueArbitrationRequestPayload",
                 "ProtocolCapabilities.PRESENCE_QUERY_CONTEXT",
                 "PresenceContextSnapshotPayload"
         )) {

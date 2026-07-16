@@ -18,6 +18,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -307,7 +308,10 @@ class DialogueClaimEngineTest {
     }
 
     private DialogueArbitrationInput request(List<String> wakeWords, List<String> itemIds, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {
-        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("request", "module.ir", "player", "turn", 9L, "text", "text", wakeWords, itemIds, 100L, 1_000L);
+        List<VoiceTriggerMatch> voiceMatches = wakeWords.isEmpty()
+                ? List.of()
+                : List.of(new VoiceTriggerMatch("module.test", wakeWords, List.of(), 1.0D));
+        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("request", "module.ir", "player", "turn", 9L, "text", "text", voiceMatches, itemIds, List.of(), 100L, 1_000L);
         return DialogueArbitrationInput.from(request, new DialogueContextFrame(interactionHints, contextSnapshot));
     }
 }

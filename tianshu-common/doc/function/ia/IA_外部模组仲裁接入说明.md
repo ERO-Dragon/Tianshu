@@ -127,9 +127,9 @@ PacketType.COMMAND
 
 ### 3.2 仲裁入口语义
 
-标准语音/聊天主链路由 IR 向 `ProtocolCapabilities.DIALOGUE_ARBITRATE` 发送 `COMMAND`。IR 只负责提交已经修复和结构化的候选输入，不等待仲裁结果；IA 会在内部完成 owner 判定、session 创建/更新、正文 delivery 和 session 状态事件发布。
+标准语音主链路由 IR 发布 `ProtocolTopics.IR_RESULT / PayloadType.IR_RESULT / IrResultPayload`，IA 订阅该 topic 后完成 owner 判定、session 创建/更新、正文 delivery 和 session 状态事件发布。IR 不定向调用 IA，也不等待仲裁结果。
 
-`DIALOGUE_ARBITRATE` 也支持 `REQUEST`，但它不是主链路默认用法。只有诊断、测试或受信模块确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.DIALOGUE_ARBITRATION_RESULT` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动消费仲裁结果。
+`DIALOGUE_ARBITRATE` 是 IA 保留给诊断、测试和受信模块的显式服务端口，不是标准 IR 链路。只有确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.DIALOGUE_ARBITRATION_RESULT` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动提交仲裁请求或消费仲裁结果。
 
 IA capability ready 只表示仲裁服务可响应，不表示已经注册了 owner。当前没有 participant 时，`REQUEST` 返回 `accepted=false / reason=NO_PARTICIPANT`；普通 COMMAND 同样结束为拒绝，不产生玩家提示、Presence 查询、对话 delivery、LLM 或 TTS 请求。
 
@@ -161,6 +161,7 @@ DialogueDeliveryPayload(
     String normalizedText,
     List<String> matchedWakeWords,
     List<String> matchedItemIds,
+    List<String> matchedEntityTypeIds,
     List<DialogueEntityRef> matchedEntityRefs,
     DialogueInteractionHints interactionHints,
     DialogueContextSnapshot contextSnapshot,
@@ -173,7 +174,7 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 
 非 owner 不会收到该 payload。
 
-其中 `repairedText`、`normalizedText`、`matchedWakeWords`、`matchedItemIds` 来自 IR 的文本侧结果。`matchedWakeWords` 在 IA 仲裁语义中只表示 wake word，不参与模糊评分。`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过 `PRESENCE.QUERY_CONTEXT` 获取的仲裁快照；`matchedEntityRefs` 使用 `DialogueEntityRef`，会同时包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
+其中 `repairedText`、`normalizedText`、`matchedWakeWords`、`matchedItemIds`、`matchedEntityTypeIds` 来自 IR 的文本侧结果。`matchedWakeWords` 在 IA 仲裁语义中只表示 wake word，不参与模糊评分。`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过 `PRESENCE.QUERY_CONTEXT` 获取的仲裁快照；`matchedEntityRefs` 使用 `DialogueEntityRef`，会同时包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
 
 ## 5. 处理 delivery
 

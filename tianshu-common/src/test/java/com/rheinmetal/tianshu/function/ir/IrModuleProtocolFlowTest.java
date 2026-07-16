@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.ir;
 
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
@@ -13,7 +12,6 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
-import com.rheinmetal.tianshu.protocol.payload.IrParsePayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -30,7 +28,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,32 +36,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IrModuleProtocolFlowTest {
     private ProtocolRuntime runtime;
-
-    @Test
-    void parseCapabilityAcceptsCommandsOnly() {
-        runtime = ProtocolBootstrap.create(Runnable::run);
-        IrModule ir = new IrModule(runtime);
-        ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
-
-        assertEquals(
-                EnumSet.of(PacketType.COMMAND),
-                runtime.capabilities()
-                        .findCapability(ProtocolCapabilities.IR_PARSE)
-                        .get(0)
-                        .capabilityDescriptor()
-                        .acceptedPacketTypes()
-        );
-    }
-
-    @Test
-    void parsePayloadContainsOnlyActiveInputFields() {
-        assertEquals(
-                List.of("text", "rawText", "turnId", "sessionId", "source"),
-                Arrays.stream(IrParsePayload.class.getRecordComponents())
-                        .map(component -> component.getName())
-                        .toList()
-        );
-    }
 
     @AfterEach
     void closeRuntime() {
@@ -73,7 +45,7 @@ class IrModuleProtocolFlowTest {
     }
 
     @Test
-    void asrFinalTextIsRepairedAndSubmittedToDialogueArbitrationWithoutVoiceTriggerDirectDelivery() {
+    void asrFinalTextPublishesCompleteIrAnalysisWithoutCallingIaCapability() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         IrModule ir = new IrModule(runtime);
         ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
@@ -83,7 +55,7 @@ class IrModuleProtocolFlowTest {
                 "test.ia",
                 ProtocolCapabilities.DIALOGUE_ARBITRATE,
                 PayloadType.DIALOGUE_ARBITRATION_REQUEST,
-                DialogueArbitrationRequestPayload.class,
+                com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload.class,
                 EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
                 arbitration
         );
@@ -97,48 +69,73 @@ class IrModuleProtocolFlowTest {
                 new AsrTextPayload("九狐帮我种地", "九狐帮我种地", 42, 77L, "asr", 100L)
         ).build());
 
-        DialogueArbitrationRequestPayload request = arbitration.awaitPayload(DialogueArbitrationRequestPayload.class);
         IrResultPayload result = irResults.awaitPayload(IrResultPayload.class);
-        assertEquals("酒狐帮我种地", request.repairedText());
-        assertEquals("42", request.turnId());
-        assertEquals(77L, request.sourceSessionId());
-        assertEquals(List.of("酒狐"), request.matchedWakeWords());
-        assertEquals("DIALOGUE_ARBITRATION", result.intentType());
-        assertEquals("DIALOGUE_ROUTED", result.reason());
-        assertEquals("module.maid", result.targetCapability());
+        assertEquals("酒狐帮我种地", result.repairedText());
+        assertEquals(42, result.turnId());
+        assertEquals(77L, result.sessionId());
+        assertEquals(1, result.voiceMatches().size());
+        assertEquals("module.maid", result.voiceMatches().get(0).moduleId());
+        assertEquals(List.of("酒狐"), result.voiceMatches().get(0).matchedWakeWords());
+        assertEquals(List.of("种地"), result.voiceMatches().get(0).matchedExtraWords());
+        assertTrue(result.matchedItemIds().isEmpty());
+        assertTrue(result.matchedEntityTypeIds().isEmpty());
+        assertTrue(result.timestampMillis() > 0L);
+        assertTrue(arbitration.envelopes().isEmpty());
         assertTrue(runtime.deadLetters().snapshot(16).isEmpty());
         assertFalse(runtime.capabilities().capabilityIds().stream().anyMatch(id -> id.startsWith("VOICE_TRIGGER.")));
     }
 
     @Test
-    void blankParseInputPublishesNoMatchAndDoesNotSubmitArbitration() {
+    void stopDiscardsInputWaitingForPresenceInsteadOfPublishingStaleResult() throws Exception {
         runtime = ProtocolBootstrap.create(Runnable::run);
         IrModule ir = new IrModule(runtime);
         ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
-        RecordingHandler arbitration = new RecordingHandler();
+        BlockingPresenceHandler presence = new BlockingPresenceHandler();
         registerCapability(
-                "test.ia",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
-                DialogueArbitrationRequestPayload.class,
-                EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
-                arbitration
+                "test.presence",
+                ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
+                PayloadType.PRESENCE_CONTEXT_QUERY,
+                com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload.class,
+                EnumSet.of(PacketType.REQUEST),
+                presence
         );
         RecordingHandler irResults = new RecordingHandler();
         subscribeIrResult(irResults);
 
-        runtime.submit(EnvelopeBuilder.commandToCapability(
-                "test",
-                ProtocolCapabilities.IR_PARSE,
-                PayloadType.IR_PARSE,
-                new IrParsePayload("   ", "", 12, 34L, "chat")
+        runtime.submit(EnvelopeBuilder.eventTopic(
+                "module.asr",
+                ProtocolTopics.INPUT_ASR_FINAL_TEXT,
+                PayloadType.ASR_TEXT,
+                new AsrTextPayload("退出世界前的输入", "退出世界前的输入", 7, 88L, "continuous", 100L)
+        ).build());
+        presence.awaitRequest();
+
+        ir.stop();
+        Thread.sleep(350L);
+
+        assertTrue(irResults.envelopes().isEmpty());
+    }
+
+    @Test
+    void prepareAfterStopAcceptsNewWorldInput() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        IrModule ir = new IrModule(runtime);
+        ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler irResults = new RecordingHandler();
+        subscribeIrResult(irResults);
+
+        ir.stop();
+        ir.prepare(null);
+        runtime.submit(EnvelopeBuilder.eventTopic(
+                "module.asr",
+                ProtocolTopics.INPUT_ASR_FINAL_TEXT,
+                PayloadType.ASR_TEXT,
+                new AsrTextPayload("重新进入世界", "重新进入世界", 8, 89L, "continuous", 200L)
         ).build());
 
         IrResultPayload result = irResults.awaitPayload(IrResultPayload.class);
-        assertEquals("DIALOGUE_ARBITRATION", result.intentType());
-        assertEquals("EMPTY_INPUT", result.reason());
-        assertFalse(result.matched());
-        assertTrue(arbitration.envelopes().isEmpty());
+        assertEquals("重新进入世界", result.repairedText());
+        assertEquals(89L, result.sessionId());
     }
 
     private void registerCapability(String moduleId, String capabilityId, PayloadType payloadType, Class<?> payloadClass, EnumSet<PacketType> packets, EnvelopeHandler handler) {
@@ -220,6 +217,31 @@ class IrModuleProtocolFlowTest {
                 }
             }
             throw new AssertionError("Timed out waiting for payload " + type.getSimpleName() + ", received " + envelopes.size() + " envelope(s)");
+        }
+    }
+
+    private static final class BlockingPresenceHandler implements EnvelopeHandler {
+        private final AtomicInteger requests = new AtomicInteger();
+
+        @Override
+        public void handle(TianshuEnvelope envelope, ProtocolContext context) {
+            requests.incrementAndGet();
+        }
+
+        private void awaitRequest() {
+            long deadline = System.currentTimeMillis() + 3_000L;
+            while (System.currentTimeMillis() < deadline) {
+                if (requests.get() > 0) {
+                    return;
+                }
+                try {
+                    Thread.sleep(10L);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            throw new AssertionError("Timed out waiting for Presence request");
         }
     }
 }

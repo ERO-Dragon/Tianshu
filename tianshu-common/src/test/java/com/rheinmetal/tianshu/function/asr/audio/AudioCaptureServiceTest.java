@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.asr.audio;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -38,6 +39,22 @@ class AudioCaptureServiceTest {
         repeat(45, () -> bridge.push(pcm(0.0D, 160)));
 
         assertEquals(List.of(true, false), states);
+    }
+
+    @Test
+    void streamCaptureForwardsSpeechSegmentBoundariesWithProcessedAudio() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        List<AsrSpeechSegmenter.Decision> decisions = new ArrayList<>();
+        AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment(),
+                new com.rheinmetal.tianshu.function.asr.recognition.AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> {
+                }));
+
+        service.startStreamCapture(42L, (chunk, decision) -> decisions.add(decision));
+        repeat(510, () -> bridge.push(pcm(0.03D, 160)));
+        repeat(25, () -> bridge.push(pcm(0.0D, 160)));
+
+        assertEquals(1, decisions.stream().filter(AsrSpeechSegmenter.Decision::startsSegment).count());
+        assertEquals(1, decisions.stream().filter(AsrSpeechSegmenter.Decision::endsSegment).count());
     }
 
     @Test

@@ -61,7 +61,6 @@ public final class DialogueVoiceTriggerSynchronizer {
                     words.wakeWords(),
                     words.extraWords(),
                     VoiceCommandCategory.GENERAL,
-                    words.priority(),
                     VoiceCommandScope.CLIENT,
                     true
             ));
@@ -92,7 +91,7 @@ public final class DialogueVoiceTriggerSynchronizer {
                 continue;
             }
             accumulators.computeIfAbsent(participant.moduleId(), ignored -> new TriggerAccumulator())
-                    .add(words, participant.priority());
+                    .add(words);
         }
         Map<String, TriggerWords> result = new LinkedHashMap<>();
         for (Map.Entry<String, TriggerAccumulator> entry : accumulators.entrySet()) {
@@ -109,7 +108,7 @@ public final class DialogueVoiceTriggerSynchronizer {
             wakeWords.addAll(group.wakeWords());
             extraWords.addAll(group.extraWords());
         }
-        return new TriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords), participant.priority());
+        return new TriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords));
     }
 
     private List<String> claimWakeWords(DialogueParticipantDescriptor descriptor) {
@@ -137,20 +136,17 @@ public final class DialogueVoiceTriggerSynchronizer {
     private static final class TriggerAccumulator {
         private final LinkedHashSet<String> wakeWords = new LinkedHashSet<>();
         private final LinkedHashSet<String> extraWords = new LinkedHashSet<>();
-        private int priority;
-
-        private void add(TriggerWords words, int participantPriority) {
+        private void add(TriggerWords words) {
             wakeWords.addAll(words.wakeWords());
             extraWords.addAll(words.extraWords());
-            priority = Math.max(priority, participantPriority);
         }
 
         private TriggerWords toWords() {
-            return new TriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords), priority);
+            return new TriggerWords(List.copyOf(wakeWords), List.copyOf(extraWords));
         }
     }
 
-    private record TriggerWords(List<String> wakeWords, List<String> extraWords, int priority) {
+    private record TriggerWords(List<String> wakeWords, List<String> extraWords) {
         private boolean empty() {
             return wakeWords.isEmpty() && extraWords.isEmpty();
         }

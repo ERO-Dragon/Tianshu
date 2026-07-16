@@ -62,7 +62,7 @@ class DialogueMessageGatewayTest {
     }
 
     private DialogueArbitrationInput request() {
-        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("r", "module.ir", "player", "1", 9L, "text", "text", List.of(), List.of(), 100L, 200L);
+        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("r", "module.ir", "player", "1", 9L, "text", "text", List.of(), List.of(), List.of(), 100L, 200L);
         return DialogueArbitrationInput.from(request, DialogueContextFrame.empty("player"));
     }
 

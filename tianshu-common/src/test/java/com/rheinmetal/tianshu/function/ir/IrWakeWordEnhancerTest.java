@@ -89,7 +89,7 @@ class IrWakeWordEnhancerTest {
         IrMatchBatch batch = new IrVoiceTriggerMatcher().match(repaired, index);
 
         assertEquals("酒狐和机械动力都在吗", repaired.text());
-        assertTrue(batch.matches().stream().map(IrVoiceMatch::moduleId).toList().containsAll(List.of("module.maid", "module.create")));
+        assertTrue(batch.matches().stream().map(com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch::moduleId).toList().containsAll(List.of("module.maid", "module.create")));
     }
 
     @Test

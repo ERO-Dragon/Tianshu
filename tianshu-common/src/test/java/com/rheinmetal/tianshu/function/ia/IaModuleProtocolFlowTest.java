@@ -30,6 +30,7 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
@@ -40,6 +41,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -172,11 +174,20 @@ class IaModuleProtocolFlowTest {
 
         assertEquals(List.of("maid", "farm"), voiceResources.voiceTriggers().asrHotwords());
 
-        runtime.submit(EnvelopeBuilder.commandToCapability(
+        runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
-                request("req-extra", "player", "turn-extra", 910L, "farm please", List.of(), List.of())
+                ProtocolTopics.IR_RESULT,
+                PayloadType.IR_RESULT,
+                new IrResultPayload(
+                        "farm please",
+                        "farm please",
+                        List.of(new VoiceTriggerMatch("module.maid", List.of(), List.of("farm"), 1.0D)),
+                        List.of(),
+                        List.of(),
+                        18,
+                        910L,
+                        System.currentTimeMillis()
+                )
         ).build());
 
         axDelivery.awaitPayload(DialogueDeliveryPayload.class);
@@ -257,11 +268,20 @@ class IaModuleProtocolFlowTest {
         ).build());
         await(() -> presence.requestCount() >= 1);
         presence.payload(PresenceContextSnapshotPayload.success("empty", List.of()));
-        runtime.submit(EnvelopeBuilder.commandToCapability(
+        runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
-                request("req-1", "player", "turn-1", 900L, "酒狐帮我种地", List.of("酒狐"), List.of())
+                ProtocolTopics.IR_RESULT,
+                PayloadType.IR_RESULT,
+                new IrResultPayload(
+                        "酒狐帮我种地",
+                        "酒狐帮我种地",
+                        List.of(new VoiceTriggerMatch("module.maid", List.of("酒狐"), List.of(), 1.0D)),
+                        List.of(),
+                        List.of(),
+                        1,
+                        900L,
+                        System.currentTimeMillis()
+                )
         ).build());
 
         DialogueDeliveryPayload delivery = maidDelivery.awaitPayload(DialogueDeliveryPayload.class);
@@ -270,7 +290,7 @@ class IaModuleProtocolFlowTest {
         assertEquals(List.of("酒狐"), delivery.matchedWakeWords());
         assertEquals(1, delivery.matchedEntityRefs().size());
         assertEquals("maid-uuid", delivery.matchedEntityRefs().get(0).entityId());
-        assertEquals("player", delivery.contextSnapshot().playerId());
+        assertEquals("local", delivery.contextSnapshot().playerId());
         assertEquals("module.maid", preview.moduleId());
         assertTrue(axDelivery.envelopes().isEmpty());
         assertTrue(runtime.deadLetters().snapshot(16).isEmpty());
@@ -400,7 +420,10 @@ class IaModuleProtocolFlowTest {
     }
 
     private DialogueArbitrationRequestPayload request(String requestId, String playerId, String turnId, long sourceSessionId, String text, List<String> wakeWords, List<String> itemIds) {
-        return new DialogueArbitrationRequestPayload(requestId, "module.ir", playerId, turnId, sourceSessionId, text, text, wakeWords, itemIds, System.currentTimeMillis(), System.currentTimeMillis() + 10_000L);
+        List<VoiceTriggerMatch> voiceMatches = wakeWords.isEmpty()
+                ? List.of()
+                : List.of(new VoiceTriggerMatch("module.test", wakeWords, List.of(), 1.0D));
+        return new DialogueArbitrationRequestPayload(requestId, "module.ir", playerId, turnId, sourceSessionId, text, text, voiceMatches, itemIds, List.of(), System.currentTimeMillis(), System.currentTimeMillis() + 10_000L);
     }
 
     private DialogueParticipantDescriptor participant(String participantId, String moduleId, String routeCapability, int priority, DialogueClaimProfile profile) {
