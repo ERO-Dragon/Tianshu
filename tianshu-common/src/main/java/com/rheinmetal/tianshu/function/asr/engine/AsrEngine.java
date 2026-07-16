@@ -123,8 +123,8 @@ public class AsrEngine {
         }
     }
 
-    public String feedAudio(StreamingSession session, byte[] pcmData) {
-        if (onlineRecognizer == null || session == null || pcmData == null || pcmData.length == 0) return "";
+    public void feedAudio(StreamingSession session, byte[] pcmData) {
+        if (onlineRecognizer == null || session == null || pcmData == null || pcmData.length == 0) return;
         session.lock.lock();
         try {
             float[] samples = toFloatSamples(pcmData);
@@ -132,27 +132,6 @@ public class AsrEngine {
             while (onlineRecognizer.isReady(session.stream)) {
                 onlineRecognizer.decode(session.stream);
             }
-            return onlineRecognizer.getResult(session.stream).getText();
-        } finally {
-            session.lock.unlock();
-        }
-    }
-
-    public boolean isEndpoint(StreamingSession session) {
-        if (onlineRecognizer == null || session == null) return false;
-        session.lock.lock();
-        try {
-            return onlineRecognizer.isEndpoint(session.stream);
-        } finally {
-            session.lock.unlock();
-        }
-    }
-
-    public void reset(StreamingSession session) {
-        if (onlineRecognizer == null || session == null) return;
-        session.lock.lock();
-        try {
-            onlineRecognizer.reset(session.stream);
         } finally {
             session.lock.unlock();
         }

@@ -1,26 +1,42 @@
 package com.rheinmetal.tianshu.function.asr.audio;
 
+import com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrVadSpeechSegmenter;
+
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 
 import java.io.ByteArrayOutputStream;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public final class AudioCaptureService {
     private final IAudioBridge audioBridge;
     private final IGameEnvironment env;
-    private final AsrSpeechActivityDetector speechActivityDetector;
+    private volatile AsrSpeechSegmenter speechSegmenter;
     private volatile AudioFrameProcessor frameProcessor = AudioFrameProcessor.identity();
     private volatile ByteArrayOutputStream pttBuffer;
 
     public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env) {
-        this(audioBridge, env, AsrSpeechActivityListener.noop());
+        this(audioBridge, env, AsrSpeechSegmenter.disabled());
     }
 
     public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env, AsrSpeechActivityListener speechActivityListener) {
+        this(audioBridge, env, new AsrVadSpeechSegmenter(speechActivityListener));
+    }
+
+    public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env, AsrSpeechSegmenter speechSegmenter) {
         this.audioBridge = audioBridge;
         this.env = env;
-        this.speechActivityDetector = new AsrSpeechActivityDetector(speechActivityListener);
+        this.speechSegmenter = speechSegmenter == null ? AsrSpeechSegmenter.disabled() : speechSegmenter;
+    }
+
+    public void setSpeechSegmenter(AsrSpeechSegmenter speechSegmenter) {
+        AsrSpeechSegmenter previous = this.speechSegmenter;
+        if (previous != null) {
+            previous.reset();
+        }
+        this.speechSegmenter = speechSegmenter == null ? AsrSpeechSegmenter.disabled() : speechSegmenter;
     }
 
     public void setFrameProcessor(AudioFrameProcessor frameProcessor) {
@@ -29,11 +45,12 @@ public final class AudioCaptureService {
 
     public void startPttCapture(long sessionId) {
         stopStreamCapture();
+        speechSegmenter.reset();
         frameProcessor.reset();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         pttBuffer = buffer;
         audioBridge.startStreamRecording(chunk -> {
-            byte[] processed = processChunk(chunk, false);
+            byte[] processed = processChunk(chunk);
             if (processed != null && processed.length > 0) {
                 synchronized (buffer) {
                     buffer.write(processed, 0, processed.length);
@@ -55,25 +72,30 @@ public final class AudioCaptureService {
     }
 
     public void startStreamCapture(long sessionId, Consumer<byte[]> consumer) {
+        startStreamCapture(sessionId, (chunk, ignored) -> consumer.accept(chunk));
+    }
+
+    public void startStreamCapture(long sessionId, BiConsumer<byte[], AsrSpeechSegmenter.Decision> consumer) {
         frameProcessor.reset();
-        speechActivityDetector.start(sessionId);
+        speechSegmenter.start(sessionId);
         audioBridge.startStreamRecording(chunk -> {
-            byte[] processed = processChunk(chunk, true);
+            byte[] processed = processChunk(chunk);
             if (processed != null && processed.length > 0) {
-                consumer.accept(processed);
+                AsrSpeechSegmenter.Decision decision = speechSegmenter.accept(processed);
+                consumer.accept(processed, decision);
             }
         });
     }
 
     public void stopStreamCapture() {
         audioBridge.stopStreamRecording();
-        speechActivityDetector.stop();
+        speechSegmenter.reset();
     }
 
     public void stopAll() {
         attemptCleanup("tianshu.asr.audio.ptt_stop_failed", audioBridge::stopRecording);
         attemptCleanup("tianshu.asr.audio.stream_stop_failed", audioBridge::stopStreamRecording);
-        speechActivityDetector.stop();
+        speechSegmenter.reset();
         pttBuffer = null;
     }
 
@@ -90,11 +112,7 @@ public final class AudioCaptureService {
         }
     }
 
-    private byte[] processChunk(byte[] chunk, boolean detectSpeechActivity) {
-        byte[] processed = frameProcessor.process(chunk);
-        if (detectSpeechActivity && processed != null && processed.length > 0) {
-            speechActivityDetector.accept(processed);
-        }
-        return processed;
+    private byte[] processChunk(byte[] chunk) {
+        return frameProcessor.process(chunk);
     }
 }

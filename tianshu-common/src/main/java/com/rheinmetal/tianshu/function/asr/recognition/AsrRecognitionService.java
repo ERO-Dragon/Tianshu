@@ -20,7 +20,6 @@ public final class AsrRecognitionService {
     private final IGameEnvironment env;
     private final Supplier<AsrEngine> engineSupplier;
     private final AsrProtocolAdapter adapter;
-    private volatile AsrSpeechSegmenter speechSegmenter = AsrSpeechSegmenter.disabled();
     private volatile StreamingRuntime streamingRuntime;
     private volatile ProtocolTaskHandle streamingTask;
     private volatile ProtocolTaskHandle completeTask;
@@ -29,14 +28,6 @@ public final class AsrRecognitionService {
         this.env = env;
         this.engineSupplier = engineSupplier;
         this.adapter = adapter;
-    }
-
-    public void setSpeechSegmenter(AsrSpeechSegmenter speechSegmenter) {
-        AsrSpeechSegmenter previous = this.speechSegmenter;
-        if (previous != null) {
-            previous.reset();
-        }
-        this.speechSegmenter = speechSegmenter == null ? AsrSpeechSegmenter.disabled() : speechSegmenter;
     }
 
     public void recognizeComplete(byte[] audioData, long sessionId, String inputMode, Consumer<AsrRecognitionResult> onResult, Runnable onComplete) {
@@ -60,6 +51,10 @@ public final class AsrRecognitionService {
     }
 
     public boolean startStreaming(long sessionId, Consumer<AsrRecognitionResult> onResult) {
+        return startStreaming(sessionId, onResult, false);
+    }
+
+    public boolean startStreaming(long sessionId, Consumer<AsrRecognitionResult> onResult, boolean vadEnabled) {
         StreamingRuntime current = streamingRuntime;
         if (current != null && current.accepts(sessionId)) {
             return true;
@@ -73,19 +68,23 @@ public final class AsrRecognitionService {
             env.warn("ASR 连续识别 session 创建失败");
             return false;
         }
-        StreamingRuntime runtime = new StreamingRuntime(sessionId, createdSession, createdSession == null ? speechSegmenter : AsrSpeechSegmenter.disabled());
+        StreamingRuntime runtime = new StreamingRuntime(sessionId, createdSession, vadEnabled);
         streamingRuntime = runtime;
         streamingTask = adapter.submitRecognitionTask("stream", () -> processStreaming(runtime, onResult));
         return true;
     }
 
     public void acceptAudioChunk(byte[] chunk, long sessionId) {
+        acceptAudioChunk(chunk, sessionId, AsrSpeechSegmenter.Decision.CONTINUE);
+    }
+
+    public void acceptAudioChunk(byte[] chunk, long sessionId, AsrSpeechSegmenter.Decision decision) {
         if (chunk == null || chunk.length == 0) {
             return;
         }
         StreamingRuntime runtime = streamingRuntime;
         if (runtime != null && runtime.accepts(sessionId)) {
-            runtime.offer(StreamCommand.audio(chunk));
+            runtime.offer(StreamCommand.audio(chunk, decision));
         }
     }
 
@@ -132,17 +131,23 @@ public final class AsrRecognitionService {
                     break;
                 }
                 if (command.type() == StreamCommandType.FLUSH) {
-                    publishStreamingResult(flushRuntime(runtime), runtime, "force_flush", onResult);
+                    flushIfAudio(runtime, "force_flush", onResult);
                     continue;
                 }
+                if (!runtime.acceptAudio(command.decision())) {
+                    continue;
+                }
+                runtime.markAudio();
                 if (runtime.online()) {
-                    String text = engine().feedAudio(runtime.engineSession(), command.audio());
-                    if (engine().isEndpoint(runtime.engineSession())) {
-                        publishStreamingResult(text, runtime, "stream", onResult);
-                        engine().reset(runtime.engineSession());
+                    engine().feedAudio(runtime.engineSession(), command.audio());
+                    if (command.decision().endsSegment()) {
+                        flushIfAudio(runtime, "vad_segment", onResult);
                     }
-                } else if (runtime.appendSegmentAudio(command.audio())) {
-                    publishStreamingResult(flushRuntime(runtime), runtime, "vad_segment", onResult);
+                } else {
+                    runtime.appendSegmentAudio(command.audio());
+                    if (command.decision().endsSegment()) {
+                        flushIfAudio(runtime, "vad_segment", onResult);
+                    }
                 }
             }
         } catch (InterruptedException e) {
@@ -154,6 +159,14 @@ public final class AsrRecognitionService {
         }
     }
 
+    private void flushIfAudio(StreamingRuntime runtime, String inputMode, Consumer<AsrRecognitionResult> onResult) {
+        if (!runtime.hasAudio()) {
+            return;
+        }
+        publishStreamingResult(flushRuntime(runtime), runtime, inputMode, onResult);
+        runtime.resetAfterFlush();
+    }
+
     private String flushRuntime(StreamingRuntime runtime) {
         if (runtime.online()) {
             return engine().forceFlush(runtime.engineSession());
@@ -162,7 +175,6 @@ public final class AsrRecognitionService {
         if (audio.length == 0) {
             return "";
         }
-        runtime.resetSegmenter();
         return engine().recognizeComplete(audio);
     }
 
@@ -248,33 +260,35 @@ public final class AsrRecognitionService {
         STOP
     }
 
-    private record StreamCommand(StreamCommandType type, byte[] audio) {
-        static StreamCommand audio(byte[] audio) {
-            return new StreamCommand(StreamCommandType.AUDIO, audio);
+    private record StreamCommand(StreamCommandType type, byte[] audio, AsrSpeechSegmenter.Decision decision) {
+        static StreamCommand audio(byte[] audio, AsrSpeechSegmenter.Decision decision) {
+            return new StreamCommand(StreamCommandType.AUDIO, audio, decision == null ? AsrSpeechSegmenter.Decision.CONTINUE : decision);
         }
 
         static StreamCommand flush() {
-            return new StreamCommand(StreamCommandType.FLUSH, null);
+            return new StreamCommand(StreamCommandType.FLUSH, null, AsrSpeechSegmenter.Decision.CONTINUE);
         }
 
         static StreamCommand stop() {
-            return new StreamCommand(StreamCommandType.STOP, null);
+            return new StreamCommand(StreamCommandType.STOP, null, AsrSpeechSegmenter.Decision.CONTINUE);
         }
     }
 
     private static final class StreamingRuntime {
         private final long sessionId;
         private final AsrEngine.StreamingSession engineSession;
-        private final AsrSpeechSegmenter segmenter;
+        private final boolean vadEnabled;
         private final ByteArrayOutputStream segmentBuffer = new ByteArrayOutputStream();
         private final BlockingQueue<StreamCommand> commands = new LinkedBlockingQueue<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
         private final AtomicBoolean released = new AtomicBoolean(false);
+        private boolean segmentActive;
+        private boolean hasAudio;
 
-        private StreamingRuntime(long sessionId, AsrEngine.StreamingSession engineSession, AsrSpeechSegmenter segmenter) {
+        private StreamingRuntime(long sessionId, AsrEngine.StreamingSession engineSession, boolean vadEnabled) {
             this.sessionId = sessionId;
             this.engineSession = engineSession;
-            this.segmenter = segmenter == null ? AsrSpeechSegmenter.disabled() : segmenter;
+            this.vadEnabled = vadEnabled;
         }
 
         private boolean accepts(long sessionId) {
@@ -297,14 +311,26 @@ public final class AsrRecognitionService {
             return engineSession != null;
         }
 
-        private boolean appendSegmentAudio(byte[] audio) {
+        private boolean acceptAudio(AsrSpeechSegmenter.Decision decision) {
+            AsrSpeechSegmenter.Decision actual = decision == null ? AsrSpeechSegmenter.Decision.CONTINUE : decision;
+            if (vadEnabled && actual.startsSegment()) {
+                segmentActive = true;
+            }
+            return !vadEnabled || segmentActive;
+        }
+
+        private void appendSegmentAudio(byte[] audio) {
             if (audio == null || audio.length == 0) {
-                return false;
+                return;
             }
             synchronized (segmentBuffer) {
                 segmentBuffer.write(audio, 0, audio.length);
             }
-            return segmenter.accept(audio) == AsrSpeechSegmenter.Decision.END_SEGMENT;
+            hasAudio = true;
+        }
+
+        private void markAudio() {
+            hasAudio = true;
         }
 
         private byte[] drainSegmentAudio() {
@@ -315,8 +341,13 @@ public final class AsrRecognitionService {
             }
         }
 
-        private void resetSegmenter() {
-            segmenter.reset();
+        private boolean hasAudio() {
+            return hasAudio;
+        }
+
+        private void resetAfterFlush() {
+            hasAudio = false;
+            segmentActive = false;
         }
 
         private void close() {

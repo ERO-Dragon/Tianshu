@@ -137,6 +137,9 @@ ASR 不再做唤醒词截断或归属判断。识别层只输出完整文本，w
 - stop 会关闭 runtime，并唤醒阻塞的处理线程
 - 结果发布前会再次确认 runtime 仍然有效
 - 过期 session 的结果不会继续向外发布
+- 连续输入的产品语义不依赖底层模型是否支持在线识别：手动按键可以提前提交，VAD 结束当前语音段时也会自动提交。
+- 每次提交后回到等待状态，必须检测到下一次新的语音活动才开始累计下一段；没有新音频的重复提交不会产生识别广播。
+- 在线和离线模型都由手动提交或 VAD 分段边界触发最终识别；底层在线模型只负责持续接收音频，不再绕过统一边界直接发布文本。
 
 这能避免旧流和新流串线。
 
@@ -158,12 +161,15 @@ ASR 不再做唤醒词截断或归属判断。识别层只输出完整文本，w
 
 - 封装 `IAudioBridge`
 - 区分 PTT 录音与流式录音
-- 在高通滤波 / RNNoise 等 `AudioFrameProcessor` 之后执行轻量语音活动检测
-- 只在有效语音活动状态变化时发布 `INPUT.ASR_SPEECH_ACTIVITY`
+- 在高通滤波 / RNNoise 等 `AudioFrameProcessor` 之后，在连续输入路径执行轻量语音活动检测
+- 只在连续输入中、有效语音活动状态变化时发布 `INPUT.ASR_SPEECH_ACTIVITY`
+- 通过同一个自适应 VAD 分段器向识别层提供 `START_SEGMENT` / `END_SEGMENT` 边界
 - 统一清理录音状态
 - 保持 PTT 与流式输入共享同一条处理后音频链路
 
 `ASR_SPEECH_ACTIVITY` 表示处理后音频中检测到用户正在说话，不表示按键按下、麦克风开始采集或流式 session 已启动。这样 IA、TTS、AX 等下游模块可以把它当作真实说话活动信号。
+
+当前 VAD 保留以下策略：噪声底动态估计、开始/结束双门限滞回、最短语音时长、噪声底上限恢复，以及随当前语音时长缩短的静音结束门限（短语音约 450 ms、中等语音约 350 ms、长语音约 250 ms）。VAD 只在检测到新的语音后开始新的段，静音结束只触发一次自动提交。
 
 ### 3.9 AsrModelService / AsrPreviewCoordinator
 
@@ -218,16 +224,18 @@ ASR 运行时只把普通 `RuntimeException` 和 native `LinkageError` 当作可
 适用于 PTT 收束后的单次识别。
 
 ```text
-采集音频 -> 高通/RNNoise -> 语音活动检测 -> 累计处理后音频 -> complete recognition -> AsrRecognitionResult -> final text topic
+采集音频 -> 高通/可用音频处理 -> 累计处理后音频 -> complete recognition -> AsrRecognitionResult -> final text topic
 ```
 
 #### 流式识别
 
-适用于连续输入与边说边识别场景。
+适用于连续输入场景。连续输入的段边界由手动提交或 VAD 自动提交决定，不向外暴露 partial/interim 文本。
 
 ```text
-streaming session -> 高通/RNNoise -> 语音活动检测 -> chunk feed -> endpoint / flush -> normalized text -> final text topic
+streaming session -> 高通/RNNoise -> VAD 等待新语音 -> 累计当前段 -> 手动提交或动态静音结束 -> complete/online flush -> final text topic
 ```
+
+底层在线模型和离线模型都在同一段边界上产生最终文本。下游不需要区分这两种模型，只消费最终文本事件。
 
 ### 4.3 模型预览链路
 
@@ -281,7 +289,7 @@ ASR 能力状态当前是模块可观测、可管理的。
    - 识别结果走协议中心，而不是直接耦合下游模块。
 
 5. **保留音频管线扩展位**
-   - 高通、RNNoise、轻量活动检测位于采集到识别之间；后续可以替换为更完整的 VAD 后端。
+   - 高通、可用的 RNNoise 后端和轻量活动检测位于采集到识别之间；RNNoise 当前仍是预留接口，VAD 的动态分段策略已经作为连续输入正式路径使用。
 
 6. **流式会话必须可隔离**
    - 不能让旧 command、旧 session、旧结果串到新流里。
@@ -294,7 +302,7 @@ ASR 能力状态当前是模块可观测、可管理的。
 ASR 模块后续最值得继续做的方向有：
 
 - 把流式 runtime 再进一步明确成单一会话对象，减少共享状态
-- 为 RNNoise / VAD 实现更完整的后端，并替换当前轻量活动检测器
+- 为 RNNoise 接入实际后端；只有在现有自适应 VAD 的实测效果不足时，才评估替换检测后端
 - 检查 ASR final text 到 IR / LLM / TTS 的端到端时序语义
 - 当 client / GUI 重构完成后，再把新的输入语义接上去
 
@@ -307,3 +315,5 @@ ASR 模块现在已经从“旧控制流残留 + 散乱耦合”进入到“宿�
 ## 10. 配置边界
 
 ASR common 只依赖只读 `AsrConfiguration`，读取启用状态、触发模式、麦克风、音频预处理开关、模型标识和 ASR 模块根。配置值仍由 NeoForge 的单一 `config/tianshu-client.toml` 提供；ASR 不创建配置文件，也不保存 GUI 状态。模型标识解析和模型文件检查留在 ASR/model 域，其他模块不能通过 ASR 配置端口读取或修改设置。
+
+启用 ASR 时，设置页必须同时存在有效且已完整下载的模型；未选择模型或模型未安装时保存失败并提示先下载、选择模型。禁用 ASR 时可以保留空模型选择。

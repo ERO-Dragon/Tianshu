@@ -17,6 +17,8 @@ import com.rheinmetal.tianshu.function.asr.engine.AsrHotwordSupport;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputGateway;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrVadSpeechSegmenter;
 import com.rheinmetal.tianshu.function.asr.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.asr.state.AsrStateMachine;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
@@ -93,7 +95,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         bindVoiceResources(context.voiceResources());
         AsrStateMachine stateMachine = new AsrStateMachine();
         AsrSessionManager sessionManager = new AsrSessionManager();
-        audioCapture = new AudioCaptureService(audioBridge, env, this::publishSpeechActivity);
+        audioCapture = new AudioCaptureService(audioBridge, env, AsrSpeechSegmenter.disabled());
         reconfigureAudioPipeline();
         AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
         controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus);
@@ -166,7 +168,14 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         AudioCaptureService capture = audioCapture;
         if (capture != null) {
             capture.setFrameProcessor(new AsrAudioPipelineFactory(config, env).create());
+            capture.setSpeechSegmenter(createSpeechSegmenter());
         }
+    }
+
+    private AsrSpeechSegmenter createSpeechSegmenter() {
+        return config.isAsrVadEnabled()
+                ? new AsrVadSpeechSegmenter(this::publishSpeechActivity)
+                : AsrSpeechSegmenter.disabled();
     }
 
     private AsrEngine asrEngine() {

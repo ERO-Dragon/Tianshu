@@ -51,9 +51,9 @@ public void subscribeAsrFinalText(EnvelopeHandler handler) {
 | --- | --- | --- |
 | `text` | `String` | ASR 当前交给下游的完整识别文本。ASR 不做 wake word 截断或 owner 判断。 |
 | `rawText` | `String` | ASR 原始文本；当前通常与 `text` 相同，下游不得假定永远相同。 |
-| `turnId` | `int` | 当前 ASR session 内递增的轮次编号。 |
+| `turnId` | `int` | 当前 ASR controller/runtime 实例内单调递增的识别结果序号；运行时重建后可能重新从零开始。 |
 | `sessionId` | `long` | 输入会话标识，用于丢弃旧流结果并与后续链路关联。 |
-| `inputMode` | `String` | 当前可能为 `push_to_talk`、`stream`、`force_flush` 或 `vad_segment`。调用方应允许未来新增值。 |
+| `inputMode` | `String` | 当前可能为 `push_to_talk`、`force_flush` 或 `vad_segment`。调用方应允许未来新增值。 |
 | `createdAt` | `long` | ASR 发布结果时的 epoch millis。 |
 
 消费要求：
@@ -64,6 +64,8 @@ public void subscribeAsrFinalText(EnvelopeHandler handler) {
 - handler 中不得执行模型推理、网络请求、文件 IO 或长任务；需要继续处理时提交到协议中心受控 execution lane。
 
 `ProtocolTopics.INPUT_ASR_FINAL_TEXT` 在协议中心使用 `WAIT_IN_QUEUE` delivery policy，目的是保留有序文本事件。订阅者仍必须尽快返回，不能把协议投递线程当业务工作线程。
+
+连续输入支持两种结束方式：玩家按键可以提前提交当前语音段；VAD 在检测到新的语音活动结束并达到动态静音门限后自动提交。提交完成后 ASR 回到等待状态，必须出现下一次新的语音活动才会开始下一段；没有有效文本的空提交不会发布 `INPUT_ASR_FINAL_TEXT`。无论底层模型是否支持在线识别，最终文本都必须经过这条统一边界；调用方不需要订阅 partial/interim 文本。
 
 ## 4. 订阅说话活动
 
@@ -91,7 +93,7 @@ public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
 | `sessionId` | `long` | 对应的输入 session。 |
 | `occurredAtMillis` | `long` | 状态变化时间；传入非正值时 payload 会使用当前时间。 |
 
-该事件表示高通、降噪等处理后的音频活动，不表示按键按下、麦克风刚启动或最终文本已经产生。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
+该事件表示连续输入中经过高通等音频处理后的说话活动状态，不表示按键按下、麦克风刚启动或最终文本已经产生。只有 ASR VAD 设置开启时才会发布该事件；VAD 关闭时没有事件是正常行为。它也不是自动分段完成通知；需要识别结果时仍应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
 
 ## 5. 订阅 ASR 模块状态
 
@@ -121,7 +123,7 @@ RuntimeInterruptPayload(
 )
 ```
 
-ASR 只在 `sessionId` 命中当前活动输入时停止该 session。这个 topic 面向统一运行时中断，例如玩家死亡、世界退出、维度切换、客户端关闭或引擎重启；普通业务模块不得把它当成“停止 ASR”按钮，也不得伪造其他模块的 session。
+ASR 使用 `sessionId` 区分当前输入代次和外部中断：收到不同于当前活动代次的中断时，停止当前输入；收到与当前活动代次相同的事件则视为本模块已经处理过的代次，不重复停止。当前实际生效的中断来源主要是开始新输入时的旧结果失效，以及退出世界或客户端关闭时的资源释放。玩家死亡和维度切换当前不会主动中断 ASR；`Reason` 中的其他值是统一运行时契约的保留语义。普通业务模块不得把它当成“停止 ASR”按钮，也不得伪造其他模块的 session。
 
 ## 7. 请求与响应语义
 

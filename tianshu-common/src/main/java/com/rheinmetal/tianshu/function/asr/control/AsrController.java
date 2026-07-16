@@ -201,11 +201,12 @@ public final class AsrController {
             sessionManager.beginRecognitionSession(sessionId);
         }
         long activeSessionId = sessionId;
-        if (!recognition.startStreaming(activeSessionId, this::publishIfCurrent)) {
+        if (!recognition.startStreaming(activeSessionId, this::publishIfCurrent, config.isAsrVadEnabled())) {
             stateMachine.moveTo(AsrState.ERROR);
             return;
         }
-        audioCapture.startStreamCapture(activeSessionId, chunk -> recognition.acceptAudioChunk(chunk, activeSessionId));
+        audioCapture.startStreamCapture(activeSessionId,
+                (chunk, decision) -> recognition.acceptAudioChunk(chunk, activeSessionId, decision));
         stateMachine.moveTo(AsrState.STREAMING);
         env.info("ASR 开始连续语音输入，mode=" + mode + ", sessionId=" + activeSessionId);
     }
