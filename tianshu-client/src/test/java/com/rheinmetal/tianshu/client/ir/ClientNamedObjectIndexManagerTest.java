@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.client.ir;
 
+import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
+import com.rheinmetal.tianshu.function.ir.enhance.IrContextHint;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -86,6 +88,38 @@ class ClientNamedObjectIndexManagerTest {
 
         assertFalse(initialization.get(5, TimeUnit.SECONDS));
         assertFalse(Files.exists(cacheRoot.resolve("named-object-ir-cache.bin")));
+    }
+
+    @Test
+    void parseStartsInitializationWithoutBlockingProtocolWorker() throws Exception {
+        Path cacheRoot = Files.createTempDirectory("tianshu-ir-nonblocking-test");
+        CountDownLatch buildStarted = new CountDownLatch(1);
+        CountDownLatch allowBuild = new CountDownLatch(1);
+        try (ClientNamedObjectIndexManager manager = new ClientNamedObjectIndexManager(() -> {
+            buildStarted.countDown();
+            try {
+                allowBuild.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return Map.of();
+            }
+            return Map.of("item:minecraft:stone", List.of("stone"));
+        }, cacheRoot, () -> "en_us")) {
+            CompletableFuture<IRParseResult> firstParse = CompletableFuture.supplyAsync(
+                    () -> manager.parsePlayerCommand("stone", true, IrContextHint.empty())
+            );
+            IRParseResult beforeReady;
+            try {
+                beforeReady = firstParse.get(500, TimeUnit.MILLISECONDS);
+                assertTrue(buildStarted.await(500, TimeUnit.MILLISECONDS));
+            } finally {
+                allowBuild.countDown();
+            }
+
+            assertFalse(beforeReady.isReady());
+            assertTrue(manager.initializeAsync("test await").get(5, TimeUnit.SECONDS));
+            assertTrue(manager.parsePlayerCommand("stone", true, IrContextHint.empty()).isReady());
+        }
     }
 
     private static ClientNamedObjectIndexManager manager(Path cacheRoot) {

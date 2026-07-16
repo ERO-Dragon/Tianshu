@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -106,7 +105,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
     }
 
     IRParseResult parsePlayerCommand(String rawText, boolean isFastIR, IrContextHint contextHint) {
-        awaitInitialization("parse fallback");
+        ensureIndex("parse fallback");
         return irService.parse(rawText, ClientItemContextResolver.from(contextHint), isFastIR);
     }
 
@@ -185,17 +184,6 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
     private void ensureIndex(String reason) {
         if (!irService.isReady()) {
             initializeAsync(reason);
-        }
-    }
-
-    private void awaitInitialization(String reason) {
-        if (irService.isReady()) {
-            return;
-        }
-        try {
-            initializeAsync(reason).join();
-        } catch (CompletionException failure) {
-            LOGGER.log(System.Logger.Level.ERROR, "IR named object index initialization failed, reason=" + reason, failure.getCause());
         }
     }
 
