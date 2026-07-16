@@ -7,17 +7,16 @@ public record VoiceTriggerRegistration(
         List<String> wakeWords,
         List<String> extraWords,
         VoiceCommandCategory category,
-        int priority,
         VoiceCommandScope scope,
         boolean dialogueEligible,
         VoiceTriggerDeliveryTarget deliveryTarget
 ) {
     public VoiceTriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords) {
-        this(moduleId, wakeWords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false, null);
+        this(moduleId, wakeWords, extraWords, VoiceCommandCategory.GENERAL, VoiceCommandScope.CLIENT, false, null);
     }
 
-    public VoiceTriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
-        this(moduleId, wakeWords, extraWords, category, priority, scope, dialogueEligible, null);
+    public VoiceTriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords, VoiceCommandCategory category, VoiceCommandScope scope, boolean dialogueEligible) {
+        this(moduleId, wakeWords, extraWords, category, scope, dialogueEligible, null);
     }
 
     public VoiceTriggerRegistration {

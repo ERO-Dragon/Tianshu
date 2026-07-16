@@ -14,7 +14,8 @@ import com.rheinmetal.tianshu.client.runtime.module.ClientOnnxRuntimeModuleInsta
 import com.rheinmetal.tianshu.client.runtime.module.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.client.settings.module.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.ax.AXSettingsRegistrySource;
-import com.rheinmetal.tianshu.client.settings.module.diagnostics.InternalModuleDiagnosticsSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.settings.module.ia.IaSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.settings.module.ir.IrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.llm.LlmSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.presence.PresenceSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.tts.TtsSettingsRegistrySource;
@@ -208,15 +209,17 @@ public final class NeoForgeClientBootstrap {
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config, scheduler, uiHost);
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, config);
         TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config, coreManager, presenceTextProvider);
-        TianshuSettingsRegistrySource diagnosticsSource = new InternalModuleDiagnosticsSettingsRegistrySource(config);
+        TianshuSettingsRegistrySource irSource = new IrSettingsRegistrySource(config);
+        TianshuSettingsRegistrySource iaSource = new IaSettingsRegistrySource(config);
         return CompositeSettingsRegistrySource.of(
                 moduleSource,
                 externalSource,
+                irSource,
                 asrSource,
                 llmSource,
                 ttsSource,
                 axSource,
-                diagnosticsSource,
+                iaSource,
                 presenceSource
         );
     }

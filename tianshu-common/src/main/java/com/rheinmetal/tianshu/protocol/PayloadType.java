@@ -6,7 +6,6 @@ public enum PayloadType {
     ASR_SPEECH_ACTIVITY,
     ASR_TEXT,
     IR_COMMAND,
-    IR_PARSE,
     IR_RESULT,
     LLM_PROMPT,
     LLM_PROMPT_REQUEST,

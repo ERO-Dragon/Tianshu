@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.ir;
 
 import java.util.List;
 
-record IrCompiledVoiceTrigger(String moduleId, List<IrCompiledVoiceWord> wakeWords, List<IrCompiledVoiceWord> extraWords, int totalWords, int priority) {
+record IrCompiledVoiceTrigger(String moduleId, List<IrCompiledVoiceWord> wakeWords, List<IrCompiledVoiceWord> extraWords, int totalWords) {
     IrCompiledVoiceTrigger {
         if (moduleId == null) moduleId = "";
         moduleId = moduleId.trim();

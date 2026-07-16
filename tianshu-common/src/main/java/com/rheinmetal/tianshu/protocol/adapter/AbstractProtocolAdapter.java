@@ -58,11 +58,11 @@ public abstract class AbstractProtocolAdapter {
     }
 
     protected final void registerVoiceTrigger(List<String> wakeWords, List<String> extraWords) {
-        registerVoiceTrigger(wakeWords, extraWords, VoiceCommandCategory.GENERAL, 0, VoiceCommandScope.CLIENT, false);
+        registerVoiceTrigger(wakeWords, extraWords, VoiceCommandCategory.GENERAL, VoiceCommandScope.CLIENT, false);
     }
 
-    protected final void registerVoiceTrigger(List<String> wakeWords, List<String> commandWords, VoiceCommandCategory category, int priority, VoiceCommandScope scope, boolean dialogueEligible) {
-        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, wakeWords, commandWords, category, priority, scope, dialogueEligible));
+    protected final void registerVoiceTrigger(List<String> wakeWords, List<String> commandWords, VoiceCommandCategory category, VoiceCommandScope scope, boolean dialogueEligible) {
+        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, wakeWords, commandWords, category, scope, dialogueEligible));
     }
 
     protected final ProtocolTaskHandle submitTask(ExecutionLane lane, Runnable task) {

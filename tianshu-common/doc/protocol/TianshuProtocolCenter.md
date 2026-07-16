@@ -73,7 +73,6 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 
 | 能力 | Payload | 用途 |
 |---|---|---|
-| `IR_PARSE` | `IR_PARSE` | 文本或语音意图解析。 |
 | `LLM.REQUEST` | `LLM_PROMPT_REQUEST` | LLM 主请求入口，支持流式响应。 |
 | `LLM.CACHE_MANAGE` | `LLM_CACHE_MANAGE` | LLM 缓存管理入口。 |
 | `TTS_SPEAK` | `TTS_TEXT` | 统一本地语音播报入口。Payload 用 `TtsPlaybackPlacement` 声明排队、丢弃、插入或取消式抢占策略，并携带音色参数。 |
@@ -106,7 +105,7 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 |---|---|---|
 | `INPUT.ASR_SPEECH_ACTIVITY` | `ASR_SPEECH_ACTIVITY` | ASR 在高通/降噪等音频处理后检测到的用户说话活动状态。 |
 | `INPUT.ASR_FINAL_TEXT` | `ASR_TEXT` | ASR 最终识别文本。 |
-| `IR.RESULT` | `IR_RESULT` | IR 解析结果。 |
+| `IR.RESULT` | `IR_RESULT` | IR 结构化文本分析结果；IA 订阅并负责对话仲裁。 |
 | `SYSTEM.RUNTIME_INTERRUPT` | `CUSTOM` | 运行时中断。 |
 | `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |

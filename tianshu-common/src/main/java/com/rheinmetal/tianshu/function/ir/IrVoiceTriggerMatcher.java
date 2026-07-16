@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.ir;
 
 import com.rheinmetal.tianshu.function.ir.core.IRBaseUtils;
 import com.rheinmetal.tianshu.function.ir.input.IrInputText;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,19 +17,18 @@ final class IrVoiceTriggerMatcher {
         if (tokenText.isBlank() || index == null || index.isEmpty()) {
             return new IrMatchBatch(input, List.of());
         }
-        List<IrVoiceMatch> matches = new ArrayList<>();
+        List<VoiceTriggerMatch> matches = new ArrayList<>();
         for (IrCompiledVoiceTrigger trigger : index) {
             List<String> matchedWakeWords = collectTokenMatches(tokenText, trigger.wakeWords());
             List<String> matchedExtraWords = collectTokenMatches(tokenText, trigger.extraWords());
             if (matchedWakeWords.isEmpty() && matchedExtraWords.isEmpty()) {
                 continue;
             }
-            matches.add(new IrVoiceMatch(trigger.moduleId(), matchedWakeWords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedWakeWords, matchedExtraWords), trigger.priority()));
+            matches.add(new VoiceTriggerMatch(trigger.moduleId(), matchedWakeWords, matchedExtraWords, voiceTriggerConfidence(trigger, matchedWakeWords, matchedExtraWords)));
         }
         matches.sort(Comparator
-                .comparingDouble(IrVoiceMatch::confidence).reversed()
-                .thenComparing(IrVoiceMatch::priority, Comparator.reverseOrder())
-                .thenComparing(IrVoiceMatch::moduleId));
+                .comparingDouble(VoiceTriggerMatch::confidence).reversed()
+                .thenComparing(VoiceTriggerMatch::moduleId));
         return new IrMatchBatch(input, matches);
     }
 

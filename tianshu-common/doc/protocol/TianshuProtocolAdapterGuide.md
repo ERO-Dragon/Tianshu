@@ -66,7 +66,7 @@ public TianshuEnvelope speak(TtsSpeakPayload payload) {
 - TTS 播报；
 - 停止或控制某个资源；
 - IA 会话控制；
-- `IR_PARSE` 文本输入；
+- 受信 IA 仲裁命令；
 - GUI 打开/关闭这类动作意图。
 
 ## 4. 发送能力请求

@@ -18,7 +18,7 @@ final class IrVoiceTriggerIndexer {
             if (wakeWords.isEmpty() && extraWords.isEmpty()) {
                 continue;
             }
-            compiled.add(new IrCompiledVoiceTrigger(registration.moduleId(), wakeWords, extraWords, wakeWords.size() + extraWords.size(), registration.priority()));
+            compiled.add(new IrCompiledVoiceTrigger(registration.moduleId(), wakeWords, extraWords, wakeWords.size() + extraWords.size()));
         }
         return List.copyOf(compiled);
     }

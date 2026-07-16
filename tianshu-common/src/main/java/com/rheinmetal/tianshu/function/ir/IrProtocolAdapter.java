@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -12,7 +11,6 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
-import com.rheinmetal.tianshu.protocol.payload.IrParsePayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
@@ -38,20 +36,6 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
                 EnumSet.of(PacketType.EVENT),
                 Priority.LOW,
                 CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
-    public void registerParseCapability(EnvelopeHandler handler) {
-        registerCapability(
-                ProtocolCapabilities.IR_PARSE,
-                PayloadType.IR_PARSE,
-                IrParsePayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.COMMAND),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
                 handler,
                 defaults()
         );
@@ -91,7 +75,4 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
         return publishTopic(parent, ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
     }
 
-    public TianshuEnvelope commandDialogueArbitration(TianshuEnvelope parent, DialogueArbitrationRequestPayload payload) {
-        return commandCapability(parent, ProtocolCapabilities.DIALOGUE_ARBITRATE, PayloadType.DIALOGUE_ARBITRATION_REQUEST, payload);
-    }
 }

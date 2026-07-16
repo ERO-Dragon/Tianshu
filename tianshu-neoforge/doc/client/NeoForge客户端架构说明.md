@@ -86,10 +86,13 @@ NeoForge `ClientConfig` 是 `config/tianshu-client.toml` 的唯一实现和保�
 - `TtsSettingsAccess`
 - `AxSettingsAccess`
 - `PresenceSettingsAccess`
-- `DiagnosticsSettingsAccess`
+- `IrSettingsAccess`
+- `IaSettingsAccess`
 - `ClientDiagnosticsConfiguration`
 
 这些端口不能合并回全能配置接口。新增宿主时实现相同端口即可，模块设置源不需要变化。
+
+IR 与 IA 各自通过 `IrSettingsRegistrySource`、`IaSettingsRegistrySource` 注册自己的分类和诊断开关。工程不存在全局 Diagnostics 设置分类；ASR、AX、LLM、TTS 的诊断开关同样归属各自模块设置 source。`ModuleDiagnosticsSettingsRegistrySource` 只是复用单个诊断 toggle 的 session/save 行为，不代表独立功能模块。
 
 ## 6. GUI 与资源
 
