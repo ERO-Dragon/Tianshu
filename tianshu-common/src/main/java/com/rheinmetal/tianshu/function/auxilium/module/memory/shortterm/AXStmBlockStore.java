@@ -34,13 +34,13 @@ public final class AXStmBlockStore {
         return List.copyOf(blocks.subList(from, blocks.size()));
     }
 
-    public void append(AXScope scope, AXStmBlock block) {
+    public boolean append(AXScope scope, AXStmBlock block) {
         if (!readable(scope) || block == null || block.isEmpty()) {
-            return;
+            return false;
         }
         List<AXStmBlock> existing = loadAll(scope);
         if (existing.stream().anyMatch(value -> duplicate(value, block))) {
-            return;
+            return true;
         }
         AXStmBlock normalized = block;
         if (normalized.previousStmId().isBlank() && !existing.isEmpty()) {
@@ -60,7 +60,7 @@ public final class AXStmBlockStore {
                     normalized.attachedEventIds()
             );
         }
-        jsonStore.appendJsonLine(layout.stmBlocksFile(scope), normalized.toJson());
+        return jsonStore.tryAppendJsonLine(layout.stmBlocksFile(scope), normalized.toJson());
     }
 
     private boolean duplicate(AXStmBlock left, AXStmBlock right) {

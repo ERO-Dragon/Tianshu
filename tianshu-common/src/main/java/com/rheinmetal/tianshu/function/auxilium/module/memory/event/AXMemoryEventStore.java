@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.memory.event;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
+import com.rheinmetal.tianshu.function.auxilium.storage.AXStoreWriteResult;
 
 import java.util.List;
 import java.util.Set;
@@ -27,16 +28,16 @@ public final class AXMemoryEventStore {
                 .toList();
     }
 
-    public void append(AXScope scope, AXMemoryEvent event) {
+    public AXStoreWriteResult append(AXScope scope, AXMemoryEvent event) {
         if (!usable(scope) || event == null || event.isEmpty()) {
-            return;
+            return AXStoreWriteResult.failed();
         }
-        appendAll(scope, List.of(event));
+        return appendAll(scope, List.of(event));
     }
 
-    public void appendAll(AXScope scope, List<AXMemoryEvent> events) {
+    public AXStoreWriteResult appendAll(AXScope scope, List<AXMemoryEvent> events) {
         if (!usable(scope) || events == null || events.isEmpty()) {
-            return;
+            return AXStoreWriteResult.failed();
         }
         Set<String> existing = loadAll(scope).stream()
                 .map(event -> event.stmId() + "\n" + event.factHash())
@@ -45,7 +46,11 @@ public final class AXMemoryEventStore {
                 .filter(event -> event != null && !event.isEmpty())
                 .filter(event -> existing.add(event.stmId() + "\n" + event.factHash()))
                 .toList();
-        jsonStore.appendJsonLines(layout.eventsFile(scope), normalized.stream().map(AXMemoryEvent::toJson).toList());
+        if (normalized.isEmpty()) {
+            return AXStoreWriteResult.success(0);
+        }
+        boolean written = jsonStore.tryAppendJsonLines(layout.eventsFile(scope), normalized.stream().map(AXMemoryEvent::toJson).toList());
+        return written ? AXStoreWriteResult.success(normalized.size()) : AXStoreWriteResult.failed();
     }
 
     private boolean usable(AXScope scope) {

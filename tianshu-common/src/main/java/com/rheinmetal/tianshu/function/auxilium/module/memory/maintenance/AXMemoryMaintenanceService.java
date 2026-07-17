@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRagProjectionService;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXWorldEventMemoryLinker;
@@ -59,6 +60,7 @@ public final class AXMemoryMaintenanceService {
     private final AXWorldEventMemoryLinker worldEventLinker = new AXWorldEventMemoryLinker(null);
     private final AXMemoryDerivedMaintenanceService derivedMaintenanceService;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle currentTask;
 
     public AXMemoryMaintenanceService(
@@ -105,14 +107,19 @@ public final class AXMemoryMaintenanceService {
         if (scope == null || !scope.writable() || !running.compareAndSet(false, true)) {
             return false;
         }
+        long generation = lifecycleGeneration.incrementAndGet();
         currentTask = adapter.submitAxTask("ax.memory.maintenance." + AXStorageSafeName.of(scope.worldId()), ExecutionLane.LONG, () -> {
             try {
-                run(scope);
+                run(scope, generation);
             } catch (RuntimeException exception) {
-                publishFailedStatus();
+                if (isCurrent(generation)) {
+                    publishFailedStatus();
+                }
                 throw exception;
             } finally {
-                running.set(false);
+                if (isCurrent(generation)) {
+                    running.set(false);
+                }
             }
         });
         boolean accepted = currentTask != null && currentTask.state() != com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState.REJECTED;
@@ -123,6 +130,7 @@ public final class AXMemoryMaintenanceService {
     }
 
     public void stop() {
+        lifecycleGeneration.incrementAndGet();
         ProtocolTaskHandle task = currentTask;
         if (task != null && !task.isDone()) {
             task.cancel("AX memory maintenance stopped");
@@ -130,7 +138,10 @@ public final class AXMemoryMaintenanceService {
         running.set(false);
     }
 
-    private void run(AXScope scope) {
+    private void run(AXScope scope, long generation) {
+        if (!isCurrent(generation)) {
+            return;
+        }
         memorySystem.ensureStorageManifest(scope);
         AXRawTurnBatch batch = recentDialogueSystem == null ? AXRawTurnBatch.empty() : recentDialogueSystem.selectCompressionBatch(scope);
         AtomicBoolean startedStatusPublished = new AtomicBoolean(false);
@@ -144,9 +155,14 @@ public final class AXMemoryMaintenanceService {
             );
             AXStmBlock stm = existingStmFor(scope, batch)
                     .orElseGet(() -> compress(scope, batch, attachedWorldEvents).join());
+            if (!isCurrent(generation)) {
+                return;
+            }
             if (stm != null && !stm.isEmpty()) {
                 if (existingStmFor(scope, batch).isEmpty()) {
-                    memorySystem.appendStmBlock(scope, stm);
+                    if (!memorySystem.appendStmBlock(scope, stm)) {
+                        return;
+                    }
                     stm = existingStmFor(scope, batch).orElse(null);
                     if (stm == null || stm.isEmpty()) {
                         return;
@@ -155,10 +171,15 @@ public final class AXMemoryMaintenanceService {
                 compressed = true;
                 if (!hasEventsForStm(scope, stm)) {
                     List<AXMemoryEvent> events = new ArrayList<>(extractEvents(scope, stm).join());
+                    if (!isCurrent(generation)) {
+                        return;
+                    }
                     events.addAll(worldEventLinker.directEventsFor(stm, attachedWorldEvents));
                     if (!events.isEmpty()) {
                         memorySystem.ensureStorageManifest(scope);
-                        memorySystem.events().appendAll(scope, events);
+                        if (!memorySystem.events().appendAll(scope, events).success()) {
+                            return;
+                        }
                     }
                 }
                 if (recentDialogueSystem != null) {
@@ -166,11 +187,21 @@ public final class AXMemoryMaintenanceService {
                 }
             }
         }
-        VectorRebuildResult vectorResult = rebuildMissingVectors(scope, startedStatusPublished).join();
+        if (!isCurrent(generation)) {
+            return;
+        }
+        VectorRebuildResult vectorResult = rebuildMissingVectors(scope, startedStatusPublished, generation).join();
+        if (!isCurrent(generation)) {
+            return;
+        }
         int rebuiltVectors = vectorResult.rebuiltVectors();
-        int projectedEntries = projectMemoryRag(scope, vectorResult.embeddingNamespace(), startedStatusPublished).join();
+        int projectedEntries = projectMemoryRag(scope, vectorResult.embeddingNamespace(), startedStatusPublished, generation).join();
+        if (!isCurrent(generation)) {
+            return;
+        }
         AXMemoryDerivedMaintenanceResult derivedResult = derivedMaintenanceService.maintain(scope);
-        if (compressed || rebuiltVectors > 0 || projectedEntries > 0 || (derivedResult.ran() && derivedResult.stmChainRewritten())) {
+        if (isCurrent(generation)
+                && (compressed || rebuiltVectors > 0 || projectedEntries > 0 || (derivedResult.ran() && derivedResult.stmChainRewritten()))) {
             publishCompleteStatus();
         }
     }
@@ -258,9 +289,13 @@ public final class AXMemoryMaintenanceService {
         return future.exceptionally(error -> fallback);
     }
 
-    private CompletableFuture<VectorRebuildResult> rebuildMissingVectors(AXScope scope, AtomicBoolean startedStatusPublished) {
+    private CompletableFuture<VectorRebuildResult> rebuildMissingVectors(AXScope scope, AtomicBoolean startedStatusPublished, long generation) {
         CompletableFuture<VectorRebuildResult> done = new CompletableFuture<>();
         primitiveClient.requestStatus("ax.memory.embedding.status", status -> {
+            if (!isCurrent(generation)) {
+                done.complete(VectorRebuildResult.none());
+                return;
+            }
             if (!completed(status) || !embeddingUsable(status.runtimeSnapshot())) {
                 done.complete(VectorRebuildResult.none());
                 return;
@@ -272,12 +307,16 @@ public final class AXMemoryMaintenanceService {
                 return;
             }
             publishStartedStatus(startedStatusPublished);
-            embedBatches(scope, namespace, status.runtimeSnapshot().embeddingModelName(), missing, 0, 0, done);
+            embedBatches(scope, namespace, status.runtimeSnapshot().embeddingModelName(), missing, 0, 0, done, generation);
         });
         return done;
     }
 
-    private void embedBatches(AXScope scope, String namespace, String modelName, List<AXMemoryEvent> events, int from, int written, CompletableFuture<VectorRebuildResult> done) {
+    private void embedBatches(AXScope scope, String namespace, String modelName, List<AXMemoryEvent> events, int from, int written, CompletableFuture<VectorRebuildResult> done, long generation) {
+        if (!isCurrent(generation)) {
+            done.complete(new VectorRebuildResult(namespace, written));
+            return;
+        }
         if (from >= events.size()) {
             done.complete(new VectorRebuildResult(namespace, written));
             return;
@@ -285,6 +324,10 @@ public final class AXMemoryMaintenanceService {
         int to = Math.min(events.size(), from + VECTOR_BATCH_SIZE);
         List<AXMemoryEvent> batch = events.subList(from, to);
         primitiveClient.requestEmbedding("ax.memory.embedding.batch." + from, batch.stream().map(AXMemoryEvent::fact).toList(), result -> {
+            if (!isCurrent(generation)) {
+                done.complete(new VectorRebuildResult(namespace, written));
+                return;
+            }
             int nextWritten = written;
             if (completed(result)) {
                 List<AXEventVector> vectors = toVectors(batch, result, modelName, namespace);
@@ -294,18 +337,23 @@ public final class AXMemoryMaintenanceService {
                     nextWritten += vectors.size();
                 }
             }
-            embedBatches(scope, namespace, modelName, events, to, nextWritten, done);
+            embedBatches(scope, namespace, modelName, events, to, nextWritten, done, generation);
         });
     }
 
-    private CompletableFuture<Integer> projectMemoryRag(AXScope scope, String embeddingNamespace, AtomicBoolean startedStatusPublished) {
-        if (ragProjectionService == null || embeddingNamespace == null || embeddingNamespace.isBlank()) {
+    private CompletableFuture<Integer> projectMemoryRag(AXScope scope, String embeddingNamespace, AtomicBoolean startedStatusPublished, long generation) {
+        if (!isCurrent(generation) || ragProjectionService == null || embeddingNamespace == null || embeddingNamespace.isBlank()) {
             return CompletableFuture.completedFuture(0);
         }
         publishStartedStatus(startedStatusPublished);
         memorySystem.invalidateRetrievalIndex(scope);
         return ragProjectionService.project(scope, embeddingNamespace)
+                .thenApply(projected -> isCurrent(generation) ? projected : 0)
                 .exceptionally(ignored -> 0);
+    }
+
+    private boolean isCurrent(long generation) {
+        return generation > 0L && lifecycleGeneration.get() == generation;
     }
 
     private void publishStartedStatus(AtomicBoolean published) {
@@ -316,7 +364,7 @@ public final class AXMemoryMaintenanceService {
                 AXProtocolAdapter.MODULE_ID,
                 "memory.maintenance",
                 STATUS_KEY_STARTED,
-                "AX 记忆整理中",
+                "",
                 ModuleStatusSeverity.NOTICE,
                 3_000L,
                 Map.of("presenceStatusType", "COMPRESSING")
@@ -327,7 +375,7 @@ public final class AXMemoryMaintenanceService {
         adapter.publishModuleStatus(ModuleStatuses.readyKeyed(
                 AXProtocolAdapter.MODULE_ID,
                 STATUS_KEY_COMPLETE,
-                "AX 记忆整理完成"
+                ""
         ));
     }
 
@@ -335,7 +383,7 @@ public final class AXMemoryMaintenanceService {
         adapter.publishModuleStatus(ModuleStatuses.failedKeyed(
                 AXProtocolAdapter.MODULE_ID,
                 STATUS_KEY_FAILED,
-                "AX 记忆整理失败"
+                ""
         ));
     }
 

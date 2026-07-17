@@ -217,6 +217,13 @@ AX 输出处理必须遵守 IA 会话边界：
 - TTS 调用必须在授权链路内发生。
 - 流式输出可以转发给授权 UI / TTS sink，但不得广播到底层公共 topic。
 
+AX 的新 turn 只由 IA 完成仲裁、选择 AX 为 owner 并实际投递的 delivery 进入。ASR speech
+activity 不参与 AX 的回合生命周期，也不能直接触发中断。新的 IA delivery 到达后，AX 才依据
+“允许打断”设置决定中断旧 turn，或在关闭打断时将新 delivery 直接释放为 `REJECTED`，不排队。
+
+AX 通过 `MODULE.STATUS` 告诉映迹当前是否正在回复以及是否允许打断；映迹和 TTS 不负责判断
+请求是否为 CHAT。
+
 LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、RAG hit、记忆正文或异常堆栈。
 
 ## 10. 安全与诊断

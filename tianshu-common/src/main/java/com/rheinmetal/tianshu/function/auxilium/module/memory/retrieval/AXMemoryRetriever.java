@@ -17,6 +17,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -26,6 +29,7 @@ public final class AXMemoryRetriever {
     private final AXMemorySystem memorySystem;
     private final AXLlmRagClient ragClient;
     private final AXMemoryRetrievalPolicy retrievalPolicy;
+    private final ConcurrentMap<String, List<CompletableFuture<LLMCacheManageResultPayload>>> pendingByRequest = new ConcurrentHashMap<>();
 
     public AXMemoryRetriever(AXMemorySystem memorySystem, AXLlmRagClient ragClient) {
         this(memorySystem, ragClient, AXMemoryRetrievalPolicy.DEFAULT);
@@ -44,10 +48,22 @@ public final class AXMemoryRetriever {
             safeCompletion.complete(AXMemoryRetrievalResult.empty());
             return;
         }
+        String requestKey = request.request() == null ? "" : request.request().requestKey();
+        List<CompletableFuture<LLMCacheManageResultPayload>> tracked = new CopyOnWriteArrayList<>();
+        if (!requestKey.isBlank()) {
+            pendingByRequest.put(requestKey, tracked);
+        }
         try {
-            search(request).whenComplete((result, error) ->
-                    safeCompletion.complete(error == null ? result : AXMemoryRetrievalResult.empty()));
+            searchAsync(request, tracked).whenComplete((result, error) -> {
+                if (!requestKey.isBlank()) {
+                    pendingByRequest.remove(requestKey, tracked);
+                }
+                safeCompletion.complete(error == null ? result : AXMemoryRetrievalResult.empty());
+            });
         } catch (RuntimeException exception) {
+            if (!requestKey.isBlank()) {
+                pendingByRequest.remove(requestKey, tracked);
+            }
             safeCompletion.complete(AXMemoryRetrievalResult.empty());
         }
     }
@@ -58,10 +74,28 @@ public final class AXMemoryRetriever {
         return future;
     }
 
-    private CompletableFuture<AXMemoryRetrievalResult> search(AXMemoryRetrievalRequest request) {
+    public void cancel(String requestKey, String reason) {
+        if (requestKey == null || requestKey.isBlank()) {
+            return;
+        }
+        List<CompletableFuture<LLMCacheManageResultPayload>> tracked = pendingByRequest.remove(requestKey);
+        if (tracked == null) {
+            return;
+        }
+        for (CompletableFuture<LLMCacheManageResultPayload> future : tracked) {
+            ragClient.cancelFuture(future, reason);
+        }
+    }
+
+    private CompletableFuture<AXMemoryRetrievalResult> searchAsync(
+            AXMemoryRetrievalRequest request,
+            List<CompletableFuture<LLMCacheManageResultPayload>> tracked
+    ) {
         String l1Uid = AXMemoryRagUids.l1(request.scope());
         int l1TopK = Math.max(retrievalPolicy.minRoutedL1Clusters(), request.maxBlocks());
-        return ragClient.searchUid(l1Uid, request.queryText(), l1TopK, RAG_SEARCH_FLOOR)
+        CompletableFuture<LLMCacheManageResultPayload> l1Future = ragClient.searchUid(l1Uid, request.queryText(), l1TopK, RAG_SEARCH_FLOOR);
+        tracked.add(l1Future);
+        return l1Future
                 .thenCompose(l1Result -> {
                     List<String> l2ClusterIds = hitEntryIds(l1Result);
                     if (l2ClusterIds.isEmpty()) {
@@ -75,6 +109,7 @@ public final class AXMemoryRetriever {
                                     RAG_SEARCH_FLOOR
                             ))
                             .toList();
+                    tracked.addAll(futures);
                     return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                             .thenApply(ignored -> {
                                 List<LLMCacheManageResultPayload> l2Results = futures.stream()

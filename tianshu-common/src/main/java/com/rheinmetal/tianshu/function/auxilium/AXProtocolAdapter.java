@@ -134,6 +134,10 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return submitPrepared(envelope);
     }
 
+    public TianshuEnvelope cancelPresenceContextQuery(TianshuEnvelope envelope, String reasonCode, String message) {
+        return cancelEnvelope(envelope, reasonCode, message);
+    }
+
     public int presenceContextProviderCount() {
         return runtime().capabilityProviderCount(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT);
     }
@@ -168,6 +172,10 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return submitPrepared(envelope);
     }
 
+    public TianshuEnvelope cancelLlmPrimitiveQuery(TianshuEnvelope envelope, String reasonCode, String message) {
+        return cancelEnvelope(envelope, reasonCode, message);
+    }
+
     public void registerLlmPrimitiveResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
@@ -200,6 +208,10 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope submitLlmCacheManage(TianshuEnvelope envelope) {
         return submitPrepared(envelope);
+    }
+
+    public TianshuEnvelope cancelLlmCacheManage(TianshuEnvelope envelope, String reasonCode, String message) {
+        return cancelEnvelope(envelope, reasonCode, message);
     }
 
     public void registerLlmCacheManageResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {

@@ -49,7 +49,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
                         .toggle("ax.reply.speech", ax("option.reply_speech"), session.replySpeechEnabled, session.enabled::get))
                 .toggles("ax.behavior", ax("section.behavior"), session.enabled::get, toggles -> toggles
                         .toggle("ax.behavior.thinking", ax("option.chat_thinking"), session.chatThinkingEnabled, session.enabled::get)
-                        .toggle("ax.behavior.interrupt", ax("option.interrupt_on_speech"), session.interruptOnPlayerSpeech, session.enabled::get));
+                        .toggle("ax.behavior.interrupt", ax("option.allow_interruption"), session.allowInterruption, session.enabled::get));
     }
 
     private static UiText ax(String key, Object... args) {
@@ -68,7 +68,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
         private final MutableSettingsValue<String> wakeWord;
         private final MutableSettingsValue<Boolean> replySpeechEnabled;
         private final MutableSettingsValue<Boolean> chatThinkingEnabled;
-        private final MutableSettingsValue<Boolean> interruptOnPlayerSpeech;
+        private final MutableSettingsValue<Boolean> allowInterruption;
 
         private AXSettingsSession(AxSettingsAccess config, TianshuCoreManager coreManager) {
             this.config = Objects.requireNonNull(config, "config");
@@ -78,7 +78,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
             this.wakeWord = new MutableSettingsValue<>(config::wakeWord, config::setAxWakeWord);
             this.replySpeechEnabled = new MutableSettingsValue<>(config::isAxReplySpeechEnabled, config::setAxReplySpeechEnabled);
             this.chatThinkingEnabled = new MutableSettingsValue<>(config::chatThinkingEnabled, config::setAxChatThinkingEnabled);
-            this.interruptOnPlayerSpeech = new MutableSettingsValue<>(config::interruptOnPlayerSpeech, config::setAxInterruptOnPlayerSpeech);
+            this.allowInterruption = new MutableSettingsValue<>(config::allowInterruption, config::setAxAllowInterruption);
         }
 
         @Override
@@ -93,7 +93,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
                     || wakeWord.dirty()
                     || replySpeechEnabled.dirty()
                     || chatThinkingEnabled.dirty()
-                    || interruptOnPlayerSpeech.dirty();
+                    || allowInterruption.dirty();
         }
 
         @Override
@@ -107,14 +107,14 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
             String wakeWordBefore = config.wakeWord();
             boolean replySpeechBefore = config.isAxReplySpeechEnabled();
             boolean chatThinkingBefore = config.chatThinkingEnabled();
-            boolean interruptBefore = config.interruptOnPlayerSpeech();
+            boolean interruptionBefore = config.allowInterruption();
 
             config.setAxEnabled(enabled.get());
             config.setAxDiagnosticsEnabled(diagnosticsEnabled.get());
             config.setAxWakeWord(wakeWord.get());
             config.setAxReplySpeechEnabled(replySpeechEnabled.get());
             config.setAxChatThinkingEnabled(chatThinkingEnabled.get());
-            config.setAxInterruptOnPlayerSpeech(interruptOnPlayerSpeech.get());
+            config.setAxAllowInterruption(allowInterruption.get());
             try {
                 config.save();
             } catch (RuntimeException exception) {
@@ -123,7 +123,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
                 config.setAxWakeWord(wakeWordBefore);
                 config.setAxReplySpeechEnabled(replySpeechBefore);
                 config.setAxChatThinkingEnabled(chatThinkingBefore);
-                config.setAxInterruptOnPlayerSpeech(interruptBefore);
+                config.setAxAllowInterruption(interruptionBefore);
                 return SettingsSaveResult.failure(ax("message.save_failed"), SettingsSaveResult.FailureType.SAVE);
             }
 
@@ -133,7 +133,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
             wakeWord.save();
             replySpeechEnabled.save();
             chatThinkingEnabled.save();
-            interruptOnPlayerSpeech.save();
+            allowInterruption.save();
             if (runtimeRegistrationChanged) {
                 coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
             }
@@ -147,7 +147,7 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
             wakeWord.reset();
             replySpeechEnabled.reset();
             chatThinkingEnabled.reset();
-            interruptOnPlayerSpeech.reset();
+            allowInterruption.reset();
         }
     }
 }

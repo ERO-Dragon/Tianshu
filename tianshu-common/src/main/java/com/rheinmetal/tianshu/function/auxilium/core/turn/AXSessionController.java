@@ -33,4 +33,20 @@ public final class AXSessionController {
         );
         adapter.commandSessionControl(parent, payload);
     }
+
+    public void extend(TianshuEnvelope parent, DialogueDeliveryPayload delivery, long requestedProcessingMillis) {
+        if (parent == null || delivery == null || delivery.sessionId().isBlank() || requestedProcessingMillis <= 0L) {
+            return;
+        }
+        DialogueSessionControlPayload payload = new DialogueSessionControlPayload(
+                delivery.sessionId(),
+                AXModule.MODULE_ID,
+                AXParticipantRegistrar.PARTICIPANT_ID,
+                DialogueSessionControlAction.EXTEND_PROCESSING,
+                null,
+                requestedProcessingMillis,
+                System.currentTimeMillis()
+        );
+        adapter.commandSessionControl(parent, payload);
+    }
 }

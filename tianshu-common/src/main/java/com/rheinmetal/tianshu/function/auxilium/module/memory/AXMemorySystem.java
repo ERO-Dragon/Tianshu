@@ -81,19 +81,22 @@ public final class AXMemorySystem {
         );
     }
 
-    public void appendStmBlock(AXScope scope, AXStmBlock block) {
+    public boolean appendStmBlock(AXScope scope, AXStmBlock block) {
         if (!storageReadyForWrite(scope)) {
-            return;
+            return false;
         }
-        stmBlockStore.append(scope, block);
+        return stmBlockStore.append(scope, block);
     }
 
-    public void appendMemoryEvent(AXScope scope, AXMemoryEvent event) {
+    public boolean appendMemoryEvent(AXScope scope, AXMemoryEvent event) {
         if (!storageReadyForWrite(scope)) {
-            return;
+            return false;
         }
-        eventStore.append(scope, event);
-        retrievalIndexCache.invalidate(scope);
+        boolean written = eventStore.append(scope, event).success();
+        if (written) {
+            retrievalIndexCache.invalidate(scope);
+        }
+        return written;
     }
 
     public void appendAttachedWorldEvent(AXScope scope, AXAttachedWorldEvent event) {

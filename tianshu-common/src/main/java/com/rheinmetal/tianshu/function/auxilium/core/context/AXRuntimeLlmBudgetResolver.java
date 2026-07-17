@@ -19,6 +19,13 @@ public final class AXRuntimeLlmBudgetResolver {
         return AXRuntimeLlmBudget.fallback(fallbackPolicy);
     }
 
+    public void cancel(String requestId, String reason) {
+        primitiveClient.cancelRequest(
+                normalizeRequestId(requestId),
+                reason == null ? "AX turn cancelled" : reason
+        );
+    }
+
     public void resolveContextBudget(String requestId, Completion completion) {
         Objects.requireNonNull(completion, "completion");
         Completion once = once(completion);

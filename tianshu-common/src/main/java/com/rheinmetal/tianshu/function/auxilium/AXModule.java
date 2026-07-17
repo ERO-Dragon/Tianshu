@@ -50,10 +50,8 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
@@ -84,6 +82,7 @@ public final class AXModule implements TianshuManagedModule {
     private AXMemorySystem memorySystem;
     private AXRecentDialogueSystem recentDialogueSystem;
     private AXDialogueGateway dialogueGateway;
+    private AXTurnOrchestrator turnOrchestrator;
     private AXTurnStatusPublisher turnStatusPublisher;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
@@ -140,7 +139,6 @@ public final class AXModule implements TianshuManagedModule {
     @Override
     public void register(ModuleRegistrationContext context) {
         adapter.registerDialogueInputCapability(this::handleDialogueDelivery);
-        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
         adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
     }
@@ -191,7 +189,7 @@ public final class AXModule implements TianshuManagedModule {
         dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), runtimePolicy.dynamicFactTimeoutMillis());
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
-        AXTurnOrchestrator turnOrchestrator = new AXTurnOrchestrator(
+        turnOrchestrator = new AXTurnOrchestrator(
                 scopeProvider,
                 new AXDialogueInputMapper(),
                 new AXInputNormalizer(),
@@ -207,7 +205,8 @@ public final class AXModule implements TianshuManagedModule {
                 recentDialogueSystem,
                 outputProcessor,
                 memoryRetriever,
-                turnStatusPublisher
+                turnStatusPublisher,
+                assistantSettings.allowInterruption()
         );
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
@@ -232,6 +231,9 @@ public final class AXModule implements TianshuManagedModule {
 
     @Override
     public void stop() {
+        if (turnOrchestrator != null) {
+            turnOrchestrator.stop();
+        }
         if (maintenanceCoordinator != null) {
             maintenanceCoordinator.stop();
         }
@@ -257,6 +259,7 @@ public final class AXModule implements TianshuManagedModule {
             participantRegistrar.unregister();
         }
         dialogueGateway = null;
+        turnOrchestrator = null;
     }
 
     @Override
@@ -297,24 +300,6 @@ public final class AXModule implements TianshuManagedModule {
             ));
         }
         currentGateway.handleDelivery(envelope, context);
-    }
-
-    private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof AsrSpeechActivityPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX ASR speech activity payload is invalid", null);
-            return;
-        }
-        if (payload.speaking() && assistantSettings.interruptOnPlayerSpeech()) {
-            if (llmClient != null) {
-                llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
-            }
-            adapter.controlTts(new TtsControlPayload(
-                    TtsControlPayload.Action.STOP_CURRENT,
-                    "",
-                    "user started speaking"
-            ));
-        }
-        context.complete(envelope.envelopeId());
     }
 
     private void handlePresenceWorldEvent(TianshuEnvelope envelope, ProtocolContext context) {

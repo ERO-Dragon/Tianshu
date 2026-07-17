@@ -33,12 +33,14 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -186,6 +188,104 @@ class AXMemoryMaintenanceServiceTest {
     }
 
     @Test
+    void stoppedMaintenanceIgnoresLateCompressionResultAndKeepsRawBatch() throws Exception {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
+        AXMemoryWindowPolicy policy = maintenancePolicy();
+        AXMemorySystem memorySystem = new AXMemorySystem(
+                new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()),
+                policy
+        );
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(
+                policy,
+                (requestId, role, content) -> java.util.OptionalInt.of(3000)
+        );
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "我在看资源重载后的日志。", "session", "turn-1"));
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "assistant", "我会关注缓存和模块加载。", "session", "turn-1"));
+        AtomicReference<TianshuEnvelope> heldRequest = new AtomicReference<>();
+        registerLlm(runtime, heldRequest);
+        registerPrimitive(runtime);
+        AXMemoryMaintenanceService service = new AXMemoryMaintenanceService(
+                adapter,
+                memorySystem,
+                recentDialogueSystem,
+                new AXLlmClient(adapter),
+                new AXLlmPrimitiveClient(adapter, 2_000L)
+        );
+
+        assertTrue(service.requestMaintenance(scope));
+        await(() -> heldRequest.get() != null);
+        service.stop();
+        LLMPromptRequestPayload payload = (LLMPromptRequestPayload) heldRequest.get().payload();
+        runtime.submit(EnvelopeBuilder.responseTo(
+                "module.llm.memory-test",
+                heldRequest.get(),
+                PayloadType.LLM_PROMPT_RESULT,
+                LLMPromptResultPayload.completed(payload.requestId(), "迟到的 STM 内容")
+        ).build());
+
+        Thread.sleep(100L);
+        assertTrue(memorySystem.stmBlocks().loadAll(scope).isEmpty());
+        assertFalse(recentDialogueSystem.selectCompressionBatch(scope).isEmpty());
+    }
+
+    @Test
+    void failedEventWriteKeepsRawBatchAvailableForRetry() throws Exception {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
+        AXMemoryWindowPolicy policy = maintenancePolicy();
+        AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
+        AXMemorySystem memorySystem = new AXMemorySystem(
+                layout,
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()),
+                policy
+        );
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(
+                policy,
+                (requestId, role, content) -> java.util.OptionalInt.of(3000)
+        );
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "我在看资源重载后的日志。", "session", "turn-1"));
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "assistant", "我会关注缓存和模块加载。", "session", "turn-1"));
+        AXRawTurnBatch batch = recentDialogueSystem.selectCompressionBatch(scope);
+        assertTrue(memorySystem.appendStmBlock(scope, new AXStmBlock(
+                batch.stmId(),
+                "",
+                scope.worldId(),
+                System.currentTimeMillis(),
+                batch.sourceFromMillis(),
+                batch.sourceToMillis(),
+                "",
+                "",
+                batch.turns().size(),
+                12,
+                "玩家在调试资源重载日志，并关注缓存和模块加载。",
+                List.of()
+        )));
+        Files.createDirectories(layout.eventsFile(scope));
+
+        RecordingLlmModule llm = new RecordingLlmModule(1);
+        registerLlm(runtime, llm);
+        registerPrimitive(runtime);
+        AXMemoryMaintenanceService service = new AXMemoryMaintenanceService(
+                adapter,
+                memorySystem,
+                recentDialogueSystem,
+                new AXLlmClient(adapter),
+                new AXLlmPrimitiveClient(adapter, 2_000L)
+        );
+
+        assertTrue(service.requestMaintenance(scope));
+        await(() -> llm.requests.size() == 1);
+        Thread.sleep(100L);
+
+        assertFalse(recentDialogueSystem.selectCompressionBatch(scope).isEmpty());
+        assertTrue(memorySystem.events().loadAll(scope).isEmpty());
+    }
+
+    @Test
     void extractionPrefersJsonArrayAndFallsBackToLines() {
         AXMemoryFactExtractionParser parser = new AXMemoryFactExtractionParser();
 
@@ -230,6 +330,30 @@ class AXMemoryMaintenanceServiceTest {
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
         ), llm::handle);
+    }
+
+    private static void registerLlm(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        runtime.registerModule(new ModuleDescriptor(
+                "module.llm.memory-test",
+                List.of(new CapabilityDescriptor(
+                        ProtocolCapabilities.LLM_REQUEST,
+                        PayloadType.LLM_PROMPT_REQUEST,
+                        LLMPromptRequestPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.REQUEST),
+                        Priority.LOW,
+                        CompletionPolicy.MANUAL_COMPLETE
+                )),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        ), (envelope, context) -> request.set(envelope));
     }
 
     private static void registerPrimitive(ProtocolRuntime runtime) {

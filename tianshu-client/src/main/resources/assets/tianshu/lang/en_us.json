@@ -386,7 +386,7 @@
   "tianshu.gui.ax.option.wake_word": "Assistant Identity Name (optional)",
   "tianshu.gui.ax.option.reply_speech": "Speak Tianshu Replies",
   "tianshu.gui.ax.option.chat_thinking": "Spend More Thinking Time for Better Replies",
-  "tianshu.gui.ax.option.interrupt_on_speech": "Allow Input to Interrupt Tianshu",
+  "tianshu.gui.ax.option.allow_interruption": "Allow New Arbitrated Deliveries to Interrupt Tianshu",
   "tianshu.gui.ax.message.saved": "Tianshu assistant settings saved",
   "tianshu.gui.ax.message.save_failed": "Could not save Tianshu assistant settings; check the logs and config directory",
 
@@ -481,6 +481,7 @@
   "tianshu.presence.module.tts.reload_complete": "TTS model reloaded",
   "tianshu.presence.module.tts.reload_failed": "TTS model reload failed",
   "tianshu.presence.module.ax.turn_accepted": "AX received the request",
+  "tianshu.presence.module.ax.idle": "AX is idle",
   "tianshu.presence.module.ax.turn_processing": "AX is processing",
   "tianshu.presence.module.ax.memory_retrieving": "AX is searching memory",
   "tianshu.presence.module.ax.thinking": "AX is thinking",

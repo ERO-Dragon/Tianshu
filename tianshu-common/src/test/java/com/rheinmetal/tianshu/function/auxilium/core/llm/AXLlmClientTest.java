@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXLlmClientTest {
@@ -66,6 +67,39 @@ class AXLlmClientTest {
         assertEquals(0, chat.results.get());
         assertEquals(1, chat.cancellationResults.get());
         assertEquals(usage, chat.lastTerminalUsage.get());
+    }
+
+    @Test
+    void targetedForegroundCancellationLeavesOtherChatRequestsAlive() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        registerLlmSink(runtime, null);
+        AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime));
+        RecordingHandler first = new RecordingHandler();
+        RecordingHandler second = new RecordingHandler();
+
+        TianshuEnvelope firstEnvelope = client.submitDetached(request("first", "CHAT"), first);
+        TianshuEnvelope secondEnvelope = client.submitDetached(request("second", "CHAT"), second);
+
+        assertTrue(client.cancelRequestAwaitTerminal(
+                firstEnvelope.envelopeId(),
+                AXTurnCancellation.playerInterrupted("new IA delivery")
+        ));
+
+        assertEquals(1, first.cancelled.get());
+        assertEquals(0, second.cancelled.get());
+        assertEquals(EnvelopeStatus.CANCELLED, runtime.lifecycle().statusOf(firstEnvelope.envelopeId()));
+        assertNotEquals(EnvelopeStatus.CANCELLED, runtime.lifecycle().statusOf(secondEnvelope.envelopeId()));
+
+        assertTrue(client.handleResult(
+                firstEnvelope.envelopeId(),
+                LLMPromptResultPayload.cancelled("first", "partial", "", List.of(), null)
+        ));
+        assertEquals(1, first.cancellationResults.get());
+        assertTrue(client.handleStreamChunk(
+                secondEnvelope.envelopeId(),
+                LLMPromptStreamChunkPayload.chunk("second", "still active", 0)
+        ));
+        assertEquals(1, second.streamChunks.get());
     }
 
     @Test

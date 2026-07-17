@@ -122,8 +122,16 @@ public final class AXJsonStore {
     }
 
     public void appendJsonLines(Path path, List<JsonObject> objects) {
+        tryAppendJsonLines(path, objects);
+    }
+
+    public boolean tryAppendJsonLine(Path path, JsonObject object) {
+        return object != null && tryAppendJsonLines(path, List.of(object));
+    }
+
+    public boolean tryAppendJsonLines(Path path, List<JsonObject> objects) {
         if (path == null || objects == null || objects.isEmpty()) {
-            return;
+            return false;
         }
         try {
             Files.createDirectories(path.getParent());
@@ -137,8 +145,10 @@ public final class AXJsonStore {
                     writer.newLine();
                 }
             }
+            return true;
         } catch (IOException e) {
             warn("Failed to append jsonl: " + path, e);
+            return false;
         }
     }
 

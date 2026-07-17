@@ -89,7 +89,7 @@ public final class AXLlmPrimitiveClient {
             return;
         }
         TianshuEnvelope envelope = adapter.buildLlmPrimitiveQuery(payload);
-        pending.put(envelope.envelopeId(), new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis));
+        pending.put(envelope.envelopeId(), new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis, payload.requestId(), envelope));
         adapter.registerLlmPrimitiveResultResponse(envelope.envelopeId(), this::handleResponse);
         adapter.submitLlmPrimitiveQuery(envelope);
         scheduleTimeout(envelope.envelopeId(), payload);
@@ -103,6 +103,7 @@ public final class AXLlmPrimitiveClient {
                 return false;
             }
             adapter.unregisterLlmPrimitiveResponses(entry.getKey());
+            adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
             query.completion().complete(LLMPrimitiveResultPayload.failed(
                     "llm.primitive.query",
                     LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS,
@@ -114,18 +115,50 @@ public final class AXLlmPrimitiveClient {
     }
 
     public void clear() {
+        cancelAll("AX primitive client stopped");
+    }
+
+    public void cancelAll(String reason) {
         pending.forEach((requestEnvelopeId, query) -> {
             adapter.unregisterLlmPrimitiveResponses(requestEnvelopeId);
             if (query != null) {
+                adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_CANCELLED", reason == null ? "AX primitive query cancelled" : reason);
                 query.completion().complete(LLMPrimitiveResultPayload.failed(
                         "llm.primitive.query",
                         LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS,
-                        "AX_PRIMITIVE_CLIENT_STOPPED",
-                        "AX primitive client stopped"
+                    "AX_PRIMITIVE_CLIENT_STOPPED",
+                    reason == null ? "AX primitive client stopped" : reason
                 ));
             }
         });
         pending.clear();
+    }
+
+    public boolean cancelRequest(String requestId, String reason) {
+        if (requestId == null || requestId.isBlank()) {
+            return false;
+        }
+        boolean cancelled = false;
+        for (var entry : pending.entrySet()) {
+            PendingQuery query = entry.getValue();
+            if (query == null || !requestId.equals(query.requestId())) {
+                continue;
+            }
+            if (!pending.remove(entry.getKey(), query)) {
+                continue;
+            }
+            adapter.unregisterLlmPrimitiveResponses(entry.getKey());
+            String message = reason == null ? "AX primitive query cancelled" : reason;
+            adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_CANCELLED", message);
+            query.completion().complete(LLMPrimitiveResultPayload.failed(
+                    query.requestId(),
+                    LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS,
+                    "AX_PRIMITIVE_CANCELLED",
+                    message
+            ));
+            cancelled = true;
+        }
+        return cancelled;
     }
 
     private void handleResponse(TianshuEnvelope envelope, ProtocolContext context) {
@@ -159,6 +192,7 @@ public final class AXLlmPrimitiveClient {
             return;
         }
         adapter.unregisterLlmPrimitiveResponses(requestEnvelopeId);
+        adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
         query.completion().complete(LLMPrimitiveResultPayload.failed(
                 payload == null ? "llm.primitive.query" : payload.requestId(),
                 payload == null ? LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS : payload.queryType(),
@@ -171,6 +205,6 @@ public final class AXLlmPrimitiveClient {
         void complete(LLMPrimitiveResultPayload result);
     }
 
-    private record PendingQuery(Completion completion, long deadlineMillis) {
+    private record PendingQuery(Completion completion, long deadlineMillis, String requestId, TianshuEnvelope envelope) {
     }
 }

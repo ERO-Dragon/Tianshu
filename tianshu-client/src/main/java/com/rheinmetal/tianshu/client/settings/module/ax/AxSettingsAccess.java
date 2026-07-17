@@ -11,7 +11,7 @@ public interface AxSettingsAccess {
     void setAxReplySpeechEnabled(boolean enabled);
     boolean chatThinkingEnabled();
     void setAxChatThinkingEnabled(boolean enabled);
-    boolean interruptOnPlayerSpeech();
-    void setAxInterruptOnPlayerSpeech(boolean enabled);
+    boolean allowInterruption();
+    void setAxAllowInterruption(boolean enabled);
     void save();
 }

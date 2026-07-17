@@ -31,6 +31,9 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
 import com.rheinmetal.tianshu.function.auxilium.AXParticipantRegistrar;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
@@ -56,6 +59,10 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final AXOutputProcessor outputProcessor;
     private final AXMemoryRetriever memoryRetriever;
     private final AXTurnStatusPublisher statusPublisher;
+    private final boolean allowInterruption;
+    private volatile boolean accepting = true;
+    private final AtomicLong generation = new AtomicLong();
+    private final AtomicReference<AXTurnExecution> activeExecution = new AtomicReference<>();
 
     public AXTurnOrchestrator(
             AXScopeProvider scopeProvider,
@@ -90,7 +97,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 recentDialogueSystem,
                 outputProcessor,
                 memoryRetriever,
-                null
+                null,
+                true
         );
     }
 
@@ -112,6 +120,46 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXMemoryRetriever memoryRetriever,
             AXTurnStatusPublisher statusPublisher
     ) {
+        this(
+                scopeProvider,
+                dialogueInputMapper,
+                inputNormalizer,
+                maintenanceCoordinator,
+                dynamicFactClient,
+                contextCollector,
+                llmRequestBuilder,
+                contextBudget,
+                budgetResolver,
+                llmClient,
+                sessionController,
+                memorySystem,
+                recentDialogueSystem,
+                outputProcessor,
+                memoryRetriever,
+                statusPublisher,
+                true
+        );
+    }
+
+    public AXTurnOrchestrator(
+            AXScopeProvider scopeProvider,
+            AXDialogueInputMapper dialogueInputMapper,
+            AXInputNormalizer inputNormalizer,
+            AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
+            AXDynamicFactClient dynamicFactClient,
+            AXContextCollector contextCollector,
+            AXLlmPromptRequestBuilder llmRequestBuilder,
+            AXContextBudget contextBudget,
+            AXRuntimeLlmBudgetResolver budgetResolver,
+            AXLlmClient llmClient,
+            AXSessionController sessionController,
+            AXMemorySystem memorySystem,
+            AXRecentDialogueSystem recentDialogueSystem,
+            AXOutputProcessor outputProcessor,
+            AXMemoryRetriever memoryRetriever,
+            AXTurnStatusPublisher statusPublisher,
+            boolean allowInterruption
+    ) {
         this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
         this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
         this.inputNormalizer = Objects.requireNonNull(inputNormalizer, "inputNormalizer");
@@ -129,6 +177,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         this.outputProcessor = Objects.requireNonNull(outputProcessor, "outputProcessor");
         this.memoryRetriever = memoryRetriever;
         this.statusPublisher = statusPublisher;
+        this.allowInterruption = allowInterruption;
     }
 
     public AXTurnOrchestrator(
@@ -166,6 +215,18 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     }
 
     public void startTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
+        if (!accepting) {
+            release(deliveryEnvelope, delivery, DialogueReleaseReason.MODULE_UNLOADED);
+            return;
+        }
+        AXTurnExecution previous = activeExecution.get();
+        if (previous != null && !previous.isCancelled()) {
+            if (!allowInterruption) {
+                release(deliveryEnvelope, delivery, DialogueReleaseReason.REJECTED);
+                return;
+            }
+            cancelExecution(previous, AXTurnCancellation.playerInterrupted("new IA delivery arrived"));
+        }
         AXScope scope = currentScope();
         AXRequest rawRequest = dialogueInputMapper.map(delivery);
         AXNormalizedInput input = inputNormalizer.normalize(rawRequest);
@@ -173,9 +234,12 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
             return;
         }
+        AXTurnExecution execution = new AXTurnExecution(generation.incrementAndGet(), deliveryEnvelope, delivery, scope);
+        execution.requestKey(input.requestKey());
+        activeExecution.set(execution);
         if (statusPublisher != null) {
             statusPublisher.accepted();
-            statusPublisher.processing();
+            statusPublisher.active("PROCESSING", allowInterruption);
         }
 
         AXRequest request = AXRequest.fromNormalizedInput(input);
@@ -183,31 +247,38 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             maintenanceCoordinator.beforeQuestion(scope, request);
         }
         if (dynamicFactClient == null) {
-            continueTurn(deliveryEnvelope, delivery, scope, request, List.of());
+            continueTurn(execution, deliveryEnvelope, delivery, scope, request, List.of());
             return;
         }
         dynamicFactClient.sweepExpired();
-        dynamicFactClient.request(deliveryEnvelope, delivery, scope, request, candidates ->
-                continueTurn(deliveryEnvelope, delivery, scope, request, candidates));
+        String dynamicRequestId = dynamicFactClient.request(deliveryEnvelope, delivery, scope, request, candidates ->
+                continueTurn(execution, deliveryEnvelope, delivery, scope, request, candidates));
+        execution.dynamicFactRequestId(dynamicRequestId);
     }
 
-    private void continueTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts) {
+    private void continueTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts) {
+        if (!isCurrent(execution)) {
+            return;
+        }
         if (budgetResolver == null) {
-            continueTurnWithBudget(deliveryEnvelope, delivery, scope, request, dynamicFacts, fallbackRuntimeBudget);
+            continueTurnWithBudget(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, fallbackRuntimeBudget);
             return;
         }
         budgetResolver.resolveContextBudget(request.requestKey(), budget ->
-                continueTurnWithBudget(deliveryEnvelope, delivery, scope, request, dynamicFacts, budget));
+                continueTurnWithBudget(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, budget));
     }
 
-    private void continueTurnWithBudget(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXRuntimeLlmBudget runtimeBudget) {
+    private void continueTurnWithBudget(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXRuntimeLlmBudget runtimeBudget) {
+        if (!isCurrent(execution)) {
+            return;
+        }
         AXRuntimeLlmBudget budget = runtimeBudget == null ? fallbackRuntimeBudget : runtimeBudget;
         if (memoryRetriever == null) {
-            submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, AXMemoryRetrievalResult.empty(), budget.contextBudget());
+            submitLlmTurn(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, AXMemoryRetrievalResult.empty(), budget.contextBudget());
             return;
         }
         if (statusPublisher != null) {
-            statusPublisher.retrievingMemory();
+            statusPublisher.active("MEMORY_RETRIEVING", allowInterruption);
         }
         memoryRetriever.retrieve(
                 new AXMemoryRetrievalRequest(
@@ -216,11 +287,14 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                         budget.contextBudget().maxRetrievedMemoryItems(),
                         budget.contextBudget().retrievedMemoryTokenBudget()
                 ),
-                memory -> submitLlmTurn(deliveryEnvelope, delivery, scope, request, dynamicFacts, memory, budget.contextBudget())
+                memory -> submitLlmTurn(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, memory, budget.contextBudget())
         );
     }
 
-    private void submitLlmTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {
+    private void submitLlmTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {
+        if (!isCurrent(execution)) {
+            return;
+        }
         AXContextSnapshot context = contextCollector.collect(scope, request, dynamicFacts);
         if (memoryRetrieval != null && !memoryRetrieval.blocks().isEmpty()) {
             context = new AXContextSnapshot(
@@ -233,12 +307,28 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
         LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context, contextBudget)
                 .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
+        extendSessionIfNeeded(deliveryEnvelope, delivery);
         appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));
         if (statusPublisher != null) {
-            statusPublisher.thinking();
+            statusPublisher.active("THINKING", allowInterruption);
         }
-        llmClient.submit(deliveryEnvelope, llmPayload, new PendingTurn(deliveryEnvelope, delivery, scope, outputTurn));
+        TianshuEnvelope llmEnvelope = llmClient.submit(
+                deliveryEnvelope,
+                llmPayload,
+                new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn)
+        );
+        execution.llmRequestId(llmEnvelope == null ? "" : llmEnvelope.envelopeId());
+        if (execution.isCancelled() && !execution.llmRequestId().isBlank()) {
+            llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), execution.cancellation());
+        }
+    }
+
+    private void extendSessionIfNeeded(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
+        long expireAt = delivery == null ? 0L : delivery.expireAtMillis();
+        if (expireAt > 0L && expireAt - System.currentTimeMillis() < 3_000L) {
+            sessionController.extend(deliveryEnvelope, delivery, 10_000L);
+        }
     }
 
     private AXScope currentScope() {
@@ -246,8 +336,91 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         return scope == null ? AXScope.unknown() : scope;
     }
 
+    public void interruptActiveTurn(AXTurnCancellation cancellation) {
+        AXTurnExecution execution = activeExecution.get();
+        if (execution != null) {
+            cancelExecution(execution, cancellation == null
+                    ? AXTurnCancellation.playerInterrupted("AX turn interrupted")
+                    : cancellation);
+        }
+    }
+
+    public void stop() {
+        accepting = false;
+        AXTurnExecution execution = activeExecution.get();
+        generation.incrementAndGet();
+        if (execution != null) {
+            cancelExecution(execution, AXTurnCancellation.moduleUnloaded("AX module stopped"));
+        }
+        activeExecution.compareAndSet(execution, null);
+    }
+
+    private boolean isCurrent(AXTurnExecution execution) {
+        return execution != null && activeExecution.get() == execution && execution.isCurrent(generation);
+    }
+
+    private void cancelExecution(AXTurnExecution execution, AXTurnCancellation cancellation) {
+        if (execution == null || !execution.cancel(cancellation)) {
+            return;
+        }
+        persistDisplayedText(execution);
+        if (dynamicFactClient != null) {
+            dynamicFactClient.cancelRequest(execution.dynamicFactRequestId(), cancellation.message());
+        }
+        if (memoryRetriever != null) {
+            memoryRetriever.cancel(execution.requestKey(), cancellation.message());
+        }
+        if (budgetResolver != null) {
+            budgetResolver.cancel(execution.requestKey(), cancellation.message());
+        }
+        if (!execution.llmRequestId().isBlank()) {
+            llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), cancellation);
+        }
+        if (statusPublisher != null && activeExecution.get() == execution) {
+            statusPublisher.interrupted();
+            statusPublisher.terminal(cancellation.releaseReason());
+        }
+        if (execution.requestRelease()) {
+            sessionController.release(execution.deliveryEnvelope(), execution.delivery(), cancellation.releaseReason());
+        }
+        activeExecution.compareAndSet(execution, null);
+    }
+
+    private void release(
+            TianshuEnvelope deliveryEnvelope,
+            DialogueDeliveryPayload delivery,
+            DialogueReleaseReason reason
+    ) {
+        sessionController.release(deliveryEnvelope, delivery, reason);
+    }
+
+    private void finish(AXTurnExecution execution, DialogueReleaseReason reason) {
+        if (!isCurrent(execution)) {
+            return;
+        }
+        if (statusPublisher != null) {
+            statusPublisher.terminal(reason);
+        }
+        if (execution.requestRelease()) {
+            sessionController.release(execution.deliveryEnvelope(), execution.delivery(), reason);
+        }
+        activeExecution.compareAndSet(execution, null);
+    }
+
     private void appendTurn(AXScope scope, String role, String content, String iaSessionId, String iaTurnId) {
         appendTurn(scope, role, content, iaSessionId, iaTurnId, 0);
+    }
+
+    private void persistDisplayedText(AXTurnExecution execution) {
+        if (execution == null || recentDialogueSystem == null) {
+            return;
+        }
+        String text = execution.displayedText();
+        if (text == null || text.isBlank() || !execution.markAssistantPersisted()) {
+            return;
+        }
+        DialogueDeliveryPayload delivery = execution.delivery();
+        appendTurn(execution.scope(), "assistant", text, delivery.sessionId(), delivery.turnId());
     }
 
     private void appendTurn(AXScope scope, String role, String content, String iaSessionId, String iaTurnId, int tokenCount) {
@@ -263,6 +436,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     }
 
     private final class PendingTurn implements AXLlmRequestHandler {
+        private final AXTurnExecution execution;
         private final TianshuEnvelope deliveryEnvelope;
         private final DialogueDeliveryPayload delivery;
         private final AXScope scope;
@@ -270,7 +444,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         private final StringBuilder streamed = new StringBuilder();
         private boolean respondingPublished;
 
-        private PendingTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn) {
+        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn) {
+            this.execution = execution;
             this.deliveryEnvelope = deliveryEnvelope;
             this.delivery = delivery;
             this.scope = scope;
@@ -279,7 +454,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
 
         @Override
         public void onStreamChunk(LLMPromptStreamChunkPayload payload) {
-            if (payload == null || payload.finished() || payload.text().isEmpty()) {
+            if (!isCurrent(execution) || payload == null || payload.finished() || payload.text().isEmpty()) {
                 return;
             }
             publishRespondingOnce();
@@ -289,6 +464,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
 
         @Override
         public void onResult(LLMPromptResultPayload payload) {
+            if (!isCurrent(execution)) {
+                return;
+            }
             if (payload != null && payload.isCompleted()) {
                 String text = finalText(payload);
                 if (!text.isBlank()) {
@@ -296,31 +474,36 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 }
                 appendFinalSuffix(text);
                 if (!completeOutput(text)) {
-                    sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
+                    finish(execution, DialogueReleaseReason.OWNER_FAILED);
                     return;
                 }
                 appendAssistantVisibleText(text, payload);
                 if (maintenanceCoordinator != null) {
                     maintenanceCoordinator.afterAssistantAnswer(scope);
                 }
-                sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_COMPLETED);
+                finish(execution, DialogueReleaseReason.OWNER_COMPLETED);
                 return;
             }
-            appendAssistantVisibleText(finalText(payload), payload);
+            if (!execution.displayedText().isBlank()) {
+                appendAssistantVisibleText(execution.displayedText(), payload);
+            }
             if (statusPublisher != null) {
                 statusPublisher.failed(resultFailureReason(payload));
             }
             failOutput(payload == null ? "LLM returned no result" : payload.errorMessage(), "output.failure_notice_failed");
-            sessionController.release(deliveryEnvelope, delivery, DialogueReleaseReason.OWNER_FAILED);
+            finish(execution, DialogueReleaseReason.OWNER_FAILED);
         }
 
         @Override
         public void onCancellationResult(LLMPromptResultPayload payload) {
-            appendAssistantVisibleText(finalText(payload), payload);
+            appendAssistantVisibleText(execution.displayedText(), payload);
         }
 
         @Override
         public void onCancelled(AXTurnCancellation cancellation) {
+            if (!isCurrent(execution)) {
+                return;
+            }
             AXTurnCancellation effective = cancellation == null
                     ? AXTurnCancellation.playerInterrupted("AX turn cancelled")
                     : cancellation;
@@ -332,15 +515,15 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 }
             }
             failOutput(effective.message(), "output.cancel_notice_failed");
-            sessionController.release(deliveryEnvelope, delivery, effective.releaseReason());
+            finish(execution, effective.releaseReason());
         }
 
         private void publishRespondingOnce() {
-            if (respondingPublished || statusPublisher == null) {
+            if (respondingPublished || statusPublisher == null || !isCurrent(execution)) {
                 return;
             }
             respondingPublished = true;
-            statusPublisher.responding();
+            statusPublisher.active("RESPONDING", allowInterruption);
         }
 
         private String resultFailureReason(LLMPromptResultPayload payload) {
@@ -359,7 +542,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
 
         private void appendAssistantVisibleText(String text, LLMPromptResultPayload payload) {
-            if (text == null || text.isBlank()) {
+            if (text == null || text.isBlank() || !execution.markAssistantPersisted()) {
                 return;
             }
             appendTurn(scope, "assistant", text, delivery.sessionId(), delivery.turnId(), visibleCompletionTokens(payload));
@@ -386,8 +569,12 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
 
         private boolean appendOutput(String text, String reasonCode) {
+            if (!isCurrent(execution)) {
+                return false;
+            }
             try {
                 outputTurn.append(text);
+                execution.appendDisplayedText(text);
                 return true;
             } catch (RuntimeException exception) {
                 publishOutputFailed(reasonCode);
@@ -397,8 +584,14 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
 
         private boolean completeOutput(String text) {
+            if (!isCurrent(execution)) {
+                return false;
+            }
             try {
                 outputTurn.complete(text);
+                if (streamed.isEmpty()) {
+                    execution.appendDisplayedText(text);
+                }
                 return true;
             } catch (RuntimeException exception) {
                 publishOutputFailed("output.complete_failed");
@@ -408,6 +601,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
 
         private void failOutput(String reason, String fallbackReasonCode) {
+            if (!isCurrent(execution)) {
+                return;
+            }
             try {
                 outputTurn.fail(reason == null ? "" : reason);
             } catch (RuntimeException exception) {
@@ -416,7 +612,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
 
         private void publishOutputFailed(String reasonCode) {
-            if (statusPublisher != null) {
+            if (statusPublisher != null && isCurrent(execution)) {
                 statusPublisher.failed(reasonCode);
             }
         }

@@ -109,6 +109,19 @@ public final class AXLlmClient {
         return true;
     }
 
+    /** Retains the handler until the provider returns its terminal cancellation result. */
+    public boolean cancelRequestAwaitTerminal(String requestEnvelopeId, AXTurnCancellation cancellation) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return false;
+        }
+        PendingRequest request = handlers.get(requestEnvelopeId);
+        if (request == null) {
+            return false;
+        }
+        cancelAndAwaitTerminalResult(request, cancellation);
+        return true;
+    }
+
     public void clear() {
         cancelAll(AXTurnCancellation.moduleUnloaded("AX module stopped"));
     }

@@ -121,12 +121,23 @@ public final class AXRawTurnWindow {
         synchronized (turns) {
             List<TurnGroup> groups = turnGroups(new ArrayList<>(turns));
             int totalTokens = groups.stream().mapToInt(TurnGroup::compressibleTokens).sum();
-            if (totalTokens <= policy.recentRawKeepTokenMax()) {
+            int totalCharacters = groups.stream().mapToInt(TurnGroup::compressibleCharacters).sum();
+            boolean tokenBudgetKnown = totalTokens > 0;
+            if (tokenBudgetKnown && totalTokens <= policy.recentRawKeepTokenMax()) {
                 return AXRawTurnBatch.empty();
             }
-            int removableBudget = Math.max(0, totalTokens - policy.recentRawKeepTokenTarget());
-            int target = Math.min(policy.shortTermCompressTokenTarget(), removableBudget);
-            int max = Math.min(policy.shortTermCompressTokenMax(), removableBudget);
+            if (!tokenBudgetKnown && totalCharacters <= policy.maxRawCharacters()) {
+                return AXRawTurnBatch.empty();
+            }
+            int removableBudget = tokenBudgetKnown
+                    ? Math.max(0, totalTokens - policy.recentRawKeepTokenTarget())
+                    : Math.max(0, totalCharacters - policy.maxRawCharacters());
+            int target = tokenBudgetKnown
+                    ? Math.min(policy.shortTermCompressTokenTarget(), removableBudget)
+                    : removableBudget;
+            int max = tokenBudgetKnown
+                    ? Math.min(policy.shortTermCompressTokenMax(), removableBudget)
+                    : removableBudget;
             if (target <= 0 || max <= 0) {
                 return AXRawTurnBatch.empty();
             }
@@ -134,16 +145,18 @@ public final class AXRawTurnWindow {
             int tokens = 0;
             int chars = 0;
             for (TurnGroup group : groups) {
-                if (group.compressibleTokens() <= 0) {
+                int groupSize = tokenBudgetKnown ? group.compressibleTokens() : group.compressibleCharacters();
+                if (groupSize <= 0) {
                     continue;
                 }
-                if (!selected.isEmpty() && tokens + group.compressibleTokens() > max) {
+                int selectedSize = tokenBudgetKnown ? tokens : chars;
+                if (!selected.isEmpty() && selectedSize + groupSize > max) {
                     break;
                 }
                 selected.addAll(group.compressibleTurns());
                 tokens += group.compressibleTokens();
                 chars += group.compressibleCharacters();
-                if (tokens >= target) {
+                if ((tokenBudgetKnown ? tokens : chars) >= target) {
                     break;
                 }
             }

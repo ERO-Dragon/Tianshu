@@ -69,13 +69,13 @@ enabled = true
 wakeWord = ""
 replySpeechEnabled = true
 chatThinkingEnabled = false
-interruptOnPlayerSpeech = true
+allowInterruption = true
 ```
 
 生效策略：
 
 - `enabled` 或 `wakeWord` 变化后刷新模块运行时，因为它们改变 capability/participant 注册关系；`wakeWord` 为空时不注册额外呼叫词。
-- `replySpeechEnabled`、`chatThinkingEnabled` 和 `interruptOnPlayerSpeech` 由既有 AX 实例读取同一个配置对象，可直接对后续行为生效。
+- `replySpeechEnabled`、`chatThinkingEnabled` 和 `allowInterruption` 由既有 AX 实例读取同一个配置对象，可直接对后续行为生效。
 - 保存失败时不提交设置会话，也不触发运行时刷新；页面保留未保存草稿供玩家重试。
 
 旧 AX 独立配置文件、自由文本 TTS 音色设置和旧页面伪状态区不再读取或保留兼容逻辑。AX 发起 TTS 时只携带 AX 固定的语音风格标识，具体音色资源仍由 TTS 模块解析和管理。

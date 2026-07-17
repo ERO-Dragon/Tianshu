@@ -386,7 +386,7 @@
   "tianshu.gui.ax.option.wake_word": "助手身份名称（可留空）",
   "tianshu.gui.ax.option.reply_speech": "朗读天枢回复",
   "tianshu.gui.ax.option.chat_thinking": "允许以思考时间换取回复质量",
-  "tianshu.gui.ax.option.interrupt_on_speech": "输入时可打断天枢",
+  "tianshu.gui.ax.option.allow_interruption": "允许新的仲裁结果打断天枢",
   "tianshu.gui.ax.message.saved": "天枢助手设置已保存",
   "tianshu.gui.ax.message.save_failed": "天枢助手设置保存失败，请检查日志和配置目录",
 
@@ -481,6 +481,7 @@
   "tianshu.presence.module.tts.reload_complete": "TTS 模型重载完成",
   "tianshu.presence.module.tts.reload_failed": "TTS 模型重载失败",
   "tianshu.presence.module.ax.turn_accepted": "AX 已接收请求",
+  "tianshu.presence.module.ax.idle": "AX 空闲",
   "tianshu.presence.module.ax.turn_processing": "AX 正在处理",
   "tianshu.presence.module.ax.memory_retrieving": "AX 正在检索记忆",
   "tianshu.presence.module.ax.thinking": "AX 正在思考",

@@ -52,7 +52,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<String> AX_WAKE_WORD;
     public static final ModConfigSpec.BooleanValue AX_REPLY_SPEECH_ENABLED;
     public static final ModConfigSpec.BooleanValue AX_CHAT_THINKING_ENABLED;
-    public static final ModConfigSpec.BooleanValue AX_INTERRUPT_ON_PLAYER_SPEECH;
+    public static final ModConfigSpec.BooleanValue AX_ALLOW_INTERRUPTION;
     public static final ModConfigSpec.BooleanValue PRESENCE_HUD_ENABLED;
     public static final ModConfigSpec.BooleanValue PRESENCE_STATUS_TEXT_ENABLED;
     public static final ModConfigSpec.BooleanValue PRESENCE_ASR_STATUS_VISIBLE;
@@ -111,7 +111,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         AX_WAKE_WORD = builder.define("wakeWord", "");
         AX_REPLY_SPEECH_ENABLED = builder.define("replySpeechEnabled", true);
         AX_CHAT_THINKING_ENABLED = builder.define("chatThinkingEnabled", false);
-        AX_INTERRUPT_ON_PLAYER_SPEECH = builder.define("interruptOnPlayerSpeech", true);
+        AX_ALLOW_INTERRUPTION = builder.define("allowInterruption", true);
         builder.pop();
 
         builder.comment("映迹 HUD 显示设置").push("presence");
@@ -388,12 +388,12 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     }
 
     @Override
-    public boolean interruptOnPlayerSpeech() {
-        return AX_INTERRUPT_ON_PLAYER_SPEECH.get();
+    public boolean allowInterruption() {
+        return AX_ALLOW_INTERRUPTION.get();
     }
 
-    public void setAxInterruptOnPlayerSpeech(boolean enabled) {
-        AX_INTERRUPT_ON_PLAYER_SPEECH.set(enabled);
+    public void setAxAllowInterruption(boolean enabled) {
+        AX_ALLOW_INTERRUPTION.set(enabled);
     }
 
     public boolean isPresenceHudEnabled() {

@@ -89,23 +89,34 @@ AX 当前订阅：
 
 | Topic | Payload | 用途 |
 | --- | --- | --- |
-| `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY` | `AsrSpeechActivityPayload` | 玩家开始说话时，按配置取消当前 CHAT LLM 并停止当前 TTS。 |
 | `PresenceWorldEventPayload.TOPIC` | `PresenceWorldEventPayload` | 把允许的世界事件附加到当前 scope 记忆。 |
 | `PresenceChatMessagePayload.TOPIC` | `PresenceChatMessagePayload` | 把聊天消息写入当前 scope 的近期对话。 |
 
 这些 topic 是事件，不是 AX 请求入口。只有对应事实的所有者才应发布 Presence 事件；其他模块不得伪造玩家身份、维度或聊天发送者。
 
+AX 不订阅 `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY`。ASR 活动状态由 ASR/输入链路自行消费，不能直接改变 AX 的回合生命周期。
+
 AX 还会向 `ProtocolTopics.MODULE_STATUS` 发布 `module.ax` 的状态。订阅者必须按 `moduleId` 过滤，并优先使用 `messageKey` 本地化，不解析 fallback 文本。
 
-## 8. 玩家说话时的中断
+## 8. IA delivery 驱动的回合切换
 
-当 `interruptOnPlayerSpeech()` 启用且 ASR 发布 `speaking=true` 时，AX 会：
+AX 的新对话轮次只来自 IA 已完成仲裁、明确选择 AX 为 owner 并实际投递的 `DialogueDeliveryPayload`。
+只有 delivery 到达 AX 后，AX 才能依据当前设置处理旧回合；IA 尚未投递给 AX 的仲裁结果不会触发 AX 行为。
 
-1. 取消本模块仍在进行的 CHAT LLM 请求。
-2. 向 `ProtocolCapabilities.TTS_CONTROL` 发送 `STOP_CURRENT`。
-3. 保持 IA session/owner 语义由标准 session control 和后续 turn 处理。
+当 `allowInterruption()` 启用且新的 IA delivery 到达时，AX 中断当前已存在的前台 turn：
 
-speech activity 使用最新态语义，不能被外部模块当作可靠的逐帧音频队列。
+1. 使当前 turn generation 失效，并按该轮登记的 request/envelope 句柄取消仍在进行的前置查询和 CHAT LLM 请求；不会清空后台记忆维护请求。
+2. 停止当前 AX 输出链路，并按授权链路停止当前 TTS。
+3. 保留已经显示或播放的 assistant 部分文本到近期对话。
+4. 通过标准 session control 释放旧 turn，随后只处理新的 IA delivery。
+
+当 `allowInterruption()` 关闭且已有前台 turn 时，新的 IA delivery 会立即以 `REJECTED` 释放，
+不排队，也不会产生回复。当前 turn 继续完成。
+
+ASR speech activity 不参与上述决策，也不代表 AX 应该开始、拒绝、排队或中断回合。
+
+AX 通过 `MODULE.STATUS` 向映迹报告前台交互状态。活动状态包含 `axReplying=true`、
+`axInterruptible=true/false` 和 `axPipelineStage`；终态包含 `axReplying=false`。映迹只负责保存和展示这些状态属性，不判断请求是否属于 CHAT；TTS 也只处理 AX 已经投递给它的语音请求。
 
 ## 9. 生命周期与线程
 

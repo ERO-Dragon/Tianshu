@@ -218,6 +218,54 @@ class AXTurnOrchestratorTest {
     }
 
     @Test
+    void interruptingThroughOrchestratorPersistsAlreadyDisplayedAssistantText() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXScope scope = writableScope();
+        AXRecentDialogueSystem recentDialogueSystem = new AXRecentDialogueSystem(
+                AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L),
+                (requestId, role, content) -> java.util.OptionalInt.of(1)
+        );
+        RecordingChatSink chatSink = new RecordingChatSink();
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> scope,
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null, recentDialogueSystem),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                null,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                recentDialogueSystem,
+                new AXOutputProcessor(adapter, outputSettings(), chatSink)
+        );
+
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+        await(() -> llmRequest.get() != null);
+        assertTrue(recentDialogueSystem.snapshot(scope).turns().size() >= 1,
+                recentDialogueSystem.snapshot(scope).turns().toString());
+        LLMPromptRequestPayload request = (LLMPromptRequestPayload) llmRequest.get().payload();
+        assertTrue(llmClient.handleStreamChunk(
+                llmRequest.get().envelopeId(),
+                LLMPromptStreamChunkPayload.chunk(request.requestId(), "already displayed", 0)
+        ));
+        assertEquals("already displayed", chatSink.text.toString());
+
+        orchestrator.interruptActiveTurn(AXTurnCancellation.playerInterrupted("new IA delivery"));
+
+        await(() -> recentDialogueSystem.snapshot(scope).turns().size() >= 2);
+        var snapshot = recentDialogueSystem.snapshot(scope);
+        assertTrue(snapshot.turns().size() >= 2, snapshot.turns().toString());
+        assertEquals("already displayed", snapshot.turns().get(1).content());
+    }
+
+    @Test
     void publishesTurnRuntimeStatuses() {
         ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
         AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
@@ -267,6 +315,48 @@ class AXTurnOrchestratorTest {
         ModuleStatus responding = assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_RESPONDING, AXTurnStatusPublisher.KEY_RESPONDING);
         assertEquals("responding", responding.tags().get("axPipelineStage"));
         assertEquals("SPEAKING", responding.tags().get("presenceStatusType"));
+        assertEquals("true", responding.tags().get("axReplying"));
+        assertEquals("true", responding.tags().get("axInterruptible"));
+    }
+
+    @Test
+    void rejectsNewIaDeliveryWhenInterruptionIsDisabled() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                AXContextBudget.DEFAULT,
+                null,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                RECENT_DIALOGUE_SYSTEM,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                null,
+                null,
+                false
+        );
+
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+        await(() -> llmRequest.get() != null);
+        TianshuEnvelope firstRequest = llmRequest.get();
+
+        orchestrator.startTurn(deliveryEnvelope(), new DialogueDeliveryPayload(
+                "session", "request-2", "player", "turn-2", "second delivery", "", List.of(), List.of(), List.of(),
+                DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
+                System.currentTimeMillis(), System.currentTimeMillis() + 30_000L
+        ));
+
+        assertEquals(firstRequest, llmRequest.get());
     }
 
     @Test
@@ -305,6 +395,30 @@ class AXTurnOrchestratorTest {
 
         ModuleStatus interrupted = assertStatusKey(interruptedRuntime, AXTurnStatusPublisher.TYPE_INTERRUPTED, AXTurnStatusPublisher.KEY_INTERRUPTED);
         assertEquals("interrupted", interrupted.tags().get("axPipelineStage"));
+    }
+
+    @Test
+    void stopClosesAdmissionAndPublishesIdleStatus() {
+        ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = statusOrchestrator(
+                adapter,
+                llmClient,
+                new AXTurnStatusPublisher(adapter)
+        );
+
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+        await(() -> llmRequest.get() != null);
+        orchestrator.stop();
+
+        ModuleStatus idle = assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_IDLE, AXTurnStatusPublisher.KEY_TURN_IDLE);
+        assertEquals("false", idle.tags().get("axReplying"));
+        llmRequest.set(null);
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+        assertNull(llmRequest.get());
     }
 
     @Test

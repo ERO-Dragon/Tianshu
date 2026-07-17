@@ -28,7 +28,7 @@ public final class AXDynamicFactClient {
         this.timeoutMillis = Math.max(0L, timeoutMillis);
     }
 
-    public void request(
+    public String request(
             TianshuEnvelope parent,
             DialogueDeliveryPayload delivery,
             AXScope scope,
@@ -38,7 +38,7 @@ public final class AXDynamicFactClient {
         Objects.requireNonNull(completion, "completion");
         if (parent == null || delivery == null) {
             completion.complete(List.of());
-            return;
+            return "";
         }
         PresenceContextQueryPayload payload = new PresenceContextQueryPayload(
                 request == null ? "AX.dynamic_facts" : request.requestKey() + ".dynamic_facts",
@@ -54,14 +54,28 @@ public final class AXDynamicFactClient {
         );
         if (adapter.presenceContextProviderCount() <= 0) {
             completion.complete(List.of());
-            return;
+            return "";
         }
         TianshuEnvelope queryEnvelope = adapter.buildPresenceContextQuery(parent, payload);
-        PendingQuery pendingQuery = new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis);
+        PendingQuery pendingQuery = new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis, queryEnvelope);
         pending.put(queryEnvelope.envelopeId(), pendingQuery);
         adapter.registerPresenceContextSnapshotResponse(queryEnvelope.envelopeId(), this::handleResponse);
         adapter.submitPresenceContextQuery(queryEnvelope);
         scheduleTimeout(queryEnvelope.envelopeId());
+        return queryEnvelope.envelopeId();
+    }
+
+    public void cancelRequest(String requestEnvelopeId, String reason) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return;
+        }
+        PendingQuery query = pending.remove(requestEnvelopeId);
+        if (query == null) {
+            return;
+        }
+        adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        adapter.cancelPresenceContextQuery(query.envelope(), "AX_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
+        query.completion().complete(List.of());
     }
 
     public void sweepExpired() {
@@ -72,6 +86,7 @@ public final class AXDynamicFactClient {
                 return false;
             }
             adapter.unregisterPresenceContextResponses(entry.getKey());
+            adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
             query.completion().complete(List.of());
             return true;
         });
@@ -81,6 +96,7 @@ public final class AXDynamicFactClient {
         pending.forEach((requestEnvelopeId, query) -> {
             adapter.unregisterPresenceContextResponses(requestEnvelopeId);
             if (query != null) {
+                adapter.cancelPresenceContextQuery(query.envelope(), "AX_MODULE_STOPPED", "AX dynamic fact client stopped");
                 query.completion().complete(List.of());
             }
         });
@@ -123,6 +139,7 @@ public final class AXDynamicFactClient {
             return;
         }
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
         query.completion().complete(List.of());
     }
 
@@ -143,6 +160,6 @@ public final class AXDynamicFactClient {
         void complete(List<AXDynamicFact> facts);
     }
 
-    private record PendingQuery(Completion completion, long deadlineMillis) {
+    private record PendingQuery(Completion completion, long deadlineMillis, TianshuEnvelope envelope) {
     }
 }

@@ -15,7 +15,7 @@ public interface AXAssistantSettings {
         return false;
     }
 
-    default boolean interruptOnPlayerSpeech() {
+    default boolean allowInterruption() {
         return true;
     }
 }

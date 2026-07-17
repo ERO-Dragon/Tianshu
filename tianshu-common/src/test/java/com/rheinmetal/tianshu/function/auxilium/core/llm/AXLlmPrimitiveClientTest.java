@@ -20,9 +20,12 @@ import org.junit.jupiter.api.Test;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 
 class AXLlmPrimitiveClientTest {
@@ -72,6 +75,42 @@ class AXLlmPrimitiveClientTest {
         assertEquals(9, result.get().orElseThrow());
     }
 
+    @Test
+    void cancellingOnePrimitiveRequestLeavesOtherRequestsAlive() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> secondRequest = new AtomicReference<>();
+        List<TianshuEnvelope> requests = new CopyOnWriteArrayList<>();
+        registerPrimitiveProvider(runtime, requests);
+        AXLlmPrimitiveClient client = new AXLlmPrimitiveClient(new AXProtocolAdapter(runtime), 2_000L);
+        AtomicReference<LLMPrimitiveResultPayload> firstResult = new AtomicReference<>();
+        AtomicReference<LLMPrimitiveResultPayload> secondResult = new AtomicReference<>();
+
+        client.requestTokenCount("foreground.llm_budget", "first", firstResult::set);
+        client.requestTokenCount("background.embedding", "second", secondResult::set);
+
+        await(() -> requests.size() == 2);
+        assertEquals(2, requests.size());
+        for (TianshuEnvelope request : requests) {
+            LLMPrimitiveQueryPayload payload = (LLMPrimitiveQueryPayload) request.payload();
+            if ("background.embedding".equals(payload.requestId())) {
+                secondRequest.set(request);
+            }
+        }
+
+        assertTrue(client.cancelRequest("foreground.llm_budget", "foreground interrupted"));
+        assertEquals(LLMPrimitiveResultPayload.STATUS_FAILED, firstResult.get().status());
+        assertNull(secondResult.get());
+
+        runtime.submit(EnvelopeBuilder.responseTo(
+                "module.llm.test",
+                secondRequest.get(),
+                PayloadType.LLM_PRIMITIVE_RESULT,
+                LLMPrimitiveResultPayload.tokenCount("background.embedding", 11)
+        ).build());
+        await(() -> secondResult.get() != null);
+        assertEquals(11, secondResult.get().tokenCount());
+    }
+
     private static void registerPrimitiveProvider(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.registerModule(new ModuleDescriptor(
@@ -94,6 +133,33 @@ class AXLlmPrimitiveClientTest {
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
         ), (envelope, context) -> handle(envelope, context, request));
+    }
+
+    private static void registerPrimitiveProvider(ProtocolRuntime runtime, List<TianshuEnvelope> requests) {
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        runtime.registerModule(new ModuleDescriptor(
+                "module.llm.test",
+                List.of(new CapabilityDescriptor(
+                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
+                        PayloadType.LLM_PRIMITIVE_QUERY,
+                        LLMPrimitiveQueryPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.REQUEST),
+                        Priority.LOW,
+                        CompletionPolicy.MANUAL_COMPLETE
+                )),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        ), (envelope, context) -> {
+            requests.add(envelope);
+            context.complete(envelope.envelopeId());
+        });
     }
 
     private static void handle(TianshuEnvelope envelope, ProtocolContext context, AtomicReference<TianshuEnvelope> request) {
