@@ -99,6 +99,7 @@ class LlmProtocolAdapterTest {
                 .inferenceClient(client)
                 .usePersistentCache(false)
                 .build();
+        service.upsertRagEntry("memory", "entry-1", "remembered fact", new float[]{1f, 0f});
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service, new LlmTaskAdmissionController(1));
         RecordingContext context = new RecordingContext();
@@ -468,6 +469,7 @@ class LlmProtocolAdapterTest {
                 .inferenceClient(client)
                 .usePersistentCache(false)
                 .build();
+        service.upsertRagEntry("memory", "entry-1", "remembered fact", new float[]{1f, 0f});
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
@@ -475,7 +477,7 @@ class LlmProtocolAdapterTest {
                 "request-task-rag-cancel", 0, 0.7f, true, false, "TASK", 0, true,
                 List.of(
                         LLMPromptRequestPayload.ChunkPayload.message(
-                                List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
+                                List.of(LLMPromptRequestPayload.MessageItemPayload.user("remembered fact"))
                         ),
                         LLMPromptRequestPayload.ChunkPayload.rag(
                                 "memory",

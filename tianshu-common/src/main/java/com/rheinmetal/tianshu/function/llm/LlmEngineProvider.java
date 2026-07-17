@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public final class LlmEngineProvider {
@@ -33,6 +34,7 @@ public final class LlmEngineProvider {
     private final Executor modelLoadExecutor;
     private JavaLlamaServer aiService;
     private volatile boolean embeddingConfigured;
+    private final AtomicLong lifecycleGeneration = new AtomicLong();
 
     public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config) {
         this(env, config, InferenceResourcePolicy.systemDefault(), null);
@@ -280,9 +282,11 @@ public final class LlmEngineProvider {
     }
 
     public void startAsync(Runnable onReady, Runnable onFailed) {
+        long generation = lifecycleGeneration.incrementAndGet();
         CompletableFuture.runAsync(() -> {
+            JavaLlamaServer service = null;
             try {
-                JavaLlamaServer service = ensureAiService();
+                service = ensureAiService();
                 if (service == null) {
                     if (onFailed != null) {
                         onFailed.run();
@@ -290,10 +294,23 @@ public final class LlmEngineProvider {
                     return;
                 }
                 service.start();
+                synchronized (this) {
+                    if (generation != lifecycleGeneration.get() || aiService != service) {
+                        service.shutdown();
+                        return;
+                    }
+                }
                 if (onReady != null) {
                     onReady.run();
                 }
             } catch (Exception e) {
+                if (service != null && generation != lifecycleGeneration.get()) {
+                    try {
+                        service.shutdown();
+                    } catch (Exception ignored) {
+                    }
+                    return;
+                }
                 env.error("Failed to start AI service", e);
                 if (onFailed != null) {
                     onFailed.run();
@@ -303,9 +320,13 @@ public final class LlmEngineProvider {
     }
 
     public void stop() {
-        JavaLlamaServer service = aiService;
-        aiService = null;
-        embeddingConfigured = false;
+        lifecycleGeneration.incrementAndGet();
+        JavaLlamaServer service;
+        synchronized (this) {
+            service = aiService;
+            aiService = null;
+            embeddingConfigured = false;
+        }
         if (service != null) {
             service.shutdown();
         }

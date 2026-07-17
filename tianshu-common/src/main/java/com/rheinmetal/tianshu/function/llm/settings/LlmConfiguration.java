@@ -37,6 +37,11 @@ public interface LlmConfiguration {
         return 120;
     }
 
+    /** Internal world-session delay before automatic model loading starts. */
+    default long getLlmAutoLoadDelayMillis() {
+        return 3_000L;
+    }
+
     default int getLlmTaskAdmissionQueueSize() {
         return 2;
     }

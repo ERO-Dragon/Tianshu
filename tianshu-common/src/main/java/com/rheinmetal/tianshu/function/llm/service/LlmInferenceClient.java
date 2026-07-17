@@ -53,6 +53,10 @@ public interface LlmInferenceClient {
 
     int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler);
 
+    default boolean supportsTokenCounting() {
+        return true;
+    }
+
     boolean isReady();
 
     boolean hasChatQueueCapacity();

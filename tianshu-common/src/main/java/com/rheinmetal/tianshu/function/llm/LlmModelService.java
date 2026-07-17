@@ -208,6 +208,25 @@ public final class LlmModelService {
         return activeDownload.get() != null;
     }
 
+    /** Cancels any in-flight download when the owning world session stops. */
+    public void stop() {
+        DownloadTask task = activeDownload.get();
+        if (task == null) {
+            return;
+        }
+        task.session().cancel();
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.llm")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.llm:model.download.stop")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                task.session()::cancelActiveTransfers
+        );
+    }
+
     public DownloadSnapshot downloadSnapshot() {
         return downloadSnapshot.get();
     }

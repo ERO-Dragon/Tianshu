@@ -2,11 +2,11 @@ package com.rheinmetal.tianshu.function.llm.service;
 
 import java.util.List;
 
-final class LlmEmbeddingServiceAdapter implements EmbeddingService {
+public final class LlmEmbeddingServiceAdapter implements EmbeddingService {
     private final LlmInferenceClient inferenceClient;
     private volatile int cachedDimension = -1;
 
-    LlmEmbeddingServiceAdapter(LlmInferenceClient inferenceClient) {
+    public LlmEmbeddingServiceAdapter(LlmInferenceClient inferenceClient) {
         this.inferenceClient = inferenceClient;
     }
 

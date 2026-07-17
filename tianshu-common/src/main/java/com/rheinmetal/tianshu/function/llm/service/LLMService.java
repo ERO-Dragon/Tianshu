@@ -45,16 +45,18 @@ public class LLMService {
                 ? builder.inferenceGovernor
                 : new LlmInferenceGovernor(LlmInferenceDefaults.from(builder.config), builder.performanceProvider);
         EmbeddingService embeddingService = new LlmEmbeddingServiceAdapter(inferenceClient);
-        this.ragService = new LlmRagService(
-                env,
-                inferenceClient,
-                embeddingService,
-                builder.usePersistentCache,
-                builder.cacheDirectory,
-                builder.cacheNamespace,
-                builder.ragSearchExecutor,
-                builder.ragPersistenceScheduler
-        );
+        this.ragService = builder.ragStorageService != null
+                ? new LlmRagService(env, inferenceClient, builder.ragStorageService)
+                : new LlmRagService(
+                        env,
+                        inferenceClient,
+                        embeddingService,
+                        builder.usePersistentCache,
+                        builder.cacheDirectory,
+                        builder.cacheNamespace,
+                        builder.ragSearchExecutor,
+                        builder.ragPersistenceScheduler
+                );
         this.runtimeInspector = new LlmRuntimeInspector(
                 inferenceClient,
                 embeddingService,
@@ -424,6 +426,14 @@ public class LLMService {
     }
 
     public LLMPrimitiveResultPayload tokenCountResponse(String requestId, LLMRequest request) {
+        if (!inferenceClient.supportsTokenCounting()) {
+            return LLMPrimitiveResultPayload.failed(
+                    requestId,
+                    LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT,
+                    "LLM_TOKENIZER_UNAVAILABLE",
+                    "The active generation backend does not provide a tokenizer"
+            );
+        }
         try {
             LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepareTokenCount(request);
             return LLMPrimitiveResultPayload.tokenCount(
@@ -647,6 +657,7 @@ public class LLMService {
         private boolean embeddingConfigured;
         private Executor ragSearchExecutor = Runnable::run;
         private RagPersistenceScheduler ragPersistenceScheduler = RagPersistenceScheduler.immediate();
+        private LlmRagStorageService ragStorageService;
 
         public Builder env(IGameEnvironment env) {
             this.env = env;
@@ -709,6 +720,11 @@ public class LLMService {
             this.ragPersistenceScheduler = ragPersistenceScheduler == null
                     ? RagPersistenceScheduler.immediate()
                     : ragPersistenceScheduler;
+            return this;
+        }
+
+        public Builder ragStorage(LlmRagStorageService ragStorageService) {
+            this.ragStorageService = ragStorageService;
             return this;
         }
 

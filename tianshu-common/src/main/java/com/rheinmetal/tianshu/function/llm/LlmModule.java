@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagCacheLayout;
@@ -11,13 +12,21 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.function.llm.service.JavaLlamaInferenceClient;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
+import com.rheinmetal.tianshu.function.llm.service.LlmEmbeddingServiceAdapter;
+import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class LlmModule implements TianshuManagedModule {
     private static final List<RuntimeCapability> PROVIDED_CAPABILITIES = List.of(
@@ -30,6 +39,7 @@ public final class LlmModule implements TianshuManagedModule {
     private final LlmConfiguration config;
     private final ModuleRuntimeAccess runtime;
     private final LlmRagCacheLayout ragCacheLayout;
+    private final LlmRagStorageService ragStorageService;
     private final LlmExecutor llmExecutor;
     private final LlmEngineProvider engineProvider;
     private final LlmProtocolAdapter adapter;
@@ -38,7 +48,10 @@ public final class LlmModule implements TianshuManagedModule {
     private ModuleRuntimeContext runtimeContext;
     private LlmModuleService moduleService;
     private LlmModelService modelService;
+    private ModuleServiceRegistry serviceRegistry;
     private boolean destroyed;
+    private final AtomicLong lifecycleGeneration = new AtomicLong();
+    private volatile ProtocolTaskHandle delayedAutoLoad;
 
     public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime) {
         this.env = env;
@@ -46,7 +59,17 @@ public final class LlmModule implements TianshuManagedModule {
         this.runtime = runtime;
         this.ragCacheLayout = new LlmRagCacheLayout(config);
         this.llmExecutor = new LlmExecutor(runtime);
+        this.ragStorageService = new LlmRagStorageService(
+                env,
+                ragCacheLayout.cacheDirectory(),
+                ragCacheLayout.cacheNamespace(),
+                true,
+                llmExecutor.cpuExecutor(),
+                llmExecutor.ragPersistenceScheduler()
+        );
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
+        this.adapter.setRagStorageService(ragStorageService);
+        this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
         this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus, llmExecutor.modelLoadExecutor());
     }
 
@@ -57,6 +80,7 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        serviceRegistry = context == null ? null : context.services();
         moduleService = new LlmModuleService(config);
         moduleService.bindRuntimeController(new LlmModuleService.RuntimeController() {
             @Override
@@ -70,6 +94,10 @@ public final class LlmModule implements TianshuManagedModule {
             }
         });
         modelService = new LlmModelService(env, config, runtime, this::publishModuleStatus);
+        if (serviceRegistry != null) {
+            serviceRegistry.register(LlmModuleService.class, moduleService);
+            serviceRegistry.register(LlmModelService.class, modelService);
+        }
         adapter.registerLLMRequestCapability(this::handleLLMRequest);
         adapter.registerLLMCacheManageCapability(this::handleLLMCacheManage);
         adapter.registerLLMPrimitiveQueryCapability(this::handleLLMPrimitiveQuery);
@@ -80,7 +108,8 @@ public final class LlmModule implements TianshuManagedModule {
         runtimeContext = context;
         markCapabilitiesInstalled(context);
         if (config.isLlmEnabled()) {
-            markCapabilitiesFailed("LLM model is not loaded");
+            markGenerationCapabilityFailed("LLM model is not loaded");
+            markStorageCapabilitiesReady();
             if (moduleService != null) {
                 moduleService.markStopped();
             }
@@ -94,6 +123,30 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public void start(ModuleRuntimeContext context) {
+        if (!config.isLlmEnabled()) {
+            return;
+        }
+        long generation = lifecycleGeneration.incrementAndGet();
+        delayedAutoLoad = runtime.schedule(
+                ProtocolTaskSpec.builder()
+                        .moduleId(moduleId())
+                        .lane(ExecutionLane.SCHEDULED)
+                        .concurrencyKey("module.llm:auto-load")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .interruptible(true)
+                        .build(),
+                () -> {
+                    if (generation != lifecycleGeneration.get() || destroyed) {
+                        return;
+                    }
+                    LlmModuleService service = moduleService;
+                    if (service != null) {
+                        service.load();
+                    }
+                },
+                Duration.ofMillis(Math.max(0L, config.getLlmAutoLoadDelayMillis()))
+        );
     }
 
     @Override
@@ -136,6 +189,25 @@ public final class LlmModule implements TianshuManagedModule {
         PROVIDED_CAPABILITIES.forEach(capability -> context.runtimeState().capabilities().markReady(capability, moduleId()));
     }
 
+    private void markGenerationCapabilityFailed(String reason) {
+        ModuleRuntimeContext context = runtimeContext;
+        if (context != null) {
+            context.runtimeState().capabilities().markFailed(
+                    LlmRuntimeCapabilities.LLM_REQUEST,
+                    moduleId(),
+                    reason
+            );
+        }
+    }
+
+    private void markStorageCapabilitiesReady() {
+        ModuleRuntimeContext context = runtimeContext;
+        if (context != null) {
+            context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_CACHE_MANAGE, moduleId());
+            context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY, moduleId());
+        }
+    }
+
     private void markCapabilitiesFailed(String reason) {
         ModuleRuntimeContext context = runtimeContext;
         if (context == null) {
@@ -153,6 +225,7 @@ public final class LlmModule implements TianshuManagedModule {
     }
 
     private void startRuntime() {
+        long generation = lifecycleGeneration.get();
         synchronized (lifecycleLock) {
             if (destroyed) {
                 throw new IllegalStateException("LLM module is destroyed");
@@ -169,35 +242,47 @@ public final class LlmModule implements TianshuManagedModule {
         publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting", ""));
         engineProvider.startAsync(() -> {
             synchronized (lifecycleLock) {
-                if (destroyed || moduleService == null || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
+                if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
+                        || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
                     return;
                 }
                 JavaLlamaServer aiService = engineProvider.currentAiService();
                 if (aiService == null) {
-                    markCapabilitiesFailed("LLM service failed to start");
+                    markGenerationCapabilityFailed("LLM service failed to start");
+                    markStorageCapabilitiesReady();
                     moduleService.markFailed("LLM service failed to start");
                     publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", ""));
                     return;
                 }
+                JavaLlamaInferenceClient inferenceClient = new JavaLlamaInferenceClient(aiService);
+                ragStorageService.bindEmbeddingService(new LlmEmbeddingServiceAdapter(inferenceClient));
                 llmService = LLMService.builder()
                         .env(env)
                         .config(config)
-                        .inferenceClient(new JavaLlamaInferenceClient(aiService))
+                        .inferenceClient(inferenceClient)
                         .performanceProvider(moduleService)
                         .usePersistentCache(true)
                         .cacheDirectory(ragCacheLayout.cacheDirectory())
                         .cacheNamespace(ragCacheLayout.cacheNamespace())
                         .embeddingConfigured(engineProvider.isEmbeddingConfigured())
+                        .ragStorage(ragStorageService)
                         .ragSearchExecutor(llmExecutor.cpuExecutor())
                         .ragPersistenceScheduler(llmExecutor.ragPersistenceScheduler())
                         .build();
+                if (serviceRegistry != null) {
+                    serviceRegistry.register(LLMService.class, llmService);
+                }
                 adapter.setLlmService(llmService);
                 markCapabilitiesReady();
                 moduleService.markReady();
             }
             publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready", ""));
         }, () -> {
-            markCapabilitiesFailed("LLM service failed to start");
+            if (generation != lifecycleGeneration.get()) {
+                return;
+            }
+            markGenerationCapabilityFailed("LLM service failed to start");
+            markStorageCapabilitiesReady();
             if (moduleService != null) {
                 moduleService.markFailed("LLM service failed to start");
             }
@@ -215,19 +300,33 @@ public final class LlmModule implements TianshuManagedModule {
     }
 
     private void stopRuntime() {
+        lifecycleGeneration.incrementAndGet();
+        ProtocolTaskHandle scheduled = delayedAutoLoad;
+        delayedAutoLoad = null;
+        if (scheduled != null && !scheduled.isDone()) {
+            scheduled.cancel("LLM module stopped");
+        }
         synchronized (lifecycleLock) {
+            if (modelService != null) {
+                modelService.stop();
+            }
             adapter.setLlmService(null);
             LLMService stoppingService = llmService;
             llmService = null;
+            if (serviceRegistry != null && stoppingService != null) {
+                serviceRegistry.unregister(LLMService.class, stoppingService);
+            }
             if (stoppingService != null) {
                 stoppingService.shutdown();
             }
             engineProvider.stop();
+            ragStorageService.shutdown();
             if (moduleService != null) {
                 moduleService.markStopped();
             }
             if (config.isLlmEnabled()) {
-                markCapabilitiesFailed("LLM model is not loaded");
+                markGenerationCapabilityFailed("LLM model is not loaded");
+                markStorageCapabilitiesReady();
             } else {
                 disableCapabilities();
             }
@@ -238,6 +337,37 @@ public final class LlmModule implements TianshuManagedModule {
         if (status != null) {
             adapter.publishModuleStatus(status);
         }
+    }
+
+    private LLMRuntimeSnapshotPayload runtimeSnapshotWhenGenerationUnavailable() {
+        String failure = moduleService == null ? "" : moduleService.snapshot().failureMessage();
+        return new LLMRuntimeSnapshotPayload(
+                false,
+                false,
+                ragStorageService.embeddingAvailable(),
+                -1,
+                false,
+                false,
+                false,
+                false,
+                false,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                false,
+                0,
+                0,
+                0,
+                "",
+                "",
+                config.getLlmEmbeddingModelName(),
+                ragCacheLayout.cacheNamespace(),
+                failure,
+                System.currentTimeMillis()
+        );
     }
 
 }

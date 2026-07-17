@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
+import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.llm.service.RagCacheManager;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
@@ -32,12 +33,15 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.function.Supplier;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.llm";
     public static final String SOURCE_ID = "module.llm";
 
     private volatile LLMService llmService;
+    private volatile LlmRagStorageService ragStorageService;
+    private volatile Supplier<LLMRuntimeSnapshotPayload> unavailableRuntimeSnapshotSupplier;
     private final LlmTaskAdmissionController taskAdmissionController;
     private final LlmPromptPayloadMapper promptPayloadMapper;
     private final LlmPromptRequestHandler promptRequestHandler;
@@ -76,6 +80,14 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         if (llmService == null) {
             taskAdmissionController.clearWaitingTasks("LLM_SERVICE_NOT_READY", "LLM service is not initialized");
         }
+    }
+
+    public void setRagStorageService(LlmRagStorageService ragStorageService) {
+        this.ragStorageService = ragStorageService;
+    }
+
+    public void setUnavailableRuntimeSnapshotSupplier(Supplier<LLMRuntimeSnapshotPayload> supplier) {
+        this.unavailableRuntimeSnapshotSupplier = supplier;
     }
 
     public void registerLLMRequestCapability(EnvelopeHandler handler) {
@@ -293,7 +305,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             return;
         }
         LLMService service = llmService;
-        if (service == null) {
+        LlmRagStorageService storage = ragStorageService;
+        if (service == null && storage == null) {
             respondTo(
                     envelope,
                     PayloadType.LLM_CACHE_MANAGE_RESULT,
@@ -306,34 +319,68 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         try {
             LLMCacheManageResultPayload result = switch (payload.action()) {
                 case LLMCacheManagePayload.ACTION_UPSERT_ENTRY -> {
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage != null) {
+                        LlmRagStorageService.RagWriteResult write = storage.upsert(payload.uid(), payload.entryId(), payload.content(), payload.vector());
+                        yield write.success()
+                                ? LLMCacheManageResultPayload.upserted(payload.uid(), payload.entryId())
+                                : LLMCacheManageResultPayload.failed(payload.uid(), write.errorCode());
+                    }
                     service.upsertRagEntry(payload.uid(), payload.entryId(), payload.content(), payload.vector());
                     yield LLMCacheManageResultPayload.upserted(payload.uid(), payload.entryId());
                 }
                 case LLMCacheManagePayload.ACTION_PATCH_ENTRY -> {
-                    service.patchRagEntry(
-                            payload.uid(),
-                            payload.entryId(),
-                            payload.content(),
-                            payload.vector(),
-                            Boolean.TRUE.equals(payload.updateContent()),
-                            Boolean.TRUE.equals(payload.updateVector())
-                    );
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage == null) {
+                        service.patchRagEntry(payload.uid(), payload.entryId(), payload.content(), payload.vector(),
+                                Boolean.TRUE.equals(payload.updateContent()), Boolean.TRUE.equals(payload.updateVector()));
+                        yield LLMCacheManageResultPayload.patched(payload.uid(), payload.entryId(), service.hasRagEntry(payload.uid(), payload.entryId()));
+                    }
+                    LlmRagStorageService.RagWriteResult write = storage.patch(payload.uid(), payload.entryId(), payload.content(), payload.vector(),
+                            Boolean.TRUE.equals(payload.updateContent()), Boolean.TRUE.equals(payload.updateVector()));
                     yield LLMCacheManageResultPayload.patched(
                             payload.uid(),
                             payload.entryId(),
-                            service.hasRagEntry(payload.uid(), payload.entryId())
+                            write.success() && storage.hasEntry(payload.uid(), payload.entryId())
                     );
                 }
                 case LLMCacheManagePayload.ACTION_DELETE_ENTRY -> {
-                    service.deleteRagEntry(payload.uid(), payload.entryId());
-                    yield LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId());
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage == null) {
+                        service.deleteRagEntry(payload.uid(), payload.entryId());
+                        yield LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId());
+                    }
+                    yield storage.delete(payload.uid(), payload.entryId())
+                            ? LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId())
+                            : LLMCacheManageResultPayload.failed(payload.uid(), "RAG_DELETE_FAILED");
                 }
                 case LLMCacheManagePayload.ACTION_CLEAR_UID -> {
-                    service.clearRagUid(payload.uid());
-                    yield LLMCacheManageResultPayload.cleared(payload.uid());
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage == null) {
+                        service.clearRagUid(payload.uid());
+                        yield LLMCacheManageResultPayload.cleared(payload.uid());
+                    }
+                    yield storage.clear(payload.uid())
+                            ? LLMCacheManageResultPayload.cleared(payload.uid())
+                            : LLMCacheManageResultPayload.failed(payload.uid(), "RAG_CLEAR_FAILED");
                 }
                 case LLMCacheManagePayload.ACTION_REGISTER_LIBRARY -> {
-                    var library = service.registerRagLibrary(
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage == null) {
+                        var library = service.registerRagLibrary(payload.uid(), payload.modid(), payload.visibility(), payload.tags());
+                        yield LLMCacheManageResultPayload.registered(toLibraryPayload(library));
+                    }
+                    var library = storage.registerLibrary(
                             payload.uid(),
                             payload.modid(),
                             payload.visibility(),
@@ -342,32 +389,56 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     yield LLMCacheManageResultPayload.registered(toLibraryPayload(library));
                 }
                 case LLMCacheManagePayload.ACTION_UNREGISTER_LIBRARY -> {
-                    service.unregisterRagLibrary(payload.uid());
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage == null) {
+                        service.unregisterRagLibrary(payload.uid());
+                        yield LLMCacheManageResultPayload.unregistered(payload.uid());
+                    }
+                    storage.unregisterLibrary(payload.uid());
                     yield LLMCacheManageResultPayload.unregistered(payload.uid());
                 }
                 case LLMCacheManagePayload.ACTION_QUERY_UID -> {
-                    boolean exists = service.hasRagUid(payload.uid());
+                    if (storage == null && service == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    if (storage == null) {
+                        yield LLMCacheManageResultPayload.queried(payload.uid(), service.hasRagUid(payload.uid()), toLibraryPayload(service.ragLibrary(payload.uid())));
+                    }
+                    boolean exists = storage.hasCache(payload.uid());
                     yield LLMCacheManageResultPayload.queried(
                             payload.uid(),
                             exists,
-                            toLibraryPayload(service.ragLibrary(payload.uid()))
+                            storage.library(payload.uid()) == null
+                                    ? null
+                                    : toLibraryPayload(storage.library(payload.uid()))
                     );
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_UID -> {
-                    List<LLMService.RagLibrarySearchResult> results = service.searchRagLibraryByUid(
-                            payload.uid(),
-                            payload.queryText(),
-                            payload.topK(),
-                            payload.threshold()
-                    );
+                    if (storage == null) {
+                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                    }
+                    List<RagCacheManager.RagEntrySearchResult> entries = storage.searchEntries(payload.uid(), payload.queryText(), payload.topK(), payload.threshold());
                     yield LLMCacheManageResultPayload.searched(
                             payload.action(),
                             payload.uid(),
-                            toHitGroups(results),
-                            toLibraryPayloads(results)
+                            entries.isEmpty() ? List.of() : List.of(toHitGroup(payload.uid(), entries)),
+                            storage.library(payload.uid()) == null
+                                    ? List.of()
+                                    : List.of(toLibraryPayload(storage.library(payload.uid())))
                     );
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_MODID -> {
+                    if (service == null) {
+                        if (storage == null) {
+                            yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                        }
+                        List<LlmRagStorageService.LibrarySearchResult> results = storage.searchSharedByModid(
+                                payload.modid(), payload.queryText(), payload.topK(), payload.threshold());
+                        yield LLMCacheManageResultPayload.searched(
+                                payload.action(), "", toStorageHitGroups(results), toStorageLibraryPayloads(results));
+                    }
                     List<LLMService.RagLibrarySearchResult> results = service.searchSharedRagLibrariesByModid(
                             payload.modid(),
                             payload.queryText(),
@@ -382,6 +453,15 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     );
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_TAGS -> {
+                    if (service == null) {
+                        if (storage == null) {
+                            yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                        }
+                        List<LlmRagStorageService.LibrarySearchResult> results = storage.searchSharedByTags(
+                                payload.tags(), payload.queryText(), payload.topK(), payload.threshold());
+                        yield LLMCacheManageResultPayload.searched(
+                                payload.action(), "", toStorageHitGroups(results), toStorageLibraryPayloads(results));
+                    }
                     List<LLMService.RagLibrarySearchResult> results = service.searchSharedRagLibrariesByTags(
                             payload.tags(),
                             payload.queryText(),
@@ -396,6 +476,17 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                     );
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_INLINE_CONTENTS -> {
+                    if (service == null) {
+                        if (storage == null) {
+                            yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
+                        }
+                        List<RagCacheManager.RagEntrySearchResult> entries = storage.searchInline(
+                                payload.contents(), payload.queryText(), payload.topK(), payload.threshold());
+                        List<LLMCacheManageResultPayload.HitGroupPayload> hits = entries.isEmpty()
+                                ? List.of()
+                                : List.of(toHitGroup(payload.uid(), entries));
+                        yield LLMCacheManageResultPayload.searched(payload.action(), payload.uid(), hits, List.of());
+                    }
                     List<RagCacheManager.RagEntrySearchResult> entries = service.searchInlineRagContents(
                             payload.contents(),
                             payload.queryText(),
@@ -466,10 +557,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                                 payload.requestId(),
                                 Boolean.TRUE.equals(payload.includeRuntimeDetails())
                         )
-                        : LLMPrimitiveResultPayload.runtime(
-                                payload.requestId(),
-                                LLMRuntimeSnapshotPayload.unavailable()
-                        );
+                        : LLMPrimitiveResultPayload.runtime(payload.requestId(), unavailableRuntimeSnapshot());
                 default -> LLMPrimitiveResultPayload.failed(
                         payload.requestId(),
                         payload.queryType(),
@@ -494,6 +582,17 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         }
     }
 
+    private LLMRuntimeSnapshotPayload unavailableRuntimeSnapshot() {
+        Supplier<LLMRuntimeSnapshotPayload> supplier = unavailableRuntimeSnapshotSupplier;
+        if (supplier != null) {
+            LLMRuntimeSnapshotPayload snapshot = supplier.get();
+            if (snapshot != null) {
+                return snapshot;
+            }
+        }
+        return LLMRuntimeSnapshotPayload.unavailable();
+    }
+
     private List<LLMCacheManageResultPayload.HitGroupPayload> toHitGroups(
             List<LLMService.RagLibrarySearchResult> results
     ) {
@@ -511,6 +610,22 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                                         .toList()
                         ))
                         .toList();
+    }
+
+    private List<LLMCacheManageResultPayload.HitGroupPayload> toStorageHitGroups(
+            List<LlmRagStorageService.LibrarySearchResult> results
+    ) {
+        return results == null ? List.of() : results.stream()
+                .map(result -> toHitGroup(result.uid(), result.entries()))
+                .toList();
+    }
+
+    private List<LLMCacheManageResultPayload.LibraryPayload> toStorageLibraryPayloads(
+            List<LlmRagStorageService.LibrarySearchResult> results
+    ) {
+        return results == null ? List.of() : results.stream()
+                .map(result -> toLibraryPayload(result.library()))
+                .toList();
     }
 
     private LLMCacheManageResultPayload.HitGroupPayload toHitGroup(

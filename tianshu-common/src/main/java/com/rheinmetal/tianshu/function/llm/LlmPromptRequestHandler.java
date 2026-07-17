@@ -160,13 +160,7 @@ final class LlmPromptRequestHandler {
                     failureMessage(finish.error()),
                     terminal.thinkingContent()
             );
-            adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
-                    payload.requestId(),
-                    terminal.visibleText(),
-                    terminal.thinkingContent(),
-                    terminal.ragHits(),
-                    finish.usage()
-            ));
+            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish));
             return true;
         } catch (Exception exception) {
             Throwable cause = unwrapCompletion(exception);
@@ -291,13 +285,7 @@ final class LlmPromptRequestHandler {
                     failureMessage(finish.error()),
                     terminal.thinkingContent()
             );
-            adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
-                    payload.requestId(),
-                    terminal.visibleText(),
-                    terminal.thinkingContent(),
-                    terminal.ragHits(),
-                    usage
-            ));
+            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish));
             complete(context, envelope);
         }).exceptionally(exception -> {
             Throwable cause = unwrapCompletion(exception);
@@ -500,5 +488,43 @@ final class LlmPromptRequestHandler {
         Throwable current = unwrapCompletion(throwable);
         String message = current == null ? null : current.getMessage();
         return message == null || message.isBlank() ? "LLM request failed" : message;
+    }
+
+    private static LLMPromptResultPayload terminalResult(
+            String requestId,
+            LlmStreamState.TerminalSnapshot terminal,
+            LLMService.LLMStreamFinish finish
+    ) {
+        String type = finish == null || finish.type() == null ? "COMPLETED" : finish.type().trim().toUpperCase();
+        LLMPromptResultPayload.TokenUsagePayload usage = finish == null
+                ? LLMPromptResultPayload.TokenUsagePayload.empty()
+                : finish.usage();
+        if ("CANCELLED".equals(type)) {
+            return LLMPromptResultPayload.cancelled(
+                    requestId,
+                    terminal.visibleText(),
+                    terminal.thinkingContent(),
+                    terminal.ragHits(),
+                    usage
+            );
+        }
+        if ("FAILED".equals(type)) {
+            return LLMPromptResultPayload.failed(
+                    requestId,
+                    "LLM_INFERENCE_FAILED",
+                    failureMessage(finish.error()),
+                    terminal.visibleText(),
+                    terminal.thinkingContent(),
+                    terminal.ragHits(),
+                    usage
+            );
+        }
+        return LLMPromptResultPayload.completed(
+                requestId,
+                terminal.visibleText(),
+                terminal.thinkingContent(),
+                terminal.ragHits(),
+                usage
+        );
     }
 }

@@ -11,6 +11,8 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -114,11 +116,22 @@ public final class RagLibraryRegistry {
         try {
             Files.createDirectories(registryFile.getParent());
             List<RagLibraryMeta> snapshot = libraries.values().stream().sorted().toList();
-            try (Writer writer = Files.newBufferedWriter(registryFile, StandardCharsets.UTF_8)) {
+            Path temporaryFile = registryFile.resolveSibling(registryFile.getFileName() + ".tmp");
+            try (Writer writer = Files.newBufferedWriter(temporaryFile, StandardCharsets.UTF_8)) {
                 GSON.toJson(snapshot, META_LIST_TYPE, writer);
+            }
+            try {
+                Files.move(temporaryFile, registryFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporaryFile, registryFile, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (Exception e) {
             env.error("[RAG] Failed to save RAG library registry", e);
+            try {
+                Files.deleteIfExists(registryFile.resolveSibling(registryFile.getFileName() + ".tmp"));
+            } catch (Exception cleanupFailure) {
+                env.warn("[RAG] Failed to clean temporary RAG library registry: " + cleanupFailure.getMessage());
+            }
         }
     }
 

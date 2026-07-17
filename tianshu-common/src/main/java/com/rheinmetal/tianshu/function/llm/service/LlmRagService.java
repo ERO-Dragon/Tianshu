@@ -20,9 +20,7 @@ final class LlmRagService {
 
     private final IGameEnvironment environment;
     private final LlmInferenceClient inferenceClient;
-    private final EmbeddingService embeddingService;
-    private final RagCacheManager cache;
-    private final RagLibraryRegistry libraries;
+    private final LlmRagStorageService storage;
 
     LlmRagService(
             IGameEnvironment environment,
@@ -36,18 +34,21 @@ final class LlmRagService {
     ) {
         this.environment = environment;
         this.inferenceClient = inferenceClient;
-        this.embeddingService = embeddingService;
-        this.cache = persistent
-                ? new PersistentRagCacheManager(
-                        environment,
-                        embeddingService,
-                        cacheDirectory,
-                        cacheNamespace,
-                        searchExecutor,
-                        persistenceScheduler
-                )
-                : new DefaultRagCacheManager(environment, embeddingService, searchExecutor);
-        this.libraries = new RagLibraryRegistry(environment, persistent ? cacheDirectory : null);
+        this.storage = new LlmRagStorageService(
+                environment,
+                cacheDirectory,
+                cacheNamespace,
+                persistent,
+                searchExecutor,
+                persistenceScheduler
+        );
+        this.storage.bindEmbeddingService(embeddingService);
+    }
+
+    LlmRagService(IGameEnvironment environment, LlmInferenceClient inferenceClient, LlmRagStorageService storage) {
+        this.environment = environment;
+        this.inferenceClient = inferenceClient;
+        this.storage = storage;
     }
 
     RagPreparation prepareChunk(Chunk chunk, String queryText) {
@@ -70,67 +71,66 @@ final class LlmRagService {
     }
 
     RagCacheManager cache() {
-        return cache;
+        return storage.cache();
     }
 
     boolean hasCache(String uid) {
-        return cache.hasCache(uid);
+        return storage.hasCache(uid);
     }
 
     void upsert(String uid, String entryId, String content, float[] vector) {
-        cache.upsert(uid, entryId, content, vector);
+        storage.upsert(uid, entryId, content, vector);
     }
 
     void patch(String uid, String entryId, String content, float[] vector, boolean updateContent, boolean updateVector) {
-        cache.patch(uid, entryId, content, vector, updateContent, updateVector);
+        storage.patch(uid, entryId, content, vector, updateContent, updateVector);
     }
 
     void delete(String uid, String entryId) {
-        cache.deleteEntry(uid, entryId);
+        storage.delete(uid, entryId);
     }
 
     void clear(String uid) {
-        cache.clearUid(uid);
+        storage.clear(uid);
     }
 
     boolean hasEntry(String uid, String entryId) {
-        return cache.hasEntry(uid, entryId);
+        return storage.hasEntry(uid, entryId);
     }
 
     List<RagCacheManager.RagEntrySearchResult> searchEntries(String uid, String queryText, int topK, float threshold) {
-        return cache.searchEntries(uid, queryText, topK, threshold);
+        return storage.searchEntries(uid, queryText, topK, threshold);
     }
 
     List<RagCacheManager.RagEntrySearchResult> searchEntries(String uid, String queryText, float[] queryVector, int topK, float threshold) {
-        return cache.searchEntries(uid, queryText, queryVector, topK, threshold);
+        return storage.searchEntries(uid, queryText, queryVector, topK, threshold);
     }
 
     RagLibraryRegistry.RagLibraryMeta registerLibrary(String uid, String modid, String visibility, List<String> tags) {
-        libraries.register(uid, modid, visibility, tags);
-        return libraries.meta(uid);
+        return storage.registerLibrary(uid, modid, visibility, tags);
     }
 
     void unregisterLibrary(String uid) {
-        libraries.unregister(uid);
+        storage.unregisterLibrary(uid);
     }
 
     RagLibraryRegistry.RagLibraryMeta library(String uid) {
-        return libraries.meta(uid);
+        return storage.library(uid);
     }
 
     List<LibrarySearchResult> searchLibraryByUid(String uid, String queryText, int topK, float threshold) {
         List<RagCacheManager.RagEntrySearchResult> entries = searchEntries(uid, queryText, topK, threshold);
         return entries.isEmpty()
                 ? List.of()
-                : List.of(new LibrarySearchResult(uid, libraries.meta(uid), entries));
+                : List.of(new LibrarySearchResult(uid, storage.library(uid), entries));
     }
 
     List<LibrarySearchResult> searchSharedByModid(String modid, String queryText, int topK, float threshold) {
-        return searchLibraries(libraries.sharedByModid(modid), queryText, embedQueryVector(queryText), topK, threshold);
+        return searchLibraries(storage.sharedByModid(modid), queryText, embedQueryVector(queryText), topK, threshold);
     }
 
     List<LibrarySearchResult> searchSharedByTags(List<String> tags, String queryText, int topK, float threshold) {
-        return searchLibraries(libraries.sharedByTags(tags), queryText, embedQueryVector(queryText), topK, threshold);
+        return searchLibraries(storage.sharedByTags(tags), queryText, embedQueryVector(queryText), topK, threshold);
     }
 
     List<RagCacheManager.RagEntrySearchResult> searchInline(List<String> contents, String queryText, int topK, float threshold) {
@@ -157,17 +157,14 @@ final class LlmRagService {
     }
 
     void shutdown() {
-        cache.flush();
+        storage.shutdown();
     }
 
     private List<RagCacheManager.RagEntrySearchResult> searchChunk(Chunk chunk, String queryText) {
-        List<String> contents = validTexts(chunk.getRagContent());
         if (Boolean.TRUE.equals(chunk.getUseCache())) {
-            for (String content : contents) {
-                cache.upsert(chunk.getUid(), contentEntryId(content), content, null);
-            }
-            return cache.searchEntries(chunk.getUid(), queryText, DEFAULT_TOP_K, DEFAULT_THRESHOLD);
+            return storage.searchEntries(chunk.getUid(), queryText, DEFAULT_TOP_K, DEFAULT_THRESHOLD);
         }
+        List<String> contents = validTexts(chunk.getRagContent());
         return contents.isEmpty()
                 ? List.of()
                 : searchInline(contents, queryText, DEFAULT_TOP_K, DEFAULT_THRESHOLD);
@@ -264,7 +261,7 @@ final class LlmRagService {
             return null;
         }
         try {
-            return embeddingService.embed(queryText);
+            return storage.embedQueryVector(queryText);
         } catch (Exception exception) {
             environment.error("[LLMService] Failed to embed RAG query text", exception);
             return null;
@@ -310,10 +307,6 @@ final class LlmRagService {
         }
         Deque<String> ids = idsByContent.get(content);
         return ids == null || ids.isEmpty() ? "" : ids.removeFirst();
-    }
-
-    private static String contentEntryId(String content) {
-        return "content:" + Integer.toHexString(java.util.Objects.hash(content == null ? "" : content));
     }
 
     record RagPreparation(List<RagCacheManager.RagEntrySearchResult> results, String prompt) {

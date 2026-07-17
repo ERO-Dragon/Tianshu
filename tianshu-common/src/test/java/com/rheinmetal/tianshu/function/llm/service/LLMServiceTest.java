@@ -47,6 +47,7 @@ class LLMServiceTest {
     void ragPromptAndHitsRemainWholeWhenTheyFitTokenBudget() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);
+        service.upsertRagEntry("memory", "entry-1", "abcdefghijklmnop", new float[]{1f, 0f});
         LLMRequest request = LLMRequest.of(
                 Chunk.message(MessageItem.user("where")),
                 Chunk.rag("memory", "RAG:", List.of("abcdefghijklmnop"), true, true, 1)
@@ -228,6 +229,18 @@ class LLMServiceTest {
     }
 
     @Test
+    void tokenCountIsDisabledWhenGenerationBackendHasNoTokenizer() {
+        FakeInferenceClient client = new FakeInferenceClient();
+        client.tokenCountingSupported = false;
+        LLMService service = service(client);
+
+        var result = service.tokenCountResponse("count-unavailable", LLMRequest.ofMessage(MessageItem.user("hello")));
+
+        assertEquals("FAILED", result.status());
+        assertEquals("LLM_TOKENIZER_UNAVAILABLE", result.errorCode());
+    }
+
+    @Test
     void embedAndRuntimeExposeEmbeddingIdentity() {
         FakeInferenceClient client = new FakeInferenceClient();
         LLMService service = service(client);
@@ -351,6 +364,7 @@ class LLMServiceTest {
         private boolean taskQueueCapacity = true;
         private boolean thinkingSupported = true;
         private boolean countMessageCharacters;
+        private boolean tokenCountingSupported = true;
         private CompletableFuture<String> taskStreamFuture = CompletableFuture.completedFuture("streamed");
         private Consumer<String> taskStreamTokenConsumer = ignored -> {};
 
@@ -481,6 +495,11 @@ class LLMServiceTest {
                 return messages == null ? 0 : messages.stream().mapToInt(message -> message.content.length()).sum();
             }
             return messages == null ? 0 : messages.size();
+        }
+
+        @Override
+        public boolean supportsTokenCounting() {
+            return tokenCountingSupported;
         }
 
         @Override public boolean isReady() { return ready; }

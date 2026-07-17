@@ -36,6 +36,12 @@ LLM 模块对外提供三个协议能力：
 
 这些拆分不改变 chat/task、stream、thinking、usage、finish、取消、MTP 或 RAG 协议语义。模型推理、embedding、RAG 检索、持久化和模型下载都必须在受管后台执行 lane 中运行，不得占用 Minecraft 主线程。
 
+能力就绪按实际归属判断，而不是由单一 generation 模型状态覆盖全部能力：`CHAT`/`TASK` 依赖 generation backend；`EMBED` 依赖本地 embedding；RAG storage、library 管理和 BM25 属于 LLM 基础设施；`STATUS` 始终可查询。`TOKEN_COUNT` 只在当前 generation backend 提供 tokenizer 时可用，不使用 embedding token 数代替。
+
+因此模型未加载时，library 注册、条目查询/删除/清空、提供 vector 的写入、BM25 检索和 inline BM25 检索仍可用；需要 embedding 的写入和向量检索会在 embedding 不可用时明确降级或失败。
+
+进入世界后，LLM 先完成世界 session 初始化，再由受管调度器延迟启动模型加载，并通过 `MODULE_STATUS` 通知加载开始、就绪或失败。
+
 ---
 
 ## 2. `ProtocolCapabilities.LLM_REQUEST`
@@ -61,7 +67,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
         LLMPromptRequestPayload.ChunkPayload.rag(
             "ax_world_memory",
             "相关记忆：",
-            List.of("玩家手持铁锭"),
+            List.of(),
             true,
             true,
             1000
@@ -142,7 +148,7 @@ TASK 请求不走 CHAT 的 IA 授权，但会进入 LLM 模块的 TASK admission
 |------|--------|------|
 | `type` | `"message"` | chunk 类型：`message` 或 `rag`。 |
 | `messageContent` | 空列表 | `type=message` 时使用，按顺序加入消息上下文。 |
-| `ragContent` | 空列表 | `type=rag` 时使用。非空时可被增量索引进 RAG cache。 |
+| `ragContent` | 空列表 | `type=rag` 且 `useCache=false` 时作为本次内联检索候选；不会隐式写入持久 RAG cache。 |
 | `uid` | 空字符串 | RAG 库标识；LLM 只按 uid 分桶，不理解世界、全局、模块、聚类等上层语义。 |
 | `prompt` | 空字符串 | 调用方显式提供的 RAG 前缀。空值不会生成默认提示引子，只注入编号后的检索正文。 |
 | `useCache` | `true` | `true` 使用 LLM 模块持久 RAG cache；`false` 仅对本次 `ragContent` 走 libs 内联检索。 |
@@ -164,7 +170,7 @@ RAG chunk 示例：
 LLMPromptRequestPayload.ChunkPayload.rag(
     "ax_world_memory",
     "相关记忆：",
-    List.of("玩家把钻石镐放在末影箱"),
+    List.of(),
     true,
     true,
     1000
@@ -177,6 +183,7 @@ RAG 组装规则：
 - `prompt` 非空时，该文本由调用方拥有并原样作为前缀保留。
 - `memoryRagTokenBudget <= 0` 时不注入检索正文；大于零时按检索排名逐条尝试，只有整条加入后仍在预算内才保留。
 - token budget 只约束命中正文，不截断调用方显式 `prompt`。如果当前 tokenizer 不支持计数或计数失败，为保持推理可用性会退化为保留完整命中结果。
+- 持久 RAG 的写入、修改、删除和清空统一通过 `LLM_CACHE_MANAGE` 完成；`LLM_REQUEST` 不产生持久化副作用。
 
 ### 2.3 MessageItemPayload 字段
 
@@ -269,6 +276,8 @@ TASK 调度规则：
 - `taskPriority` 越高越优先。
 - 如果当前 active TASK 的 `taskPreemptible=true`，更高优先级 TASK 可进入底层抢占流程。
 - 协议层只在底层任务完成后发送最终 `LLMPromptResultPayload`。
+
+`STATUS` 中的 `taskQueueSize` 表示底层热执行队列大小。底层冷挂起任务和 LLM admission 等待任务不计入该值，因此 `0` 不等于没有等待中的 TASK。
 
 流式请求：
 - `stream=false`：只返回最终 `LLMPromptResultPayload`。
@@ -448,6 +457,8 @@ manifest.txt
 | `embedResults` | `EMBED` 的结果列表 |
 | `runtimeSnapshot` | `STATUS` 的结果快照 |
 | `errorCode` / `errorMessage` | 失败信息 |
+
+`TOKEN_COUNT` 来自当前 generation backend 的真实 tokenizer。不提供 tokenizer 的 backend 返回 `LLM_TOKENIZER_UNAVAILABLE`；LLM 不使用 embedding 模型的 token 数充当近似值。
 
 `EMBED` 的每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName` 和 `embeddingNamespace`。`STATUS` 快照也包含 embedding 模型身份字段，用于 AX 校验持久化向量是否仍属于同一 embedding 空间。
 
