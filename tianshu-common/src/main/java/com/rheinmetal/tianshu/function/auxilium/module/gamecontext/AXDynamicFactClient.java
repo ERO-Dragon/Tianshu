@@ -8,13 +8,13 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 
 public final class AXDynamicFactClient {
     private final AXProtocolAdapter adapter;
@@ -60,8 +60,8 @@ public final class AXDynamicFactClient {
         PendingQuery pendingQuery = new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis, queryEnvelope);
         pending.put(queryEnvelope.envelopeId(), pendingQuery);
         adapter.registerPresenceContextSnapshotResponse(queryEnvelope.envelopeId(), this::handleResponse);
+        scheduleTimeout(queryEnvelope.envelopeId(), pendingQuery);
         adapter.submitPresenceContextQuery(queryEnvelope);
-        scheduleTimeout(queryEnvelope.envelopeId());
         return queryEnvelope.envelopeId();
     }
 
@@ -73,6 +73,7 @@ public final class AXDynamicFactClient {
         if (query == null) {
             return;
         }
+        query.cancelTimeout("AX dynamic fact query cancelled");
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
         adapter.cancelPresenceContextQuery(query.envelope(), "AX_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
         query.completion().complete(List.of());
@@ -85,6 +86,7 @@ public final class AXDynamicFactClient {
             if (query == null || query.deadlineMillis() > now) {
                 return false;
             }
+            query.cancelTimeout("AX dynamic fact query expired");
             adapter.unregisterPresenceContextResponses(entry.getKey());
             adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
             query.completion().complete(List.of());
@@ -96,6 +98,7 @@ public final class AXDynamicFactClient {
         pending.forEach((requestEnvelopeId, query) -> {
             adapter.unregisterPresenceContextResponses(requestEnvelopeId);
             if (query != null) {
+                query.cancelTimeout("AX dynamic fact client stopped");
                 adapter.cancelPresenceContextQuery(query.envelope(), "AX_MODULE_STOPPED", "AX dynamic fact client stopped");
                 query.completion().complete(List.of());
             }
@@ -120,17 +123,25 @@ public final class AXDynamicFactClient {
                     .toList();
         }
         adapter.unregisterPresenceContextResponses(envelope.parentId());
+        query.cancelTimeout("AX dynamic fact response received");
         query.completion().complete(facts);
         if (context != null) {
             context.complete(envelope.envelopeId());
         }
     }
 
-    private void scheduleTimeout(String requestEnvelopeId) {
+    private void scheduleTimeout(String requestEnvelopeId, PendingQuery query) {
         if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
             return;
         }
-        CompletableFuture.delayedExecutor(timeoutMillis, TimeUnit.MILLISECONDS).execute(() -> timeout(requestEnvelopeId));
+        if (timeoutMillis <= 0L) {
+            return;
+        }
+        query.timeoutHandle = adapter.scheduleTimeout(
+                "ax.dynamic-facts.timeout." + requestEnvelopeId,
+                () -> timeout(requestEnvelopeId),
+                Duration.ofMillis(timeoutMillis)
+        );
     }
 
     private void timeout(String requestEnvelopeId) {
@@ -138,6 +149,7 @@ public final class AXDynamicFactClient {
         if (query == null) {
             return;
         }
+        query.cancelTimeout("AX dynamic fact timeout fired");
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
         adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
         query.completion().complete(List.of());
@@ -160,6 +172,27 @@ public final class AXDynamicFactClient {
         void complete(List<AXDynamicFact> facts);
     }
 
-    private record PendingQuery(Completion completion, long deadlineMillis, TianshuEnvelope envelope) {
+    private static final class PendingQuery {
+        private final Completion completion;
+        private final long deadlineMillis;
+        private final TianshuEnvelope envelope;
+        private volatile ProtocolTaskHandle timeoutHandle;
+
+        private PendingQuery(Completion completion, long deadlineMillis, TianshuEnvelope envelope) {
+            this.completion = completion;
+            this.deadlineMillis = deadlineMillis;
+            this.envelope = envelope;
+        }
+
+        private Completion completion() { return completion; }
+        private long deadlineMillis() { return deadlineMillis; }
+        private TianshuEnvelope envelope() { return envelope; }
+
+        private void cancelTimeout(String reason) {
+            ProtocolTaskHandle handle = timeoutHandle;
+            if (handle != null && !handle.isDone()) {
+                handle.cancel(reason);
+            }
+        }
     }
 }

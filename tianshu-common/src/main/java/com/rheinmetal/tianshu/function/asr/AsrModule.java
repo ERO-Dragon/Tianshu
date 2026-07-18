@@ -226,9 +226,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             return;
         }
         switch (status.kind()) {
-            case READY -> publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), status.messageKey(), status.message()));
-            case WAITING -> publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), status.messageKey(), status.message()));
-            case FAILED -> publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), status.messageKey(), status.message()));
+            case READY -> publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), status.messageKey()));
+            case WAITING -> publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), status.messageKey()));
+            case FAILED -> publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), status.messageKey()));
         }
     }
 
@@ -273,7 +273,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (!voiceResourceReloadQueued.compareAndSet(false, true)) {
             return;
         }
-        publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.reload_started", "ASR 语音资源重载中"));
+        publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.reload_started"));
         voiceResourceReloadTask = moduleRuntime.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(moduleId())
@@ -286,8 +286,8 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         );
         if (voiceResourceReloadTask.state() == ProtocolTaskState.REJECTED) {
             voiceResourceReloadQueued.set(false);
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_rejected", "ASR 语音资源重载任务提交失败"));
-            env.warn("ASR 热词资源重载任务提交被拒绝，version=" + requestedVersion);
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_rejected"));
+            env.warn("asr.voice_resource.reload.rejected version=" + requestedVersion);
         }
     }
 
@@ -316,7 +316,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     private void reloadEngineForVoiceResources(ModuleRuntimeContext context, long snapshotVersion, long requestedVersion) {
-        env.info("ASR 开始重载语音热词资源，requestedVersion=" + requestedVersion + ", snapshotVersion=" + snapshotVersion);
+        env.info("asr.voice_resource.reload.started requestedVersion=" + requestedVersion + " snapshotVersion=" + snapshotVersion);
         AsrController activeController = controller;
         if (activeController != null) {
             activeController.stop();
@@ -344,15 +344,15 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             if (readyState != null) {
                 readyState.capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId());
             }
-            env.info("ASR 语音热词资源重载完成，version=" + snapshotVersion);
-            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.asr.reload_complete", "ASR 语音资源重载完成"));
+            env.info("asr.voice_resource.reload.completed version=" + snapshotVersion);
+            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.asr.reload_complete"));
         } else {
             ModuleRuntimeState failedState = runtimeState;
             if (failedState != null) {
                 failedState.capabilities().markFailed(AsrRuntimeCapabilities.INPUT, moduleId(), "ASR 语音热词资源重载失败");
             }
-            env.warn("ASR 语音热词资源重载未产生可用引擎，version=" + snapshotVersion);
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_failed", "ASR 语音资源重载失败"));
+            env.warn("asr.voice_resource.reload.no_engine version=" + snapshotVersion);
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_failed"));
         }
     }
 

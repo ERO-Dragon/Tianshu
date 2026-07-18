@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
@@ -29,10 +30,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 
 public final class IrModule implements TianshuManagedModule {
     private static final long PRESENCE_CONTEXT_TIMEOUT_MILLIS = 300L;
@@ -178,8 +178,8 @@ public final class IrModule implements TianshuManagedModule {
         PendingPresenceContext pending = new PendingPresenceContext(completion);
         pendingPresenceContexts.put(queryEnvelope.envelopeId(), pending);
         adapter.registerPresenceContextSnapshotResponse(queryEnvelope.envelopeId(), this::handlePresenceContextResponse);
+        schedulePresenceContextTimeout(queryEnvelope.envelopeId(), pending);
         adapter.submitPresenceContextQuery(queryEnvelope);
-        schedulePresenceContextTimeout(queryEnvelope.envelopeId());
     }
 
     private void handlePresenceContextResponse(TianshuEnvelope envelope, ProtocolContext context) {
@@ -190,6 +190,7 @@ public final class IrModule implements TianshuManagedModule {
             return;
         }
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        pending.cancelTimeout("IR presence response received");
         if (!acceptingInput) {
             context.complete(envelope.envelopeId());
             return;
@@ -202,9 +203,12 @@ public final class IrModule implements TianshuManagedModule {
         context.complete(envelope.envelopeId());
     }
 
-    private void schedulePresenceContextTimeout(String requestEnvelopeId) {
-        CompletableFuture.delayedExecutor(PRESENCE_CONTEXT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-                .execute(() -> timeoutPresenceContext(requestEnvelopeId));
+    private void schedulePresenceContextTimeout(String requestEnvelopeId, PendingPresenceContext pending) {
+        pending.timeoutHandle = adapter.scheduleTimeout(
+                "ir.presence.timeout." + requestEnvelopeId,
+                () -> timeoutPresenceContext(requestEnvelopeId),
+                Duration.ofMillis(PRESENCE_CONTEXT_TIMEOUT_MILLIS)
+        );
     }
 
     private void timeoutPresenceContext(String requestEnvelopeId) {
@@ -212,6 +216,7 @@ public final class IrModule implements TianshuManagedModule {
         if (pending == null) {
             return;
         }
+        pending.cancelTimeout("IR presence context timed out");
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
         if (!acceptingInput) {
             return;
@@ -221,7 +226,10 @@ public final class IrModule implements TianshuManagedModule {
 
     private void clearPendingPresenceContexts() {
         for (String requestEnvelopeId : pendingPresenceContexts.keySet()) {
-            pendingPresenceContexts.remove(requestEnvelopeId);
+            PendingPresenceContext pending = pendingPresenceContexts.remove(requestEnvelopeId);
+            if (pending != null) {
+                pending.cancelTimeout("IR module stopped");
+            }
             adapter.unregisterPresenceContextResponses(requestEnvelopeId);
         }
     }
@@ -272,7 +280,24 @@ public final class IrModule implements TianshuManagedModule {
         void complete(IrContextHint hint);
     }
 
-    private record PendingPresenceContext(PresenceContextCompletion completion) {
+    private static final class PendingPresenceContext {
+        private final PresenceContextCompletion completion;
+        private volatile ProtocolTaskHandle timeoutHandle;
+
+        private PendingPresenceContext(PresenceContextCompletion completion) {
+            this.completion = completion;
+        }
+
+        private PresenceContextCompletion completion() {
+            return completion;
+        }
+
+        private void cancelTimeout(String reason) {
+            ProtocolTaskHandle handle = timeoutHandle;
+            if (handle != null && !handle.isDone()) {
+                handle.cancel(reason);
+            }
+        }
     }
 
     private static final class IrPresenceContextMapper {

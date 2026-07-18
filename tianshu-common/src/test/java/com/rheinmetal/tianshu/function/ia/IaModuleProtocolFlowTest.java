@@ -21,6 +21,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegis
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
@@ -410,13 +411,14 @@ class IaModuleProtocolFlowTest {
     }
 
     private void registerParticipant(DialogueParticipantDescriptor descriptor) {
-        runtime.submit(EnvelopeBuilder.commandToCapability(
+        TianshuEnvelope registration = EnvelopeBuilder.commandToCapability(
                 descriptor.moduleId(),
                 ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER,
                 PayloadType.DIALOGUE_PARTICIPANT_REGISTER,
                 new DialogueParticipantRegisterPayload(descriptor, System.currentTimeMillis())
-        ).build());
-        await(() -> runtime.deadLetters().snapshot(16).isEmpty());
+        ).build();
+        runtime.submit(registration);
+        await(() -> runtime.lifecycle().statusOf(registration.envelopeId()) == EnvelopeStatus.COMPLETED);
     }
 
     private DialogueArbitrationRequestPayload request(String requestId, String playerId, String turnId, long sourceSessionId, String text, List<String> wakeWords, List<String> itemIds) {

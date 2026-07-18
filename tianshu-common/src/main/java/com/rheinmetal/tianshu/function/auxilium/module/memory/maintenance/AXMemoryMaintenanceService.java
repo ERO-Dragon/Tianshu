@@ -364,7 +364,6 @@ public final class AXMemoryMaintenanceService {
                 AXProtocolAdapter.MODULE_ID,
                 "memory.maintenance",
                 STATUS_KEY_STARTED,
-                "",
                 ModuleStatusSeverity.NOTICE,
                 3_000L,
                 Map.of("presenceStatusType", "COMPRESSING")
@@ -374,16 +373,14 @@ public final class AXMemoryMaintenanceService {
     private void publishCompleteStatus() {
         adapter.publishModuleStatus(ModuleStatuses.readyKeyed(
                 AXProtocolAdapter.MODULE_ID,
-                STATUS_KEY_COMPLETE,
-                ""
+                STATUS_KEY_COMPLETE
         ));
     }
 
     private void publishFailedStatus() {
         adapter.publishModuleStatus(ModuleStatuses.failedKeyed(
                 AXProtocolAdapter.MODULE_ID,
-                STATUS_KEY_FAILED,
-                ""
+                STATUS_KEY_FAILED
         ));
     }
 

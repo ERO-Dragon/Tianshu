@@ -141,8 +141,8 @@ module.my_feature
 
 推荐的结构是：
 
-- 每个功能模块自己提供一个 `TianshuFunctionModuleInstaller`
-- 平台侧或产品侧用 `CompositeTianshuFunctionModuleAssembler` 组合这些 installer
+- 每个功能模块自己提供一个 `TianshuModuleInstaller`
+- 平台侧或产品侧用 `CompositeTianshuModuleAssembler` 组合这些 installer
 - 装配器只负责把 installer 逐个应用到 `TianshuModuleHost`
 
 这样做的好处是：

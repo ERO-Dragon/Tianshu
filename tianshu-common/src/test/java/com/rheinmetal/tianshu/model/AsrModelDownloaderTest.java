@@ -186,7 +186,7 @@ class AsrModelDownloaderTest {
         private final AtomicInteger completed = new AtomicInteger();
 
         @Override
-        public void onProgress(String label, int percent) {
+        public void onProgress(ModelDownloadProgress progress) {
         }
 
         @Override

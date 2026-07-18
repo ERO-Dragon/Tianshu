@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordi
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
-import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
@@ -33,7 +33,7 @@ public final class PresenceClientRuntime {
         return stateStore.contextSnapshot();
     }
 
-    public TianshuFunctionModuleInstaller moduleInstaller(ModuleRuntimeAccess moduleRuntime) {
+    public TianshuModuleInstaller moduleInstaller(ModuleRuntimeAccess moduleRuntime) {
         PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(moduleRuntime);
         contextQueryCoordinator.bindAdapter(adapter);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);

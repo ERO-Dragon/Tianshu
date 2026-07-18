@@ -5,13 +5,13 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
-public final class AsrModuleInstaller implements TianshuFunctionModuleInstaller {
+public final class AsrModuleInstaller implements TianshuModuleInstaller {
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
     private final IGameEnvironment env;

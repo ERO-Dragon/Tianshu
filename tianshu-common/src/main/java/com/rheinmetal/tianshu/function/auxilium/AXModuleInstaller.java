@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
-public final class AXModuleInstaller implements TianshuFunctionModuleInstaller {
+public final class AXModuleInstaller implements TianshuModuleInstaller {
     private final IGameEnvironment env;
     private final AXStorageConfiguration storageConfiguration;
     private final ModuleRuntimeAccess moduleRuntime;

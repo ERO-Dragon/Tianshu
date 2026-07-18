@@ -33,13 +33,13 @@ public final class AsrEngineBootstrap {
         Path modelPath = config.getAsrModelPath();
         if (modelPath == null || modelPath.getFileName() == null || modelPath.getFileName().toString().isBlank()) {
             markFailed(context, moduleId, "ASR model is not configured");
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.not_configured", "ASR 模型未配置"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.not_configured"));
             return null;
         }
         if (modelPath == null || !Files.isDirectory(modelPath)) {
             markFailed(context, moduleId, "ASR model is not installed");
-            env.info("ASR 模型目录不存在，静默等待");
-            publishStatus(AsrEngineBootstrapStatus.waiting("tianshu.presence.module.asr.not_installed", "ASR 模型未安装"));
+            env.info("asr.model.directory_missing");
+            publishStatus(AsrEngineBootstrapStatus.waiting("tianshu.presence.module.asr.not_installed"));
             return null;
         }
 
@@ -47,20 +47,20 @@ public final class AsrEngineBootstrap {
         try {
             if (initializeEngine(engine, context, modelPath)) {
                 context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId);
-                env.info("ASR 引擎初始化成功");
-                publishStatus(AsrEngineBootstrapStatus.ready("tianshu.presence.module.asr.ready", "态势感知已就绪"));
+                env.info("asr.engine.initialized");
+                publishStatus(AsrEngineBootstrapStatus.ready("tianshu.presence.module.asr.ready"));
                 return engine;
             }
             markFailed(context, moduleId, "ASR 引擎初始化失败");
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.failed", "ASR 引擎初始化失败"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.failed"));
         } catch (ModelFilesMissingException e) {
             markFailed(context, moduleId, "ASR 模型文件缺失: " + e.getMessage());
-            env.error("ASR 模型文件缺失: " + e.getMessage(), null);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.model_files_missing", "ASR 模型文件缺失，请重新下载"));
+            env.error("asr.model.files_missing", e);
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.model_files_missing"));
         } catch (RuntimeException | LinkageError failure) {
             markFailed(context, moduleId, "ASR 引擎初始化异常: " + failure.getMessage());
-            env.error("ASR 引擎初始化失败", failure);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.exception", "ASR 引擎初始化异常"));
+            env.error("asr.engine.initialization_failed", failure);
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.exception"));
         }
         engine.shutdown();
         return null;
@@ -69,7 +69,7 @@ public final class AsrEngineBootstrap {
     private boolean initializeEngine(AsrEngine engine, ModuleRuntimeContext context, Path modelPath) throws ModelFilesMissingException {
         File safeDir = PathUtils.getSafeModelDir(modelPath.toFile());
         if (safeDir == null) {
-            env.error("获取安全模型目录失败", null);
+            env.error("asr.model.path_unavailable", null);
             return false;
         }
 
@@ -82,8 +82,8 @@ public final class AsrEngineBootstrap {
         Path hotwordsFile = AsrHotwordSupport.fromModel(modelInfo).reloadRequired() ? resolveHotwordsFile(context, modelInfo) : null;
         boolean initialized = engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile);
         if (!initialized) {
-            env.error("ASR 引擎初始化失败，模型类型可能尚未适配", null);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.unsupported_model", "ASR 引擎初始化失败，该模型类型尚未适配"));
+            env.error("asr.model.unsupported", null);
+        publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.unsupported_model"));
         }
         return initialized;
     }

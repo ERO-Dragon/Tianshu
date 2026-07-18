@@ -34,16 +34,16 @@ public final class AsrRecognitionService {
         cancelCompleteTask();
         completeTask = adapter.submitRecognitionTask("complete", () -> {
             try {
-                env.info("ASR 开始完整识别，音频长度=" + (audioData == null ? 0 : audioData.length) + " bytes");
+                env.info("asr.recognition.complete.started bytes=" + (audioData == null ? 0 : audioData.length));
                 String result = engine().recognizeComplete(audioData);
                 if (isMeaningfulText(result)) {
                     publishDiagnostic("RECOGNITION_COMPLETE", DiagnosticSeverity.INFO, result, inputMode, sessionId);
                     onResult.accept(new AsrRecognitionResult(result, result, sessionId, inputMode));
                 } else {
-                    env.info("ASR 完整识别结果为空");
+                    env.info("asr.recognition.complete.empty");
                 }
             } catch (Exception e) {
-                env.error("ASR 完整识别失败", e);
+                env.error("asr.recognition.complete.failed", e);
             } finally {
                 onComplete.run();
             }
@@ -65,7 +65,7 @@ public final class AsrRecognitionService {
         AsrEngine engine = engine();
         AsrEngine.StreamingSession createdSession = engine.createStreamingSession();
         if (createdSession == null && !engine.supportsCompleteRecognition()) {
-            env.warn("ASR 连续识别 session 创建失败");
+            env.warn("asr.recognition.continuous.session_create_failed");
             return false;
         }
         StreamingRuntime runtime = new StreamingRuntime(sessionId, createdSession, vadEnabled);
@@ -153,7 +153,7 @@ public final class AsrRecognitionService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            env.error("ASR 流式识别失败", e);
+            env.error("asr.recognition.continuous.failed", e);
         } finally {
             releaseStreamingSession(runtime);
         }
@@ -233,7 +233,7 @@ public final class AsrRecognitionService {
             try {
                 engine().releaseStreamingSession(runtime.engineSession());
             } catch (Exception e) {
-                env.error("释放 ASR 流式 session 失败", e);
+                env.error("asr.recognition.continuous.session_close_failed", e);
             }
         }
     }

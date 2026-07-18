@@ -6,7 +6,6 @@ public record ModuleStatus(
         String moduleId,
         String statusType,
         String messageKey,
-        String fallbackMessage,
         ModuleStatusSeverity severity,
         long updatedAtMillis,
         long ttlMillis,
@@ -16,7 +15,6 @@ public record ModuleStatus(
         moduleId = requireText(moduleId, "moduleId");
         statusType = requireText(statusType, "statusType");
         messageKey = sanitize(messageKey);
-        fallbackMessage = sanitize(fallbackMessage);
         severity = severity == null ? ModuleStatusSeverity.INFO : severity;
         if (updatedAtMillis <= 0L) updatedAtMillis = System.currentTimeMillis();
         ttlMillis = Math.max(0L, ttlMillis);
@@ -27,31 +25,10 @@ public record ModuleStatus(
         return ttlMillis > 0L && nowMillis > updatedAtMillis + ttlMillis;
     }
 
-    public static ModuleStatus of(
-            String moduleId,
-            String statusType,
-            String fallbackMessage,
-            ModuleStatusSeverity severity,
-            long ttlMillis,
-            Map<String, String> tags
-    ) {
-        return new ModuleStatus(
-                moduleId,
-                statusType,
-                "",
-                fallbackMessage,
-                severity,
-                System.currentTimeMillis(),
-                ttlMillis,
-                tags
-        );
-    }
-
     public static ModuleStatus keyed(
             String moduleId,
             String statusType,
             String messageKey,
-            String fallbackMessage,
             ModuleStatusSeverity severity,
             long ttlMillis,
             Map<String, String> tags
@@ -60,7 +37,6 @@ public record ModuleStatus(
                 moduleId,
                 statusType,
                 messageKey,
-                fallbackMessage,
                 severity,
                 System.currentTimeMillis(),
                 ttlMillis,

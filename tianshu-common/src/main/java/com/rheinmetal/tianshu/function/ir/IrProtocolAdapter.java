@@ -16,7 +16,10 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
+import java.time.Duration;
 import java.util.EnumSet;
 
 public final class IrProtocolAdapter extends AbstractProtocolAdapter {
@@ -73,6 +76,15 @@ public final class IrProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishResult(TianshuEnvelope parent, IrResultPayload payload) {
         return publishTopic(parent, ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
+    }
+
+    public ProtocolTaskHandle scheduleTimeout(String taskId, Runnable task, Duration delay) {
+        return runtime().schedule(taskSpec(ExecutionLane.SCHEDULED)
+                .taskId(taskId)
+                .concurrencyKey(MODULE_ID + ":timeouts")
+                .maxConcurrency(1)
+                .queueCapacity(32)
+                .build(), task, delay);
     }
 
 }

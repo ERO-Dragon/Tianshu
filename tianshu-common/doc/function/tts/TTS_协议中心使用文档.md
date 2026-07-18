@@ -189,6 +189,8 @@ TtsControlPayload load = new TtsControlPayload(
 
 模型下载来源不是公共 payload。内置 catalog 负责 Hugging Face repo/revision 文件定位、HF Mirror 降级，以及 GitHub proxy 到 direct URI 降级；下载保持 staging、完整性校验、暂停/继续/取消和原子提交。外部模块不要自行拼接或覆盖 TTS 模型 URL。
 
+宿主设置页读取 `ModelDownloadProgress` 的 `stage`、`percent`、`downloadedBytes`、`totalBytes` 和 `detailCode`，再由 Client 语言资源生成可见文案。Common 不再发送自由文本下载标签。
+
 ## 11. 诊断
 
 TTS 诊断只进入宿主集中诊断服务，并受 TTS 模块诊断开关控制。backend 不创建私有日志文件或线程。正式包不运行 MOSS smoke，也不包含测试 WAV 和生成音频。

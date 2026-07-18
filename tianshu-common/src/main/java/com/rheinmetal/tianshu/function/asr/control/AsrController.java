@@ -164,7 +164,7 @@ public final class AsrController {
         long sessionId = interruptProcessing.getAsLong();
         sessionManager.beginRecognitionSession(sessionId);
         stateMachine.moveTo(AsrState.CAPTURING);
-        env.info("ASR 开始语音输入，sessionId=" + sessionId);
+        env.info("asr.input.started sessionId=" + sessionId);
         audioCapture.startPttCapture(sessionId);
     }
 
@@ -174,7 +174,7 @@ public final class AsrController {
         }
         byte[] audioData = audioCapture.stopPttCapture();
         if (audioData == null || audioData.length == 0) {
-            env.warn("ASR 语音输入为空，跳过识别");
+            env.warn("asr.input.empty");
             stateMachine.reset();
             return;
         }
@@ -208,7 +208,7 @@ public final class AsrController {
         audioCapture.startStreamCapture(activeSessionId,
                 (chunk, decision) -> recognition.acceptAudioChunk(chunk, activeSessionId, decision));
         stateMachine.moveTo(AsrState.STREAMING);
-        env.info("ASR 开始连续语音输入，mode=" + mode + ", sessionId=" + activeSessionId);
+        env.info("asr.continuous_input.started mode=" + mode + " sessionId=" + activeSessionId);
     }
 
     private void publishIfCurrent(AsrRecognitionResult result) {
@@ -216,12 +216,12 @@ public final class AsrController {
             return;
         }
         if (!sessionManager.isActive(result.sessionId())) {
-            env.info("丢弃过期 ASR 结果，sessionId=" + result.sessionId() + ", activeSessionId=" + sessionManager.activeRecognitionSession());
+            env.info("asr.result.stale_discarded sessionId=" + result.sessionId() + " activeSessionId=" + sessionManager.activeRecognitionSession());
             return;
         }
         int turnId = sessionManager.nextTurnId();
         adapter.publishFinalText(new AsrTextPayload(result.text(), result.rawText(), turnId, result.sessionId(), result.inputMode(), System.currentTimeMillis()));
-        env.info("ASR 识别完成，turnId=" + turnId + ", sessionId=" + result.sessionId());
+        env.info("asr.result.completed turnId=" + turnId + " sessionId=" + result.sessionId());
     }
 
     private boolean canAcceptInput() {
@@ -229,8 +229,8 @@ public final class AsrController {
     }
 
     private void notifyAsrWaking() {
-        env.warn("ASR 未就绪，跳过语音输入");
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", "tianshu.presence.module.asr.waking", "天枢正在苏醒，请稍候"));
+        env.warn("asr.input.not_ready");
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", "tianshu.presence.module.asr.waking"));
     }
 }
 

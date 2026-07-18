@@ -96,7 +96,7 @@ AX 当前订阅：
 
 AX 不订阅 `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY`。ASR 活动状态由 ASR/输入链路自行消费，不能直接改变 AX 的回合生命周期。
 
-AX 还会向 `ProtocolTopics.MODULE_STATUS` 发布 `module.ax` 的状态。订阅者必须按 `moduleId` 过滤，并优先使用 `messageKey` 本地化，不解析 fallback 文本。
+AX 还会向 `ProtocolTopics.MODULE_STATUS` 发布 `module.ax` 的状态。订阅者必须按 `moduleId` 过滤，并通过 Client 语言资源解析 `messageKey`；Common 状态不携带 fallback 文本。
 
 ## 8. IA delivery 驱动的回合切换
 

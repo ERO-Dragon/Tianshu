@@ -76,7 +76,6 @@ class PresenceRuntimeTest {
                 "module.tts",
                 "runtime.waiting",
                 "tianshu.presence.module.tts.loading",
-                "",
                 ModuleStatusSeverity.INFO,
                 4_000L,
                 Map.of("loadStage", "preloading")

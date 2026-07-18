@@ -239,7 +239,7 @@ public final class LlmModule implements TianshuManagedModule {
             }
         }
 
-        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting", ""));
+        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting"));
         engineProvider.startAsync(() -> {
             synchronized (lifecycleLock) {
                 if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
@@ -251,7 +251,7 @@ public final class LlmModule implements TianshuManagedModule {
                     markGenerationCapabilityFailed("LLM service failed to start");
                     markStorageCapabilitiesReady();
                     moduleService.markFailed("LLM service failed to start");
-                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", ""));
+                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed"));
                     return;
                 }
                 JavaLlamaInferenceClient inferenceClient = new JavaLlamaInferenceClient(aiService);
@@ -276,7 +276,7 @@ public final class LlmModule implements TianshuManagedModule {
                 markCapabilitiesReady();
                 moduleService.markReady();
             }
-            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready", ""));
+            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
         }, () -> {
             if (generation != lifecycleGeneration.get()) {
                 return;
@@ -286,7 +286,7 @@ public final class LlmModule implements TianshuManagedModule {
             if (moduleService != null) {
                 moduleService.markFailed("LLM service failed to start");
             }
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed", ""));
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed"));
             synchronized (lifecycleLock) {
                 adapter.setLlmService(null);
                 LLMService failedService = llmService;

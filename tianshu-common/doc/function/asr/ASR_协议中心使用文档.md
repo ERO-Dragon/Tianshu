@@ -106,7 +106,9 @@ if (!AsrProtocolAdapter.MODULE_ID.equals(status.moduleId())) {
 }
 ```
 
-`ModuleStatus` 中稳定可用的字段包括 `moduleId`、`statusType`、`messageKey`、`severity`、`updatedAtMillis`、`ttlMillis` 和 `tags`。玩家界面优先使用 `messageKey` 本地化；`fallbackMessage` 只是兼容回退，不应被外部模组解析为状态码。
+`ModuleStatus` 中稳定可用的字段包括 `moduleId`、`statusType`、`messageKey`、`severity`、`updatedAtMillis`、`ttlMillis` 和 `tags`。Common 不携带 fallback 文本；玩家界面必须通过 Client 语言资源解析 `messageKey`，缺失 key 时使用 Client 自己的通用 unavailable 文案。
+
+模型下载状态通过模型服务的 `ModelDownloadProgress` 提供给宿主设置页，字段为 `stage`、`percent`、`downloadedBytes`、`totalBytes` 和 `detailCode`。`stage` 是结构化枚举，Common 不发送自然语言下载标签。
 
 该 topic 使用 `LATEST_ONLY`，适合显示最新 readiness、下载或重载状态，不是完整审计日志。
 

@@ -541,3 +541,5 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 ## 诊断记录
 
 LLM 设置面板中的“诊断记录”开关控制 `module.llm` 的推理诊断。开启后允许记录请求消息和生成结果，用于调试 prompt、上下文和输出链路；关闭时事件不会进入诊断文件。文件写入由 NeoForge 宿主异步集中完成。
+
+模型下载进度不是 LLM 协议 payload。宿主设置页接收 `ModelDownloadProgress`，使用 `stage`、`percent`、`downloadedBytes`、`totalBytes` 和 `detailCode` 更新界面；Common 不发送自由文本下载标签。

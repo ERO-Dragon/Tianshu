@@ -22,6 +22,7 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
@@ -637,7 +638,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null || modelService.isDownloading()) return;
             modelService.downloadModel(info, new LlmModelService.DownloadProgressCallback() {
                 @Override
-                public void onProgress(String label, int percent) {
+                public void onProgress(ModelDownloadProgress progress) {
                     requestDownloadRefresh();
                 }
 
@@ -733,7 +734,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                         : snapshot.paused()
                         ? llm("status.paused")
                         : llm("status.downloading");
-                return llm("download.progress", label, snapshot.percent());
+                return llm("download.progress", label, snapshot.progress().percent());
             }
             if (!snapshot.errorMessage().isBlank()) {
                 return localizedDownloadMessage(snapshot.errorMessage());

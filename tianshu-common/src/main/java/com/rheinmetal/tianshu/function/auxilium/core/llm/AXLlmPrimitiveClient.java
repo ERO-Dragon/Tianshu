@@ -4,7 +4,9 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
@@ -91,8 +93,9 @@ public final class AXLlmPrimitiveClient {
         TianshuEnvelope envelope = adapter.buildLlmPrimitiveQuery(payload);
         pending.put(envelope.envelopeId(), new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis, payload.requestId(), envelope));
         adapter.registerLlmPrimitiveResultResponse(envelope.envelopeId(), this::handleResponse);
+        PendingQuery query = pending.get(envelope.envelopeId());
+        scheduleTimeout(envelope.envelopeId(), payload, query);
         adapter.submitLlmPrimitiveQuery(envelope);
-        scheduleTimeout(envelope.envelopeId(), payload);
     }
 
     public void sweepExpired() {
@@ -102,6 +105,7 @@ public final class AXLlmPrimitiveClient {
             if (query == null || query.deadlineMillis() > now) {
                 return false;
             }
+            query.cancelTimeout("AX primitive query expired");
             adapter.unregisterLlmPrimitiveResponses(entry.getKey());
             adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
             query.completion().complete(LLMPrimitiveResultPayload.failed(
@@ -122,6 +126,7 @@ public final class AXLlmPrimitiveClient {
         pending.forEach((requestEnvelopeId, query) -> {
             adapter.unregisterLlmPrimitiveResponses(requestEnvelopeId);
             if (query != null) {
+                query.cancelTimeout("AX primitive client stopped");
                 adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_CANCELLED", reason == null ? "AX primitive query cancelled" : reason);
                 query.completion().complete(LLMPrimitiveResultPayload.failed(
                         "llm.primitive.query",
@@ -147,6 +152,7 @@ public final class AXLlmPrimitiveClient {
             if (!pending.remove(entry.getKey(), query)) {
                 continue;
             }
+            query.cancelTimeout("AX primitive query cancelled");
             adapter.unregisterLlmPrimitiveResponses(entry.getKey());
             String message = reason == null ? "AX primitive query cancelled" : reason;
             adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_CANCELLED", message);
@@ -173,17 +179,22 @@ public final class AXLlmPrimitiveClient {
                 ? result
                 : LLMPrimitiveResultPayload.failed("llm.primitive.query", LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS, "INVALID_PAYLOAD", "LLM primitive result payload is invalid");
         adapter.unregisterLlmPrimitiveResponses(envelope.parentId());
+        query.cancelTimeout("AX primitive response received");
         query.completion().complete(payload);
         if (context != null) {
             context.complete(envelope.envelopeId());
         }
     }
 
-    private void scheduleTimeout(String requestEnvelopeId, LLMPrimitiveQueryPayload payload) {
+    private void scheduleTimeout(String requestEnvelopeId, LLMPrimitiveQueryPayload payload, PendingQuery query) {
         if (timeoutMillis <= 0L || requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
             return;
         }
-        CompletableFuture.delayedExecutor(timeoutMillis, TimeUnit.MILLISECONDS).execute(() -> timeout(requestEnvelopeId, payload));
+        query.timeoutHandle = adapter.scheduleTimeout(
+                "ax.primitive.timeout." + requestEnvelopeId,
+                () -> timeout(requestEnvelopeId, payload),
+                Duration.ofMillis(timeoutMillis)
+        );
     }
 
     private void timeout(String requestEnvelopeId, LLMPrimitiveQueryPayload payload) {
@@ -191,6 +202,7 @@ public final class AXLlmPrimitiveClient {
         if (query == null) {
             return;
         }
+        query.cancelTimeout("AX primitive timeout fired");
         adapter.unregisterLlmPrimitiveResponses(requestEnvelopeId);
         adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
         query.completion().complete(LLMPrimitiveResultPayload.failed(
@@ -205,6 +217,30 @@ public final class AXLlmPrimitiveClient {
         void complete(LLMPrimitiveResultPayload result);
     }
 
-    private record PendingQuery(Completion completion, long deadlineMillis, String requestId, TianshuEnvelope envelope) {
+    private static final class PendingQuery {
+        private final Completion completion;
+        private final long deadlineMillis;
+        private final String requestId;
+        private final TianshuEnvelope envelope;
+        private volatile ProtocolTaskHandle timeoutHandle;
+
+        private PendingQuery(Completion completion, long deadlineMillis, String requestId, TianshuEnvelope envelope) {
+            this.completion = completion;
+            this.deadlineMillis = deadlineMillis;
+            this.requestId = requestId;
+            this.envelope = envelope;
+        }
+
+        private Completion completion() { return completion; }
+        private long deadlineMillis() { return deadlineMillis; }
+        private String requestId() { return requestId; }
+        private TianshuEnvelope envelope() { return envelope; }
+
+        private void cancelTimeout(String reason) {
+            ProtocolTaskHandle handle = timeoutHandle;
+            if (handle != null && !handle.isDone()) {
+                handle.cancel(reason);
+            }
+        }
     }
 }

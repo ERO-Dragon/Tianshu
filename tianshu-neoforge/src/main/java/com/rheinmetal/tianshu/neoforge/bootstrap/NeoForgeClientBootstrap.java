@@ -25,7 +25,7 @@ import com.rheinmetal.tianshu.client.settings.registry.ModuleSettingsRegistrySou
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsContributorRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.function.TianshuFunctionConfigurations;
+import com.rheinmetal.tianshu.client.runtime.module.ClientFunctionConfigurations;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
 import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
@@ -102,7 +102,7 @@ public final class NeoForgeClientBootstrap {
 
         coreManager = new TianshuCoreManager(environment, config, audioManager, context -> new ClientTianshuModuleAssembler(
                 context.env(),
-                new TianshuFunctionConfigurations(config, config, config, config),
+                new ClientFunctionConfigurations(config, config, config, config),
                 context.audioBridge(),
                 context.moduleRuntime(),
                 namedObjectIndexManager,

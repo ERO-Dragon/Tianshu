@@ -35,6 +35,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
+import java.time.Duration;
 
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
@@ -124,6 +125,15 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 .maxConcurrency(1)
                 .queueCapacity(16)
                 .build(), task);
+    }
+
+    public ProtocolTaskHandle scheduleTimeout(String taskId, Runnable task, Duration delay) {
+        return runtime().schedule(taskSpec(ExecutionLane.SCHEDULED)
+                .taskId(taskId)
+                .concurrencyKey(MODULE_ID + ":timeouts")
+                .maxConcurrency(1)
+                .queueCapacity(64)
+                .build(), task, delay);
     }
 
     public TianshuEnvelope buildPresenceContextQuery(TianshuEnvelope parent, PresenceContextQueryPayload payload) {

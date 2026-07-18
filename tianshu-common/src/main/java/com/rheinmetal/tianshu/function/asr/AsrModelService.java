@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
@@ -29,7 +31,7 @@ import java.util.function.Supplier;
 public class AsrModelService {
 
     public interface DownloadProgressCallback {
-        void onProgress(String label, int percent);
+        void onProgress(ModelDownloadProgress progress);
         void onComplete();
         void onError(String message);
 
@@ -41,9 +43,9 @@ public class AsrModelService {
         void onComplete(boolean deleted);
     }
 
-    public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelKey, String label, int progress) {
+    public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelKey, ModelDownloadProgress progress) {
         public static DownloadStatus idle() {
-            return new DownloadStatus(false, false, false, "", "", 0);
+            return new DownloadStatus(false, false, false, "", ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, ""));
         }
     }
 
@@ -219,12 +221,12 @@ public class AsrModelService {
                 downloadCoordinator.newSession()
         );
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.asr.download_busy", "ASR 模型下载已在进行");
+            publishFailed("tianshu.presence.module.asr.download_busy");
             notifyDownloadError(callback, "ASR model download is already running");
             return;
         }
-        task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), "Preparing", 0));
-        publishWaiting("tianshu.presence.module.asr.download_started", "");
+        task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare")));
+        publishWaiting("tianshu.presence.module.asr.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.asr")
@@ -237,13 +239,13 @@ public class AsrModelService {
                     try {
                         task.session().download(info, resolveModelDir(info), githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
                             @Override
-                            public void onProgress(String label, int percent) {
+                            public void onProgress(ModelDownloadProgress progress) {
                                 if (!isCurrentTask(task)) {
                                     return;
                                 }
-                                task.updateStatus(new DownloadStatus(true, task.session().isPaused(), task.session().isCancelled(), task.modelKey(), label == null ? "" : label, Math.max(0, Math.min(100, percent))));
+                                task.updateStatus(new DownloadStatus(true, task.session().isPaused(), task.session().isCancelled(), task.modelKey(), progress));
                                 if (callback != null) {
-                                    callback.onProgress(label, percent);
+                                    callback.onProgress(progress);
                                 }
                             }
 
@@ -252,7 +254,7 @@ public class AsrModelService {
                                 if (!finishTask(task)) {
                                     return;
                                 }
-                                publishWaiting("tianshu.presence.module.asr.download_complete", "");
+                                publishWaiting("tianshu.presence.module.asr.download_complete");
                                 if (callback != null) {
                                     callback.onComplete();
                                 }
@@ -267,10 +269,10 @@ public class AsrModelService {
                                     return;
                                 }
                                 if (task.session().isCancelled()) {
-                                    publishWaiting("tianshu.presence.module.asr.download_cancelled", "");
+                                    publishWaiting("tianshu.presence.module.asr.download_cancelled");
                                     callback.onCancelled();
                                 } else {
-                                    publishFailed("tianshu.presence.module.asr.download_failed", "ASR 模型下载失败");
+                                    publishFailed("tianshu.presence.module.asr.download_failed");
                                     callback.onError(message);
                                 }
                             }
@@ -283,18 +285,18 @@ public class AsrModelService {
                             return;
                         }
                         if (task.session().isCancelled()) {
-                            publishWaiting("tianshu.presence.module.asr.download_cancelled", "");
+                            publishWaiting("tianshu.presence.module.asr.download_cancelled");
                             callback.onCancelled();
                         } else {
-                            publishFailed("tianshu.presence.module.asr.download_failed", "ASR 模型下载失败");
-                            callback.onError(e.getMessage() == null ? "ASR model download failed" : e.getMessage());
+                            publishFailed("tianshu.presence.module.asr.download_failed");
+                            callback.onError("tianshu.gui.asr.error.download_failed");
                         }
                     }
                 }
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
-            publishFailed("tianshu.presence.module.asr.download_queue_full", "ASR 模型下载队列已满");
+            publishFailed("tianshu.presence.module.asr.download_queue_full");
             notifyDownloadError(callback, "ASR model download queue is full");
         }
     }
@@ -307,8 +309,8 @@ public class AsrModelService {
     public void downloadModelSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
         downloadCoordinator.newSession().download(info, targetDir, githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
             @Override
-            public void onProgress(String label, int percent) {
-                callback.onProgress(label, percent);
+            public void onProgress(ModelDownloadProgress progress) {
+                callback.onProgress(progress);
             }
 
             @Override
@@ -335,8 +337,8 @@ public class AsrModelService {
         }
         task.session().pause();
         DownloadStatus current = task.status();
-        task.updateStatus(new DownloadStatus(true, true, false, task.modelKey(), current.label(), current.progress()));
-        publishWaiting("tianshu.presence.module.asr.download_paused", "");
+        task.updateStatus(new DownloadStatus(true, true, false, task.modelKey(), withStage(current.progress(), ModelDownloadStage.PAUSED)));
+        publishWaiting("tianshu.presence.module.asr.download_paused");
     }
 
     public boolean pauseDownload(String modelKey) {
@@ -354,8 +356,8 @@ public class AsrModelService {
         }
         task.session().resume();
         DownloadStatus current = task.status();
-        task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), current.label(), current.progress()));
-        publishWaiting("tianshu.presence.module.asr.download_resumed", "");
+        task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), withStage(current.progress(), ModelDownloadStage.DOWNLOADING)));
+        publishWaiting("tianshu.presence.module.asr.download_resumed");
     }
 
     public boolean resumeDownload(String modelKey) {
@@ -373,8 +375,8 @@ public class AsrModelService {
         }
         task.session().cancel();
         DownloadStatus current = task.status();
-        task.updateStatus(new DownloadStatus(true, false, true, task.modelKey(), "Cancelling", current.progress()));
-        publishWaiting("tianshu.presence.module.asr.download_cancelling", "");
+        task.updateStatus(new DownloadStatus(true, false, true, task.modelKey(), withStage(current.progress(), ModelDownloadStage.CANCELLING)));
+        publishWaiting("tianshu.presence.module.asr.download_cancelling");
     }
 
     public boolean cancelDownload(String modelKey) {
@@ -547,16 +549,19 @@ public class AsrModelService {
         return activeDownload.compareAndSet(task, null);
     }
 
-    private void publishReady(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.readyKeyed("module.asr", messageKey, fallbackTitle));
+    private static ModelDownloadProgress withStage(ModelDownloadProgress progress, ModelDownloadStage stage) {
+        ModelDownloadProgress current = progress == null
+                ? ModelDownloadProgress.stage(stage, 0, "")
+                : progress;
+        return new ModelDownloadProgress(stage, current.percent(), current.downloadedBytes(), current.totalBytes(), current.detailCode());
     }
 
-    private void publishWaiting(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", messageKey, fallbackTitle));
+    private void publishWaiting(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", messageKey));
     }
 
-    private void publishFailed(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.asr", messageKey, fallbackTitle));
+    private void publishFailed(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.asr", messageKey));
     }
 
     private boolean isActiveModel(String modelKey) {
@@ -580,7 +585,7 @@ public class AsrModelService {
             this.sessionId = sessionId;
             this.modelKey = modelKey == null ? "" : modelKey.trim();
             this.session = session;
-            this.status.set(new DownloadStatus(true, false, false, this.modelKey, "", 0));
+            this.status.set(new DownloadStatus(true, false, false, this.modelKey, ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare")));
         }
 
         private long sessionId() {

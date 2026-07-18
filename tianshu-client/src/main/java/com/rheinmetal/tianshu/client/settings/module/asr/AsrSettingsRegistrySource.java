@@ -23,6 +23,8 @@ import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsApplier;
 import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsSnapshot;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
@@ -356,8 +358,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                         ? asr("status.cancelling")
                         : status.paused()
                         ? asr("status.paused")
-                        : status.label() == null || status.label().isBlank() ? asr("status.downloading") : UiText.literal(status.label());
-                return asr("download.progress", label, Math.max(0, Math.min(100, status.progress())));
+                        : progressLabel(status.progress());
+                return asr("download.progress", label, status.progress().percent());
             }
             return asr("status.idle");
         }
@@ -439,7 +441,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             String modelKey = info.localKey();
             asrModelService().downloadModel(modelKey, githubProxyUrl.get(), new AsrModelService.DownloadProgressCallback() {
                 @Override
-                public void onProgress(String label, int percent) {
+                public void onProgress(ModelDownloadProgress progress) {
                     queueDownloadRefresh();
                 }
 
@@ -454,7 +456,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onError(String message) {
                     runOnClient(() -> {
-                        UiText error = message == null ? asr("status.download_failed") : UiText.literal(message);
+                        UiText error = localizedKey(message, "status.download_failed");
                         context.showStatus(error, 4000);
                         queueDownloadRefresh();
                     });
@@ -500,6 +502,22 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private boolean downloadInProgress() {
             AsrModelService.DownloadStatus status = asrModelService().downloadStatus();
             return status != null && status.downloading();
+        }
+
+        private UiText progressLabel(ModelDownloadProgress progress) {
+            ModelDownloadStage stage = progress == null ? ModelDownloadStage.DOWNLOADING : progress.stage();
+            return switch (stage) {
+                case PAUSED -> asr("status.paused");
+                case CANCELLING -> asr("status.cancelling");
+                default -> asr("status.downloading");
+            };
+        }
+
+        private UiText localizedKey(String key, String fallbackSuffix) {
+            if (key != null && key.startsWith("tianshu.")) {
+                return UiText.key(key);
+            }
+            return asr(fallbackSuffix);
         }
 
         private void deleteModel(ModuleSettingsContext context, AsrModelInfo info) {

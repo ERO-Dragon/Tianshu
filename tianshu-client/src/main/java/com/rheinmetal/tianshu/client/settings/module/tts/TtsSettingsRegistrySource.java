@@ -27,6 +27,8 @@ import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.ModelDownloadStage;
 
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
@@ -499,8 +501,8 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                         ? tts("status.cancelling")
                         : status.paused()
                         ? tts("status.paused")
-                        : status.label() == null || status.label().isBlank() ? tts("status.downloading") : localizedKey(status.label(), "status.downloading");
-                return tts("download.progress", label, Math.max(0, Math.min(100, status.progress())));
+                        : progressLabel(status.progress());
+                return tts("download.progress", label, status.progress().percent());
             }
             return tts("status.idle");
         }
@@ -519,7 +521,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             }
             ttsModelService().downloadModel(info, githubProxyUrl.get(), new TtsModelService.DownloadProgressCallback() {
                 @Override
-                public void onProgress(String label, int percent) {
+                public void onProgress(ModelDownloadProgress progress) {
                     requestDownloadRefresh();
                 }
 
@@ -578,6 +580,15 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private boolean downloadInProgress() {
             TtsModelService.DownloadStatus status = ttsModelService().downloadStatus();
             return status != null && status.downloading();
+        }
+
+        private UiText progressLabel(ModelDownloadProgress progress) {
+            ModelDownloadStage stage = progress == null ? ModelDownloadStage.DOWNLOADING : progress.stage();
+            return switch (stage) {
+                case PAUSED -> tts("status.paused");
+                case CANCELLING -> tts("status.cancelling");
+                default -> tts("status.downloading");
+            };
         }
 
         private TtsModelCardState cardState(TtsModelInfo info) {

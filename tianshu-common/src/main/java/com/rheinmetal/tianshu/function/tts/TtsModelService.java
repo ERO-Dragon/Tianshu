@@ -5,6 +5,8 @@ import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.function.tts.download.TtsModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
@@ -35,7 +37,7 @@ import java.util.function.Consumer;
 public class TtsModelService {
 
     public interface DownloadProgressCallback {
-        void onProgress(String label, int percent);
+        void onProgress(ModelDownloadProgress progress);
         void onComplete();
         void onError(String message);
 
@@ -47,9 +49,9 @@ public class TtsModelService {
         void onComplete(boolean deleted);
     }
 
-    public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, String label, int progress) {
+    public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, ModelDownloadProgress progress) {
         public static DownloadStatus idle() {
-            return new DownloadStatus(false, false, false, "", "", 0);
+            return new DownloadStatus(false, false, false, "", ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, ""));
         }
     }
 
@@ -383,14 +385,14 @@ public class TtsModelService {
         }
         DownloadTask task = new DownloadTask(safeModelName(info), modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.tts.download_busy", "");
+            publishFailed("tianshu.presence.module.tts.download_busy");
             if (callback != null) {
                 callback.onError("tianshu.gui.tts.failure.download_busy");
             }
             return;
         }
-        updateDownload(true, false, false, task.modelName(), "tianshu.gui.tts.status.download_preparing", 0);
-        publishWaiting("tianshu.presence.module.tts.download_started", "");
+        updateDownload(true, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare"));
+        publishWaiting("tianshu.presence.module.tts.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.tts")
@@ -403,8 +405,8 @@ public class TtsModelService {
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
-            updateDownload(false, false, false, task.modelName(), "tianshu.gui.tts.failure.download_queue_full", 0);
-            publishFailed("tianshu.presence.module.tts.download_queue_full", "");
+            updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"));
+            publishFailed("tianshu.presence.module.tts.download_queue_full");
             if (callback != null) {
                 callback.onError("tianshu.gui.tts.failure.download_queue_full");
             }
@@ -427,8 +429,8 @@ public class TtsModelService {
             return;
         }
         task.session().pause();
-        updateDownload(true, true, false, task.modelName(), current.label(), current.progress());
-        publishWaiting("tianshu.presence.module.tts.download_paused", "");
+        updateDownload(true, true, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.PAUSED));
+        publishWaiting("tianshu.presence.module.tts.download_paused");
     }
 
     public void resumeDownload() {
@@ -438,8 +440,8 @@ public class TtsModelService {
             return;
         }
         task.session().resume();
-        updateDownload(true, false, false, task.modelName(), current.label(), current.progress());
-        publishWaiting("tianshu.presence.module.tts.download_resumed", "");
+        updateDownload(true, false, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.DOWNLOADING));
+        publishWaiting("tianshu.presence.module.tts.download_resumed");
     }
 
     public void cancelDownload() {
@@ -449,8 +451,8 @@ public class TtsModelService {
             return;
         }
         task.session().cancel();
-        updateDownload(true, false, true, task.modelName(), "tianshu.gui.tts.status.cancelling", current.progress());
-        publishWaiting("tianshu.presence.module.tts.download_cancelling", "");
+        updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING));
+        publishWaiting("tianshu.presence.module.tts.download_cancelling");
     }
 
     private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
@@ -489,28 +491,28 @@ public class TtsModelService {
 
     private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
         task.session().awaitReady();
-        emitProgress(task, callback, "tianshu.gui.tts.status.download_resolving", 5);
+        emitProgress(task, callback, ModelDownloadStage.RESOLVING_FILES, 5, "files.resolve");
         task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                         int percent = totalFiles <= 0 ? 90 : Math.min(94, 5 + (int) ((fileIndex - 1L) * 80 / totalFiles));
-                        emitProgress(task, callback, "tianshu.gui.tts.status.download_resolving", percent);
+                         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "model.files.download");
                     }
                 });
         task.session().awaitReady();
-        emitProgress(task, callback, "tianshu.gui.tts.status.download_complete", 95);
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
     }
 
     private void downloadMossModel(DownloadTask task, Path modelDir, DownloadProgressCallback callback) throws Exception {
         task.session().awaitReady();
-        emitProgress(task, callback, "tianshu.gui.tts.status.downloading", 5);
+        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 5, "model.files.download");
         task.session().downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                         int percent = totalFiles <= 0 ? 45 : Math.min(48, 5 + (int) ((fileIndex - 1L) * 40 / totalFiles));
-                        emitProgress(task, callback, "tianshu.gui.tts.status.downloading", percent);
+                         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "model.files.download");
                     }
                 });
         task.session().awaitReady();
@@ -519,11 +521,11 @@ public class TtsModelService {
                     @Override
                     public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                         int percent = totalFiles <= 0 ? 90 : Math.min(94, 50 + (int) ((fileIndex - 1L) * 40 / totalFiles));
-                        emitProgress(task, callback, "tianshu.gui.tts.status.downloading", percent);
+                         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "model.files.download");
                     }
                 });
         task.session().awaitReady();
-        emitProgress(task, callback, "tianshu.gui.tts.status.download_complete", 95);
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
     }
 
     private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
@@ -533,14 +535,14 @@ public class TtsModelService {
         String archiveName = archiveName(archiveUri);
         Path archivePath = modelDir.resolve(archiveName);
 
-        emitProgress(task, callback, "tianshu.gui.tts.status.downloading", 5);
+        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 5, "archive.download");
         task.session().downloadArchive(archiveUri, proxyBaseUri, proxyBaseUri != null, archivePath, 5, 60_000, (downloaded, total) -> {
             int percent = total > 0 ? Math.min(85, (int) (downloaded * 80 / total) + 5) : 40;
-            emitProgress(task, callback, "tianshu.gui.tts.status.downloading", percent);
+            emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "archive.download");
         });
 
         task.session().awaitReady();
-        emitProgress(task, callback, "tianshu.gui.tts.status.download_extracting", 90);
+        emitProgress(task, callback, ModelDownloadStage.EXTRACTING, 90, "archive.extract");
         Path tempDir = modelDir.resolveSibling(modelDir.getFileName().toString() + "-extract");
         deleteRecursivelyIfExists(tempDir);
         Files.createDirectories(tempDir);
@@ -552,7 +554,7 @@ public class TtsModelService {
         deleteRecursivelyIfExists(tempDir);
         Files.deleteIfExists(archivePath);
         task.session().awaitReady();
-        emitProgress(task, callback, "tianshu.gui.tts.status.download_complete", 95);
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
     }
 
     private Path resolveExtractedModelDir(Path extractedRoot, TtsModelInfo info) throws IOException {
@@ -574,18 +576,26 @@ public class TtsModelService {
         return extractedRoot;
     }
 
-    private void emitProgress(DownloadTask task, DownloadProgressCallback callback, String label, int percent) {
+    private void emitProgress(DownloadTask task, DownloadProgressCallback callback, ModelDownloadStage stage, int percent, String detailCode) {
         if (!isCurrentTask(task) || task.session().isCancelled()) {
             return;
         }
-        updateDownload(true, task.session().isPaused(), false, task.modelName(), label, percent);
+        ModelDownloadProgress progress = ModelDownloadProgress.stage(stage, percent, detailCode);
+        updateDownload(true, task.session().isPaused(), false, task.modelName(), progress);
         if (callback != null) {
-            callback.onProgress(label, percent);
+            callback.onProgress(progress);
         }
     }
 
-    private void updateDownload(boolean downloading, boolean paused, boolean cancelling, String modelName, String label, int percent) {
-        downloadStatus.set(new DownloadStatus(downloading, paused, cancelling, modelName, label == null ? "" : label, Math.max(0, Math.min(100, percent))));
+    private void updateDownload(boolean downloading, boolean paused, boolean cancelling, String modelName, ModelDownloadProgress progress) {
+        downloadStatus.set(new DownloadStatus(downloading, paused, cancelling, modelName, progress));
+    }
+
+    private static ModelDownloadProgress withStage(ModelDownloadProgress progress, ModelDownloadStage stage) {
+        ModelDownloadProgress current = progress == null
+                ? ModelDownloadProgress.stage(stage, 0, "")
+                : progress;
+        return new ModelDownloadProgress(stage, current.percent(), current.downloadedBytes(), current.totalBytes(), current.detailCode());
     }
 
     private String safeModelName(TtsModelInfo info) {
@@ -693,8 +703,8 @@ public class TtsModelService {
         if (!finishTask(task)) {
             return;
         }
-        updateDownload(false, false, false, task.modelName(), "tianshu.gui.tts.status.download_complete", 100);
-        publishWaiting("tianshu.presence.module.tts.download_complete", "");
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "download.completed"));
+        publishWaiting("tianshu.presence.module.tts.download_complete");
         if (callback != null) {
             callback.onComplete();
         }
@@ -705,9 +715,9 @@ public class TtsModelService {
             return;
         }
         cleanupIncompleteDownload(task);
-        int progress = downloadStatus.get().progress();
-        updateDownload(false, false, false, task.modelName(), "tianshu.gui.tts.status.cancelled", progress);
-        publishWaiting("tianshu.presence.module.tts.download_cancelled", "");
+        int progress = downloadStatus.get().progress().percent();
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.cancelled"));
+        publishWaiting("tianshu.presence.module.tts.download_cancelled");
         if (callback != null) {
             callback.onCancelled();
         }
@@ -718,24 +728,20 @@ public class TtsModelService {
             return;
         }
         cleanupIncompleteDownload(task);
-        int progress = downloadStatus.get().progress();
-        updateDownload(false, false, false, task.modelName(), message, progress);
-        publishFailed("tianshu.presence.module.tts.download_failed", "");
+        int progress = downloadStatus.get().progress().percent();
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.failed"));
+        publishFailed("tianshu.presence.module.tts.download_failed");
         if (callback != null) {
             callback.onError(message);
         }
     }
 
-    private void publishReady(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.readyKeyed("module.tts", messageKey, fallbackTitle));
+    private void publishWaiting(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.tts", messageKey));
     }
 
-    private void publishWaiting(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.tts", messageKey, fallbackTitle));
-    }
-
-    private void publishFailed(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.tts", messageKey, fallbackTitle));
+    private void publishFailed(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.tts", messageKey));
     }
 
     private void cleanupIncompleteDownload(DownloadTask task) {

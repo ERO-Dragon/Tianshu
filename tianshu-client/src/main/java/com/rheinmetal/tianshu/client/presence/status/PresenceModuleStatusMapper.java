@@ -17,8 +17,7 @@ public final class PresenceModuleStatusMapper {
             return null;
         }
         String messageKey = messageKey(status);
-        String message = message(status);
-        if (messageKey.isBlank() && message.isBlank()) {
+        if (messageKey.isBlank()) {
             return null;
         }
         PresenceStatusType statusType = statusType(status);
@@ -29,7 +28,7 @@ public final class PresenceModuleStatusMapper {
                 severity,
                 status.moduleId(),
                 messageKey,
-                message,
+                "",
                 status.updatedAtMillis(),
                 ttlMillis,
                 status.tags()
@@ -41,10 +40,6 @@ public final class PresenceModuleStatusMapper {
             return "";
         }
         return status.messageKey();
-    }
-
-    private String message(ModuleStatus status) {
-        return status.fallbackMessage();
     }
 
     private PresenceSeverity severity(ModuleStatusSeverity severity) {

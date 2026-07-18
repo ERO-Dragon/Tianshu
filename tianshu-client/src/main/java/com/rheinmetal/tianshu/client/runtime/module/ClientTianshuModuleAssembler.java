@@ -4,30 +4,36 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
+import com.rheinmetal.tianshu.core.lifecycle.CompositeTianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.function.CompositeTianshuFunctionModuleAssembler;
-import com.rheinmetal.tianshu.function.TianshuCoreModuleInstallers;
-import com.rheinmetal.tianshu.function.TianshuFunctionConfigurations;
-import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
+import com.rheinmetal.tianshu.function.asr.AsrModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
+import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityCoreAdapter;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
+import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
+import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
+import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 public final class ClientTianshuModuleAssembler implements TianshuModuleAssembler {
-    private final CompositeTianshuFunctionModuleAssembler delegate;
+    private final CompositeTianshuModuleAssembler delegate;
 
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
-            TianshuFunctionConfigurations configurations,
+            ClientFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             ClientNamedObjectIndexManager indexManager,
@@ -54,7 +60,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
 
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
-            TianshuFunctionConfigurations configurations,
+            ClientFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             ClientNamedObjectIndexManager indexManager,
@@ -83,7 +89,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
 
     public ClientTianshuModuleAssembler(
             IGameEnvironment env,
-            TianshuFunctionConfigurations configurations,
+            ClientFunctionConfigurations configurations,
             IAudioBridge audioBridge,
             ModuleRuntimeAccess moduleRuntime,
             ClientNamedObjectIndexManager indexManager,
@@ -93,27 +99,40 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             AXWorldIdentityProvider axWorldIdentityProvider,
             AXOutputSettings axOutputSettings,
             AXChatOutputSink axChatOutputSink,
-            List<TianshuFunctionModuleInstaller> neoForgeInstallers
+            List<TianshuModuleInstaller> neoForgeInstallers
     ) {
-        List<TianshuFunctionModuleInstaller> installers = new java.util.ArrayList<>();
+        List<TianshuModuleInstaller> installers = new ArrayList<>();
         if (neoForgeInstallers != null) {
             installers.addAll(neoForgeInstallers);
         }
-        installers.addAll(TianshuCoreModuleInstallers.clientCore(
+        installers.add(new IaModuleInstaller(moduleRuntime));
+        installers.add(new ClientIrModuleInstaller(moduleRuntime, indexManager));
+        installers.add(new LlmModuleInstaller(
                 env,
-                configurations,
-                audioBridge,
+                configurations.llm(),
                 moduleRuntime,
-                voiceInputGate,
-                interruptionSignal,
+                axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)
+        ));
+        installers.add(new AXModuleInstaller(
+                env,
+                configurations.ax(),
+                moduleRuntime,
                 axWorldIdentityProvider,
-                java.util.Objects.requireNonNull(promptLanguageProvider, "promptLanguageProvider"),
+                Objects.requireNonNull(promptLanguageProvider, "promptLanguageProvider"),
                 assistantSettings(axOutputSettings),
                 axOutputSettings,
-                axChatOutputSink,
-                new ClientIrModuleInstaller(moduleRuntime, indexManager)
+                axChatOutputSink
         ));
-        this.delegate = new CompositeTianshuFunctionModuleAssembler(installers);
+        installers.add(new TtsModuleInstaller(audioBridge, moduleRuntime, env, configurations.tts()));
+        installers.add(new AsrModuleInstaller(
+                audioBridge,
+                moduleRuntime,
+                env,
+                configurations.asr(),
+                voiceInputGate,
+                interruptionSignal
+        ));
+        this.delegate = new CompositeTianshuModuleAssembler(installers);
     }
 
     private static AXAssistantSettings assistantSettings(AXOutputSettings outputSettings) {

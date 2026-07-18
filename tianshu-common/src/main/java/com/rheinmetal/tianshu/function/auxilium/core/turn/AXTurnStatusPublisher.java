@@ -134,7 +134,6 @@ public final class AXTurnStatusPublisher {
                 AXProtocolAdapter.MODULE_ID,
                 statusType,
                 messageKey,
-                "",
                 severity,
                 ttlMillis,
                 tags

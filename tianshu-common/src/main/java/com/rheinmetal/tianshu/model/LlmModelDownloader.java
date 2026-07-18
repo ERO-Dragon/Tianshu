@@ -10,7 +10,7 @@ import java.util.Objects;
 public class LlmModelDownloader {
 
     public interface DownloadProgressCallback {
-        void onProgress(String label, int percent);
+        void onProgress(ModelDownloadProgress progress);
         void onComplete();
         void onError(String message);
     }
@@ -72,7 +72,7 @@ public class LlmModelDownloader {
         try {
             downloadSync(info, targetDir, callback, this::awaitReady);
         } catch (Exception e) {
-            callback.onError(e.getMessage() != null ? e.getMessage() : "LLM 模型下载失败");
+            callback.onError("tianshu.gui.llm.error.download_failed");
         }
     }
 
@@ -89,7 +89,7 @@ public class LlmModelDownloader {
 
         if (Files.exists(targetFile) && Files.size(targetFile) > 0) {
             env.info("LLM 模型已存在，跳过下载: " + targetFile);
-            callback.onProgress("已存在", 100);
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "model.already_present"));
             callback.onComplete();
             return;
         }
@@ -102,13 +102,13 @@ public class LlmModelDownloader {
         env.info("LLM 模型下载: repo=" + info.repoId + " file=" + filePath + " → " + targetFile);
 
         control.awaitReady();
-        callback.onProgress("下载中", 5);
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 5, "model.file.download"));
         hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3, control::awaitReady, new HuggingFaceDownloader.DownloadProgressListener() {
             @Override
             public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                 if (totalBytes > 0L) {
                     int percent = 5 + (int) Math.min(90L, downloadedBytes * 90L / totalBytes);
-                    callback.onProgress("下载中", percent);
+                    callback.onProgress(ModelDownloadProgress.bytes(ModelDownloadStage.DOWNLOADING, percent, downloadedBytes, totalBytes, "model.file.download"));
                 }
             }
         });
@@ -118,7 +118,7 @@ public class LlmModelDownloader {
             throw new IllegalStateException("下载完成但文件不存在或为空: " + targetFile);
         }
 
-        callback.onProgress("完成", 100);
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "download.completed"));
         callback.onComplete();
     }
 

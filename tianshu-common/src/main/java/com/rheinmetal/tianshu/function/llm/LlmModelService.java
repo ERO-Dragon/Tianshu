@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.function.llm.download.LlmModelDownloadCoordinator;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.LlmModelManager;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
@@ -30,7 +32,6 @@ public final class LlmModelService {
     private static final String STATUS_DOWNLOAD_COMPLETE_KEY = "tianshu.gui.llm.status.download_complete";
     private static final String STATUS_DOWNLOAD_FAILED_KEY = "tianshu.gui.llm.status.download_failed";
     private static final String STATUS_CANCELLED_KEY = "tianshu.gui.llm.status.cancelled";
-    private static final String STATUS_CANCELLING_KEY = "tianshu.gui.llm.status.cancelling";
     private static final String ERROR_MODEL_INFO_MISSING_KEY = "tianshu.gui.llm.error.model_info_missing";
     private static final String ERROR_MODEL_PATH_UNRESOLVED_KEY = "tianshu.gui.llm.error.model_path_unresolved";
     private static final String ERROR_DOWNLOAD_BUSY_KEY = "tianshu.gui.llm.error.download_busy";
@@ -38,7 +39,7 @@ public final class LlmModelService {
     private static final String ERROR_DOWNLOAD_FAILED_KEY = "tianshu.gui.llm.error.download_failed";
 
     public interface DownloadProgressCallback {
-        void onProgress(String label, int percent);
+        void onProgress(ModelDownloadProgress progress);
         void onComplete();
         void onError(String message);
 
@@ -50,17 +51,16 @@ public final class LlmModelService {
         void onComplete(boolean deleted);
     }
 
-    public record DownloadSnapshot(boolean running, boolean paused, boolean cancelling, String modelName, String label, int percent, String errorMessage, long updatedAtMillis) {
+    public record DownloadSnapshot(boolean running, boolean paused, boolean cancelling, String modelName, ModelDownloadProgress progress, String errorMessage, long updatedAtMillis) {
         public DownloadSnapshot {
             modelName = modelName == null ? "" : modelName.trim();
-            label = label == null ? "" : label.trim();
+            progress = progress == null ? ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "") : progress;
             errorMessage = errorMessage == null ? "" : errorMessage.trim();
-            percent = Math.max(0, Math.min(100, percent));
             updatedAtMillis = updatedAtMillis > 0L ? updatedAtMillis : System.currentTimeMillis();
         }
 
         public static DownloadSnapshot idle() {
-            return new DownloadSnapshot(false, false, false, "", STATUS_IDLE_KEY, 0, "", System.currentTimeMillis());
+            return new DownloadSnapshot(false, false, false, "", ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, STATUS_IDLE_KEY), "", System.currentTimeMillis());
         }
     }
 
@@ -137,12 +137,12 @@ public final class LlmModelService {
         }
         DownloadTask task = new DownloadTask(info.name, modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.llm.download_busy", "");
+            publishFailed("tianshu.presence.module.llm.download_busy");
             if (callback != null) callback.onError(ERROR_DOWNLOAD_BUSY_KEY);
             return;
         }
-        updateDownload(true, false, false, info.name, STATUS_DOWNLOADING_KEY, 0, "");
-        publishWaiting("tianshu.presence.module.llm.download_started", "");
+        updateDownload(true, false, false, info.name, ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, STATUS_DOWNLOADING_KEY), "");
+        publishWaiting("tianshu.presence.module.llm.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId("module.llm")
@@ -155,8 +155,8 @@ public final class LlmModelService {
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
-            updateDownload(false, false, false, info.name, STATUS_DOWNLOAD_FAILED_KEY, 0, ERROR_DOWNLOAD_QUEUE_FULL_KEY);
-            publishFailed("tianshu.presence.module.llm.download_queue_full", "");
+            updateDownload(false, false, false, info.name, ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"), ERROR_DOWNLOAD_QUEUE_FULL_KEY);
+            publishFailed("tianshu.presence.module.llm.download_queue_full");
             if (callback != null) callback.onError(ERROR_DOWNLOAD_QUEUE_FULL_KEY);
         }
     }
@@ -168,8 +168,8 @@ public final class LlmModelService {
             return;
         }
         task.session().pause();
-        updateDownload(true, true, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
-        publishWaiting("tianshu.presence.module.llm.download_paused", "");
+        updateDownload(true, true, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.PAUSED), current.errorMessage());
+        publishWaiting("tianshu.presence.module.llm.download_paused");
     }
 
     public void resumeDownload() {
@@ -179,8 +179,8 @@ public final class LlmModelService {
             return;
         }
         task.session().resume();
-        updateDownload(true, false, false, task.modelName(), current.label(), current.percent(), current.errorMessage());
-        publishWaiting("tianshu.presence.module.llm.download_resumed", "");
+        updateDownload(true, false, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.DOWNLOADING), current.errorMessage());
+        publishWaiting("tianshu.presence.module.llm.download_resumed");
     }
 
     public void cancelDownload() {
@@ -200,8 +200,8 @@ public final class LlmModelService {
                         .build(),
                 task.session()::cancelActiveTransfers
         );
-        updateDownload(true, false, true, task.modelName(), STATUS_CANCELLING_KEY, current.percent(), "");
-        publishWaiting("tianshu.presence.module.llm.download_cancelling", "");
+        updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING), "");
+        publishWaiting("tianshu.presence.module.llm.download_cancelling");
     }
 
     public boolean isDownloading() {
@@ -292,8 +292,8 @@ public final class LlmModelService {
         try {
             task.session().download(info, task.modelDir(), new LlmModelDownloader.DownloadProgressCallback() {
                 @Override
-                public void onProgress(String label, int percent) {
-                    progressEmitter.accept(label, percent);
+                public void onProgress(ModelDownloadProgress progress) {
+                    progressEmitter.accept(progress);
                 }
 
                 @Override
@@ -369,12 +369,19 @@ public final class LlmModelService {
         }
     }
 
-    private void updateDownload(boolean running, boolean paused, boolean cancelling, String modelName, String label, int percent, String errorMessage) {
-        downloadSnapshot.set(new DownloadSnapshot(running, paused, cancelling, modelName, label, percent, errorMessage, System.currentTimeMillis()));
+    private void updateDownload(boolean running, boolean paused, boolean cancelling, String modelName, ModelDownloadProgress progress, String errorMessage) {
+        downloadSnapshot.set(new DownloadSnapshot(running, paused, cancelling, modelName, progress, errorMessage, System.currentTimeMillis()));
     }
 
     private boolean isCurrentTask(DownloadTask task) {
         return task != null && activeDownload.get() == task;
+    }
+
+    private static ModelDownloadProgress withStage(ModelDownloadProgress progress, ModelDownloadStage stage) {
+        ModelDownloadProgress current = progress == null
+                ? ModelDownloadProgress.stage(stage, 0, "")
+                : progress;
+        return new ModelDownloadProgress(stage, current.percent(), current.downloadedBytes(), current.totalBytes(), current.detailCode());
     }
 
     private boolean finishTask(DownloadTask task) {
@@ -385,8 +392,8 @@ public final class LlmModelService {
         if (!finishTask(task)) {
             return;
         }
-        updateDownload(false, false, false, task.modelName(), STATUS_DOWNLOAD_COMPLETE_KEY, 100, "");
-        publishWaiting("tianshu.presence.module.llm.download_complete", "");
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, STATUS_DOWNLOAD_COMPLETE_KEY), "");
+        publishWaiting("tianshu.presence.module.llm.download_complete");
         if (callback != null) callback.onComplete();
     }
 
@@ -395,8 +402,8 @@ public final class LlmModelService {
             return;
         }
         cleanupCancelledDownload(task);
-        updateDownload(false, false, false, task.modelName(), STATUS_CANCELLED_KEY, downloadSnapshot.get().percent(), "");
-        publishWaiting("tianshu.presence.module.llm.download_cancelled", "");
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, downloadSnapshot.get().progress().percent(), STATUS_CANCELLED_KEY), "");
+        publishWaiting("tianshu.presence.module.llm.download_cancelled");
         if (callback != null) callback.onCancelled();
     }
 
@@ -407,21 +414,17 @@ public final class LlmModelService {
         if (message != null && !message.isBlank()) {
             env.warn("LLM model download failed: " + message);
         }
-        updateDownload(false, false, false, task.modelName(), STATUS_DOWNLOAD_FAILED_KEY, downloadSnapshot.get().percent(), ERROR_DOWNLOAD_FAILED_KEY);
-        publishFailed("tianshu.presence.module.llm.download_failed", "");
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, downloadSnapshot.get().progress().percent(), STATUS_DOWNLOAD_FAILED_KEY), ERROR_DOWNLOAD_FAILED_KEY);
+        publishFailed("tianshu.presence.module.llm.download_failed");
         if (callback != null) callback.onError(ERROR_DOWNLOAD_FAILED_KEY);
     }
 
-    private void publishReady(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.readyKeyed("module.llm", messageKey, fallbackTitle));
+    private void publishWaiting(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.llm", messageKey));
     }
 
-    private void publishWaiting(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.llm", messageKey, fallbackTitle));
-    }
-
-    private void publishFailed(String messageKey, String fallbackTitle) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.llm", messageKey, fallbackTitle));
+    private void publishFailed(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.llm", messageKey));
     }
 
     private void cleanupCancelledDownload(DownloadTask task) {
@@ -488,7 +491,7 @@ public final class LlmModelService {
     private final class DownloadProgressEmitter {
         private final DownloadTask task;
         private final DownloadProgressCallback callback;
-        private String lastLabel = "";
+        private ModelDownloadProgress lastProgress;
         private int lastPercent = -1;
         private long lastEmittedAtMillis;
 
@@ -497,24 +500,26 @@ public final class LlmModelService {
             this.callback = callback;
         }
 
-        private void accept(String label, int percent) {
+        private void accept(ModelDownloadProgress progress) {
             if (!isCurrentTask(task) || task.session().isCancelled()) {
                 return;
             }
-            String safeLabel = STATUS_DOWNLOADING_KEY;
-            int safePercent = Math.max(0, Math.min(100, percent));
+            ModelDownloadProgress safeProgress = progress == null
+                    ? ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 0, STATUS_DOWNLOADING_KEY)
+                    : progress;
+            int safePercent = safeProgress.percent();
             long now = System.currentTimeMillis();
-            boolean changed = safePercent != lastPercent || !safeLabel.equals(lastLabel);
+            boolean changed = safePercent != lastPercent || !safeProgress.equals(lastProgress);
             boolean shouldEmit = changed && (lastPercent < 0 || safePercent >= 100 || now - lastEmittedAtMillis >= PROGRESS_UPDATE_INTERVAL_MILLIS);
             if (!shouldEmit) {
                 return;
             }
-            lastLabel = safeLabel;
+            lastProgress = safeProgress;
             lastPercent = safePercent;
             lastEmittedAtMillis = now;
-            updateDownload(true, task.session().isPaused(), false, task.modelName(), safeLabel, safePercent, "");
+            updateDownload(true, task.session().isPaused(), false, task.modelName(), safeProgress, "");
             if (callback != null) {
-                callback.onProgress(safeLabel, safePercent);
+                callback.onProgress(safeProgress);
             }
         }
     }

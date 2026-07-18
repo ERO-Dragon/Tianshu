@@ -50,7 +50,7 @@ public class AsrModelDownloader {
     private final BooleanSupplier githubReachable;
 
     public interface DownloadProgressCallback {
-        void onProgress(String label, int percent);
+        void onProgress(ModelDownloadProgress progress);
         void onComplete();
         void onError(String message);
     }
@@ -94,7 +94,7 @@ public class AsrModelDownloader {
         try {
             downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
         } catch (Exception e) {
-            callback.onError(e.getMessage() != null ? e.getMessage() : "ASR model download failed");
+            callback.onError("tianshu.gui.asr.error.download_failed");
         }
     }
 
@@ -127,7 +127,7 @@ public class AsrModelDownloader {
             validateRequiredFiles(requiredFiles, stagingDir);
             deleteRecursivelyIfExists(targetDir);
             Files.move(stagingDir, targetDir, StandardCopyOption.REPLACE_EXISTING);
-            callback.onProgress("Complete", 100);
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "download.completed"));
             callback.onComplete();
         } catch (Exception e) {
             deleteRecursivelyIfExists(stagingDir);
@@ -154,7 +154,7 @@ public class AsrModelDownloader {
     }
 
     private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
-        callback.onProgress("Checking network", 2);
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 2, "network.check"));
         String preferredBase = preferredHfBaseSupplier.get();
         String repoId = info.remoteRepoId();
         if (repoId.isBlank()) {
@@ -162,7 +162,7 @@ public class AsrModelDownloader {
         }
         env.info("ASR_HF_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
 
-        callback.onProgress("Resolving file list", 5);
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.RESOLVING_FILES, 5, "files.resolve"));
         List<String> repoFiles = fetchFileTree(preferredBase, repoId, REVISION, control);
         control.awaitReady();
         List<SourceTarget> downloads = resolveRequestedFiles(requiredFiles, repoFiles);
@@ -183,12 +183,12 @@ public class AsrModelDownloader {
             );
             control.awaitReady();
             int percent = 5 + (int) (((i + 1) / (double) total) * 90);
-            callback.onProgress("Downloading model files", percent);
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, percent, "model.files.download"));
         }
     }
 
     private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
-        callback.onProgress("Checking network", 2);
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 2, "network.check"));
         boolean proxyFirst = shouldUseGithubProxy(githubProxyUrl);
         List<URI> candidates = ModelDownloadSourcePolicy.githubArchiveCandidates(
                 info.downloadUrl,
@@ -202,7 +202,7 @@ public class AsrModelDownloader {
         Files.deleteIfExists(archivePath);
         deleteRecursivelyIfExists(extractDir);
         try {
-            callback.onProgress("Downloading archive", 5);
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 5, "archive.download"));
             http.download(
                     candidates,
                     archivePath,
@@ -210,17 +210,17 @@ public class AsrModelDownloader {
                     adapt(control),
                     (downloaded, total) -> {
                         int percent = total > 0 ? Math.min(80, (int) (downloaded * 75 / total) + 5) : 40;
-                        callback.onProgress("Downloading archive", percent);
+                        callback.onProgress(ModelDownloadProgress.bytes(ModelDownloadStage.DOWNLOADING, percent, downloaded, total, "archive.download"));
                     }
             );
             control.awaitReady();
 
-            callback.onProgress("Extracting model", 82);
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.EXTRACTING, 82, "archive.extract"));
             Files.createDirectories(extractDir);
             extractArchive(archivePath, extractDir, info.downloadUrl);
             control.awaitReady();
 
-            callback.onProgress("Materializing model files", 92);
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.MATERIALIZING, 92, "model.materialize"));
             List<String> archiveFiles = listRelativeFiles(extractDir);
             for (SourceTarget item : resolveRequestedFiles(requiredFiles, archiveFiles)) {
                 control.awaitReady();

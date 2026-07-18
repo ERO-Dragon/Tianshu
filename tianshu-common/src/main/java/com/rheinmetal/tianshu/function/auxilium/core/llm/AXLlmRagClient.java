@@ -5,12 +5,13 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.LLMCacheManagePayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 
 public final class AXLlmRagClient {
     private final AXProtocolAdapter adapter;
@@ -62,8 +63,9 @@ public final class AXLlmRagClient {
         TianshuEnvelope envelope = adapter.buildLlmCacheManage(payload);
         pending.put(envelope.envelopeId(), new PendingQuery(future, System.currentTimeMillis() + timeoutMillis, payload.uid(), envelope));
         adapter.registerLlmCacheManageResultResponse(envelope.envelopeId(), this::handleResponse);
+        PendingQuery query = pending.get(envelope.envelopeId());
+        scheduleTimeout(envelope.envelopeId(), query);
         adapter.submitLlmCacheManage(envelope);
-        scheduleTimeout(envelope.envelopeId(), payload.uid());
         return future;
     }
 
@@ -76,6 +78,7 @@ public final class AXLlmRagClient {
             if (query == null || query.future() != target) {
                 return false;
             }
+            query.cancelTimeout("AX RAG query cancelled");
             adapter.unregisterLlmCacheManageResponses(entry.getKey());
             adapter.cancelLlmCacheManage(query.envelope(), "AX_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
             query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX RAG query cancelled"));
@@ -90,6 +93,7 @@ public final class AXLlmRagClient {
             if (query == null || query.deadlineMillis() > now) {
                 return false;
             }
+            query.cancelTimeout("AX RAG query expired");
             adapter.unregisterLlmCacheManageResponses(entry.getKey());
             adapter.cancelLlmCacheManage(query.envelope(), "AX_RAG_QUERY_TIMEOUT", "AX LLM RAG query timed out");
             query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX LLM RAG query timed out"));
@@ -101,6 +105,7 @@ public final class AXLlmRagClient {
         pending.forEach((requestEnvelopeId, query) -> {
             adapter.unregisterLlmCacheManageResponses(requestEnvelopeId);
             if (query != null) {
+                query.cancelTimeout("AX RAG client stopped");
                 adapter.cancelLlmCacheManage(query.envelope(), "AX_MODULE_STOPPED", "AX RAG client stopped");
                 query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX RAG client stopped"));
             }
@@ -120,29 +125,59 @@ public final class AXLlmRagClient {
                 ? result
                 : LLMCacheManageResultPayload.failed(query.uid(), "LLM cache manage result payload is invalid");
         adapter.unregisterLlmCacheManageResponses(envelope.parentId());
+        query.cancelTimeout("AX RAG response received");
         query.future().complete(payload);
         if (context != null) {
             context.complete(envelope.envelopeId());
         }
     }
 
-    private void scheduleTimeout(String requestEnvelopeId, String uid) {
+    private void scheduleTimeout(String requestEnvelopeId, PendingQuery query) {
         if (timeoutMillis <= 0L || requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
             return;
         }
-        CompletableFuture.delayedExecutor(timeoutMillis, TimeUnit.MILLISECONDS).execute(() -> timeout(requestEnvelopeId, uid));
+        query.timeoutHandle = adapter.scheduleTimeout(
+                "ax.rag.timeout." + requestEnvelopeId,
+                () -> timeout(requestEnvelopeId),
+                Duration.ofMillis(timeoutMillis)
+        );
     }
 
-    private void timeout(String requestEnvelopeId, String uid) {
+    private void timeout(String requestEnvelopeId) {
         PendingQuery query = pending.remove(requestEnvelopeId);
         if (query == null) {
             return;
         }
+        query.cancelTimeout("AX RAG timeout fired");
         adapter.unregisterLlmCacheManageResponses(requestEnvelopeId);
         adapter.cancelLlmCacheManage(query.envelope(), "AX_RAG_QUERY_TIMEOUT", "AX LLM RAG query timed out");
-        query.future().complete(LLMCacheManageResultPayload.failed(uid, "AX LLM RAG query timed out"));
+        query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX LLM RAG query timed out"));
     }
 
-    private record PendingQuery(CompletableFuture<LLMCacheManageResultPayload> future, long deadlineMillis, String uid, TianshuEnvelope envelope) {
+    private static final class PendingQuery {
+        private final CompletableFuture<LLMCacheManageResultPayload> future;
+        private final long deadlineMillis;
+        private final String uid;
+        private final TianshuEnvelope envelope;
+        private volatile ProtocolTaskHandle timeoutHandle;
+
+        private PendingQuery(CompletableFuture<LLMCacheManageResultPayload> future, long deadlineMillis, String uid, TianshuEnvelope envelope) {
+            this.future = future;
+            this.deadlineMillis = deadlineMillis;
+            this.uid = uid;
+            this.envelope = envelope;
+        }
+
+        private CompletableFuture<LLMCacheManageResultPayload> future() { return future; }
+        private long deadlineMillis() { return deadlineMillis; }
+        private String uid() { return uid; }
+        private TianshuEnvelope envelope() { return envelope; }
+
+        private void cancelTimeout(String reason) {
+            ProtocolTaskHandle handle = timeoutHandle;
+            if (handle != null && !handle.isDone()) {
+                handle.cancel(reason);
+            }
+        }
     }
 }

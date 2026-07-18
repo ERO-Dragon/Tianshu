@@ -5,10 +5,10 @@ import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.core.scope.WorldIdentityProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
-public final class LlmModuleInstaller implements TianshuFunctionModuleInstaller {
+public final class LlmModuleInstaller implements TianshuModuleInstaller {
     private final IGameEnvironment env;
     private final LlmConfiguration config;
     private final ModuleRuntimeAccess moduleRuntime;

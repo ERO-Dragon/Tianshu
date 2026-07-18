@@ -114,10 +114,7 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         if (!status.messageKey().isBlank() && textProvider.exists(status.messageKey())) {
             return UiText.key(status.messageKey());
         }
-        if (!status.fallbackMessage().isBlank()) {
-            return UiText.literal(status.fallbackMessage());
-        }
-        return UiText.literal("");
+        return presence("status.unavailable");
     }
 
     private UiText severity(ModuleStatus status) {

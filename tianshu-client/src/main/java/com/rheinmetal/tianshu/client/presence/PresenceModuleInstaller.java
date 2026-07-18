@@ -5,9 +5,9 @@ import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordi
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
-import com.rheinmetal.tianshu.function.TianshuFunctionModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 
-public final class PresenceModuleInstaller implements TianshuFunctionModuleInstaller {
+public final class PresenceModuleInstaller implements TianshuModuleInstaller {
     private final PresenceProtocolAdapter adapter;
     private final PresenceStateStore stateStore;
     private final PresenceDisplayPolicy displayPolicy;

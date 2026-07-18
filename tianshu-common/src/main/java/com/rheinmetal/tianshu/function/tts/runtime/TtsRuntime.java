@@ -644,9 +644,10 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private void publishSpeechTerminations() {
         for (TtsSpeechSessionCoordinator.Termination termination : speechSessionCoordinator.drainTerminations()) {
             if (termination.reason() == TtsSpeechSessionCoordinator.TerminationReason.CANCELLED) {
+                boolean droppedBeforeTermination = droppedStreams.contains(termination.sessionKey());
                 boolean openStream = speechInputAssembler.isOpen(termination.sessionKey());
                 speechInputAssembler.cancel(termination.sessionKey());
-                if (openStream) {
+                if (openStream || droppedBeforeTermination) {
                     droppedStreams.add(termination.sessionKey());
                 } else {
                     droppedStreams.remove(termination.sessionKey());

@@ -374,15 +374,21 @@ class LlmProtocolAdapterTest {
         client.taskStreamTokens.get().accept("answer");
         client.taskFuture.complete("visible answer");
 
-        await(() -> result.get() != null && chunks.stream().anyMatch(LLMPromptStreamChunkPayload::finished));
+        await(() -> result.get() != null
+                && chunks.size() >= 4
+                && chunks.stream().anyMatch(LLMPromptStreamChunkPayload::finished));
         assertEquals("visible answer", result.get().text());
         assertEquals("hidden reasoning", result.get().thinkingContent());
         assertEquals(true, chunks.stream().allMatch(chunk -> "request-think-stream-capture".equals(chunk.requestId())));
         assertEquals(true, chunks.stream().anyMatch(chunk -> "visible ".equals(chunk.text()) && chunk.thinkingContent().isEmpty()));
         assertEquals(true, chunks.stream().anyMatch(chunk -> chunk.text().isEmpty() && "hidden reasoning".equals(chunk.thinkingContent())));
         assertEquals(true, chunks.stream().anyMatch(chunk -> "answer".equals(chunk.text()) && chunk.thinkingContent().isEmpty()));
-        assertEquals("request-think-stream-capture", chunks.get(chunks.size() - 1).requestId());
-        assertEquals("hidden reasoning", chunks.get(chunks.size() - 1).thinkingContent());
+        LLMPromptStreamChunkPayload terminal = chunks.stream()
+                .filter(LLMPromptStreamChunkPayload::finished)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("request-think-stream-capture", terminal.requestId());
+        assertEquals("hidden reasoning", terminal.thinkingContent());
     }
 
     @Test
@@ -452,7 +458,9 @@ class LlmProtocolAdapterTest {
         client.taskStreamTokens.get().accept("partial ");
         client.taskFuture.completeExceptionally(new CancellationException("preempted by higher priority task"));
 
-        await(() -> result.get() != null);
+        // Stream chunks and the terminal result use independent protocol response brokers.
+        // The result may arrive first; wait for both before asserting the complete boundary.
+        await(() -> result.get() != null && chunks.size() == 1);
         assertEquals(List.of("partial "), List.copyOf(chunks));
         assertEquals(true, result.get().isCancelled());
         assertEquals("partial ", result.get().text());

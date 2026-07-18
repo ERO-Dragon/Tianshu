@@ -264,7 +264,12 @@ class TtsRuntimeControlTest {
         TtsRuntime runtime = runtime(engine, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("stream-1:part-a"), null, null);
+        runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                false,
+                request("stream-1:part-a", "first sentence.")
+        );
         assertTrue(engine.awaitStarted());
 
         TtsControlResult stop = runtime.stopRequest("stream-1", "stop stream");
@@ -286,9 +291,11 @@ class TtsRuntimeControlTest {
         assertTrue(ignored.accepted());
         assertTrue(end.accepted());
         assertEquals(1, engine.invocations.get());
-        assertTrue(statuses.stream().anyMatch(session ->
-                session.request().requestId().startsWith("stream-1")
-                        && session.state() == TtsSessionState.CANCELLED));
+        synchronized (statuses) {
+            assertTrue(statuses.stream().anyMatch(session ->
+                    session.request().requestId().startsWith("stream-1")
+                            && session.state() == TtsSessionState.CANCELLED));
+        }
     }
 
     @Test
