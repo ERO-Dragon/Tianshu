@@ -78,7 +78,7 @@ AX 在处理前会检查自身 readiness、session/turn 和 delivery 时效。�
 | `ProtocolCapabilities.LLM_CACHE_MANAGE` | 请求内 RAG 检索和 cache 管理。 |
 | `ProtocolCapabilities.PRESENCE_QUERY_CONTEXT` | 获取允许的动态事实快照。 |
 | `ProtocolCapabilities.TTS_SPEAK` | 播放 AX 可见回复。 |
-| `ProtocolCapabilities.TTS_CONTROL` | 玩家开始说话时按策略停止当前播报。 |
+| `ProtocolCapabilities.TTS_CONTROL` | IA 已选择 AX 并投递新 delivery 时，按打断设置停止 AX 自己的当前播报。 |
 | `ProtocolCapabilities.DIALOGUE_SESSION_CONTROL` | 延长、释放或确认中断当前 IA session。 |
 
 AX 对 LLM 的 request 会先构建信封、登记 `LLMPromptStreamChunkPayload` / `LLMPromptResultPayload` response handler，再提交请求；停止、超时或模块 stop 时注销 response handler 并通过协议取消。外部模块需要这些能力时应分别遵循 LLM、TTS 和 IA 文档，不能复用 AX 的内部 request ID 或缓存。
@@ -106,7 +106,7 @@ AX 的新对话轮次只来自 IA 已完成仲裁、明确选择 AX 为 owner �
 当 `allowInterruption()` 启用且新的 IA delivery 到达时，AX 中断当前已存在的前台 turn：
 
 1. 使当前 turn generation 失效，并按该轮登记的 request/envelope 句柄取消仍在进行的前置查询和 CHAT LLM 请求；不会清空后台记忆维护请求。
-2. 停止当前 AX 输出链路，并按授权链路停止当前 TTS。
+2. 停止当前 AX 输出链路，并通过 `STOP_SOURCE(module.ax)` 只停止 AX 自己提交的 TTS；不得使用 `STOP_CURRENT` 影响其他模块的播报。
 3. 保留已经显示或播放的 assistant 部分文本到近期对话。
 4. 通过标准 session control 释放旧 turn，随后只处理新的 IA delivery。
 

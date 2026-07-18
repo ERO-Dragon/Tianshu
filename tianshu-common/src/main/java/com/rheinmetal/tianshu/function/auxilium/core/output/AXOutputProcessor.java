@@ -24,6 +24,12 @@ public final class AXOutputProcessor {
         return new AXOutputTurn(parent, context, chatLane);
     }
 
+    public void interrupt(String reasonCode) {
+        if (settings.ttsEnabled()) {
+            adapter.stopOwnTtsOutput(reasonCode);
+        }
+    }
+
     public final class AXOutputTurn {
         private final TianshuEnvelope parent;
         private final AXOutputContext context;

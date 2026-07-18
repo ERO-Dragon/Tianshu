@@ -40,6 +40,7 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -263,6 +264,48 @@ class AXTurnOrchestratorTest {
         var snapshot = recentDialogueSystem.snapshot(scope);
         assertTrue(snapshot.turns().size() >= 2, snapshot.turns().toString());
         assertEquals("already displayed", snapshot.turns().get(1).content());
+    }
+
+    @Test
+    void newIaDeliveryStopsOnlyAxTtsSourceBeforeStartingReplacementTurn() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+        AtomicReference<TtsControlPayload> ttsControl = new AtomicReference<>();
+        registerLlmSink(runtime, llmRequest);
+        registerTtsControlSink(runtime, ttsControl);
+        AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+        AXLlmClient llmClient = new AXLlmClient(adapter);
+        AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                () -> AXScope.unknown(),
+                new AXDialogueInputMapper(),
+                new AXInputNormalizer(),
+                null,
+                null,
+                new AXContextCollector(null, RECENT_DIALOGUE_SYSTEM),
+                new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                AXContextBudget.DEFAULT,
+                null,
+                llmClient,
+                new AXSessionController(adapter),
+                null,
+                RECENT_DIALOGUE_SYSTEM,
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                null,
+                null,
+                true
+        );
+
+        orchestrator.startTurn(deliveryEnvelope(), delivery());
+        await(() -> llmRequest.get() != null);
+        orchestrator.startTurn(deliveryEnvelope(), new DialogueDeliveryPayload(
+                "session-2", "request-2", "player", "turn-2", "second delivery", "", List.of(), List.of(), List.of(),
+                DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
+                System.currentTimeMillis(), System.currentTimeMillis() + 30_000L
+        ));
+
+        assertNotNull(ttsControl.get());
+        assertEquals(TtsControlPayload.Action.STOP_SOURCE, ttsControl.get().action());
+        assertEquals(AXProtocolAdapter.SOURCE_ID, ttsControl.get().targetSource());
     }
 
     @Test
@@ -786,6 +829,36 @@ class AXTurnOrchestratorTest {
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
         ), (envelope, context) -> handleTts(envelope, context, spoken));
+    }
+
+    private static void registerTtsControlSink(
+            ProtocolRuntime runtime,
+            AtomicReference<TtsControlPayload> control
+    ) {
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        runtime.registerModule(new ModuleDescriptor(
+                "module.tts.control.test",
+                List.of(new CapabilityDescriptor(
+                        ProtocolCapabilities.TTS_CONTROL,
+                        PayloadType.CUSTOM,
+                        TtsControlPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.COMMAND),
+                        Priority.LOW,
+                        CompletionPolicy.MANUAL_COMPLETE
+                )),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        ), (envelope, context) -> {
+            control.set((TtsControlPayload) envelope.payload());
+            context.complete(envelope.envelopeId());
+        });
     }
 
     private static void handleTts(TianshuEnvelope envelope, ProtocolContext context, List<String> spoken) {

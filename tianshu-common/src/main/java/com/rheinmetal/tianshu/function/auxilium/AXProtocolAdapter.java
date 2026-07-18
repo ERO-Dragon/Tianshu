@@ -13,7 +13,6 @@ import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMCacheManagePayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -55,20 +54,6 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 EnumSet.of(PacketType.COMMAND),
                 Priority.LOW,
                 CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
-    public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
-                PayloadType.ASR_SPEECH_ACTIVITY,
-                AsrSpeechActivityPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
                 handler,
                 defaults()
         );
@@ -317,8 +302,17 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 : submitToCapability(parent, ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_END, PayloadType.TTS_TEXT, payload);
     }
 
-    public TianshuEnvelope controlTts(TtsControlPayload payload) {
-        return commandCapability(ProtocolCapabilities.TTS_CONTROL, PayloadType.CUSTOM, payload);
+    public TianshuEnvelope stopOwnTtsOutput(String reasonCode) {
+        return commandCapability(
+                ProtocolCapabilities.TTS_CONTROL,
+                PayloadType.CUSTOM,
+                new TtsControlPayload(
+                        TtsControlPayload.Action.STOP_SOURCE,
+                        "",
+                        SOURCE_ID,
+                        reasonCode == null ? "" : reasonCode
+                )
+        );
     }
 
     public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload payload) {

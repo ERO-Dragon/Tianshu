@@ -364,6 +364,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return;
         }
         persistDisplayedText(execution);
+        outputProcessor.interrupt(cancellation.releaseReason().name());
         if (dynamicFactClient != null) {
             dynamicFactClient.cancelRequest(execution.dynamicFactRequestId(), cancellation.message());
         }
