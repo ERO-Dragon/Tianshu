@@ -10,10 +10,12 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.ArrayList;
+import java.util.List;
 
 final class TtsModelLifecycleCoordinator {
     private static final String MODULE_ID = "module.tts";
-    private static final String CONCURRENCY_KEY = MODULE_ID + ":model-lifecycle";
+    private static final String CONCURRENCY_KEY = TtsSynthesisScheduler.BACKEND_CONCURRENCY_KEY;
 
     private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
@@ -22,6 +24,9 @@ final class TtsModelLifecycleCoordinator {
     private String previewRequestId = "";
     private String previewRestoreModel = "";
     private boolean previewRestoreScheduled;
+    private final List<Consumer<Boolean>> prepareCompletions = new ArrayList<>();
+    private TtsVoiceProfile requestedPrepareVoice = TtsVoiceProfile.defaults();
+    private long prepareRevision;
 
     TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
                                  Consumer<TtsFailure> failureObserver) {
@@ -31,7 +36,33 @@ final class TtsModelLifecycleCoordinator {
     }
 
     TtsOperationResult prepare(Consumer<Boolean> completion) {
-        return submitExclusiveOperation("prepare", synthesisEngine::initialize, ignored -> false, completion);
+        return prepare(TtsVoiceProfile.defaults(), completion);
+    }
+
+    synchronized TtsOperationResult prepare(TtsVoiceProfile voiceProfile, Consumer<Boolean> completion) {
+        if (state == LifecycleState.PREPARING) {
+            requestedPrepareVoice = normalizedVoice(voiceProfile);
+            prepareRevision++;
+            addPrepareCompletion(completion);
+            return TtsOperationResult.accepted("tts-model:prepare");
+        }
+        if (state != LifecycleState.IDLE) {
+            return rejectBusy(null);
+        }
+        state = LifecycleState.PREPARING;
+        requestedPrepareVoice = normalizedVoice(voiceProfile);
+        prepareRevision++;
+        addPrepareCompletion(completion);
+        ProtocolTaskHandle handle = executorManager.submit(taskSpec("prepare"), this::runPrepare);
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            state = LifecycleState.IDLE;
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.QUEUE_FULL,
+                    "TTS model lifecycle queue is full");
+            failureObserver.accept(failure);
+            notifyPrepareCompletions(drainPrepareCompletions(), false);
+            return TtsOperationResult.rejected(failure);
+        }
+        return TtsOperationResult.accepted("tts-model:prepare");
     }
 
     TtsOperationResult reload(Consumer<TtsControlResult> completion) {
@@ -168,6 +199,101 @@ final class TtsModelLifecycleCoordinator {
         }
     }
 
+    private void runPrepare() {
+        boolean initialized;
+        try {
+            initialized = synthesisEngine.initialize();
+        } catch (Throwable throwable) {
+            failureObserver.accept(TtsRuntimeFailurePolicy.classify(
+                    TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
+                    throwable
+            ));
+            completePrepare(false);
+            return;
+        }
+        if (!initialized) {
+            completePrepare(false);
+            return;
+        }
+
+        while (true) {
+            TtsVoiceProfile voiceProfile;
+            long revision;
+            List<Consumer<Boolean>> stoppedCompletions = null;
+            synchronized (this) {
+                if (state != LifecycleState.PREPARING) {
+                    stoppedCompletions = drainPrepareCompletions();
+                    voiceProfile = null;
+                    revision = -1L;
+                } else {
+                    voiceProfile = requestedPrepareVoice;
+                    revision = prepareRevision;
+                }
+            }
+            if (stoppedCompletions != null) {
+                notifyPrepareCompletions(stoppedCompletions, false);
+                return;
+            }
+
+            boolean preloaded;
+            try {
+                preloaded = synthesisEngine.preloadVoice(voiceProfile);
+            } catch (Throwable throwable) {
+                failureObserver.accept(TtsRuntimeFailurePolicy.classify(
+                        TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
+                        throwable
+                ));
+                preloaded = false;
+            }
+
+            List<Consumer<Boolean>> completions;
+            synchronized (this) {
+                if (state != LifecycleState.PREPARING) {
+                    completions = drainPrepareCompletions();
+                    preloaded = false;
+                } else if (preloaded && revision != prepareRevision) {
+                    continue;
+                } else {
+                    state = LifecycleState.IDLE;
+                    completions = drainPrepareCompletions();
+                }
+            }
+            notifyPrepareCompletions(completions, preloaded);
+            return;
+        }
+    }
+
+    private void completePrepare(boolean initialized) {
+        List<Consumer<Boolean>> completions;
+        synchronized (this) {
+            if (state == LifecycleState.PREPARING) {
+                state = LifecycleState.IDLE;
+            }
+            completions = drainPrepareCompletions();
+        }
+        notifyPrepareCompletions(completions, initialized);
+    }
+
+    private void addPrepareCompletion(Consumer<Boolean> completion) {
+        if (completion != null) {
+            prepareCompletions.add(completion);
+        }
+    }
+
+    private List<Consumer<Boolean>> drainPrepareCompletions() {
+        List<Consumer<Boolean>> completions = List.copyOf(prepareCompletions);
+        prepareCompletions.clear();
+        return completions;
+    }
+
+    private static void notifyPrepareCompletions(List<Consumer<Boolean>> completions, boolean initialized) {
+        completions.forEach(completion -> completion.accept(initialized));
+    }
+
+    private static TtsVoiceProfile normalizedVoice(TtsVoiceProfile voiceProfile) {
+        return voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile;
+    }
+
     private synchronized <T> TtsOperationResult submitExclusiveOperation(
             String action,
             Supplier<T> operation,
@@ -262,6 +388,7 @@ final class TtsModelLifecycleCoordinator {
 
     private enum LifecycleState {
         IDLE,
+        PREPARING,
         OPERATION,
         PREVIEW,
         SHUTDOWN

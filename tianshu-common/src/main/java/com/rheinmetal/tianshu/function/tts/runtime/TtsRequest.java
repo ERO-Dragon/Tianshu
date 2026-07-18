@@ -13,15 +13,14 @@ public record TtsRequest(
         TtsRequestSource source,
         TtsPlaybackPolicy playbackPolicy,
         Priority priority,
-        TtsVoiceProfile voiceProfile,
-        boolean expectPlaybackEndEvent
+        TtsVoiceProfile voiceProfile
 ) {
     public TtsRequest {
         requestId = normalize(requestId, UUID.randomUUID().toString());
         groupId = normalize(groupId, requestId);
         envelopeId = normalize(envelopeId, requestId);
         traceId = normalize(traceId, requestId);
-        text = text == null ? "" : text.trim();
+        text = text == null ? "" : text;
         source = source == null ? TtsRequestSource.UNKNOWN : source;
         playbackPolicy = playbackPolicy == null ? TtsPlaybackPolicy.QUEUE : playbackPolicy;
         priority = priority == null ? Priority.NORMAL : priority;

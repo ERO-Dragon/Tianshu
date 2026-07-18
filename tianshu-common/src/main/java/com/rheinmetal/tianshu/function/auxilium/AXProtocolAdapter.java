@@ -295,6 +295,18 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return commandCapability(parent, ProtocolCapabilities.TTS_SPEAK, PayloadType.TTS_TEXT, payload);
     }
 
+    public TianshuEnvelope streamTtsSentence(TianshuEnvelope parent, TtsSpeakPayload payload) {
+        return parent == null
+                ? submitToCapability(ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_CHUNK, PayloadType.TTS_TEXT, payload)
+                : submitToCapability(parent, ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_CHUNK, PayloadType.TTS_TEXT, payload);
+    }
+
+    public TianshuEnvelope endTtsSession(TianshuEnvelope parent, TtsSpeakPayload payload) {
+        return parent == null
+                ? submitToCapability(ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_END, PayloadType.TTS_TEXT, payload)
+                : submitToCapability(parent, ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_END, PayloadType.TTS_TEXT, payload);
+    }
+
     public TianshuEnvelope controlTts(TtsControlPayload payload) {
         return commandCapability(ProtocolCapabilities.TTS_CONTROL, PayloadType.CUSTOM, payload);
     }

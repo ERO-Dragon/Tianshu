@@ -28,7 +28,7 @@ class TtsRuntimePipelineSmokeTest {
     }
 
     @Test
-    void synthesizesNextSessionWhilePreviousSessionIsStillPlaying() throws Exception {
+    void startsNextSessionOnlyAfterPreviousPlaybackSentenceBoundary() throws Exception {
         PipelineEngine engine = new PipelineEngine();
         SlowAudioBridge audioBridge = new SlowAudioBridge();
         TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, ignored -> {}, ignored -> {});
@@ -46,7 +46,7 @@ class TtsRuntimePipelineSmokeTest {
         long firstFinishedAt = audioBridge.firstFinishedAt();
         assertTrue(secondStartedAt > 0L, "second session did not start");
         assertTrue(firstFinishedAt > 0L, "first playback did not finish");
-        assertTrue(secondStartedAt < firstFinishedAt, "second synthesis should start before first playback finishes");
+        assertTrue(secondStartedAt >= firstFinishedAt, "next session must wait for the previous playback sentence boundary");
         assertEquals(TtsSynthesisMode.STREAMING, engine.modeOf("long-1"));
         assertEquals(TtsSynthesisMode.FULL, engine.modeOf("short-1"));
 
@@ -72,9 +72,9 @@ class TtsRuntimePipelineSmokeTest {
         assertTrue(engine.awaitInvocations(3), "interrupt request should be synthesized");
         assertTrue(audioBridge.awaitFeedCount(3), "interrupt and queued speech should be played");
 
-        assertEquals(List.of(1, 9, 2), audioBridge.playedMarkers());
-        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().equals("long-1") && session.state() == TtsSessionState.CANCELLED));
-        assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("short-1") && session.state() == TtsSessionState.CANCELLED));
+        assertEquals(List.of(1, 2, 9), audioBridge.playedMarkers());
+        assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("long-1") && session.state() == TtsSessionState.CANCELLED));
+        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().equals("short-1") && session.state() == TtsSessionState.CANCELLED));
 
         runtime.stopAll("test done");
     }
@@ -115,11 +115,11 @@ class TtsRuntimePipelineSmokeTest {
     }
 
     private static TtsRequest request(String requestId, String text) {
-        return new TtsRequest(requestId, groupId(requestId), requestId, requestId, text, TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
+        return new TtsRequest(requestId, groupId(requestId), requestId, requestId, text, TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
     }
 
     private static TtsRequest interruptRequest(String requestId, String text) {
-        return new TtsRequest(requestId, requestId, requestId, requestId, text, TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY, Priority.HIGH, TtsVoiceProfile.defaults(), true);
+        return new TtsRequest(requestId, requestId, requestId, requestId, text, TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY, Priority.HIGH, TtsVoiceProfile.defaults());
     }
 
     private static String groupId(String requestId) {

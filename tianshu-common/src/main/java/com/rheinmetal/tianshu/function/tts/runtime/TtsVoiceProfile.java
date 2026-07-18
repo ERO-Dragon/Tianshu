@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 public record TtsVoiceProfile(
-        String voiceStyle,
         String voiceId,
         float speed,
         int speakerId,
@@ -10,16 +9,11 @@ public record TtsVoiceProfile(
         int referenceSampleRate,
         String referenceText
 ) {
-    public TtsVoiceProfile(String voiceStyle, float speed, int speakerId, String voiceSample) {
-        this(voiceStyle, "", speed, speakerId, voiceSample, new float[0], 1, "");
-    }
-
-    public TtsVoiceProfile(String voiceStyle, String voiceId, float speed, int speakerId, String voiceSample) {
-        this(voiceStyle, voiceId, speed, speakerId, voiceSample, new float[0], 1, "");
+    public TtsVoiceProfile(String voiceId, float speed, int speakerId, String voiceSample) {
+        this(voiceId, speed, speakerId, voiceSample, new float[0], 1, "");
     }
 
     public TtsVoiceProfile {
-        voiceStyle = voiceStyle == null ? "" : voiceStyle.trim();
         voiceId = voiceId == null ? "" : voiceId.trim();
         speed = speed <= 0.0f ? 1.0f : Math.max(0.1f, Math.min(5.0f, speed));
         speakerId = Math.max(0, speakerId);
@@ -30,7 +24,7 @@ public record TtsVoiceProfile(
     }
 
     public static TtsVoiceProfile defaults() {
-        return new TtsVoiceProfile("", "", 1.0f, 0, "", new float[0], 1, "");
+        return new TtsVoiceProfile("", 1.0f, 0, "", new float[0], 1, "");
     }
 
     @Override

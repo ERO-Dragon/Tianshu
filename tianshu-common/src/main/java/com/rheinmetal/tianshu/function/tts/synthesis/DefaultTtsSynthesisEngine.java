@@ -51,6 +51,12 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
     }
 
     @Override
+    public synchronized boolean preloadVoice(com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile voiceProfile) {
+        TtsBackend backend = activeBackend;
+        return backend != null && backend.preloadVoice(voiceProfile);
+    }
+
+    @Override
     public boolean isAutoregressive() {
         TtsResolvedModel model = loadedModel;
         if (model != null) {

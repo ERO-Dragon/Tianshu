@@ -115,8 +115,7 @@ public final class TtsModuleService {
                 TtsRequestSource.PREVIEW,
                 TtsPlaybackPolicy.REPLACE_CURRENT,
                 Priority.NORMAL,
-                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile,
-                false
+                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
         );
         return current.previewWithModel(previewModel.name, models.currentConfiguredModelName(), request, onComplete, onFailure);
     }
@@ -132,8 +131,7 @@ public final class TtsModuleService {
                 TtsRequestSource.PREVIEW,
                 TtsPlaybackPolicy.REPLACE_CURRENT,
                 Priority.NORMAL,
-                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile,
-                false
+                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
         );
         return current.submit(request, onComplete == null ? () -> {} : onComplete, onFailure == null ? ignored -> {} : onFailure);
     }

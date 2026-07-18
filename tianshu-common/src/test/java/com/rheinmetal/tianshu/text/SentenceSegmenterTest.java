@@ -8,6 +8,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SentenceSegmenterTest {
     @Test
+    void flushesShortCompleteSentenceAtStrongBoundary() {
+        SentenceSegmenter segmenter = new SentenceSegmenter();
+
+        SentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary("OK.");
+
+        assertTrue(boundary.shouldFlush());
+        assertEquals("OK.".length(), boundary.endIndex());
+    }
+
+    @Test
     void flushesOnChineseStrongBoundaryAfterMinimumLength() {
         SentenceSegmenter segmenter = new SentenceSegmenter(8, 16, 40);
 

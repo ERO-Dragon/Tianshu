@@ -386,7 +386,7 @@ public final class LlmModelService {
             return;
         }
         updateDownload(false, false, false, task.modelName(), STATUS_DOWNLOAD_COMPLETE_KEY, 100, "");
-        publishReady("tianshu.presence.module.llm.download_complete", "");
+        publishWaiting("tianshu.presence.module.llm.download_complete", "");
         if (callback != null) callback.onComplete();
     }
 
@@ -396,7 +396,7 @@ public final class LlmModelService {
         }
         cleanupCancelledDownload(task);
         updateDownload(false, false, false, task.modelName(), STATUS_CANCELLED_KEY, downloadSnapshot.get().percent(), "");
-        publishReady("tianshu.presence.module.llm.download_cancelled", "");
+        publishWaiting("tianshu.presence.module.llm.download_cancelled", "");
         if (callback != null) callback.onCancelled();
     }
 

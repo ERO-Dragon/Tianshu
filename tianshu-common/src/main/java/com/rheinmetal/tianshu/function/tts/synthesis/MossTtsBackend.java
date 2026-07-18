@@ -60,6 +60,23 @@ public final class MossTtsBackend implements TtsBackend {
     }
 
     @Override
+    public synchronized boolean preloadVoice(com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile voiceProfile) {
+        MossTtsService current = service;
+        if (!initialized || current == null) {
+            return false;
+        }
+        try {
+            setVoiceSamplePath(voiceProfile == null ? "" : voiceProfile.voiceSample());
+            resolvePromptAudioCodes(current);
+            return true;
+        } catch (Throwable throwable) {
+            TtsRuntimeFailurePolicy.rethrowFatal(throwable);
+            env.error("MOSS-TTS default voice preload failed", throwable);
+            return false;
+        }
+    }
+
+    @Override
     public void synthesize(TtsRequest request, TtsAudioSink sink) {
         MossTtsService current = service;
         if (!initialized || current == null) {
@@ -117,7 +134,7 @@ public final class MossTtsBackend implements TtsBackend {
             } else {
                 env.info("MOSS-TTS stream chunk " + (chunkIndex + 1) + " completed");
             }
-        });
+        }, this::isInterrupted);
         sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
                 TtsSynthesisMode.STREAMING,
                 request.text().length(),
@@ -129,7 +146,7 @@ public final class MossTtsBackend implements TtsBackend {
 
     private void synthesizeFull(MossTtsService current, TtsRequest request, List<List<Integer>> promptAudioCodes, TtsAudioSink sink) throws Exception {
         long startedNanos = System.nanoTime();
-        float[][] audio = current.synthesizeToWaveform(request.text(), promptAudioCodes);
+        float[][] audio = current.synthesizeToWaveform(request.text(), promptAudioCodes, this::isInterrupted);
         if (interrupted) {
             return;
         }
@@ -162,13 +179,27 @@ public final class MossTtsBackend implements TtsBackend {
         interrupted = true;
     }
 
+    private boolean isInterrupted() {
+        return interrupted;
+    }
+
     @Override
     public synchronized void shutdown() {
         interrupted = true;
+        MossTtsService current = service;
         service = null;
         initialized = false;
         sampleRate = 0;
         cachedVoice = null;
+        voiceSamplePath = null;
+        if (current != null) {
+            try {
+                current.close();
+            } catch (Throwable throwable) {
+                TtsRuntimeFailurePolicy.rethrowFatal(throwable);
+                env.error("MOSS-TTS backend shutdown failed", throwable);
+            }
+        }
     }
 
     private void setVoiceSamplePath(String voiceSample) {

@@ -7,6 +7,8 @@ import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatusSeverity;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -64,6 +66,33 @@ class PresenceRuntimeTest {
                 EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY),
                 store.groupsNeedingRefresh(EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY))
         );
+    }
+
+    @Test
+    void moduleLoadingStatusIsTranslatedByPresenceWithoutModuleSpecificTypes() {
+        com.rheinmetal.tianshu.client.presence.status.PresenceModuleStatusMapper mapper =
+                new com.rheinmetal.tianshu.client.presence.status.PresenceModuleStatusMapper();
+        ModuleStatus status = ModuleStatus.keyed(
+                "module.tts",
+                "runtime.waiting",
+                "tianshu.presence.module.tts.loading",
+                "",
+                ModuleStatusSeverity.INFO,
+                4_000L,
+                Map.of("loadStage", "preloading")
+        );
+
+        var snapshot = mapper.fromStatus(status);
+
+        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.THINKING, snapshot.statusType());
+        assertEquals("preloading", snapshot.attributes().get("loadStage"));
+
+        PresenceStateStore store = new PresenceStateStore();
+        store.updateStatus(snapshot);
+        store.updateStatus(new com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy()
+                .fromAsr(com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload.speaking(1L)));
+        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.LISTENING,
+                store.statusSnapshot().statusType());
     }
 
     private static PresenceWorldEventPayload worldEvent(String id) {

@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,24 +66,6 @@ public final class TtsSessionManager {
         return cancelled;
     }
 
-    public synchronized List<TtsSession> cancelGroup(String groupId, String reason) {
-        if (groupId == null || groupId.isBlank()) {
-            return List.of();
-        }
-        String normalized = groupId.trim();
-        List<TtsSession> cancelled = sessions.values().stream()
-                .filter(session -> !session.isTerminal())
-                .filter(session -> session.request().groupId().equals(normalized))
-                .toList();
-        for (TtsSession session : cancelled) {
-            session.cancel(reason);
-        }
-        if (active != null && active.isTerminal()) {
-            active = null;
-        }
-        return cancelled;
-    }
-
     public synchronized List<TtsSession> cancelAll(String reason) {
         List<TtsSession> cancelled = sessions.values().stream()
                 .filter(session -> !session.isTerminal())
@@ -98,10 +79,6 @@ public final class TtsSessionManager {
         return cancelled;
     }
 
-    public synchronized Collection<TtsSession> snapshot() {
-        return List.copyOf(sessions.values());
-    }
-
     public synchronized TtsSession complete(TtsSession session) {
         if (session != null) {
             session.complete();
@@ -110,17 +87,6 @@ public final class TtsSessionManager {
             active = null;
         }
         return session;
-    }
-
-    public synchronized TtsSession cancelActive(String reason) {
-        if (active != null && !active.isTerminal()) {
-            TtsSession cancelled = active;
-            cancelled.cancel(reason);
-            active = null;
-            return cancelled;
-        }
-        active = null;
-        return null;
     }
 
     public synchronized void clear() {

@@ -66,7 +66,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.IntValue ASR_PORT;
     public static final ModConfigSpec.IntValue LLM_PORT;
-    public static final ModConfigSpec.IntValue TTS_PORT;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_ASR_NAME;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_LLM_NAME;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_TTS_NAME;
@@ -89,10 +88,10 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         ASR_VAD_ENABLED = builder.define("vadEnabled", false);
         builder.pop();
 
-        builder.comment("TTS 语音播报设置").push("tts");
+        builder.push("tts");
         TTS_ENABLED = builder.define("enabled", true);
         TTS_DIAGNOSTICS_ENABLED = builder.define("diagnosticsEnabled", false);
-        TTS_PREVIEW_TEXT = builder.define("previewText", "这是一段天枢语音播报试听");
+        TTS_PREVIEW_TEXT = builder.define("previewText", "");
         TTS_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         builder.pop();
 
@@ -134,7 +133,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
         ASR_PORT = builder.defineInRange("asrPort", 18765, 1024, 65535);
         LLM_PORT = builder.defineInRange("llmPort", 18766, 1024, 65535);
-        TTS_PORT = builder.defineInRange("ttsPort", 18767, 1024, 65535);
         CUSTOM_ASR_NAME = builder.define("customAsrName", "");
         CUSTOM_LLM_NAME = builder.define("customLlmName", "");
         CUSTOM_TTS_NAME = builder.define("customTtsName", "");
@@ -183,10 +181,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     public int getLlmPort() {
         return LLM_PORT.get();
-    }
-
-    public int getTtsPort() {
-        return TTS_PORT.get();
     }
 
     @Override

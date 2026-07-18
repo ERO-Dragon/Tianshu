@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
+import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 
 public class VoiceNotificationService {
@@ -33,7 +35,8 @@ public class VoiceNotificationService {
                                 0,
                                 0L,
                                 placement,
-                                "alert"
+                                TtsTextInputMode.DOCUMENT,
+                                TtsVoiceOptions.defaults()
                         )
                 )
                 .priority(priority)

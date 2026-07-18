@@ -59,11 +59,11 @@ public final class SentenceSegmenter {
                 continue;
             }
             int end = consumeTrailingClosers(text, i + 1);
+            if (isStrongBoundary(current) || current == '.') {
+                return end;
+            }
             if (end < minLength) {
                 continue;
-            }
-            if (isStrongBoundary(current)) {
-                return end;
             }
             preferredBoundary = end;
             if (end >= preferredLength) {

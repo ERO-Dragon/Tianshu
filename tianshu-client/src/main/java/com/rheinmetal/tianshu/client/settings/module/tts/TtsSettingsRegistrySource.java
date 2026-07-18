@@ -143,6 +143,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> previewText;
         private final MutableSettingsValue<Double> speed;
+        private final MutableSettingsValue<String> speakerId;
         private final MutableSettingsValue<String> selectedVoiceSample;
         private final MutableSettingsValue<String> githubProxyUrl;
         private final MutableSettingsValue<String> performanceFilter;
@@ -175,8 +176,9 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             this.diagnosticsEnabled = new MutableSettingsValue<>(config::isTtsDiagnosticsEnabled, config::setTtsDiagnosticsEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             ModelSettings.TtsSettings settings = modelSettings(resolveModel(this.selectedModelName.get()));
-            this.previewText = new MutableSettingsValue<>(config::getTtsPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
+            this.previewText = new MutableSettingsValue<>(this::initialPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
             this.speed = new MutableSettingsValue<>(() -> settings.speed, ignored -> {}, value -> value != null && value >= 0.1D && value <= 5.0D);
+            this.speakerId = new MutableSettingsValue<>(() -> Integer.toString(Math.max(0, settings.speakerId)), ignored -> { }, this::validSpeakerId);
             this.selectedVoiceSample = new MutableSettingsValue<>(() -> normalizeVoiceSample(settings.selectedVoiceSample), ignored -> {});
             this.githubProxyUrl = new MutableSettingsValue<>(config::getTtsGithubProxyUrl, config::setTtsGithubProxyUrl, Objects::nonNull);
             this.performanceFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
@@ -193,7 +195,8 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildVoiceOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
-            options.select("tts.voice.sample", tts("option.voice_sample"), voiceSampleOptions(), selectedVoiceSample, this::voiceSampleOptionLabel, () -> enabled.get() && supportsVoiceClone());
+            options.select("tts.voice.sample", tts("option.voice_sample"), voiceSampleOptions(), selectedVoiceSample, this::voiceSampleOptionLabel, () -> enabled.get() && supportsVoiceClone())
+                    .text("tts.voice.speaker", tts("option.speaker_id"), speakerId, () -> enabled.get() && supportsSpeakerSelection());
         }
 
         private void buildDownloadAdvancedOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
@@ -220,6 +223,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                     || selectedModelName.dirty()
                     || previewText.dirty()
                     || speed.dirty()
+                    || speakerId.dirty()
                     || selectedVoiceSample.dirty()
                     || githubProxyUrl.dirty();
         }
@@ -238,6 +242,9 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             }
             if (enabled.get() && !speed.valid()) {
                 return SettingsValidationResult.failure(tts("validation.invalid_speed"));
+            }
+            if (enabled.get() && !speakerId.valid()) {
+                return SettingsValidationResult.failure(tts("validation.invalid_speaker_id"));
             }
             return SettingsValidationResult.successful();
         }
@@ -265,6 +272,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             selectedModelName.reset();
             previewText.reset();
             speed.reset();
+            speakerId.reset();
             selectedVoiceSample.reset();
             githubProxyUrl.reset();
         }
@@ -324,15 +332,20 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             }
             ModelSettings.TtsSettings settings = modelSettings(info);
             settings.speed = speed.get();
+            settings.speakerId = Integer.parseInt(speakerId.get().trim());
             settings.selectedVoiceSample = NO_VOICE_SAMPLE.equals(selectedVoiceSample.get()) ? "" : selectedVoiceSample.get();
             ttsModelService().saveSettings(info, settings);
             speed.save();
+            speakerId.save();
             selectedVoiceSample.save();
         }
 
         private boolean canPreview() {
             TtsModelInfo info = resolveModel(selectedModelName.get());
-            return info != null && ttsModelService().hasModelContent(info) && !previewRunning.get();
+            return info != null
+                    && speakerId.valid()
+                    && ttsModelService().hasModelContent(info)
+                    && !previewRunning.get();
         }
 
         private boolean previewRunning() {
@@ -381,12 +394,32 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 Path resolved = ttsModelService().resolveVoiceSamplePath(info, "");
                 sample = resolved == null ? "" : resolved.toString();
             }
-            return new TtsVoiceProfile("", speed.get().floatValue(), 0, sample);
+            return new TtsVoiceProfile("", speed.get().floatValue(), Integer.parseInt(speakerId.get().trim()), sample);
         }
 
         private boolean supportsVoiceClone() {
             TtsModelInfo info = resolveModel(selectedModelName.get());
             return info != null && info.supportsVoiceClone();
+        }
+
+        private boolean supportsSpeakerSelection() {
+            TtsModelInfo info = resolveModel(selectedModelName.get());
+            return info != null && info.supportsSpeakerSelection();
+        }
+
+        private boolean validSpeakerId(String value) {
+            try {
+                return value != null && Integer.parseInt(value.trim()) >= 0;
+            } catch (NumberFormatException exception) {
+                return false;
+            }
+        }
+
+        private String initialPreviewText() {
+            String configured = config.getTtsPreviewText();
+            return configured == null || configured.isBlank()
+                    ? textProvider.text(tts("preview.default_text"))
+                    : configured;
         }
 
         private List<String> voiceSampleOptions() {
@@ -425,7 +458,12 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText selectedModelDescriptionStatus() {
             TtsModelInfo info = resolveModel(selectedModelName.get());
-            return info == null ? common("dash") : UiText.literal(info.getDescription());
+            if (info == null) {
+                return common("dash");
+            }
+            return info.getDescription().isBlank()
+                    ? tts("model.description." + info.getEngineType())
+                    : UiText.literal(info.getDescription());
         }
 
         private UiText selectedModelMetaStatus() {

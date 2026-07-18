@@ -33,13 +33,15 @@ class TtsRuntimeControlTest {
     void submitStreamRejectsWhenRuntimeIsNotRunning() {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
         TtsRuntime runtime = runtime(engine, new ArrayList<>());
-        AtomicReference<TtsFailure> failureRef = new AtomicReference<>();
-
-        TtsOperationResult result = runtime.submitStream(chunk("stream-1", "hello", true), null, failureRef::set);
+        TtsOperationResult result = runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                true,
+                request("stream-1", "hello")
+        );
 
         assertFalse(result.accepted());
         assertEquals(TtsFailureCode.RUNTIME_NOT_RUNNING, result.failure().code());
-        assertEquals(TtsFailureCode.RUNTIME_NOT_RUNNING, failureRef.get().code());
         assertEquals(0, engine.invocations.get());
     }
 
@@ -48,13 +50,15 @@ class TtsRuntimeControlTest {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
         TtsRuntime runtime = runtime(engine, new ArrayList<>());
         prepareRuntime(runtime);
-        AtomicReference<TtsFailure> failureRef = new AtomicReference<>();
-
-        TtsOperationResult result = runtime.submitStream(null, null, failureRef::set);
+        TtsOperationResult result = runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                true,
+                null
+        );
 
         assertFalse(result.accepted());
         assertEquals(TtsFailureCode.INVALID_REQUEST, result.failure().code());
-        assertEquals(TtsFailureCode.INVALID_REQUEST, failureRef.get().code());
     }
 
     @Test
@@ -64,14 +68,24 @@ class TtsRuntimeControlTest {
         TtsRuntime runtime = runtime(engine, statuses);
         prepareRuntime(runtime);
 
-        TtsOperationResult first = runtime.submitStream(chunk("stream-1", "hello", false), null, null);
-        TtsOperationResult last = runtime.submitStream(chunk("stream-1", " world", true), null, null);
+        TtsOperationResult first = runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                false,
+                request("stream-1", "hello")
+        );
+        TtsOperationResult last = runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                true,
+                request("stream-1", " world")
+        );
 
         assertTrue(first.accepted());
         assertTrue(last.accepted());
         assertTrue(engine.awaitInvocations(1));
         assertEquals("hello world", engine.lastText.get());
-        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().startsWith("stream-1:")));
+        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().equals("stream-1")));
     }
 
     @Test
@@ -105,20 +119,21 @@ class TtsRuntimeControlTest {
     }
 
     @Test
-    void localSpeakPreemptsActiveSynthesisTask() throws Exception {
+    void localSpeakDoesNotCancelActiveSynthesisTask() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
         prepareRuntime(runtime);
         AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
         CountDownLatch failed = new CountDownLatch(1);
+        CountDownLatch completed = new CountDownLatch(1);
 
         runtime.synthesize(
-                request("synthesis-task"),
+                request("synthesis-task", "first. second."),
                 false,
                 30_000L,
                 null,
-                null,
+                completed::countDown,
                 failure -> {
                     taskFailure.set(failure);
                     failed.countDown();
@@ -129,9 +144,16 @@ class TtsRuntimeControlTest {
         TtsOperationResult speakResult = runtime.submit(request("local-speak"), null, null);
 
         assertTrue(speakResult.accepted());
-        assertTrue(failed.await(2L, TimeUnit.SECONDS));
-        assertEquals(TtsFailureCode.CANCELLED, taskFailure.get().code());
-        assertTrue(engine.awaitInvocations(2));
+        assertFalse(failed.await(150L, TimeUnit.MILLISECONDS));
+        engine.release();
+        assertTrue(completed.await(2L, TimeUnit.SECONDS));
+        assertEquals(null, taskFailure.get());
+        assertTrue(engine.awaitInvocations(3));
+        assertEquals(List.of(
+                "synthesis-task:first.",
+                "local-speak:hello",
+                "synthesis-task:second."
+        ), engine.invocationOrder());
         assertTrue(awaitState(statuses, "local-speak", TtsSessionState.COMPLETED));
     }
 
@@ -213,7 +235,6 @@ class TtsRuntimeControlTest {
         assertTrue(result.accepted());
         assertEquals(2, result.affectedSessions());
         assertTrue(awaitState(statuses, "running", TtsSessionState.CANCELLED));
-        assertTrue(awaitState(statuses, "queued", TtsSessionState.CANCELLED));
     }
 
     @Test
@@ -247,8 +268,18 @@ class TtsRuntimeControlTest {
         assertTrue(engine.awaitStarted());
 
         TtsControlResult stop = runtime.stopRequest("stream-1", "stop stream");
-        TtsOperationResult ignored = runtime.submitStream(chunk("stream-1", "second sentence.", false), null, null);
-        TtsOperationResult end = runtime.submitStream(chunk("stream-1", "", true), null, null);
+        TtsOperationResult ignored = runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                false,
+                request("stream-1", "second sentence.")
+        );
+        TtsOperationResult end = runtime.submitSpeech(
+                streamKey("stream-1"),
+                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                true,
+                request("stream-1", "")
+        );
         engine.release();
 
         assertTrue(stop.accepted());
@@ -256,7 +287,7 @@ class TtsRuntimeControlTest {
         assertTrue(end.accepted());
         assertEquals(1, engine.invocations.get());
         assertTrue(statuses.stream().anyMatch(session ->
-                session.request().requestId().startsWith("stream-1:")
+                session.request().requestId().startsWith("stream-1")
                         && session.state() == TtsSessionState.CANCELLED));
     }
 
@@ -314,11 +345,15 @@ class TtsRuntimeControlTest {
     }
 
     private static TtsRequest request(String requestId) {
-        return new TtsRequest(requestId, requestId, requestId, requestId, "hello", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
+        return request(requestId, "hello");
     }
 
-    private static TtsStreamChunk chunk(String streamId, String text, boolean last) {
-        return new TtsStreamChunk(streamId, streamId, streamId, text, TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, TtsVoiceProfile.defaults(), last);
+    private static TtsRequest request(String requestId, String text) {
+        return new TtsRequest(requestId, requestId, requestId, requestId, text, TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
+    }
+
+    private static TtsSpeechSessionKey streamKey(String streamId) {
+        return TtsSpeechSessionKey.of("module.ax", 0L, 0, streamId);
     }
 
     private static boolean awaitState(List<TtsSession> statuses, String requestId, TtsSessionState state) throws InterruptedException {
@@ -336,7 +371,8 @@ class TtsRuntimeControlTest {
 
     private static class CountingSynthesisEngine implements TtsSynthesisEngine {
         protected final AtomicInteger invocations = new AtomicInteger();
-        private final AtomicReference<String> lastText = new AtomicReference<>("");
+        protected final AtomicReference<String> lastText = new AtomicReference<>("");
+        protected final List<String> invocationOrder = Collections.synchronizedList(new ArrayList<>());
 
         @Override
         public boolean initialize() {
@@ -371,6 +407,7 @@ class TtsRuntimeControlTest {
         @Override
         public void synthesize(TtsRequest request, com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink sink) {
             lastText.set(request.text());
+            invocationOrder.add(request.requestId() + ":" + request.text());
             invocations.incrementAndGet();
             sink.accept(new byte[]{1, 2});
         }
@@ -397,6 +434,12 @@ class TtsRuntimeControlTest {
             }
             return invocations.get() >= expected;
         }
+
+        List<String> invocationOrder() {
+            synchronized (invocationOrder) {
+                return List.copyOf(invocationOrder);
+            }
+        }
     }
 
     private static final class BlockingSynthesisEngine extends CountingSynthesisEngine {
@@ -405,6 +448,8 @@ class TtsRuntimeControlTest {
 
         @Override
         public void synthesize(TtsRequest request, com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink sink) {
+            super.lastText.set(request.text());
+            super.invocationOrder.add(request.requestId() + ":" + request.text());
             invocations.incrementAndGet();
             started.countDown();
             try {

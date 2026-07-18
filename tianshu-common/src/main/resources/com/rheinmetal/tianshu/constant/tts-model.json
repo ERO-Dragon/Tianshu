@@ -1,7 +1,7 @@
 [
   {
     "name": "kokoro-multi-lang-v1_1",
-    "displayName": "Kokoro 中英 v1.1",
+    "displayName": "Kokoro zh/en v1.1",
     "id": "csukuangfj/kokoro-multi-lang-v1_1",
     "engine": "kokoro",
     "lang": ["zh", "en"],
@@ -18,7 +18,7 @@
   },
   {
     "name": "vits-melo-tts-zh_en",
-    "displayName": "MeloTTS 中英",
+    "displayName": "MeloTTS zh/en",
     "id": "csukuangfj/vits-melo-tts-zh_en",
     "engine": "vits",
     "lang": ["zh", "en"],

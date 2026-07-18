@@ -41,6 +41,7 @@ public final class TestLlmSupport {
         private int taskAgingBoostPerRequest = 1;
         private int libsChatQueueSize = 1;
         private long llmAutoLoadDelayMillis = 3_000L;
+        private long ttsAutoLoadDelayMillis = 1_000L;
 
         public FakeConfig(Path root) {
             this.root = root;
@@ -76,6 +77,11 @@ public final class TestLlmSupport {
             return this;
         }
 
+        public FakeConfig ttsAutoLoadDelayMillis(long value) {
+            this.ttsAutoLoadDelayMillis = value;
+            return this;
+        }
+
         @Override public boolean isAsrEnabled() { return aiEnabled; }
         @Override public boolean isLlmEnabled() { return aiEnabled; }
         @Override public boolean isTtsEnabled() { return aiEnabled; }
@@ -96,5 +102,6 @@ public final class TestLlmSupport {
         @Override public int getLlmTaskAgingBoostPerRequest() { return taskAgingBoostPerRequest; }
         @Override public int getLlmLibsChatQueueSize() { return libsChatQueueSize; }
         @Override public long getLlmAutoLoadDelayMillis() { return llmAutoLoadDelayMillis; }
+        @Override public long getTtsAutoLoadDelayMillis() { return ttsAutoLoadDelayMillis; }
     }
 }

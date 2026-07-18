@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsRequestStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -75,6 +76,10 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishPlaybackStatus(TtsPlaybackStatusPayload payload) {
         return publishTopic(ProtocolTopics.TTS_PLAYBACK, PayloadType.TTS_PLAYBACK_STATUS, payload);
+    }
+
+    public TianshuEnvelope publishRequestStatus(TtsRequestStatusPayload payload) {
+        return publishTopic(ProtocolTopics.TTS_REQUEST_STATUS, PayloadType.TTS_REQUEST_STATUS, payload);
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

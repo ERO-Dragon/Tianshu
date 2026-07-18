@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -30,7 +31,8 @@ class AXOutputProcessorTest {
     void uiAndTtsModeStreamsUiAndSpeaksCompletedSentences() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         List<String> spoken = new CopyOnWriteArrayList<>();
-        registerTtsSink(runtime, spoken);
+        List<PacketType> packets = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, spoken, packets);
         RecordingChatSink chatSink = new RecordingChatSink();
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_AND_TTS), chatSink);
 
@@ -39,9 +41,10 @@ class AXOutputProcessorTest {
         turn.append("This is the second sentence");
         turn.complete("This is the first sentence. This is the second sentence");
 
-        await(() -> spoken.size() == 2);
+        await(() -> spoken.size() == 2 && packets.size() == 3);
         assertEquals("This is the first sentence. This is the second sentence", chatSink.text.toString());
         assertEquals(List.of("This is the first sentence.", "This is the second sentence"), spoken);
+        assertEquals(List.of(PacketType.STREAM_CHUNK, PacketType.STREAM_CHUNK, PacketType.STREAM_END), List.copyOf(packets));
         assertEquals(1, chatSink.beginCount);
         assertEquals(1, chatSink.completeCount);
     }
@@ -109,6 +112,23 @@ class AXOutputProcessorTest {
         assertTrue(spoken.isEmpty());
     }
 
+    @Test
+    void axVoiceDefaultsAreForwardedOnEverySentenceOfTheSession() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<TtsVoiceOptions> voices = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, new CopyOnWriteArrayList<>(), new CopyOnWriteArrayList<>(), voices);
+        AXOutputSettings settings = new AXOutputSettings() {
+            @Override public AXOutputMode outputMode() { return AXOutputMode.TTS_ONLY; }
+            @Override public TtsVoiceOptions ttsVoiceOptions() { return new TtsVoiceOptions("ax:voice", 1.2F, 3); }
+        };
+        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings, AXChatOutputSink.NOOP);
+
+        processor.startTurn(parentEnvelope(), context(), true).complete("First. Second.");
+
+        await(() -> voices.size() == 3);
+        assertTrue(voices.stream().allMatch(voice -> voice.equals(new TtsVoiceOptions("ax:voice", 1.2F, 3))));
+    }
+
     private static AXOutputSettings settings(AXOutputMode mode) {
         return () -> mode;
     }
@@ -127,6 +147,19 @@ class AXOutputProcessorTest {
     }
 
     private static void registerTtsSink(ProtocolRuntime runtime, List<String> spoken) {
+        registerTtsSink(runtime, spoken, new CopyOnWriteArrayList<>());
+    }
+
+    private static void registerTtsSink(ProtocolRuntime runtime, List<String> spoken, List<PacketType> packets) {
+        registerTtsSink(runtime, spoken, packets, new CopyOnWriteArrayList<>());
+    }
+
+    private static void registerTtsSink(
+            ProtocolRuntime runtime,
+            List<String> spoken,
+            List<PacketType> packets,
+            List<TtsVoiceOptions> voices
+    ) {
         AdapterDefaults defaults = AdapterDefaults.standard().withConcurrency(1, 64);
         runtime.registerModule(new ModuleDescriptor(
                 "module.tts.test",
@@ -135,7 +168,7 @@ class AXOutputProcessorTest {
                         PayloadType.TTS_TEXT,
                         TtsSpeakPayload.class,
                         BrokerType.BOUNDED_QUEUE,
-                        EnumSet.of(PacketType.COMMAND),
+                        EnumSet.of(PacketType.COMMAND, PacketType.STREAM_CHUNK, PacketType.STREAM_END),
                         Priority.LOW,
                         CompletionPolicy.MANUAL_COMPLETE
                 )),
@@ -147,12 +180,20 @@ class AXOutputProcessorTest {
                 defaults.supportsStreaming(),
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
-        ), (envelope, context) -> handleTts(envelope, context, spoken));
+        ), (envelope, context) -> {
+            if (envelope.payload() instanceof TtsSpeakPayload payload) {
+                voices.add(payload.voice());
+            }
+            handleTts(envelope, context, spoken, packets);
+        });
     }
 
-    private static void handleTts(TianshuEnvelope envelope, ProtocolContext context, List<String> spoken) {
+    private static void handleTts(TianshuEnvelope envelope, ProtocolContext context, List<String> spoken, List<PacketType> packets) {
+        packets.add(envelope.header().packetType());
         if (envelope.payload() instanceof TtsSpeakPayload payload) {
-            spoken.add(payload.text());
+            if (!payload.text().isBlank()) {
+                spoken.add(payload.text());
+            }
         }
         context.complete(envelope.envelopeId());
     }

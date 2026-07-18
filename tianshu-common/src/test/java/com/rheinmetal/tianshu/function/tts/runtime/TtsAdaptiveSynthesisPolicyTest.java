@@ -81,6 +81,6 @@ class TtsAdaptiveSynthesisPolicyTest {
     }
 
     private static TtsRequest request(String text) {
-        return new TtsRequest("request", "request", "envelope", "trace", text, TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults(), false);
+        return new TtsRequest("request", "request", "envelope", "trace", text, TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
     }
 }

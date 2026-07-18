@@ -109,10 +109,13 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `SYSTEM.RUNTIME_INTERRUPT` | `CUSTOM` | 运行时中断。 |
 | `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
+| `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期的观察性状态，供 Presence 等订阅者自行转换展示。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前如果说话将被哪个 IA owner 承接。 |
 
 `LLM.STATUS` 只发布 libs `inferenceEventListener` 回调产生的真实推理事件，例如 `QUEUED`、`STARTED`、`PREFILL_STARTED`、`GENERATION_STARTED`、`SUSPENDED`、`COLD_RESUME_STARTED`、`COMPLETED`、`CANCELLED`、`FAILED`。协议层请求接收、admission 排队和响应完成状态由 response payload 与 envelope lifecycle 表达，不混入该 topic。
+
+`MODULE_STATUS` 使用 `ModuleStatusPayload`。它是观察性状态，不替代 `RuntimeCapabilityRegistry` 的请求准入判断。模块应在真实生命周期边界发布已有的 waiting/starting/ready/failed 状态：模型下载完成但运行时尚未初始化或预热时仍发布 waiting，只有对应 capability 已可用后才能发布 ready。状态中的 `messageKey` 由订阅者本地化；common 不依赖具体 HUD 或 GUI。
 
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 

@@ -7,11 +7,13 @@ public record TtsSpeakPayload(
         int turnId,
         long sessionId,
         TtsPlaybackPlacement placement,
-        String voiceStyle
+        TtsTextInputMode inputMode,
+        TtsVoiceOptions voice
 ) implements ITianshuPayload {
     public TtsSpeakPayload {
-        if (text == null) text = "";
-        if (placement == null) placement = TtsPlaybackPlacement.QUEUE_AFTER_SESSION;
-        if (voiceStyle == null) voiceStyle = "";
+        text = text == null ? "" : text;
+        placement = placement == null ? TtsPlaybackPlacement.QUEUE_AFTER_SESSION : placement;
+        inputMode = inputMode == null ? TtsTextInputMode.DOCUMENT : inputMode;
+        voice = voice == null ? TtsVoiceOptions.defaults() : voice;
     }
 }

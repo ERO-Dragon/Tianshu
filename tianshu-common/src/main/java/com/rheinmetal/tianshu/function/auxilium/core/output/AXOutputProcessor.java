@@ -4,12 +4,12 @@ import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
+import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 
 import java.util.Objects;
 
 public final class AXOutputProcessor {
-    private static final String AX_TTS_VOICE_STYLE = "ax";
-
     private final AXProtocolAdapter adapter;
     private final AXOutputSettings settings;
     private final AXChatOutputSink chatSink;
@@ -73,6 +73,7 @@ public final class AXOutputProcessor {
             }
             if (settings.ttsEnabled()) {
                 ttsBuffer.flush().forEach(this::speak);
+                endTtsSession();
             }
             if (settings.uiEnabled()) {
                 chatSink.complete(context, text);
@@ -85,6 +86,9 @@ public final class AXOutputProcessor {
             }
             closed = true;
             ttsBuffer.clear();
+            if (enabledForChat() && settings.ttsEnabled()) {
+                endTtsSession();
+            }
             if (enabledForChat() && settings.uiEnabled()) {
                 chatSink.fail(context, reason == null ? "" : reason);
             }
@@ -95,18 +99,22 @@ public final class AXOutputProcessor {
         }
 
         private void speak(String sentence) {
-            TtsSpeakPayload payload = new TtsSpeakPayload(
+            adapter.streamTtsSentence(parent, payload(sentence));
+        }
+
+        private void endTtsSession() {
+            adapter.endTtsSession(parent, payload(""));
+        }
+
+        private TtsSpeakPayload payload(String sentence) {
+            return new TtsSpeakPayload(
                     sentence,
                     context.ttsTurnId(),
                     context.ttsSessionId(),
                     TtsPlaybackPlacement.QUEUE_AFTER_SESSION,
-                    AX_TTS_VOICE_STYLE
+                    TtsTextInputMode.SENTENCE_STREAM,
+                    settings.ttsVoiceOptions()
             );
-            if (parent == null) {
-                adapter.speakTts(payload);
-            } else {
-                adapter.speakTts(parent, payload);
-            }
         }
     }
 }

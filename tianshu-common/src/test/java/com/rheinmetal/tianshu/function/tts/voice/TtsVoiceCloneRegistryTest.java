@@ -92,6 +92,24 @@ class TtsVoiceCloneRegistryTest {
         assertTrue(registry.resolve("maid").isEmpty());
     }
 
+    @Test
+    void anotherOwnerCannotReplaceExistingVoiceId() throws Exception {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        Path voiceDir = config.getVoiceLibraryPath();
+        Files.createDirectories(voiceDir);
+        writeSineWave(voiceDir.resolve("first.wav"), 16_000, 160);
+        writeSineWave(voiceDir.resolve("second.wav"), 16_000, 160);
+        TtsVoiceCloneRegistry registry = new TtsVoiceCloneRegistry(new FakeGameEnvironment(), config);
+
+        assertTrue(registry.load("shared", "module.first", "first.wav", "first").accepted());
+        TtsControlResult replacement = registry.load("shared", "module.second", "second.wav", "second");
+
+        assertFalse(replacement.accepted());
+        TtsVoiceCloneProfile retained = registry.resolve("shared").orElseThrow();
+        assertEquals("module.first", retained.ownerModuleId());
+        assertEquals("first", retained.referenceText());
+    }
+
     private static void writeSineWave(Path path, int sampleRate, int frames) throws Exception {
         byte[] pcm = sinePcm(frames);
         AudioFormat format = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, sampleRate, 16, 1, 2, sampleRate, false);

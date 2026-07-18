@@ -85,19 +85,12 @@ public class TtsModelInfo {
     public String getDisplayName() {
         if (displayName != null && !displayName.isBlank()) return displayName;
         if (name != null && !name.isBlank()) return name;
-        return id != null ? id : "未知模型";
+        return id != null ? id : "";
     }
 
     public String getDescription() {
         if (description != null && !description.isBlank()) return description;
-        return switch (getEngineType()) {
-            case "moss" -> "自回归高自然度语音合成";
-            case "zipvoice" -> "支持参考音频克隆的 SherpaOnnx 模型";
-            case "kokoro" -> "多音色 SherpaOnnx 模型";
-            case "matcha" -> "需要声码器的轻量 TTS 模型";
-            case "piper" -> "轻量快速的 SherpaOnnx 模型";
-            default -> "通用 TTS 模型";
-        };
+        return "";
     }
 
     public int getRating() {
@@ -173,15 +166,6 @@ public class TtsModelInfo {
         if (value < 1) return 1;
         if (value > 10) return 10;
         return value;
-    }
-
-    public String getPerformanceLabel() {
-        return switch (getPerformance()) {
-            case PERF_LOW -> "低";
-            case PERF_MEDIUM -> "中";
-            case PERF_HIGH -> "高";
-            default -> "未知";
-        };
     }
 
     public boolean supportsVoiceClone() {

@@ -29,10 +29,18 @@ public final class TtsVoiceCloneRegistry {
         this.config = config;
     }
 
-    public TtsControlResult load(String voiceId, String ownerModuleId, String sampleNameOrPath, String referenceText) {
+    public synchronized TtsControlResult load(String voiceId, String ownerModuleId, String sampleNameOrPath, String referenceText) {
         String normalizedVoiceId = normalizeVoiceId(voiceId);
         if (normalizedVoiceId.isBlank()) {
             return reject(TtsControlAction.LOAD_VOICE, "TTS voice id is empty");
+        }
+        String owner = normalizeOwner(ownerModuleId);
+        if (owner.isBlank()) {
+            return reject(TtsControlAction.LOAD_VOICE, "TTS voice owner is empty");
+        }
+        TtsVoiceCloneProfile existing = profiles.get(normalizedVoiceId);
+        if (existing != null && !owner.equals(existing.ownerModuleId())) {
+            return reject(TtsControlAction.LOAD_VOICE, "TTS voice belongs to another module: " + normalizedVoiceId);
         }
         Path samplePath = resolveSamplePath(sampleNameOrPath);
         if (samplePath == null) {
@@ -49,7 +57,7 @@ public final class TtsVoiceCloneRegistry {
             }
             TtsVoiceCloneProfile profile = new TtsVoiceCloneProfile(
                     normalizedVoiceId,
-                    normalizeOwner(ownerModuleId),
+                    owner,
                     samplePath,
                     referenceAudio,
                     referenceText,
@@ -96,7 +104,7 @@ public final class TtsVoiceCloneRegistry {
         return TtsControlResult.accepted(TtsControlAction.CLEAR_VOICE_CACHE, Math.max(0, before - profiles.size()));
     }
 
-    public TtsControlResult importVoice(
+    public synchronized TtsControlResult importVoice(
             String voiceId,
             String ownerModuleId,
             byte[] audio,
@@ -105,6 +113,14 @@ public final class TtsVoiceCloneRegistry {
         String normalizedVoiceId = normalizeVoiceId(voiceId);
         if (normalizedVoiceId.isBlank()) {
             return reject(TtsControlAction.IMPORT_VOICE, "TTS voice id is empty");
+        }
+        String owner = normalizeOwner(ownerModuleId);
+        if (owner.isBlank()) {
+            return reject(TtsControlAction.IMPORT_VOICE, "TTS voice owner is empty");
+        }
+        TtsVoiceCloneProfile existing = profiles.get(normalizedVoiceId);
+        if (existing != null && !owner.equals(existing.ownerModuleId())) {
+            return reject(TtsControlAction.IMPORT_VOICE, "TTS voice belongs to another module: " + normalizedVoiceId);
         }
         if (audio == null || audio.length == 0) {
             return reject(TtsControlAction.IMPORT_VOICE, "TTS voice audio is empty");
@@ -120,6 +136,7 @@ public final class TtsVoiceCloneRegistry {
             Files.write(target, audio, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
             TtsControlResult loadResult = load(normalizedVoiceId, ownerModuleId, target.toString(), referenceText);
             if (!loadResult.accepted()) {
+                Files.deleteIfExists(target);
                 return TtsControlResult.rejected(TtsControlAction.IMPORT_VOICE, loadResult.failure());
             }
             return TtsControlResult.accepted(TtsControlAction.IMPORT_VOICE, 1);

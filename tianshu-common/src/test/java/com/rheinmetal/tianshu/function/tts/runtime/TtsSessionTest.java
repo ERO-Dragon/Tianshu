@@ -47,11 +47,10 @@ class TtsSessionTest {
                 requestId,
                 requestId,
                 "hello",
-                TtsRequestSource.AX,
+                TtsRequestSource.of("module.ax"),
                 TtsPlaybackPolicy.QUEUE,
                 Priority.NORMAL,
-                TtsVoiceProfile.defaults(),
-                false
+                TtsVoiceProfile.defaults()
         );
     }
 }

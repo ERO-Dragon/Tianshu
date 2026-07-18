@@ -5,6 +5,10 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 public interface TtsBackend {
     boolean initialize(TtsResolvedModel model);
 
+    default boolean preloadVoice(com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile voiceProfile) {
+        return true;
+    }
+
     boolean isInitialized();
 
     int sampleRate();

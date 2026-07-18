@@ -20,6 +20,7 @@ public enum PayloadType {
     PRESENCE_CONTEXT_SNAPSHOT,
     TTS_TEXT,
     TTS_PLAYBACK_STATUS,
+    TTS_REQUEST_STATUS,
     TTS_AUDIO,
     UI_TOAST,
     ALERT,

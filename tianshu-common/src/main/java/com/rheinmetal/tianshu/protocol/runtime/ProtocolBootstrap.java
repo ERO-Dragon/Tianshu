@@ -41,6 +41,7 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.LLM_STATUS, PayloadType.LLM_STATUS, DeliveryPolicy.LATEST_ONLY, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.TTS_PLAYBACK, PayloadType.TTS_PLAYBACK_STATUS, DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.TTS_REQUEST_STATUS, PayloadType.TTS_REQUEST_STATUS, DeliveryPolicy.WAIT_IN_QUEUE, 64));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, DeliveryPolicy.LATEST_ONLY, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, DeliveryPolicy.WAIT_IN_QUEUE, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, DeliveryPolicy.LATEST_ONLY, 10));

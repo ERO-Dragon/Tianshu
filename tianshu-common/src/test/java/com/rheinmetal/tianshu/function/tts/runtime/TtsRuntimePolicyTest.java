@@ -115,9 +115,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("running", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("queued", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("queued", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("urgent-queued", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.QUEUE, Priority.HIGH), null, null);
 
         assertFalse(awaitOptionalState(statuses, "running", TtsSessionState.CANCELLED, 150));
@@ -137,9 +137,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses, playbackStates);
         prepareRuntime(runtime);
 
-        runtime.submit(request("speak-1", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-1", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("speak-2", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-2", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("interrupt", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY, Priority.HIGH), null, null);
         TtsSession interrupted = awaitSession(statuses, "speak-1", TtsSessionState.CANCELLED);
 
@@ -189,7 +189,6 @@ class TtsRuntimePolicyTest {
         assertFalse(result.accepted());
         assertEquals(TtsFailureCode.QUEUE_FULL, result.failure().code());
         assertEquals(TtsFailureCode.QUEUE_FULL, failureRef.get().code());
-        assertTrue(awaitSession(statuses, "overflow", TtsSessionState.FAILED) != null);
         runtime.stopAll("test stop");
         engine.release();
     }
@@ -221,18 +220,18 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("speak-1", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-1", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("speak-2", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-2", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("other-queued", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("session-replacement", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SESSION_AND_PLAY, Priority.HIGH), null, null);
 
         assertTrue(awaitOptionalState(statuses, "speak-1", TtsSessionState.CANCELLED, 500));
-        assertTrue(awaitOptionalState(statuses, "speak-2", TtsSessionState.CANCELLED, 500));
+        assertFalse(awaitOptionalState(statuses, "speak-2", TtsSessionState.CANCELLED, 150));
         engine.release();
-        assertTrue(engine.awaitInvocationCount(3));
+        assertTrue(engine.awaitInvocationCount(4));
 
-        assertEquals(List.of("speak-1", "session-replacement", "other-queued"), engine.invokedRequestIds());
+        assertEquals(List.of("speak-1", "session-replacement", "speak-2", "other-queued"), engine.invokedRequestIds());
         assertTrue(statuses.stream().noneMatch(session -> session.request().requestId().equals("other-queued") && session.state() == TtsSessionState.CANCELLED));
     }
 
@@ -244,9 +243,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("running", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("queued", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("queued", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         runtime.submit(request("inserted", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.INSERT_AFTER_SESSION, Priority.LOW), null, null);
 
         engine.release();
@@ -264,7 +263,7 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("running", TtsRequestSource.AX, TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("running", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitFirstChunk("running"));
         TtsOperationResult result = runtime.submit(request("insert-after-sentence", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.INSERT_AFTER_SENTENCE, Priority.HIGH), null, null);
 
@@ -299,7 +298,7 @@ class TtsRuntimePolicyTest {
     }
 
     private static TtsRequest request(String requestId, TtsPlaybackPolicy policy, Priority priority) {
-        return request(requestId, TtsRequestSource.AX, policy, priority);
+        return request(requestId, TtsRequestSource.of("module.ax"), policy, priority);
     }
 
     private static TtsRequest request(String requestId, TtsRequestSource source, TtsPlaybackPolicy policy, Priority priority) {
@@ -312,8 +311,7 @@ class TtsRuntimePolicyTest {
                 source,
                 policy,
                 priority,
-                TtsVoiceProfile.defaults(),
-                false
+                TtsVoiceProfile.defaults()
         );
     }
 

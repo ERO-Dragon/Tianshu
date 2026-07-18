@@ -6,6 +6,10 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 public interface TtsSynthesisEngine {
     boolean initialize();
 
+    default boolean preloadVoice(com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile voiceProfile) {
+        return true;
+    }
+
     boolean isInitialized();
 
     boolean isAutoregressive();

@@ -773,7 +773,7 @@ class AXTurnOrchestratorTest {
                         PayloadType.TTS_TEXT,
                         TtsSpeakPayload.class,
                         BrokerType.BOUNDED_QUEUE,
-                        EnumSet.of(PacketType.COMMAND),
+                        EnumSet.of(PacketType.COMMAND, PacketType.STREAM_CHUNK, PacketType.STREAM_END),
                         Priority.LOW,
                         CompletionPolicy.MANUAL_COMPLETE
                 )),
@@ -789,7 +789,7 @@ class AXTurnOrchestratorTest {
     }
 
     private static void handleTts(TianshuEnvelope envelope, ProtocolContext context, List<String> spoken) {
-        if (envelope.payload() instanceof TtsSpeakPayload payload) {
+        if (envelope.payload() instanceof TtsSpeakPayload payload && !payload.text().isBlank()) {
             spoken.add(payload.text());
         }
         context.complete(envelope.envelopeId());

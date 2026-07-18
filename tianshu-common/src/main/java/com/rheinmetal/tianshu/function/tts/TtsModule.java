@@ -15,11 +15,12 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequestSource;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntime;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsOperationResult;
-import com.rheinmetal.tianshu.function.tts.runtime.TtsStreamChunk;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsSpeechSessionKey;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile;
 import com.rheinmetal.tianshu.function.tts.synthesis.DefaultTtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceCloneProfile;
 import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceCloneRegistry;
+import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceRequestValidator;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
@@ -29,10 +30,18 @@ import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class TtsModule implements TianshuManagedModule {
     private final IAudioBridge audioBridge;
@@ -46,6 +55,9 @@ public final class TtsModule implements TianshuManagedModule {
     private VoiceNotificationService voiceNotificationService;
     private TtsVoiceLibraryService voiceLibraryService;
     private TtsVoiceCloneRegistry voiceCloneRegistry;
+    private final AtomicLong lifecycleGeneration = new AtomicLong();
+    private volatile ProtocolTaskHandle delayedAutoLoad;
+    private volatile boolean destroyed;
 
     public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config) {
         this.audioBridge = audioBridge;
@@ -86,15 +98,22 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         DefaultTtsSynthesisEngine synthesisEngine = new DefaultTtsSynthesisEngine(env, config, modelService);
-        ttsRuntime = new TtsRuntime(env, runtime, synthesisEngine, audioBridge, ignored -> {}, this::publishPlaybackStatus);
+        ttsRuntime = new TtsRuntime(
+                env,
+                runtime,
+                synthesisEngine,
+                audioBridge,
+                ignored -> { },
+                this::publishPlaybackStatus,
+                adapter::publishRequestStatus
+        );
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
         }
         context.services().register(TtsRuntime.class, ttsRuntime);
-        TtsOperationResult preparation = ttsRuntime.prepare(initialized -> completePreparation(context, initialized));
-        if (!preparation.accepted()) {
-            completePreparation(context, false);
-        }
+        context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS model is not loaded");
+        context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS model is not loaded");
+        publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.tts.loading", ""));
     }
 
     private void completePreparation(ModuleRuntimeContext context, boolean initialized) {
@@ -113,11 +132,52 @@ public final class TtsModule implements TianshuManagedModule {
     public void start(ModuleRuntimeContext context) {
         if (ttsRuntime != null) {
             ttsRuntime.start();
+            scheduleAutoLoad(context, ttsRuntime);
+        }
+    }
+
+    private void scheduleAutoLoad(ModuleRuntimeContext context, TtsRuntime expectedRuntime) {
+        long generation = lifecycleGeneration.incrementAndGet();
+        delayedAutoLoad = runtime.schedule(
+                ProtocolTaskSpec.builder()
+                        .moduleId(moduleId())
+                        .lane(ExecutionLane.SCHEDULED)
+                        .concurrencyKey("module.tts:auto-load")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .interruptible(true)
+                        .build(),
+                () -> {
+                    if (destroyed || generation != lifecycleGeneration.get() || ttsRuntime != expectedRuntime) {
+                        return;
+                    }
+                    TtsOperationResult preparation = expectedRuntime.prepare(
+                            voiceProfile(TtsVoiceOptions.defaults()),
+                            initialized -> {
+                                if (!destroyed && generation == lifecycleGeneration.get() && ttsRuntime == expectedRuntime) {
+                                    completePreparation(context, initialized);
+                                }
+                            }
+                    );
+                    if (!preparation.accepted()) {
+                        completePreparation(context, false);
+                    }
+                },
+                Duration.ofMillis(Math.max(0L, config.getTtsAutoLoadDelayMillis()))
+        );
+        if (delayedAutoLoad.state() == ProtocolTaskState.REJECTED) {
+            completePreparation(context, false);
         }
     }
 
     @Override
     public void stop() {
+        lifecycleGeneration.incrementAndGet();
+        ProtocolTaskHandle scheduled = delayedAutoLoad;
+        delayedAutoLoad = null;
+        if (scheduled != null && !scheduled.isDone()) {
+            scheduled.cancel("TTS module stopped");
+        }
         if (ttsRuntime != null) {
             ttsRuntime.stop();
         }
@@ -125,6 +185,7 @@ public final class TtsModule implements TianshuManagedModule {
 
     @Override
     public void destroy() {
+        destroyed = true;
         if (ttsRuntime != null) {
             if (moduleService != null) {
                 moduleService.unbindRuntime(ttsRuntime);
@@ -143,13 +204,34 @@ public final class TtsModule implements TianshuManagedModule {
         if (!ensureRuntimeAvailable(context, envelope.envelopeId())) {
             return;
         }
-        if (envelope.header().packetType() == PacketType.STREAM_CHUNK || envelope.header().packetType() == PacketType.STREAM_END) {
-            TtsStreamChunk chunk = streamChunkFromPayload(envelope, payload, playbackPolicy(payload));
-            ttsRuntime.submitStream(chunk, () -> context.complete(envelope.envelopeId()), failure -> failProtocol(context, envelope.envelopeId(), "TTS_FAILED", failure));
+        java.util.Optional<TtsFailure> voiceFailure = validateVoice(payload.voice());
+        if (voiceFailure.isPresent()) {
+            failProtocol(context, envelope.envelopeId(), "TTS_VOICE_UNAVAILABLE", voiceFailure.get());
             return;
         }
-        TtsRequest request = requestFromPayload(envelope, payload, playbackPolicy(payload), priority(envelope));
-        ttsRuntime.submit(request, () -> context.complete(envelope.envelopeId()), failure -> failProtocol(context, envelope.envelopeId(), "TTS_FAILED", failure));
+        PacketType packetType = envelope.header().packetType();
+        boolean streaming = packetType == PacketType.STREAM_CHUNK || packetType == PacketType.STREAM_END;
+        if (streaming && payload.inputMode() == com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.DOCUMENT) {
+            context.fail(envelope.envelopeId(), "INVALID_TTS_INPUT_MODE", "TTS stream packets require a stream input mode", null);
+            return;
+        }
+        if (!streaming && payload.inputMode() != com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.DOCUMENT) {
+            context.fail(envelope.envelopeId(), "INVALID_TTS_INPUT_MODE", "TTS command packets require DOCUMENT input mode", null);
+            return;
+        }
+        TtsSpeechSessionKey key = speechSessionKey(envelope, payload);
+        TtsRequest request = requestFromPayload(envelope, payload, key, playbackPolicy(payload), priority(envelope));
+        TtsOperationResult result = ttsRuntime.submitSpeech(
+                key,
+                payload.inputMode(),
+                !streaming || packetType == PacketType.STREAM_END,
+                request
+        );
+        if (result.accepted()) {
+            context.complete(envelope.envelopeId());
+        } else {
+            failProtocol(context, envelope.envelopeId(), "TTS_FAILED", result.failure());
+        }
     }
 
     private void handleSynthesize(TianshuEnvelope envelope, ProtocolContext context) {
@@ -158,6 +240,11 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         if (!ensureRuntimeAvailable(context, envelope.envelopeId())) {
+            return;
+        }
+        java.util.Optional<TtsFailure> voiceFailure = validateVoice(payload.voice());
+        if (voiceFailure.isPresent()) {
+            failProtocol(context, envelope.envelopeId(), "TTS_VOICE_UNAVAILABLE", voiceFailure.get());
             return;
         }
         TtsRequest request = synthesisRequestFromPayload(envelope, payload);
@@ -269,14 +356,7 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private TtsRequestSource resolveSource(String value) {
-        if (value == null || value.isBlank()) {
-            return TtsRequestSource.UNKNOWN;
-        }
-        try {
-            return TtsRequestSource.valueOf(value.trim().toUpperCase());
-        } catch (IllegalArgumentException ignored) {
-            return TtsRequestSource.UNKNOWN;
-        }
+        return TtsRequestSource.from(value);
     }
 
     private boolean ensureRuntimeAvailable(ProtocolContext context, String envelopeId) {
@@ -291,19 +371,24 @@ public final class TtsModule implements TianshuManagedModule {
         return true;
     }
 
-    private TtsRequest requestFromPayload(TianshuEnvelope envelope, TtsSpeakPayload payload, TtsPlaybackPolicy policy, Priority priority) {
-        String requestId = requestIdFromPayload(envelope, payload);
+    private TtsRequest requestFromPayload(
+            TianshuEnvelope envelope,
+            TtsSpeakPayload payload,
+            TtsSpeechSessionKey key,
+            TtsPlaybackPolicy policy,
+            Priority priority
+    ) {
+        String requestId = payload.sessionId() > 0L ? groupIdFromPayload(payload) : key.value();
         return new TtsRequest(
                 requestId,
-                groupIdFromPayload(payload),
+                requestId,
                 envelope.envelopeId(),
                 envelope.traceId(),
                 payload.text(),
-                TtsRequestSource.AX,
+                TtsRequestSource.of(envelope.header().sourceId()),
                 policy,
                 priority,
-                voiceProfile(payload.voiceStyle()),
-                false
+                voiceProfile(payload.voice())
         );
     }
 
@@ -315,61 +400,49 @@ public final class TtsModule implements TianshuManagedModule {
                 envelope.envelopeId(),
                 envelope.traceId(),
                 payload.text(),
-                TtsRequestSource.UNKNOWN,
+                TtsRequestSource.of(envelope.header().sourceId()),
                 TtsPlaybackPolicy.QUEUE,
                 envelope.header().priority(),
-                voiceProfile(payload.voiceStyle()),
-                false
+                voiceProfile(payload.voice())
         );
     }
 
-    private TtsStreamChunk streamChunkFromPayload(TianshuEnvelope envelope, TtsSpeakPayload payload, TtsPlaybackPolicy policy) {
-        return new TtsStreamChunk(
-                streamIdFromPayload(envelope, payload),
-                envelope.envelopeId(),
-                envelope.traceId(),
-                payload.text(),
-                TtsRequestSource.AX,
-                policy,
-                voiceProfile(payload.voiceStyle()),
-                envelope.header().packetType() == PacketType.STREAM_END
+    private TtsSpeechSessionKey speechSessionKey(TianshuEnvelope envelope, TtsSpeakPayload payload) {
+        String localId = envelope.traceId() == null || envelope.traceId().isBlank()
+                ? envelope.envelopeId()
+                : envelope.traceId();
+        return TtsSpeechSessionKey.of(
+                envelope.header().sourceId(),
+                payload.sessionId(),
+                payload.turnId(),
+                localId
         );
-    }
-
-    private String requestIdFromPayload(TianshuEnvelope envelope, TtsSpeakPayload payload) {
-        String groupId = groupIdFromPayload(payload);
-        return groupId.isBlank() ? envelope.envelopeId() : groupId + ":" + envelope.envelopeId();
-    }
-
-    private String streamIdFromPayload(TianshuEnvelope envelope, TtsSpeakPayload payload) {
-        String groupId = groupIdFromPayload(payload);
-        if (!groupId.isBlank()) {
-            return groupId;
-        }
-        return envelope.traceId() == null || envelope.traceId().isBlank() ? envelope.envelopeId() : envelope.traceId();
     }
 
     private String groupIdFromPayload(TtsSpeakPayload payload) {
         return payload.sessionId() > 0 ? "speak:" + payload.sessionId() + ":" + payload.turnId() : "";
     }
 
-    private TtsVoiceProfile voiceProfile(String voiceStyle) {
+    private TtsVoiceProfile voiceProfile(TtsVoiceOptions voiceOptions) {
+        TtsVoiceOptions options = voiceOptions == null ? TtsVoiceOptions.defaults() : voiceOptions;
+        String voiceId = options.voiceId();
         if (modelService == null) {
-            return new TtsVoiceProfile(voiceStyle, 1.0f, 0, "");
+            return new TtsVoiceProfile(voiceId, options.speed() == null ? 1.0F : options.speed(),
+                    options.speakerId() == null ? 0 : options.speakerId(), "");
         }
         com.rheinmetal.tianshu.model.TtsModelInfo info = modelService.resolveCurrentModelInfo();
         com.rheinmetal.tianshu.model.ModelSettings.TtsSettings settings = modelService.loadSettings(info);
+        float speed = options.speed() == null ? (float) settings.speed : options.speed();
+        int speakerId = options.speakerId() == null ? settings.speakerId : options.speakerId();
         String voiceSample = "";
-        String voiceId = normalizeVoiceId(voiceStyle);
         if (!voiceId.isBlank() && info != null && info.supportsVoiceClone()) {
             java.util.Optional<TtsVoiceCloneProfile> profile = voiceRegistry().resolve(voiceId);
             if (profile.isPresent()) {
                 TtsVoiceCloneProfile clone = profile.get();
                 return new TtsVoiceProfile(
-                        voiceStyle,
                         clone.voiceId(),
-                        (float) settings.speed,
-                        settings.speakerId,
+                        speed,
+                        speakerId,
                         clone.samplePath().toString(),
                         clone.referenceAudio().samples(),
                         clone.referenceAudio().sampleRate(),
@@ -387,7 +460,18 @@ public final class TtsModule implements TianshuManagedModule {
             }
             voiceSample = resolved == null ? "" : resolved.toString();
         }
-        return new TtsVoiceProfile(voiceStyle, voiceId, (float) settings.speed, settings.speakerId, voiceSample);
+        return new TtsVoiceProfile(voiceId, speed, speakerId, voiceSample);
+    }
+
+    private java.util.Optional<TtsFailure> validateVoice(TtsVoiceOptions voiceOptions) {
+        com.rheinmetal.tianshu.model.TtsModelInfo info = modelService == null
+                ? null
+                : modelService.resolveCurrentModelInfo();
+        return TtsVoiceRequestValidator.validate(
+                voiceOptions,
+                info != null && info.supportsVoiceClone(),
+                voiceId -> voiceRegistry().resolve(voiceId).isPresent()
+        );
     }
 
     private TtsVoiceCloneRegistry voiceRegistry() {
@@ -395,10 +479,6 @@ public final class TtsModule implements TianshuManagedModule {
             voiceCloneRegistry = new TtsVoiceCloneRegistry(env, config);
         }
         return voiceCloneRegistry;
-    }
-
-    private static String normalizeVoiceId(String voiceStyle) {
-        return voiceStyle == null ? "" : voiceStyle.trim();
     }
 
     private TtsPlaybackPolicy playbackPolicy(TtsSpeakPayload payload) {

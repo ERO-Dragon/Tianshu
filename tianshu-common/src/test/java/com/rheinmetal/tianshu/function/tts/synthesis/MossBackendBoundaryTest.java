@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MossBackendBoundaryTest {
     @Test
@@ -20,5 +21,21 @@ class MossBackendBoundaryTest {
             }
         }
         assertFalse(Files.readString(backend, StandardCharsets.UTF_8).contains("com.rheinmetal.tianshu.model.tts.moss"));
+    }
+
+    @Test
+    void backendClosesServiceAndGenerationAcceptsCancellationSignal() throws Exception {
+        String backend = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/MossTtsBackend.java"),
+                StandardCharsets.UTF_8
+        );
+        String generator = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/moss/MossFrameGenerator.java"),
+                StandardCharsets.UTF_8
+        );
+
+        assertTrue(backend.contains("current.close()"));
+        assertTrue(generator.contains("BooleanSupplier cancellationRequested"));
+        assertTrue(generator.contains("cancellation.getAsBoolean()"));
     }
 }

@@ -10,4 +10,8 @@ public interface TtsConfiguration {
     Path getTtsBasePath();
 
     Path getVoiceLibraryPath();
+
+    default long getTtsAutoLoadDelayMillis() {
+        return 1_000L;
+    }
 }

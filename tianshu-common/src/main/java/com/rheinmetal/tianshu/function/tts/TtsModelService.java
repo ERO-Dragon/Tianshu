@@ -694,7 +694,7 @@ public class TtsModelService {
             return;
         }
         updateDownload(false, false, false, task.modelName(), "tianshu.gui.tts.status.download_complete", 100);
-        publishReady("tianshu.presence.module.tts.download_complete", "");
+        publishWaiting("tianshu.presence.module.tts.download_complete", "");
         if (callback != null) {
             callback.onComplete();
         }
@@ -707,7 +707,7 @@ public class TtsModelService {
         cleanupIncompleteDownload(task);
         int progress = downloadStatus.get().progress();
         updateDownload(false, false, false, task.modelName(), "tianshu.gui.tts.status.cancelled", progress);
-        publishReady("tianshu.presence.module.tts.download_cancelled", "");
+        publishWaiting("tianshu.presence.module.tts.download_cancelled", "");
         if (callback != null) {
             callback.onCancelled();
         }

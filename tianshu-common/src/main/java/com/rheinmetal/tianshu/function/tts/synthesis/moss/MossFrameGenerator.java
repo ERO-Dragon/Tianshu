@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /** Runs MOSS autoregressive frame generation and owns its tensor-cache transitions. */
 final class MossFrameGenerator {
@@ -69,13 +70,25 @@ final class MossFrameGenerator {
     }
 
     List<List<Integer>> generateAudioFrames(MossTtsService.RequestRows requestRows) throws Exception {
-        return generateAudioFrames(requestRows, null);
+        return generateAudioFrames(requestRows, null, () -> false);
     }
 
     List<List<Integer>> generateAudioFrames(
             MossTtsService.RequestRows requestRows,
             FrameCallback frameCallback
     ) throws Exception {
+        return generateAudioFrames(requestRows, frameCallback, () -> false);
+    }
+
+    List<List<Integer>> generateAudioFrames(
+            MossTtsService.RequestRows requestRows,
+            FrameCallback frameCallback,
+            BooleanSupplier cancellationRequested
+    ) throws Exception {
+        BooleanSupplier cancellation = cancellationRequested == null ? () -> false : cancellationRequested;
+        if (cancellation.getAsBoolean()) {
+            return List.of();
+        }
         JsonObject generationDefaults = generationDefaults();
         JsonObject ttsConfig = modelRuntime.manifest().getAsJsonObject("tts_config");
         JsonObject ttsOnnx = modelRuntime.ttsMeta().getAsJsonObject("onnx");
@@ -116,6 +129,9 @@ final class MossFrameGenerator {
             int pastValidLength = sumAttentionMask(requestRows.attentionMask[0]);
             int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
             for (int stepIndex = 0; stepIndex < maxNewFrames; stepIndex++) {
+                if (cancellation.getAsBoolean()) {
+                    break;
+                }
                 List<Integer> frame = generateFrame(
                         globalHidden,
                         previousTokensByChannel,
@@ -129,6 +145,9 @@ final class MossFrameGenerator {
                 generatedFrames.add(frame);
                 if (frameCallback != null) {
                     frameCallback.onFrame(generatedFrames, stepIndex, frame);
+                }
+                if (cancellation.getAsBoolean()) {
+                    break;
                 }
                 DecodeStepResult decodeStep = runDecodeStep(
                         frame,
