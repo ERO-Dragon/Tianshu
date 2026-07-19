@@ -5,5 +5,9 @@ import java.util.Map;
 
 @FunctionalInterface
 public interface NamedObjectDictionaryProvider {
-    Map<String, List<String>> buildDictionary();
+    /**
+     * Returns the latest immutable platform snapshot. Implementations must not
+     * access platform objects while this method is called by the index worker.
+     */
+    Map<String, List<String>> snapshot();
 }

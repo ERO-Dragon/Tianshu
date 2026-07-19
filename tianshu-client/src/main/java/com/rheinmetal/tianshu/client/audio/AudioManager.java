@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public class AudioManager implements IAudioBridge {
+public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     private static final System.Logger LOGGER = System.getLogger(AudioManager.class.getName());
 
@@ -54,6 +54,8 @@ public class AudioManager implements IAudioBridge {
     private volatile Runnable onPlaybackFinished;
     private final AtomicBoolean micTransition = new AtomicBoolean(false);
     private volatile String pendingMicName = null;
+    private volatile List<String> availableMicNames = List.of();
+    private final AtomicBoolean micEnumerationRunning = new AtomicBoolean(false);
 
     private Mixer.Info findRealPhysicalMic(DataLine.Info info) {
         Mixer.Info fallbackMic = null;
@@ -361,6 +363,32 @@ public class AudioManager implements IAudioBridge {
     }
 
     public List<String> getAvailableMicNames() {
+        return currentMicNames();
+    }
+
+    @Override
+    public List<String> currentMicNames() {
+        return availableMicNames;
+    }
+
+    @Override
+    public void refreshMicNames(Runnable onComplete) {
+        if (!micEnumerationRunning.compareAndSet(false, true)) {
+            return;
+        }
+        executeAudioTask(() -> {
+            try {
+                availableMicNames = enumerateMicNames();
+            } finally {
+                micEnumerationRunning.set(false);
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            }
+        }, () -> micEnumerationRunning.set(false));
+    }
+
+    private List<String> enumerateMicNames() {
         List<String> names = new ArrayList<>();
         AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
         DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
@@ -412,7 +440,7 @@ public class AudioManager implements IAudioBridge {
 
     public String getCurrentMicName() {
         if (currentMicMixer != null) return currentMicMixer.getName();
-        List<String> names = getAvailableMicNames();
+        List<String> names = currentMicNames();
         return names.isEmpty() ? "" : names.get(0);
     }
 

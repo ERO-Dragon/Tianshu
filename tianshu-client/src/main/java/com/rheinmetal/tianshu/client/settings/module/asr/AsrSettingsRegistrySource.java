@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.client.api.settings.SettingsListCard;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
+import com.rheinmetal.tianshu.client.audio.ClientAudioDeviceCatalog;
 import com.rheinmetal.tianshu.client.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
@@ -72,15 +73,24 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
     private final ClientScheduler scheduler;
     private final ClientUiHost uiHost;
     private final PresenceTextProvider textProvider;
+    private final ClientAudioDeviceCatalog audioDeviceCatalog;
 
     public AsrSettingsRegistrySource(TianshuCoreManager coreManager, AsrSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider) {
+        this(coreManager, config, audioBridge, scheduler, uiHost, textProvider,
+                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null);
+    }
+
+    public AsrSettingsRegistrySource(TianshuCoreManager coreManager, AsrSettingsAccess config, IAudioBridge audioBridge,
+                                     ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider,
+                                     ClientAudioDeviceCatalog audioDeviceCatalog) {
         this.coreManager = coreManager;
         this.config = config;
         this.audioBridge = audioBridge;
         this.scheduler = scheduler;
         this.uiHost = uiHost;
         this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
+        this.audioDeviceCatalog = audioDeviceCatalog;
     }
 
     @Override
@@ -88,7 +98,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null || audioBridge == null) {
             return;
         }
-        AsrSettingsDraft draft = new AsrSettingsDraft(config, audioBridge, coreManager, context, scheduler, uiHost, textProvider);
+        AsrSettingsDraft draft = new AsrSettingsDraft(
+                config, audioBridge, coreManager, context, scheduler, uiHost, textProvider, audioDeviceCatalog
+        );
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
                 .title(TITLE)
@@ -157,11 +169,15 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final List<AsrModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
+        private final AtomicBoolean microphoneRefreshStarted = new AtomicBoolean(false);
         private volatile UiText previewStateText = asr("status.idle");
         private volatile UiText previewResultText = common("dash");
 
+        private final ClientAudioDeviceCatalog audioDeviceCatalog;
+
         private AsrSettingsDraft(AsrSettingsAccess config, IAudioBridge audioBridge, TianshuCoreManager coreManager, ModuleSettingsContext context,
-                                 ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider) {
+                                 ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider,
+                                 ClientAudioDeviceCatalog audioDeviceCatalog) {
             this.config = config;
             this.audioBridge = audioBridge;
             this.coreManager = coreManager;
@@ -169,6 +185,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.scheduler = scheduler;
             this.uiHost = uiHost;
             this.textProvider = textProvider;
+            this.audioDeviceCatalog = audioDeviceCatalog;
             this.catalog = AsrModelManager.getAllModels();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
             this.diagnosticsEnabled = new MutableSettingsValue<>(config::isAsrDiagnosticsEnabled, config::setAsrDiagnosticsEnabled);
@@ -184,7 +201,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.recommendationDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
         }
 
-        private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+    private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+            refreshMicrophoneNames();
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get)
                     .select("asr.trigger", asr("option.trigger"), List.of(TriggerMode.values()), triggerMode, this::triggerLabel, enabled::get);
@@ -272,12 +290,18 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private List<String> micNames() {
             List<String> names = new ArrayList<>();
             names.add(DEFAULT_MIC);
-            for (String name : audioBridge.getAvailableMicNames()) {
+            for (String name : audioDeviceCatalog == null ? List.<String>of() : audioDeviceCatalog.currentMicNames()) {
                 if (name != null && !name.isBlank() && !names.contains(name)) {
                     names.add(name);
                 }
             }
             return names;
+        }
+
+        private void refreshMicrophoneNames() {
+            if (audioDeviceCatalog != null && microphoneRefreshStarted.compareAndSet(false, true)) {
+                audioDeviceCatalog.refreshMicNames(() -> runOnClient(this::refreshSettingsScreen));
+            }
         }
 
         private UiText micLabel(String name) {

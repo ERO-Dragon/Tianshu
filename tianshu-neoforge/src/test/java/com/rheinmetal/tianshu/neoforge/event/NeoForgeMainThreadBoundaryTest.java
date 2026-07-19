@@ -43,6 +43,22 @@ final class NeoForgeMainThreadBoundaryTest {
         assertFalse(apply.contains("readAllBytes("));
     }
 
+    @Test
+    void namedObjectReloadRefreshesPlatformSnapshotBeforeBackgroundIndexing() throws Exception {
+        String provider = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/adapter/NeoForgeNamedObjectDictionaryProvider.java"),
+                StandardCharsets.UTF_8
+        );
+        String listener = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NamedObjectReloadListener.java"),
+                StandardCharsets.UTF_8
+        );
+
+        assertTrue(provider.contains("void refresh()"));
+        assertTrue(provider.contains("snapshot()"));
+        assertTrue(listener.contains("refreshSnapshot.run()"));
+    }
+
     private static String methodBody(String source, String signature) {
         int start = source.indexOf(signature);
         int opening = source.indexOf('{', start);

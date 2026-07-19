@@ -149,7 +149,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
     }
 
     private boolean rebuildIndexNow(String reason, long taskGeneration) {
-        Map<String, List<String>> dictionary = buildDictionary();
+        Map<String, List<String>> dictionary = snapshotDictionary();
         if (!isGenerationActive(taskGeneration)) {
             return false;
         }
@@ -204,8 +204,8 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
         }
     }
 
-    private Map<String, List<String>> buildDictionary() {
-        Map<String, List<String>> source = dictionaryProvider.buildDictionary();
+    private Map<String, List<String>> snapshotDictionary() {
+        Map<String, List<String>> source = dictionaryProvider.snapshot();
         if (source == null || source.isEmpty()) {
             return Map.of();
         }

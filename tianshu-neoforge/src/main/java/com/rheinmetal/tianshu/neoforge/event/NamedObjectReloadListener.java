@@ -16,9 +16,11 @@ public final class NamedObjectReloadListener extends SimplePreparableReloadListe
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation KEYWORDS_ID = ResourceLocation.fromNamespaceAndPath("tianshu", "ir-intent-keywords.json");
     private final ClientNamedObjectIndexManager indexManager;
+    private final Runnable refreshSnapshot;
 
-    public NamedObjectReloadListener(ClientNamedObjectIndexManager indexManager) {
+    public NamedObjectReloadListener(ClientNamedObjectIndexManager indexManager, Runnable refreshSnapshot) {
         this.indexManager = indexManager;
+        this.refreshSnapshot = refreshSnapshot == null ? () -> { } : refreshSnapshot;
     }
 
     @Override
@@ -28,6 +30,7 @@ public final class NamedObjectReloadListener extends SimplePreparableReloadListe
 
     @Override
     protected void apply(byte[] keywords, ResourceManager resourceManager, ProfilerFiller profiler) {
+        refreshSnapshot.run();
         indexManager.reloadAsync(
                 "client resource reload",
                 () -> reloadKeywords(keywords)

@@ -57,6 +57,7 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class NeoForgeClientBootstrap {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -70,6 +71,8 @@ public final class NeoForgeClientBootstrap {
     private CoreBackedTianshuIntegrationApi integrationApi;
     private ClientDiagnosticRouter diagnosticRouter;
     private ClientNamedObjectIndexManager namedObjectIndexManager;
+    private NeoForgeNamedObjectDictionaryProvider namedObjectDictionaryProvider;
+    private final AtomicReference<String> promptLanguageCode = new AtomicReference<>("en_us");
     private NeoForgeClientLifecycleAdapter lifecycleAdapter;
     private PresenceClientRuntime presenceRuntime;
     private NeoForgeClientEvents events;
@@ -85,6 +88,7 @@ public final class NeoForgeClientBootstrap {
 
         NeoForgeEnvironment environment = new NeoForgeEnvironment();
         namedObjectIndexManager = createNamedObjectIndexManager();
+        refreshNamedObjectSnapshot();
         diagnosticRouter = new ClientDiagnosticRouter(Minecraft.getInstance().gameDirectory.toPath(), new ClientDiagnosticPolicy(config));
         environment.bindDiagnostics(diagnosticRouter);
         presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(), new NeoForgePresenceTextProvider());
@@ -158,7 +162,10 @@ public final class NeoForgeClientBootstrap {
     }
 
     public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {
-        event.registerReloadListener(new NamedObjectReloadListener(createNamedObjectIndexManager()));
+        event.registerReloadListener(new NamedObjectReloadListener(
+                createNamedObjectIndexManager(),
+                this::refreshNamedObjectSnapshot
+        ));
     }
 
     public synchronized void shutdown() {
@@ -226,18 +233,33 @@ public final class NeoForgeClientBootstrap {
 
     private ClientNamedObjectIndexManager createNamedObjectIndexManager() {
         if (namedObjectIndexManager == null) {
+            if (namedObjectDictionaryProvider == null) {
+                namedObjectDictionaryProvider = new NeoForgeNamedObjectDictionaryProvider();
+            }
             namedObjectIndexManager = new ClientNamedObjectIndexManager(
-                    new NeoForgeNamedObjectDictionaryProvider(),
+                    namedObjectDictionaryProvider,
                     Minecraft.getInstance().gameDirectory.toPath()
                             .resolve("config")
                             .resolve("Tianshu")
                             .resolve("module")
                             .resolve("ir")
                             .resolve("cache"),
-                    () -> ClientLanguagePolicy.currentPromptLanguage().code()
+                    promptLanguageCode::get
             );
         }
         return namedObjectIndexManager;
+    }
+
+    private void refreshNamedObjectSnapshot() {
+        if (namedObjectDictionaryProvider == null) {
+            namedObjectDictionaryProvider = new NeoForgeNamedObjectDictionaryProvider();
+        }
+        try {
+            namedObjectDictionaryProvider.refresh();
+            promptLanguageCode.set(ClientLanguagePolicy.currentLanguageCode());
+        } catch (RuntimeException failure) {
+            LOGGER.error("IR 命名对象快照刷新失败，保留上一份快照", failure);
+        }
     }
 
     private void registerShutdownHook() {
