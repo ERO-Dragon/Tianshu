@@ -7,7 +7,6 @@ public record PresenceStatusSnapshot(
         PresenceSeverity severity,
         String sourceModuleId,
         String messageKey,
-        String messageText,
         long updatedAtMillis,
         long ttlMillis,
         Map<String, String> attributes
@@ -17,7 +16,6 @@ public record PresenceStatusSnapshot(
         severity = severity == null ? PresenceSeverity.INFO : severity;
         sourceModuleId = clean(sourceModuleId);
         messageKey = clean(messageKey);
-        messageText = clean(messageText);
         if (updatedAtMillis <= 0L) {
             updatedAtMillis = System.currentTimeMillis();
         }
@@ -26,7 +24,7 @@ public record PresenceStatusSnapshot(
     }
 
     public static PresenceStatusSnapshot idle() {
-        return new PresenceStatusSnapshot(PresenceStatusType.IDLE, PresenceSeverity.INFO, "", "presence.status.idle", "", System.currentTimeMillis(), 0L, Map.of());
+        return new PresenceStatusSnapshot(PresenceStatusType.IDLE, PresenceSeverity.INFO, "", "tianshu.presence.status.idle", System.currentTimeMillis(), 0L, Map.of());
     }
 
     public boolean expired(long nowMillis) {

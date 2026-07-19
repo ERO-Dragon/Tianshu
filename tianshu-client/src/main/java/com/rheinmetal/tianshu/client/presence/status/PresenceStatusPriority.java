@@ -30,9 +30,10 @@ public final class PresenceStatusPriority {
         return switch (snapshot.statusType()) {
             case ERROR -> 100;
             case LISTENING -> 90;
-            case TRANSCRIBING -> 80;
+            case TRANSCRIBING -> 85;
+            case SPEAKING -> 80;
             case THINKING -> 70;
-            case SPEAKING -> 60;
+            case PREPARING -> 60;
             case COMPRESSING -> 50;
             case IDLE -> 10;
         };

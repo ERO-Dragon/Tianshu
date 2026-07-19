@@ -20,6 +20,13 @@ public final class NeoForgePresenceHooks {
         }
     }
 
+    public static void resetWorldSession(PresenceClientRuntime runtime) {
+        Binding current = binding;
+        if (current != null && current.runtime() == runtime) {
+            current.advancementTracker().reset();
+        }
+    }
+
     public static void recordAdvancementUpdate(ClientboundUpdateAdvancementsPacket packet) {
         Binding current = binding;
         if (current != null) {

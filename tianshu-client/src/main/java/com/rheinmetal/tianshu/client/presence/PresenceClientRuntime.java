@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.Objects;
 import java.util.List;
+import java.util.function.Predicate;
 
 public final class PresenceClientRuntime {
     private final PresenceStateStore stateStore = new PresenceStateStore();
@@ -27,6 +28,21 @@ public final class PresenceClientRuntime {
         contextFactMapper = new PresenceContextFactMapper(effectiveTextProvider);
         contextQueryCoordinator = new PresenceContextQueryCoordinator(stateStore, contextFactMapper);
         eventCollector = new PresenceEventCollector(stateStore, Objects.requireNonNull(platform, "platform"));
+        stateStore.resetWorldState();
+        contextQueryCoordinator.stopWorldSession();
+        eventCollector.stopWorldSession();
+    }
+
+    public void startWorldSession() {
+        stateStore.startWorldSession();
+        contextQueryCoordinator.startWorldSession();
+        eventCollector.startWorldSession();
+    }
+
+    public void stopWorldSession() {
+        contextQueryCoordinator.stopWorldSession();
+        eventCollector.stopWorldSession();
+        stateStore.resetWorldState();
     }
 
     public PresenceContextSnapshot contextSnapshot() {
@@ -42,7 +58,9 @@ public final class PresenceClientRuntime {
     }
 
     public void tick() {
-        contextQueryCoordinator.processPending(eventCollector);
+        if (stateStore.worldSessionActive()) {
+            contextQueryCoordinator.processPending(eventCollector);
+        }
     }
 
     public void recordScreenChanged() {
@@ -70,6 +88,10 @@ public final class PresenceClientRuntime {
     }
 
     public PresenceHudDisplay currentHudDisplay() {
-        return displayPolicy.hudDisplay(stateStore.statusSnapshot());
+        return currentHudDisplay(source -> true);
+    }
+
+    public PresenceHudDisplay currentHudDisplay(Predicate<String> sourceVisible) {
+        return displayPolicy.hudDisplay(stateStore.statusSnapshot(sourceVisible));
     }
 }

@@ -78,12 +78,14 @@ public final class NeoForgeClientEvents {
 
     public void onWorldLogin(ClientPlayerNetworkEvent.LoggingIn event) {
         LOGGER.info("检测到客户端登录世界，准备拉起引擎...");
+        NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
         lifecycleAdapter.onWorldLogin();
     }
 
     public void onWorldLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         LOGGER.info("检测到客户端退出世界，开始清理...");
         resetVoiceInputState();
+        NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
         lifecycleAdapter.onWorldLogout();
     }
 

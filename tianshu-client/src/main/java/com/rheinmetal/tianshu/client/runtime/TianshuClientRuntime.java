@@ -16,6 +16,8 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final Runnable closeDiagnostics;
     private final Runnable closeIndex;
     private final Runnable tickPresence;
+    private final Runnable startPresenceWorldSession;
+    private final Runnable stopPresenceWorldSession;
     private final Runnable onWorldReady;
     private final Consumer<Throwable> onWorldFailure;
     private final AtomicLong generation = new AtomicLong();
@@ -36,6 +38,8 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 services.diagnosticRouter()::close,
                 services.namedObjectIndexManager()::close,
                 services.presenceRuntime()::tick,
+                services.presenceRuntime()::startWorldSession,
+                services.presenceRuntime()::stopWorldSession,
                 onWorldReady,
                 onWorldFailure
         );
@@ -52,6 +56,34 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             Runnable onWorldReady,
             Consumer<Throwable> onWorldFailure
     ) {
+        this(
+                core,
+                startClientResources,
+                releaseCaptureHardware,
+                shutdownAudio,
+                closeDiagnostics,
+                closeIndex,
+                tickPresence,
+                () -> { },
+                () -> { },
+                onWorldReady,
+                onWorldFailure
+        );
+    }
+
+    TianshuClientRuntime(
+            CoreLifecycle core,
+            Runnable startClientResources,
+            Runnable releaseCaptureHardware,
+            Runnable shutdownAudio,
+            Runnable closeDiagnostics,
+            Runnable closeIndex,
+            Runnable tickPresence,
+            Runnable startPresenceWorldSession,
+            Runnable stopPresenceWorldSession,
+            Runnable onWorldReady,
+            Consumer<Throwable> onWorldFailure
+    ) {
         this.core = Objects.requireNonNull(core, "core");
         this.startClientResources = Objects.requireNonNull(startClientResources, "startClientResources");
         this.releaseCaptureHardware = Objects.requireNonNull(releaseCaptureHardware, "releaseCaptureHardware");
@@ -59,6 +91,8 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         this.closeDiagnostics = Objects.requireNonNull(closeDiagnostics, "closeDiagnostics");
         this.closeIndex = Objects.requireNonNull(closeIndex, "closeIndex");
         this.tickPresence = Objects.requireNonNull(tickPresence, "tickPresence");
+        this.startPresenceWorldSession = Objects.requireNonNull(startPresenceWorldSession, "startPresenceWorldSession");
+        this.stopPresenceWorldSession = Objects.requireNonNull(stopPresenceWorldSession, "stopPresenceWorldSession");
         this.onWorldReady = onWorldReady == null ? () -> { } : onWorldReady;
         this.onWorldFailure = onWorldFailure == null ? ignored -> { } : onWorldFailure;
     }
@@ -111,6 +145,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.WORLD_STOPPING;
             requestGeneration = generation.incrementAndGet();
         }
+        stopPresenceWorldSession.run();
         core.stop().whenComplete((ignored, failure) -> completeWorldStop(requestGeneration, failure));
     }
 
@@ -131,6 +166,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             worldSessionRequested = false;
             generation.incrementAndGet();
         }
+        stopPresenceWorldSession.run();
         try {
             core.destroy().join();
         } catch (CompletionException failure) {
@@ -165,6 +201,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             onWorldFailure.accept(failure == null ? new IllegalStateException("CORE_SESSION_NOT_RUNNING") : failure);
             return;
         }
+        startPresenceWorldSession.run();
         onWorldReady.run();
     }
 

@@ -437,6 +437,7 @@
   "tianshu.gui.presence.message.saved": "Presence display settings saved",
 
   "tianshu.presence.status.listening": "Listening",
+  "tianshu.presence.status.preparing": "Preparing; service is temporarily unavailable",
   "tianshu.presence.status.transcribing": "Transcribing speech",
   "tianshu.presence.status.thinking": "Thinking",
   "tianshu.presence.status.speaking": "Speaking",

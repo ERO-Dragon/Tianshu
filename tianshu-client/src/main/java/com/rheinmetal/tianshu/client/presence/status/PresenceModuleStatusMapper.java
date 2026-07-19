@@ -16,11 +16,8 @@ public final class PresenceModuleStatusMapper {
         if (status == null || status.expired(System.currentTimeMillis())) {
             return null;
         }
-        String messageKey = messageKey(status);
-        if (messageKey.isBlank()) {
-            return null;
-        }
         PresenceStatusType statusType = statusType(status);
+        String messageKey = "tianshu.presence.status." + statusType.name().toLowerCase(Locale.ROOT);
         PresenceSeverity severity = severity(status.severity());
         long ttlMillis = status.ttlMillis() <= 0L ? DEFAULT_TTL_MILLIS : status.ttlMillis();
         return new PresenceStatusSnapshot(
@@ -28,18 +25,10 @@ public final class PresenceModuleStatusMapper {
                 severity,
                 status.moduleId(),
                 messageKey,
-                "",
                 status.updatedAtMillis(),
                 ttlMillis,
                 status.tags()
         );
-    }
-
-    private String messageKey(ModuleStatus status) {
-        if (status == null || status.messageKey().isBlank()) {
-            return "";
-        }
-        return status.messageKey();
     }
 
     private PresenceSeverity severity(ModuleStatusSeverity severity) {
@@ -48,6 +37,10 @@ public final class PresenceModuleStatusMapper {
 
     private PresenceStatusType statusType(ModuleStatus status) {
         Map<String, String> tags = status.tags();
+        String normalizedType = status.statusType().toLowerCase(Locale.ROOT);
+        if (normalizedType.contains("starting") || normalizedType.contains("waiting")) {
+            return PresenceStatusType.PREPARING;
+        }
         String explicit = tags.getOrDefault("presenceStatusType", "");
         if (!explicit.isBlank()) {
             try {
@@ -58,7 +51,6 @@ public final class PresenceModuleStatusMapper {
         if (status.severity() == ModuleStatusSeverity.CRITICAL) {
             return PresenceStatusType.ERROR;
         }
-        String normalizedType = status.statusType().toLowerCase(Locale.ROOT);
         if (normalizedType.contains("error") || normalizedType.contains("failed")) {
             return PresenceStatusType.ERROR;
         }

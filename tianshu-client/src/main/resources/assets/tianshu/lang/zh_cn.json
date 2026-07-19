@@ -437,6 +437,7 @@
   "tianshu.gui.presence.message.saved": "映迹显示设置已保存",
 
   "tianshu.presence.status.listening": "正在听你说",
+  "tianshu.presence.status.preparing": "正在准备，暂时无法提供服务",
   "tianshu.presence.status.transcribing": "正在识别语音",
   "tianshu.presence.status.thinking": "正在思考",
   "tianshu.presence.status.speaking": "正在播报",

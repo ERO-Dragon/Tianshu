@@ -27,9 +27,11 @@ world login
   -> NeoForgeClientLifecycleAdapter.onWorldLogin
   -> TianshuClientRuntime.startWorldSession
   -> CoreManager.startRuntimeSession
+  -> Presence starts a new world session after Core is running
 
 world logout
   -> onWorldLogout
+  -> Presence immediately rejects/clears old-world context work
   -> CoreManager.stopRuntimeSession
   -> release microphone capture
 
@@ -41,7 +43,7 @@ client shutdown
   -> GPU detector close
 ```
 
-runtime 使用 generation 丢弃退出世界后到达的旧启动回调。重复 login、logout 和 shutdown 均幂等；启动失败会回到 `CLIENT_READY`，允许下次进入世界重试。
+runtime 使用 generation 丢弃退出世界后到达的旧启动回调。Presence 同步使用独立的世界代次清空快照、状态和排队查询，旧世界请求不会在重进后继续。重复 login、logout 和 shutdown 均幂等；启动失败会回到 `CLIENT_READY`，允许下次进入世界重试。
 
 ## 3. 线程边界
 
@@ -62,7 +64,7 @@ Minecraft 主线程只执行：
 | diagnostics | `ClientDiagnosticWriter` | 单线程，有界 2048，满时非阻塞丢弃并计数 |
 | audio | `AudioManager` | 2 线程，队列 8，拒绝不回退到调用线程 |
 | GPU detection | `GpuInfo` | 单线程，队列 1，同一时间只保留一个 refresh |
-| Presence query | `PresenceContextQueryCoordinator` | 有界 64，满时返回 `PRESENCE_BUSY` |
+| Presence query | `PresenceContextQueryCoordinator` | 有界 64，每 tick 最多处理 8 个，满时返回 `PRESENCE_BUSY` |
 
 Protocol/Core 自有线程继续由各自 policy 管理；NeoForge 不创建第二套协议执行器。
 
@@ -70,7 +72,7 @@ Protocol/Core 自有线程继续由各自 policy 管理；NeoForge 不创建第�
 
 Minecraft 活对象只能存在于 NeoForge adapter。跨入 client/common 的数据必须是字符串、ID、数值、record 或不可变集合。
 
-- Presence：NeoForge 捕获游戏上下文和 advancement packet，转换为 snapshot/payload。
+- Presence：NeoForge 只在客户端线程捕获请求指定的游戏上下文和 advancement packet，转换为 snapshot/payload；动态事实不做固定扫描。
 - IR：NeoForge registry provider 构建命名对象字典；client 负责缓存和索引。
 - GUI：client 生成 `UiText` 和设置模型；NeoForge 转换为原版文本与 Widget。
 - HUD：client 提供 `PresenceHudDisplay`；NeoForge 执行字体和 `GuiGraphics` 绘制。

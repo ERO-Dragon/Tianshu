@@ -1,5 +1,12 @@
 # 映迹：游戏内反馈与交互上下文模块设计
 
+## 快速摘要
+
+1. **功能**：映迹为游戏提供当前环境信息，并用一个动态图标反馈系统当前所处的交互阶段。
+2. **上下文**：IA、IR、AX 等模块通过协议中心按需请求玩家、世界、背包、效果和交互信息；返回内容只对应当前世界。
+3. **图标阶段**：对玩家只呈现准备中、聆听中、处理中、回应中、空闲或不可用等少量产品状态，不展示模块名、任务编号或模型内部阶段。
+4. **世界边界**：退出世界时清空上下文、状态和排队查询；重新进入后重新建立当前世界的数据。
+
 ## 1. 模块命名
 
 中文名：
@@ -28,7 +35,7 @@ module.presence
 
 ## 2. 模块定位
 
-映迹是 `tianshu-neoforge` 侧的客户端模块，负责：
+映迹是 `tianshu-client` 中的平台无关客户端模块；`tianshu-neoforge` 只负责接入 Minecraft 状态和实际 HUD 绘制。映迹负责：
 
 - 通过外层 platform 端口读取客户端状态
 - 维护不可变快照
@@ -37,7 +44,7 @@ module.presence
 - 广播低频世界事件
 - 发布映迹自己拥有的低频客户端 topic
 
-实际 Minecraft GUI 绘制放在 `client/gui/presence`，不放进映迹采集和协议链路。
+实际 Minecraft GUI 绘制放在 `tianshu-neoforge` 的 `ui/hud`，不放进映迹采集和协议链路。
 
 一句话定位：
 
@@ -75,7 +82,7 @@ module.presence
 
 - 把 Presence 从“能拿到一堆字段”收口成“按字段组按需拿字段”
 - 让 IA / IR / AX 都通过 `PRESENCE.QUERY_CONTEXT` 请求
-- 让映迹只刷新请求过且 dirty 的字段组
+- 让映迹只读取本次明确请求的字段组
 - 让快照结构稳定，不再依赖同步桥
 
 已完成：
@@ -86,19 +93,21 @@ module.presence
 - IA / IR / AX 已切到 Presence 请求链路
 - 空 fact 请求不再隐式返回默认上下文
 
-待做：
+当前规则：
 
-- 通过体验验证观察字段组是否还需要再拆细
-- 观察 HUD 状态文案和优先级是否需要调整
+- 交互上下文由事件驱动并保留短期快照。
+- 玩家状态、背包、药水效果和世界环境等动态事实在收到请求时读取当前世界，不长期复用旧数据。
+- 同一 client tick 中的多个请求共享一次平台快照，避免重复读取 Minecraft 对象。
 
 二期原则：
 
 - 不做固定保鲜扫描
 - 不做 interest 体系
 - 没请求就不扫
-- dirty 只表示缓存不可信，不主动触发扫描
-- 每个字段组独立 dirty / missing
+- 交互快照失效只影响下次按需读取，不主动触发扫描
 - 请求方必须显式传 `requestedFactIds`
+
+动态事实按请求捕获；`dirty` 只作为交互快照或平台事件的失效提示，不会触发后台轮询。
 
 当前字段组：
 
@@ -116,9 +125,9 @@ WORLD_ENVIRONMENT
 
 已确定目标：
 
-- 映迹采集链只依赖 `PresencePlatform`
+- 映迹采集链只依赖 `ClientGameContextProvider`
 - 映迹文本映射只依赖 `PresenceTextProvider`
-- NeoForge / Minecraft 的活对象读取、screen 分类、成就包解析、注册表读取、本地化 API 都放在外层 `platform` 包
+- NeoForge / Minecraft 的活对象读取、screen 分类、成就包解析、注册表读取、本地化 API 都放在外层 adapter 和 event 包
 - 映迹事件入口尽量接收普通值或平台端口，不让 `Screen`、`Component`、packet 等版本敏感类型流入映迹核心
 
 已完成：
@@ -135,7 +144,7 @@ WORLD_ENVIRONMENT
 三期目标：
 
 - 把 HUD 渲染进一步从采集链路里拆开
-- 把游戏内 HUD 绘制放到 `client/gui/presence/hud`
+- 把游戏内 HUD 绘制放到 `tianshu-neoforge` 的 `ui/hud`
 - 让映迹核心只输出纯显示状态，不直接碰底层 GUI API
 - 设置页负责控制哪些模块状态进入 HUD，以及哪些 HUD 元素显示
 - HUD 元素允许逐步扩展成文本、icon、shader 等多种绘制形态，但只能停留在 GUI 层
@@ -146,7 +155,7 @@ WORLD_ENVIRONMENT
 
 - `PresenceHudDisplay` 作为 HUD 纯显示数据
 - `PresenceClientRuntime.currentHudDisplay()` 输出当前 HUD 状态
-- `client/gui/presence/hud/PresenceHudRenderer` 负责 HUD 元素调度
+- `tianshu-neoforge` 的 `PresenceHudRenderer` 负责 HUD 元素调度
 - `PresenceHudElementFrame` 承载元素类型、状态、显示数据和状态时间
 - `PresenceStatusTextElementController` 负责状态文本元素的可见性和状态机
 - `PresenceStatusTextElementRenderer` 负责状态文本元素的 Minecraft 绘制
@@ -231,6 +240,19 @@ PRESENCE.CHAT_MESSAGE
 - 不计入指令、成就、死亡、系统消息
 - payload 保持克制，只包含说话人 UUID、说话人名称和消息文本
 
+### 5.3 产品状态图标
+
+映迹对外只提供一个动态图标，不为每个模块分别显示图标。内部模块状态只用于推导当前产品阶段：
+
+- `准备中`：相关服务尚未就绪，暂时不能提供完整服务。
+- `聆听中`：正在接收玩家语音。
+- `处理中`：正在进行仲裁、文本修复、检索或生成。
+- `回应中`：正在播放或展示 AI 回复。
+- `空闲`：当前没有活动。
+- `不可用`：功能未启用或当前流程无法继续。
+
+模块名、任务编号、队列长度、模型加载阶段和异常代码不进入图标状态；需要调试时只在设置页的调试区域查看。
+
 ## 6. 交互上下文
 
 映迹维护的是轻量快照，不是完整客户端状态。
@@ -260,8 +282,8 @@ PRESENCE.CHAT_MESSAGE
 |---|---|---|
 | 事件驱动 | screen、聊天、世界事件、输入 | 事件发生时更新轻量状态 |
 | 请求捕获 | `INTERACTION_CONTEXT` | 请求到达后，下一次 client tick 捕获 |
-| 请求刷新 | 背包、药水、玩家状态、世界环境 | 只刷新被请求且 missing/dirty 的字段组 |
-| Dirty 标记 | 所有详细字段组 | dirty 不主动扫描，没人请求不刷新 |
+| 请求刷新 | 背包、药水、玩家状态、世界环境 | 每次只捕获本次明确请求的动态字段组 |
+| Dirty 标记 | 交互快照 | dirty 不主动扫描，没人请求不刷新 |
 
 第一版明确不做：
 
@@ -280,8 +302,10 @@ IA / IR 的调用方式：
 业务模块
   -> 请求 PRESENCE.QUERY_CONTEXT
   -> 映迹下一次 client tick 捕获 / 刷新
-  -> 返回不可变快照
-  -> 业务模块继续处理
+ -> 返回不可变快照
+ -> 业务模块继续处理
+
+世界退出后，旧查询不会延迟到新世界继续完成；排队请求会以世界会话结束失败，业务模块应按自身生命周期处理该结果。
 ```
 
 IA 使用快照做 owner 仲裁。
@@ -291,26 +315,26 @@ IR 使用快照中的物品上下文做命名物体增强。
 ## 8. 当前 NeoForge 结构
 
 ```text
-client/presence/
-  PresenceClientHooks
+tianshu-client/src/main/java/.../client/presence/
   PresenceClientRuntime
   PresenceModule
   PresenceModuleInstaller
   PresenceProtocolAdapter
   PresenceStateStore
+  PresenceTextProvider
 
-client/presence/capture/
+tianshu-client/src/main/java/.../client/presence/capture/
   PresenceChatMessageSink
   PresenceEventCollector
   PresenceRefreshPolicy
   PresenceWorldEventSink
 
-client/presence/context/
+tianshu-client/src/main/java/.../client/presence/context/
   PresenceContextFactMapper
   PresenceContextGroup
   PresenceContextQueryCoordinator
 
-client/presence/model/
+tianshu-client/src/main/java/.../client/presence/model/
   PresenceContextSnapshot
   PresenceInputKind
   PresenceInventoryItem
@@ -323,18 +347,17 @@ client/presence/model/
   PresenceTargetSnapshot
   PresenceWorldEnvironment
 
-client/presence/status/
+tianshu-client/src/main/java/.../client/presence/status/
   PresenceDisplayPolicy
   PresenceHudDisplay
   PresenceModuleStatusMapper
   PresenceStatusPriority
 
-client/gui/presence/hud/
-  ClientConfigPresenceHudSettings
-  PresenceHudRenderer
+tianshu-client/src/main/java/.../client/presence/hud/
   PresenceHudSettings
 
-client/gui/presence/hud/element/
+tianshu-neoforge/src/main/java/.../ui/hud/
+  PresenceHudRenderer
   PresenceHudElementController
   PresenceHudElementFrame
   PresenceHudElementRenderer
@@ -344,19 +367,27 @@ client/gui/presence/hud/element/
   PresenceStatusTextElementController
   PresenceStatusTextElementRenderer
 
-client/gui/presence/debug/
+tianshu-client/src/main/java/.../client/presence/diagnostics/
   PresenceDebugPipelineSnapshot
 
-client/gui/presence/settings/
+tianshu-client/src/main/java/.../client/settings/module/presence/
   PresenceSettingsRegistrySource
 
-platform/
-  PresencePlatform
-  PresenceTextProvider
+tianshu-client/src/main/java/.../client/host/
+  ClientGameContextProvider
+
+tianshu-neoforge/src/main/java/.../adapter/
   NeoForgePresencePlatform
-  NeoForgePresenceAdvancementTracker
   NeoForgePresenceScreenClassifier
   NeoForgePresenceTextProvider
+
+tianshu-neoforge/src/main/java/.../config/
+  ClientConfigPresenceHudSettings
+
+tianshu-neoforge/src/main/java/.../event/
+  NeoForgePresenceHooks
+  NeoForgePresenceAdvancementTracker
+
 ```
 
 ## 9. 当前完成度
@@ -370,8 +401,10 @@ platform/
 - IA / IR / AX 接入 Presence 查询
 - 旧的同步上下文桥已移除
 - 世界事件 topic 已纳入 Presence 一期/二期范围
-- HUD 绘制已迁到 `client/gui/presence/hud`
+- HUD 绘制位于 `tianshu-neoforge` 的 `ui/hud`
 - 映迹核心只输出 `PresenceHudDisplay`
+- 世界退出会清空旧快照、状态和排队查询，重新进入后建立新世界会话
+- 单一动态图标只呈现产品交互阶段，加载细节和调试信息不进入图标
 - 设置页已可控制 HUD 总开关、状态文本和 ASR / LLM / TTS / AX 状态来源
 - 内测调试页已可查看 ASR / IA / AX / LLM / TTS / Presence 最新模块状态
 
@@ -383,14 +416,14 @@ platform/
 
 ## 10. 设计原则
 
-1. 映迹是 NeoForge 层模块，不是 common 业务脑。
+1. 映迹核心位于 `tianshu-client`，NeoForge 只提供 Minecraft 状态读取和 HUD 绘制适配。
 2. 玩家可见状态要克制，优先轻量、短 TTL、可降级。
 3. IA / IR 只使用映迹提供的快照。
 4. payload 只承载 DTO，不携带 Minecraft 活对象。
 5. 业务 topic 由业务模块拥有，映迹只订阅或发布自己拥有的 topic。
-6. 详细字段按字段组 dirty 管理，没请求不刷新。
+6. 动态详细字段按请求捕获，没人请求不读取，不进行固定保鲜扫描。
 7. 协议处理线程不直接读取 Minecraft 活对象。
-8. 采集和文本映射依赖 platform 端口；NeoForge / Minecraft 版本敏感实现留在外层 `platform` 包。
+8. 采集和文本映射依赖 client 端口；NeoForge / Minecraft 版本敏感实现留在 adapter、event 和 UI 包。
 9. HUD 绘制属于 GUI 层；映迹核心只做显示状态控制。
 10. 设置页只控制显示策略，不影响采集、协议订阅和状态生成。
 11. shader / icon / 动画参数属于具体 HUD 元素，不进入 Presence 协议和采集模型。

@@ -19,6 +19,7 @@ public final class PresenceEventCollector {
     private PresenceChatMessageSink chatMessageSink = PresenceChatMessageSink.NOOP;
     private long lastKeyboardEventAtMillis;
     private long lastMouseEventAtMillis;
+    private volatile boolean worldSessionActive = true;
 
     public PresenceEventCollector(PresenceStateStore stateStore, ClientGameContextProvider platform) {
         this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
@@ -34,11 +35,17 @@ public final class PresenceEventCollector {
     }
 
     public void recordScreenChanged() {
+        if (!worldSessionActive) {
+            return;
+        }
         stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.NONE));
         stateStore.markDirty(PresenceContextGroup.PLAYER_INVENTORY);
     }
 
     public void recordKeyboardInput() {
+        if (!worldSessionActive) {
+            return;
+        }
         long now = System.currentTimeMillis();
         if (now - lastKeyboardEventAtMillis < PresenceRefreshPolicy.INPUT_EVENT_MIN_INTERVAL_MILLIS) {
             return;
@@ -48,6 +55,9 @@ public final class PresenceEventCollector {
     }
 
     public void recordMouseInput() {
+        if (!worldSessionActive) {
+            return;
+        }
         long now = System.currentTimeMillis();
         if (now - lastMouseEventAtMillis < PresenceRefreshPolicy.INPUT_EVENT_MIN_INTERVAL_MILLIS) {
             return;
@@ -57,10 +67,16 @@ public final class PresenceEventCollector {
     }
 
     public void recordVoiceKeyInput() {
+        if (!worldSessionActive) {
+            return;
+        }
         stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.VOICE_KEY));
     }
 
     public void recordPlayerChatMessage(String messageText, String senderId, String senderName) {
+        if (!worldSessionActive) {
+            return;
+        }
         if (messageText == null || messageText.isBlank() || senderId == null || senderId.isBlank()) {
             return;
         }
@@ -73,6 +89,9 @@ public final class PresenceEventCollector {
     }
 
     public void recordWorldEvents(List<PresenceWorldEventPayload> events) {
+        if (!worldSessionActive) {
+            return;
+        }
         if (events == null || events.isEmpty()) {
             return;
         }
@@ -88,7 +107,22 @@ public final class PresenceEventCollector {
     }
 
     public PresenceContextSnapshot captureGroups(Set<PresenceContextGroup> groups) {
+        if (!worldSessionActive) {
+            return PresenceContextSnapshot.empty();
+        }
         return captureGroups(groups, PresenceInputKind.NONE);
+    }
+
+    public void startWorldSession() {
+        worldSessionActive = true;
+        lastKeyboardEventAtMillis = 0L;
+        lastMouseEventAtMillis = 0L;
+    }
+
+    public void stopWorldSession() {
+        worldSessionActive = false;
+        lastKeyboardEventAtMillis = 0L;
+        lastMouseEventAtMillis = 0L;
     }
 
     private PresenceContextSnapshot captureGroups(Set<PresenceContextGroup> groups, PresenceInputKind inputKind) {

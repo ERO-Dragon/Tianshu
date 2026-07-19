@@ -100,6 +100,36 @@ class TianshuClientRuntimeLifecycleTest {
         assertEquals(ClientSessionState.WORLD_RUNNING, runtime.state());
     }
 
+    @Test
+    void presenceWorldSessionFollowsAcceptedCoreLifecycle() {
+        FakeCore core = new FakeCore();
+        AtomicInteger presenceStarts = new AtomicInteger();
+        AtomicInteger presenceStops = new AtomicInteger();
+        TianshuClientRuntime runtime = new TianshuClientRuntime(
+                core,
+                () -> { },
+                () -> { },
+                () -> { },
+                () -> { },
+                () -> { },
+                () -> { },
+                presenceStarts::incrementAndGet,
+                presenceStops::incrementAndGet,
+                () -> { },
+                ignored -> { }
+        );
+
+        runtime.startClient();
+        runtime.startWorldSession();
+        assertEquals(0, presenceStarts.get());
+
+        core.start.complete(true);
+        assertEquals(1, presenceStarts.get());
+
+        runtime.stopWorldSession();
+        assertEquals(1, presenceStops.get());
+    }
+
     private static TianshuClientRuntime runtime(FakeCore core, AtomicInteger releaseCapture, AtomicInteger closedResources) {
         return new TianshuClientRuntime(
                 core,

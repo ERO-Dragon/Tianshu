@@ -66,46 +66,8 @@ public record PresenceContextSnapshot(
         );
     }
 
-    public PresenceContextSnapshot withRealtimeFieldsFrom(PresenceContextSnapshot realtime) {
-        if (realtime == null) {
-            return this;
-        }
-        return new PresenceContextSnapshot(
-                realtime.playerId(),
-                realtime.dimensionId(),
-                realtime.screenKind(),
-                realtime.containerKind(),
-                realtime.heldItemId(),
-                realtime.equippedItemIds(),
-                realtime.crosshairTarget(),
-                realtime.interactionKeyDown(),
-                realtime.attackKeyDown(),
-                realtime.sneaking(),
-                realtime.recentInputKind(),
-                playerStatus,
-                worldEnvironment,
-                inventoryItems,
-                activeEffects,
-                mergeFacts(facts, realtime.facts()),
-                Math.max(capturedAtMillis, realtime.capturedAtMillis())
-        );
-    }
-
     private static String clean(String value) {
         return value == null ? "" : value.trim();
     }
 
-    private static Map<String, String> mergeFacts(Map<String, String> base, Map<String, String> realtime) {
-        if ((base == null || base.isEmpty()) && (realtime == null || realtime.isEmpty())) {
-            return Map.of();
-        }
-        java.util.LinkedHashMap<String, String> result = new java.util.LinkedHashMap<>();
-        if (base != null) {
-            result.putAll(base);
-        }
-        if (realtime != null) {
-            result.putAll(realtime);
-        }
-        return Map.copyOf(result);
-    }
 }

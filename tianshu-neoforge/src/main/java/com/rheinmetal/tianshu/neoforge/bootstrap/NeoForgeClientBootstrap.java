@@ -92,9 +92,11 @@ public final class NeoForgeClientBootstrap {
         diagnosticRouter = new ClientDiagnosticRouter(Minecraft.getInstance().gameDirectory.toPath(), new ClientDiagnosticPolicy(config));
         environment.bindDiagnostics(diagnosticRouter);
         presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(), new NeoForgePresenceTextProvider());
+        PresenceClientRuntime currentPresenceRuntime = presenceRuntime;
+        ClientConfigPresenceHudSettings presenceHudSettings = new ClientConfigPresenceHudSettings(config);
         PresenceHudRenderer presenceHudRenderer = new PresenceHudRenderer(
-                presenceRuntime::currentHudDisplay,
-                new ClientConfigPresenceHudSettings(config)
+                () -> currentPresenceRuntime.currentHudDisplay(presenceHudSettings::sourceVisible),
+                presenceHudSettings
         );
         NeoForgePresenceHooks.bind(presenceRuntime);
 

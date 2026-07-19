@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import java.util.Map;
 
 public final class PresenceDisplayPolicy {
+    private static final String STATUS_KEY_PREFIX = "tianshu.presence.status.";
     private static final long SHORT_TTL_MILLIS = 1_500L;
     private static final long ACTIVE_TTL_MILLIS = 8_000L;
     private static final long ERROR_TTL_MILLIS = 6_000L;
@@ -27,9 +28,11 @@ public final class PresenceDisplayPolicy {
 
     public PresenceStatusSnapshot fromAsr(AsrSpeechActivityPayload payload) {
         if (payload == null || !payload.speaking()) {
-            return status(PresenceStatusType.IDLE, PresenceSeverity.INFO, "module.asr", "presence.status.idle", SHORT_TTL_MILLIS, Map.of());
+            return status(PresenceStatusType.IDLE, PresenceSeverity.INFO, "module.asr", STATUS_KEY_PREFIX + "idle", SHORT_TTL_MILLIS, Map.of(
+                    "sessionId", payload == null ? "" : Long.toString(payload.sessionId())
+            ));
         }
-        return status(PresenceStatusType.LISTENING, PresenceSeverity.INFO, "module.asr", "presence.status.listening", ACTIVE_TTL_MILLIS, Map.of(
+        return status(PresenceStatusType.LISTENING, PresenceSeverity.INFO, "module.asr", STATUS_KEY_PREFIX + "listening", ACTIVE_TTL_MILLIS, Map.of(
                 "sessionId", Long.toString(payload.sessionId())
         ));
     }
@@ -48,7 +51,7 @@ public final class PresenceDisplayPolicy {
                     PresenceStatusType.THINKING,
                     PresenceSeverity.INFO,
                     "module.llm",
-                    "presence.status.thinking",
+                    STATUS_KEY_PREFIX + "thinking",
                     ACTIVE_TTL_MILLIS,
                     llmAttributes(payload)
             );
@@ -56,7 +59,7 @@ public final class PresenceDisplayPolicy {
                     PresenceStatusType.ERROR,
                     PresenceSeverity.ERROR,
                     "module.llm",
-                    "presence.status.error",
+                    STATUS_KEY_PREFIX + "error",
                     ERROR_TTL_MILLIS,
                     llmAttributes(payload)
             );
@@ -67,7 +70,7 @@ public final class PresenceDisplayPolicy {
                     PresenceStatusType.IDLE,
                     PresenceSeverity.INFO,
                     "module.llm",
-                    "presence.status.idle",
+                    STATUS_KEY_PREFIX + "idle",
                     SHORT_TTL_MILLIS,
                     llmAttributes(payload)
             );
@@ -77,7 +80,7 @@ public final class PresenceDisplayPolicy {
 
     public PresenceStatusSnapshot fromTts(TtsPlaybackStatusPayload payload) {
         if (payload == null || payload.state() == null || payload.state() == TtsPlaybackState.IDLE) {
-            return status(PresenceStatusType.IDLE, PresenceSeverity.INFO, "module.tts", "presence.status.idle", SHORT_TTL_MILLIS, Map.of());
+            return status(PresenceStatusType.IDLE, PresenceSeverity.INFO, "module.tts", STATUS_KEY_PREFIX + "idle", SHORT_TTL_MILLIS, Map.of());
         }
         PresenceStatusType type = payload.state() == TtsPlaybackState.SPEAKING
                 ? PresenceStatusType.SPEAKING
@@ -91,9 +94,6 @@ public final class PresenceDisplayPolicy {
         PresenceStatusSnapshot effective = snapshot == null ? PresenceStatusSnapshot.idle() : snapshot;
         if (!effective.messageKey().isBlank() && textProvider.exists(effective.messageKey())) {
             return textProvider.text(effective.messageKey());
-        }
-        if (!effective.messageText().isBlank()) {
-            return effective.messageText();
         }
         String fallbackKey = messageKey(effective.statusType());
         return textProvider.exists(fallbackKey) ? textProvider.text(fallbackKey) : "";
@@ -116,11 +116,11 @@ public final class PresenceDisplayPolicy {
             long ttlMillis,
             Map<String, String> attributes
     ) {
-        return new PresenceStatusSnapshot(type, severity, sourceModuleId, messageKey, "", System.currentTimeMillis(), ttlMillis, attributes);
+        return new PresenceStatusSnapshot(type, severity, sourceModuleId, messageKey, System.currentTimeMillis(), ttlMillis, attributes);
     }
 
     private String messageKey(PresenceStatusType type) {
-        return "presence.status." + type.name().toLowerCase(java.util.Locale.ROOT);
+        return STATUS_KEY_PREFIX + type.name().toLowerCase(java.util.Locale.ROOT);
     }
 
     private Map<String, String> llmAttributes(LlmStatusPayload payload) {

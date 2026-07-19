@@ -49,13 +49,13 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 ? Set.of(PresenceContextGroup.INTERACTION_CONTEXT)
                 : groups;
         boolean live = requested.contains(PresenceContextGroup.INTERACTION_CONTEXT);
-        Screen screen = minecraft.screen;
-        PresenceScreenKind screenKind = screenClassifier.classify(screen);
-        PresenceTargetSnapshot crosshairTarget = crosshairTarget(minecraft, player);
+        Screen screen = live ? minecraft.screen : null;
+        PresenceScreenKind screenKind = live ? screenClassifier.classify(screen) : PresenceScreenKind.NONE;
+        PresenceTargetSnapshot crosshairTarget = live ? crosshairTarget(minecraft, player) : PresenceTargetSnapshot.empty();
         String dimensionId = minecraft.level.dimension().location().toString();
-        String heldItemId = itemId(player.getMainHandItem());
-        List<String> equippedItems = equippedItemIds(player);
-        Map<String, String> facts = facts(screenKind);
+        String heldItemId = live ? itemId(player.getMainHandItem()) : "";
+        List<String> equippedItems = live ? equippedItemIds(player) : List.of();
+        Map<String, String> facts = live ? facts(screenKind) : Map.of();
 
         return new PresenceContextSnapshot(
                 player.getStringUUID(),
@@ -65,9 +65,9 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 heldItemId,
                 equippedItems,
                 crosshairTarget,
-                minecraft.options.keyUse.isDown(),
-                minecraft.options.keyAttack.isDown(),
-                player.isShiftKeyDown(),
+                live && minecraft.options.keyUse.isDown(),
+                live && minecraft.options.keyAttack.isDown(),
+                live && player.isShiftKeyDown(),
                 inputKind == null ? PresenceInputKind.NONE : inputKind,
                 requested.contains(PresenceContextGroup.PLAYER_STATUS) ? playerStatus(player) : PresencePlayerStatus.empty(),
                 requested.contains(PresenceContextGroup.WORLD_ENVIRONMENT) ? worldEnvironment(minecraft.level, player) : PresenceWorldEnvironment.empty(),

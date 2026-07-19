@@ -27,13 +27,17 @@ final class NeoForgePresenceAdvancementTracker {
     private final Set<String> completedAdvancementIds = new HashSet<>();
     private boolean baselineInitialized;
 
+    void reset() {
+        completedAdvancementIds.clear();
+        baselineInitialized = false;
+    }
+
     List<PresenceWorldEventPayload> collect(ClientboundUpdateAdvancementsPacket packet) {
         if (packet == null) {
             return List.of();
         }
         if (packet.shouldReset()) {
-            completedAdvancementIds.clear();
-            baselineInitialized = false;
+            reset();
         }
 
         Minecraft minecraft = Minecraft.getInstance();
