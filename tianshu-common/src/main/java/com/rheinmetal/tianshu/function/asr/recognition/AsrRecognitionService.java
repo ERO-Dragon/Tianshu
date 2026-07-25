@@ -33,6 +33,7 @@ public final class AsrRecognitionService {
     public void recognizeComplete(byte[] audioData, long sessionId, String inputMode, Consumer<AsrRecognitionResult> onResult, Runnable onComplete) {
         cancelCompleteTask();
         completeTask = adapter.submitRecognitionTask("complete", () -> {
+            adapter.publishRecognitionActivity(true, sessionId);
             try {
                 env.info("asr.recognition.complete.started bytes=" + (audioData == null ? 0 : audioData.length));
                 String result = engine().recognizeComplete(audioData);
@@ -45,6 +46,7 @@ public final class AsrRecognitionService {
             } catch (Exception e) {
                 env.error("asr.recognition.complete.failed", e);
             } finally {
+                adapter.publishRecognitionActivity(false, sessionId);
                 onComplete.run();
             }
         });
@@ -163,8 +165,13 @@ public final class AsrRecognitionService {
         if (!runtime.hasAudio()) {
             return;
         }
-        publishStreamingResult(flushRuntime(runtime), runtime, inputMode, onResult);
-        runtime.resetAfterFlush();
+        adapter.publishRecognitionActivity(true, runtime.sessionId());
+        try {
+            publishStreamingResult(flushRuntime(runtime), runtime, inputMode, onResult);
+        } finally {
+            runtime.resetAfterFlush();
+            adapter.publishRecognitionActivity(false, runtime.sessionId());
+        }
     }
 
     private String flushRuntime(StreamingRuntime runtime) {

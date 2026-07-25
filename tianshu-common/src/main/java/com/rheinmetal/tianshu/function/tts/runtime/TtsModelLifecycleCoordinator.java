@@ -20,6 +20,7 @@ final class TtsModelLifecycleCoordinator {
     private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
     private final Consumer<TtsFailure> failureObserver;
+    private final Consumer<Boolean> loadingObserver;
     private LifecycleState state = LifecycleState.IDLE;
     private String previewRequestId = "";
     private String previewRestoreModel = "";
@@ -30,9 +31,15 @@ final class TtsModelLifecycleCoordinator {
 
     TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
                                  Consumer<TtsFailure> failureObserver) {
+        this(executorManager, synthesisEngine, failureObserver, null);
+    }
+
+    TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
+                                 Consumer<TtsFailure> failureObserver, Consumer<Boolean> loadingObserver) {
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;
         this.failureObserver = failureObserver == null ? ignored -> { } : failureObserver;
+        this.loadingObserver = loadingObserver == null ? ignored -> { } : loadingObserver;
     }
 
     TtsOperationResult prepare(Consumer<Boolean> completion) {
@@ -200,6 +207,15 @@ final class TtsModelLifecycleCoordinator {
     }
 
     private void runPrepare() {
+        publishLoading(true);
+        try {
+            runPrepareWork();
+        } finally {
+            publishLoading(false);
+        }
+    }
+
+    private void runPrepareWork() {
         boolean initialized;
         try {
             initialized = synthesisEngine.initialize();
@@ -306,6 +322,7 @@ final class TtsModelLifecycleCoordinator {
         state = LifecycleState.OPERATION;
         ProtocolTaskHandle handle = executorManager.submit(taskSpec(action), () -> {
             T result;
+            publishLoading(true);
             try {
                 result = operation.get();
             } catch (Throwable throwable) {
@@ -313,6 +330,7 @@ final class TtsModelLifecycleCoordinator {
                 failureObserver.accept(failure);
                 result = failureResult.apply(failure);
             } finally {
+                publishLoading(false);
                 synchronized (TtsModelLifecycleCoordinator.this) {
                     if (state == LifecycleState.OPERATION) {
                         state = LifecycleState.IDLE;
@@ -328,6 +346,13 @@ final class TtsModelLifecycleCoordinator {
             return TtsOperationResult.rejected(failure);
         }
         return TtsOperationResult.accepted("tts-model:" + action);
+    }
+
+    private void publishLoading(boolean loading) {
+        try {
+            loadingObserver.accept(loading);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     private synchronized TtsOperationResult rejectBusy(Consumer<TtsFailure> failureConsumer) {

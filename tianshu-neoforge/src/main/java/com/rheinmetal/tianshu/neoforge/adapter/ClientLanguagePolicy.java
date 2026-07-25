@@ -12,11 +12,7 @@ public final class ClientLanguagePolicy {
     private ClientLanguagePolicy() {
     }
 
-    public static AXPromptLanguage currentPromptLanguage() {
-        return AXPromptLanguage.fromCode(currentLanguageCode());
-    }
-
-    public static String currentLanguageCode() {
+    public static String captureCurrentLanguageCode() {
         try {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft != null && minecraft.options != null && minecraft.options.languageCode != null && !minecraft.options.languageCode.isBlank()) {
@@ -33,12 +29,12 @@ public final class ClientLanguagePolicy {
         return AXPromptLanguage.EN_US.code();
     }
 
-    public static boolean useChineseContent() {
-        return currentPromptLanguage() == AXPromptLanguage.ZH_CN;
+    public static boolean useChineseContent(String languageCode) {
+        return AXPromptLanguage.fromCode(languageCode) == AXPromptLanguage.ZH_CN;
     }
 
-    public static String itemDisplayName(ItemStack stack, ResourceLocation itemId) {
-        if (stack != null && useChineseContent()) {
+    public static String itemDisplayName(ItemStack stack, ResourceLocation itemId, String languageCode) {
+        if (stack != null && useChineseContent(languageCode)) {
             String translated = stack.getHoverName().getString();
             String safe = safeTranslatedName(translated);
             if (!safe.isBlank()) {
@@ -48,11 +44,11 @@ public final class ClientLanguagePolicy {
         return englishName(itemId);
     }
 
-    public static String registryDisplayName(ResourceLocation id, String translationCategory) {
+    public static String registryDisplayName(ResourceLocation id, String translationCategory, String languageCode) {
         if (id == null) {
             return "unknown";
         }
-        if (useChineseContent() && translationCategory != null && !translationCategory.isBlank()) {
+        if (useChineseContent(languageCode) && translationCategory != null && !translationCategory.isBlank()) {
             String translated = Component.translatable(id.toLanguageKey(translationCategory)).getString();
             String safe = safeTranslatedName(translated);
             if (!safe.isBlank()) {
@@ -62,8 +58,8 @@ public final class ClientLanguagePolicy {
         return englishName(id);
     }
 
-    public static String effectDisplayName(ResourceLocation id, String descriptionId) {
-        if (useChineseContent() && descriptionId != null && !descriptionId.isBlank()) {
+    public static String effectDisplayName(ResourceLocation id, String descriptionId, String languageCode) {
+        if (useChineseContent(languageCode) && descriptionId != null && !descriptionId.isBlank()) {
             String translated = Component.translatable(descriptionId).getString();
             String safe = safeTranslatedName(translated);
             if (!safe.isBlank()) {

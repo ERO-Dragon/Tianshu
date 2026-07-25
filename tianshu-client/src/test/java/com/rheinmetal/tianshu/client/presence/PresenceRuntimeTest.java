@@ -7,6 +7,8 @@ import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
+import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
+import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import com.rheinmetal.tianshu.protocol.AckPolicy;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
@@ -23,8 +25,6 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
-import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
-import com.rheinmetal.tianshu.protocol.status.ModuleStatusSeverity;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -98,27 +98,16 @@ class PresenceRuntimeTest {
     }
 
     @Test
-    void worldResetDropsContextAndStatusFromPreviousWorld() {
+    void worldResetDropsContextFromPreviousWorld() {
         PresenceStateStore store = new PresenceStateStore();
         store.updateGroups(snapshot("world-a", PresenceInputKind.NONE), EnumSet.of(
                 PresenceContextGroup.INTERACTION_CONTEXT,
                 PresenceContextGroup.PLAYER_INVENTORY
         ));
-        store.updateStatus(new com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.THINKING,
-                com.rheinmetal.tianshu.client.presence.model.PresenceSeverity.INFO,
-                "module.llm",
-                "presence.status.thinking",
-                System.currentTimeMillis(),
-                5_000L,
-                Map.of()
-        ));
 
         store.resetWorldState();
 
         assertEquals("", store.contextSnapshot().playerId());
-        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.IDLE,
-                store.statusSnapshot().statusType());
         assertFalse(store.groupsNeedingRefresh(EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY)).isEmpty());
     }
 
@@ -141,96 +130,6 @@ class PresenceRuntimeTest {
         assertEquals("PRESENCE_WORLD_STOPPED", context.failureCode);
         assertEquals(0, context.completedCount);
         assertTrue(context.responseSubmissions.isEmpty());
-    }
-
-    @Test
-    void moduleLoadingStatusIsTranslatedByPresenceWithoutModuleSpecificTypes() {
-        com.rheinmetal.tianshu.client.presence.status.PresenceModuleStatusMapper mapper =
-                new com.rheinmetal.tianshu.client.presence.status.PresenceModuleStatusMapper();
-        ModuleStatus status = ModuleStatus.keyed(
-                "module.tts",
-                "runtime.waiting",
-                "tianshu.presence.module.tts.loading",
-                ModuleStatusSeverity.INFO,
-                4_000L,
-                Map.of("loadStage", "preloading")
-        );
-
-        var snapshot = mapper.fromStatus(status);
-
-        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.PREPARING, snapshot.statusType());
-        assertEquals("tianshu.presence.status.preparing", snapshot.messageKey());
-        assertEquals("preloading", snapshot.attributes().get("loadStage"));
-
-        PresenceStateStore store = new PresenceStateStore();
-        store.updateStatus(snapshot);
-        store.updateStatus(new com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy()
-                .fromAsr(com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload.speaking(1L)));
-        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.LISTENING,
-                store.statusSnapshot().statusType());
-    }
-
-    @Test
-    void terminalStatusClearsItsSourceAndRevealsTheNextActiveActivity() {
-        PresenceStateStore store = new PresenceStateStore();
-        store.updateStatus(status(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.THINKING,
-                "module.llm", Map.of(), 10_000L
-        ));
-        store.updateStatus(status(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.SPEAKING,
-                "module.tts", Map.of(), 10_000L
-        ));
-        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.SPEAKING,
-                store.statusSnapshot().statusType());
-
-        store.updateStatus(status(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.IDLE,
-                "module.tts", Map.of(), 0L
-        ));
-
-        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.THINKING,
-                store.statusSnapshot().statusType());
-    }
-
-    @Test
-    void hiddenSourceIsExcludedWithoutHidingOtherVisibleActivity() {
-        PresenceStateStore store = new PresenceStateStore();
-        store.updateStatus(status(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.SPEAKING,
-                "module.tts", Map.of(), 10_000L
-        ));
-        store.updateStatus(status(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.THINKING,
-                "module.llm", Map.of(), 10_000L
-        ));
-
-        assertEquals(com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.THINKING,
-                store.statusSnapshot(source -> !"module.tts".equals(source)).statusType());
-    }
-
-    @Test
-    void terminalFromOlderSessionCannotClearNewerListeningActivity() {
-        PresenceStateStore store = new PresenceStateStore();
-        long now = System.currentTimeMillis();
-        store.updateStatus(new com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.LISTENING,
-                com.rheinmetal.tianshu.client.presence.model.PresenceSeverity.INFO,
-                "module.asr", "tianshu.presence.status.listening", now, 10_000L, Map.of("sessionId", "1")
-        ));
-        store.updateStatus(new com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.LISTENING,
-                com.rheinmetal.tianshu.client.presence.model.PresenceSeverity.INFO,
-                "module.asr", "tianshu.presence.status.listening", now + 1L, 10_000L, Map.of("sessionId", "2")
-        ));
-
-        store.updateStatus(new com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot(
-                com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.IDLE,
-                com.rheinmetal.tianshu.client.presence.model.PresenceSeverity.INFO,
-                "module.asr", "tianshu.presence.status.idle", now + 2L, 0L, Map.of("sessionId", "1")
-        ));
-
-        assertEquals("2", store.statusSnapshot().attributes().get("sessionId"));
     }
 
     @Test
@@ -265,22 +164,23 @@ class PresenceRuntimeTest {
                 new com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy(new PresenceTextProvider() {
                     @Override
                     public boolean exists(String key) {
-                        return "tianshu.presence.status.speaking".equals(key);
+                        return "tianshu.presence.status.responding".equals(key);
                     }
 
                     @Override
                     public String text(String key, Object... args) {
-                        return "localized-speaking";
+                        return "localized-responding";
                     }
                 });
 
-        var display = policy.hudDisplay(policy.fromTts(
-                com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload.now(
-                        com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState.SPEAKING
-                )
+        var display = policy.hudDisplay(new PresenceActivitySnapshot(
+                PresencePrimaryState.RESPONDING,
+                false,
+                "module.ax",
+                System.currentTimeMillis()
         ));
 
-        assertEquals("localized-speaking", display.text());
+        assertEquals("localized-responding", display.text());
     }
 
     private static PresenceWorldEventPayload worldEvent(String id) {
@@ -307,23 +207,6 @@ class PresenceRuntimeTest {
                 List.of(),
                 Map.of(),
                 1L
-        );
-    }
-
-    private static com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot status(
-            com.rheinmetal.tianshu.client.presence.model.PresenceStatusType type,
-            String source,
-            Map<String, String> attributes,
-            long ttlMillis
-    ) {
-        return new com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot(
-                type,
-                com.rheinmetal.tianshu.client.presence.model.PresenceSeverity.INFO,
-                source,
-                "presence.status." + type.name().toLowerCase(),
-                System.currentTimeMillis(),
-                ttlMillis,
-                attributes
         );
     }
 

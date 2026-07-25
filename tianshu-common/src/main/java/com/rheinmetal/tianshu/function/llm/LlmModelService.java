@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.llm.download.LlmModelDownloadCoordinator;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.LlmModelManager;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -20,8 +21,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -71,6 +76,9 @@ public final class LlmModelService {
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
+    private final AtomicBoolean availabilityRefreshQueued = new AtomicBoolean(false);
+    private final ConcurrentLinkedQueue<Runnable> availabilityRefreshCallbacks = new ConcurrentLinkedQueue<>();
+    private final AtomicReference<ModelAvailabilitySnapshot> availabilitySnapshot = new AtomicReference<>(ModelAvailabilitySnapshot.empty());
     private final AtomicReference<String> deletingModelName = new AtomicReference<>("");
 
     public LlmModelService(IGameEnvironment env, LlmConfiguration config, ModuleExecutionAccess executorManager) {
@@ -107,6 +115,53 @@ public final class LlmModelService {
 
     public boolean hasModelContent(LlmModelInfo info) {
         return LlmModelManager.isModelDownloaded(info, modelBasePath());
+    }
+
+    public ModelAvailabilitySnapshot modelAvailability() {
+        return availabilitySnapshot.get();
+    }
+
+    public void refreshModelAvailabilityAsync(Runnable completion) {
+        if (completion != null) {
+            availabilityRefreshCallbacks.add(completion);
+        }
+        if (!availabilityRefreshQueued.compareAndSet(false, true)) {
+            return;
+        }
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.llm")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.llm:model.availability")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> {
+                    try {
+                        refreshModelAvailability();
+                    } finally {
+                        completeAvailabilityRefresh();
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            completeAvailabilityRefresh();
+        }
+    }
+
+    private void completeAvailabilityRefresh() {
+        Runnable callback;
+        while ((callback = availabilityRefreshCallbacks.poll()) != null) {
+            try {
+                callback.run();
+            } catch (RuntimeException exception) {
+                env.error("llm.model.availability_callback_failed", exception);
+            }
+        }
+        availabilityRefreshQueued.set(false);
+        if (!availabilityRefreshCallbacks.isEmpty()) {
+            refreshModelAvailabilityAsync(null);
+        }
     }
 
     public Path resolveModelDir(LlmModelInfo info) {
@@ -265,6 +320,7 @@ public final class LlmModelService {
                     boolean deleted;
                     try {
                         deleted = deleteModel(info);
+                        refreshModelAvailability();
                     } finally {
                         deletingModelName.compareAndSet(modelName, "");
                     }
@@ -328,8 +384,26 @@ public final class LlmModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                this::cleanupStaleIncompleteDownloads
+                () -> {
+                    cleanupStaleIncompleteDownloads();
+                    refreshModelAvailability();
+                }
         );
+    }
+
+    private void refreshModelAvailability() {
+        Map<String, ModelAvailabilitySnapshot.Entry> entries = new LinkedHashMap<>();
+        for (LlmModelInfo info : allModels()) {
+            if (info == null || info.name == null || info.name.isBlank()) {
+                continue;
+            }
+            boolean installed = hasModelContent(info);
+            entries.put(info.name, new ModelAvailabilitySnapshot.Entry(
+                    installed,
+                    installed ? modelSizeBytes(info) : 0L
+            ));
+        }
+        availabilitySnapshot.set(new ModelAvailabilitySnapshot(entries, true, System.currentTimeMillis()));
     }
 
     private void cleanupStaleIncompleteDownloads() {
@@ -392,6 +466,7 @@ public final class LlmModelService {
         if (!finishTask(task)) {
             return;
         }
+        refreshModelAvailability();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, STATUS_DOWNLOAD_COMPLETE_KEY), "");
         publishWaiting("tianshu.presence.module.llm.download_complete");
         if (callback != null) callback.onComplete();
@@ -402,6 +477,7 @@ public final class LlmModelService {
             return;
         }
         cleanupCancelledDownload(task);
+        refreshModelAvailability();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, downloadSnapshot.get().progress().percent(), STATUS_CANCELLED_KEY), "");
         publishWaiting("tianshu.presence.module.llm.download_cancelled");
         if (callback != null) callback.onCancelled();
@@ -411,6 +487,7 @@ public final class LlmModelService {
         if (!finishTask(task)) {
             return;
         }
+        refreshModelAvailability();
         if (message != null && !message.isBlank()) {
             env.warn("LLM model download failed: " + message);
         }

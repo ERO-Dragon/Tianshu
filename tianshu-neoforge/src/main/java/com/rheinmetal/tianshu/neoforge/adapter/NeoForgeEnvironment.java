@@ -7,11 +7,17 @@ import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
+import java.util.Objects;
 
 public class NeoForgeEnvironment implements IGameEnvironment {
 
     private static final Logger LOGGER = LogUtils.getLogger();
+    private final Path gameDirectory;
     private volatile DiagnosticSink diagnosticSink = DiagnosticSink.NOOP;
+
+    public NeoForgeEnvironment(Path gameDirectory) {
+        this.gameDirectory = Objects.requireNonNull(gameDirectory, "gameDirectory").toAbsolutePath().normalize();
+    }
 
     public void bindDiagnostics(DiagnosticSink diagnosticSink) {
         this.diagnosticSink = diagnosticSink == null ? DiagnosticSink.NOOP : diagnosticSink;
@@ -35,7 +41,7 @@ public class NeoForgeEnvironment implements IGameEnvironment {
 
     @Override
     public Path getGameDirectory() {
-        return Minecraft.getInstance().gameDirectory.toPath();
+        return gameDirectory;
     }
 
     @Override
@@ -45,14 +51,14 @@ public class NeoForgeEnvironment implements IGameEnvironment {
 
     @Override
     public void openFolder(Path dir) {
-        if (dir == null || !java.nio.file.Files.isDirectory(dir)) {
-            warn("无法打开目录，路径无效: " + dir);
+        if (dir == null) {
+            warn("NEOFORGE_OPEN_FOLDER_INVALID_PATH");
             return;
         }
         try {
             net.minecraft.Util.getPlatform().openFile(dir.toFile());
         } catch (Exception e) {
-            LOGGER.error("打开目录失败: " + dir, e);
+            LOGGER.error("NEOFORGE_OPEN_FOLDER_FAILED path={}", dir, e);
         }
     }
 

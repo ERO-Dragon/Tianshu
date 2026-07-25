@@ -294,7 +294,7 @@ ASR 的结构化结果会发布到协议中心的 final text 主题，供 IR / L
 
 ASR 不是协议中心本身，它只是协议中心中的一个上游生产者。
 
-当前稳定协议还包括 speech activity 和 `module.asr` 模块状态。ASR 不提供公共请求 capability；`AsrInputService` 与 `AsrModelService` 是同一宿主内的窄端口，不应被外部模块当作跨模块协议。完整 topic、payload、字段和订阅示例见 [ASR 协议中心使用文档](ASR_协议中心使用文档.md)。
+当前稳定协议还包括 speech activity、`module.asr` 模块状态和 `PRESENCE.ACTIVITY` 产品活动。模块状态服务设置与诊断；模型真实加载、识别任务和 VAD 说话活动分别发布 `LOADING`、`PROCESSING_TASK` 和独立 `LISTENING`。ASR 不提供公共请求 capability；`AsrInputService` 与 `AsrModelService` 是同一宿主内的窄端口，不应被外部模块当作跨模块协议。完整 topic、payload、字段和订阅示例见 [ASR 协议中心使用文档](ASR_协议中心使用文档.md)。
 
 ## 6. 运行时能力语义
 

@@ -59,7 +59,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private final AtomicReference<TtsPlaybackState> lastPublishedState = new AtomicReference<>();
 
     public TtsRuntime(IGameEnvironment env, ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine, IAudioBridge audioBridge, Consumer<TtsSession> sessionStatusPublisher, Consumer<TtsPlaybackState> playbackStatePublisher) {
-        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, ignored -> { });
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, ignored -> { }, ignored -> { });
     }
 
     public TtsRuntime(
@@ -71,12 +71,25 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher
     ) {
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, requestStatusPublisher, ignored -> { });
+    }
+
+    public TtsRuntime(
+            IGameEnvironment env,
+            ModuleExecutionAccess executorManager,
+            TtsSynthesisEngine synthesisEngine,
+            IAudioBridge audioBridge,
+            Consumer<TtsSession> sessionStatusPublisher,
+            Consumer<TtsPlaybackState> playbackStatePublisher,
+            Consumer<TtsRequestStatusPayload> requestStatusPublisher,
+            Consumer<Boolean> modelLoadingPublisher
+    ) {
         this.env = env;
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;
         this.synthesisScheduler = new TtsSynthesisScheduler(executorManager, synthesisEngine);
         this.synthesisTaskCoordinator = new TtsSynthesisTaskCoordinator(synthesisEngine, synthesisScheduler, synthesisPolicy, lastFailure::set);
-        this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set);
+        this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher);
         this.playbackController = new TtsPlaybackController(audioBridge, env, this, executorManager);
         this.sessionStatusPublisher = sessionStatusPublisher == null ? ignored -> {} : sessionStatusPublisher;
         this.playbackStatePublisher = playbackStatePublisher == null ? ignored -> {} : playbackStatePublisher;
@@ -259,7 +272,15 @@ public final class TtsRuntime implements TtsPlaybackListener {
         return TtsOperationResult.accepted(request.requestId());
     }
 
-    public TtsOperationResult synthesize(TtsRequest request, boolean streaming, long ttlMillis, TtsAudioChunkConsumer onAudio, Runnable onComplete, Consumer<TtsFailure> onFailure) {
+    public TtsOperationResult synthesize(
+            TtsRequest request,
+            boolean streaming,
+            long ttlMillis,
+            TtsAudioChunkConsumer onAudio,
+            Runnable onStarted,
+            Runnable onComplete,
+            Consumer<TtsFailure> onFailure
+    ) {
         if (!running.get()) {
             TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not running");
             lastFailure.set(failure);
@@ -294,11 +315,15 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 request.priority(),
                 request.voiceProfile()
         );
-        return synthesisTaskCoordinator.submit(normalizedRequest, streaming, ttlMillis, onAudio, onComplete, onFailure);
-    }
-
-    public TtsOperationResult synthesize(TtsRequest request, boolean streaming, TtsAudioChunkConsumer onAudio, Runnable onComplete, Consumer<TtsFailure> onFailure) {
-        return synthesize(request, streaming, 30_000L, onAudio, onComplete, onFailure);
+        return synthesisTaskCoordinator.submit(
+                normalizedRequest,
+                streaming,
+                ttlMillis,
+                onAudio,
+                onStarted,
+                onComplete,
+                onFailure
+        );
     }
 
     public TtsControlResult stopAll(String reason) {

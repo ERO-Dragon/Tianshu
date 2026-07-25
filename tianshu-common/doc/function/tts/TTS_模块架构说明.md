@@ -29,7 +29,7 @@
 
   - 玩家可以选择全局默认音色、speaker 和语速，调用方也可以在自己的请求中覆盖这些参数。
   - 明确指定但尚未加载的音色会直接失败，不会静默换成另一种声音。
-  - 进入世界后 TTS 会自动加载已选模型并尽早完成默认音色预热；加载、播放、合成和请求终态都会通过模块状态公开。
+  - 进入世界后 TTS 会自动加载已选模型并尽早完成默认音色预热；健康和失败通过模块状态公开，真实加载与非 AX 任务通过产品活动公开。
 
 本文面向 TTS 维护者。外部模块接入方式见 [TTS_协议中心使用文档.md](TTS_协议中心使用文档.md)。
 
@@ -110,6 +110,9 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 
 - `TTS.PLAYBACK`：模块级 `IDLE / SPEAKING / ALERTING`。
 - `TTS.REQUEST_STATUS`：请求级 `QUEUED / PLAYING / COMPLETED / CANCELLED / FAILED`，携带稳定的 requestId、sourceId、sessionId 和 turnId。
+- `PRESENCE.ACTIVITY`：玩家可感知的产品活动。真实模型准备使用 `tts.model.load / LOADING`；非 AX 播放和纯合成使用 `tts.request.<requestId> / PROCESSING_TASK`。
+
+纯合成只有在 `TtsSynthesisTaskCoordinator` 真正取得执行机会时才开始产品活动，排队拒绝不产生短暂忙碌状态。完成、显式取消、TTL 过期、失败和模块 stop 都通过同一终态回调结束活动。AX 来源不由 TTS 发布 `RESPONDING`，回复阶段只由 AX 根据 IA delivery 和首段可见输出控制。
 
 内部 `TtsSessionState` 仅服务于物理句子的合成与播放，不是外部协议契约。
 

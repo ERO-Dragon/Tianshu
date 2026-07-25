@@ -101,10 +101,12 @@ class TtsRuntimeControlTest {
         TtsOperationResult result = runtime.synthesize(
                 request("synth-only"),
                 false,
+                30_000L,
                 (chunkIndex, audio, last) -> {
                     chunks.add(audio);
                     lastFlags.add(last);
                 },
+                null,
                 completed::countDown,
                 null
         );
@@ -132,6 +134,7 @@ class TtsRuntimeControlTest {
                 request("synthesis-task", "first. second."),
                 false,
                 30_000L,
+                null,
                 null,
                 completed::countDown,
                 failure -> {
@@ -165,12 +168,13 @@ class TtsRuntimeControlTest {
         AtomicReference<TtsFailure> expiredFailure = new AtomicReference<>();
         CountDownLatch expired = new CountDownLatch(1);
 
-        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null);
+        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null, null);
         assertTrue(engine.awaitStarted());
         runtime.synthesize(
                 request("short-lived-task"),
                 false,
                 1_000L,
+                null,
                 null,
                 null,
                 failure -> {
@@ -194,12 +198,13 @@ class TtsRuntimeControlTest {
         AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
         CountDownLatch failed = new CountDownLatch(1);
 
-        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null);
+        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null, null);
         assertTrue(engine.awaitStarted());
         runtime.synthesize(
                 request("queued-task"),
                 false,
                 30_000L,
+                null,
                 null,
                 null,
                 failure -> {

@@ -3,8 +3,6 @@ package com.rheinmetal.tianshu.client.settings.module.ax;
 public interface AxSettingsAccess {
     boolean assistantEnabled();
     void setAxEnabled(boolean enabled);
-    boolean isAxDiagnosticsEnabled();
-    void setAxDiagnosticsEnabled(boolean enabled);
     String wakeWord();
     void setAxWakeWord(String wakeWord);
     boolean isAxReplySpeechEnabled();

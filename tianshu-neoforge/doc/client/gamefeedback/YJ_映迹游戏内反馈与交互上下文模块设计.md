@@ -2,9 +2,9 @@
 
 ## 快速摘要
 
-1. **功能**：映迹为游戏提供当前环境信息，并用一个动态图标反馈系统当前所处的交互阶段。
+1. **功能**：映迹为游戏提供当前环境信息，并为一个状态机控制的 shader 提供稳定产品状态。
 2. **上下文**：IA、IR、AX 等模块通过协议中心按需请求玩家、世界、背包、效果和交互信息；返回内容只对应当前世界。
-3. **图标阶段**：对玩家只呈现准备中、聆听中、处理中、回应中、空闲或不可用等少量产品状态，不展示模块名、任务编号或模型内部阶段。
+3. **产品状态**：主状态只包含加载、空闲、处理任务、思考和回复；聆听是可与主状态同时存在的前景状态，不展示模块名、任务编号、错误或模型内部阶段。
 4. **世界边界**：退出世界时清空上下文、状态和排队查询；重新进入后重新建立当前世界的数据。
 
 ## 1. 模块命名
@@ -146,7 +146,7 @@ WORLD_ENVIRONMENT
 - 把 HUD 渲染进一步从采集链路里拆开
 - 把游戏内 HUD 绘制放到 `tianshu-neoforge` 的 `ui/hud`
 - 让映迹核心只输出纯显示状态，不直接碰底层 GUI API
-- 设置页负责控制哪些模块状态进入 HUD，以及哪些 HUD 元素显示
+- 设置页只控制 HUD 总开关和可选显示元素，不改变产品活动的来源或语义
 - HUD 元素允许逐步扩展成文本、icon、shader 等多种绘制形态，但只能停留在 GUI 层
 - 给未来调试页预留 GUI 层入口，但不回流到协议 adapter
 - 让 Presence 继续保持“轻量上下文模块”，而不是全局运行时
@@ -159,11 +159,12 @@ WORLD_ENVIRONMENT
 - `PresenceHudElementFrame` 承载元素类型、状态、显示数据和状态时间
 - `PresenceStatusTextElementController` 负责状态文本元素的可见性和状态机
 - `PresenceStatusTextElementRenderer` 负责状态文本元素的 Minecraft 绘制
-- `PresenceHudSettings` 控制 HUD 总开关、状态文本开关和模块来源可见性
-- 映迹设置页已接入设置控制台，用于控制 HUD 元素和模块状态来源
+- `PresenceActivityTracker` 聚合显式 `PRESENCE.ACTIVITY`，并输出主状态与独立 `listening` 标记
+- `PresenceHudSettings` 只控制 HUD 总开关和状态文本开关
+- 映迹设置页已接入设置控制台，不再暴露按 ASR / LLM / TTS / AX 过滤产品活动的旧选项
 - 内测调试开关已接入设置页，默认关闭
 - 模块流水线调试视图只读读取 `ModuleStatusCache`，不订阅新 topic，不保存历史
-- AX responding 状态通过 `presenceStatusType=SPEAKING` 接入映迹状态展示
+- AX 在 IA delivery 建立有效回合后显式发布 `THINKING`，首次可见输出后切换为 `RESPONDING`
 
 三期预留：
 
@@ -188,6 +189,7 @@ WORLD_ENVIRONMENT
 
 - 通过 platform 端口采集客户端状态
 - 维护 `PresenceStateStore`
+- 聚合 `PRESENCE.ACTIVITY` 并输出 `PresenceActivitySnapshot`
 - 处理 `PRESENCE.QUERY_CONTEXT`
 - 发布 `PRESENCE.WORLD_EVENT`
 - 发布 `PRESENCE.CHAT_MESSAGE`
@@ -242,16 +244,25 @@ PRESENCE.CHAT_MESSAGE
 
 ### 5.3 产品状态图标
 
-映迹对外只提供一个动态图标，不为每个模块分别显示图标。内部模块状态只用于推导当前产品阶段：
+映迹对外只提供一套产品状态，不为每个模块分别建立 HUD 状态。状态来自模块显式发布的 `PRESENCE.ACTIVITY`，不会从 `MODULE.STATUS`、`LLM.STATUS` 或 `TTS.PLAYBACK` 推断。
 
-- `准备中`：相关服务尚未就绪，暂时不能提供完整服务。
-- `聆听中`：正在接收玩家语音。
-- `处理中`：正在进行仲裁、文本修复、检索或生成。
-- `回应中`：正在播放或展示 AI 回复。
-- `空闲`：当前没有活动。
-- `不可用`：功能未启用或当前流程无法继续。
+主状态固定为：
 
-模块名、任务编号、队列长度、模型加载阶段和异常代码不进入图标状态；需要调试时只在设置页的调试区域查看。
+- `LOADING`：模型或服务正在真实加载、预热，暂时还不能提供对应能力。
+- `IDLE`：当前没有仍然有效的主活动。
+- `PROCESSING_TASK`：任意模块正在执行真实任务，包括外部模组任务和 AX 记忆维护。
+- `THINKING`：AX 已收到 IA 判定给 AX 的 delivery，正在获取上下文、检索、组装 Prompt 或生成首段输出。
+- `RESPONDING`：AX 已产生首段可见输出，正在继续展示或播报本轮回复。
+
+主状态优先级为：
+
+```text
+RESPONDING > THINKING > PROCESSING_TASK > LOADING > IDLE
+```
+
+`LISTENING` 是独立前景状态，只表示 ASR 在处理后音频中检测到真实说话活动。它可以与任意主状态同时存在，不创建大量组合枚举，也不触发或打断 AX。聆听结束后，HUD 恢复仍然有效的主状态。
+
+模块名、任务编号、队列长度、细分加载阶段、模型缺失和异常代码不进入产品状态；需要调试时只在设置页调试区域、诊断或日志查看。未来 shader 只消费 `primaryState`、`listening` 和状态持续时间，视觉参数不进入协议 payload。
 
 ## 6. 交互上下文
 
@@ -335,23 +346,21 @@ tianshu-client/src/main/java/.../client/presence/context/
   PresenceContextQueryCoordinator
 
 tianshu-client/src/main/java/.../client/presence/model/
+  PresenceActivitySnapshot
   PresenceContextSnapshot
   PresenceInputKind
   PresenceInventoryItem
   PresencePlayerStatus
   PresencePotionEffect
   PresenceScreenKind
-  PresenceSeverity
-  PresenceStatusSnapshot
-  PresenceStatusType
+  PresencePrimaryState
   PresenceTargetSnapshot
   PresenceWorldEnvironment
 
 tianshu-client/src/main/java/.../client/presence/status/
+  PresenceActivityTracker
   PresenceDisplayPolicy
   PresenceHudDisplay
-  PresenceModuleStatusMapper
-  PresenceStatusPriority
 
 tianshu-client/src/main/java/.../client/presence/hud/
   PresenceHudSettings
@@ -404,15 +413,15 @@ tianshu-neoforge/src/main/java/.../event/
 - HUD 绘制位于 `tianshu-neoforge` 的 `ui/hud`
 - 映迹核心只输出 `PresenceHudDisplay`
 - 世界退出会清空旧快照、状态和排队查询，重新进入后建立新世界会话
-- 单一动态图标只呈现产品交互阶段，加载细节和调试信息不进入图标
-- 设置页已可控制 HUD 总开关、状态文本和 ASR / LLM / TTS / AX 状态来源
+- 产品状态机只呈现显式活动；加载细节、模块错误和调试信息不进入产品状态
+- 设置页只控制 HUD 总开关和状态文本，不过滤真实产品活动来源
 - 内测调试页已可查看 ASR / IA / AX / LLM / TTS / Presence 最新模块状态
 
 待继续观察：
 
 - 快照字段组是否还需要再收紧
 - UI 是否需要进一步拆分
-- HUD 是否需要新增 icon / shader 等元素
+- 状态机 shader 的视觉形态、位置、尺寸和动画参数
 
 ## 10. 设计原则
 
@@ -426,5 +435,5 @@ tianshu-neoforge/src/main/java/.../event/
 8. 采集和文本映射依赖 client 端口；NeoForge / Minecraft 版本敏感实现留在 adapter、event 和 UI 包。
 9. HUD 绘制属于 GUI 层；映迹核心只做显示状态控制。
 10. 设置页只控制显示策略，不影响采集、协议订阅和状态生成。
-11. shader / icon / 动画参数属于具体 HUD 元素，不进入 Presence 协议和采集模型。
+11. shader / 动画参数属于具体 HUD 元素，不进入 Presence 协议和采集模型。
 12. 内测调试视图只读观察现有状态缓存，不新增协议能力、不记录历史流水。

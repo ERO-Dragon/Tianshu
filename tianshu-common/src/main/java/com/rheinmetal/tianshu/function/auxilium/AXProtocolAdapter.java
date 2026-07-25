@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
@@ -25,6 +26,8 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -38,8 +41,10 @@ import java.time.Duration;
 
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
-    public static final String SOURCE_ID = AXModule.MODULE_ID;
+    public static final String SOURCE_ID = ProtocolSourceIds.AX;
     public static final String DIALOGUE_INPUT_CAPABILITY = "AX.DIALOGUE_INPUT";
+    private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
+    private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
 
     public AXProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withSupportsStreaming(true));
@@ -268,6 +273,25 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
             return null;
         }
         return publishTopic(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, new ModuleStatusPayload(status));
+    }
+
+    public TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
+        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
+    }
+
+    public TianshuEnvelope publishChatActivity(String activityId, PresenceActivityType type, boolean active) {
+        if (type != PresenceActivityType.THINKING && type != PresenceActivityType.RESPONDING) {
+            throw new IllegalArgumentException("AX chat activity must be THINKING or RESPONDING");
+        }
+        return publishPresenceActivity(active
+                ? PresenceActivityPayload.started(activityId, type, CHAT_ACTIVITY_TTL_MILLIS)
+                : PresenceActivityPayload.ended(activityId, type));
+    }
+
+    public TianshuEnvelope publishMaintenanceActivity(String activityId, boolean active) {
+        return publishPresenceActivity(active
+                ? PresenceActivityPayload.started(activityId, PresenceActivityType.PROCESSING_TASK, MAINTENANCE_ACTIVITY_TTL_MILLIS)
+                : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
     }
 
     public int dialogueParticipantRegistrationProviderCount() {

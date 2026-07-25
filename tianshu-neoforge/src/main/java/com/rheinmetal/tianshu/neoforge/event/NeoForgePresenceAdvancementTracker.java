@@ -138,7 +138,7 @@ final class NeoForgePresenceAdvancementTracker {
                 }
             }
         } catch (RuntimeException exception) {
-            LOGGER.warn("Presence failed to resolve advancement {}: {}", advancementId, exception.getMessage());
+            LOGGER.warn("NEOFORGE_PRESENCE_ADVANCEMENT_RESOLVE_FAILED advancementId={} detail={}", advancementId, exception.getMessage());
         }
         return null;
     }

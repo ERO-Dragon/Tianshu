@@ -44,6 +44,7 @@ final class TtsSynthesisTaskCoordinator {
             boolean streaming,
             long ttlMillis,
             TtsAudioChunkConsumer onAudio,
+            Runnable onStarted,
             Runnable onComplete,
             Consumer<TtsFailure> onFailure
     ) {
@@ -53,6 +54,7 @@ final class TtsSynthesisTaskCoordinator {
                 System.currentTimeMillis() + Math.max(1_000L, ttlMillis),
                 splitSentences(request.text()),
                 onAudio,
+                onStarted,
                 onComplete,
                 onFailure
         );
@@ -138,6 +140,7 @@ final class TtsSynthesisTaskCoordinator {
             if (task.cancelled()) {
                 return;
             }
+            task.start();
             if (!synthesisEngine.initialize()) {
                 TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS synthesis engine is unavailable");
                 failureObserver.accept(failure);
@@ -295,20 +298,24 @@ final class TtsSynthesisTaskCoordinator {
         private final List<byte[]> fullChunks = new ArrayList<>();
         private final AtomicInteger chunkIndex = new AtomicInteger();
         private final TtsAudioChunkConsumer onAudio;
+        private final Runnable onStarted;
         private final Runnable onComplete;
         private final Consumer<TtsFailure> onFailure;
+        private final AtomicBoolean started = new AtomicBoolean(false);
         private final AtomicBoolean finished = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final AtomicReference<ProtocolTaskHandle> timeoutHandle = new AtomicReference<>();
 
         private SynthesisTask(TtsRequest request, boolean streaming, long expireAtMillis, List<String> sentences,
                               TtsAudioChunkConsumer onAudio,
+                              Runnable onStarted,
                               Runnable onComplete, Consumer<TtsFailure> onFailure) {
             this.request = request;
             this.streaming = streaming;
             this.expireAtMillis = expireAtMillis;
             this.sentences = new ArrayDeque<>(sentences == null ? List.of() : sentences);
             this.onAudio = onAudio;
+            this.onStarted = onStarted;
             this.onComplete = onComplete;
             this.onFailure = onFailure;
         }
@@ -319,6 +326,12 @@ final class TtsSynthesisTaskCoordinator {
 
         private boolean cancelled() {
             return cancelled.get();
+        }
+
+        private void start() {
+            if (!finished.get() && !cancelled() && started.compareAndSet(false, true) && onStarted != null) {
+                onStarted.run();
+            }
         }
 
         private String nextSentence() {

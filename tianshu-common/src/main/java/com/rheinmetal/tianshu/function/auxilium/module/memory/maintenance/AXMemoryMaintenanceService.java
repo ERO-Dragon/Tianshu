@@ -108,8 +108,15 @@ public final class AXMemoryMaintenanceService {
             return false;
         }
         long generation = lifecycleGeneration.incrementAndGet();
-        currentTask = adapter.submitAxTask("ax.memory.maintenance." + AXStorageSafeName.of(scope.worldId()), ExecutionLane.LONG, () -> {
+        String activityId = "ax.memory.maintenance." + AXStorageSafeName.of(scope.worldId());
+        AtomicBoolean activityStarted = new AtomicBoolean(false);
+        currentTask = adapter.submitAxTask(activityId, ExecutionLane.LONG, () -> {
             try {
+                if (!isCurrent(generation)) {
+                    return;
+                }
+                adapter.publishMaintenanceActivity(activityId, true);
+                activityStarted.set(true);
                 run(scope, generation);
             } catch (RuntimeException exception) {
                 if (isCurrent(generation)) {
@@ -117,6 +124,9 @@ public final class AXMemoryMaintenanceService {
                 }
                 throw exception;
             } finally {
+                if (activityStarted.get()) {
+                    adapter.publishMaintenanceActivity(activityId, false);
+                }
                 if (isCurrent(generation)) {
                     running.set(false);
                 }
@@ -366,7 +376,7 @@ public final class AXMemoryMaintenanceService {
                 STATUS_KEY_STARTED,
                 ModuleStatusSeverity.NOTICE,
                 3_000L,
-                Map.of("presenceStatusType", "COMPRESSING")
+                Map.of()
         ));
     }
 

@@ -19,6 +19,7 @@ import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BooleanSupplier;
 
 public final class PresenceSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = PresenceProtocolAdapter.MODULE_ID;
@@ -26,15 +27,21 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
     private final PresenceSettingsAccess config;
     private final PresenceTextProvider textProvider;
     private final PresenceDebugPipelineSnapshot debugPipelineSnapshot;
+    private final BooleanSupplier debugEnabled;
 
     public PresenceSettingsRegistrySource(PresenceSettingsAccess config, PresenceTextProvider textProvider) {
-        this(config, null, textProvider);
+        this(config, null, textProvider, () -> false);
     }
 
     public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider) {
+        this(config, coreManager, textProvider, () -> false);
+    }
+
+    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider, BooleanSupplier debugEnabled) {
         this.config = config;
         this.debugPipelineSnapshot = new PresenceDebugPipelineSnapshot(coreManager);
         this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
+        this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
     }
 
     @Override
@@ -56,17 +63,10 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         panel.toggles("presence.hud.elements", presence("section.hud_elements"), group -> group
                         .toggle("presence.hud.enabled", presence("option.hud_enabled"), session.hudEnabled)
                         .toggle("presence.hud.status_text", presence("option.status_text"), session.statusTextEnabled, session.hudEnabled::get))
-                .toggles("presence.hud.sources", presence("section.module_sources"), session.hudEnabled::get, group -> group
-                        .toggle("presence.source.asr", presence("module.asr"), session.asrStatusVisible)
-                        .toggle("presence.source.llm", presence("module.llm"), session.llmStatusVisible)
-                        .toggle("presence.source.tts", presence("module.tts"), session.ttsStatusVisible)
-                        .toggle("presence.source.ax", presence("module.ax"), session.axStatusVisible))
-                .toggles("presence.debug.options", presence("section.debug"), group -> group
-                        .toggle("presence.debug.pipeline", presence("option.debug_pipeline"), session.debugPipelineEnabled))
                 .status("presence.hud.status", presence("section.current"), status -> status
                         .row("presence.status.hud", presence("row.hud"), () -> common(session.hudEnabled.get() ? "on" : "off"))
                         .row("presence.status.text", presence("row.status_text"), () -> common(session.statusTextEnabled.get() ? "on" : "off")))
-                .<PresenceDebugPipelineSnapshot.Row>list("presence.debug.pipeline", presence("section.debug_pipeline"), () -> session.debugPipelineEnabled.get(), list -> list
+                .<PresenceDebugPipelineSnapshot.Row>list("presence.debug.pipeline", presence("section.debug_pipeline"), debugEnabled, list -> list
                         .items(debugPipelineSnapshot::rows)
                         .card(this::debugPipelineCard)
                         .emptyText(presence("debug.empty")));
@@ -143,21 +143,11 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         private final PresenceSettingsAccess config;
         private final MutableSettingsValue<Boolean> hudEnabled;
         private final MutableSettingsValue<Boolean> statusTextEnabled;
-        private final MutableSettingsValue<Boolean> asrStatusVisible;
-        private final MutableSettingsValue<Boolean> llmStatusVisible;
-        private final MutableSettingsValue<Boolean> ttsStatusVisible;
-        private final MutableSettingsValue<Boolean> axStatusVisible;
-        private final MutableSettingsValue<Boolean> debugPipelineEnabled;
 
         private PresenceSettingsSession(PresenceSettingsAccess config) {
             this.config = config;
             this.hudEnabled = new MutableSettingsValue<>(config::isPresenceHudEnabled, config::setPresenceHudEnabled);
             this.statusTextEnabled = new MutableSettingsValue<>(config::isPresenceStatusTextEnabled, config::setPresenceStatusTextEnabled);
-            this.asrStatusVisible = new MutableSettingsValue<>(config::isPresenceAsrStatusVisible, config::setPresenceAsrStatusVisible);
-            this.llmStatusVisible = new MutableSettingsValue<>(config::isPresenceLlmStatusVisible, config::setPresenceLlmStatusVisible);
-            this.ttsStatusVisible = new MutableSettingsValue<>(config::isPresenceTtsStatusVisible, config::setPresenceTtsStatusVisible);
-            this.axStatusVisible = new MutableSettingsValue<>(config::isPresenceAxStatusVisible, config::setPresenceAxStatusVisible);
-            this.debugPipelineEnabled = new MutableSettingsValue<>(config::isPresenceDebugPipelineEnabled, config::setPresenceDebugPipelineEnabled);
         }
 
         @Override
@@ -168,12 +158,7 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         @Override
         public boolean dirty() {
             return hudEnabled.dirty()
-                    || statusTextEnabled.dirty()
-                    || asrStatusVisible.dirty()
-                    || llmStatusVisible.dirty()
-                    || ttsStatusVisible.dirty()
-                    || axStatusVisible.dirty()
-                    || debugPipelineEnabled.dirty();
+                    || statusTextEnabled.dirty();
         }
 
         @Override
@@ -186,11 +171,6 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
             boolean changed = dirty();
             hudEnabled.save();
             statusTextEnabled.save();
-            asrStatusVisible.save();
-            llmStatusVisible.save();
-            ttsStatusVisible.save();
-            axStatusVisible.save();
-            debugPipelineEnabled.save();
             config.save();
             return SettingsSaveResult.success(presence("message.saved"), changed, false, false);
         }
@@ -199,11 +179,6 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         public void reset() {
             hudEnabled.reset();
             statusTextEnabled.reset();
-            asrStatusVisible.reset();
-            llmStatusVisible.reset();
-            ttsStatusVisible.reset();
-            axStatusVisible.reset();
-            debugPipelineEnabled.reset();
         }
     }
 }

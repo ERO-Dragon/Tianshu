@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.function.ir.core.IRObjectId;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -13,8 +12,14 @@ import java.util.List;
 import java.util.Map;
 
 final class ClientEntityDictionaryBuilder {
+    private final ClientLanguageSnapshot languageSnapshot;
+
+    ClientEntityDictionaryBuilder(ClientLanguageSnapshot languageSnapshot) {
+        this.languageSnapshot = languageSnapshot;
+    }
 
     Map<String, List<String>> build() {
+        String languageCode = languageSnapshot.languageCode();
         LinkedHashMap<String, List<String>> dictionary = new LinkedHashMap<>(BuiltInRegistries.ENTITY_TYPE.size());
         for (EntityType<?> entityType : BuiltInRegistries.ENTITY_TYPE) {
             ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(entityType);
@@ -23,7 +28,7 @@ final class ClientEntityDictionaryBuilder {
             }
 
             String entityTypeId = key.toString();
-            String localizedName = ClientLanguagePolicy.useChineseContent()
+            String localizedName = ClientLanguagePolicy.useChineseContent(languageCode)
                     ? ClientLanguagePolicy.safeTranslatedName(Component.translatable(entityType.getDescriptionId()).getString())
                     : "";
             String registryAlias = ClientLanguagePolicy.englishName(key);

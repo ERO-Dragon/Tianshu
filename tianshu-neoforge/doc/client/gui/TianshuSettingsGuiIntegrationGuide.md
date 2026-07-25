@@ -1,5 +1,17 @@
 # 天枢设置 GUI 接入指南
 
+## 快速摘要
+
+1. **接入方式**
+   - 模块或外部模组提供自己的设置分类、草稿和保存逻辑。
+   - 设置页面统一展示这些分类，配置最终仍由 NeoForge 保存到 `config/tianshu-client.toml`。
+2. **交互逻辑**
+   - 玩家先编辑草稿，保存时统一校验；校验通过后才写入配置。
+   - 页面关闭不会隐式保存，重新打开会得到新的草稿。
+   - 下载、刷新、测试等操作显示在所属模块页面中，并以状态反馈结果。
+3. **宿主表现**
+   - 模块只提供功能和状态，NeoForge 负责页面、控件、文字本地化和游戏线程交接。
+
 ## 1. 依赖与边界
 
 设置声明依赖 `tianshu-client`，业务能力和协议依赖 `tianshu-common`。不要在 contributor 中导入 `net.minecraft.*` 或 `net.neoforged.*`。
@@ -150,9 +162,10 @@ NeoForge、Fabric 或其他宿主分别实现该端口。不要把加载器配�
 
 ## 7. 生命周期
 
-- 页面打开时创建新 session。
-- 页面重建可以复用当前 session，但重新注册同一模块会替换旧 session。
+- 页面打开时创建新的 coordinator 和各模块 session；旧页面的 session 不会进入新页面的保存集合。
+- 页面重建可以复用当前 session，但重新注册同一模块会替换旧 session；同一模块 ID 不会并存多个保存会话。
 - 世界退出不会修改已经保存到 `tianshu-client.toml` 的配置。
+- 关闭设置页面会丢弃未保存草稿，不会隐式保存。
 - 模块 runtime stop 后，状态 supplier 必须能返回不可用状态，不能继续引用旧世界对象。
 - 外部模组卸载或关闭集成时调用 `unregisterSettingsContributor`。
 
@@ -162,5 +175,7 @@ NeoForge、Fabric 或其他宿主分别实现该端口。不要把加载器配�
 - 不缓存 Player、Level、Entity、ItemStack 等 Minecraft 活对象。
 - 不在 UI 回调中阻塞 Minecraft 主线程。
 - 下载进度和高频状态更新必须合并刷新。
+- 模型目录、模型索引和文件完整性状态由模块服务在后台刷新；设置页面只读取状态快照，不在 Minecraft 主线程扫描模型目录。
+- 音色目录枚举和音色文件导入由 TTS 模块后台执行；文件选择器只负责让玩家选择文件。
 - 所有固定显示文本通过资源文件提供。
 - 配置仍由宿主唯一文件管理；天枢 NeoForge 当前使用 `config/tianshu-client.toml`。

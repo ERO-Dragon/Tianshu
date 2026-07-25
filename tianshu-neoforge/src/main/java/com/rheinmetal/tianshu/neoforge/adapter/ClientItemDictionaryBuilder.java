@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.function.ir.core.IRObjectId;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -13,8 +12,14 @@ import java.util.List;
 import java.util.Map;
 
 final class ClientItemDictionaryBuilder {
+    private final ClientLanguageSnapshot languageSnapshot;
+
+    ClientItemDictionaryBuilder(ClientLanguageSnapshot languageSnapshot) {
+        this.languageSnapshot = languageSnapshot;
+    }
 
     Map<String, List<String>> build() {
+        String languageCode = languageSnapshot.languageCode();
         LinkedHashMap<String, List<String>> dictionary = new LinkedHashMap<>(BuiltInRegistries.ITEM.size());
         for (Item item : BuiltInRegistries.ITEM) {
             if (item == Items.AIR) continue;
@@ -22,7 +27,7 @@ final class ClientItemDictionaryBuilder {
             if (key == null) continue;
             
             String realItemId = key.toString();
-            String localizedName = ClientLanguagePolicy.useChineseContent()
+            String localizedName = ClientLanguagePolicy.useChineseContent(languageCode)
                     ? ClientLanguagePolicy.safeTranslatedName(net.minecraft.network.chat.Component.translatable(item.getDescriptionId()).getString())
                     : "";
             String registryAlias = ClientLanguagePolicy.englishName(key);

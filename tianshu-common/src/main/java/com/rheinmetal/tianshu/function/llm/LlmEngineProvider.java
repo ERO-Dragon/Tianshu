@@ -281,11 +281,20 @@ public final class LlmEngineProvider {
         return aiService;
     }
 
-    public void startAsync(Runnable onReady, Runnable onFailed) {
+    public void startAsync(Runnable onLoadingStarted, Runnable onReady, Runnable onFailed, Runnable onLoadingFinished) {
         long generation = lifecycleGeneration.incrementAndGet();
         CompletableFuture.runAsync(() -> {
             JavaLlamaServer service = null;
+            boolean loadingStarted = false;
             try {
+                if (currentAiService() == null && modelPaths.resolveChatModel() == null) {
+                    if (onFailed != null) {
+                        onFailed.run();
+                    }
+                    return;
+                }
+                loadingStarted = true;
+                runLoadingCallback(onLoadingStarted);
                 service = ensureAiService();
                 if (service == null) {
                     if (onFailed != null) {
@@ -315,8 +324,23 @@ public final class LlmEngineProvider {
                 if (onFailed != null) {
                     onFailed.run();
                 }
+            } finally {
+                if (loadingStarted) {
+                    runLoadingCallback(onLoadingFinished);
+                }
             }
         }, modelLoadExecutor);
+    }
+
+    private void runLoadingCallback(Runnable callback) {
+        if (callback == null) {
+            return;
+        }
+        try {
+            callback.run();
+        } catch (RuntimeException failure) {
+            env.warn("LLM model loading observer failed: " + failure.getMessage());
+        }
     }
 
     public void stop() {

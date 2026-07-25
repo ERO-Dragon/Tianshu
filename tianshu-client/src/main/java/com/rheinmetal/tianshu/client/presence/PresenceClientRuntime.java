@@ -7,16 +7,17 @@ import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordi
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
+import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.Objects;
 import java.util.List;
-import java.util.function.Predicate;
 
 public final class PresenceClientRuntime {
     private final PresenceStateStore stateStore = new PresenceStateStore();
+    private final PresenceActivityTracker activityTracker = new PresenceActivityTracker();
     private final PresenceDisplayPolicy displayPolicy;
     private final PresenceContextFactMapper contextFactMapper;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
@@ -35,6 +36,7 @@ public final class PresenceClientRuntime {
 
     public void startWorldSession() {
         stateStore.startWorldSession();
+        activityTracker.startWorldSession();
         contextQueryCoordinator.startWorldSession();
         eventCollector.startWorldSession();
     }
@@ -43,6 +45,7 @@ public final class PresenceClientRuntime {
         contextQueryCoordinator.stopWorldSession();
         eventCollector.stopWorldSession();
         stateStore.resetWorldState();
+        activityTracker.stopWorldSession();
     }
 
     public PresenceContextSnapshot contextSnapshot() {
@@ -54,7 +57,7 @@ public final class PresenceClientRuntime {
         contextQueryCoordinator.bindAdapter(adapter);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
         eventCollector.setChatMessageSink(adapter::publishChatMessage);
-        return new PresenceModuleInstaller(adapter, stateStore, displayPolicy, contextFactMapper, contextQueryCoordinator);
+        return new PresenceModuleInstaller(adapter, stateStore, activityTracker, displayPolicy, contextFactMapper, contextQueryCoordinator);
     }
 
     public void tick() {
@@ -88,10 +91,6 @@ public final class PresenceClientRuntime {
     }
 
     public PresenceHudDisplay currentHudDisplay() {
-        return currentHudDisplay(source -> true);
-    }
-
-    public PresenceHudDisplay currentHudDisplay(Predicate<String> sourceVisible) {
-        return displayPolicy.hudDisplay(stateStore.statusSnapshot(sourceVisible));
+        return displayPolicy.hudDisplay(activityTracker.snapshot());
     }
 }

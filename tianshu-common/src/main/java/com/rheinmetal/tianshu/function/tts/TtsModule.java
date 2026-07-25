@@ -23,6 +23,7 @@ import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceCloneRegistry;
 import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceRequestValidator;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
@@ -42,6 +43,8 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class TtsModule implements TianshuManagedModule {
     private final IAudioBridge audioBridge;
@@ -58,6 +61,7 @@ public final class TtsModule implements TianshuManagedModule {
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle delayedAutoLoad;
     private volatile boolean destroyed;
+    private final Set<String> activeRequestActivities = ConcurrentHashMap.newKeySet();
 
     public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config) {
         this.audioBridge = audioBridge;
@@ -78,7 +82,7 @@ public final class TtsModule implements TianshuManagedModule {
         moduleService = new TtsModuleService();
         moduleService.bindModelService(modelService);
         voiceNotificationService = new VoiceNotificationService(runtime);
-        voiceLibraryService = new TtsVoiceLibraryService(env, config);
+        voiceLibraryService = new TtsVoiceLibraryService(env, config, runtime);
         voiceCloneRegistry = new TtsVoiceCloneRegistry(env, config);
         context.services().register(TtsModuleService.class, moduleService);
         context.services().register(TtsModelService.class, modelService);
@@ -105,7 +109,8 @@ public final class TtsModule implements TianshuManagedModule {
                 audioBridge,
                 ignored -> { },
                 this::publishPlaybackStatus,
-                adapter::publishRequestStatus
+                this::publishRequestStatus,
+                adapter::publishLoadingActivity
         );
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
@@ -181,6 +186,7 @@ public final class TtsModule implements TianshuManagedModule {
         if (ttsRuntime != null) {
             ttsRuntime.stop();
         }
+        endActiveRequestActivities();
     }
 
     @Override
@@ -194,6 +200,7 @@ public final class TtsModule implements TianshuManagedModule {
             ttsRuntime.destroy();
             ttsRuntime = null;
         }
+        endActiveRequestActivities();
     }
 
     private void handleSpeak(TianshuEnvelope envelope, ProtocolContext context) {
@@ -248,6 +255,7 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         TtsRequest request = synthesisRequestFromPayload(envelope, payload);
+        String sourceId = envelope.header().sourceId();
         ttsRuntime.synthesize(
                 request,
                 payload.streaming(),
@@ -260,8 +268,15 @@ public final class TtsModule implements TianshuManagedModule {
                         chunkIndex,
                         last
                 )),
-                () -> context.complete(envelope.envelopeId()),
-                failure -> failProtocol(context, envelope.envelopeId(), "TTS_SYNTHESIS_FAILED", failure)
+                () -> beginRequestActivity(sourceId, request.requestId()),
+                () -> {
+                    endRequestActivity(request.requestId());
+                    context.complete(envelope.envelopeId());
+                },
+                failure -> {
+                    endRequestActivity(request.requestId());
+                    failProtocol(context, envelope.envelopeId(), "TTS_SYNTHESIS_FAILED", failure);
+                }
         );
     }
 
@@ -513,6 +528,50 @@ public final class TtsModule implements TianshuManagedModule {
 
     private void publishPlaybackStatus(TtsPlaybackState state) {
         adapter.publishPlaybackStatus(TtsPlaybackStatusPayload.now(state));
+    }
+
+    void publishRequestStatus(com.rheinmetal.tianshu.protocol.payload.TtsRequestStatusPayload status) {
+        if (status == null) {
+            return;
+        }
+        adapter.publishRequestStatus(status);
+        if (ProtocolSourceIds.AX.equals(status.sourceId()) || status.requestId().isBlank()) {
+            return;
+        }
+        if (status.status() == com.rheinmetal.tianshu.protocol.payload.TtsRequestStatus.QUEUED
+                || status.status() == com.rheinmetal.tianshu.protocol.payload.TtsRequestStatus.PLAYING) {
+            beginRequestActivity(status.sourceId(), status.requestId());
+            return;
+        }
+        endRequestActivity(status.requestId());
+    }
+
+    private void beginRequestActivity(String sourceId, String requestId) {
+        if (ProtocolSourceIds.AX.equals(sourceId) || requestId == null || requestId.isBlank()) {
+            return;
+        }
+        String normalizedRequestId = requestId.trim();
+        if (activeRequestActivities.add(normalizedRequestId)) {
+            adapter.publishRequestActivity(normalizedRequestId, true);
+        }
+    }
+
+    private void endRequestActivity(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            return;
+        }
+        String normalizedRequestId = requestId.trim();
+        if (activeRequestActivities.remove(normalizedRequestId)) {
+            adapter.publishRequestActivity(normalizedRequestId, false);
+        }
+    }
+
+    private void endActiveRequestActivities() {
+        for (String requestId : java.util.List.copyOf(activeRequestActivities)) {
+            if (activeRequestActivities.remove(requestId)) {
+                adapter.publishRequestActivity(requestId, false);
+            }
+        }
     }
 
     private void publishModuleStatus(ModuleStatus status) {

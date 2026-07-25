@@ -2,6 +2,11 @@ package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,17 +14,98 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public class TtsVoiceLibraryService {
     private final IGameEnvironment env;
     private final TtsConfiguration config;
+    private final ModuleExecutionAccess execution;
+    private final AtomicBoolean refreshQueued = new AtomicBoolean(false);
+    private final ConcurrentLinkedQueue<Runnable> refreshCallbacks = new ConcurrentLinkedQueue<>();
+    private final AtomicReference<List<String>> voiceSamples = new AtomicReference<>(List.of());
 
-    public TtsVoiceLibraryService(IGameEnvironment env, TtsConfiguration config) {
+    public TtsVoiceLibraryService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess execution) {
         this.env = env;
         this.config = config;
+        this.execution = execution;
+        refreshVoiceSamplesAsync(null);
     }
 
-    public void openVoiceLibraryFolder() {
+    public List<String> voiceSamples() {
+        return voiceSamples.get();
+    }
+
+    public void refreshVoiceSamplesAsync(Runnable completion) {
+        if (completion != null) {
+            refreshCallbacks.add(completion);
+        }
+        if (!refreshQueued.compareAndSet(false, true)) {
+            return;
+        }
+        ProtocolTaskHandle handle = execution.submit(
+                taskSpec("refresh", 1),
+                () -> {
+                    try {
+                        refreshVoiceSamples();
+                    } finally {
+                        completeRefresh();
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            completeRefresh();
+        }
+    }
+
+    private void completeRefresh() {
+        Runnable callback;
+        while ((callback = refreshCallbacks.poll()) != null) {
+            try {
+                callback.run();
+            } catch (RuntimeException exception) {
+                env.error("tts.voice_library.refresh_callback_failed", exception);
+            }
+        }
+        refreshQueued.set(false);
+        if (!refreshCallbacks.isEmpty()) {
+            refreshVoiceSamplesAsync(null);
+        }
+    }
+
+    public void importVoiceSampleAsync(Path source, Consumer<String> completion) {
+        ProtocolTaskHandle handle = execution.submit(
+                taskSpec("import", 2),
+                () -> {
+                    String imported = importVoiceSample(source);
+                    refreshVoiceSamples();
+                    if (completion != null) {
+                        completion.accept(imported);
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED && completion != null) {
+            completion.accept("");
+        }
+    }
+
+    public void openVoiceLibraryFolderAsync() {
+        execution.submit(taskSpec("open", 1), this::openVoiceLibraryFolder);
+    }
+
+    private ProtocolTaskSpec taskSpec(String operation, int queueCapacity) {
+        return ProtocolTaskSpec.builder()
+                .moduleId("module.tts")
+                .lane(ExecutionLane.IO)
+                .concurrencyKey("module.tts:voice-library:" + operation)
+                .maxConcurrency(1)
+                .queueCapacity(queueCapacity)
+                .build();
+    }
+
+    private void openVoiceLibraryFolder() {
         try {
             Path dir = config.getVoiceLibraryPath();
             Files.createDirectories(dir);
@@ -29,7 +115,11 @@ public class TtsVoiceLibraryService {
         }
     }
 
-    public List<String> listVoiceSamples() {
+    private void refreshVoiceSamples() {
+        voiceSamples.set(scanVoiceSamples());
+    }
+
+    private List<String> scanVoiceSamples() {
         Path voiceDir = config.getVoiceLibraryPath();
         if (!Files.isDirectory(voiceDir)) {
             return Collections.emptyList();
@@ -62,7 +152,7 @@ public class TtsVoiceLibraryService {
         return resolved;
     }
 
-    public String importVoiceSample(Path source) {
+    private String importVoiceSample(Path source) {
         if (source == null || !Files.isRegularFile(source)) {
             return "";
         }

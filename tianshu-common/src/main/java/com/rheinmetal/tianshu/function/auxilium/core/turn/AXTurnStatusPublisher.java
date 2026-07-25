@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusSeverity;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,31 +38,15 @@ public final class AXTurnStatusPublisher {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
     }
 
-    public void accepted() {
-        publish(TYPE_TURN_ACCEPTED, KEY_TURN_ACCEPTED, ModuleStatusSeverity.INFO, SHORT_TTL_MILLIS, "received", "THINKING", null);
+    public void accepted(AXTurnExecution execution) {
+        publish(TYPE_TURN_ACCEPTED, KEY_TURN_ACCEPTED, ModuleStatusSeverity.INFO, SHORT_TTL_MILLIS, "received", null);
+        transition(execution, PresenceActivityType.THINKING);
     }
 
-    public void processing() {
-        active("PROCESSING", true);
-    }
-
-    public void retrievingMemory() {
-        active("MEMORY_RETRIEVING", true);
-    }
-
-    public void thinking() {
-        active("THINKING", true);
-    }
-
-    public void responding() {
-        active("RESPONDING", true);
-    }
-
-    public void active(String pipelineStage, boolean interruptible) {
+    public void active(AXTurnExecution execution, String pipelineStage, boolean interruptible) {
         String normalizedStage = pipelineStage == null || pipelineStage.isBlank()
                 ? "PROCESSING"
                 : pipelineStage.trim().toUpperCase(java.util.Locale.ROOT);
-        String presenceType = "RESPONDING".equals(normalizedStage) ? "SPEAKING" : "THINKING";
         String statusType = switch (normalizedStage) {
             case "MEMORY_RETRIEVING" -> TYPE_MEMORY_RETRIEVING;
             case "THINKING" -> TYPE_LLM_THINKING;
@@ -80,39 +65,44 @@ public final class AXTurnStatusPublisher {
                 ModuleStatusSeverity.INFO,
                 ACTIVE_TTL_MILLIS,
                 normalizedStage,
-                presenceType,
                 Map.of(
                         "axReplying", "true",
                         "axInterruptible", Boolean.toString(interruptible)
                 )
         );
+        transition(
+                execution,
+                "RESPONDING".equals(normalizedStage)
+                        ? PresenceActivityType.RESPONDING
+                        : PresenceActivityType.THINKING
+        );
     }
 
-    public void terminal(com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason reason) {
+    public void terminal(AXTurnExecution execution, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason reason) {
         publish(
                 TYPE_TURN_IDLE,
                 KEY_TURN_IDLE,
                 ModuleStatusSeverity.INFO,
                 SHORT_TTL_MILLIS,
                 "TERMINAL",
-                "IDLE",
                 Map.of(
                         "axReplying", "false",
                         "axInterruptible", "false",
                         "releaseReason", reason == null ? "" : reason.name()
                 )
         );
+        transition(execution, null);
     }
 
     public void interrupted() {
-        publish(TYPE_INTERRUPTED, KEY_INTERRUPTED, ModuleStatusSeverity.NOTICE, SHORT_TTL_MILLIS, "interrupted", "THINKING", null);
+        publish(TYPE_INTERRUPTED, KEY_INTERRUPTED, ModuleStatusSeverity.NOTICE, SHORT_TTL_MILLIS, "interrupted", null);
     }
 
     public void failed(String reasonCode) {
         Map<String, String> extraTags = sanitizeReason(reasonCode).isBlank()
                 ? null
                 : Map.of("reasonCode", sanitizeReason(reasonCode));
-        publish(TYPE_FAILED, KEY_FAILED, ModuleStatusSeverity.CRITICAL, FAILURE_TTL_MILLIS, "failed", "ERROR", extraTags);
+        publish(TYPE_FAILED, KEY_FAILED, ModuleStatusSeverity.CRITICAL, FAILURE_TTL_MILLIS, "failed", extraTags);
     }
 
     private void publish(
@@ -121,11 +111,9 @@ public final class AXTurnStatusPublisher {
             ModuleStatusSeverity severity,
             long ttlMillis,
             String pipelineStage,
-            String presenceStatusType,
             Map<String, String> extraTags
     ) {
         Map<String, String> tags = new LinkedHashMap<>();
-        tags.put("presenceStatusType", presenceStatusType);
         tags.put("axPipelineStage", pipelineStage == null ? "" : pipelineStage.toLowerCase(java.util.Locale.ROOT));
         if (extraTags != null) {
             tags.putAll(extraTags);
@@ -138,6 +126,22 @@ public final class AXTurnStatusPublisher {
                 ttlMillis,
                 tags
         ));
+    }
+
+    private void transition(AXTurnExecution execution, PresenceActivityType next) {
+        if (execution == null) {
+            return;
+        }
+        PresenceActivityType previous = execution.swapPresenceActivity(next);
+        if (previous == next) {
+            return;
+        }
+        if (previous != null) {
+            adapter.publishChatActivity(execution.activityId(), previous, false);
+        }
+        if (next != null) {
+            adapter.publishChatActivity(execution.activityId(), next, true);
+        }
     }
 
     private String sanitizeReason(String reasonCode) {

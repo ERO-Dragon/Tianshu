@@ -36,6 +36,11 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final NeoForgePresenceScreenClassifier screenClassifier = new NeoForgePresenceScreenClassifier();
+    private final ClientLanguageSnapshot languageSnapshot;
+
+    public NeoForgePresencePlatform(ClientLanguageSnapshot languageSnapshot) {
+        this.languageSnapshot = java.util.Objects.requireNonNull(languageSnapshot, "languageSnapshot");
+    }
 
     @Override
     public PresenceContextSnapshot captureContext(Set<PresenceContextGroup> groups, PresenceInputKind inputKind) {
@@ -49,6 +54,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 ? Set.of(PresenceContextGroup.INTERACTION_CONTEXT)
                 : groups;
         boolean live = requested.contains(PresenceContextGroup.INTERACTION_CONTEXT);
+        String languageCode = languageSnapshot.languageCode();
         Screen screen = live ? minecraft.screen : null;
         PresenceScreenKind screenKind = live ? screenClassifier.classify(screen) : PresenceScreenKind.NONE;
         PresenceTargetSnapshot crosshairTarget = live ? crosshairTarget(minecraft, player) : PresenceTargetSnapshot.empty();
@@ -70,9 +76,9 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 live && player.isShiftKeyDown(),
                 inputKind == null ? PresenceInputKind.NONE : inputKind,
                 requested.contains(PresenceContextGroup.PLAYER_STATUS) ? playerStatus(player) : PresencePlayerStatus.empty(),
-                requested.contains(PresenceContextGroup.WORLD_ENVIRONMENT) ? worldEnvironment(minecraft.level, player) : PresenceWorldEnvironment.empty(),
-                requested.contains(PresenceContextGroup.PLAYER_INVENTORY) ? inventoryItems(player) : List.of(),
-                requested.contains(PresenceContextGroup.PLAYER_ACTIVE_EFFECTS) ? activeEffects(player) : List.of(),
+                requested.contains(PresenceContextGroup.WORLD_ENVIRONMENT) ? worldEnvironment(minecraft.level, player, languageCode) : PresenceWorldEnvironment.empty(),
+                requested.contains(PresenceContextGroup.PLAYER_INVENTORY) ? inventoryItems(player, languageCode) : List.of(),
+                requested.contains(PresenceContextGroup.PLAYER_ACTIVE_EFFECTS) ? activeEffects(player, languageCode) : List.of(),
                 live ? facts : Map.of(),
                 System.currentTimeMillis()
         );
@@ -104,7 +110,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
         );
     }
 
-    private PresenceWorldEnvironment worldEnvironment(Level level, Player player) {
+    private PresenceWorldEnvironment worldEnvironment(Level level, Player player, String languageCode) {
         long dayTime = level.getDayTime() % 24000L;
         String biomeId = "";
         String biomeDisplayName = "";
@@ -113,15 +119,15 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                     .map(key -> key.location().toString())
                     .orElse("");
             biomeDisplayName = level.getBiome(player.blockPosition()).unwrapKey()
-                    .map(key -> ClientLanguagePolicy.registryDisplayName(key.location(), "biome"))
+                    .map(key -> ClientLanguagePolicy.registryDisplayName(key.location(), "biome", languageCode))
                     .orElse(biomeId);
         } catch (RuntimeException exception) {
-            LOGGER.warn("Presence failed to read biome: {}", exception.getMessage());
+            LOGGER.warn("NEOFORGE_PRESENCE_BIOME_CAPTURE_FAILED detail={}", exception.getMessage());
         }
         return new PresenceWorldEnvironment(level.isRaining(), level.isThundering(), dayTime, biomeId, biomeDisplayName);
     }
 
-    private List<PresenceInventoryItem> inventoryItems(Player player) {
+    private List<PresenceInventoryItem> inventoryItems(Player player, String languageCode) {
         Inventory inventory = player.getInventory();
         if (inventory == null) {
             return List.of();
@@ -136,7 +142,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
             String itemId = itemKey == null ? stack.getItemHolder().getRegisteredName() : itemKey.toString();
             result.add(new PresenceInventoryItem(
                     itemId,
-                    ClientLanguagePolicy.itemDisplayName(stack, itemKey),
+                    ClientLanguagePolicy.itemDisplayName(stack, itemKey, languageCode),
                     stack.getCount(),
                     stack.getMaxStackSize()
             ));
@@ -144,20 +150,20 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
         return List.copyOf(result);
     }
 
-    private List<PresencePotionEffect> activeEffects(Player player) {
+    private List<PresencePotionEffect> activeEffects(Player player, String languageCode) {
         List<PresencePotionEffect> result = new ArrayList<>();
         for (MobEffectInstance effect : player.getActiveEffects()) {
             try {
                 ResourceLocation effectId = effect.getEffect().unwrapKey().map(key -> key.location()).orElse(null);
                 result.add(new PresencePotionEffect(
                         effectId == null ? "" : effectId.toString(),
-                        ClientLanguagePolicy.effectDisplayName(effectId, effect.getEffect().value().getDescriptionId()),
+                        ClientLanguagePolicy.effectDisplayName(effectId, effect.getEffect().value().getDescriptionId(), languageCode),
                         effect.getDuration(),
                         effect.getAmplifier(),
                         effect.getEffect().value().isBeneficial()
                 ));
             } catch (RuntimeException exception) {
-                LOGGER.warn("Presence failed to read active effect: {}", exception.getMessage());
+                LOGGER.warn("NEOFORGE_PRESENCE_EFFECT_CAPTURE_FAILED detail={}", exception.getMessage());
             }
         }
         return List.copyOf(result);

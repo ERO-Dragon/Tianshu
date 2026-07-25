@@ -26,6 +26,8 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -36,6 +38,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
+    private static final long MODEL_LOADING_TTL_MILLIS = 300_000L;
+    private static final long TASK_ACTIVITY_TTL_MILLIS = 900_000L;
     public static final String MODULE_ID = "module.llm";
     public static final String SOURCE_ID = "module.llm";
 
@@ -233,6 +237,23 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             return null;
         }
         return publishTopic(ProtocolTopics.LLM_STATUS, PayloadType.LLM_STATUS, status);
+    }
+
+    public TianshuEnvelope publishLoadingActivity(boolean loading) {
+        return publishPresenceActivity(loading
+                ? PresenceActivityPayload.started("llm.model.load", PresenceActivityType.LOADING, MODEL_LOADING_TTL_MILLIS)
+                : PresenceActivityPayload.ended("llm.model.load", PresenceActivityType.LOADING));
+    }
+
+    public TianshuEnvelope publishTaskActivity(String taskId, boolean active) {
+        String activityId = "llm.task." + taskId;
+        return publishPresenceActivity(active
+                ? PresenceActivityPayload.started(activityId, PresenceActivityType.PROCESSING_TASK, TASK_ACTIVITY_TTL_MILLIS)
+                : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
+    }
+
+    private TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
+        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

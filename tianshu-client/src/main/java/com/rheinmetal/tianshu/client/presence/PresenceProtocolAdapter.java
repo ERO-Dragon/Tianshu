@@ -11,14 +11,11 @@ import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
@@ -69,53 +66,11 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
+    public void subscribePresenceActivity(EnvelopeHandler handler) {
         subscribeTopic(
-                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
-                PayloadType.ASR_SPEECH_ACTIVITY,
-                AsrSpeechActivityPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
-    public void subscribeLlmStatus(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.LLM_STATUS,
-                PayloadType.LLM_STATUS,
-                LlmStatusPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
-    public void subscribeTtsPlayback(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.TTS_PLAYBACK,
-                PayloadType.TTS_PLAYBACK_STATUS,
-                TtsPlaybackStatusPayload.class,
-                BrokerType.STATELESS_FAST_PATH,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
-
-    public void subscribeModuleStatus(EnvelopeHandler handler) {
-        subscribeTopic(
-                ProtocolTopics.MODULE_STATUS,
-                PayloadType.MODULE_STATUS,
-                ModuleStatusPayload.class,
+                ProtocolTopics.PRESENCE_ACTIVITY,
+                PayloadType.PRESENCE_ACTIVITY,
+                PresenceActivityPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.EVENT),
                 Priority.LOW,

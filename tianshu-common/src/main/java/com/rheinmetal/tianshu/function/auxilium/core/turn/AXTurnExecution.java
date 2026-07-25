@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 
 final class AXTurnExecution {
     private final long generation;
@@ -17,6 +19,7 @@ final class AXTurnExecution {
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private final AtomicBoolean releaseRequested = new AtomicBoolean(false);
     private final AtomicBoolean assistantPersisted = new AtomicBoolean(false);
+    private final AtomicReference<PresenceActivityType> presenceActivity = new AtomicReference<>();
     private final StringBuilder displayedText = new StringBuilder();
     private volatile String dynamicFactRequestId = "";
     private volatile String requestKey = "";
@@ -44,6 +47,15 @@ final class AXTurnExecution {
 
     AXScope scope() {
         return scope;
+    }
+
+    String activityId() {
+        String turnIdentity = delivery.turnId().isBlank() ? delivery.requestId() : delivery.turnId();
+        return "ax.chat." + delivery.sessionId() + "." + turnIdentity;
+    }
+
+    PresenceActivityType swapPresenceActivity(PresenceActivityType next) {
+        return presenceActivity.getAndSet(next);
     }
 
     boolean cancel(AXTurnCancellation reason) {

@@ -11,6 +11,7 @@
 | `ProtocolCapabilities.TTS_CONTROL` | `TtsControlPayload` | 停止、重载和音色管理。 |
 | `ProtocolTopics.TTS_PLAYBACK` | `TtsPlaybackStatusPayload` | 模块级播放状态。 |
 | `ProtocolTopics.TTS_REQUEST_STATUS` | `TtsRequestStatusPayload` | 单个播放 Session 的状态。 |
+| `ProtocolTopics.PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载及非 AX 播放、纯合成任务的产品活动。 |
 
 ## 2. 播放完整文本
 
@@ -150,7 +151,15 @@ TtsSynthesisRequestPayload payload = new TtsSynthesisRequestPayload(
 | `CANCELLED` | Session 被策略、控制或生命周期取消。 |
 | `FAILED` | 合成或播放失败。 |
 
-payload 携带稳定的 `requestId/sourceId/sessionId/turnId/failureCode`。模块级 HUD 只需订阅 `TTS.PLAYBACK` 的 `IDLE/SPEAKING/ALERTING`。
+payload 携带稳定的 `requestId/sourceId/sessionId/turnId/failureCode`。`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 服务播放控制、业务观察与诊断，不再由映迹转换为“正在回复”。
+
+TTS 通过 `PRESENCE.ACTIVITY` 公开两类产品活动：
+
+- 模型真实 prepare/reload/use-model 工作期间发布 `tts.model.load / LOADING`。
+- 非 `module.ax` 来源的播放请求在进入 `QUEUED/PLAYING` 后发布 `tts.request.<requestId> / PROCESSING_TASK`，在 `COMPLETED/CANCELLED/FAILED` 时结束。
+- 非 `module.ax` 来源的纯合成请求在协调器真正开始执行时发布同一格式的 `PROCESSING_TASK`，完成、取消、过期或失败时结束；仅排队或被队列拒绝不会伪报运行。
+
+AX 来源的播放与纯合成请求不重复发布产品活动，因为 AX 已根据 IA delivery 和可见输出边界负责 `THINKING/RESPONDING`。TTS 本身无权把任意音频请求解释为辅星回复。
 
 ## 8. 音色注册和 owner
 

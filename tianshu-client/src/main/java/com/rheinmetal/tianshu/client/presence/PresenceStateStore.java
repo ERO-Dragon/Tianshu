@@ -2,19 +2,13 @@ package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot;
-import com.rheinmetal.tianshu.client.presence.status.PresenceStatusPriority;
 
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
 
 public final class PresenceStateStore {
     private final Object lock = new Object();
     private PresenceContextSnapshot contextSnapshot = PresenceContextSnapshot.empty();
-    private final Map<String, PresenceStatusSnapshot> statusBySource = new LinkedHashMap<>();
     private final EnumSet<PresenceContextGroup> availableGroups = EnumSet.noneOf(PresenceContextGroup.class);
     private final EnumSet<PresenceContextGroup> dirtyGroups = EnumSet.noneOf(PresenceContextGroup.class);
     private boolean worldSessionActive = true;
@@ -90,55 +84,6 @@ public final class PresenceStateStore {
         }
     }
 
-    public void updateStatus(PresenceStatusSnapshot snapshot) {
-        if (snapshot == null) {
-            return;
-        }
-        synchronized (lock) {
-            if (!worldSessionActive) {
-                return;
-            }
-            String source = snapshot.sourceModuleId();
-            PresenceStatusSnapshot current = statusBySource.get(source);
-            if (current != null && snapshot.updatedAtMillis() < current.updatedAtMillis()) {
-                return;
-            }
-            if (snapshot.statusType() == com.rheinmetal.tianshu.client.presence.model.PresenceStatusType.IDLE) {
-                if (current == null || sameActivity(current, snapshot)) {
-                    statusBySource.remove(source);
-                }
-                return;
-            }
-            statusBySource.put(source, snapshot);
-        }
-    }
-
-    public PresenceStatusSnapshot statusSnapshot() {
-        return statusSnapshot(source -> true);
-    }
-
-    public PresenceStatusSnapshot statusSnapshot(Predicate<String> sourceVisible) {
-        Predicate<String> visible = sourceVisible == null ? source -> true : sourceVisible;
-        synchronized (lock) {
-            long now = System.currentTimeMillis();
-            PresenceStatusSnapshot selected = null;
-            java.util.Iterator<Map.Entry<String, PresenceStatusSnapshot>> iterator = statusBySource.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, PresenceStatusSnapshot> entry = iterator.next();
-                PresenceStatusSnapshot candidate = entry.getValue();
-                if (candidate == null || candidate.expired(now)) {
-                    iterator.remove();
-                    continue;
-                }
-                if (visible.test(entry.getKey())
-                        && (selected == null || PresenceStatusPriority.shouldReplace(selected, candidate, now))) {
-                    selected = candidate;
-                }
-            }
-            return selected == null ? PresenceStatusSnapshot.idle() : selected;
-        }
-    }
-
     private PresenceContextSnapshot merge(
             PresenceContextSnapshot base,
             PresenceContextSnapshot captured,
@@ -176,30 +121,7 @@ public final class PresenceStateStore {
 
     private void resetWorldStateLocked() {
         contextSnapshot = PresenceContextSnapshot.empty();
-        statusBySource.clear();
         availableGroups.clear();
         dirtyGroups.clear();
-    }
-
-    private boolean sameActivity(PresenceStatusSnapshot current, PresenceStatusSnapshot candidate) {
-        String currentId = activityId(current);
-        String candidateId = activityId(candidate);
-        return currentId.isBlank() || candidateId.isBlank() || currentId.equals(candidateId);
-    }
-
-    private String activityId(PresenceStatusSnapshot snapshot) {
-        if (snapshot == null) {
-            return "";
-        }
-        Map<String, String> attributes = snapshot.attributes();
-        String sessionId = attributes.getOrDefault("sessionId", "");
-        if (!sessionId.isBlank()) {
-            return "session:" + sessionId;
-        }
-        String taskId = attributes.getOrDefault("taskId", "");
-        if (!taskId.isBlank()) {
-            return "task:" + taskId;
-        }
-        return "";
     }
 }

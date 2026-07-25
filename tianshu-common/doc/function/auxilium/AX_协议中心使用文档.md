@@ -96,7 +96,7 @@ AX 当前订阅：
 
 AX 不订阅 `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY`。ASR 活动状态由 ASR/输入链路自行消费，不能直接改变 AX 的回合生命周期。
 
-AX 还会向 `ProtocolTopics.MODULE_STATUS` 发布 `module.ax` 的状态。订阅者必须按 `moduleId` 过滤，并通过 Client 语言资源解析 `messageKey`；Common 状态不携带 fallback 文本。
+AX 还会向 `ProtocolTopics.MODULE_STATUS` 发布 `module.ax` 的健康和诊断状态。订阅者必须按 `moduleId` 过滤，并通过 Client 语言资源解析 `messageKey`；Common 状态不携带 fallback 文本。该 topic 不驱动映迹产品状态。
 
 ## 8. IA delivery 驱动的回合切换
 
@@ -115,8 +115,9 @@ AX 的新对话轮次只来自 IA 已完成仲裁、明确选择 AX 为 owner �
 
 ASR speech activity 不参与上述决策，也不代表 AX 应该开始、拒绝、排队或中断回合。
 
-AX 通过 `MODULE.STATUS` 向映迹报告前台交互状态。活动状态包含 `axReplying=true`、
-`axInterruptible=true/false` 和 `axPipelineStage`；终态包含 `axReplying=false`。映迹只负责保存和展示这些状态属性，不判断请求是否属于 CHAT；TTS 也只处理 AX 已经投递给它的语音请求。
+有效 delivery 建立新回合后，AX 通过 `PRESENCE.ACTIVITY` 发布 `ax.chat.<sessionId>.<turnId/requestId> / THINKING`。上下文获取、记忆检索、Prompt 组装和首段输出前的 LLM 生成都属于这一阶段；首次可见输出出现时，AX 原子结束 `THINKING` 并开始同一活动 ID 的 `RESPONDING`。完成、失败、取消、打断或模块停止都会结束当前活动。
+
+AX 记忆维护等实际后台工作以 `ax.memory.maintenance.<worldSafeId> / PROCESSING_TASK` 公开。只有任务被执行器接受并真正运行后才开始，终态统一结束。映迹只聚合这些显式产品活动；TTS 只处理 AX 已经投递给它的语音请求，不自行判断 CHAT 或发布 AX 回复状态。
 
 ## 9. 生命周期与线程
 
@@ -135,7 +136,8 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 | 自己成为对话 owner | IA participant 注册。 |
 | 直接调用模型 | LLM 公共 capability，并遵守 IA CHAT 授权。 |
 | 播放或合成语音 | TTS 公共 capability。 |
-| 观察 AX 状态 | `MODULE.STATUS`，过滤 `module.ax`。 |
+| 观察 AX 健康和诊断状态 | `MODULE.STATUS`，过滤 `module.ax`。 |
+| 观察玩家可感知的 AX 活动 | `PRESENCE.ACTIVITY`；`THINKING/RESPONDING` 只接受 `module.ax`。 |
 
 不要新增 `AX.CHAT_REQUEST`、`AX.LLM_RESULT` 或公开 AX memory topic 来绕过现有 owner、响应关联和隐私边界。
 

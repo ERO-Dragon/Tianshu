@@ -1,91 +1,40 @@
 package com.rheinmetal.tianshu.client.settings;
 
-import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
-import com.rheinmetal.tianshu.client.api.text.UiText;
-import com.rheinmetal.tianshu.client.settings.module.ia.IaSettingsAccess;
-import com.rheinmetal.tianshu.client.settings.module.ia.IaSettingsRegistrySource;
-import com.rheinmetal.tianshu.client.settings.module.ir.IrSettingsAccess;
-import com.rheinmetal.tianshu.client.settings.module.ir.IrSettingsRegistrySource;
-import com.rheinmetal.tianshu.client.settings.protocol.SettingsEventPublisher;
-import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
-import com.rheinmetal.tianshu.client.settings.session.SettingsCoordinator;
-import com.rheinmetal.tianshu.client.settings.session.SettingsSessionRegistry;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 final class ModuleSettingsOwnershipTest {
     @Test
-    void irAndIaOwnIndependentSettingsCategoriesAndSessions() {
-        TestSettingsAccess config = new TestSettingsAccess();
+    void internalIrAndIaModulesDoNotOwnVisibleSettingsCategories() {
+        Path root = Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module");
 
-        assertModuleSettings(
-                "module.ir",
-                15,
-                (registry, context) -> new IrSettingsRegistrySource(config).contribute(registry, context)
-        );
-        assertModuleSettings(
-                "module.ia",
-                40,
-                (registry, context) -> new IaSettingsRegistrySource(config).contribute(registry, context)
-        );
+        assertFalse(Files.exists(root.resolve("ir/IrSettingsRegistrySource.java")));
+        assertFalse(Files.exists(root.resolve("ia/IaSettingsRegistrySource.java")));
+        assertFalse(Files.exists(root.resolve("ModuleDiagnosticsSettingsRegistrySource.java")));
     }
 
-    private static void assertModuleSettings(String moduleId, int order, SettingsContributor contributor) {
-        SettingsSessionRegistry sessions = new SettingsSessionRegistry();
-        SettingsCoordinator coordinator = new SettingsCoordinator(sessions, SettingsEventPublisher.NOOP);
-        ModuleSettingsContext context = new ModuleSettingsContext() {
-            @Override
-            public SettingsCoordinator settingsCoordinator() {
-                return coordinator;
-            }
-
-            @Override
-            public void showStatus(UiText message, long durationMillis) {
-            }
-        };
-        TianshuSettingsRegistry registry = new TianshuSettingsRegistry();
-
-        contributor.contribute(registry, context);
-
-        assertEquals(1, registry.categories().size());
-        assertEquals(moduleId, registry.categories().getFirst().moduleId());
-        assertEquals(order, registry.categories().getFirst().order());
-        assertTrue(sessions.hasSession(moduleId));
-    }
-
-    @FunctionalInterface
-    private interface SettingsContributor {
-        void contribute(TianshuSettingsRegistry registry, ModuleSettingsContext context);
-    }
-
-    private static final class TestSettingsAccess implements IrSettingsAccess, IaSettingsAccess {
-        private boolean irEnabled;
-        private boolean iaEnabled;
-
-        @Override
-        public boolean isIrDiagnosticsEnabled() {
-            return irEnabled;
-        }
-
-        @Override
-        public void setIrDiagnosticsEnabled(boolean enabled) {
-            irEnabled = enabled;
-        }
-
-        @Override
-        public boolean isIaDiagnosticsEnabled() {
-            return iaEnabled;
-        }
-
-        @Override
-        public void setIaDiagnosticsEnabled(boolean enabled) {
-            iaEnabled = enabled;
-        }
-
-        @Override
-        public void save() {
+    @Test
+    void productModuleSettingsDoNotContainDiagnosticsControls() throws Exception {
+        for (String relativePath : List.of(
+                "asr/AsrSettingsRegistrySource.java",
+                "ax/AXSettingsRegistrySource.java",
+                "llm/LlmSettingsRegistrySource.java",
+                "tts/TtsSettingsRegistrySource.java",
+                "presence/PresenceSettingsRegistrySource.java"
+        )) {
+            String source = Files.readString(
+                    Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module").resolve(relativePath),
+                    StandardCharsets.UTF_8
+            );
+            assertFalse(source.contains("diagnosticsEnabled"), relativePath);
+            assertFalse(source.contains("diagnostics.enabled"), relativePath);
+            assertFalse(source.contains("debugPipelineEnabled"), relativePath);
         }
     }
 }

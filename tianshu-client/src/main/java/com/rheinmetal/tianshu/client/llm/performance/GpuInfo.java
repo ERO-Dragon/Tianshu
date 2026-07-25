@@ -12,7 +12,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class GpuInfo {
-    private static final long REFRESH_INTERVAL_MILLIS = 1000L;
     private static final AtomicReference<Snapshot> SNAPSHOT = new AtomicReference<>(Snapshot.empty());
     private static final AtomicReference<CompletableFuture<Void>> REFRESH_TASK = new AtomicReference<>();
     private static final ExecutorService DETECTION_EXECUTOR = new ThreadPoolExecutor(
@@ -33,11 +32,10 @@ public final class GpuInfo {
     }
 
     public static List<GpuDevice> devices() {
-        return snapshot().devices();
+        return SNAPSHOT.get().devices();
     }
 
     public static boolean detecting() {
-        snapshot();
         CompletableFuture<Void> task = REFRESH_TASK.get();
         return task != null && !task.isDone();
     }
@@ -72,21 +70,6 @@ public final class GpuInfo {
             }
         }
         return devices.get(0);
-    }
-
-    private static Snapshot snapshot() {
-        Snapshot current = SNAPSHOT.get();
-        long now = System.currentTimeMillis();
-        if (current.updatedAtMillis() <= 0L) {
-            requestRefresh(now);
-        } else if (now - current.updatedAtMillis() > REFRESH_INTERVAL_MILLIS) {
-            requestRefresh(now);
-        }
-        return SNAPSHOT.get();
-    }
-
-    private static void requestRefresh(long now) {
-        requestRefresh(now, null);
     }
 
     private static void requestRefresh(long now, Runnable onComplete) {

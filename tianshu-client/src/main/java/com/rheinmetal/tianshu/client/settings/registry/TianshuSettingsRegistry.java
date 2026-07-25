@@ -23,10 +23,13 @@ public final class TianshuSettingsRegistry {
     }
 
     public ModuleSettingsCategory find(String moduleId) {
+        if (moduleId == null) {
+            return null;
+        }
         return categories.stream()
                 .filter(category -> category.moduleId().equals(moduleId))
                 .findFirst()
-                .orElseGet(() -> categories.stream().findFirst().orElse(null));
+                .orElse(null);
     }
 
     public void clear() {

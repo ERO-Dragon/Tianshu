@@ -196,6 +196,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             return;
         }
         currentAdapter.publishSpeechActivity(new AsrSpeechActivityPayload(speaking, sessionId, occurredAtMillis));
+        currentAdapter.publishListeningActivity(speaking, sessionId);
     }
 
     private void handleRuntimeInterrupt(com.rheinmetal.tianshu.protocol.TianshuEnvelope envelope, ProtocolContext context) {
@@ -217,7 +218,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     private AsrEngine createEngine(ModuleRuntimeContext context) {
-        AsrEngineBootstrap bootstrap = new AsrEngineBootstrap(env, config, this::publishBootstrapStatus);
+        AsrEngineBootstrap bootstrap = new AsrEngineBootstrap(
+                env,
+                config,
+                this::publishBootstrapStatus,
+                adapter::publishLoadingActivity
+        );
         return bootstrap.initialize(context, moduleId());
     }
 

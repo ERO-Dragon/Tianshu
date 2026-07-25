@@ -118,6 +118,7 @@ class TtsProtocolSessionBoundaryTest {
                     false,
                     30_000L,
                     (index, audio, last) -> { },
+                    null,
                     () -> { },
                     failure -> { }
             ).accepted());
@@ -146,6 +147,7 @@ class TtsProtocolSessionBoundaryTest {
                 false,
                 30_000L,
                 (index, audio, last) -> { },
+                null,
                 () -> { },
                 failure -> { }
         ).accepted());

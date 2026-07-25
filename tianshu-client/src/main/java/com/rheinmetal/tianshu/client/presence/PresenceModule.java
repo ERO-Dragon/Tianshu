@@ -2,36 +2,34 @@ package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
-import com.rheinmetal.tianshu.client.presence.model.PresenceStatusSnapshot;
+import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
-import com.rheinmetal.tianshu.client.presence.status.PresenceModuleStatusMapper;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
 public final class PresenceModule implements TianshuManagedModule {
     private final PresenceStateStore stateStore;
+    private final PresenceActivityTracker activityTracker;
     private final PresenceDisplayPolicy displayPolicy;
     private final PresenceContextFactMapper contextFactMapper;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final PresenceProtocolAdapter adapter;
-    private final PresenceModuleStatusMapper moduleStatusMapper;
 
     public PresenceModule(
             PresenceProtocolAdapter adapter,
             PresenceStateStore stateStore,
+            PresenceActivityTracker activityTracker,
             PresenceDisplayPolicy displayPolicy,
             PresenceContextFactMapper contextFactMapper,
             PresenceContextQueryCoordinator contextQueryCoordinator
     ) {
         this.stateStore = stateStore;
+        this.activityTracker = activityTracker;
         this.displayPolicy = displayPolicy;
         this.contextFactMapper = contextFactMapper == null ? new PresenceContextFactMapper() : contextFactMapper;
         this.contextQueryCoordinator = contextQueryCoordinator == null
@@ -39,7 +37,6 @@ public final class PresenceModule implements TianshuManagedModule {
                 : contextQueryCoordinator;
         this.contextQueryCoordinator.bindAdapter(adapter);
         this.adapter = adapter;
-        this.moduleStatusMapper = new PresenceModuleStatusMapper();
     }
 
     @Override
@@ -51,10 +48,7 @@ public final class PresenceModule implements TianshuManagedModule {
     public void register(ModuleRegistrationContext context) {
         adapter.registerOwnedTopics(context.protocol());
         adapter.registerQueryContextCapability(this::handleQueryContext);
-        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
-        adapter.subscribeLlmStatus(this::handleLlmStatus);
-        adapter.subscribeTtsPlayback(this::handleTtsPlayback);
-        adapter.subscribeModuleStatus(this::handleModuleStatus);
+        adapter.subscribePresenceActivity(this::handlePresenceActivity);
     }
 
     private void handleQueryContext(TianshuEnvelope envelope, ProtocolContext context) {
@@ -65,33 +59,9 @@ public final class PresenceModule implements TianshuManagedModule {
         contextQueryCoordinator.handleQuery(envelope, context, payload);
     }
 
-    private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
-        if (envelope.payload() instanceof AsrSpeechActivityPayload payload) {
-            stateStore.updateStatus(displayPolicy.fromAsr(payload));
-        }
-        context.complete(envelope.envelopeId());
-    }
-
-    private void handleLlmStatus(TianshuEnvelope envelope, ProtocolContext context) {
-        if (envelope.payload() instanceof LlmStatusPayload payload) {
-            stateStore.updateStatus(displayPolicy.fromLlm(payload));
-        }
-        context.complete(envelope.envelopeId());
-    }
-
-    private void handleTtsPlayback(TianshuEnvelope envelope, ProtocolContext context) {
-        if (envelope.payload() instanceof TtsPlaybackStatusPayload payload) {
-            stateStore.updateStatus(displayPolicy.fromTts(payload));
-        }
-        context.complete(envelope.envelopeId());
-    }
-
-    private void handleModuleStatus(TianshuEnvelope envelope, ProtocolContext context) {
-        if (envelope.payload() instanceof ModuleStatusPayload payload) {
-            PresenceStatusSnapshot status = moduleStatusMapper.fromStatus(payload.status());
-            if (status != null) {
-                stateStore.updateStatus(status);
-            }
+    private void handlePresenceActivity(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof PresenceActivityPayload payload) {
+            activityTracker.accept(envelope.header().sourceId(), payload);
         }
         context.complete(envelope.envelopeId());
     }

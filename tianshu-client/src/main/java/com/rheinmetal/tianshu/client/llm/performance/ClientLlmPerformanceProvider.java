@@ -42,6 +42,7 @@ public final class ClientLlmPerformanceProvider implements LlmPerformanceProvide
         if (config == null) {
             return LlmPerformanceSnapshot.unavailable();
         }
+        GpuInfo.requestRefresh(null);
         List<GpuInfo.GpuDevice> devices = GpuInfo.devices();
         String configuredDevice = normalizeDeviceId(config.getLlmGpuDeviceId());
         if (isCpuDevice(configuredDevice)) {

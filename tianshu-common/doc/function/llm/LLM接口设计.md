@@ -23,7 +23,8 @@
 - 加载与状态
 
   - 进入世界后先建立运行会话，再等待游戏进入稳定状态后自动加载已选择的模型，避免拖慢进入世界过程。
-  - 加载开始、模型准备、失败和运行阶段都会通过模块状态公开，由映迹或其他界面自行决定展示方式。
+  - 模块健康和失败继续通过模块状态公开；真实加载和 TASK 执行另外通过产品活动公开。
+  - CHAT 不直接控制映迹的“思考/回复”，这两个状态由获得 IA delivery 的 AX 负责。
 
 ## 1. 概述
 
@@ -65,7 +66,9 @@ LLM 模块对外提供三个协议能力：
 
 因此模型未加载时，library 注册、条目查询/删除/清空、提供 vector 的写入、BM25 检索和 inline BM25 检索仍可用；需要 embedding 的写入和向量检索会在 embedding 不可用时明确降级或失败。
 
-进入世界后，LLM 先完成世界 session 初始化，再由受管调度器延迟启动模型加载，并通过 `MODULE_STATUS` 通知加载开始、就绪或失败。
+进入世界后，LLM 先完成世界 session 初始化，再由受管调度器延迟启动模型加载。`MODULE_STATUS` 通知健康、就绪或失败；模型加载工作线程真正开始后，LLM 同时以 `llm.model.load / LOADING` 发布 `PRESENCE.ACTIVITY`，并在成功、失败或取消时结束。
+
+LLM 只把实际执行的 `lane=TASK` 任务公开为 `llm.task.<taskId> / PROCESSING_TASK`，终态为 `COMPLETED`、`CANCELLED` 或 `FAILED` 时结束。`lane=CHAT` 不发布 `THINKING` 或 `RESPONDING`，避免外部 CHAT 调用冒充辅星产品交互；AX 会在自己的 IA 授权回合中发布这两个状态。
 
 ---
 

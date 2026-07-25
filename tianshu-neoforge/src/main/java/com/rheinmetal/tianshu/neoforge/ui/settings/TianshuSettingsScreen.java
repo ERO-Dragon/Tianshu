@@ -19,6 +19,7 @@ import com.rheinmetal.tianshu.neoforge.ui.settings.SettingsScrollRegion;
 import com.rheinmetal.tianshu.neoforge.ui.settings.VanillaModuleSettingsRendererProvider;
 import com.rheinmetal.tianshu.client.settings.session.SettingsCoordinator;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.global.GlobalDebugSettingsSession;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
 import net.minecraft.client.Minecraft;
@@ -48,6 +49,7 @@ public final class TianshuSettingsScreen extends Screen {
     private final ModuleSettingsContext context;
     private final TianshuSettingsRegistry registry;
     private final ModuleSettingsRendererProvider rendererProvider;
+    private final GlobalDebugSettingsSession debugSession;
     private final SettingsScreenChrome chrome = new SettingsScreenChrome();
     private String selectedModuleId;
     private ScrollState rightPanelScroll = new ScrollState(0, 0, 0);
@@ -58,23 +60,18 @@ public final class TianshuSettingsScreen extends Screen {
     private SelectionPanel<?> selectionPanel;
     private boolean rebuildQueued;
 
-    public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider) {
+    public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession) {
         super(TITLE);
         this.context = context;
         this.registry = registry;
         this.rendererProvider = rendererProvider;
+        this.debugSession = debugSession;
     }
 
-    public static TianshuSettingsScreen create(ModuleSettingsContext context, TianshuSettingsRegistrySource registrySource, ModuleSettingsRendererProvider rendererProvider) {
+    public static TianshuSettingsScreen create(ModuleSettingsContext context, TianshuSettingsRegistrySource registrySource, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession) {
         TianshuSettingsRegistry registry = new TianshuSettingsRegistry();
         registrySource.contribute(registry, context);
-        return new TianshuSettingsScreen(context, registry, rendererProvider);
-    }
-
-    public static TianshuSettingsScreen createDefault() {
-        ModuleSettingsContext context = new TianshuSettingsContext();
-        TianshuSettingsRegistrySource registrySource = (registry, settingsContext) -> {};
-        return create(context, registrySource, new VanillaModuleSettingsRendererProvider());
+        return new TianshuSettingsScreen(context, registry, rendererProvider, debugSession);
     }
 
     @Override
@@ -139,7 +136,7 @@ public final class TianshuSettingsScreen extends Screen {
     private void buildPanel(ModuleSettingsCategory selected, ModuleSettingsPanelModel panel) {
         try {
             selected.panelFactory().build(panel, context);
-        } catch (IllegalStateException exception) {
+        } catch (RuntimeException exception) {
             panel.text(
                     "settings.module.unavailable",
                     UiText.key("tianshu.gui.settings.status.module_unavailable", exception.getMessage()),
@@ -150,12 +147,16 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     private void addBottomActions(SettingsScreenLayout layout) {
-        int buttonWidth = 98;
+        int margin = 8;
+        int debugWidth = 110;
         int buttonHeight = 20;
         int gap = 8;
         int y = layout.actionsY();
+        int debugX = width - margin - debugWidth;
+        int actionSpaceWidth = Math.max(1, debugX - gap - margin);
+        int buttonWidth = Math.max(1, Math.min(98, (actionSpaceWidth - gap) / 2));
         int totalWidth = buttonWidth * 2 + gap;
-        int x = (width - totalWidth) / 2;
+        int x = margin + Math.max(0, (actionSpaceWidth - totalWidth) / 2);
 
         Button closeButton = Button.builder(CLOSE, button -> onClose())
                 .pos(x, y)
@@ -169,6 +170,21 @@ public final class TianshuSettingsScreen extends Screen {
                 .build();
         saveButton.active = coordinator().canSave();
         addRenderableWidget(saveButton);
+
+        Button debugButton = Button.builder(debugLabel(), button -> {
+                    debugSession.toggle();
+                    rebuildCurrentPage();
+                })
+                .pos(debugX, y)
+                .size(debugWidth, buttonHeight)
+                .build();
+        addRenderableWidget(debugButton);
+    }
+
+    private Component debugLabel() {
+        return Component.translatable(debugSession.enabled()
+                ? "tianshu.gui.settings.debug.enabled"
+                : "tianshu.gui.settings.debug.disabled");
     }
 
     private SettingsCoordinator coordinator() {
@@ -320,11 +336,21 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (selectionPanel != null && keyCode == 256) {
-            selectionPanel = null;
+        if (selectionPanel != null) {
+            if (keyCode == 256) {
+                selectionPanel = null;
+            }
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (selectionPanel != null) {
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
     }
 
     private void updateActionStates() {

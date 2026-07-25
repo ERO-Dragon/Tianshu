@@ -9,9 +9,19 @@ import com.rheinmetal.tianshu.function.llm.LlmProtocolAdapter;
 import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
 
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 
 public final class ClientDiagnosticPolicy implements Predicate<String> {
+    private static final Set<String> DIAGNOSTIC_MODULES = Set.of(
+            AsrProtocolAdapter.MODULE_ID,
+            IrProtocolAdapter.MODULE_ID,
+            IaProtocolAdapter.MODULE_ID,
+            AXModule.MODULE_ID,
+            LlmProtocolAdapter.MODULE_ID,
+            TtsProtocolAdapter.MODULE_ID
+    );
+
     private final ClientDiagnosticsConfiguration config;
 
     public ClientDiagnosticPolicy(ClientDiagnosticsConfiguration config) {
@@ -20,17 +30,6 @@ public final class ClientDiagnosticPolicy implements Predicate<String> {
 
     @Override
     public boolean test(String moduleId) {
-        if (moduleId == null) {
-            return false;
-        }
-        return switch (moduleId) {
-            case AsrProtocolAdapter.MODULE_ID -> config.isAsrDiagnosticsEnabled();
-            case IrProtocolAdapter.MODULE_ID -> config.isIrDiagnosticsEnabled();
-            case IaProtocolAdapter.MODULE_ID -> config.isIaDiagnosticsEnabled();
-            case AXModule.MODULE_ID -> config.isAxDiagnosticsEnabled();
-            case LlmProtocolAdapter.MODULE_ID -> config.isLlmDiagnosticsEnabled();
-            case TtsProtocolAdapter.MODULE_ID -> config.isTtsDiagnosticsEnabled();
-            default -> false;
-        };
+        return moduleId != null && config.isDebugEnabled() && DIAGNOSTIC_MODULES.contains(moduleId);
     }
 }

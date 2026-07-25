@@ -4,13 +4,14 @@
 
 ## 1. 当前公开契约
 
-ASR 当前通过协议中心公开三个事件 topic，不提供公共请求 capability：
+ASR 当前通过协议中心公开四个事件 topic，不提供公共请求 capability：
 
 | 方向 | Topic | PayloadType | Payload | 语义 |
 | --- | --- | --- | --- | --- |
 | ASR 发布 | `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY` | `ASR_SPEECH_ACTIVITY` | `AsrSpeechActivityPayload` | 处理后音频中的说话活动状态变化。 |
 | ASR 发布 | `ProtocolTopics.INPUT_ASR_FINAL_TEXT` | `ASR_TEXT` | `AsrTextPayload` | 已完成且仍属于当前 session 的识别文本。 |
 | ASR 发布 | `ProtocolTopics.MODULE_STATUS` | `MODULE_STATUS` | `ModuleStatusPayload` | `module.asr` 的准备、下载、重载和失败状态。 |
+| ASR 发布 | `ProtocolTopics.PRESENCE_ACTIVITY` | `PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载、识别任务和真实说话活动的产品状态。 |
 | ASR 订阅 | `ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT` | `CUSTOM` | `RuntimeInterruptPayload` | 运行时会话中断；不是普通录音控制入口。 |
 
 topic 的信封类型均为 `PacketType.EVENT`。ASR 不通过公共 topic 接收 `BEGIN / END / COMMIT / CANCEL`，也没有可供外部模块发送 `REQUEST` 的 ASR capability。
@@ -111,6 +112,16 @@ if (!AsrProtocolAdapter.MODULE_ID.equals(status.moduleId())) {
 模型下载状态通过模型服务的 `ModelDownloadProgress` 提供给宿主设置页，字段为 `stage`、`percent`、`downloadedBytes`、`totalBytes` 和 `detailCode`。`stage` 是结构化枚举，Common 不发送自然语言下载标签。
 
 该 topic 使用 `LATEST_ONLY`，适合显示最新 readiness、下载或重载状态，不是完整审计日志。
+
+`MODULE_STATUS` 不驱动映迹 HUD。ASR 另外通过 `PRESENCE.ACTIVITY` 显式发布：
+
+| 活动 ID | 类型 | 边界 |
+| --- | --- | --- |
+| `asr.model.load` | `LOADING` | `AsrEngine.initialize()` 真正开始至成功、失败或取消。禁用、未配置或未安装模型不伪报加载。 |
+| `asr.recognition.<sessionId>` | `PROCESSING_TASK` | 完整识别或 VAD 分段识别真正执行期间。 |
+| `asr.speech.<sessionId>` | `LISTENING` | VAD 检测到处理后音频中的说话活动期间。 |
+
+`LISTENING` 是客观前景状态，不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动；ASR 自身仍会在成功、失败、取消和停止路径配对结束活动。
 
 ## 6. 运行时中断
 

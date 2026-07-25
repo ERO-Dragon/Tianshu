@@ -22,6 +22,7 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 
 import com.rheinmetal.tianshu.client.api.text.UiText;
@@ -94,8 +95,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled)
-                .toggles("llm.diagnostics", common("section.diagnostics"), toggles -> toggles
-                        .toggle("llm.diagnostics.enabled", common("option.diagnostics_enabled"), draft.diagnosticsEnabled))
                 .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
                 .compound("llm.load", llm("section.load_settings"), draft.enabled::get,
                         draft::buildLoadOptions,
@@ -125,7 +124,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final ClientScheduler scheduler;
         private final ClientUiHost uiHost;
         private final MutableSettingsValue<Boolean> enabled;
-        private final MutableSettingsValue<Boolean> diagnosticsEnabled;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> selectedGpuDeviceId;
         private final MutableSettingsValue<Boolean> frameGuardEnabled;
@@ -134,6 +132,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<String> seriesFilter;
         private final MutableSettingsValue<String> downloadStateFilter;
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
+        private volatile ModelAvailabilitySnapshot availabilitySnapshot;
         private volatile long lastDownloadRefreshMillis;
 
         private LlmSettingsDraft(LlmSettingsAccess config, TianshuCoreManager coreManager,
@@ -144,8 +143,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.uiHost = uiHost;
             this.moduleService = coreManager.requireService(LlmModuleService.class);
             this.modelService = coreManager.requireService(LlmModelService.class);
+            this.availabilitySnapshot = modelService.modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isLlmEnabled, config::setLlmEnabled);
-            this.diagnosticsEnabled = new MutableSettingsValue<>(config::isLlmDiagnosticsEnabled, config::setLlmDiagnosticsEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.selectedGpuDeviceId = new MutableSettingsValue<>(this::currentDeviceTargetId, ignored -> {}, Objects::nonNull);
             this.frameGuardEnabled = new MutableSettingsValue<>(config::isLlmFrameGuardEnabled, config::setLlmFrameGuardEnabled);
@@ -157,6 +156,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.mtpEnabled = new MutableSettingsValue<>(config::isLlmMtpEnabled, config::setLlmMtpEnabled);
             this.seriesFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.downloadStateFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
+            modelService.refreshModelAvailabilityAsync(() -> runOnClient(() -> {
+                availabilitySnapshot = modelService.modelAvailability();
+                refreshSettingsScreen();
+            }));
             GpuInfo.requestRefresh(() -> runOnClient(this::refreshSettingsScreen));
         }
 
@@ -217,7 +220,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
-                    || diagnosticsEnabled.dirty()
                     || selectedModelName.dirty()
                     || selectedGpuDeviceId.dirty()
                     || frameGuardEnabled.dirty()
@@ -231,7 +233,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || selected == null)) {
                 return SettingsValidationResult.failure(llm("validation.invalid_model"));
             }
-            if (enabled.get() && selected != null && !modelService.hasModelContent(selected)) {
+            if (enabled.get() && selected != null && !isDownloaded(selected)) {
                 return SettingsValidationResult.failure(llm("validation.model_not_installed"));
             }
             return SettingsValidationResult.successful();
@@ -240,7 +242,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsSaveResult save() {
             enabled.save();
-            diagnosticsEnabled.save();
             config.setCustomLlmName(selectedModelName.get());
             selectedModelName.save();
             config.setLlmGpuDeviceId(persistedDeviceTargetId());
@@ -258,7 +259,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
-            diagnosticsEnabled.reset();
             selectedModelName.reset();
             selectedGpuDeviceId.reset();
             frameGuardEnabled.reset();
@@ -271,7 +271,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private List<String> downloadedModelNames() {
-            List<String> downloaded = modelService.downloadedModels().stream()
+            List<String> downloaded = modelService.allModels().stream()
+                    .filter(this::isDownloaded)
                     .map(info -> info.name)
                     .filter(name -> name != null && !name.isBlank())
                     .distinct()
@@ -330,7 +331,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (isCpuDevice(deviceId)) {
                 return llm("device.cpu");
             }
-            if (!GpuInfo.detected() || GpuInfo.detecting()) {
+            if (!GpuInfo.detected()) {
                 return llm("device.detecting");
             }
             GpuInfo.GpuDevice device = gpuDeviceById(deviceId);
@@ -350,6 +351,20 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             return modelService.resolveModel(name);
         }
 
+        private ModelAvailabilitySnapshot.Entry availabilityEntry(LlmModelInfo info) {
+            return info == null ? null : availabilitySnapshot.entry(info.name);
+        }
+
+        private boolean isDownloaded(LlmModelInfo info) {
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            return entry != null && entry.installed();
+        }
+
+        private long cachedModelSizeBytes(LlmModelInfo info) {
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            return entry == null ? 0L : entry.sizeBytes();
+        }
+
         private UiText selectedModelNameStatus() {
             LlmModelInfo info = resolveModel(selectedModelName.get());
             return info == null ? common("not_selected") : UiText.literal(info.getDisplayName());
@@ -358,13 +373,15 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private UiText selectedModelSizeStatus() {
             LlmModelInfo info = resolveModel(selectedModelName.get());
             if (info == null) return common("dash");
-            if (!modelService.hasModelContent(info)) return common("not_downloaded");
-            long sizeBytes = modelService.modelSizeBytes(info);
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            if (entry == null) return common("unknown");
+            if (!entry.installed()) return common("not_downloaded");
+            long sizeBytes = entry.sizeBytes();
             if (sizeBytes <= 0L) return common("unknown");
             if (sizeBytes > 1024L * 1024 * 1024) {
-                return UiText.literal(String.format("%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
+                return UiText.literal(String.format(Locale.ROOT, "%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
             }
-            return UiText.literal(String.format("%.0f MB", sizeBytes / (1024.0 * 1024)));
+            return UiText.literal(String.format(Locale.ROOT, "%.0f MB", sizeBytes / (1024.0 * 1024)));
         }
 
         private boolean canLoad() {
@@ -372,7 +389,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             LlmRuntimeSnapshot snapshot = moduleService.snapshot();
             if (snapshot.state() == LlmRuntimeState.STARTING || snapshot.state() == LlmRuntimeState.STOPPING || snapshot.running()) return false;
             LlmModelInfo info = resolveModel(selectedModelName.get());
-            return info != null && modelService.hasModelContent(info);
+            return info != null && isDownloaded(info);
         }
 
         private boolean canUnload() {
@@ -383,7 +400,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void startLoad(ModuleSettingsContext context) {
             LlmModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null || !modelService.hasModelContent(info)) {
+            if (info == null || !isDownloaded(info)) {
                 context.showStatus(llm("state.not_downloaded"), 3000);
                 return;
             }
@@ -450,7 +467,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (!enabled.get()) return llm("state.disabled");
             LlmModelInfo info = resolveModel(selectedModelName.get());
             if (info == null) return llm("state.no_model");
-            if (!modelService.hasModelContent(info)) return llm("state.not_downloaded");
+            if (!isDownloaded(info)) return llm("state.not_downloaded");
             LlmRuntimeSnapshot snapshot = moduleService.snapshot();
             return switch (snapshot.state()) {
                 case DISABLED -> llm("state.disabled");
@@ -464,7 +481,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText loadCompatibilityStatus() {
             LlmModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null || !modelService.hasModelContent(info)) {
+            if (info == null || !isDownloaded(info)) {
                 return common("dash");
             }
             LoadCompatibility compatibility = loadCompatibility(info);
@@ -473,7 +490,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private long llmResourceUsageMb() {
             LlmRuntimeSnapshot snapshot = moduleService.snapshot();
-            return snapshot.running() || snapshot.state() == LlmRuntimeState.STARTING ? Math.max(0L, modelService.modelSizeBytes(resolveModel(selectedModelName.get())) / (1024 * 1024)) : 0L;
+            return snapshot.running() || snapshot.state() == LlmRuntimeState.STARTING ? Math.max(0L, cachedModelSizeBytes(resolveModel(selectedModelName.get())) / (1024 * 1024)) : 0L;
         }
 
         private GpuInfo.GpuDevice selectedGpuDevice() {
@@ -486,7 +503,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (isAutoDevice(configured)) {
                 return defaultDeviceTargetId();
             }
-            if (!GpuInfo.detected() || GpuInfo.detecting()) {
+            if (!GpuInfo.detected()) {
                 return configured;
             }
             if (isCpuDevice(configured) || gpuDeviceById(configured) != null) {
@@ -502,7 +519,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText resolvedDeviceTargetLabel() {
             String targetId = effectiveDeviceTargetId();
-            if (!GpuInfo.detected() || GpuInfo.detecting()) {
+            if (!GpuInfo.detected()) {
                 return llm("device.detecting");
             }
             if (isCpuDevice(targetId)) {
@@ -513,7 +530,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private String defaultDeviceTargetId() {
-            if (!GpuInfo.detected() || GpuInfo.detecting()) {
+            if (!GpuInfo.detected()) {
                 return AUTO_DEVICE_ID;
             }
             List<GpuInfo.GpuDevice> devices = GpuInfo.devices();
@@ -545,7 +562,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private UiText selectedGpuStatus() {
-            if (!GpuInfo.detected() || GpuInfo.detecting()) {
+            if (!GpuInfo.detected()) {
                 return llm("device.detecting");
             }
             if (isCpuDevice(effectiveDeviceTargetId())) {
@@ -559,11 +576,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private boolean showVramStatus() {
-            return GpuInfo.detected() && !GpuInfo.detecting() && !isCpuDevice(effectiveDeviceTargetId()) && selectedGpuDevice() != null;
+            return GpuInfo.detected() && !isCpuDevice(effectiveDeviceTargetId()) && selectedGpuDevice() != null;
         }
 
         private boolean showMemoryStatus() {
-            return GpuInfo.detected() && !GpuInfo.detecting() && isCpuDevice(effectiveDeviceTargetId());
+            return GpuInfo.detected() && isCpuDevice(effectiveDeviceTargetId());
         }
 
         private LoadCompatibility loadCompatibility(LlmModelInfo info) {
@@ -590,7 +607,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private long estimatedRequiredMemoryBytes(LlmModelInfo info) {
-            long modelBytes = Math.max(modelService.modelSizeBytes(info), estimatedModelSizeBytes(info));
+            long modelBytes = Math.max(cachedModelSizeBytes(info), estimatedModelSizeBytes(info));
             if (modelBytes <= 0L) {
                 return 0L;
             }
@@ -635,7 +652,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void startDownload(ModuleSettingsContext context, LlmModelInfo info) {
-            if (info == null || modelService.isDownloading()) return;
+            if (info == null || !cardState(info).canStartDownload()) return;
             modelService.downloadModel(info, new LlmModelService.DownloadProgressCallback() {
                 @Override
                 public void onProgress(ModelDownloadProgress progress) {
@@ -699,10 +716,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             boolean activeDownload = downloading && sameModelName(info, snapshot.modelName());
             boolean paused = activeDownload && snapshot.paused();
             boolean cancelling = activeDownload && snapshot.cancelling();
-            boolean installed = info != null && modelService.hasModelContent(info);
+            boolean known = availabilityEntry(info) != null;
+            boolean installed = info != null && isDownloaded(info);
             boolean deleting = modelService.isDeletingModel(info);
             boolean anyOperationActive = downloading || modelService.isDeleting();
-            return new LlmModelCardState(info, installed, anyOperationActive, activeDownload, paused, cancelling, deleting);
+            return new LlmModelCardState(info, known, installed, anyOperationActive, activeDownload, paused, cancelling, deleting);
         }
 
         private boolean sameModelName(LlmModelInfo info, String modelName) {
@@ -807,8 +825,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private boolean matchesDownloadStateFilter(LlmModelInfo info) {
             return switch (downloadStateFilter.get()) {
-                case DOWNLOADED -> modelService.hasModelContent(info);
-                case NOT_DOWNLOADED -> !modelService.hasModelContent(info);
+                case DOWNLOADED -> isDownloaded(info);
+                case NOT_DOWNLOADED -> availabilityEntry(info) != null && !isDownloaded(info);
                 default -> true;
             };
         }
@@ -837,7 +855,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText modelDownloadSizeLabel(LlmModelInfo info) {
             if (info == null) return common("unknown");
-            long actualBytes = modelService.modelSizeBytes(info);
+            long actualBytes = cachedModelSizeBytes(info);
             if (actualBytes > 0L) return formatBytes(actualBytes);
             long estimatedBytes = estimatedModelSizeBytes(info);
             return estimatedBytes > 0L ? llm("size.estimated", formatBytes(estimatedBytes)) : common("unknown");
@@ -867,13 +885,15 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText selectedModelSizeStatusFor(LlmModelInfo info) {
             if (info == null) return common("dash");
-            if (!modelService.hasModelContent(info)) return common("not_downloaded");
-            long sizeBytes = modelService.modelSizeBytes(info);
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            if (entry == null) return common("unknown");
+            if (!entry.installed()) return common("not_downloaded");
+            long sizeBytes = entry.sizeBytes();
             if (sizeBytes <= 0L) return common("unknown");
             if (sizeBytes > 1024L * 1024 * 1024) {
-                return UiText.literal(String.format("%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
+                return UiText.literal(String.format(Locale.ROOT, "%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
             }
-            return UiText.literal(String.format("%.0f MB", sizeBytes / (1024.0 * 1024)));
+            return UiText.literal(String.format(Locale.ROOT, "%.0f MB", sizeBytes / (1024.0 * 1024)));
         }
 
         private long estimatedModelSizeBytes(LlmModelInfo info) {
@@ -889,7 +909,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) return 0L;
             long catalogEstimate = info.getEstimatedVramBytes();
             if (catalogEstimate > 0L) return catalogEstimate;
-            long modelBytes = Math.max(modelService.modelSizeBytes(info), estimatedModelSizeBytes(info));
+            long modelBytes = Math.max(cachedModelSizeBytes(info), estimatedModelSizeBytes(info));
             if (modelBytes <= 0L) return 0L;
             return Math.round(modelBytes * 1.15D) + 512L * 1024L * 1024L;
         }
@@ -942,9 +962,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText formatBytes(long bytes) {
             if (bytes >= 1024L * 1024 * 1024) {
-                return UiText.literal(String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024)));
+                return UiText.literal(String.format(Locale.ROOT, "%.1f GB", bytes / (1024.0 * 1024 * 1024)));
             }
-            return UiText.literal(String.format("%.0f MB", bytes / (1024.0 * 1024)));
+            return UiText.literal(String.format(Locale.ROOT, "%.0f MB", bytes / (1024.0 * 1024)));
         }
     }
 
@@ -958,9 +978,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
     }
 
-    private record LlmModelCardState(LlmModelInfo info, boolean installed, boolean anyOperationActive, boolean activeDownload, boolean paused, boolean cancelling, boolean deleting) {
+    private record LlmModelCardState(LlmModelInfo info, boolean known, boolean installed, boolean anyOperationActive, boolean activeDownload, boolean paused, boolean cancelling, boolean deleting) {
         private boolean canStartDownload() {
-            return info != null && !installed && !anyOperationActive;
+            return info != null && known && !installed && !anyOperationActive;
         }
 
         private boolean canPauseDownload() {
@@ -976,7 +996,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private boolean canDeleteModel() {
-            return info != null && installed && !anyOperationActive && !deleting;
+            return info != null && known && installed && !anyOperationActive && !deleting;
         }
 
         private UiText statusLabel() {
@@ -986,7 +1006,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 }
                 return paused ? llm("status.paused") : llm("status.downloading");
             }
-            return common(installed ? "downloaded" : "not_downloaded");
+            return common(!known ? "unknown" : (installed ? "downloaded" : "not_downloaded"));
         }
     }
 }

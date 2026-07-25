@@ -11,8 +11,4 @@ public interface PresenceHudSettings {
     default boolean statusTextEnabled() {
         return true;
     }
-
-    default boolean sourceVisible(String sourceModuleId) {
-        return true;
-    }
 }

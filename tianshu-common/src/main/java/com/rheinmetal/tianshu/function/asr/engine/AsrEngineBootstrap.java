@@ -18,18 +18,33 @@ public final class AsrEngineBootstrap {
     private final IGameEnvironment env;
     private final AsrConfiguration config;
     private final Consumer<AsrEngineBootstrapStatus> statusSink;
+    private final Consumer<Boolean> loadingSink;
 
     public AsrEngineBootstrap(IGameEnvironment env, AsrConfiguration config) {
-        this(env, config, null);
+        this(env, config, null, null);
     }
 
     public AsrEngineBootstrap(IGameEnvironment env, AsrConfiguration config, Consumer<AsrEngineBootstrapStatus> statusSink) {
+        this(env, config, statusSink, null);
+    }
+
+    public AsrEngineBootstrap(
+            IGameEnvironment env,
+            AsrConfiguration config,
+            Consumer<AsrEngineBootstrapStatus> statusSink,
+            Consumer<Boolean> loadingSink
+    ) {
         this.env = env;
         this.config = config;
         this.statusSink = statusSink == null ? ignored -> {} : statusSink;
+        this.loadingSink = loadingSink == null ? ignored -> {} : loadingSink;
     }
 
     public AsrEngine initialize(ModuleRuntimeContext context, String moduleId) {
+        if (!config.isAsrEnabled()) {
+            context.runtimeState().capabilities().disable(AsrRuntimeCapabilities.INPUT, moduleId);
+            return null;
+        }
         Path modelPath = config.getAsrModelPath();
         if (modelPath == null || modelPath.getFileName() == null || modelPath.getFileName().toString().isBlank()) {
             markFailed(context, moduleId, "ASR model is not configured");
@@ -80,7 +95,13 @@ public final class AsrEngineBootstrap {
         }
 
         Path hotwordsFile = AsrHotwordSupport.fromModel(modelInfo).reloadRequired() ? resolveHotwordsFile(context, modelInfo) : null;
-        boolean initialized = engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile);
+        boolean initialized;
+        loadingSink.accept(true);
+        try {
+            initialized = engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile);
+        } finally {
+            loadingSink.accept(false);
+        }
         if (!initialized) {
             env.error("asr.model.unsupported", null);
         publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.unsupported_model"));

@@ -238,8 +238,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         execution.requestKey(input.requestKey());
         activeExecution.set(execution);
         if (statusPublisher != null) {
-            statusPublisher.accepted();
-            statusPublisher.active("PROCESSING", allowInterruption);
+            statusPublisher.accepted(execution);
+            statusPublisher.active(execution, "PROCESSING", allowInterruption);
         }
 
         AXRequest request = AXRequest.fromNormalizedInput(input);
@@ -278,7 +278,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return;
         }
         if (statusPublisher != null) {
-            statusPublisher.active("MEMORY_RETRIEVING", allowInterruption);
+            statusPublisher.active(execution, "MEMORY_RETRIEVING", allowInterruption);
         }
         memoryRetriever.retrieve(
                 new AXMemoryRetrievalRequest(
@@ -311,7 +311,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));
         if (statusPublisher != null) {
-            statusPublisher.active("THINKING", allowInterruption);
+            statusPublisher.active(execution, "THINKING", allowInterruption);
         }
         TianshuEnvelope llmEnvelope = llmClient.submit(
                 deliveryEnvelope,
@@ -379,7 +379,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
         if (statusPublisher != null && activeExecution.get() == execution) {
             statusPublisher.interrupted();
-            statusPublisher.terminal(cancellation.releaseReason());
+            statusPublisher.terminal(execution, cancellation.releaseReason());
         }
         if (execution.requestRelease()) {
             sessionController.release(execution.deliveryEnvelope(), execution.delivery(), cancellation.releaseReason());
@@ -400,7 +400,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return;
         }
         if (statusPublisher != null) {
-            statusPublisher.terminal(reason);
+            statusPublisher.terminal(execution, reason);
         }
         if (execution.requestRelease()) {
             sessionController.release(execution.deliveryEnvelope(), execution.delivery(), reason);
@@ -524,7 +524,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 return;
             }
             respondingPublished = true;
-            statusPublisher.active("RESPONDING", allowInterruption);
+            statusPublisher.active(execution, "RESPONDING", allowInterruption);
         }
 
         private String resultFailureReason(LLMPromptResultPayload payload) {

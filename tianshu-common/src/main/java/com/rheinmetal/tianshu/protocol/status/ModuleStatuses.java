@@ -17,19 +17,19 @@ public final class ModuleStatuses {
     }
 
     public static ModuleStatus readyKeyed(String moduleId, String messageKey) {
-        return keyed(moduleId, TYPE_READY, messageKey, ModuleStatusSeverity.NOTICE, READY_TTL_MILLIS, "IDLE");
+        return keyed(moduleId, TYPE_READY, messageKey, ModuleStatusSeverity.NOTICE, READY_TTL_MILLIS);
     }
 
     public static ModuleStatus startingKeyed(String moduleId, String messageKey) {
-        return keyed(moduleId, TYPE_STARTING, messageKey, ModuleStatusSeverity.INFO, STARTING_TTL_MILLIS, "THINKING");
+        return keyed(moduleId, TYPE_STARTING, messageKey, ModuleStatusSeverity.INFO, STARTING_TTL_MILLIS);
     }
 
     public static ModuleStatus waitingKeyed(String moduleId, String messageKey) {
-        return keyed(moduleId, TYPE_WAITING, messageKey, ModuleStatusSeverity.NOTICE, WAITING_TTL_MILLIS, "THINKING");
+        return keyed(moduleId, TYPE_WAITING, messageKey, ModuleStatusSeverity.NOTICE, WAITING_TTL_MILLIS);
     }
 
     public static ModuleStatus failedKeyed(String moduleId, String messageKey) {
-        return keyed(moduleId, TYPE_FAILED, messageKey, ModuleStatusSeverity.CRITICAL, FAILED_TTL_MILLIS, "ERROR");
+        return keyed(moduleId, TYPE_FAILED, messageKey, ModuleStatusSeverity.CRITICAL, FAILED_TTL_MILLIS);
     }
 
     private static ModuleStatus keyed(
@@ -37,11 +37,8 @@ public final class ModuleStatuses {
             String statusType,
             String messageKey,
             ModuleStatusSeverity severity,
-            long ttlMillis,
-            String presenceStatusType
+            long ttlMillis
     ) {
-        return ModuleStatus.keyed(moduleId, statusType, messageKey, severity, ttlMillis, Map.of(
-                "presenceStatusType", presenceStatusType
-        ));
+        return ModuleStatus.keyed(moduleId, statusType, messageKey, severity, ttlMillis, Map.of());
     }
 }

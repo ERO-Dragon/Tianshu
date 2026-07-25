@@ -70,7 +70,7 @@ public final class LlmModule implements TianshuManagedModule {
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
-        this.engineProvider = new LlmEngineProvider(env, config, adapter::publishInferenceStatus, llmExecutor.modelLoadExecutor());
+        this.engineProvider = new LlmEngineProvider(env, config, this::publishInferenceStatus, llmExecutor.modelLoadExecutor());
     }
 
     @Override
@@ -240,7 +240,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
 
         publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting"));
-        engineProvider.startAsync(() -> {
+        engineProvider.startAsync(() -> adapter.publishLoadingActivity(true), () -> {
             synchronized (lifecycleLock) {
                 if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
                         || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
@@ -296,7 +296,7 @@ public final class LlmModule implements TianshuManagedModule {
                 }
                 engineProvider.stop();
             }
-        });
+        }, () -> adapter.publishLoadingActivity(false));
     }
 
     private void stopRuntime() {
@@ -336,6 +336,25 @@ public final class LlmModule implements TianshuManagedModule {
     private void publishModuleStatus(ModuleStatus status) {
         if (status != null) {
             adapter.publishModuleStatus(status);
+        }
+    }
+
+    void publishInferenceStatus(com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload status) {
+        if (status == null) {
+            return;
+        }
+        adapter.publishInferenceStatus(status);
+        if (!"TASK".equals(status.taskType()) || status.taskId().isBlank()) {
+            return;
+        }
+        if (com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.STARTED.equals(status.eventType())) {
+            adapter.publishTaskActivity(status.taskId(), true);
+            return;
+        }
+        if (com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.COMPLETED.equals(status.eventType())
+                || com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.CANCELLED.equals(status.eventType())
+                || com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.FAILED.equals(status.eventType())) {
+            adapter.publishTaskActivity(status.taskId(), false);
         }
     }
 

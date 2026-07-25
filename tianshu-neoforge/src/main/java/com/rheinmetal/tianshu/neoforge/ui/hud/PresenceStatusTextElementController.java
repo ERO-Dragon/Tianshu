@@ -49,7 +49,6 @@ public final class PresenceStatusTextElementController implements PresenceHudEle
     private boolean visible(PresenceHudDisplay display) {
         return display != null
                 && display.visible()
-                && settings.statusTextEnabled()
-                && settings.sourceVisible(display.sourceModuleId());
+                && settings.statusTextEnabled();
     }
 }

@@ -24,6 +24,7 @@ import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsApplier;
 import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.asr.settings.AsrSettingsSnapshot;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.model.AsrModelManager;
@@ -118,8 +119,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
-                .toggles("asr.diagnostics", common("section.diagnostics"), group -> group
-                        .toggle("asr.diagnostics.enabled", common("option.diagnostics_enabled"), draft.diagnosticsEnabled))
                 .options("as.main", asr("section.main"), draft::buildMainOptions)
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
@@ -155,7 +154,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final ClientUiHost uiHost;
         private final PresenceTextProvider textProvider;
         private final MutableSettingsValue<Boolean> enabled;
-        private final MutableSettingsValue<Boolean> diagnosticsEnabled;
         private final MutableSettingsValue<String> selectedMic;
         private final MutableSettingsValue<TriggerMode> triggerMode;
         private final MutableSettingsValue<String> selectedModelName;
@@ -174,6 +172,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private volatile UiText previewResultText = common("dash");
 
         private final ClientAudioDeviceCatalog audioDeviceCatalog;
+        private volatile ModelAvailabilitySnapshot availabilitySnapshot;
 
         private AsrSettingsDraft(AsrSettingsAccess config, IAudioBridge audioBridge, TianshuCoreManager coreManager, ModuleSettingsContext context,
                                  ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider,
@@ -187,8 +186,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.textProvider = textProvider;
             this.audioDeviceCatalog = audioDeviceCatalog;
             this.catalog = AsrModelManager.getAllModels();
+            this.availabilitySnapshot = asrModelService().modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
-            this.diagnosticsEnabled = new MutableSettingsValue<>(config::isAsrDiagnosticsEnabled, config::setAsrDiagnosticsEnabled);
             this.selectedMic = new MutableSettingsValue<>(this::currentMicName, ignored -> {}, Objects::nonNull);
             this.triggerMode = new MutableSettingsValue<>(config::getTriggerMode, config::setTriggerMode, Objects::nonNull);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
@@ -199,6 +198,10 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.performanceDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
             this.qualityDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
             this.recommendationDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
+            asrModelService().refreshModelAvailabilityAsync(() -> runOnClient(() -> {
+                availabilitySnapshot = asrModelService().modelAvailability();
+                refreshSettingsScreen();
+            }));
         }
 
     private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
@@ -235,7 +238,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
-                    || diagnosticsEnabled.dirty()
                     || selectedMic.dirty()
                     || triggerMode.dirty()
                     || selectedModelName.dirty()
@@ -259,7 +261,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         public SettingsSaveResult save() {
             AsrSettingsSnapshot before = AsrSettingsSnapshot.from(config);
             enabled.save();
-            diagnosticsEnabled.save();
             triggerMode.save();
             highPassFilterEnabled.save();
             vadEnabled.save();
@@ -278,7 +279,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
-            diagnosticsEnabled.reset();
             selectedMic.reset();
             triggerMode.reset();
             selectedModelName.reset();
@@ -372,7 +372,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null) {
                 return common("not_selected");
             }
-            return asr("model.selected", info.getDisplayName(), common(isDownloaded(info) ? "downloaded" : "not_downloaded"));
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            String status = entry == null ? "unknown" : (entry.installed() ? "downloaded" : "not_downloaded");
+            return asr("model.selected", info.getDisplayName(), common(status));
         }
 
         private UiText downloadStatus() {
@@ -459,7 +461,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void startDownload(ModuleSettingsContext context, AsrModelInfo info) {
-            if (info == null || downloadInProgress()) {
+            if (info == null || !cardState(info).canStartDownload()) {
                 return;
             }
             String modelKey = info.localKey();
@@ -661,8 +663,13 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return UiText.key("tianshu.gui.settings.badge.score", label, score);
         }
 
+        private ModelAvailabilitySnapshot.Entry availabilityEntry(AsrModelInfo info) {
+            return info == null ? null : availabilitySnapshot.entry(info.localKey());
+        }
+
         private boolean isDownloaded(AsrModelInfo info) {
-            return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"));
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            return entry != null && entry.installed();
         }
 
         private AsrModelCardState cardState(AsrModelInfo info) {
@@ -671,9 +678,10 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             boolean activeDownload = downloading && info != null && sameModel(info, resolveModel(status.activeModelKey()));
             boolean paused = activeDownload && status.paused();
             boolean cancelling = activeDownload && status.cancelling();
+            boolean known = availabilityEntry(info) != null;
             boolean installed = info != null && isDownloaded(info);
             boolean operationActive = downloading || asrModelService().isDeleting();
-            return new AsrModelCardState(info, installed, operationActive, activeDownload, paused, cancelling);
+            return new AsrModelCardState(info, known, installed, operationActive, activeDownload, paused, cancelling);
         }
 
         private List<String> filterValues(java.util.function.Function<AsrModelInfo, List<String>> mapper) {
@@ -816,9 +824,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
     }
 
-    private record AsrModelCardState(AsrModelInfo info, boolean installed, boolean anyOperationActive, boolean activeDownload, boolean paused, boolean cancelling) {
+    private record AsrModelCardState(AsrModelInfo info, boolean known, boolean installed, boolean anyOperationActive, boolean activeDownload, boolean paused, boolean cancelling) {
         private boolean canStartDownload() {
-            return info != null && !installed && !anyOperationActive;
+            return info != null && known && !installed && !anyOperationActive;
         }
 
         private boolean canPauseDownload() {
@@ -834,7 +842,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private boolean canDeleteModel() {
-            return info != null && installed && !anyOperationActive;
+            return info != null && known && installed && !anyOperationActive;
         }
 
         private UiText statusLabel() {
@@ -844,7 +852,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 }
                 return paused ? asr("status.paused") : asr("status.downloading");
             }
-            return common(installed ? "downloaded" : "not_downloaded");
+            return common(!known ? "unknown" : (installed ? "downloaded" : "not_downloaded"));
         }
     }
 

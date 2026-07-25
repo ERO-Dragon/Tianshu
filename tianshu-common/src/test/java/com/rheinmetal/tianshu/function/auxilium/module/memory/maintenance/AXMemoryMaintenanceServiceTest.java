@@ -19,6 +19,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -26,9 +27,14 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -56,7 +62,8 @@ class AXMemoryMaintenanceServiceTest {
 
     @Test
     void taskRequestsAreUnlimitedThinkingAndCleanedBeforeStorage() throws Exception {
-        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
+        List<PresenceActivityPayload> activities = captureActivities(runtime);
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
         AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
         AXMemoryWindowPolicy policy = new AXMemoryWindowPolicy(
@@ -129,6 +136,12 @@ class AXMemoryMaintenanceServiceTest {
         assertEquals("AX \u5173\u6ce8\u6a21\u5757\u52a0\u8f7d\u3002", secondFact);
         assertTrue(memorySystem.events().loadAll(scope).stream()
                 .allMatch(event -> memorySystem.stmBlocks().loadAll(scope).get(0).id().equals(event.stmId())));
+        await(() -> activities.size() >= 2);
+        assertEquals(List.of(PresenceActivityAction.STARTED, PresenceActivityAction.ENDED),
+                activities.stream().map(PresenceActivityPayload::action).toList());
+        assertEquals(List.of(PresenceActivityType.PROCESSING_TASK, PresenceActivityType.PROCESSING_TASK),
+                activities.stream().map(PresenceActivityPayload::activityType).toList());
+        assertEquals("ax.memory.maintenance.world", activities.get(0).activityId());
     }
 
     @Test
@@ -330,6 +343,36 @@ class AXMemoryMaintenanceServiceTest {
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
         ), llm::handle);
+    }
+
+    private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
+        List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        runtime.subscribeTopic(
+                new ModuleDescriptor(
+                        "module.presence.memory-test",
+                        List.of(),
+                        defaults.threadPolicy(),
+                        defaults.cancellationScope(),
+                        defaults.failurePolicy(),
+                        defaults.deliveryPolicy(),
+                        defaults.cancellable(),
+                        defaults.supportsStreaming(),
+                        defaults.maxConcurrency(),
+                        defaults.queueCapacity()
+                ),
+                new TopicSubscriptionDescriptor(
+                        ProtocolTopics.PRESENCE_ACTIVITY,
+                        PayloadType.PRESENCE_ACTIVITY,
+                        PresenceActivityPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.EVENT),
+                        Priority.LOW,
+                        CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+                ),
+                (envelope, context) -> activities.add((PresenceActivityPayload) envelope.payload())
+        );
+        return activities;
     }
 
     private static void registerLlm(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {

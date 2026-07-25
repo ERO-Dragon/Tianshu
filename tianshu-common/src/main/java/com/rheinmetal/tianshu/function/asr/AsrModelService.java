@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -21,6 +22,9 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -65,6 +69,9 @@ public class AsrModelService {
     private final BooleanSupplier readySupplier;
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
+    private final AtomicBoolean availabilityRefreshQueued = new AtomicBoolean(false);
+    private final ConcurrentLinkedQueue<Runnable> availabilityRefreshCallbacks = new ConcurrentLinkedQueue<>();
+    private final AtomicReference<ModelAvailabilitySnapshot> availabilitySnapshot = new AtomicReference<>(ModelAvailabilitySnapshot.empty());
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
 
@@ -123,7 +130,10 @@ public class AsrModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                this::cleanupStaleDownloadArtifacts
+                () -> {
+                    cleanupStaleDownloadArtifacts();
+                    refreshModelAvailability();
+                }
         );
     }
 
@@ -150,6 +160,67 @@ public class AsrModelService {
         Path modelDir = resolveModelDir(info);
         if (modelDir == null || !Files.exists(modelDir)) return false;
         return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"));
+    }
+
+    public ModelAvailabilitySnapshot modelAvailability() {
+        return availabilitySnapshot.get();
+    }
+
+    public void refreshModelAvailabilityAsync(Runnable completion) {
+        if (completion != null) {
+            availabilityRefreshCallbacks.add(completion);
+        }
+        if (!availabilityRefreshQueued.compareAndSet(false, true)) {
+            return;
+        }
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.asr")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.asr:model.availability")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> {
+                    try {
+                        refreshModelAvailability();
+                    } finally {
+                        completeAvailabilityRefresh();
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            completeAvailabilityRefresh();
+        }
+    }
+
+    private void completeAvailabilityRefresh() {
+        Runnable callback;
+        while ((callback = availabilityRefreshCallbacks.poll()) != null) {
+            try {
+                callback.run();
+            } catch (RuntimeException exception) {
+                env.error("asr.model.availability_callback_failed", exception);
+            }
+        }
+        availabilityRefreshQueued.set(false);
+        if (!availabilityRefreshCallbacks.isEmpty()) {
+            refreshModelAvailabilityAsync(null);
+        }
+    }
+
+    private void refreshModelAvailability() {
+        Map<String, ModelAvailabilitySnapshot.Entry> entries = new LinkedHashMap<>();
+        Path baseDir = modelBasePath();
+        for (AsrModelInfo info : AsrModelManager.getAllModels()) {
+            if (info == null || info.localKey() == null || info.localKey().isBlank()) {
+                continue;
+            }
+            entries.put(info.localKey(), new ModelAvailabilitySnapshot.Entry(
+                    AsrModelManager.isModelDownloaded(info, baseDir), 0L
+            ));
+        }
+        availabilitySnapshot.set(new ModelAvailabilitySnapshot(entries, true, System.currentTimeMillis()));
     }
 
     public boolean deleteModel(AsrModelInfo info) {
@@ -185,6 +256,7 @@ public class AsrModelService {
                     boolean deleted;
                     try {
                         deleted = deleteModel(info);
+                        refreshModelAvailability();
                     } finally {
                         deletingModel.set(false);
                     }
@@ -254,6 +326,7 @@ public class AsrModelService {
                                 if (!finishTask(task)) {
                                     return;
                                 }
+                                refreshModelAvailability();
                                 publishWaiting("tianshu.presence.module.asr.download_complete");
                                 if (callback != null) {
                                     callback.onComplete();
@@ -265,6 +338,7 @@ public class AsrModelService {
                                 if (!finishTask(task)) {
                                     return;
                                 }
+                                refreshModelAvailability();
                                 if (callback == null) {
                                     return;
                                 }
@@ -281,6 +355,7 @@ public class AsrModelService {
                         if (!finishTask(task)) {
                             return;
                         }
+                        refreshModelAvailability();
                         if (callback == null) {
                             return;
                         }

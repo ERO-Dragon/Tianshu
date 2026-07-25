@@ -6,9 +6,15 @@ import java.util.Map;
 import java.util.Collections;
 
 public final class NeoForgeNamedObjectDictionaryProvider implements com.rheinmetal.tianshu.client.ir.NamedObjectDictionaryProvider {
-    private final ClientItemDictionaryBuilder itemBuilder = new ClientItemDictionaryBuilder();
-    private final ClientEntityDictionaryBuilder entityBuilder = new ClientEntityDictionaryBuilder();
+    private final ClientItemDictionaryBuilder itemBuilder;
+    private final ClientEntityDictionaryBuilder entityBuilder;
     private volatile Map<String, List<String>> dictionarySnapshot = Map.of();
+
+    public NeoForgeNamedObjectDictionaryProvider(ClientLanguageSnapshot languageSnapshot) {
+        ClientLanguageSnapshot snapshot = java.util.Objects.requireNonNull(languageSnapshot, "languageSnapshot");
+        itemBuilder = new ClientItemDictionaryBuilder(snapshot);
+        entityBuilder = new ClientEntityDictionaryBuilder(snapshot);
+    }
 
     @Override
     public Map<String, List<String>> snapshot() {

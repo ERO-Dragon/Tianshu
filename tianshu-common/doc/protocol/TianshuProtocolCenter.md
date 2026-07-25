@@ -21,7 +21,8 @@
 
 - 状态观察
 
-  - 模块可以通过 Topic 公开加载、准备、运行和失败状态，映迹或其他观察者再决定如何展示。
+  - 模块通过 `MODULE.STATUS` 公开健康和生命周期状态，通过 `PRESENCE.ACTIVITY` 公开玩家可感知的产品活动。
+  - 映迹只聚合显式产品活动，不再从模块健康、LLM 推理或 TTS 播放事件猜测 HUD 状态。
   - 无法投递、类型不匹配或已经过期的消息会进入统一的失败记录，方便诊断问题来源。
 
 协议中心是天枢各功能模块之间的通信和生命周期基础设施。它不承载业务脑，不理解业务 Payload 的内部含义，也不直接执行 Minecraft、LLM、TTS、ASR 或 UI 动作；它只负责把标准信封安全地路由、排队、取消、观测和清理。
@@ -133,13 +134,16 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `SYSTEM.RUNTIME_INTERRUPT` | `CUSTOM` | 运行时中断。 |
 | `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
-| `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期的观察性状态，供 Presence 等订阅者自行转换展示。 |
+| `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期和健康状态，供设置、诊断和日志观察。 |
+| `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态和独立聆听状态。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前如果说话将被哪个 IA owner 承接。 |
 
 `LLM.STATUS` 只发布 libs `inferenceEventListener` 回调产生的真实推理事件，例如 `QUEUED`、`STARTED`、`PREFILL_STARTED`、`GENERATION_STARTED`、`SUSPENDED`、`COLD_RESUME_STARTED`、`COMPLETED`、`CANCELLED`、`FAILED`。协议层请求接收、admission 排队和响应完成状态由 response payload 与 envelope lifecycle 表达，不混入该 topic。
 
 `MODULE_STATUS` 使用 `ModuleStatusPayload`。它是观察性状态，不替代 `RuntimeCapabilityRegistry` 的请求准入判断。模块应在真实生命周期边界发布已有的 waiting/starting/ready/failed 状态：模型下载完成但运行时尚未初始化或预热时仍发布 waiting，只有对应 capability 已可用后才能发布 ready。状态中的 `messageKey` 由订阅者本地化；common 不依赖具体 HUD 或 GUI。
+
+`PRESENCE.ACTIVITY` 使用 `PresenceActivityPayload`，由活动实际拥有者配对发布 `STARTED/ENDED`。外部模块可发布 `LOADING` 和 `PROCESSING_TASK`；`THINKING/RESPONDING` 只接受 `module.ax`，`LISTENING` 只接受 `module.asr`。完整接入规则见 [Presence产品活动协议使用文档.md](Presence产品活动协议使用文档.md)。
 
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 

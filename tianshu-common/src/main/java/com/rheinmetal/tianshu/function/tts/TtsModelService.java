@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.function.tts.download.TtsModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
@@ -29,7 +30,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -62,6 +66,9 @@ public class TtsModelService {
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
+    private final AtomicBoolean availabilityRefreshQueued = new AtomicBoolean(false);
+    private final ConcurrentLinkedQueue<Runnable> availabilityRefreshCallbacks = new ConcurrentLinkedQueue<>();
+    private final AtomicReference<ModelAvailabilitySnapshot> availabilitySnapshot = new AtomicReference<>(ModelAvailabilitySnapshot.empty());
     private final AtomicBoolean deletingModel = new AtomicBoolean(false);
 
     public TtsModelService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess executorManager) {
@@ -224,7 +231,10 @@ public class TtsModelService {
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                this::cleanupStaleDownloadArtifacts
+                () -> {
+                    cleanupStaleDownloadArtifacts();
+                    refreshModelAvailability();
+                }
         );
     }
 
@@ -293,6 +303,65 @@ public class TtsModelService {
         return TtsModelInfo.isModelDirectoryComplete(info, modelDir);
     }
 
+    public ModelAvailabilitySnapshot modelAvailability() {
+        return availabilitySnapshot.get();
+    }
+
+    public void refreshModelAvailabilityAsync(Runnable completion) {
+        if (completion != null) {
+            availabilityRefreshCallbacks.add(completion);
+        }
+        if (!availabilityRefreshQueued.compareAndSet(false, true)) {
+            return;
+        }
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId("module.tts")
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.tts:model.availability")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> {
+                    try {
+                        refreshModelAvailability();
+                    } finally {
+                        completeAvailabilityRefresh();
+                    }
+                }
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            completeAvailabilityRefresh();
+        }
+    }
+
+    private void completeAvailabilityRefresh() {
+        Runnable callback;
+        while ((callback = availabilityRefreshCallbacks.poll()) != null) {
+            try {
+                callback.run();
+            } catch (RuntimeException exception) {
+                env.error("tts.model.availability_callback_failed", exception);
+            }
+        }
+        availabilityRefreshQueued.set(false);
+        if (!availabilityRefreshCallbacks.isEmpty()) {
+            refreshModelAvailabilityAsync(null);
+        }
+    }
+
+    private void refreshModelAvailability() {
+        Map<String, ModelAvailabilitySnapshot.Entry> entries = new LinkedHashMap<>();
+        for (TtsModelInfo info : catalog()) {
+            if (info == null || info.name == null || info.name.isBlank()) {
+                continue;
+            }
+            boolean installed = hasModelContent(info);
+            entries.put(info.name, new ModelAvailabilitySnapshot.Entry(installed, 0L));
+        }
+        availabilitySnapshot.set(new ModelAvailabilitySnapshot(entries, true, System.currentTimeMillis()));
+    }
+
     private boolean hasModelContent(Path modelDir) {
         if (modelDir == null || !Files.isDirectory(modelDir)) {
             return false;
@@ -349,6 +418,7 @@ public class TtsModelService {
                     boolean deleted = false;
                     try {
                         deleted = deleteModel(info);
+                        refreshModelAvailability();
                     } finally {
                         deletingModel.set(false);
                     }
@@ -703,6 +773,7 @@ public class TtsModelService {
         if (!finishTask(task)) {
             return;
         }
+        refreshModelAvailability();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "download.completed"));
         publishWaiting("tianshu.presence.module.tts.download_complete");
         if (callback != null) {
@@ -715,6 +786,7 @@ public class TtsModelService {
             return;
         }
         cleanupIncompleteDownload(task);
+        refreshModelAvailability();
         int progress = downloadStatus.get().progress().percent();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.cancelled"));
         publishWaiting("tianshu.presence.module.tts.download_cancelled");
@@ -728,6 +800,7 @@ public class TtsModelService {
             return;
         }
         cleanupIncompleteDownload(task);
+        refreshModelAvailability();
         int progress = downloadStatus.get().progress().percent();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.failed"));
         publishFailed("tianshu.presence.module.tts.download_failed");

@@ -26,6 +26,7 @@ import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsApplier;
 import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
@@ -97,8 +98,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
         panel.enable("tts.enabled", tts("enabled"), draft.enabled)
-                .toggles("tts.diagnostics", common("section.diagnostics"), toggles -> toggles
-                        .toggle("tts.diagnostics.enabled", common("option.diagnostics_enabled"), draft.diagnosticsEnabled))
                 .options("tts.main", tts("section.main"), draft::buildMainOptions)
                 .actions("tts.preview", tts("section.preview"), actions -> actions
                         .button("tts.preview.start", tts("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
@@ -111,7 +110,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                         .row("tts.download.status", tts("row.download_status"), draft::downloadStatus))
                 .options("tts.voice", tts("section.voice"), draft::buildVoiceOptions)
                 .actions("tts.voice.actions", tts("section.voice_actions"), actions -> actions
-                        .button("tts.voice.import", tts("action.voice_import"), () -> draft.importVoiceSample(context), () -> draft.enabled.get() && draft.supportsVoiceClone())
+                        .button("tts.voice.import", tts("action.voice_import"), () -> draft.importVoiceSample(context), () -> draft.enabled.get() && draft.supportsVoiceClone() && !draft.voiceImportRunning())
                         .button("tts.voice.folder", tts("action.voice_folder"), draft::openVoiceLibraryFolder, draft.enabled::get))
                 .status("tts.voice.status", tts("section.voice_status"), () -> true, draft::supportsVoiceClone, status -> status
                         .row("tts.voice.selected", tts("row.voice_selected"), draft::selectedVoiceStatus)
@@ -141,7 +140,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final ClientFilePicker filePicker;
         private final ClientTextProvider textProvider;
         private final MutableSettingsValue<Boolean> enabled;
-        private final MutableSettingsValue<Boolean> diagnosticsEnabled;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> previewText;
         private final MutableSettingsValue<Double> speed;
@@ -156,6 +154,9 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final List<TtsModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
+        private final AtomicBoolean voiceImportRunning = new AtomicBoolean(false);
+        private volatile ModelAvailabilitySnapshot availabilitySnapshot;
+        private volatile List<String> voiceSamples;
         private volatile long lastDownloadRefreshMillis;
         private volatile UiText previewStatus = tts("status.idle");
 
@@ -169,13 +170,14 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             this.uiHost = uiHost;
             this.filePicker = filePicker;
             this.textProvider = textProvider;
+            this.availabilitySnapshot = ttsModelService(coreManager).modelAvailability();
+            this.voiceSamples = voiceLibraryService().voiceSamples();
             this.catalog = ttsModelService(coreManager).catalog().stream()
                     .filter(Objects::nonNull)
                     .filter(info -> info.name != null && !info.name.isBlank())
                     .sorted(Comparator.comparing(info -> info.name, String.CASE_INSENSITIVE_ORDER))
                     .toList();
             this.enabled = new MutableSettingsValue<>(config::isTtsEnabled, config::setTtsEnabled);
-            this.diagnosticsEnabled = new MutableSettingsValue<>(config::isTtsDiagnosticsEnabled, config::setTtsDiagnosticsEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             ModelSettings.TtsSettings settings = modelSettings(resolveModel(this.selectedModelName.get()));
             this.previewText = new MutableSettingsValue<>(this::initialPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
@@ -188,6 +190,14 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             this.recommendedFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.voiceCloneFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.sortMode = new MutableSettingsValue<>(() -> SortMode.RECOMMENDED, ignored -> {}, Objects::nonNull);
+            ttsModelService().refreshModelAvailabilityAsync(() -> runOnClient(() -> {
+                availabilitySnapshot = ttsModelService().modelAvailability();
+                refreshSettingsScreen();
+            }));
+            voiceLibraryService().refreshVoiceSamplesAsync(() -> runOnClient(() -> {
+                voiceSamples = voiceLibraryService().voiceSamples();
+                refreshSettingsScreen();
+            }));
         }
 
         private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
@@ -221,7 +231,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
-                    || diagnosticsEnabled.dirty()
                     || selectedModelName.dirty()
                     || previewText.dirty()
                     || speed.dirty()
@@ -255,7 +264,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         public SettingsSaveResult save() {
             TtsSettingsSnapshot before = TtsSettingsSnapshot.from(config);
             enabled.save();
-            diagnosticsEnabled.save();
             previewText.save();
             githubProxyUrl.save();
             config.setCustomTtsName(selectedModelName.get());
@@ -270,7 +278,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
-            diagnosticsEnabled.reset();
             selectedModelName.reset();
             previewText.reset();
             speed.reset();
@@ -346,7 +353,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             TtsModelInfo info = resolveModel(selectedModelName.get());
             return info != null
                     && speakerId.valid()
-                    && ttsModelService().hasModelContent(info)
+                    && isDownloaded(info)
                     && !previewRunning.get();
         }
 
@@ -360,7 +367,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 context.showStatus(tts("validation.invalid_model"), 3000);
                 return;
             }
-            if (!ttsModelService().hasModelContent(info)) {
+            if (!isDownloaded(info)) {
                 context.showStatus(tts("message.model_not_installed"), 3000);
                 return;
             }
@@ -427,22 +434,30 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private List<String> voiceSampleOptions() {
             List<String> samples = new ArrayList<>();
             samples.add(NO_VOICE_SAMPLE);
-            samples.addAll(voiceLibraryService().listVoiceSamples());
+            samples.addAll(voiceSamples);
             return samples.stream().distinct().toList();
         }
 
         private void importVoiceSample(ModuleSettingsContext context) {
             Path selected = chooseWavFile();
-            if (selected == null) {
+            if (selected == null || !voiceImportRunning.compareAndSet(false, true)) {
                 return;
             }
-            String imported = voiceLibraryService().importVoiceSample(selected);
-            if (imported == null || imported.isBlank()) {
-                context.showStatus(tts("message.voice_import_failed"), 3000);
-                return;
-            }
-            selectedVoiceSample.set(imported);
-            context.showStatus(tts("message.voice_imported", imported), 3000);
+            voiceLibraryService().importVoiceSampleAsync(selected, imported -> runOnClient(() -> {
+                voiceImportRunning.set(false);
+                voiceSamples = voiceLibraryService().voiceSamples();
+                if (imported == null || imported.isBlank()) {
+                    context.showStatus(tts("message.voice_import_failed"), 3000);
+                } else {
+                    selectedVoiceSample.set(imported);
+                    context.showStatus(tts("message.voice_imported", imported), 3000);
+                }
+                refreshSettingsScreen();
+            }));
+        }
+
+        private boolean voiceImportRunning() {
+            return voiceImportRunning.get();
         }
 
         private Path chooseWavFile() {
@@ -450,7 +465,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void openVoiceLibraryFolder() {
-            voiceLibraryService().openVoiceLibraryFolder();
+            voiceLibraryService().openVoiceLibraryFolderAsync();
         }
 
         private UiText selectedModelNameStatus() {
@@ -516,7 +531,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void startDownload(ModuleSettingsContext context, TtsModelInfo info) {
-            if (info == null || downloadInProgress()) {
+            if (info == null || !cardState(info).canStartDownload()) {
                 return;
             }
             ttsModelService().downloadModel(info, githubProxyUrl.get(), new TtsModelService.DownloadProgressCallback() {
@@ -597,9 +612,10 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             boolean activeDownload = downloading && info != null && sameModel(info, resolveModel(status.activeModelName()));
             boolean paused = activeDownload && status.paused();
             boolean cancelling = activeDownload && status.cancelling();
+            boolean known = availabilityEntry(info) != null;
             boolean installed = info != null && isDownloaded(info);
             boolean operationActive = downloading || ttsModelService().isDeleting();
-            return new TtsModelCardState(info, installed, operationActive, activeDownload, paused, cancelling);
+            return new TtsModelCardState(info, known, installed, operationActive, activeDownload, paused, cancelling);
         }
 
         private void deleteModel(ModuleSettingsContext context, TtsModelInfo info) {
@@ -622,8 +638,13 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             }));
         }
 
+        private ModelAvailabilitySnapshot.Entry availabilityEntry(TtsModelInfo info) {
+            return info == null ? null : availabilitySnapshot.entry(info.name);
+        }
+
         private boolean isDownloaded(TtsModelInfo info) {
-            return ttsModelService().hasModelContent(info);
+            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
+            return entry != null && entry.installed();
         }
 
         private boolean sameModel(TtsModelInfo left, TtsModelInfo right) {
@@ -859,9 +880,9 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
     }
 
-    private record TtsModelCardState(TtsModelInfo info, boolean installed, boolean operationActive, boolean activeDownload, boolean paused, boolean cancelling) {
+    private record TtsModelCardState(TtsModelInfo info, boolean known, boolean installed, boolean operationActive, boolean activeDownload, boolean paused, boolean cancelling) {
         private boolean canStartDownload() {
-            return info != null && !installed && !operationActive;
+            return info != null && known && !installed && !operationActive;
         }
 
         private boolean canPauseDownload() {
@@ -877,7 +898,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private boolean canDeleteModel() {
-            return info != null && installed && !operationActive;
+            return info != null && known && installed && !operationActive;
         }
 
         private UiText statusLabel() {
@@ -887,7 +908,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 }
                 return paused ? tts("status.paused") : tts("status.downloading");
             }
-            return common(installed ? "downloaded" : "not_downloaded");
+            return common(!known ? "unknown" : (installed ? "downloaded" : "not_downloaded"));
         }
     }
 

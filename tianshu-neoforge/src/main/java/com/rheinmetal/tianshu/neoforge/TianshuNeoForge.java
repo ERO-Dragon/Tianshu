@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.GameShuttingDownEvent;
 
 @Mod(TianshuNeoForge.MOD_ID)
 public final class TianshuNeoForge {
@@ -15,15 +17,20 @@ public final class TianshuNeoForge {
     private final NeoForgeClientBootstrap clientBootstrap = new NeoForgeClientBootstrap();
 
     public TianshuNeoForge(IEventBus modEventBus, ModContainer modContainer) {
-        LOGGER.info("天枢模组开始加载...");
+        LOGGER.info("TIANSHU_NEOFORGE_LOADING");
 
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC);
         modEventBus.addListener(clientBootstrap::registerKeyMappings);
         modEventBus.addListener(clientBootstrap::registerReloadListeners);
         modEventBus.addListener(this::clientSetup);
+        NeoForge.EVENT_BUS.addListener(this::gameShuttingDown);
     }
 
     private void clientSetup(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent event) {
         event.enqueueWork(clientBootstrap::start);
+    }
+
+    private void gameShuttingDown(GameShuttingDownEvent event) {
+        clientBootstrap.shutdown();
     }
 }

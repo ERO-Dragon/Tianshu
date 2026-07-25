@@ -6,10 +6,12 @@ import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsCoordinator;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSessionRegistry;
+import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -66,5 +68,74 @@ class SettingsSessionTest {
 
         assertEquals(1, sessions.sessions().size());
         assertFalse(sessions.dirty("module"));
+    }
+
+    @Test
+    void saveAllValidatesEveryDirtySessionBeforeSavingAnySession() {
+        AtomicInteger firstSaveCount = new AtomicInteger();
+        ModuleSettingsSession first = new ModuleSettingsSession() {
+            @Override
+            public String moduleId() {
+                return "first";
+            }
+
+            @Override
+            public boolean dirty() {
+                return true;
+            }
+
+            @Override
+            public SettingsSaveResult save() {
+                firstSaveCount.incrementAndGet();
+                return SettingsSaveResult.success(UiText.key("saved"), true, false, false);
+            }
+
+            @Override
+            public void reset() {
+            }
+        };
+        ModuleSettingsSession invalid = new ModuleSettingsSession() {
+            @Override
+            public String moduleId() {
+                return "invalid";
+            }
+
+            @Override
+            public boolean dirty() {
+                return true;
+            }
+
+            @Override
+            public SettingsValidationResult validate() {
+                return SettingsValidationResult.failure(UiText.key("invalid"));
+            }
+
+            @Override
+            public SettingsSaveResult save() {
+                throw new AssertionError("an invalid session must never be saved");
+            }
+
+            @Override
+            public void reset() {
+            }
+        };
+        SettingsSessionRegistry sessions = new SettingsSessionRegistry();
+        sessions.register(first);
+        sessions.register(invalid);
+
+        SettingsSaveResult result = sessions.saveAll();
+
+        assertFalse(result.success());
+        assertEquals(SettingsSaveResult.FailureType.VALIDATION, result.failureType());
+        assertEquals(0, firstSaveCount.get());
+    }
+
+    @Test
+    void registeringSameModuleIdKeepsOneSession() {
+        SettingsSessionRegistry sessions = new SettingsSessionRegistry();
+        sessions.register(new ModuleSettingsSessionBuilder("module").build());
+        sessions.register(new ModuleSettingsSessionBuilder("module").build());
+
+        assertEquals(1, sessions.sessions().size());
     }
 }

@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.ui.hud;
 
-import com.rheinmetal.tianshu.client.presence.model.PresenceSeverity;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -8,7 +7,6 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class PresenceStatusTextElementRenderer implements PresenceHudElementRenderer {
     private static final int PANEL_BACKGROUND = 0x8A071116;
     private static final int TEXT_COLOR = 0xFFEAF7FF;
-    private static final int ERROR_ACCENT = 0xD0FF7777;
     private static final int ACTIVE_ACCENT = 0xD0A7F3FF;
 
     @Override
@@ -35,7 +33,7 @@ public final class PresenceStatusTextElementRenderer implements PresenceHudEleme
         int bottom = top + panelHeight;
 
         graphics.fill(left, top, right, bottom, PANEL_BACKGROUND);
-        graphics.fill(left, bottom - 1, right, bottom, display.severity() == PresenceSeverity.ERROR ? ERROR_ACCENT : ACTIVE_ACCENT);
+        graphics.fill(left, bottom - 1, right, bottom, ACTIVE_ACCENT);
         graphics.drawString(font, display.text(), left + 9, top + 5, TEXT_COLOR, true);
     }
 }

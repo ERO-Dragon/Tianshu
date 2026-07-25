@@ -15,6 +15,7 @@ public final class PresenceHudRenderer {
     private final PresenceHudSettings settings;
     private final PresenceStatusTextElementController statusTextController;
     private final Map<PresenceHudElementType, PresenceHudElementRenderer> renderers;
+    private volatile Optional<PresenceHudElementFrame> currentFrame = Optional.empty();
 
     public PresenceHudRenderer(Supplier<PresenceHudDisplay> displaySupplier) {
         this(displaySupplier, PresenceHudSettings.ENABLED);
@@ -37,8 +38,19 @@ public final class PresenceHudRenderer {
         }
 
         Font font = minecraft.font;
-        long nowMillis = System.currentTimeMillis();
-        renderFrame(graphics, font, statusTextController.update(nowMillis));
+        renderFrame(graphics, font, currentFrame);
+    }
+
+    public void update() {
+        if (!settings.hudEnabled()) {
+            currentFrame = Optional.empty();
+            return;
+        }
+        currentFrame = statusTextController.update(System.currentTimeMillis());
+    }
+
+    public void clear() {
+        currentFrame = Optional.empty();
     }
 
     private void renderFrame(GuiGraphics graphics, Font font, Optional<PresenceHudElementFrame> frame) {

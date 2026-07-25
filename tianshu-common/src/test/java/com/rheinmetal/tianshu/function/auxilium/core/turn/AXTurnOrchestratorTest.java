@@ -32,6 +32,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
@@ -40,10 +41,14 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -57,6 +62,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -311,6 +317,7 @@ class AXTurnOrchestratorTest {
     @Test
     void publishesTurnRuntimeStatuses() {
         ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
+        List<PresenceActivityPayload> activities = captureActivities(runtime);
         AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
         registerLlmSink(runtime, llmRequest);
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
@@ -345,6 +352,10 @@ class AXTurnOrchestratorTest {
         orchestrator.startTurn(deliveryEnvelope, delivery);
 
         await(() -> llmRequest.get() != null);
+        await(() -> activities.size() >= 1);
+        assertEquals(PresenceActivityAction.STARTED, activities.get(0).action());
+        assertEquals(PresenceActivityType.THINKING, activities.get(0).activityType());
+        assertEquals("ax.chat.session.turn", activities.get(0).activityId());
         assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_ACCEPTED, AXTurnStatusPublisher.KEY_TURN_ACCEPTED);
         assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_PROCESSING, AXTurnStatusPublisher.KEY_TURN_PROCESSING);
         assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_LLM_THINKING, AXTurnStatusPublisher.KEY_LLM_THINKING);
@@ -355,9 +366,31 @@ class AXTurnOrchestratorTest {
                 LLMPromptStreamChunkPayload.chunk(requestPayload.requestId(), "Streaming response.", 0)
         );
 
+        await(() -> activities.size() >= 3);
+        assertEquals(List.of(
+                        PresenceActivityAction.STARTED,
+                        PresenceActivityAction.ENDED,
+                        PresenceActivityAction.STARTED
+                ),
+                activities.stream().map(PresenceActivityPayload::action).limit(3).toList());
+        assertEquals(List.of(
+                        PresenceActivityType.THINKING,
+                        PresenceActivityType.THINKING,
+                        PresenceActivityType.RESPONDING
+                ),
+                activities.stream().map(PresenceActivityPayload::activityType).limit(3).toList());
+
+        llmClient.handleResult(
+                llmRequest.get().envelopeId(),
+                LLMPromptResultPayload.completed(requestPayload.requestId(), "Streaming response.")
+        );
+        await(() -> activities.size() >= 4);
+        assertEquals(PresenceActivityAction.ENDED, activities.get(3).action());
+        assertEquals(PresenceActivityType.RESPONDING, activities.get(3).activityType());
+
         ModuleStatus responding = assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_RESPONDING, AXTurnStatusPublisher.KEY_RESPONDING);
         assertEquals("responding", responding.tags().get("axPipelineStage"));
-        assertEquals("SPEAKING", responding.tags().get("presenceStatusType"));
+        assertFalse(responding.tags().containsKey("presenceStatusType"));
         assertEquals("true", responding.tags().get("axReplying"));
         assertEquals("true", responding.tags().get("axInterruptible"));
     }
@@ -781,6 +814,36 @@ class AXTurnOrchestratorTest {
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
         ), (envelope, context) -> request.set(envelope));
+    }
+
+    private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
+        List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
+        AdapterDefaults defaults = AdapterDefaults.standard();
+        runtime.subscribeTopic(
+                new ModuleDescriptor(
+                        "module.presence.turn-test",
+                        List.of(),
+                        defaults.threadPolicy(),
+                        defaults.cancellationScope(),
+                        defaults.failurePolicy(),
+                        defaults.deliveryPolicy(),
+                        defaults.cancellable(),
+                        defaults.supportsStreaming(),
+                        defaults.maxConcurrency(),
+                        defaults.queueCapacity()
+                ),
+                new TopicSubscriptionDescriptor(
+                        ProtocolTopics.PRESENCE_ACTIVITY,
+                        PayloadType.PRESENCE_ACTIVITY,
+                        PresenceActivityPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.EVENT),
+                        Priority.LOW,
+                        CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+                ),
+                (envelope, context) -> activities.add((PresenceActivityPayload) envelope.payload())
+        );
+        return activities;
     }
 
     private static void registerPresenceContextSink(ProtocolRuntime runtime, AtomicReference<TianshuEnvelope> request) {

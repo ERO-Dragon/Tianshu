@@ -44,6 +44,7 @@ class TtsSynthesisTaskCoordinatorTest {
                     audio.add(chunk);
                     terminal.add(last);
                 },
+                null,
                 () -> {
                     completions.incrementAndGet();
                     completed.countDown();
@@ -60,6 +61,31 @@ class TtsSynthesisTaskCoordinatorTest {
     }
 
     @Test
+    void synthesisActivityStartsOnlyWhenExecutionBeginsAndEndsAtTerminalCallback() throws Exception {
+        ChunkEngine engine = new ChunkEngine();
+        TtsSynthesisTaskCoordinator coordinator = coordinator(engine);
+        List<String> lifecycle = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch completed = new CountDownLatch(1);
+
+        TtsOperationResult result = coordinator.submit(
+                request("activity"),
+                false,
+                30_000L,
+                (index, chunk, last) -> { },
+                () -> lifecycle.add("started"),
+                () -> {
+                    lifecycle.add("completed");
+                    completed.countDown();
+                },
+                failure -> lifecycle.add("failed")
+        );
+
+        assertTrue(result.accepted());
+        assertTrue(completed.await(2L, TimeUnit.SECONDS));
+        assertEquals(List.of("started", "completed"), lifecycle);
+    }
+
+    @Test
     void streamingSynthesisEndsWithOneEmptyTerminalChunk() throws Exception {
         ChunkEngine engine = new ChunkEngine();
         TtsSynthesisTaskCoordinator coordinator = coordinator(engine);
@@ -70,7 +96,7 @@ class TtsSynthesisTaskCoordinatorTest {
         coordinator.submit(request("stream"), true, 30_000L, (index, chunk, last) -> {
             audio.add(chunk);
             terminal.add(last);
-        }, completed::countDown, failure -> { });
+        }, null, completed::countDown, failure -> { });
 
         assertTrue(completed.await(2, TimeUnit.SECONDS));
         assertEquals(3, audio.size());
@@ -84,11 +110,11 @@ class TtsSynthesisTaskCoordinatorTest {
         TtsSynthesisTaskCoordinator coordinator = coordinator(engine);
         try {
             assertTrue(coordinator.submit(request("duplicate"), false, 30_000L,
-                    (index, chunk, last) -> { }, () -> { }, failure -> { }).accepted());
+                    (index, chunk, last) -> { }, null, () -> { }, failure -> { }).accepted());
             assertTrue(engine.started.await(2L, TimeUnit.SECONDS));
 
             assertFalse(coordinator.submit(request("duplicate"), false, 30_000L,
-                    (index, chunk, last) -> { }, () -> { }, failure -> { }).accepted());
+                    (index, chunk, last) -> { }, null, () -> { }, failure -> { }).accepted());
         } finally {
             coordinator.cancelAll("test cleanup");
             engine.release.countDown();
@@ -103,7 +129,7 @@ class TtsSynthesisTaskCoordinatorTest {
         CountDownLatch failed = new CountDownLatch(1);
         try {
             assertTrue(coordinator.submit(request("expires"), false, 1_000L,
-                    (index, chunk, last) -> { }, () -> { }, failure -> {
+                    (index, chunk, last) -> { }, null, () -> { }, failure -> {
                         observed.set(failure);
                         failed.countDown();
                     }).accepted());

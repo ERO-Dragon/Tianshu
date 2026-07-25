@@ -11,6 +11,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,7 +31,8 @@ class TtsModelLifecycleCoordinatorTest {
     @Test
     void prepareInitializesEngineOnModelLoadLane() throws Exception {
         ThreadRecordingEngine engine = new ThreadRecordingEngine();
-        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(executors, engine, ignored -> { });
+        List<Boolean> loading = java.util.Collections.synchronizedList(new ArrayList<>());
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(executors, engine, ignored -> { }, loading::add);
         String callerThread = Thread.currentThread().getName();
         CountDownLatch completed = new CountDownLatch(1);
 
@@ -37,6 +42,7 @@ class TtsModelLifecycleCoordinatorTest {
         assertTrue(completed.await(2, TimeUnit.SECONDS));
         assertNotEquals(callerThread, engine.initializeThread.get());
         assertTrue(engine.initializeThread.get().contains("MODEL_LOAD"));
+        assertEquals(List.of(true, false), loading);
     }
 
     @Test

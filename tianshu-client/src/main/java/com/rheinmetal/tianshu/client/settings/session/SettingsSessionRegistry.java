@@ -10,9 +10,7 @@ public final class SettingsSessionRegistry {
     private final List<ModuleSettingsSession> sessions = new ArrayList<>();
 
     public void register(ModuleSettingsSession session) {
-        if (session != null) {
-            sessions.add(session);
-        }
+        registerOrReplace(session);
     }
 
     public void registerOrReplace(ModuleSettingsSession session) {
@@ -58,17 +56,24 @@ public final class SettingsSessionRegistry {
     }
 
     public SettingsSaveResult saveAll() {
-        boolean savedAny = false;
-        boolean requiresRestart = false;
-        boolean requiresReload = false;
+        List<ModuleSettingsSession> dirtySessions = new ArrayList<>();
         for (ModuleSettingsSession session : sessions) {
-            if (!session.dirty()) {
-                continue;
+            if (session.dirty()) {
+                dirtySessions.add(session);
             }
+        }
+
+        for (ModuleSettingsSession session : dirtySessions) {
             SettingsValidationResult validation = session.validate();
             if (!validation.success()) {
                 return SettingsSaveResult.failure(validation.message(), SettingsSaveResult.FailureType.VALIDATION);
             }
+        }
+
+        boolean savedAny = false;
+        boolean requiresRestart = false;
+        boolean requiresReload = false;
+        for (ModuleSettingsSession session : dirtySessions) {
             SettingsSaveResult result = session.save();
             if (!result.success()) {
                 return result.failureType() == SettingsSaveResult.FailureType.UNKNOWN ? SettingsSaveResult.failure(result.message(), SettingsSaveResult.FailureType.SAVE) : result;

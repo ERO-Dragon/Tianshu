@@ -18,6 +18,8 @@ import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsRequestStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
@@ -27,6 +29,8 @@ import java.util.EnumSet;
 public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.tts";
     public static final String SOURCE_ID = "module.tts";
+    private static final long MODEL_LOADING_TTL_MILLIS = 300_000L;
+    private static final long REQUEST_ACTIVITY_TTL_MILLIS = 900_000L;
 
     public TtsProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withThreadPolicy(ThreadPolicy.IO_BLOCKING).withConcurrency(1, 64));
@@ -80,6 +84,23 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishRequestStatus(TtsRequestStatusPayload payload) {
         return publishTopic(ProtocolTopics.TTS_REQUEST_STATUS, PayloadType.TTS_REQUEST_STATUS, payload);
+    }
+
+    public TianshuEnvelope publishLoadingActivity(boolean loading) {
+        return publishPresenceActivity(loading
+                ? PresenceActivityPayload.started("tts.model.load", PresenceActivityType.LOADING, MODEL_LOADING_TTL_MILLIS)
+                : PresenceActivityPayload.ended("tts.model.load", PresenceActivityType.LOADING));
+    }
+
+    public TianshuEnvelope publishRequestActivity(String requestId, boolean active) {
+        String activityId = "tts.request." + requestId;
+        return publishPresenceActivity(active
+                ? PresenceActivityPayload.started(activityId, PresenceActivityType.PROCESSING_TASK, REQUEST_ACTIVITY_TTL_MILLIS)
+                : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
+    }
+
+    private TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
+        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

@@ -137,7 +137,7 @@ AX maintenance
   -> 写入 AX 存储或重建派生索引
 ```
 
-AX 后台状态可以通过 `MODULE.STATUS` topic 发布给观测面板，但该 topic 只承载脱敏状态，不承载 prompt、玩家输入、记忆正文或 RAG hit。当前轮 prompt 需要的动态环境仍必须走能力请求/回传。
+AX 健康和诊断状态可以通过 `MODULE.STATUS` topic 发布给观测面板；玩家可感知的后台维护任务通过 `PRESENCE.ACTIVITY / PROCESSING_TASK` 配对发布。两类状态都不承载 prompt、玩家输入、记忆正文或 RAG hit。当前轮 prompt 需要的动态环境仍必须走能力请求/回传。
 
 ## 6. 职责边界
 
@@ -221,8 +221,9 @@ AX 的新 turn 只由 IA 完成仲裁、选择 AX 为 owner 并实际投递的 d
 activity 不参与 AX 的回合生命周期，也不能直接触发中断。新的 IA delivery 到达后，AX 才依据
 “允许打断”设置决定中断旧 turn，或在关闭打断时将新 delivery 直接释放为 `REJECTED`，不排队。
 
-AX 通过 `MODULE.STATUS` 告诉映迹当前是否正在回复以及是否允许打断；映迹和 TTS 不负责判断
-请求是否为 CHAT。
+AX 在 IA delivery 建立有效回合后通过 `PRESENCE.ACTIVITY` 进入 `THINKING`，首次可见输出后切换为
+`RESPONDING`，并在完成、失败、取消或打断时结束。映迹和 TTS 不负责判断请求是否为 CHAT；
+`MODULE.STATUS` 继续只表达健康与诊断信息。
 
 LLM 失败时，AX 应返回简短、脱敏的失败状态，不暴露 prompt、RAG hit、记忆正文或异常堆栈。
 
