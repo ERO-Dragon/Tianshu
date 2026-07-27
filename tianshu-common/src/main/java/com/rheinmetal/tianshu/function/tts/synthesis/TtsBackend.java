@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.function.tts.synthesis;
 
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 
+import java.util.List;
+
 public interface TtsBackend {
     boolean initialize(TtsResolvedModel model);
 
@@ -12,6 +14,10 @@ public interface TtsBackend {
     boolean isInitialized();
 
     int sampleRate();
+
+    default int contextualSentenceLimit(List<String> sentences) {
+        return 1;
+    }
 
     void synthesize(TtsRequest request, TtsAudioSink sink);
 

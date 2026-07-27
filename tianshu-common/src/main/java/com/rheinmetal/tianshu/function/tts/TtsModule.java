@@ -26,6 +26,7 @@ import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
@@ -91,6 +92,7 @@ public final class TtsModule implements TianshuManagedModule {
         context.services().register(TtsVoiceCloneRegistry.class, voiceCloneRegistry);
         adapter.registerSpeakCapability(this::handleSpeak);
         adapter.registerSynthesizeCapability(this::handleSynthesize);
+        adapter.registerAudioAckCapability(this::handleAudioAck);
         adapter.registerControlCapability(this::handleControl);
     }
 
@@ -256,17 +258,15 @@ public final class TtsModule implements TianshuManagedModule {
         }
         TtsRequest request = synthesisRequestFromPayload(envelope, payload);
         String sourceId = envelope.header().sourceId();
-        ttsRuntime.synthesize(
+        ttsRuntime.synthesizeAcknowledged(
                 request,
-                payload.streaming(),
                 payload.ttlMillis(),
-                (chunkIndex, audio, last) -> adapter.respondAudio(envelope, new TtsAudioPayload(
+                sourceId,
+                audio -> adapter.respondAudio(envelope, new TtsAudioPayload(
                         request.requestId(),
                         audio,
                         ttsRuntime.sampleRate(),
-                        1,
-                        chunkIndex,
-                        last
+                        1
                 )),
                 () -> beginRequestActivity(sourceId, request.requestId()),
                 () -> {
@@ -278,6 +278,26 @@ public final class TtsModule implements TianshuManagedModule {
                     failProtocol(context, envelope.envelopeId(), "TTS_SYNTHESIS_FAILED", failure);
                 }
         );
+    }
+
+    private void handleAudioAck(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof TtsAudioAckPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "", null);
+            return;
+        }
+        if (ttsRuntime == null) {
+            context.fail(envelope.envelopeId(), "TTS_RUNTIME_NOT_RUNNING", "", null);
+            return;
+        }
+        TtsOperationResult result = ttsRuntime.acknowledgeSynthesisAudio(
+                envelope.header().sourceId(),
+                payload
+        );
+        if (result.accepted()) {
+            context.complete(envelope.envelopeId());
+        } else {
+            failProtocol(context, envelope.envelopeId(), "TTS_AUDIO_ACK_FAILED", result.failure());
+        }
     }
 
     private void handleControl(TianshuEnvelope envelope, ProtocolContext context) {

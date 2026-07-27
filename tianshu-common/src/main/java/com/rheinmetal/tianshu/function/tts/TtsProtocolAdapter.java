@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsRequestStatusPayload;
@@ -58,6 +59,20 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.REQUEST),
                 Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    public void registerAudioAckCapability(EnvelopeHandler handler) {
+        registerCapability(
+                ProtocolCapabilities.TTS_AUDIO_ACK,
+                PayloadType.TTS_AUDIO_ACK,
+                TtsAudioAckPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.NORMAL,
                 CompletionPolicy.MANUAL_COMPLETE,
                 handler,
                 defaults()

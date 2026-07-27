@@ -115,9 +115,8 @@ class TtsProtocolSessionBoundaryTest {
         try {
             assertTrue(runtime.synthesize(
                     request("background", "background.", "module.task", TtsPlaybackPlacement.QUEUE_AFTER_SESSION),
-                    false,
                     30_000L,
-                    (index, audio, last) -> { },
+                    audio -> { },
                     null,
                     () -> { },
                     failure -> { }
@@ -144,9 +143,8 @@ class TtsProtocolSessionBoundaryTest {
         assertTrue(runtime.synthesize(
                 request("background", "Task one. Task two.", "module.task",
                         TtsPlaybackPlacement.QUEUE_AFTER_SESSION),
-                false,
                 30_000L,
-                (index, audio, last) -> { },
+                audio -> { },
                 null,
                 () -> { },
                 failure -> { }

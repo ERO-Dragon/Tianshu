@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 public class MossTtsService implements AutoCloseable {
+    private static final int MAX_CONTEXT_TOKENS = 75;
     private final MossModelRuntime modelRuntime;
     private final MossFrameGenerator frameGenerator;
     private final MossAudioCodec audioCodec;
@@ -34,6 +35,27 @@ public class MossTtsService implements AutoCloseable {
     public int[] encodeText(String text) {
         List<Integer> tokenIds = modelRuntime.tokenizer().encode(text == null ? "" : text);
         return tokenIds.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    public int contextualSentenceLimit(List<String> sentences) {
+        if (sentences == null || sentences.isEmpty()) {
+            return 1;
+        }
+        StringBuilder combined = new StringBuilder();
+        int accepted = 0;
+        for (String sentence : sentences) {
+            if (sentence == null || sentence.isBlank()) {
+                continue;
+            }
+            int previousLength = combined.length();
+            combined.append(sentence.trim());
+            if (accepted > 0 && encodeText(combined.toString()).length > MAX_CONTEXT_TOKENS) {
+                combined.setLength(previousLength);
+                break;
+            }
+            accepted++;
+        }
+        return Math.max(1, accepted);
     }
 
     public List<List<Integer>> encodePromptAudioCodes(Path wavPath) throws Exception {
@@ -327,8 +349,8 @@ public class MossTtsService implements AutoCloseable {
         StringBuilder current = new StringBuilder(results.get(0));
         for (int i = 1; i < results.size(); i++) {
             String piece = results.get(i);
-            int estTokens = estimateTokens(current.toString()) + estimateTokens(piece);
-            if (estTokens <= 75) {
+            String candidate = current + piece;
+            if (encodeText(candidate).length <= MAX_CONTEXT_TOKENS) {
                 current.append(piece);
             } else {
                 merged.add(current.toString());
@@ -354,19 +376,6 @@ public class MossTtsService implements AutoCloseable {
             if (!remaining.isEmpty()) parts.add(remaining);
         }
         return parts;
-    }
-
-    private int estimateTokens(String text) {
-        int count = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c > 127) {
-                count += 2;
-            } else {
-                count += 1;
-            }
-        }
-        return Math.max(1, count / 2);
     }
 
     public SynthesisResult synthesize(String text, List<List<Integer>> promptAudioCodes, Path outputWavPath) throws Exception {

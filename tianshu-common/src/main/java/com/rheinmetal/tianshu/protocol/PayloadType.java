@@ -23,6 +23,7 @@ public enum PayloadType {
     TTS_PLAYBACK_STATUS,
     TTS_REQUEST_STATUS,
     TTS_AUDIO,
+    TTS_AUDIO_ACK,
     UI_TOAST,
     ALERT,
     FEEDBACK,

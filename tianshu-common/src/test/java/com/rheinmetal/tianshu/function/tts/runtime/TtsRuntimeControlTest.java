@@ -95,17 +95,12 @@ class TtsRuntimeControlTest {
         TtsRuntime runtime = runtime(engine, statuses);
         prepareRuntime(runtime);
         List<byte[]> chunks = Collections.synchronizedList(new ArrayList<>());
-        List<Boolean> lastFlags = Collections.synchronizedList(new ArrayList<>());
         java.util.concurrent.CountDownLatch completed = new java.util.concurrent.CountDownLatch(1);
 
         TtsOperationResult result = runtime.synthesize(
                 request("synth-only"),
-                false,
                 30_000L,
-                (chunkIndex, audio, last) -> {
-                    chunks.add(audio);
-                    lastFlags.add(last);
-                },
+                chunks::add,
                 null,
                 completed::countDown,
                 null
@@ -115,7 +110,6 @@ class TtsRuntimeControlTest {
         assertTrue(completed.await(2L, TimeUnit.SECONDS));
         assertEquals(1, chunks.size());
         assertEquals(2, chunks.get(0).length);
-        assertEquals(List.of(true), lastFlags);
         assertTrue(statuses.isEmpty());
         assertEquals(1, engine.invocations.get());
     }
@@ -132,7 +126,6 @@ class TtsRuntimeControlTest {
 
         runtime.synthesize(
                 request("synthesis-task", "first. second."),
-                false,
                 30_000L,
                 null,
                 null,
@@ -168,11 +161,10 @@ class TtsRuntimeControlTest {
         AtomicReference<TtsFailure> expiredFailure = new AtomicReference<>();
         CountDownLatch expired = new CountDownLatch(1);
 
-        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null, null);
+        runtime.synthesize(request("blocking-task"), 30_000L, null, null, null, null);
         assertTrue(engine.awaitStarted());
         runtime.synthesize(
                 request("short-lived-task"),
-                false,
                 1_000L,
                 null,
                 null,
@@ -198,11 +190,10 @@ class TtsRuntimeControlTest {
         AtomicReference<TtsFailure> taskFailure = new AtomicReference<>();
         CountDownLatch failed = new CountDownLatch(1);
 
-        runtime.synthesize(request("blocking-task"), false, 30_000L, null, null, null, null);
+        runtime.synthesize(request("blocking-task"), 30_000L, null, null, null, null);
         assertTrue(engine.awaitStarted());
         runtime.synthesize(
                 request("queued-task"),
-                false,
                 30_000L,
                 null,
                 null,

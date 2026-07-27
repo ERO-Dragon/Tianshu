@@ -208,14 +208,16 @@ final class TtsModelLifecycleCoordinator {
 
     private void runPrepare() {
         publishLoading(true);
+        PrepareOutcome outcome;
         try {
-            runPrepareWork();
+            outcome = runPrepareWork();
         } finally {
             publishLoading(false);
         }
+        notifyPrepareCompletions(outcome.completions(), outcome.initialized());
     }
 
-    private void runPrepareWork() {
+    private PrepareOutcome runPrepareWork() {
         boolean initialized;
         try {
             initialized = synthesisEngine.initialize();
@@ -224,12 +226,10 @@ final class TtsModelLifecycleCoordinator {
                     TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
                     throwable
             ));
-            completePrepare(false);
-            return;
+            return completePrepare(false);
         }
         if (!initialized) {
-            completePrepare(false);
-            return;
+            return completePrepare(false);
         }
 
         while (true) {
@@ -247,8 +247,7 @@ final class TtsModelLifecycleCoordinator {
                 }
             }
             if (stoppedCompletions != null) {
-                notifyPrepareCompletions(stoppedCompletions, false);
-                return;
+                return new PrepareOutcome(stoppedCompletions, false);
             }
 
             boolean preloaded;
@@ -274,12 +273,11 @@ final class TtsModelLifecycleCoordinator {
                     completions = drainPrepareCompletions();
                 }
             }
-            notifyPrepareCompletions(completions, preloaded);
-            return;
+            return new PrepareOutcome(completions, preloaded);
         }
     }
 
-    private void completePrepare(boolean initialized) {
+    private PrepareOutcome completePrepare(boolean initialized) {
         List<Consumer<Boolean>> completions;
         synchronized (this) {
             if (state == LifecycleState.PREPARING) {
@@ -287,7 +285,7 @@ final class TtsModelLifecycleCoordinator {
             }
             completions = drainPrepareCompletions();
         }
-        notifyPrepareCompletions(completions, initialized);
+        return new PrepareOutcome(completions, initialized);
     }
 
     private void addPrepareCompletion(Consumer<Boolean> completion) {
@@ -304,6 +302,9 @@ final class TtsModelLifecycleCoordinator {
 
     private static void notifyPrepareCompletions(List<Consumer<Boolean>> completions, boolean initialized) {
         completions.forEach(completion -> completion.accept(initialized));
+    }
+
+    private record PrepareOutcome(List<Consumer<Boolean>> completions, boolean initialized) {
     }
 
     private static TtsVoiceProfile normalizedVoice(TtsVoiceProfile voiceProfile) {

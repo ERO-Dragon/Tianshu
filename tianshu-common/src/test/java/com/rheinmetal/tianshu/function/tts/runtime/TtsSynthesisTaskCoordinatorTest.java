@@ -32,18 +32,13 @@ class TtsSynthesisTaskCoordinatorTest {
         ChunkEngine engine = new ChunkEngine();
         TtsSynthesisTaskCoordinator coordinator = coordinator(engine);
         List<byte[]> audio = new ArrayList<>();
-        List<Boolean> terminal = new ArrayList<>();
         AtomicInteger completions = new AtomicInteger();
         CountDownLatch completed = new CountDownLatch(1);
 
         TtsOperationResult result = coordinator.submit(
                 request("full"),
-                false,
                 30_000L,
-                (index, chunk, last) -> {
-                    audio.add(chunk);
-                    terminal.add(last);
-                },
+                audio::add,
                 null,
                 () -> {
                     completions.incrementAndGet();
@@ -56,7 +51,6 @@ class TtsSynthesisTaskCoordinatorTest {
         assertTrue(completed.await(2, TimeUnit.SECONDS));
         assertEquals(1, audio.size());
         assertArrayEquals(new byte[]{1, 2, 3}, audio.getFirst());
-        assertEquals(List.of(true), terminal);
         assertEquals(1, completions.get());
     }
 
@@ -69,9 +63,8 @@ class TtsSynthesisTaskCoordinatorTest {
 
         TtsOperationResult result = coordinator.submit(
                 request("activity"),
-                false,
                 30_000L,
-                (index, chunk, last) -> { },
+                audio -> { },
                 () -> lifecycle.add("started"),
                 () -> {
                     lifecycle.add("completed");
@@ -86,22 +79,87 @@ class TtsSynthesisTaskCoordinatorTest {
     }
 
     @Test
-    void streamingSynthesisEndsWithOneEmptyTerminalChunk() throws Exception {
+    void acknowledgedHandoffDeliversOneCompleteRequestAndCompletesAfterOwnershipTransfer() throws Exception {
         ChunkEngine engine = new ChunkEngine();
-        TtsSynthesisTaskCoordinator coordinator = coordinator(engine);
-        List<byte[]> audio = java.util.Collections.synchronizedList(new ArrayList<>());
-        List<Boolean> terminal = java.util.Collections.synchronizedList(new ArrayList<>());
+        TtsSynthesisTaskCoordinator coordinator = coordinator(engine, 1);
+        List<byte[]> deliveredAudio = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch delivered = new CountDownLatch(1);
         CountDownLatch completed = new CountDownLatch(1);
 
-        coordinator.submit(request("stream"), true, 30_000L, (index, chunk, last) -> {
-            audio.add(chunk);
-            terminal.add(last);
-        }, null, completed::countDown, failure -> { });
+        assertTrue(coordinator.submitAcknowledged(
+                request("owned"),
+                30_000L,
+                "module.npc",
+                audio -> {
+                    deliveredAudio.add(audio);
+                    delivered.countDown();
+                },
+                null,
+                completed::countDown,
+                failure -> { }
+        ).accepted());
 
-        assertTrue(completed.await(2, TimeUnit.SECONDS));
-        assertEquals(3, audio.size());
-        assertArrayEquals(new byte[0], audio.get(2));
-        assertEquals(List.of(false, false, true), terminal);
+        assertTrue(delivered.await(2L, TimeUnit.SECONDS));
+        assertEquals(1, deliveredAudio.size());
+        assertArrayEquals(new byte[]{1, 2, 3}, deliveredAudio.getFirst());
+        assertFalse(completed.await(150L, TimeUnit.MILLISECONDS));
+        assertFalse(coordinator.acknowledge("module.other", "owned").accepted());
+
+        assertTrue(coordinator.acknowledge("module.npc", "owned").accepted());
+        assertTrue(completed.await(2L, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void acknowledgedHandoffCapacityCountsRequestsAndStartsNextAfterAck() throws Exception {
+        CountingChunkEngine engine = new CountingChunkEngine();
+        TtsSynthesisTaskCoordinator coordinator = coordinator(engine, 1);
+        CountDownLatch firstDelivered = new CountDownLatch(1);
+        CountDownLatch secondDelivered = new CountDownLatch(1);
+
+        assertTrue(coordinator.submitAcknowledged(
+                request("first"), 30_000L, "module.npc",
+                audio -> firstDelivered.countDown(), null, () -> { }, failure -> { }
+        ).accepted());
+        assertTrue(firstDelivered.await(2L, TimeUnit.SECONDS));
+
+        assertTrue(coordinator.submitAcknowledged(
+                request("second"), 30_000L, "module.npc",
+                audio -> secondDelivered.countDown(), null, () -> { }, failure -> { }
+        ).accepted());
+        assertFalse(engine.secondStarted.await(150L, TimeUnit.MILLISECONDS));
+
+        assertTrue(coordinator.acknowledge("module.npc", "first").accepted());
+        assertTrue(engine.secondStarted.await(2L, TimeUnit.SECONDS));
+        assertTrue(secondDelivered.await(2L, TimeUnit.SECONDS));
+        assertTrue(coordinator.acknowledge("module.npc", "second").accepted());
+    }
+
+    @Test
+    void acknowledgedHandoffRejectsEmptyAudio() throws Exception {
+        TtsSynthesisTaskCoordinator coordinator = coordinator(new SilentEngine(), 1);
+        AtomicInteger deliveries = new AtomicInteger();
+        AtomicReference<TtsFailure> observed = new AtomicReference<>();
+        CountDownLatch failed = new CountDownLatch(1);
+        try {
+            assertTrue(coordinator.submitAcknowledged(
+                    request("silent"),
+                    30_000L,
+                    "module.npc",
+                    audio -> deliveries.incrementAndGet(),
+                    null,
+                    () -> { },
+                    failure -> {
+                        observed.set(failure);
+                        failed.countDown();
+                    }
+            ).accepted());
+
+            assertTrue(failed.await(2L, TimeUnit.SECONDS));
+            assertEquals(0, deliveries.get());
+            assertEquals(TtsFailureCode.SYNTHESIS_FAILED, observed.get().code());
+        } finally {
+            coordinator.cancelAll("test cleanup");
+        }
     }
 
     @Test
@@ -109,12 +167,12 @@ class TtsSynthesisTaskCoordinatorTest {
         BlockingEngine engine = new BlockingEngine();
         TtsSynthesisTaskCoordinator coordinator = coordinator(engine);
         try {
-            assertTrue(coordinator.submit(request("duplicate"), false, 30_000L,
-                    (index, chunk, last) -> { }, null, () -> { }, failure -> { }).accepted());
+            assertTrue(coordinator.submit(request("duplicate"), 30_000L,
+                    audio -> { }, null, () -> { }, failure -> { }).accepted());
             assertTrue(engine.started.await(2L, TimeUnit.SECONDS));
 
-            assertFalse(coordinator.submit(request("duplicate"), false, 30_000L,
-                    (index, chunk, last) -> { }, null, () -> { }, failure -> { }).accepted());
+            assertFalse(coordinator.submit(request("duplicate"), 30_000L,
+                    audio -> { }, null, () -> { }, failure -> { }).accepted());
         } finally {
             coordinator.cancelAll("test cleanup");
             engine.release.countDown();
@@ -128,8 +186,8 @@ class TtsSynthesisTaskCoordinatorTest {
         AtomicReference<TtsFailure> observed = new AtomicReference<>();
         CountDownLatch failed = new CountDownLatch(1);
         try {
-            assertTrue(coordinator.submit(request("expires"), false, 1_000L,
-                    (index, chunk, last) -> { }, null, () -> { }, failure -> {
+            assertTrue(coordinator.submit(request("expires"), 1_000L,
+                    audio -> { }, null, () -> { }, failure -> {
                         observed.set(failure);
                         failed.countDown();
                     }).accepted());
@@ -149,6 +207,17 @@ class TtsSynthesisTaskCoordinatorTest {
         return new TtsSynthesisTaskCoordinator(engine, scheduler, new TtsAdaptiveSynthesisPolicy(), ignored -> { });
     }
 
+    private TtsSynthesisTaskCoordinator coordinator(TtsSynthesisEngine engine, int handoffWindow) {
+        TtsSynthesisScheduler scheduler = new TtsSynthesisScheduler(executors, engine);
+        return new TtsSynthesisTaskCoordinator(
+                engine,
+                scheduler,
+                new TtsAdaptiveSynthesisPolicy(),
+                ignored -> { },
+                handoffWindow
+        );
+    }
+
     private static TtsRequest request(String id) {
         return new TtsRequest(id, id, id, id, "hello", TtsRequestSource.SYSTEM,
                 TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
@@ -164,6 +233,30 @@ class TtsSynthesisTaskCoordinatorTest {
 
         @Override
         public void synthesize(TtsRequest request, TtsAudioSink sink) {
+            sink.accept(new byte[]{1});
+            sink.accept(new byte[]{2, 3});
+        }
+
+        @Override public void interrupt() { }
+        @Override public void shutdown() { }
+    }
+
+    private static final class CountingChunkEngine implements TtsSynthesisEngine {
+        private final AtomicInteger starts = new AtomicInteger();
+        private final CountDownLatch secondStarted = new CountDownLatch(1);
+
+        @Override public boolean initialize() { return true; }
+        @Override public boolean isInitialized() { return true; }
+        @Override public boolean isAutoregressive() { return false; }
+        @Override public int sampleRate() { return 24_000; }
+        @Override public TtsBackendSnapshot backendSnapshot() { return TtsBackendSnapshot.unavailable(); }
+        @Override public boolean useModel(String modelName) { return true; }
+
+        @Override
+        public void synthesize(TtsRequest request, TtsAudioSink sink) {
+            if (starts.incrementAndGet() == 2) {
+                secondStarted.countDown();
+            }
             sink.accept(new byte[]{1});
             sink.accept(new byte[]{2, 3});
         }
@@ -201,6 +294,18 @@ class TtsSynthesisTaskCoordinatorTest {
             release.countDown();
         }
 
+        @Override public void shutdown() { }
+    }
+
+    private static final class SilentEngine implements TtsSynthesisEngine {
+        @Override public boolean initialize() { return true; }
+        @Override public boolean isInitialized() { return true; }
+        @Override public boolean isAutoregressive() { return false; }
+        @Override public int sampleRate() { return 24_000; }
+        @Override public TtsBackendSnapshot backendSnapshot() { return TtsBackendSnapshot.unavailable(); }
+        @Override public boolean useModel(String modelName) { return true; }
+        @Override public void synthesize(TtsRequest request, TtsAudioSink sink) { }
+        @Override public void interrupt() { }
         @Override public void shutdown() { }
     }
 }

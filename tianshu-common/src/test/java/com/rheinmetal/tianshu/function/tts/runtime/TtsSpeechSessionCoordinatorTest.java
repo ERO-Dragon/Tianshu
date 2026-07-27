@@ -181,6 +181,36 @@ class TtsSpeechSessionCoordinatorTest {
         )), coordinator.drainTerminations());
     }
 
+    @Test
+    void contextualReservationKeepsPlaybackBoundaryAndResumesAfterInsertion() {
+        TtsSpeechSessionCoordinator coordinator = new TtsSpeechSessionCoordinator();
+        TtsSpeechSessionKey a = key("a", 1L);
+        TtsSpeechSessionKey b = key("b", 2L);
+
+        coordinator.admit(a, TtsPlaybackPlacement.QUEUE_AFTER_SESSION);
+        coordinator.appendSentence(a, "A1.");
+        coordinator.appendSentence(a, "A2.");
+        coordinator.appendSentence(a, "A3.");
+        coordinator.end(a);
+
+        TtsSpeechSessionCoordinator.SentenceWork a1 = coordinator.poll().orElseThrow();
+        assertTrue(a1.firstBatch());
+        TtsSpeechSessionCoordinator.SentenceWork prepared = coordinator.reserveActiveBatch(2).orElseThrow();
+        assertEquals("A2.A3.", prepared.text());
+        assertFalse(prepared.firstBatch());
+        assertTrue(coordinator.markReservedReady(prepared));
+
+        coordinator.admit(b, TtsPlaybackPlacement.INSERT_AFTER_SENTENCE);
+        coordinator.appendSentence(b, "B1.");
+        coordinator.end(b);
+        coordinator.complete(a1);
+
+        TtsSpeechSessionCoordinator.SentenceWork b1 = coordinator.poll().orElseThrow();
+        assertEquals("B1.", b1.text());
+        coordinator.complete(b1);
+        assertEquals(prepared, coordinator.poll().orElseThrow());
+    }
+
     private static TtsSpeechSessionKey key(String source, long sessionId) {
         return TtsSpeechSessionKey.of(source, sessionId, 1, source);
     }

@@ -48,7 +48,7 @@ class TtsRuntimePipelineSmokeTest {
         assertTrue(firstFinishedAt > 0L, "first playback did not finish");
         assertTrue(secondStartedAt >= firstFinishedAt, "next session must wait for the previous playback sentence boundary");
         assertEquals(TtsSynthesisMode.STREAMING, engine.modeOf("long-1"));
-        assertEquals(TtsSynthesisMode.FULL, engine.modeOf("short-1"));
+        assertEquals(TtsSynthesisMode.STREAMING, engine.modeOf("short-1"));
 
         runtime.stopAll("test done");
     }
@@ -102,6 +102,28 @@ class TtsRuntimePipelineSmokeTest {
         runtime.stopAll("test done");
     }
 
+    @Test
+    void preparesAvailableFollowupSentencesBeforeCurrentAudioFinishes() throws Exception {
+        PipelineEngine engine = new PipelineEngine(true);
+        SlowAudioBridge audioBridge = new SlowAudioBridge();
+        TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, ignored -> {}, ignored -> {});
+        prepareRuntime(runtime);
+        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.ax", 61L, 1, "context");
+
+        runtime.submitSpeech(key, com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.SENTENCE_STREAM, false,
+                request("context", "第一句。"));
+        assertTrue(engine.awaitText("第一句。"));
+        runtime.submitSpeech(key, com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.SENTENCE_STREAM, false,
+                request("context", "第二句。"));
+        runtime.submitSpeech(key, com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.SENTENCE_STREAM, true,
+                request("context", "第三句。"));
+        engine.releaseFirstSynthesis();
+
+        assertTrue(engine.awaitText("第二句。第三句。"));
+        assertEquals(0L, audioBridge.firstFinishedAt(), "follow-up synthesis must not wait for playback completion");
+        runtime.stopAll("test done");
+    }
+
     private static void prepareRuntime(TtsRuntime runtime) {
         CountDownLatch prepared = new CountDownLatch(1);
         TtsOperationResult result = runtime.prepare(initialized -> prepared.countDown());
@@ -128,6 +150,16 @@ class TtsRuntimePipelineSmokeTest {
 
     private static final class PipelineEngine implements TtsSynthesisEngine {
         private final List<Invocation> invocations = java.util.Collections.synchronizedList(new ArrayList<>());
+        private final boolean blockFirstSynthesis;
+        private final CountDownLatch releaseFirstSynthesis = new CountDownLatch(1);
+
+        private PipelineEngine() {
+            this(false);
+        }
+
+        private PipelineEngine(boolean blockFirstSynthesis) {
+            this.blockFirstSynthesis = blockFirstSynthesis;
+        }
 
         @Override
         public boolean initialize() {
@@ -160,9 +192,21 @@ class TtsRuntimePipelineSmokeTest {
         }
 
         @Override
+        public int contextualSentenceLimit(List<String> sentences) {
+            return 2;
+        }
+
+        @Override
         public void synthesize(TtsRequest request, com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink sink) {
             TtsSynthesisMode mode = sink.preferredSynthesisMode();
-            invocations.add(new Invocation(request.requestId(), mode, System.currentTimeMillis()));
+            invocations.add(new Invocation(request.requestId(), request.text(), mode, System.currentTimeMillis()));
+            if (blockFirstSynthesis && invocations.size() == 1) {
+                try {
+                    releaseFirstSynthesis.await(2L, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             int audioMillis = request.requestId().startsWith("long") || request.requestId().equals("interrupt-1") ? 1_600 : 300;
             byte[] audio = new byte[24_000 * 2 * audioMillis / 1000];
             audio[0] = marker(request.requestId());
@@ -231,9 +275,28 @@ class TtsRuntimePipelineSmokeTest {
                         .orElse(TtsSynthesisMode.FULL);
             }
         }
+
+        boolean awaitText(String text) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + 2_000L;
+            while (System.currentTimeMillis() < deadline) {
+                synchronized (invocations) {
+                    if (invocations.stream().anyMatch(invocation -> invocation.text().equals(text))) {
+                        return true;
+                    }
+                }
+                Thread.sleep(10L);
+            }
+            synchronized (invocations) {
+                return invocations.stream().anyMatch(invocation -> invocation.text().equals(text));
+            }
+        }
+
+        void releaseFirstSynthesis() {
+            releaseFirstSynthesis.countDown();
+        }
     }
 
-    private record Invocation(String requestId, TtsSynthesisMode mode, long startedAtMillis) {
+    private record Invocation(String requestId, String text, TtsSynthesisMode mode, long startedAtMillis) {
     }
 
     private static final class SlowAudioBridge implements IAudioBridge {

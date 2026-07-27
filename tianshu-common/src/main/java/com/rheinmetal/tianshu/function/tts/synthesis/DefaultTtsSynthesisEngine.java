@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 
 import java.util.Optional;
+import java.util.List;
 
 public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
     private final IGameEnvironment env;
@@ -103,6 +104,12 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
                 model.modelDir().toString(),
                 System.currentTimeMillis()
         );
+    }
+
+    @Override
+    public int contextualSentenceLimit(List<String> sentences) {
+        TtsBackend backend = activeBackend;
+        return backend == null ? 1 : backend.contextualSentenceLimit(sentences);
     }
 
     @Override

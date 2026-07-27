@@ -101,9 +101,45 @@ public final class TtsSpeechSessionCoordinator {
             return;
         }
         session.ended = true;
-        if (session == active && currentWork == null && session.sentences.isEmpty()) {
+        if (session == active && currentWork == null && session.sentences.isEmpty() && session.reservedWorks.isEmpty()) {
             finishActive();
         }
+    }
+
+    public synchronized Optional<SentenceWork> reserveActiveBatch(int sentenceLimit) {
+        if (active == null || currentWork == null || active.cancelled || active.sentences.isEmpty()) {
+            return Optional.empty();
+        }
+        int limit = Math.max(1, sentenceLimit);
+        StringBuilder text = new StringBuilder();
+        for (int index = 0; index < limit && !active.sentences.isEmpty(); index++) {
+            text.append(active.sentences.removeFirst());
+        }
+        if (text.isEmpty()) {
+            return Optional.empty();
+        }
+        SentenceWork work = nextWork(active, text.toString());
+        active.reservedWorks.addLast(work);
+        return Optional.of(work);
+    }
+
+    public synchronized java.util.List<String> activePendingSentences() {
+        if (active == null || active.cancelled || active.sentences.isEmpty()) {
+            return java.util.List.of();
+        }
+        return java.util.List.copyOf(active.sentences);
+    }
+
+    public synchronized boolean markReservedReady(SentenceWork work) {
+        if (work == null) {
+            return false;
+        }
+        TtsSpeechSession session = sessions.get(work.sessionKey());
+        if (session == null || session.cancelled || !session.reservedWorks.contains(work)) {
+            return false;
+        }
+        session.readyWorks.add(work);
+        return true;
     }
 
     public synchronized Optional<SentenceWork> poll() {
@@ -114,8 +150,16 @@ public final class TtsSpeechSessionCoordinator {
             if (activateBoundaryInsertion()) {
                 continue;
             }
+            if (!active.reservedWorks.isEmpty()) {
+                if (!active.readyWorks.contains(active.reservedWorks.peekFirst())) {
+                    return Optional.empty();
+                }
+                currentWork = active.reservedWorks.removeFirst();
+                active.readyWorks.remove(currentWork);
+                return Optional.of(currentWork);
+            }
             if (!active.sentences.isEmpty()) {
-                currentWork = new SentenceWork(active.key, active.sentences.removeFirst(), ++workSequence);
+                currentWork = nextWork(active, active.sentences.removeFirst());
                 return Optional.of(currentWork);
             }
             if (active.ended || active.cancelled) {
@@ -136,7 +180,7 @@ public final class TtsSpeechSessionCoordinator {
         if (activateBoundaryInsertion()) {
             return;
         }
-        if (active != null && active.ended && active.sentences.isEmpty()) {
+        if (active != null && active.ended && active.sentences.isEmpty() && active.reservedWorks.isEmpty()) {
             finishActive();
         }
     }
@@ -166,6 +210,8 @@ public final class TtsSpeechSessionCoordinator {
         }
         session.cancelled = true;
         session.sentences.clear();
+        session.reservedWorks.clear();
+        session.readyWorks.clear();
         detachFromParents(session);
         pending.remove(session);
         suspended.remove(session);
@@ -207,6 +253,8 @@ public final class TtsSpeechSessionCoordinator {
             return;
         }
         cancelled.cancelled = true;
+        cancelled.reservedWorks.clear();
+        cancelled.readyWorks.clear();
         promoteChildren(cancelled);
         sessions.remove(cancelled.key, cancelled);
         terminations.addLast(new Termination(cancelled.key, TerminationReason.CANCELLED));
@@ -264,6 +312,8 @@ public final class TtsSpeechSessionCoordinator {
     }
 
     private void promoteChildren(TtsSpeechSession session) {
+        session.reservedWorks.clear();
+        session.readyWorks.clear();
         while (!session.afterSentence.isEmpty()) {
             pending.add(session.afterSentence.removeFirst());
         }
@@ -285,6 +335,12 @@ public final class TtsSpeechSessionCoordinator {
         return Math.max(0, sessions.size() - (active == null ? 0 : 1));
     }
 
+    private SentenceWork nextWork(TtsSpeechSession session, String text) {
+        boolean firstBatch = !session.firstWorkIssued;
+        session.firstWorkIssued = true;
+        return new SentenceWork(session.key, text, ++workSequence, firstBatch);
+    }
+
     public enum AdmissionState {
         ACCEPTED,
         EXISTING,
@@ -298,7 +354,7 @@ public final class TtsSpeechSessionCoordinator {
         }
     }
 
-    public record SentenceWork(TtsSpeechSessionKey sessionKey, String text, long sequence) {
+    public record SentenceWork(TtsSpeechSessionKey sessionKey, String text, long sequence, boolean firstBatch) {
     }
 
     public enum TerminationReason {

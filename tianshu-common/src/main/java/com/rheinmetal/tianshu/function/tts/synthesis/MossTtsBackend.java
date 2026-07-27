@@ -60,6 +60,12 @@ public final class MossTtsBackend implements TtsBackend {
     }
 
     @Override
+    public synchronized int contextualSentenceLimit(List<String> sentences) {
+        MossTtsService current = service;
+        return !initialized || current == null ? 1 : current.contextualSentenceLimit(sentences);
+    }
+
+    @Override
     public synchronized boolean preloadVoice(com.rheinmetal.tianshu.function.tts.runtime.TtsVoiceProfile voiceProfile) {
         MossTtsService current = service;
         if (!initialized || current == null) {

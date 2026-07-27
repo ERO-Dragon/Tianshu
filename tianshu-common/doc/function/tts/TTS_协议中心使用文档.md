@@ -8,6 +8,7 @@
 |---|---|---|
 | `ProtocolCapabilities.TTS_SPEAK` | `TtsSpeakPayload` | 本地合成并播放。 |
 | `ProtocolCapabilities.TTS_SYNTHESIZE` | `TtsSynthesisRequestPayload` | 返回 PCM，不播放。 |
+| `ProtocolCapabilities.TTS_AUDIO_ACK` | `TtsAudioAckPayload` | 确认已接管一个纯合成请求的完整 PCM。 |
 | `ProtocolCapabilities.TTS_CONTROL` | `TtsControlPayload` | 停止、重载和音色管理。 |
 | `ProtocolTopics.TTS_PLAYBACK` | `TtsPlaybackStatusPayload` | 模块级播放状态。 |
 | `ProtocolTopics.TTS_REQUEST_STATUS` | `TtsRequestStatusPayload` | 单个播放 Session 的状态。 |
@@ -125,21 +126,36 @@ TtsVoiceOptions voice = new TtsVoiceOptions(
 TtsSynthesisRequestPayload payload = new TtsSynthesisRequestPayload(
         "npc-line-001",
         "前方很危险。",
-        true,
         30_000L,
         new TtsVoiceOptions("", 1.0F, null)
 );
 ```
 
-响应为 `TtsAudioPayload`：`audio` 是 PCM，`sampleRate` 和 `channels` 描述格式，`chunkIndex` 从 0 递增，`last=true` 表示终止包。
+每个请求只返回一个 `TtsAudioPayload`：`audio` 是该句话或段落的完整 PCM，`sampleRate` 和 `channels` 描述格式。后端可以在内部流式生成，但不会向调用方暴露 PCM 分块或额外的结束包。
 
-`streaming=false` 时最后返回合并 PCM。`streaming=true` 时返回多个非终止 chunk，最后额外返回空的 terminal chunk。播放请求插队不会取消纯合成；纯合成只在句子安全边界让出后端后继续。
+收到完整 PCM 后，调用方必须先保留音频并取得其生命周期所有权，再按 `requestId` 发送一次 ACK：
+
+```java
+adapter.commandCapability(
+        ProtocolCapabilities.TTS_AUDIO_ACK,
+        PayloadType.TTS_AUDIO_ACK,
+        new TtsAudioAckPayload(audio.requestId())
+);
+```
+
+ACK 必须来自原始 `TTS_SYNTHESIZE` 请求的同一 `sourceId`。未知、重复、已过期或其他来源的 ACK 会被结构化拒绝。
+
+TTS 使用有界的完成交付队列，容量按完整请求计算。队列已满时不会启动更多纯合成；已经接受的待执行请求继续保留，ACK 释放一个请求槽位后再执行下一项，不会因为背压自动取消或丢弃内容。等待 ACK 不占用 TTS 后端线程。
+
+一句话或一段话始终作为一个请求交付。较长文本可以在 TTS 内部按后端上下文能力分组推理并合并，但这些内部边界不会改变对外的一次响应和一次 ACK。
 
 同一时刻活跃的纯合成任务必须使用唯一 `requestId`；重复 id 会被拒绝，避免旧任务失去 STOP 身份。`ttlMillis` 同时覆盖排队和单个长句推理，到期会终止该纯合成任务，不会中断无关播放或其他纯合成。
 
 ## 7. capability 完成和播放状态
 
 `TTS_SPEAK` complete 表示请求已通过校验并完成 admission，不表示玩家已经听完。不要通过等待 capability complete 推断播放结束。
+
+`TTS_SYNTHESIZE` complete 表示该请求的完整 PCM 已被调用方 ACK 接管，不表示调用方已经播放完。接管后 TTS 不再管理该 PCM 的缓存、播放或销毁。
 
 订阅 `TTS.REQUEST_STATUS` 获取请求级状态：
 

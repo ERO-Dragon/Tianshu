@@ -25,6 +25,10 @@ public final class TtsSynthesisScheduler {
     }
 
     public ProtocolTaskHandle submit(TtsRequest request, Object owner, Runnable task) {
+        return submit(request, owner, task, null);
+    }
+
+    public ProtocolTaskHandle submit(TtsRequest request, Object owner, Runnable task, Runnable afterRelease) {
         Objects.requireNonNull(owner, "owner");
         Objects.requireNonNull(task, "task");
         ExecutionLane lane = lane();
@@ -37,7 +41,7 @@ public final class TtsSynthesisScheduler {
                 .maxConcurrency(1)
                 .queueCapacity(8)
                 .build();
-        return executorManager.submit(spec, () -> runOwned(owner, task));
+        return executorManager.submit(spec, () -> runOwned(owner, task, afterRelease));
     }
 
     public ProtocolTaskHandle scheduleTimeout(TtsRequest request, Duration delay, Runnable task) {
@@ -67,6 +71,12 @@ public final class TtsSynthesisScheduler {
         }
     }
 
+    public boolean isBusy() {
+        synchronized (ownershipLock) {
+            return activeOwner != null;
+        }
+    }
+
     public ExecutionLane lane() {
         return synthesisEngine.isAutoregressive() ? ExecutionLane.TTS_AUTOREGRESSIVE : ExecutionLane.TTS_FAST;
     }
@@ -86,7 +96,7 @@ public final class TtsSynthesisScheduler {
         };
     }
 
-    private void runOwned(Object owner, Runnable task) {
+    private void runOwned(Object owner, Runnable task, Runnable afterRelease) {
         synchronized (ownershipLock) {
             if (activeOwner != null) {
                 throw new IllegalStateException("TTS backend work ownership overlapped");
@@ -100,6 +110,9 @@ public final class TtsSynthesisScheduler {
                 if (activeOwner == owner) {
                     activeOwner = null;
                 }
+            }
+            if (afterRelease != null) {
+                afterRelease.run();
             }
         }
     }

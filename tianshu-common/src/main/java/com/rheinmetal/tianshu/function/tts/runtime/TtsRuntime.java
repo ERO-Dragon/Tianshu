@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
 import com.rheinmetal.tianshu.function.tts.text.TtsTextNormalizer;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
+import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.payload.TtsRequestStatus;
 import com.rheinmetal.tianshu.protocol.payload.TtsRequestStatusPayload;
@@ -30,10 +31,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.function.Consumer;
 
 public final class TtsRuntime implements TtsPlaybackListener {
+    private static final int MAX_PREPARED_SPEECH_GROUPS = 2;
     private final IGameEnvironment env;
     private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
@@ -47,6 +50,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private final Map<TtsSpeechSessionKey, SpeechContext> speechContexts = new ConcurrentHashMap<>();
     private final Map<TtsSession, TtsSpeechSessionCoordinator.SentenceWork> sentenceWorks = new ConcurrentHashMap<>();
     private final Map<TtsSpeechSessionCoordinator.SentenceWork, TtsSession> workSessions = new ConcurrentHashMap<>();
+    private final Map<TtsSpeechSessionCoordinator.SentenceWork, PreparedSpeech> preparedSpeech = new ConcurrentHashMap<>();
+    private final Set<TtsSpeechSessionCoordinator.SentenceWork> preparingSpeech = ConcurrentHashMap.newKeySet();
     private final Set<TtsSpeechSessionKey> droppedStreams = ConcurrentHashMap.newKeySet();
     private final TtsTextNormalizer normalizer = new TtsTextNormalizer();
     private final TtsPlaybackBufferTracker playbackBufferTracker = new TtsPlaybackBufferTracker();
@@ -124,6 +129,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
         speechContexts.clear();
         sentenceWorks.clear();
         workSessions.clear();
+        preparedSpeech.clear();
+        preparingSpeech.clear();
         droppedStreams.clear();
         synthesisTaskCoordinator.cancelAll("runtime stopped");
         List<TtsSession> cancelled = sessionManager.cancelAll("runtime stopped");
@@ -269,40 +276,39 @@ public final class TtsRuntime implements TtsPlaybackListener {
         }
         publishSpeechTerminations();
         scheduleNextSpeechSentence();
+        scheduleSpeechPreparation();
         return TtsOperationResult.accepted(request.requestId());
     }
 
     public TtsOperationResult synthesize(
             TtsRequest request,
-            boolean streaming,
             long ttlMillis,
-            TtsAudioChunkConsumer onAudio,
+            Consumer<byte[]> onAudio,
             Runnable onStarted,
             Runnable onComplete,
             Consumer<TtsFailure> onFailure
     ) {
         if (!running.get()) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not running");
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS_RUNTIME_NOT_RUNNING");
             lastFailure.set(failure);
             fail(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
         if (request == null || request.text() == null) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS synthesis request is invalid");
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS_SYNTHESIS_REQUEST_INVALID");
             lastFailure.set(failure);
             fail(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
         if (!modelLifecycleCoordinator.allowsSynthesis(request)) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS model lifecycle is busy");
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS_MODEL_LIFECYCLE_BUSY");
             lastFailure.set(failure);
             fail(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
         String text = normalizer.normalize(request.text());
         if (text.isBlank()) {
-            complete(onComplete);
-            return TtsOperationResult.accepted(request.requestId());
+            return reject(TtsFailureCode.EMPTY_TEXT, "TTS_SYNTHESIS_TEXT_EMPTY", onFailure);
         }
         TtsRequest normalizedRequest = new TtsRequest(
                 request.requestId(),
@@ -317,12 +323,57 @@ public final class TtsRuntime implements TtsPlaybackListener {
         );
         return synthesisTaskCoordinator.submit(
                 normalizedRequest,
-                streaming,
                 ttlMillis,
                 onAudio,
                 onStarted,
                 onComplete,
                 onFailure
+        );
+    }
+
+    public TtsOperationResult synthesizeAcknowledged(
+            TtsRequest request,
+            long ttlMillis,
+            String ownerId,
+            Consumer<byte[]> onAudio,
+            Runnable onStarted,
+            Runnable onComplete,
+            Consumer<TtsFailure> onFailure
+    ) {
+        if (!running.get()) {
+            return reject(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS_RUNTIME_NOT_RUNNING", onFailure);
+        }
+        if (request == null || request.text() == null) {
+            return reject(TtsFailureCode.INVALID_REQUEST, "TTS_SYNTHESIS_REQUEST_INVALID", onFailure);
+        }
+        if (!modelLifecycleCoordinator.allowsSynthesis(request)) {
+            return reject(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS_MODEL_LIFECYCLE_BUSY", onFailure);
+        }
+        String text = normalizer.normalize(request.text());
+        if (text.isBlank()) {
+            return reject(TtsFailureCode.EMPTY_TEXT, "TTS_SYNTHESIS_TEXT_EMPTY", onFailure);
+        }
+        return synthesisTaskCoordinator.submitAcknowledged(
+                withText(request, text),
+                ttlMillis,
+                ownerId,
+                onAudio,
+                onStarted,
+                onComplete,
+                onFailure
+        );
+    }
+
+    public TtsOperationResult acknowledgeSynthesisAudio(String ownerId, TtsAudioAckPayload acknowledgement) {
+        if (acknowledgement == null) {
+            return TtsOperationResult.rejected(TtsFailure.of(
+                    TtsFailureCode.INVALID_REQUEST,
+                    "TTS_AUDIO_ACK_INVALID"
+            ));
+        }
+        return synthesisTaskCoordinator.acknowledge(
+                ownerId,
+                acknowledgement.requestId()
         );
     }
 
@@ -335,6 +386,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
         speechContexts.clear();
         sentenceWorks.clear();
         workSessions.clear();
+        preparedSpeech.clear();
+        preparingSpeech.clear();
         droppedStreams.clear();
         List<TtsSession> cancelled = sessionManager.cancelAll(reason);
         cancelled.forEach(sessionStatusPublisher);
@@ -525,6 +578,11 @@ public final class TtsRuntime implements TtsPlaybackListener {
             scheduleNextSpeechSentence();
             return;
         }
+        PreparedSpeech prepared = preparedSpeech.remove(work);
+        if (prepared != null) {
+            startPreparedPlayback(work, context, prepared);
+            return;
+        }
         TtsRequest sentenceRequest = withText(context.request, work.text());
         TtsSession session = sessionManager.create(sentenceRequest);
         sentenceWorks.put(session, work);
@@ -534,7 +592,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
         ProtocolTaskHandle handle = synthesisScheduler.submit(
                 sentenceRequest,
                 work,
-                () -> runSpeechSentence(session, work, context)
+                () -> runSpeechSentence(session, work, context),
+                this::scheduleSpeechPreparation
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
             playbackController.removeQueued(session);
@@ -563,7 +622,9 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 return;
             }
             int sampleRate = synthesisEngine.sampleRate();
-            TtsSynthesisMode mode = synthesisPolicy.decide(synthesisEngine.backendSnapshot(), session.request(), playbackBufferTracker.estimate());
+            TtsSynthesisMode mode = work.firstBatch()
+                    ? TtsSynthesisMode.STREAMING
+                    : synthesisPolicy.decide(synthesisEngine.backendSnapshot(), session.request(), playbackBufferTracker.estimate());
             boolean playbackAlreadyBusy = playbackController.activeSession() != null;
             playbackController.begin(session, sampleRate);
             publishRequestStatus(work.sessionKey(), context.request, TtsRequestStatus.PLAYING, "");
@@ -604,6 +665,115 @@ public final class TtsRuntime implements TtsPlaybackListener {
         }
     }
 
+    private void scheduleSpeechPreparation() {
+        if (!running.get()
+                || synthesisScheduler.isBusy()
+                || preparedSpeech.size() + preparingSpeech.size() >= MAX_PREPARED_SPEECH_GROUPS) {
+            return;
+        }
+        List<String> available = speechSessionCoordinator.activePendingSentences();
+        if (available.isEmpty()) {
+            return;
+        }
+        int sentenceLimit = Math.max(1, synthesisEngine.contextualSentenceLimit(available));
+        Optional<TtsSpeechSessionCoordinator.SentenceWork> reserved = speechSessionCoordinator.reserveActiveBatch(sentenceLimit);
+        if (reserved.isEmpty()) {
+            return;
+        }
+        TtsSpeechSessionCoordinator.SentenceWork work = reserved.get();
+        SpeechContext context = speechContexts.get(work.sessionKey());
+        if (context == null) {
+            return;
+        }
+        TtsRequest request = withText(context.request, work.text());
+        TtsSession session = sessionManager.create(request);
+        sentenceWorks.put(session, work);
+        workSessions.put(work, session);
+        preparingSpeech.add(work);
+        transition(session, TtsSessionState.QUEUED);
+        ProtocolTaskHandle handle = synthesisScheduler.submit(
+                request,
+                work,
+                () -> runSpeechPreparation(session, work, context),
+                this::scheduleSpeechPreparation
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            preparingSpeech.remove(work);
+            failSpeechSession(session, work, context,
+                    TtsFailure.of(TtsFailureCode.QUEUE_FULL, "TTS synthesis queue is full"));
+        }
+    }
+
+    private void runSpeechPreparation(
+            TtsSession session,
+            TtsSpeechSessionCoordinator.SentenceWork work,
+            SpeechContext context
+    ) {
+        if (!running.get() || session.isTerminal()) {
+            preparingSpeech.remove(work);
+            return;
+        }
+        try {
+            transition(session, TtsSessionState.SYNTHESIZING);
+            if (!synthesisEngine.initialize()) {
+                failSpeechSession(session, work, context,
+                        TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS synthesis engine is unavailable"));
+                return;
+            }
+            TtsSynthesisMode mode = synthesisPolicy.decide(
+                    synthesisEngine.backendSnapshot(),
+                    session.request(),
+                    playbackBufferTracker.estimate()
+            );
+            PreparedAudioSink sink = new PreparedAudioSink(mode);
+            synthesisEngine.synthesize(session.request(), sink);
+            if (session.isTerminal()) {
+                return;
+            }
+            PreparedSpeech prepared = new PreparedSpeech(session, synthesisEngine.sampleRate(), sink.audio());
+            preparedSpeech.put(work, prepared);
+            if (!speechSessionCoordinator.markReservedReady(work)) {
+                preparedSpeech.remove(work, prepared);
+                session.cancel("TTS_SPEECH_RESERVATION_INACTIVE");
+                return;
+            }
+            scheduleNextSpeechSentence();
+        } catch (Throwable throwable) {
+            TtsFailure failure = TtsRuntimeFailurePolicy.classify(TtsFailureCode.SYNTHESIS_FAILED, throwable);
+            failSpeechSession(session, work, context, failure);
+        } finally {
+            preparingSpeech.remove(work);
+        }
+    }
+
+    private void startPreparedPlayback(
+            TtsSpeechSessionCoordinator.SentenceWork work,
+            SpeechContext context,
+            PreparedSpeech prepared
+    ) {
+        TtsSession session = prepared.session();
+        if (!running.get() || session.isTerminal()) {
+            return;
+        }
+        sessionManager.activate(session);
+        playbackController.enqueue(session);
+        boolean playbackAlreadyBusy = playbackController.activeSession() != null;
+        playbackController.begin(session, prepared.sampleRate());
+        publishRequestStatus(work.sessionKey(), context.request, TtsRequestStatus.PLAYING, "");
+        if (!playbackAlreadyBusy) {
+            playbackBufferTracker.begin(prepared.sampleRate());
+        }
+        for (byte[] audio : prepared.audio()) {
+            if (playbackController.feed(session, audio)) {
+                playbackBufferTracker.recordPcm16Mono(audio);
+            }
+        }
+        playbackController.finish(session);
+        sessionStatusPublisher.accept(session);
+        publishPlaybackState();
+        scheduleSpeechPreparation();
+    }
+
     private void failSpeechSession(
             TtsSession session,
             TtsSpeechSessionCoordinator.SentenceWork work,
@@ -637,6 +807,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
             return;
         }
         sentenceWorks.remove(session);
+        preparedSpeech.remove(work);
+        preparingSpeech.remove(work);
         sessionManager.cancel(session.request().requestId(), reason);
         playbackController.cancel(session, reason);
         sessionStatusPublisher.accept(session);
@@ -669,6 +841,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private void publishSpeechTerminations() {
         for (TtsSpeechSessionCoordinator.Termination termination : speechSessionCoordinator.drainTerminations()) {
             if (termination.reason() == TtsSpeechSessionCoordinator.TerminationReason.CANCELLED) {
+                cancelPreparedSpeech(termination.sessionKey(), "TTS speech session cancelled");
                 boolean droppedBeforeTermination = droppedStreams.contains(termination.sessionKey());
                 boolean openStream = speechInputAssembler.isOpen(termination.sessionKey());
                 speechInputAssembler.cancel(termination.sessionKey());
@@ -695,6 +868,15 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 );
                 fail(context.onFailure, failure);
             }
+        }
+    }
+
+    private void cancelPreparedSpeech(TtsSpeechSessionKey key, String reason) {
+        List<TtsSpeechSessionCoordinator.SentenceWork> works = workSessions.keySet().stream()
+                .filter(work -> work.sessionKey().equals(key))
+                .toList();
+        for (TtsSpeechSessionCoordinator.SentenceWork work : works) {
+            cancelSentenceWork(work, reason);
         }
     }
 
@@ -837,6 +1019,47 @@ public final class TtsRuntime implements TtsPlaybackListener {
         @Override
         public void reportSynthesisMetrics(TtsSynthesisMetrics metrics) {
             synthesisPolicy.record(metrics);
+        }
+    }
+
+    private final class PreparedAudioSink implements TtsAudioSink {
+        private final TtsSynthesisMode mode;
+        private final List<byte[]> audio = new ArrayList<>();
+
+        private PreparedAudioSink(TtsSynthesisMode mode) {
+            this.mode = mode == null ? TtsSynthesisMode.FULL : mode;
+        }
+
+        @Override
+        public void accept(byte[] chunk) {
+            if (chunk != null && chunk.length > 0) {
+                audio.add(chunk);
+            }
+        }
+
+        @Override
+        public TtsSynthesisMode preferredSynthesisMode() {
+            return mode;
+        }
+
+        @Override
+        public TtsPlaybackBufferEstimate playbackBufferEstimate() {
+            return playbackBufferTracker.estimate();
+        }
+
+        @Override
+        public void reportSynthesisMetrics(TtsSynthesisMetrics metrics) {
+            synthesisPolicy.record(metrics);
+        }
+
+        private List<byte[]> audio() {
+            return List.copyOf(audio);
+        }
+    }
+
+    private record PreparedSpeech(TtsSession session, int sampleRate, List<byte[]> audio) {
+        private PreparedSpeech {
+            audio = audio == null ? List.of() : List.copyOf(audio);
         }
     }
 

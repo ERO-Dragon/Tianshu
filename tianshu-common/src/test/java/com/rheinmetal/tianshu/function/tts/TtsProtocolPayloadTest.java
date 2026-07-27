@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
+import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
@@ -8,6 +10,7 @@ import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -36,7 +39,6 @@ class TtsProtocolPayloadTest {
         TtsSynthesisRequestPayload payload = new TtsSynthesisRequestPayload(
                 "npc-1",
                 "line",
-                true,
                 10_000L,
                 new TtsVoiceOptions("npc:voice", null, null)
         );
@@ -50,5 +52,17 @@ class TtsProtocolPayloadTest {
     void voiceOptionsRejectInvalidOverrides() {
         assertThrows(IllegalArgumentException.class, () -> new TtsVoiceOptions("", 0.05F, null));
         assertThrows(IllegalArgumentException.class, () -> new TtsVoiceOptions("", null, -1));
+    }
+
+    @Test
+    void synthesisAudioAndAcknowledgementUseRequestAtomicContract() {
+        TtsAudioPayload audio = new TtsAudioPayload("  npc-1  ", new byte[] {1, 2}, 24_000, 1);
+        TtsAudioAckPayload acknowledgement = new TtsAudioAckPayload("  npc-1  ");
+
+        assertEquals("npc-1", audio.requestId());
+        assertArrayEquals(new byte[] {1, 2}, audio.audio());
+        assertEquals(24_000, audio.sampleRate());
+        assertEquals(1, audio.channels());
+        assertEquals("npc-1", acknowledgement.requestId());
     }
 }

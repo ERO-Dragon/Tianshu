@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 public record TtsSynthesisRequestPayload(
         String requestId,
         String text,
-        boolean streaming,
         long ttlMillis,
         TtsVoiceOptions voice
 ) implements ITianshuPayload {

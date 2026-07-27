@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.function.tts.synthesis;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsBackendSnapshot;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 
+import java.util.List;
+
 public interface TtsSynthesisEngine {
     boolean initialize();
 
@@ -17,6 +19,10 @@ public interface TtsSynthesisEngine {
     int sampleRate();
 
     TtsBackendSnapshot backendSnapshot();
+
+    default int contextualSentenceLimit(List<String> sentences) {
+        return 1;
+    }
 
     boolean useModel(String modelName);
 
