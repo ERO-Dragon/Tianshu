@@ -18,6 +18,23 @@ class TtsRuntimeFailurePolicyTest {
     }
 
     @Test
+    void preservesStructuredTtsFailureThroughBackendWrapping() {
+        TtsFailureException cause = new TtsFailureException(
+                TtsFailureCode.GENERATION_LIMIT_REACHED,
+                "TTS_MOSS_GENERATION_LIMIT_REACHED inputTokens=11 generatedFrames=375 maxFrames=375"
+        );
+
+        TtsFailure failure = TtsRuntimeFailurePolicy.classify(
+                TtsFailureCode.SYNTHESIS_FAILED,
+                new IllegalStateException("TTS_MOSS_SYNTHESIS_FAILED", cause)
+        );
+
+        assertEquals(TtsFailureCode.GENERATION_LIMIT_REACHED, failure.code());
+        assertEquals(cause.getMessage(), failure.message());
+        assertSame(cause, failure.cause());
+    }
+
+    @Test
     void treatsNativeLinkageFailureAsBackendUnavailable() {
         UnsatisfiedLinkError cause = new UnsatisfiedLinkError("native runtime missing");
 

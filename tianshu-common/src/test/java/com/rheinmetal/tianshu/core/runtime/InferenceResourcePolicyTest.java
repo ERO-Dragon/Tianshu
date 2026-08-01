@@ -23,15 +23,15 @@ class InferenceResourcePolicyTest {
 
         assertEquals(4, policy.sherpaTtsThreads("vits", false));
         assertEquals(3, policy.sherpaTtsThreads("zipvoice", true));
-        assertEquals(4, policy.mossTtsThreads());
+        assertEquals(2, policy.mossTtsThreads());
     }
 
     @Test
-    void autoregressiveMossCapsAtFourThreads() {
+    void autoregressiveMossUsesMeasuredTwoThreadBudgetOnEveryCpuTier() {
         assertEquals(2, InferenceResourcePolicy.fixedProcessors(4).mossTtsThreads());
-        assertEquals(4, InferenceResourcePolicy.fixedProcessors(8).mossTtsThreads());
-        assertEquals(4, InferenceResourcePolicy.fixedProcessors(12).mossTtsThreads());
-        assertEquals(4, InferenceResourcePolicy.fixedProcessors(16).mossTtsThreads());
+        assertEquals(2, InferenceResourcePolicy.fixedProcessors(8).mossTtsThreads());
+        assertEquals(2, InferenceResourcePolicy.fixedProcessors(12).mossTtsThreads());
+        assertEquals(2, InferenceResourcePolicy.fixedProcessors(16).mossTtsThreads());
     }
 
     @Test

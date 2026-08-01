@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink;
-import com.rheinmetal.tianshu.function.tts.synthesis.TtsPlaybackBufferEstimate;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
@@ -204,18 +203,23 @@ final class TtsSynthesisTaskCoordinator {
                         "TTS_SYNTHESIS_ENGINE_UNAVAILABLE", false);
                 return;
             }
-            String textGroup = task.nextTextGroup(synthesisEngine);
+            List<String> available = task.availableText();
+            if (available.isEmpty()) {
+                finish(task);
+                return;
+            }
+            int contextualLimit = Math.max(1, synthesisEngine.contextualSentenceLimit(available));
+            TtsSynthesisDecision decision = synthesisPolicy.planSynthesis(
+                    available,
+                    contextualLimit
+            );
+            String textGroup = task.takeTextGroup(decision.sentenceCount());
             if (textGroup == null) {
                 finish(task);
                 return;
             }
             TtsRequest groupRequest = withText(task.request, textGroup);
-            TtsSynthesisMode mode = synthesisPolicy.decide(
-                    synthesisEngine.backendSnapshot(),
-                    groupRequest,
-                    TtsPlaybackBufferEstimate.empty()
-            );
-            synthesisEngine.synthesize(groupRequest, new CoordinatorAudioSink(mode, task::acceptAudio));
+            synthesisEngine.synthesize(groupRequest, new CoordinatorAudioSink(decision.mode(), task::acceptAudio));
             if (task.cancelled() || task.finished()) {
                 return;
             }
@@ -512,12 +516,12 @@ final class TtsSynthesisTaskCoordinator {
             }
         }
 
-        private synchronized String nextTextGroup(TtsSynthesisEngine synthesisEngine) {
-            if (sentences.isEmpty()) {
-                return null;
-            }
-            List<String> available = List.copyOf(sentences);
-            int limit = Math.max(1, synthesisEngine.contextualSentenceLimit(available));
+        private synchronized List<String> availableText() {
+            return List.copyOf(sentences);
+        }
+
+        private synchronized String takeTextGroup(int sentenceCount) {
+            int limit = Math.max(1, sentenceCount);
             StringBuilder text = new StringBuilder();
             for (int index = 0; index < limit && !sentences.isEmpty(); index++) {
                 text.append(sentences.removeFirst());

@@ -4,6 +4,7 @@ import java.util.Locale;
 
 public final class InferenceResourcePolicy {
     private static final int FULL_GPU_LAYERS = 999;
+    private static final int MOSS_TTS_THREADS = 2;
 
     private final int processors;
 
@@ -55,7 +56,7 @@ public final class InferenceResourcePolicy {
     }
 
     public int mossTtsThreads() {
-        return autoregressiveTtsThreadBudget();
+        return MOSS_TTS_THREADS;
     }
 
     private int smallModelThreadBudget(int upperBound) {
@@ -68,13 +69,6 @@ public final class InferenceResourcePolicy {
             threads = 2;
         }
         return Math.max(1, Math.min(upperBound, threads));
-    }
-
-    private int autoregressiveTtsThreadBudget() {
-        if (processors >= 6) {
-            return 4;
-        }
-        return 2;
     }
 
     private boolean isHeavyAsr(String architecture, String modelName) {

@@ -622,9 +622,13 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 return;
             }
             int sampleRate = synthesisEngine.sampleRate();
-            TtsSynthesisMode mode = work.firstBatch()
-                    ? TtsSynthesisMode.STREAMING
-                    : synthesisPolicy.decide(synthesisEngine.backendSnapshot(), session.request(), playbackBufferTracker.estimate());
+            TtsSynthesisMode mode = synthesisPolicy.planPlayback(
+                    synthesisEngine.backendSnapshot(),
+                    List.of(work.text()),
+                    1,
+                    playbackBufferTracker.estimate(),
+                    work.firstBatch()
+            ).mode();
             boolean playbackAlreadyBusy = playbackController.activeSession() != null;
             playbackController.begin(session, sampleRate);
             publishRequestStatus(work.sessionKey(), context.request, TtsRequestStatus.PLAYING, "");
@@ -676,7 +680,16 @@ public final class TtsRuntime implements TtsPlaybackListener {
             return;
         }
         int sentenceLimit = Math.max(1, synthesisEngine.contextualSentenceLimit(available));
-        Optional<TtsSpeechSessionCoordinator.SentenceWork> reserved = speechSessionCoordinator.reserveActiveBatch(sentenceLimit);
+        TtsSynthesisDecision decision = synthesisPolicy.planPlayback(
+                synthesisEngine.backendSnapshot(),
+                available,
+                sentenceLimit,
+                playbackBufferTracker.estimate(),
+                false
+        );
+        Optional<TtsSpeechSessionCoordinator.SentenceWork> reserved = speechSessionCoordinator.reserveActiveBatch(
+                decision.sentenceCount()
+        );
         if (reserved.isEmpty()) {
             return;
         }
@@ -694,7 +707,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
         ProtocolTaskHandle handle = synthesisScheduler.submit(
                 request,
                 work,
-                () -> runSpeechPreparation(session, work, context),
+                () -> runSpeechPreparation(session, work, context, decision.mode()),
                 this::scheduleSpeechPreparation
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {
@@ -707,7 +720,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private void runSpeechPreparation(
             TtsSession session,
             TtsSpeechSessionCoordinator.SentenceWork work,
-            SpeechContext context
+            SpeechContext context,
+            TtsSynthesisMode mode
     ) {
         if (!running.get() || session.isTerminal()) {
             preparingSpeech.remove(work);
@@ -720,11 +734,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
                         TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS synthesis engine is unavailable"));
                 return;
             }
-            TtsSynthesisMode mode = synthesisPolicy.decide(
-                    synthesisEngine.backendSnapshot(),
-                    session.request(),
-                    playbackBufferTracker.estimate()
-            );
             PreparedAudioSink sink = new PreparedAudioSink(mode);
             synthesisEngine.synthesize(session.request(), sink);
             if (session.isTerminal()) {

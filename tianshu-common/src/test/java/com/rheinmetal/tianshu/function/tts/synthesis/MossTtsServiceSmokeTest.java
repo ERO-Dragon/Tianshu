@@ -14,6 +14,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,7 +50,8 @@ class MossTtsServiceSmokeTest {
         for (int processors : smokeProcessorSet()) {
             long initStart = System.nanoTime();
             InferenceResourcePolicy resourcePolicy = InferenceResourcePolicy.fixedProcessors(processors);
-            try (MossTtsService service = new MossTtsService(env, downloader, modelDir, resourcePolicy)) {
+            try (SmokeCodecExecution codecExecution = new SmokeCodecExecution();
+                 MossTtsService service = new MossTtsService(env, downloader, modelDir, resourcePolicy, codecExecution)) {
             service.init();
             long initMillis = elapsedMillis(initStart);
 
@@ -279,5 +288,54 @@ class MossTtsServiceSmokeTest {
             offset += length;
         }
         return merged;
+    }
+
+    private static final class SmokeCodecExecution implements TtsCodecExecution, AutoCloseable {
+        private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        @Override
+        public Task submit(Runnable work) {
+            Future<?> future = executor.submit(work);
+            return new Task() {
+                @Override
+                public boolean accepted() {
+                    return true;
+                }
+
+                @Override
+                public void cancel(String reason) {
+                    future.cancel(true);
+                }
+
+                @Override
+                public void await(BooleanSupplier cancellationRequested) throws Exception {
+                    while (true) {
+                        if (cancellationRequested != null && cancellationRequested.getAsBoolean()) {
+                            future.cancel(true);
+                            throw new CancellationException("TTS_MOSS_SMOKE_CANCELLED");
+                        }
+                        try {
+                            future.get(25L, TimeUnit.MILLISECONDS);
+                            return;
+                        } catch (TimeoutException ignored) {
+                        } catch (ExecutionException failure) {
+                            Throwable cause = failure.getCause();
+                            if (cause instanceof Exception exception) {
+                                throw exception;
+                            }
+                            if (cause instanceof Error error) {
+                                throw error;
+                            }
+                            throw new IllegalStateException(cause);
+                        }
+                    }
+                }
+            };
+        }
+
+        @Override
+        public void close() {
+            executor.shutdownNow();
+        }
     }
 }

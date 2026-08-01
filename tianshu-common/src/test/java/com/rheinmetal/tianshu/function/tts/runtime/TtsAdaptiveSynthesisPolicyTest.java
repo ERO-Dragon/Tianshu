@@ -4,83 +4,142 @@ import com.rheinmetal.tianshu.function.tts.synthesis.TtsBackendType;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsPlaybackBufferEstimate;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
-import com.rheinmetal.tianshu.protocol.Priority;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class TtsAdaptiveSynthesisPolicyTest {
     @Test
-    void nonMossBackendUsesFullSynthesis() {
+    void nonMossBackendKeepsSingleSentenceFullSynthesis() {
         TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
 
-        TtsSynthesisMode mode = policy.decide(
+        TtsSynthesisDecision decision = policy.planPlayback(
                 snapshot(TtsBackendType.SHERPA, false),
-                request("你好"),
-                new TtsPlaybackBufferEstimate(0L, 0L, 0L)
+                List.of("第一句。", "第二句。"),
+                1,
+                TtsPlaybackBufferEstimate.empty(),
+                false
         );
 
-        assertEquals(TtsSynthesisMode.FULL, mode);
+        assertEquals(1, decision.sentenceCount());
+        assertEquals("第一句。", decision.text());
+        assertEquals(TtsSynthesisMode.FULL, decision.mode());
     }
 
     @Test
-    void mossUsesStreamingWhenPlaybackBufferIsLow() {
+    void firstPlaybackBatchStartsImmediatelyAsOneStreamingSentence() {
         TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
 
-        TtsSynthesisMode mode = policy.decide(
+        TtsSynthesisDecision decision = policy.planPlayback(
                 snapshot(TtsBackendType.MOSS, true),
-                request("你好，我是天枢人工智能助手。"),
-                new TtsPlaybackBufferEstimate(100L, 500L, 400L)
+                List.of("第一句。", "第二句。"),
+                2,
+                TtsPlaybackBufferEstimate.empty(),
+                true
         );
 
-        assertEquals(TtsSynthesisMode.STREAMING, mode);
+        assertEquals(1, decision.sentenceCount());
+        assertEquals(TtsSynthesisMode.STREAMING, decision.mode());
     }
 
     @Test
-    void mossCanUseFullSynthesisForShortTextEvenWithoutPlaybackBuffer() {
+    void sufficientBufferSelectsLargestValidGroupInFullMode() {
         TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
 
-        TtsSynthesisMode mode = policy.decide(
+        TtsSynthesisDecision decision = policy.planPlayback(
                 snapshot(TtsBackendType.MOSS, true),
-                request("你好。"),
-                TtsPlaybackBufferEstimate.empty()
+                List.of("甲乙。", "丙丁。", "戊己。"),
+                3,
+                new TtsPlaybackBufferEstimate(2_000L, 3_000L, 1_000L),
+                false
         );
 
-        assertEquals(TtsSynthesisMode.FULL, mode);
+        assertEquals(3, decision.sentenceCount());
+        assertEquals("甲乙。丙丁。戊己。", decision.text());
+        assertEquals(TtsSynthesisMode.FULL, decision.mode());
     }
 
     @Test
-    void mossUsesFullWhenPlaybackBufferCanCoverPredictedSynthesis() {
+    void tightBufferStillKeepsMultipleCompleteSentencesInStreamingMode() {
         TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
 
-        TtsSynthesisMode mode = policy.decide(
+        TtsSynthesisDecision decision = policy.planPlayback(
                 snapshot(TtsBackendType.MOSS, true),
-                request("你好。"),
-                new TtsPlaybackBufferEstimate(2_000L, 3_000L, 1_000L)
+                List.of("甲乙。", "丙丁。", "戊己。"),
+                3,
+                new TtsPlaybackBufferEstimate(800L, 1_500L, 700L),
+                false
         );
 
-        assertEquals(TtsSynthesisMode.FULL, mode);
+        assertEquals(3, decision.sentenceCount());
+        assertEquals(TtsSynthesisMode.STREAMING, decision.mode());
     }
 
     @Test
-    void observedSlowFullSynthesisMakesPolicyPreferStreamingWithTightBuffer() {
+    void shrinksGroupOnlyWhenPredictedFirstAudioMissesDeadline() {
         TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
-        policy.record(new TtsSynthesisMetrics(TtsSynthesisMode.FULL, 4, 1_000L, 3_000L, 3_000L));
 
-        TtsSynthesisMode mode = policy.decide(
+        TtsSynthesisDecision decision = policy.planPlayback(
                 snapshot(TtsBackendType.MOSS, true),
-                request("你好你好你好你好你好。"),
-                new TtsPlaybackBufferEstimate(900L, 1_500L, 600L)
+                List.of("第一句内容。", "第二句内容。", "第三句内容。"),
+                3,
+                new TtsPlaybackBufferEstimate(450L, 1_000L, 550L),
+                false
         );
 
-        assertEquals(TtsSynthesisMode.STREAMING, mode);
+        assertEquals(2, decision.sentenceCount());
+        assertEquals("第一句内容。第二句内容。", decision.text());
+        assertEquals(TtsSynthesisMode.STREAMING, decision.mode());
+    }
+
+    @Test
+    void backendTokenCeilingCapsSelectedSentenceCount() {
+        TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
+
+        TtsSynthesisDecision decision = policy.planPlayback(
+                snapshot(TtsBackendType.MOSS, true),
+                List.of("甲乙。", "丙丁。", "戊己。"),
+                2,
+                new TtsPlaybackBufferEstimate(5_000L, 5_000L, 0L),
+                false
+        );
+
+        assertEquals(2, decision.sentenceCount());
+    }
+
+    @Test
+    void pureSynthesisUsesLargestTokenSafeGroupWithoutPlaybackHeuristics() {
+        TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
+
+        TtsSynthesisDecision decision = policy.planSynthesis(
+                List.of("甲乙。", "丙丁。", "戊己。"),
+                3
+        );
+
+        assertEquals(3, decision.sentenceCount());
+        assertEquals(TtsSynthesisMode.FULL, decision.mode());
+    }
+
+    @Test
+    void observedFirstAudioLatencyInfluencesLaterGroupSize() {
+        TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
+        policy.record(new TtsSynthesisMetrics(TtsSynthesisMode.STREAMING, 8, 1_500L, 1_000L, 850L));
+
+        TtsSynthesisDecision decision = policy.planPlayback(
+                snapshot(TtsBackendType.MOSS, true),
+                List.of("第一句。", "第二句。", "第三句。"),
+                3,
+                new TtsPlaybackBufferEstimate(500L, 1_000L, 500L),
+                false
+        );
+
+        assertEquals(1, decision.sentenceCount());
+        assertEquals(TtsSynthesisMode.STREAMING, decision.mode());
     }
 
     private static TtsBackendSnapshot snapshot(TtsBackendType type, boolean autoregressive) {
         return new TtsBackendSnapshot(true, true, type, type.name().toLowerCase(), autoregressive, 24_000, ".", System.currentTimeMillis());
-    }
-
-    private static TtsRequest request(String text) {
-        return new TtsRequest("request", "request", "envelope", "trace", text, TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
     }
 }

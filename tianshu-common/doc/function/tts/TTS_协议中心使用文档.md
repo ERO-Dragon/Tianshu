@@ -149,6 +149,8 @@ TTS 使用有界的完成交付队列，容量按完整请求计算。队列已�
 
 一句话或一段话始终作为一个请求交付。较长文本可以在 TTS 内部按后端上下文能力分组推理并合并，但这些内部边界不会改变对外的一次响应和一次 ACK。
 
+MOSS 单个内部推理块达到帧数上限但没有自然结束时，请求以 `GENERATION_LIMIT_REACHED` 失败，不会把截断尾音作为成功的完整 PCM 交付。该上限只约束内部推理块，不改变调用方提交长段落和一次 ACK 的方式。
+
 同一时刻活跃的纯合成任务必须使用唯一 `requestId`；重复 id 会被拒绝，避免旧任务失去 STOP 身份。`ttlMillis` 同时覆盖排队和单个长句推理，到期会终止该纯合成任务，不会中断无关播放或其他纯合成。
 
 ## 7. capability 完成和播放状态
@@ -168,6 +170,8 @@ TTS 使用有界的完成交付队列，容量按完整请求计算。队列已�
 | `FAILED` | 合成或播放失败。 |
 
 payload 携带稳定的 `requestId/sourceId/sessionId/turnId/failureCode`。`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 服务播放控制、业务观察与诊断，不再由映迹转换为“正在回复”。
+
+`failureCode=GENERATION_LIMIT_REACHED` 表示 MOSS 在单个内部文本块内耗尽生成帧上限但未产生自然结束信号。调用方应按普通合成失败结束本次请求，不要自动重发同一短文本形成重复失控。
 
 TTS 通过 `PRESENCE.ACTIVITY` 公开两类产品活动：
 

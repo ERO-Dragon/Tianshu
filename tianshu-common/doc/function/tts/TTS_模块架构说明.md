@@ -11,7 +11,7 @@
 
   - 完整文本可以一次提交并由 TTS 分句；已经分好句子的模块也可以逐句送入；任意文本流则由 TTS 跨片段整理句子。
   - AX 使用已经分好句子的输入，TTS 会保持这些句子的边界，不再重新做语义分句。
-  - 首句立即开始合成；模型空闲后会把已经到达的连续后续句子按当前后端可接受的上下文范围合并生成。合成与播放解耦，因此后续音频可以在前一句仍在播放时准备好。
+  - 首句立即使用流式模式开始合成；后续只使用已经完整到达的连续句子，并在 MOSS tokenizer 上限内尽可能保留更多语义上下文。TTS 根据当前剩余播放时长、首音耗时和稳定 RTF 一次决定句组大小与完整/流式模式，只有预计首音或持续生成赶不上播放时才缩小句组。
   - 排队方式、音色、speaker 和语速只在一个 Session 第一次进入时确定，后续句子不会让同一 Session 重新排队或改变参数。
 
 - 播放顺序与打断
@@ -149,6 +149,7 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 |---|---|
 | 非自回归合成 | `TTS_FAST` |
 | 自回归合成 | `TTS_AUTOREGRESSIVE` |
+| MOSS 流式 codec 解码 | `TTS_FAST` |
 | 播放桥 IO | `AUDIO_IO` |
 | 模型初始化/切换/关闭 | `MODEL_LOAD` |
 | 延迟触发 | `SCHEDULED` |
@@ -160,12 +161,16 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 - `MossModelRuntime` 单一持有 ORT environment、session、tokenizer 和 manifest。
 - `MossTensorState` 直接接管 global KV past 的 `OnnxTensor` handle；不得把 global past 恢复成 `getValue()`、Java 数组复制和 tensor 重建。
 - local cached-step 因结果生命周期约束保留现有 clone，不与 global past 交接混为一谈。
-- streaming decoder 固定累计四个生成 frame 解码一次。
-- `interrupt()` 的取消信号进入自回归帧循环，取消后不继续生成剩余 frame。
+- 自回归生成在 `TTS_AUTOREGRESSIVE` 运行；流式 codec 通过 TTS 窄执行端口提交到协议托管的 `TTS_FAST`，backend 不持有私有线程或线程池。
+- streaming decoder 由单一消费者独占，固定累计四个生成 frame 解码一次；生成侧与 codec 侧通过有界批次队列并行，队列满时背压等待，不丢帧、不覆盖帧。
+- 帧生成明确返回 `NATURAL_END`、`CANCELLED` 或 `FRAME_LIMIT_REACHED`。只有自然结束才 flush 最后不足四帧的尾批；达到 `max_new_frames` 但没有自然结束时以 `GENERATION_LIMIT_REACHED` 失败，参数包含输入 token、已生成帧数和帧数上限。
+- MOSS 长文本按句子和子句边界组织，并使用真实 tokenizer 保证每个内部推理块不超过上下文上限；单个超长无标点文本也会按 token 安全边界继续拆分，不使用固定字符阈值。
+- `interrupt()` 的取消信号同时进入自回归帧循环和 codec 消费端；返回前等待 decoder 退出并释放状态，不能与下一请求或模型关闭重叠。
 - backend shutdown 调用 `MossTtsService.close()`，并由 backend 资源键保证不与推理并发。
 - 默认参考音频在自动加载阶段预编码并缓存。
+- MOSS ORT 自回归推理固定使用 2 个线程。该值来自固定四帧流水线的 RTF 与首音延迟实测；不会因为 JVM 可见的逻辑处理器更多而盲目增加，避免与游戏和 codec 任务争用 CPU。
 
-性能验收分别记录冷启动、默认音色预加载、首包和稳定推理。RTF 只统计预热后的稳定推理，目标必须小于 1。
+性能验收分别记录冷启动、默认音色预加载、首包和稳定推理。RTF 只统计预热后的稳定推理，目标必须小于 1。2026-07-27 固定四帧流水线实测同一文本两轮：两线程配置首音为 `528 / 525 ms`、RTF 为 `0.8395 / 0.8009`；四线程参考配置首音为 `597 / 532 ms`、RTF 为 `0.8707 / 0.8413`，没有改善，因此生产配置固定两线程。
 
 ## 9. 模型下载和诊断
 
@@ -191,5 +196,5 @@ TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务，�
 - placement 不取消纯合成；纯合成在句间让出后继续。
 - 播放取消只中断属于该播放句的 backend work；长句 TTL 和重复 requestId 有确定终态。
 - stop/destroy、退出重进、模型切换没有旧回调和资源泄漏。
-- MOSS handle 交接、四帧 cadence、取消和预热后 RTF 无回归。
+- MOSS handle 交接、三种生成终态、固定四帧 cadence、串并行 PCM 一致性、取消和预热后 RTF 无回归。
 - 正式 jar 不包含 smoke 类、测试 WAV 或生成音频。

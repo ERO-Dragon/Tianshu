@@ -21,9 +21,11 @@ public final class MossTtsBackend implements TtsBackend {
     private int sampleRate;
     private Path voiceSamplePath;
     private CachedMossVoice cachedVoice;
+    private final TtsCodecExecution codecExecution;
 
-    public MossTtsBackend(IGameEnvironment env) {
+    public MossTtsBackend(IGameEnvironment env, TtsCodecExecution codecExecution) {
         this.env = env;
+        this.codecExecution = codecExecution;
     }
 
     @Override
@@ -35,7 +37,7 @@ public final class MossTtsBackend implements TtsBackend {
                 Files.createDirectories(modelRootDir);
             }
             HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-            service = new MossTtsService(env, downloader, modelRootDir);
+            service = new MossTtsService(env, downloader, modelRootDir, codecExecution);
             service.init();
             sampleRate = service.getSampleRate();
             initialized = true;

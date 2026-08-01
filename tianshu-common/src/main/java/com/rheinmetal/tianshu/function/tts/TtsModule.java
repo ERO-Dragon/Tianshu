@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsControlAction;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsControlResult;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsFailure;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsFailureCode;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsProtocolCodecExecution;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsPlaybackPolicy;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequestSource;
@@ -103,7 +104,12 @@ public final class TtsModule implements TianshuManagedModule {
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS is disabled");
             return;
         }
-        DefaultTtsSynthesisEngine synthesisEngine = new DefaultTtsSynthesisEngine(env, config, modelService);
+        DefaultTtsSynthesisEngine synthesisEngine = new DefaultTtsSynthesisEngine(
+                env,
+                config,
+                modelService,
+                new TtsProtocolCodecExecution(runtime)
+        );
         ttsRuntime = new TtsRuntime(
                 env,
                 runtime,

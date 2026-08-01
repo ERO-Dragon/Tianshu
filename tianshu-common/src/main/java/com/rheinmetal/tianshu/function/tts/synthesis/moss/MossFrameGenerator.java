@@ -69,27 +69,21 @@ final class MossFrameGenerator {
         return new MossTtsService.RequestRows(rows, attentionMask);
     }
 
-    List<List<Integer>> generateAudioFrames(MossTtsService.RequestRows requestRows) throws Exception {
+    MossFrameGenerationResult generateAudioFrames(MossTtsService.RequestRows requestRows) throws Exception {
         return generateAudioFrames(requestRows, null, () -> false);
     }
 
-    List<List<Integer>> generateAudioFrames(
-            MossTtsService.RequestRows requestRows,
-            FrameCallback frameCallback
-    ) throws Exception {
-        return generateAudioFrames(requestRows, frameCallback, () -> false);
-    }
-
-    List<List<Integer>> generateAudioFrames(
+    MossFrameGenerationResult generateAudioFrames(
             MossTtsService.RequestRows requestRows,
             FrameCallback frameCallback,
             BooleanSupplier cancellationRequested
     ) throws Exception {
         BooleanSupplier cancellation = cancellationRequested == null ? () -> false : cancellationRequested;
-        if (cancellation.getAsBoolean()) {
-            return List.of();
-        }
         JsonObject generationDefaults = generationDefaults();
+        int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
+        if (cancellation.getAsBoolean()) {
+            return MossFrameGenerationResult.cancelled(List.of(), maxNewFrames);
+        }
         JsonObject ttsConfig = modelRuntime.manifest().getAsJsonObject("tts_config");
         JsonObject ttsOnnx = modelRuntime.ttsMeta().getAsJsonObject("onnx");
 
@@ -127,10 +121,10 @@ final class MossFrameGenerator {
             }
 
             int pastValidLength = sumAttentionMask(requestRows.attentionMask[0]);
-            int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
+            boolean naturallyEnded = false;
             for (int stepIndex = 0; stepIndex < maxNewFrames; stepIndex++) {
                 if (cancellation.getAsBoolean()) {
-                    break;
+                    return MossFrameGenerationResult.cancelled(generatedFrames, maxNewFrames);
                 }
                 List<Integer> frame = generateFrame(
                         globalHidden,
@@ -139,15 +133,16 @@ final class MossFrameGenerator {
                         generationDefaults
                 );
                 if (frame.isEmpty()) {
+                    naturallyEnded = true;
                     break;
                 }
 
                 generatedFrames.add(frame);
                 if (frameCallback != null) {
-                    frameCallback.onFrame(generatedFrames, stepIndex, frame);
+                    frameCallback.onFrame(stepIndex, frame);
                 }
                 if (cancellation.getAsBoolean()) {
-                    break;
+                    return MossFrameGenerationResult.cancelled(generatedFrames, maxNewFrames);
                 }
                 DecodeStepResult decodeStep = runDecodeStep(
                         frame,
@@ -161,8 +156,13 @@ final class MossFrameGenerator {
                 pastValidLength += 1;
                 pastState.replaceWith(decodeStep.nextPastByName);
             }
+            if (naturallyEnded) {
+                return MossFrameGenerationResult.naturalEnd(generatedFrames, maxNewFrames);
+            }
         }
-        return generatedFrames;
+        return cancellation.getAsBoolean()
+                ? MossFrameGenerationResult.cancelled(generatedFrames, maxNewFrames)
+                : MossFrameGenerationResult.frameLimitReached(generatedFrames, maxNewFrames);
     }
 
     private List<Integer> generateFrame(
@@ -823,7 +823,7 @@ final class MossFrameGenerator {
 
     @FunctionalInterface
     interface FrameCallback {
-        void onFrame(List<List<Integer>> generatedFrames, int stepIndex, List<Integer> frame) throws Exception;
+        void onFrame(int stepIndex, List<Integer> frame) throws Exception;
     }
 
     private record LocalDecoderResult(float[] textLogits, float[][] audioLogits) {

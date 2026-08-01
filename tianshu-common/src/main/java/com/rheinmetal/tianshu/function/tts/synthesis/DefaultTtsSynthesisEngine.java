@@ -20,12 +20,17 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
     private volatile TtsResolvedModel loadedModel;
     private volatile TtsBackend activeBackend;
 
-    public DefaultTtsSynthesisEngine(IGameEnvironment env, TtsConfiguration config, TtsModelService modelService) {
+    public DefaultTtsSynthesisEngine(
+            IGameEnvironment env,
+            TtsConfiguration config,
+            TtsModelService modelService,
+            TtsCodecExecution codecExecution
+    ) {
         this.env = env;
         this.modelService = modelService;
         this.modelResolver = new TtsModelResolver(env, modelService);
         this.modelSelection = new TtsActiveModelSelection(config::getCustomTtsName);
-        this.engineProvider = new TtsEngineProvider(env);
+        this.engineProvider = new TtsEngineProvider(env, codecExecution);
     }
 
     @Override

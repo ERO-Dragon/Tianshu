@@ -4,11 +4,13 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 
 public final class TtsEngineProvider {
     private final IGameEnvironment env;
+    private final TtsCodecExecution codecExecution;
     private TtsBackend backend;
     private TtsResolvedModel loadedModel;
 
-    public TtsEngineProvider(IGameEnvironment env) {
+    public TtsEngineProvider(IGameEnvironment env, TtsCodecExecution codecExecution) {
         this.env = env;
+        this.codecExecution = codecExecution;
     }
 
     public synchronized TtsBackend acquire(TtsResolvedModel model) {
@@ -36,7 +38,7 @@ public final class TtsEngineProvider {
 
     private TtsBackend createBackend(TtsBackendType backendType) {
         return switch (backendType) {
-            case MOSS -> new MossTtsBackend(env);
+            case MOSS -> new MossTtsBackend(env, codecExecution);
             case SHERPA -> new SherpaOnnxTtsBackend(env);
         };
     }
