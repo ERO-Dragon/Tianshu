@@ -90,7 +90,7 @@ public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
 - `TTS_SYNTHESIZE`
 - `DIALOGUE.LLM_USAGE_AUTHORIZE`
 
-`TTS_SYNTHESIZE` 用于“只合成音频，不由 TTS 本地播放”的场景。调用方发送 `TtsSynthesisRequestPayload` 后，通过响应处理器接收一个或多个 `TtsAudioPayload / TTS_AUDIO` 响应包，之后自行决定 2D、3D、实体或方块声源播放方式。需要取消时复用 `TTS_CONTROL`：`STOP + targetRequestId` 取消指定播放或纯合成请求，空 target 表示全部停止。
+`TTS_SYNTHESIZE` 用于“只合成音频，不由 TTS 本地播放”的场景。调用方发送 `TtsSynthesisRequestPayload` 后，接收一次完整的 `TtsAudioPayload / TTS_AUDIO` 响应包；调用方随后自行决定如何消费这份 PCM。协议不暴露 MOSS 或其他后端的内部分片。调用方接管后发送 `TTS_AUDIO_ACK`，ACK 表示完成音频所有权交接。需要在交付前取消时，使用 `TTS_CONTROL` 的 `STOP + targetRequestId`。
 
 如果调用方需要结果，应先构建请求信封，为该请求 `envelopeId` 登记响应处理器，再提交请求。对于 IA 仲裁这类主链路投递，普通调用方不需要结果时应使用 `COMMAND`；只有明确需要 `DIALOGUE_ARBITRATION_RESULT` 的诊断、测试或同步查询场景才使用 `REQUEST`。
 

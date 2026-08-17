@@ -25,7 +25,6 @@ import java.util.Map;
 
 /** Owns MOSS prompt encoding and full/streaming audio codec execution. */
 final class MossAudioCodec {
-    private static final int STREAMING_DECODE_CHUNK_FRAMES = 4;
     private static final int FALLBACK_DECODE_CHUNK_FRAMES = 8;
 
     private final IGameEnvironment env;
@@ -34,10 +33,6 @@ final class MossAudioCodec {
     MossAudioCodec(IGameEnvironment env, MossModelRuntime modelRuntime) {
         this.env = env;
         this.modelRuntime = modelRuntime;
-    }
-
-    static int streamingDecodeChunkFrames() {
-        return STREAMING_DECODE_CHUNK_FRAMES;
     }
 
     int channels() {
@@ -181,7 +176,6 @@ final class MossAudioCodec {
     final class StreamingDecoder implements AutoCloseable {
         private final Map<String, OnnxTensor> stateFeeds;
         private final Map<String, String> outputToInputName;
-        private final List<List<Integer>> pendingFrames = new ArrayList<>();
         private boolean closed;
 
         private StreamingDecoder() throws OrtException {
@@ -190,26 +184,12 @@ final class MossAudioCodec {
             this.outputToInputName = buildStreamingOutputToInputMapping();
         }
 
-        MossTtsService.DecodeResult acceptFrame(List<Integer> frame) throws Exception {
-            if (frame != null && !frame.isEmpty()) {
-                pendingFrames.add(List.copyOf(frame));
-            }
-            if (pendingFrames.size() < STREAMING_DECODE_CHUNK_FRAMES) {
+        MossTtsService.DecodeResult decodeFrames(List<List<Integer>> frames) throws Exception {
+            if (frames == null || frames.isEmpty()) {
                 return emptyResult();
             }
-            return decodePending(STREAMING_DECODE_CHUNK_FRAMES);
-        }
-
-        MossTtsService.DecodeResult flush() throws Exception {
-            if (pendingFrames.isEmpty()) {
-                return emptyResult();
-            }
-            return decodePending(pendingFrames.size());
-        }
-
-        private MossTtsService.DecodeResult decodePending(int frameCount) throws Exception {
-            List<List<Integer>> frameChunk = new ArrayList<>(pendingFrames.subList(0, frameCount));
-            pendingFrames.subList(0, frameCount).clear();
+            List<List<Integer>> frameChunk = new ArrayList<>(frames);
+            int frameCount = frameChunk.size();
             try (OnnxTensor audioCodesTensor = OnnxTensor.createTensor(
                          modelRuntime.environment(), toAudioCodes(frameChunk)
                  );
@@ -241,7 +221,6 @@ final class MossAudioCodec {
                 return;
             }
             closed = true;
-            pendingFrames.clear();
             closeTensors(stateFeeds);
         }
     }

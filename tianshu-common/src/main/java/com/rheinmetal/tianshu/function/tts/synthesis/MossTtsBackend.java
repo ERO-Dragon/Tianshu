@@ -104,7 +104,9 @@ public final class MossTtsBackend implements TtsBackend {
                 return;
             }
             TtsSynthesisMode mode = sink.preferredSynthesisMode();
-            if (mode == TtsSynthesisMode.STREAMING) {
+            if (sink.delivery() == TtsAudioDelivery.COMPLETE_RESULT) {
+                synthesizeCompleteResult(current, request, promptAudioCodes, sink);
+            } else if (mode == TtsSynthesisMode.STREAMING) {
                 synthesizeStreaming(current, request, promptAudioCodes, sink);
             } else {
                 synthesizeFull(current, request, promptAudioCodes, sink);
@@ -155,6 +157,34 @@ public final class MossTtsBackend implements TtsBackend {
     private void synthesizeFull(MossTtsService current, TtsRequest request, List<List<Integer>> promptAudioCodes, TtsAudioSink sink) throws Exception {
         long startedNanos = System.nanoTime();
         float[][] audio = current.synthesizeToWaveform(request.text(), promptAudioCodes, this::isInterrupted);
+        if (interrupted) {
+            return;
+        }
+        byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
+        if (pcm.length > 0) {
+            sink.accept(pcm);
+        }
+        sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
+                TtsSynthesisMode.FULL,
+                request.text().length(),
+                pcmMillis(pcm),
+                elapsedMillis(startedNanos),
+                elapsedMillis(startedNanos)
+        ));
+    }
+
+    private void synthesizeCompleteResult(
+            MossTtsService current,
+            TtsRequest request,
+            List<List<Integer>> promptAudioCodes,
+            TtsAudioSink sink
+    ) throws Exception {
+        long startedNanos = System.nanoTime();
+        float[][] audio = current.synthesizeToWaveformResilient(
+                request.text(),
+                promptAudioCodes,
+                this::isInterrupted
+        );
         if (interrupted) {
             return;
         }

@@ -29,11 +29,15 @@ final class MossFrameGenerator {
 
     private final IGameEnvironment env;
     private final MossModelRuntime modelRuntime;
-    private final Random random = new Random(1234L);
+    private final Random random = new Random();
 
     MossFrameGenerator(IGameEnvironment env, MossModelRuntime modelRuntime) {
         this.env = env;
         this.modelRuntime = modelRuntime;
+    }
+
+    synchronized void setGenerationSeed(long seed) {
+        random.setSeed(seed);
     }
 
     MossTtsService.RequestRows buildVoiceCloneRequestRows(List<List<Integer>> promptAudioCodes, int[] textTokenIds) {
@@ -70,7 +74,7 @@ final class MossFrameGenerator {
     }
 
     MossFrameGenerationResult generateAudioFrames(MossTtsService.RequestRows requestRows) throws Exception {
-        return generateAudioFrames(requestRows, null, () -> false);
+        return generateAudioFrames(requestRows, null, () -> false, false);
     }
 
     MossFrameGenerationResult generateAudioFrames(
@@ -78,9 +82,21 @@ final class MossFrameGenerator {
             FrameCallback frameCallback,
             BooleanSupplier cancellationRequested
     ) throws Exception {
+        return generateAudioFrames(requestRows, frameCallback, cancellationRequested, false);
+    }
+
+    MossFrameGenerationResult generateAudioFrames(
+            MossTtsService.RequestRows requestRows,
+            FrameCallback frameCallback,
+            BooleanSupplier cancellationRequested,
+            boolean detectRepeatedFrames
+    ) throws Exception {
         BooleanSupplier cancellation = cancellationRequested == null ? () -> false : cancellationRequested;
         JsonObject generationDefaults = generationDefaults();
         int maxNewFrames = generationDefaults.get("max_new_frames").getAsInt();
+        MossConsecutiveFrameGuard repeatedFrameGuard = detectRepeatedFrames
+                ? new MossConsecutiveFrameGuard(generationDefaults.get("max_consecutive_identical_frames").getAsInt())
+                : null;
         if (cancellation.getAsBoolean()) {
             return MossFrameGenerationResult.cancelled(List.of(), maxNewFrames);
         }
@@ -135,6 +151,10 @@ final class MossFrameGenerator {
                 if (frame.isEmpty()) {
                     naturallyEnded = true;
                     break;
+                }
+
+                if (repeatedFrameGuard != null) {
+                    repeatedFrameGuard.accept(frame, stepIndex);
                 }
 
                 generatedFrames.add(frame);
@@ -599,6 +619,7 @@ final class MossFrameGenerator {
         ensureNumber(generationDefaults, "audio_top_k", 25);
         ensureNumber(generationDefaults, "audio_top_p", 0.95f);
         ensureNumber(generationDefaults, "audio_repetition_penalty", 1.2f);
+        ensureNumber(generationDefaults, "max_consecutive_identical_frames", 8);
         String sampleMode = normalizeSampleMode(
                 generationDefaults.get("sample_mode").getAsString(),
                 generationDefaults.get("do_sample").getAsBoolean()

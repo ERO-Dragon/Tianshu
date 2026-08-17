@@ -52,7 +52,8 @@ class MossStreamingCodecEquivalenceSmokeTest {
             runtime.initialize();
             MossFrameGenerator generator = new MossFrameGenerator(env, runtime);
             MossAudioCodec codec = new MossAudioCodec(env, runtime);
-            int[] tokenIds = runtime.tokenizer().encode("你好，我是天枢人工智能助手。")
+            String text = smokeText();
+            int[] tokenIds = runtime.tokenizer().encode(text)
                     .stream()
                     .mapToInt(Integer::intValue)
                     .toArray();
@@ -63,48 +64,79 @@ class MossStreamingCodecEquivalenceSmokeTest {
             MossFrameGenerationResult generation = generator.generateAudioFrames(requestRows);
             List<List<Integer>> frames = generation.requireNaturalEnd(tokenIds.length);
 
-            float[][] serial = decodeSerial(codec, frames);
-            List<float[][]> pipelineChunks = new ArrayList<>();
-            MossStreamingDecodePipeline pipeline = new MossStreamingDecodePipeline(4, execution);
-            pipeline.run(
-                    (frameConsumer, cancellation) -> {
-                        for (int index = 0; index < frames.size(); index++) {
-                            frameConsumer.onFrame(index, frames.get(index));
-                        }
-                        return MossFrameGenerationResult.naturalEnd(frames, generation.maxFrameCount());
-                    },
-                    () -> decoder(codec),
-                    pipelineChunks::add,
-                    () -> false
-            );
-            float[][] pipelined = merge(pipelineChunks);
+            float[][] serial4 = decodeSerial(codec, frames, 4);
+            float[][] pipelined4 = decodePipeline(codec, execution, frames, generation.maxFrameCount(), runtime.sampleRate(), 4);
+            float[][] serial8 = decodeSerial(codec, frames, 8);
+            float[][] pipelined8 = decodePipeline(codec, execution, frames, generation.maxFrameCount(), runtime.sampleRate(), 8);
 
-            assertEquals(serial.length, pipelined.length);
-            for (int channel = 0; channel < serial.length; channel++) {
-                assertArrayEquals(serial[channel], pipelined[channel], 0.0f);
-            }
-            assertEquals(hash(serial), hash(pipelined));
+            assertSameAudio(serial4, pipelined4);
+            assertSameAudio(serial8, pipelined8);
+            Path outputDir = modelDir.resolve("moss-smoke-output");
+            WavWriter.writeWaveFile(outputDir.resolve("moss-equivalence-fixed4.wav"), pipelined4, runtime.sampleRate());
+            WavWriter.writeWaveFile(outputDir.resolve("moss-equivalence-fixed8.wav"), pipelined8, runtime.sampleRate());
             System.out.println("MOSS codec equivalence: frames=" + frames.size()
-                    + ", samples=" + (serial.length == 0 ? 0 : serial[0].length)
-                    + ", sha256=" + hash(serial));
+                    + ", text=" + text
+                    + ", fixed4Samples=" + (pipelined4.length == 0 ? 0 : pipelined4[0].length)
+                    + ", fixed8Samples=" + (pipelined8.length == 0 ? 0 : pipelined8[0].length)
+                    + ", fixed4Sha256=" + hash(pipelined4)
+                    + ", fixed8Sha256=" + hash(pipelined8));
         }
     }
 
-    private static float[][] decodeSerial(MossAudioCodec codec, List<List<Integer>> frames) throws Exception {
+    private static float[][] decodeSerial(MossAudioCodec codec, List<List<Integer>> frames, int batchSize) throws Exception {
         List<float[][]> chunks = new ArrayList<>();
         try (MossAudioCodec.StreamingDecoder decoder = codec.openStreamingDecoder()) {
-            for (List<Integer> frame : frames) {
-                MossTtsService.DecodeResult decoded = decoder.acceptFrame(frame);
+            for (int start = 0; start < frames.size(); start += batchSize) {
+                int end = Math.min(frames.size(), start + batchSize);
+                MossTtsService.DecodeResult decoded = decoder.decodeFrames(frames.subList(start, end));
                 if (decoded.audioLength > 0) {
                     chunks.add(decoded.channels);
                 }
             }
-            MossTtsService.DecodeResult tail = decoder.flush();
-            if (tail.audioLength > 0) {
-                chunks.add(tail.channels);
-            }
         }
         return merge(chunks);
+    }
+
+    private static float[][] decodePipeline(
+            MossAudioCodec codec,
+            TtsCodecExecution execution,
+            List<List<Integer>> frames,
+            int maxFrameCount,
+            int sampleRate,
+            int batchSize
+    ) throws Exception {
+        List<float[][]> chunks = new ArrayList<>();
+        MossStreamingDecodePipeline pipeline = new MossStreamingDecodePipeline(
+                4,
+                execution,
+                sampleRate,
+                MossStreamingDecodeCadence.fixed(batchSize)
+        );
+        pipeline.run(
+                (frameConsumer, cancellation) -> {
+                    for (int index = 0; index < frames.size(); index++) {
+                        frameConsumer.onFrame(index, frames.get(index));
+                    }
+                    return MossFrameGenerationResult.naturalEnd(frames, maxFrameCount);
+                },
+                () -> decoder(codec),
+                chunks::add,
+                () -> false
+        );
+        return merge(chunks);
+    }
+
+    private static void assertSameAudio(float[][] expected, float[][] actual) throws Exception {
+        assertEquals(expected.length, actual.length);
+        for (int channel = 0; channel < expected.length; channel++) {
+            assertArrayEquals(expected[channel], actual[channel], 0.0f);
+        }
+        assertEquals(hash(expected), hash(actual));
+    }
+
+    private static String smokeText() {
+        String value = System.getenv("TIANSHU_MOSS_EQUIV_TEXT");
+        return value == null || value.isBlank() ? "你好，我是天枢人工智能助手。" : value.trim();
     }
 
     private static MossStreamingDecodePipeline.Decoder decoder(MossAudioCodec codec) throws Exception {
@@ -113,17 +145,9 @@ class MossStreamingCodecEquivalenceSmokeTest {
             @Override
             public List<float[][]> decode(List<List<Integer>> frames, boolean finalBatch) throws Exception {
                 List<float[][]> chunks = new ArrayList<>();
-                for (List<Integer> frame : frames) {
-                    MossTtsService.DecodeResult decoded = decoder.acceptFrame(frame);
-                    if (decoded.audioLength > 0) {
-                        chunks.add(decoded.channels);
-                    }
-                }
-                if (finalBatch) {
-                    MossTtsService.DecodeResult tail = decoder.flush();
-                    if (tail.audioLength > 0) {
-                        chunks.add(tail.channels);
-                    }
+                MossTtsService.DecodeResult decoded = decoder.decodeFrames(frames);
+                if (decoded.audioLength > 0) {
+                    chunks.add(decoded.channels);
                 }
                 return chunks;
             }

@@ -8,6 +8,10 @@ public interface TtsAudioSink {
         return TtsSynthesisMode.FULL;
     }
 
+    default TtsAudioDelivery delivery() {
+        return TtsAudioDelivery.PLAYBACK;
+    }
+
     default TtsPlaybackBufferEstimate playbackBufferEstimate() {
         return TtsPlaybackBufferEstimate.empty();
     }

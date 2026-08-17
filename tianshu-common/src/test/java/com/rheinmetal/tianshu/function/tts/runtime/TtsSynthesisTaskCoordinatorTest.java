@@ -54,6 +54,7 @@ class TtsSynthesisTaskCoordinatorTest {
         assertEquals(1, completions.get());
     }
 
+
     @Test
     void synthesisActivityStartsOnlyWhenExecutionBeginsAndEndsAtTerminalCallback() throws Exception {
         ChunkEngine engine = new ChunkEngine();
@@ -240,6 +241,7 @@ class TtsSynthesisTaskCoordinatorTest {
         @Override public void interrupt() { }
         @Override public void shutdown() { }
     }
+
 
     private static final class CountingChunkEngine implements TtsSynthesisEngine {
         private final AtomicInteger starts = new AtomicInteger();

@@ -42,6 +42,31 @@ class MossStreamingDecodePipelineTest {
     }
 
     @Test
+    void decodesFixedEightFrameBatchesAndFlushesNaturalTail() throws Exception {
+        try (ThreadedCodecExecution execution = new ThreadedCodecExecution()) {
+            RecordingDecoder decoder = new RecordingDecoder();
+            MossStreamingDecodePipeline pipeline = new MossStreamingDecodePipeline(
+                    2,
+                    execution,
+                    48_000,
+                    MossStreamingDecodeCadence.fixed(8)
+            );
+
+            MossFrameGenerationResult result = pipeline.run(
+                    generator(10, MossFrameGenerationTermination.NATURAL_END, null),
+                    () -> decoder,
+                    ignored -> { },
+                    () -> false
+            );
+
+            assertTrue(result.naturallyEnded());
+            assertEquals(List.of(8, 2), decoder.batchSizes);
+            assertEquals(List.of(false, true), decoder.finalBatches);
+            assertEquals(range(10), decoder.flattenedFrames);
+        }
+    }
+
+    @Test
     void boundedQueueAppliesBackpressureWithoutDroppingFrames() throws Exception {
         try (ThreadedCodecExecution execution = new ThreadedCodecExecution()) {
             RecordingDecoder decoder = new RecordingDecoder(15L, -1);

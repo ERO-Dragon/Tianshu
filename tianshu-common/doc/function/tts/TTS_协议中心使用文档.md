@@ -120,7 +120,7 @@ TtsVoiceOptions voice = new TtsVoiceOptions(
 
 ## 6. 纯合成
 
-需要 NPC、实体或方块 3D 声源时使用 `TTS_SYNTHESIZE`：
+需要调用方自行接管音频时使用 `TTS_SYNTHESIZE`：
 
 ```java
 TtsSynthesisRequestPayload payload = new TtsSynthesisRequestPayload(
@@ -157,7 +157,11 @@ MOSS 单个内部推理块达到帧数上限但没有自然结束时，请求以
 
 `TTS_SPEAK` complete 表示请求已通过校验并完成 admission，不表示玩家已经听完。不要通过等待 capability complete 推断播放结束。
 
-`TTS_SYNTHESIZE` complete 表示该请求的完整 PCM 已被调用方 ACK 接管，不表示调用方已经播放完。接管后 TTS 不再管理该 PCM 的缓存、播放或销毁。
+`TTS_SYNTHESIZE` 是纯合成任务，不由 TTS 播放。一个请求只交付一份完整 PCM：TTS 会先在内部完成全部文本分组和合成，成功后通过一次 `TTS_AUDIO` 响应交付 `requestId`、PCM16 音频字节、采样率和声道数。调用方收到后自行决定普通播放、背景播放或空间化播放，并负责缓存、播放和销毁。`TTS_AUDIO_ACK` 表示调用方已经接管这份完整音频，不表示已经播放完。
+
+纯合成不存在公开的“完整音频/分片音频”选项。MOSS 内部可以使用分句、分块和流式 codec 来提高性能，但这些内部块不会作为协议响应暴露给调用方。
+
+MOSS 纯合成任务遇到连续重复音频码帧异常时，会在后端内部丢弃本次未交付结果并更换 Seed 重试一次；重试成功才交付完整 PCM，第二次仍异常则整个请求结构化失败，不返回残缺音频。该兜底只属于 MOSS，不改变 Sherpa 或其他 TTS 后端的公共协议语义。
 
 订阅 `TTS.REQUEST_STATUS` 获取请求级状态：
 
@@ -171,7 +175,7 @@ MOSS 单个内部推理块达到帧数上限但没有自然结束时，请求以
 
 payload 携带稳定的 `requestId/sourceId/sessionId/turnId/failureCode`。`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 服务播放控制、业务观察与诊断，不再由映迹转换为“正在回复”。
 
-`failureCode=GENERATION_LIMIT_REACHED` 表示 MOSS 在单个内部文本块内耗尽生成帧上限但未产生自然结束信号。调用方应按普通合成失败结束本次请求，不要自动重发同一短文本形成重复失控。
+`failureCode=GENERATION_LIMIT_REACHED` 表示 MOSS 在单个内部文本块内耗尽生成帧上限但未产生自然结束信号；`failureCode=GENERATION_REPEATED` 表示 MOSS 检测到连续重复音频码帧并且一次 Seed 重试仍失败。两者都表示本次纯合成没有完整结果，调用方按失败结束，不应自行拼接残缺音频。
 
 TTS 通过 `PRESENCE.ACTIVITY` 公开两类产品活动：
 

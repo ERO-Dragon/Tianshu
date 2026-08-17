@@ -9,23 +9,48 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.IntSupplier;
 
 final class MossStreamingDecodePipeline {
     private static final int FRAMES_PER_BATCH = 4;
+    private static final int DEFAULT_SAMPLE_RATE = 48_000;
     private static final long QUEUE_POLL_MILLIS = 10L;
 
     private final int queueCapacity;
     private final TtsCodecExecution codecExecution;
+    private final IntSupplier sampleRate;
+    private final MossStreamingDecodeCadence cadence;
 
     MossStreamingDecodePipeline(int queueCapacity, TtsCodecExecution codecExecution) {
+        this(queueCapacity, codecExecution, DEFAULT_SAMPLE_RATE, MossStreamingDecodeCadence.fixed(FRAMES_PER_BATCH));
+    }
+
+    MossStreamingDecodePipeline(
+            int queueCapacity,
+            TtsCodecExecution codecExecution,
+            int sampleRate,
+            MossStreamingDecodeCadence cadence
+    ) {
+        this(queueCapacity, codecExecution, () -> sampleRate, cadence);
+    }
+
+    MossStreamingDecodePipeline(
+            int queueCapacity,
+            TtsCodecExecution codecExecution,
+            IntSupplier sampleRate,
+            MossStreamingDecodeCadence cadence
+    ) {
         if (queueCapacity <= 0) {
             throw new IllegalArgumentException("queueCapacity must be positive");
         }
         this.queueCapacity = queueCapacity;
         this.codecExecution = Objects.requireNonNull(codecExecution, "codecExecution");
+        this.sampleRate = Objects.requireNonNull(sampleRate, "sampleRate");
+        this.cadence = Objects.requireNonNull(cadence, "cadence");
     }
 
     MossFrameGenerationResult run(
@@ -41,9 +66,19 @@ final class MossStreamingDecodePipeline {
         ArrayBlockingQueue<FrameBatch> queue = new ArrayBlockingQueue<>(queueCapacity);
         AtomicReference<Throwable> codecFailure = new AtomicReference<>();
         AtomicBoolean stopRequested = new AtomicBoolean();
+        AtomicLong emittedAudioSamples = new AtomicLong();
+        AtomicLong firstAudioEmittedNanos = new AtomicLong(-1L);
 
         TtsCodecExecution.Task codecTask = codecExecution.submit(
-                () -> consume(queue, decoderFactory, output, stopRequested, codecFailure)
+                () -> consume(
+                        queue,
+                        decoderFactory,
+                        output,
+                        stopRequested,
+                        codecFailure,
+                        emittedAudioSamples,
+                        firstAudioEmittedNanos
+                )
         );
         if (!codecTask.accepted()) {
             throw new IllegalStateException("TTS_MOSS_CODEC_EXECUTION_REJECTED");
@@ -58,10 +93,13 @@ final class MossStreamingDecodePipeline {
                     throw new CancellationException("TTS_MOSS_STREAMING_CANCELLED");
                 }
                 pendingFrames.add(List.copyOf(frame));
-                if (pendingFrames.size() == FRAMES_PER_BATCH) {
-                    if (offer(queue, new FrameBatch(pendingFrames, false), externalCancellation, stopRequested, codecFailure)) {
-                        pendingFrames.clear();
+                while (pendingFrames.size() >= nextFrameBatchSize(emittedAudioSamples, firstAudioEmittedNanos)) {
+                    int batchSize = nextFrameBatchSize(emittedAudioSamples, firstAudioEmittedNanos);
+                    List<List<Integer>> batchFrames = new ArrayList<>(pendingFrames.subList(0, batchSize));
+                    if (!offer(queue, new FrameBatch(batchFrames, false), externalCancellation, stopRequested, codecFailure)) {
+                        return;
                     }
+                    pendingFrames.subList(0, batchSize).clear();
                 }
             }, () -> externalCancellation.getAsBoolean() || stopRequested.get());
         } catch (CancellationException cancellation) {
@@ -113,7 +151,9 @@ final class MossStreamingDecodePipeline {
             DecoderFactory decoderFactory,
             Consumer<float[][]> audioConsumer,
             AtomicBoolean stopRequested,
-            AtomicReference<Throwable> codecFailure
+            AtomicReference<Throwable> codecFailure,
+            AtomicLong emittedAudioSamples,
+            AtomicLong firstAudioEmittedNanos
     ) {
         try (Decoder decoder = decoderFactory.open()) {
             while (!stopRequested.get()) {
@@ -123,6 +163,8 @@ final class MossStreamingDecodePipeline {
                 }
                 for (float[][] audio : decoder.decode(batch.frames(), batch.finalBatch())) {
                     if (audio != null && audio.length > 0 && audio[0].length > 0 && !stopRequested.get()) {
+                        firstAudioEmittedNanos.compareAndSet(-1L, System.nanoTime());
+                        emittedAudioSamples.addAndGet(audio[0].length);
                         audioConsumer.accept(audio);
                     }
                 }
@@ -139,6 +181,19 @@ final class MossStreamingDecodePipeline {
             codecFailure.compareAndSet(null, failure);
             stopRequested.set(true);
         }
+    }
+
+    private int nextFrameBatchSize(AtomicLong emittedAudioSamples, AtomicLong firstAudioEmittedNanos) {
+        int currentSampleRate = sampleRate.getAsInt();
+        if (currentSampleRate <= 0) {
+            throw new IllegalStateException("MOSS_STREAMING_SAMPLE_RATE_UNAVAILABLE");
+        }
+        return cadence.nextFrameCount(
+                emittedAudioSamples.get(),
+                currentSampleRate,
+                firstAudioEmittedNanos.get(),
+                System.nanoTime()
+        );
     }
 
     private static boolean offer(

@@ -40,7 +40,7 @@
 TTS 负责两条业务链：
 
 - `TTS_SPEAK`：把文本组织成播放 Session，并在本地客户端播放。
-- `TTS_SYNTHESIZE`：生成 PCM 并返回给调用方，不介入播放位置和 3D 声源。
+- `TTS_SYNTHESIZE`：生成一份完整 PCM 并通过一次 `TTS_AUDIO` 返回给调用方，不介入播放位置和 3D 声源；调用方接收后发送 `TTS_AUDIO_ACK` 完成音频所有权交接。
 
 `TtsModule` 只负责生命周期和协议装配；跨模块通信只经过协议中心。模型推理、文本分句、文件和音频 IO 都进入协议 lane，不占用 Minecraft 主线程。
 
@@ -100,7 +100,7 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 - `TtsSynthesisScheduler` 为每个原子工作记录 owner；取消播放句只在该句仍占用 backend 时中断，不能误中断正在执行的纯合成。
 - TTL 在排队和单个长句推理期间都有效；到期时只中断对应纯合成 owner。
 - 活跃纯合成的 `requestId` 必须唯一，重复 id 在 admission 时结构化拒绝，不能覆盖旧任务的取消身份。
-- 后端可以采用 full 或 streaming 推理模式，但协议只返回一次合并 PCM，不公开 chunkIndex 或 terminal。
+- 后端可以采用 full 或 streaming 推理模式，但协议只返回一次合并 PCM，不公开 chunkIndex 或 terminal。MOSS 纯合成遇到连续重复音频码帧时，只在后端内部换 Seed 重试一次；两次都失败才让完整请求失败，不交付残缺音频。
 - 调用方以相同 sourceId 和 requestId 发送一次 `TTS_AUDIO_ACK`；ACK 后原请求完成，表示调用方已接管完整 PCM。
 - 已完成待 ACK 请求进入有界交付队列。队列满时不再启动新的纯合成，待执行请求保持排队；ACK、STOP、TTL、模块停止和真实失败会释放相应请求槽位。
 - 等待外部 ACK 不阻塞 TTS backend lane，其他可执行的播放工作仍可获得模型资源。

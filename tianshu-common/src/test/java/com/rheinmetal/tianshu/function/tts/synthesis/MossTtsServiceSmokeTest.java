@@ -1,11 +1,10 @@
-package com.rheinmetal.tianshu.function.tts.synthesis;
+package com.rheinmetal.tianshu.function.tts.synthesis.moss;
 
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
+import com.rheinmetal.tianshu.function.tts.synthesis.TtsCodecExecution;
 import com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
-import com.rheinmetal.tianshu.function.tts.synthesis.moss.MossTtsService;
-import com.rheinmetal.tianshu.function.tts.synthesis.moss.WavWriter;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -47,11 +46,21 @@ class MossTtsServiceSmokeTest {
         HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
 
         List<String> texts = smokeTexts();
+        String cadenceName = smokeCadenceName();
+        MossStreamingDecodeCadence cadence = smokeCadence();
+        int preRollMillis = smokePreRollMillis();
         for (int processors : smokeProcessorSet()) {
             long initStart = System.nanoTime();
             InferenceResourcePolicy resourcePolicy = InferenceResourcePolicy.fixedProcessors(processors);
             try (SmokeCodecExecution codecExecution = new SmokeCodecExecution();
-                 MossTtsService service = new MossTtsService(env, downloader, modelDir, resourcePolicy, codecExecution)) {
+                 MossTtsService service = new MossTtsService(
+                         env,
+                         downloader,
+                         modelDir,
+                         resourcePolicy,
+                         codecExecution,
+                         cadence
+                 )) {
             service.init();
             long initMillis = elapsedMillis(initStart);
 
@@ -86,6 +95,9 @@ class MossTtsServiceSmokeTest {
                 if (streaming) {
                     service.synthesizeStreaming(texts.get(i), promptAudioCodes, (audio, chunkIndex, totalChunks) -> {
                         firstAudioMillis.compareAndSet(-1L, elapsedMillis(synthStart));
+                        if (chunks.isEmpty() && preRollMillis > 0) {
+                            chunks.add(new float[audio.length][service.getSampleRate() * preRollMillis / 1000]);
+                        }
                         chunks.add(audio);
                     });
                 } else {
@@ -99,7 +111,8 @@ class MossTtsServiceSmokeTest {
                 long synthMillis = elapsedMillis(synthStart);
                 float[][] merged = merge(chunks);
                 assertTrue(merged.length > 0 && merged[0].length > 0, "MOSS synthesis returned empty audio for text " + (i + 1));
-                Path output = outputDir.resolve("moss-smoke-" + promptSource + "-p" + processors + "-" + (i + 1) + ".wav");
+                String preRollSuffix = preRollMillis > 0 ? "-pre" + preRollMillis : "";
+                Path output = outputDir.resolve("moss-smoke-" + cadenceName + preRollSuffix + "-" + promptSource + "-p" + processors + "-" + (i + 1) + ".wav");
                 WavWriter.writeWaveFile(output, merged, service.getSampleRate());
                 assertTrue(Files.size(output) > 44, "MOSS output wav is empty: " + output);
                 synthMillisList.add(synthMillis);
@@ -127,6 +140,8 @@ class MossTtsServiceSmokeTest {
             System.out.println("  promptSource=" + promptSource);
             System.out.println("  voice=" + voiceName);
             System.out.println("  streaming=" + streaming);
+            System.out.println("  cadence=" + cadenceName);
+            System.out.println("  preRollMillis=" + preRollMillis);
             System.out.println("  sampleRate=" + service.getSampleRate());
             System.out.println("  processors=" + processors);
             System.out.println("  mossThreads=" + resourcePolicy.mossTtsThreads());
@@ -205,6 +220,38 @@ class MossTtsServiceSmokeTest {
 
     private static boolean smokeStreaming() {
         return "true".equalsIgnoreCase(System.getenv("TIANSHU_MOSS_STREAMING"));
+    }
+
+    private static String smokeCadenceName() {
+        String value = System.getenv("TIANSHU_MOSS_CADENCE");
+        if (value == null || value.isBlank()) {
+            return "fixed4";
+        }
+        return switch (value.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "fixed8" -> "fixed8";
+            case "upstream", "adaptive", "1-2-4-8" -> "upstream";
+            default -> "fixed4";
+        };
+    }
+
+    private static MossStreamingDecodeCadence smokeCadence() {
+        return switch (smokeCadenceName()) {
+            case "fixed8" -> MossStreamingDecodeCadence.fixed(8);
+            case "upstream" -> MossStreamingDecodeCadence.upstreamAdaptive();
+            default -> MossStreamingDecodeCadence.fixed(4);
+        };
+    }
+
+    private static int smokePreRollMillis() {
+        String value = System.getenv("TIANSHU_MOSS_PREROLL_MS");
+        if (value == null || value.isBlank()) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(value.trim()));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private static List<String> smokeTexts() {

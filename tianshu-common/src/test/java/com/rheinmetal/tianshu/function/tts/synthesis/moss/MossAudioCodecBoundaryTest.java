@@ -18,6 +18,9 @@ class MossAudioCodecBoundaryTest {
     private static final Path SERVICE_SOURCE = Path.of(
             "src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/moss/MossTtsService.java"
     );
+    private static final Path CODEC_SOURCE = Path.of(
+            "src/main/java/com/rheinmetal/tianshu/function/tts/synthesis/moss/MossAudioCodec.java"
+    );
 
     @Test
     void serviceDelegatesPromptEncodingAndAudioDecodingToCodec() throws Exception {
@@ -31,8 +34,13 @@ class MossAudioCodecBoundaryTest {
     }
 
     @Test
-    void streamingDecodeKeepsFourFrameCadence() {
-        assertEquals(4, MossAudioCodec.streamingDecodeChunkFrames());
+    void streamingDecoderAcceptsThePipelineChosenFrameBatch() throws Exception {
+        String source = Files.readString(CODEC_SOURCE, StandardCharsets.UTF_8);
+
+        assertTrue(Arrays.stream(MossAudioCodec.StreamingDecoder.class.getDeclaredMethods())
+                .anyMatch(method -> method.getName().equals("decodeFrames")
+                        && Arrays.equals(method.getParameterTypes(), new Class<?>[]{List.class})));
+        assertFalse(source.contains("STREAMING_DECODE_CHUNK_FRAMES"));
     }
 
     @Test

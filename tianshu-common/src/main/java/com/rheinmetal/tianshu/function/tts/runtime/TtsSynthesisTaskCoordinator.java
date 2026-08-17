@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioSink;
+import com.rheinmetal.tianshu.function.tts.synthesis.TtsAudioDelivery;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
@@ -449,6 +450,11 @@ final class TtsSynthesisTaskCoordinator {
         @Override
         public TtsSynthesisMode preferredSynthesisMode() {
             return mode;
+        }
+
+        @Override
+        public TtsAudioDelivery delivery() {
+            return TtsAudioDelivery.COMPLETE_RESULT;
         }
 
         @Override
