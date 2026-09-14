@@ -168,16 +168,21 @@ public class TianshuModuleHost {
         try {
             action.run();
             return true;
-        } catch (Exception exception) {
-            ModuleLifecycleException failure = new ModuleLifecycleException(installation.moduleId(), phase, exception);
-            markStatus(installation, ModuleLifecycleState.FAILED, phase, exception.getMessage());
-            markCapabilitiesFailed(capabilities, installation, phase, exception);
-            if (installation.required()) {
-                throw failure;
-            }
-            env.warn("可选模块生命周期阶段失败，module=" + installation.moduleId() + ", phase=" + phase);
-            return false;
+        } catch (Exception | LinkageError exception) {
+            return handleFailure(installation, phase, capabilities, exception);
         }
+    }
+
+    private boolean handleFailure(TianshuModuleInstallation installation, ModuleLifecyclePhase phase,
+                                  RuntimeCapabilityRegistry capabilities, Throwable exception) {
+        ModuleLifecycleException failure = new ModuleLifecycleException(installation.moduleId(), phase, exception);
+        markStatus(installation, ModuleLifecycleState.FAILED, phase, exception.getMessage());
+        markCapabilitiesFailed(capabilities, installation, phase, exception);
+        if (installation.required()) {
+            throw failure;
+        }
+        env.warn("可选模块生命周期阶段失败，module=" + installation.moduleId() + ", phase=" + phase);
+        return false;
     }
 
     private ModuleLifecycleException invokeCleanup(ModuleLifecycleException firstFailure, TianshuModuleInstallation installation, ModuleLifecyclePhase phase, Runnable action) {
@@ -185,7 +190,7 @@ public class TianshuModuleHost {
             action.run();
             markCleanupStatus(installation, phase);
             return firstFailure;
-        } catch (Exception exception) {
+        } catch (Exception | LinkageError exception) {
             ModuleLifecycleException failure = new ModuleLifecycleException(installation.moduleId(), phase, exception);
             ModuleLifecycleStatus current = moduleStatuses.get(installation.moduleId());
             if (current == null || !current.failed()) {
@@ -226,7 +231,7 @@ public class TianshuModuleHost {
         }
     }
 
-    private void markCapabilitiesFailed(RuntimeCapabilityRegistry capabilities, TianshuModuleInstallation installation, ModuleLifecyclePhase phase, Exception exception) {
+    private void markCapabilitiesFailed(RuntimeCapabilityRegistry capabilities, TianshuModuleInstallation installation, ModuleLifecyclePhase phase, Throwable exception) {
         if (capabilities == null) {
             return;
         }

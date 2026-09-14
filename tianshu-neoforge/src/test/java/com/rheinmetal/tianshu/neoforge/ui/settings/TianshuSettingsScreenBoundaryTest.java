@@ -15,7 +15,7 @@ final class TianshuSettingsScreenBoundaryTest {
         String module = read("src/main/java/com/rheinmetal/tianshu/neoforge/ui/settings/TianshuSettingsModule.java");
         String createScreen = methodBody(module, "public Screen createScreen()");
 
-        assertTrue(createScreen.contains("new SettingsSessionRegistry()"));
+        assertTrue(createScreen.contains("new SettingsSessionRegistry(logs)"));
         assertTrue(createScreen.contains("new SettingsCoordinator("));
         assertTrue(createScreen.contains("new GlobalDebugSettingsSession(globalDebugSettings)"));
         assertTrue(createScreen.contains("sessions.register(debugSession)"));

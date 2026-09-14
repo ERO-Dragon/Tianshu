@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.client.host.ClientUiHost;
 import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -260,17 +261,12 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsSaveResult save() {
             AsrSettingsSnapshot before = AsrSettingsSnapshot.from(config);
-            enabled.save();
-            triggerMode.save();
-            highPassFilterEnabled.save();
-            vadEnabled.save();
-            githubProxyUrl.save();
             String mic = selectedMic.get();
-            config.setSelectedMicName(DEFAULT_MIC.equals(mic) ? "" : mic);
-            selectedMic.save();
-            config.setCustomAsrName(selectedModelName.get());
-            selectedModelName.save();
-            config.save();
+            new SettingsSaveTransaction(enabled, triggerMode, highPassFilterEnabled, vadEnabled,
+                    githubProxyUrl, selectedMic, selectedModelName)
+                    .write(config::getSelectedMicName, config::setSelectedMicName, DEFAULT_MIC.equals(mic) ? "" : mic)
+                    .write(config::getCustomAsrName, config::setCustomAsrName, selectedModelName.get())
+                    .commit(config::save);
             AsrSettingsSnapshot after = AsrSettingsSnapshot.from(config);
             settingsApplier().apply(before, after);
             return SettingsSaveResult.success(asr("message.saved"), false, true);

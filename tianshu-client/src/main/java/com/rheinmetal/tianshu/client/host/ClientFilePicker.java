@@ -4,8 +4,10 @@ import com.rheinmetal.tianshu.client.api.text.UiText;
 
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 @FunctionalInterface
 public interface ClientFilePicker {
-    Optional<Path> chooseWavFile(UiText title);
+    /** Returns immediately. Cancelling the future dismisses the pending dialog. */
+    CompletableFuture<Optional<Path>> chooseWavFile(UiText title);
 }

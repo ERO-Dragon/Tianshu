@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.client.presence.PresenceProtocolAdapter;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -169,9 +170,7 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         @Override
         public SettingsSaveResult save() {
             boolean changed = dirty();
-            hudEnabled.save();
-            statusTextEnabled.save();
-            config.save();
+            new SettingsSaveTransaction(hudEnabled, statusTextEnabled).commit(config::save);
             return SettingsSaveResult.success(presence("message.saved"), changed, false, false);
         }
 

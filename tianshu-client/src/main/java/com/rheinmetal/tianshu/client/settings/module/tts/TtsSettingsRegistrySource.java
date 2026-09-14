@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.client.host.ClientTextProvider;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
@@ -110,7 +111,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                         .row("tts.download.status", tts("row.download_status"), draft::downloadStatus))
                 .options("tts.voice", tts("section.voice"), draft::buildVoiceOptions)
                 .actions("tts.voice.actions", tts("section.voice_actions"), actions -> actions
-                        .button("tts.voice.import", tts("action.voice_import"), () -> draft.importVoiceSample(context), () -> draft.enabled.get() && draft.supportsVoiceClone() && !draft.voiceImportRunning())
+                        .button("tts.voice.import", tts("action.voice_import"), draft::importVoiceSample, () -> draft.enabled.get() && draft.supportsVoiceClone() && !draft.voiceImportRunning())
                         .button("tts.voice.folder", tts("action.voice_folder"), draft::openVoiceLibraryFolder, draft.enabled::get))
                 .status("tts.voice.status", tts("section.voice_status"), () -> true, draft::supportsVoiceClone, status -> status
                         .row("tts.voice.selected", tts("row.voice_selected"), draft::selectedVoiceStatus)
@@ -137,7 +138,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final ModuleSettingsContext context;
         private final ClientScheduler scheduler;
         private final ClientUiHost uiHost;
-        private final ClientFilePicker filePicker;
+        private final TtsVoiceImportController voiceImport;
         private final ClientTextProvider textProvider;
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedModelName;
@@ -154,7 +155,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final List<TtsModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
-        private final AtomicBoolean voiceImportRunning = new AtomicBoolean(false);
         private volatile ModelAvailabilitySnapshot availabilitySnapshot;
         private volatile List<String> voiceSamples;
         private volatile long lastDownloadRefreshMillis;
@@ -168,7 +168,9 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             this.context = context;
             this.scheduler = scheduler;
             this.uiHost = uiHost;
-            this.filePicker = filePicker;
+            this.voiceImport = new TtsVoiceImportController(filePicker, scheduler,
+                    (path, callback) -> voiceLibraryService().importVoiceSampleAsync(path, callback),
+                    this::completeVoiceImport, this::refreshSettingsScreen);
             this.textProvider = textProvider;
             this.availabilitySnapshot = ttsModelService(coreManager).modelAvailability();
             this.voiceSamples = voiceLibraryService().voiceSamples();
@@ -263,13 +265,18 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsSaveResult save() {
             TtsSettingsSnapshot before = TtsSettingsSnapshot.from(config);
-            enabled.save();
-            previewText.save();
-            githubProxyUrl.save();
-            config.setCustomTtsName(selectedModelName.get());
-            selectedModelName.save();
-            saveModelSettings();
-            config.save();
+            var transaction = new SettingsSaveTransaction(enabled, previewText, githubProxyUrl,
+                    selectedModelName, speed, speakerId, selectedVoiceSample)
+                    .write(config::getCustomTtsName, config::setCustomTtsName, selectedModelName.get());
+            TtsModelInfo info = resolveModel(selectedModelName.get());
+            if (info != null) {
+                ModelSettings.TtsSettings settings = new ModelSettings.TtsSettings();
+                settings.speed = speed.get();
+                settings.speakerId = Integer.parseInt(speakerId.get().trim());
+                settings.selectedVoiceSample = NO_VOICE_SAMPLE.equals(selectedVoiceSample.get()) ? "" : selectedVoiceSample.get();
+                transaction.write(() -> modelSettings(info), value -> ttsModelService().saveSettings(info, value), settings);
+            }
+            transaction.commit(config::save);
             TtsSettingsSnapshot after = TtsSettingsSnapshot.from(config);
             settingsApplier().apply(before, after);
             return SettingsSaveResult.success(tts("message.saved"), true, true);
@@ -332,21 +339,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private ModelSettings.TtsSettings modelSettings(TtsModelInfo info) {
             return ttsModelService().loadSettings(info);
-        }
-
-        private void saveModelSettings() {
-            TtsModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null) {
-                return;
-            }
-            ModelSettings.TtsSettings settings = modelSettings(info);
-            settings.speed = speed.get();
-            settings.speakerId = Integer.parseInt(speakerId.get().trim());
-            settings.selectedVoiceSample = NO_VOICE_SAMPLE.equals(selectedVoiceSample.get()) ? "" : selectedVoiceSample.get();
-            ttsModelService().saveSettings(info, settings);
-            speed.save();
-            speakerId.save();
-            selectedVoiceSample.save();
         }
 
         private boolean canPreview() {
@@ -438,30 +430,27 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             return samples.stream().distinct().toList();
         }
 
-        private void importVoiceSample(ModuleSettingsContext context) {
-            Path selected = chooseWavFile();
-            if (selected == null || !voiceImportRunning.compareAndSet(false, true)) {
-                return;
+        private void importVoiceSample() {
+            voiceImport.start(tts("dialog.voice_import"));
+        }
+
+        private void completeVoiceImport(String imported) {
+            voiceSamples = voiceLibraryService().voiceSamples();
+            if (imported == null || imported.isBlank()) {
+                context.showStatus(tts("message.voice_import_failed"), 3000);
+            } else {
+                selectedVoiceSample.set(imported);
+                context.showStatus(tts("message.voice_imported", imported), 3000);
             }
-            voiceLibraryService().importVoiceSampleAsync(selected, imported -> runOnClient(() -> {
-                voiceImportRunning.set(false);
-                voiceSamples = voiceLibraryService().voiceSamples();
-                if (imported == null || imported.isBlank()) {
-                    context.showStatus(tts("message.voice_import_failed"), 3000);
-                } else {
-                    selectedVoiceSample.set(imported);
-                    context.showStatus(tts("message.voice_imported", imported), 3000);
-                }
-                refreshSettingsScreen();
-            }));
         }
 
         private boolean voiceImportRunning() {
-            return voiceImportRunning.get();
+            return voiceImport.busy();
         }
 
-        private Path chooseWavFile() {
-            return filePicker.chooseWavFile(tts("dialog.voice_import")).orElse(null);
+        @Override
+        public void close() {
+            voiceImport.close();
         }
 
         private void openVoiceLibraryFolder() {

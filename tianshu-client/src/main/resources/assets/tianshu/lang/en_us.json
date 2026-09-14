@@ -401,7 +401,6 @@
   "tianshu.gui.ax.option.chat_thinking": "Spend More Thinking Time for Better Replies",
   "tianshu.gui.ax.option.allow_interruption": "Allow New Arbitrated Deliveries to Interrupt Tianshu",
   "tianshu.gui.ax.message.saved": "Tianshu assistant settings saved",
-  "tianshu.gui.ax.message.save_failed": "Could not save Tianshu assistant settings; check the logs and config directory",
 
   "tianshu.gui.presence.title": "Presence",
   "tianshu.gui.presence.description": "Controls which module states and HUD elements are shown in game",

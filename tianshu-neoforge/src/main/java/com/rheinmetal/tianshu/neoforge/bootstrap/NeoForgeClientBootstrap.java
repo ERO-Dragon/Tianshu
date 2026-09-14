@@ -185,7 +185,9 @@ public final class NeoForgeClientBootstrap {
             CoreBackedTianshuIntegrationApi currentIntegrationApi = integrationApi;
             TianshuIntegrationAccess.publish(currentIntegrationApi);
             startingSession.own(() -> TianshuIntegrationAccess.clear(currentIntegrationApi));
-            settingsModule = new TianshuSettingsModule(createSettingsRegistrySource(), config);
+            NeoForgeClientFilePicker filePicker = new NeoForgeClientFilePicker(new NeoForgeClientTextProvider());
+            startingSession.own(filePicker::close);
+            settingsModule = new TianshuSettingsModule(createSettingsRegistrySource(filePicker), config, diagnosticRouter);
             NeoForge.EVENT_BUS.post(new TianshuIntegrationRegisterEvent(currentIntegrationApi, externalSettingsContributors));
 
             events = new NeoForgeClientEvents(
@@ -272,7 +274,7 @@ public final class NeoForgeClientBootstrap {
         externalSettingsContributors = null;
     }
 
-    private TianshuSettingsRegistrySource createSettingsRegistrySource() {
+    private TianshuSettingsRegistrySource createSettingsRegistrySource(NeoForgeClientFilePicker filePicker) {
         TianshuSettingsRegistrySource moduleSource = new ModuleSettingsRegistrySource(coreManager::managedModules);
         TianshuSettingsRegistrySource externalSource = new ExternalSettingsRegistrySource(externalSettingsContributors);
         NeoForgeClientScheduler scheduler = new NeoForgeClientScheduler();
@@ -283,7 +285,7 @@ public final class NeoForgeClientBootstrap {
                 coreManager, config, audioManager, scheduler, uiHost, presenceTextProvider
         );
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(
-                coreManager, config, scheduler, uiHost, new NeoForgeClientFilePicker(textProvider), textProvider
+                coreManager, config, scheduler, uiHost, filePicker, textProvider
         );
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config, scheduler, uiHost);
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, config);

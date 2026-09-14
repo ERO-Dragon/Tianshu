@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.client.host.ClientUiHost;
 import com.rheinmetal.tianshu.client.llm.performance.GpuInfo;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.llm.LlmModelService;
@@ -241,15 +242,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         @Override
         public SettingsSaveResult save() {
-            enabled.save();
-            config.setCustomLlmName(selectedModelName.get());
-            selectedModelName.save();
-            config.setLlmGpuDeviceId(persistedDeviceTargetId());
-            selectedGpuDeviceId.save();
-            frameGuardEnabled.save();
-            frameGuardTargetFps.save();
-            mtpEnabled.save();
-            config.save();
+            new SettingsSaveTransaction(enabled, selectedModelName, selectedGpuDeviceId,
+                    frameGuardEnabled, frameGuardTargetFps, mtpEnabled)
+                    .write(config::getCustomLlmName, config::setCustomLlmName, selectedModelName.get())
+                    .write(config::getLlmGpuDeviceId, config::setLlmGpuDeviceId, persistedDeviceTargetId())
+                    .commit(config::save);
             if (!enabled.get()) {
                 moduleService.unload();
             }

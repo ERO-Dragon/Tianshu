@@ -19,15 +19,18 @@ public final class TianshuSettingsModule {
     private final TianshuSettingsRegistrySource registrySource;
     private final VanillaModuleSettingsRendererProvider rendererProvider;
     private final GlobalDebugSettingsAccess globalDebugSettings;
+    private final com.rheinmetal.tianshu.api.LogSink logs;
 
-    public TianshuSettingsModule(TianshuSettingsRegistrySource registrySource, GlobalDebugSettingsAccess globalDebugSettings) {
+    public TianshuSettingsModule(TianshuSettingsRegistrySource registrySource, GlobalDebugSettingsAccess globalDebugSettings,
+                                com.rheinmetal.tianshu.api.LogSink logs) {
         this.registrySource = registrySource == null ? (registry, context) -> {} : registrySource;
         this.rendererProvider = new VanillaModuleSettingsRendererProvider();
         this.globalDebugSettings = java.util.Objects.requireNonNull(globalDebugSettings, "globalDebugSettings");
+        this.logs = java.util.Objects.requireNonNull(logs, "logs");
     }
 
     public Screen createScreen() {
-        SettingsSessionRegistry sessions = new SettingsSessionRegistry();
+        SettingsSessionRegistry sessions = new SettingsSessionRegistry(logs);
         SettingsCoordinator coordinator = new SettingsCoordinator(sessions, SettingsEventPublisher.NOOP);
         GlobalDebugSettingsSession debugSession = TianshuBuildProfile.debugBuild()
                 ? new GlobalDebugSettingsSession(globalDebugSettings)

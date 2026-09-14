@@ -141,13 +141,13 @@ public class TtsModelService {
     public void saveSettings(TtsModelInfo info, ModelSettings.TtsSettings settings) {
         Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
         if (modelDir == null || settings == null) {
-            return;
+            throw new IllegalArgumentException("TTS_MODEL_SETTINGS_TARGET_UNAVAILABLE");
         }
         try {
-            Files.createDirectories(modelDir);
             ModelSettings.saveTtsSettings(modelDir, settings);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             env.error("tts.model.settings.save_failed", e);
+            throw e;
         }
     }
 

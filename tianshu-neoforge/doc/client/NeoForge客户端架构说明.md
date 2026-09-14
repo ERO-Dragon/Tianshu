@@ -50,6 +50,8 @@ client shutdown
 
 `GameShuttingDownEvent` 是正常关闭入口，JVM shutdown hook 只作为最终兜底，两者进入同一个幂等关闭流程。runtime 使用 generation 丢弃退出世界后到达的旧启动回调。Presence 同步使用独立的世界代次清空快照、状态和排队查询，旧世界请求不会在重进后继续。重复 login、logout 和 shutdown 均幂等；启动失败会回到 `CLIENT_READY`，允许下次进入世界重试。
 
+ONNX 预加载仍在 Core lifecycle worker 上进行，但属于 optional 平台模块。加载失败保留该模块失败状态，其他模块继续启动；ASR/TTS 等依赖 native 后端的能力在自己的初始化边界报告不可用，不让整个核心会话随之失败。
+
 ## 3. 线程边界
 
 Minecraft 主线程只执行：
@@ -159,6 +161,6 @@ Common 功能模块、协议 payload、client runtime、设置 session、Presenc
 
 ## 10. 已知后续项
 
-- `ClientFilePicker` 目前仍是同步返回接口。彻底异步化需要先修改 `tianshu-client` 的端口契约；NeoForge 不创建临时线程旁路。
+- `ClientFilePicker` 返回 `CompletableFuture<Optional<Path>>`，文件窗口在 Swing 事件线程创建和显示，不占用 Minecraft 主线程等待。取消 future 会关闭窗口；设置页面关闭时取消尚未完成的选择，客户端关闭由 Bootstrap 统一释放选择器。已开始的音色复制由 TTS IO lane 完成，旧页面不再接收完成反馈。
 - 当前 HUD 已具备稳定的 `primaryState + listening` tick 快照输入和状态文字 renderer；状态机 Shader 的视觉形态、位置、尺寸与动画需要产品方案确认后再实现，不能反向扩张协议枚举。
 - `ClientConfig` 的 TOML 中文注释仍是现有例外。删除注释或明确允许技术配置注释硬编码，需要单独确认。

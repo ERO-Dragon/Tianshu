@@ -75,7 +75,7 @@ class CoreLifecycleHostBoundaryTest {
     }
 
     @Test
-    void onnxBootstrapIsARequiredLifecycleModuleInsteadOfLoginThreadWork() throws Exception {
+    void onnxBootstrapIsAnOptionalLifecycleModuleInsteadOfLoginThreadWork() throws Exception {
         Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java");
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
@@ -99,7 +99,9 @@ class CoreLifecycleHostBoundaryTest {
         assertTrue(module.contains("implements TianshuManagedModule"));
         assertTrue(module.contains("OrtEnvironment.getEnvironment()"));
         assertFalse(module.contains("catch (Throwable"));
-        assertTrue(installer.contains("registerRequiredModule"));
+        assertTrue(installer.contains("registerOptionalModule"));
+        assertTrue(installer.contains("Native linkage failures must not prevent"));
+        assertTrue(commonSource("com/rheinmetal/tianshu/core/lifecycle/TianshuModuleHost.java").contains("catch (Exception | LinkageError"));
     }
 
     @Test

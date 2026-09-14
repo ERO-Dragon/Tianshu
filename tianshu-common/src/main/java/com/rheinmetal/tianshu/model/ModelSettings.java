@@ -1,11 +1,13 @@
 package com.rheinmetal.tianshu.model;
 
-import com.rheinmetal.tianshu.api.IGameEnvironment;
-
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.StandardCopyOption;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -71,15 +73,29 @@ public class ModelSettings {
     }
 
     private static <T> void save(Path modelDir, T settings) {
+        Path staging = null;
         try {
-            if (!Files.exists(modelDir)) {
-                Files.createDirectories(modelDir);
-            }
+            Files.createDirectories(modelDir);
             Path file = modelDir.resolve(SETTINGS_FILE);
             String json = GSON.toJson(settings);
-            Files.writeString(file, json);
+            staging = Files.createTempFile(modelDir, ".model-settings-", ".tmp");
+            Files.writeString(staging, json, StandardCharsets.UTF_8);
+            try {
+                Files.move(staging, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(staging, file, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
-            // callers handle this
+            throw new UncheckedIOException(e);
+        } finally {
+            if (staging != null) {
+                try {
+                    Files.deleteIfExists(staging);
+                } catch (IOException cleanupFailure) {
+                    // The save result must not be replaced by a temporary-file cleanup error.
+                    staging.toFile().deleteOnExit();
+                }
+            }
         }
     }
 }

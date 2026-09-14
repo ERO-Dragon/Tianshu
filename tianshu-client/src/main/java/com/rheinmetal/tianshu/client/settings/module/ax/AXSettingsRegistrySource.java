@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
@@ -93,34 +94,9 @@ public final class AXSettingsRegistrySource implements TianshuSettingsRegistrySo
             if (!changed) {
                 return SettingsSaveResult.unchanged(ax("message.saved"));
             }
-            boolean enabledBefore = config.assistantEnabled();
-            String wakeWordBefore = config.wakeWord();
-            boolean replySpeechBefore = config.isAxReplySpeechEnabled();
-            boolean chatThinkingBefore = config.chatThinkingEnabled();
-            boolean interruptionBefore = config.allowInterruption();
-
-            config.setAxEnabled(enabled.get());
-            config.setAxWakeWord(wakeWord.get());
-            config.setAxReplySpeechEnabled(replySpeechEnabled.get());
-            config.setAxChatThinkingEnabled(chatThinkingEnabled.get());
-            config.setAxAllowInterruption(allowInterruption.get());
-            try {
-                config.save();
-            } catch (RuntimeException exception) {
-                config.setAxEnabled(enabledBefore);
-                config.setAxWakeWord(wakeWordBefore);
-                config.setAxReplySpeechEnabled(replySpeechBefore);
-                config.setAxChatThinkingEnabled(chatThinkingBefore);
-                config.setAxAllowInterruption(interruptionBefore);
-                return SettingsSaveResult.failure(ax("message.save_failed"), SettingsSaveResult.FailureType.SAVE);
-            }
-
             boolean runtimeRegistrationChanged = enabled.dirty() || wakeWord.dirty();
-            enabled.save();
-            wakeWord.save();
-            replySpeechEnabled.save();
-            chatThinkingEnabled.save();
-            allowInterruption.save();
+            new SettingsSaveTransaction(enabled, wakeWord, replySpeechEnabled, chatThinkingEnabled, allowInterruption)
+                    .commit(config::save);
             if (runtimeRegistrationChanged) {
                 coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
             }

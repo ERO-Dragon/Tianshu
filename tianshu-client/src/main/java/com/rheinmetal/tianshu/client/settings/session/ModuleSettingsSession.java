@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.client.settings.session;
 
-public interface ModuleSettingsSession {
+public interface ModuleSettingsSession extends AutoCloseable {
     String moduleId();
 
     boolean dirty();
@@ -12,4 +12,7 @@ public interface ModuleSettingsSession {
     SettingsSaveResult save();
 
     void reset();
+
+    @Override
+    default void close() {}
 }

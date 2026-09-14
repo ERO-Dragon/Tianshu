@@ -1,13 +1,23 @@
 package com.rheinmetal.tianshu.client.settings.session;
 
 import com.rheinmetal.tianshu.client.api.text.UiText;
+import com.rheinmetal.tianshu.api.LogSink;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public final class SettingsSessionRegistry {
+public final class SettingsSessionRegistry implements AutoCloseable {
     private final List<ModuleSettingsSession> sessions = new ArrayList<>();
+    private final LogSink logs;
+
+    public SettingsSessionRegistry() {
+        this(LogSink.NOOP);
+    }
+
+    public SettingsSessionRegistry(LogSink logs) {
+        this.logs = Objects.requireNonNull(logs, "logs");
+    }
 
     public void register(ModuleSettingsSession session) {
         registerOrReplace(session);
@@ -17,7 +27,11 @@ public final class SettingsSessionRegistry {
         if (session == null || session.moduleId() == null) {
             return;
         }
-        sessions.removeIf(existing -> Objects.equals(existing.moduleId(), session.moduleId()));
+        sessions.removeIf(existing -> {
+            if (!Objects.equals(existing.moduleId(), session.moduleId())) return false;
+            if (existing != session) closeSession(existing);
+            return true;
+        });
         sessions.add(session);
     }
 
@@ -74,7 +88,7 @@ public final class SettingsSessionRegistry {
         boolean requiresRestart = false;
         boolean requiresReload = false;
         for (ModuleSettingsSession session : dirtySessions) {
-            SettingsSaveResult result = session.save();
+            SettingsSaveResult result = saveSafely(session);
             if (!result.success()) {
                 return result.failureType() == SettingsSaveResult.FailureType.UNKNOWN ? SettingsSaveResult.failure(result.message(), SettingsSaveResult.FailureType.SAVE) : result;
             }
@@ -100,7 +114,7 @@ public final class SettingsSessionRegistry {
         if (!validation.success()) {
             return SettingsSaveResult.failure(validation.message(), SettingsSaveResult.FailureType.VALIDATION);
         }
-        SettingsSaveResult result = session.save();
+        SettingsSaveResult result = saveSafely(session);
         if (!result.success() && result.failureType() == SettingsSaveResult.FailureType.UNKNOWN) {
             return SettingsSaveResult.failure(result.message(), SettingsSaveResult.FailureType.SAVE);
         }
@@ -115,5 +129,29 @@ public final class SettingsSessionRegistry {
         boolean changed = session.dirty();
         session.reset();
         return SettingsSaveResult.success(UiText.key(changed ? "tianshu.gui.settings.message.current_reset" : "tianshu.gui.settings.message.current_no_reset_changes"), changed, false, false);
+    }
+
+    private SettingsSaveResult saveSafely(ModuleSettingsSession session) {
+        try {
+            return session.save();
+        } catch (RuntimeException failure) {
+            logs.error("settings.session.save_failed module=" + session.moduleId(), failure);
+            return SettingsSaveResult.failure(UiText.key("tianshu.gui.settings.status.failed"), SettingsSaveResult.FailureType.SAVE);
+        }
+    }
+
+    @Override
+    public void close() {
+        var closing = List.copyOf(sessions);
+        sessions.clear();
+        closing.forEach(this::closeSession);
+    }
+
+    private void closeSession(ModuleSettingsSession session) {
+        try {
+            session.close();
+        } catch (RuntimeException failure) {
+            logs.error("settings.session.close_failed module=" + session.moduleId(), failure);
+        }
     }
 }

@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Required platform bootstrap that loads ONNX Runtime on the Core lifecycle worker. */
+/** Optional platform bootstrap that loads ONNX Runtime on the Core lifecycle worker. */
 public final class ClientOnnxRuntimeModule implements TianshuManagedModule {
     private static final AtomicBoolean LOADED = new AtomicBoolean();
 

@@ -186,6 +186,8 @@ TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务。D
 
 配置统一由宿主的 `config/tianshu-client.toml` 提供。common 只依赖只读 `TtsConfiguration`；client 设置页通过 `TtsModuleService`、`TtsModelService` 和快照工作，不穿透 backend。
 
+`TtsModelService.saveSettings` 必须向调用方传递模型参数写盘错误。模型参数先写同目录临时文件，再替换正式文件（文件系统支持时使用原子替换），避免直接截断原有配置。设置会话只在持久化成功后接受草稿并执行运行时更新；统一配置保存失败时，恢复先前已写入的模型参数和内存配置。
+
 试听默认文本来自语言资源，不在 Java/config 中固定某种语言。已删除未使用的 `ttsPort`。未来 Qwen/Fish 等后端通过新的 model/backend descriptor 接入，由玩家在 GUI 显式选择，运行时不静默切换。
 
 ## 11. 验收重点

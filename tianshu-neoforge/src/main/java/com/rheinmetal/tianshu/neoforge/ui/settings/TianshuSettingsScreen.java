@@ -496,6 +496,12 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     @Override
+    public void removed() {
+        context.settingsSessions().close();
+        super.removed();
+    }
+
+    @Override
     public boolean isPauseScreen() {
         return true;
     }

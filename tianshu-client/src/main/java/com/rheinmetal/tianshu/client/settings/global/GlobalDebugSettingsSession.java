@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSession;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
+import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 
 import java.util.Objects;
 
@@ -39,8 +40,7 @@ public final class GlobalDebugSettingsSession implements ModuleSettingsSession {
     @Override
     public SettingsSaveResult save() {
         boolean changed = dirty();
-        enabled.save();
-        config.save();
+        new SettingsSaveTransaction(enabled).commit(config::save);
         return SettingsSaveResult.success(UiText.key("tianshu.gui.settings.debug.saved"), changed, false, false);
     }
 

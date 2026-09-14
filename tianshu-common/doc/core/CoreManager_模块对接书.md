@@ -176,6 +176,8 @@ optional 模块失败时：
 - 该模块声明的能力会被标记为 failed 或 absent
 - 其他模块仍可继续启动
 
+native 库缺失或不兼容引起的 `LinkageError` 也按模块失败处理，保留失败状态和能力状态。该边界不吞掉 `VirtualMachineError` 等 JVM 致命错误。NeoForge 的 ONNX 预加载为 optional 平台模块，不能因为预加载失败阻止其他独立能力启动。
+
 适用于：
 
 - ASR

@@ -45,9 +45,26 @@ public final class MutableSettingsValue<T> implements SettingsValue<T> {
     }
 
     public void save() {
+        write();
+        accept();
+    }
+
+    void write() {
         if (sink != null) {
             sink.accept(value);
         }
+    }
+
+    Runnable rollbackAction() {
+        T previous = source == null ? original : source.get();
+        return () -> {
+            if (sink != null) {
+                sink.accept(previous);
+            }
+        };
+    }
+
+    void accept() {
         this.original = value;
     }
 }

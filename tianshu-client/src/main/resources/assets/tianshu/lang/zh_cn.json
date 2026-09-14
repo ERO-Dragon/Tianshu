@@ -401,7 +401,6 @@
   "tianshu.gui.ax.option.chat_thinking": "允许以思考时间换取回复质量",
   "tianshu.gui.ax.option.allow_interruption": "允许新的仲裁结果打断天枢",
   "tianshu.gui.ax.message.saved": "天枢助手设置已保存",
-  "tianshu.gui.ax.message.save_failed": "天枢助手设置保存失败，请检查日志和配置目录",
 
   "tianshu.gui.presence.title": "【映迹】HUD设置",
   "tianshu.gui.presence.description": "控制游戏 HUD 中展示的模块状态和显示元素",

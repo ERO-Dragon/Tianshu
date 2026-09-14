@@ -66,10 +66,12 @@ UiText.join(", ", labels)
 每次打开页面都会创建独立的 `SettingsCoordinator` 和各模块 `ModuleSettingsSession`。`MutableSettingsValue` 在内存中保存草稿；保存顺序是：
 
 ```text
-validate -> 写入模块设置端口 -> config.save -> runtime side effect -> 清除 dirty
+validate -> 暂存设置端口写入 -> config.save -> 清除 dirty -> runtime side effect
 ```
 
 校验失败不得修改真实配置。批量保存先校验全部 dirty session，全部通过后才按注册顺序写入；这样一个模块的校验失败不会让前面的模块先被写入。模块自己的 `save()` 仍负责写入对应设置端口、保存统一配置并触发运行时副作用。
+
+内置页面使用 `SettingsSaveTransaction`：保存前捕获当前配置，写盘失败时按逆序恢复已尝试写入的值，保留草稿和 dirty，不触发运行时副作用。设置注册表把保存异常转换为失败结果，页面可以重试。TTS 模型参数由其服务写入，写盘异常必须传回会话层，不能吞掉。批量保存仍是各模块依次提交，不承诺跨模块、跨文件的原子事务；先前已经成功提交的模块保持已保存状态。
 
 每个模块 ID 同时只允许一个 session。`register` 和 `registerOrReplace` 都遵守这一约束，后注册的会话替换旧会话；重新打开页面不会继承未保存草稿。
 
@@ -88,7 +90,7 @@ ASR、LLM、TTS、AX、Presence 和全局调试分别拥有窄设置端口。Neo
 - `ClientScheduler`：只提供异步主线程投递和线程判断，不提供同步等待。
 - `ClientUiHost`：打开设置、请求重建当前页和显示短状态。
 - `ClientTextProvider`：把 `UiText` 解析为宿主文本。
-- `ClientFilePicker`：执行宿主文件选择。
+- `ClientFilePicker`：异步返回文件选择结果，取消 future 可关闭待选窗口。结果由设置模块投递回 `ClientScheduler` 后再更新草稿或启动 TTS IO 导入；取消、失败均解除忙状态，重复点击不会产生重复窗口或导入。
 
 模型下载、索引、网络请求、推理和诊断写盘不能经这些端口放到 Minecraft 主线程。模型目录与音色目录由对应模块在 IO lane 中生成快照；音色导入的文件复制也在 TTS IO lane 中完成。下载进度刷新必须合并，当前 ASR/LLM/TTS 使用单个 pending 标记避免每个进度事件重建页面。
 
@@ -112,7 +114,7 @@ contributor 不绘制、不访问 Screen、不查找当前 Minecraft 实例，�
 - 页面打开时创建新的 coordinator 和各模块 session；旧页面的 session 不会进入新页面的保存集合。
 - 页面重建复用当前 session，不重新读取或写入真实配置。
 - 全局调试拥有独立草稿 session，但不注册成模块分类；它和模块设置一起由页面保存。
-- 关闭页面直接丢弃未保存草稿，不隐式保存。
+- 关闭页面通过 `SettingsSessionRegistry.close()` 释放会话，再丢弃未保存草稿，不隐式保存。`ModuleSettingsSession.close()` 默认为空；拥有异步文件选择的会话负责取消选择并拒绝迟到完成回调。替换同 ID 的会话也关闭旧实例；页面重建不关闭会话。
 - 当前选择的模块 ID 无法在 registry 中找到时，Screen 显式回到第一个可用分类；registry 本身不会静默返回其他分类。
 
 ## 9. 渲染边界
