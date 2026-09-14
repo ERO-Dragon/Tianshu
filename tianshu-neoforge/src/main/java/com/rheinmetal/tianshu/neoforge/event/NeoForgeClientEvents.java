@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.mojang.logging.LogUtils;
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.llm.performance.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -24,14 +24,11 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
-import org.slf4j.Logger;
-
 import java.util.Objects;
 import java.util.function.Supplier;
 
 public final class NeoForgeClientEvents {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
+    private final LogSink logSink;
     private final TianshuSettingsModule settingsModule;
     private final NeoForgeClientLifecycleAdapter lifecycleAdapter;
     private final PresenceClientRuntime presenceRuntime;
@@ -48,7 +45,8 @@ public final class NeoForgeClientEvents {
             PresenceClientRuntime presenceRuntime,
             PresenceHudRenderer presenceHudRenderer,
             NeoForgeWorldIdentityCapture worldIdentityCapture,
-            Supplier<KeyMapping> voiceKeySupplier
+            Supplier<KeyMapping> voiceKeySupplier,
+            LogSink logSink
     ) {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(coreManager, "coreManager");
@@ -58,6 +56,7 @@ public final class NeoForgeClientEvents {
         this.presenceHudRenderer = Objects.requireNonNull(presenceHudRenderer, "presenceHudRenderer");
         this.worldIdentityCapture = Objects.requireNonNull(worldIdentityCapture, "worldIdentityCapture");
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
+        this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.voiceInputController = new NeoForgeVoiceInputController(
                 config::getTriggerMode,
                 () -> coreManager.findService(AsrInputService.class),
@@ -67,7 +66,7 @@ public final class NeoForgeClientEvents {
 
     @SubscribeEvent
     public void onWorldLogin(ClientPlayerNetworkEvent.LoggingIn event) {
-        LOGGER.info("NEOFORGE_WORLD_LOGIN");
+        logSink.info("neoforge.world.login");
         worldIdentityCapture.refresh();
         NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
         lifecycleAdapter.onWorldLogin();
@@ -80,7 +79,7 @@ public final class NeoForgeClientEvents {
 
     @SubscribeEvent
     public void onWorldLogout(ClientPlayerNetworkEvent.LoggingOut event) {
-        LOGGER.info("NEOFORGE_WORLD_LOGOUT");
+        logSink.info("neoforge.world.logout");
         resetVoiceInputState();
         worldIdentityCapture.clear();
         presenceHudRenderer.clear();

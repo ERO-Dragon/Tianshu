@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsContext;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsScreen;
 import com.rheinmetal.tianshu.client.settings.session.SettingsCoordinator;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSessionRegistry;
+import com.rheinmetal.tianshu.neoforge.config.TianshuBuildProfile;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -28,8 +29,12 @@ public final class TianshuSettingsModule {
     public Screen createScreen() {
         SettingsSessionRegistry sessions = new SettingsSessionRegistry();
         SettingsCoordinator coordinator = new SettingsCoordinator(sessions, SettingsEventPublisher.NOOP);
-        GlobalDebugSettingsSession debugSession = new GlobalDebugSettingsSession(globalDebugSettings);
-        sessions.register(debugSession);
+        GlobalDebugSettingsSession debugSession = TianshuBuildProfile.debugBuild()
+                ? new GlobalDebugSettingsSession(globalDebugSettings)
+                : null;
+        if (debugSession != null) {
+            sessions.register(debugSession);
+        }
         ModuleSettingsContext context = new TianshuSettingsContext(coordinator);
         return TianshuSettingsScreen.create(context, registrySource, rendererProvider, debugSession);
     }

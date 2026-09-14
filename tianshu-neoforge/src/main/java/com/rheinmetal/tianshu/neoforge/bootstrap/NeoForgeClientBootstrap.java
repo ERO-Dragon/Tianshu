@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.neoforge.bootstrap;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.client.audio.AudioManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
+import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.llm.performance.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
@@ -50,20 +50,18 @@ import com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEve
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.fml.loading.FMLPaths;
 import org.lwjgl.glfw.GLFW;
-import org.slf4j.Logger;
 
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
 public final class NeoForgeClientBootstrap {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
     private final ClientLanguageSnapshot languageSnapshot = new ClientLanguageSnapshot();
     private final Path gameDirectory;
     private final ClientConfig config;
@@ -95,17 +93,32 @@ public final class NeoForgeClientBootstrap {
         if (clientSession != null) {
             return;
         }
-        LOGGER.info("NEOFORGE_CLIENT_BOOTSTRAP_STARTING");
         NeoForgeClientSession startingSession = new NeoForgeClientSession();
         try {
             NeoForgeEnvironment environment = new NeoForgeEnvironment(gameDirectory);
+            ClientDiagnosticMessageSink chatSink = message -> Minecraft.getInstance().execute(() -> {
+                if (Minecraft.getInstance().player != null && message != null && !message.isBlank()) {
+                    Minecraft.getInstance().player.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal(message), false
+                    );
+                }
+            });
+            diagnosticRouter = new ClientDiagnosticRouter(
+                    gameDirectory,
+                    new ClientDiagnosticPolicy(config),
+                    2_048,
+                    8L * 1024L * 1024L,
+                    5,
+                    chatSink
+            );
+            NeoForgeClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
+            environment.bindDiagnostics(diagnosticRouter);
+            environment.bindLogs(diagnosticRouter);
+            diagnosticRouter.info("neoforge.client.bootstrap_starting");
             namedObjectIndexManager = createNamedObjectIndexManager();
             NeoForgeClientSession.Ownership indexOwnership = startingSession.own(namedObjectIndexManager::close);
             refreshNamedObjectSnapshot();
-            diagnosticRouter = new ClientDiagnosticRouter(gameDirectory, new ClientDiagnosticPolicy(config));
-            NeoForgeClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
-            environment.bindDiagnostics(diagnosticRouter);
-            presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(languageSnapshot), new NeoForgePresenceTextProvider());
+            presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(languageSnapshot, diagnosticRouter), new NeoForgePresenceTextProvider());
             PresenceClientRuntime currentPresenceRuntime = presenceRuntime;
             ClientConfigPresenceHudSettings presenceHudSettings = new ClientConfigPresenceHudSettings(config);
             PresenceHudRenderer presenceHudRenderer = new PresenceHudRenderer(
@@ -115,7 +128,7 @@ public final class NeoForgeClientBootstrap {
             NeoForgeAXWorldIdentityProvider worldIdentityProvider = new NeoForgeAXWorldIdentityProvider();
             NeoForgeWorldIdentityCapture worldIdentityCapture = new NeoForgeWorldIdentityCapture(worldIdentityProvider, gameDirectory);
 
-            audioManager = new AudioManager();
+            audioManager = new AudioManager(diagnosticRouter);
             NeoForgeClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
             String selectedMicName = config.getSelectedMicName();
             if (selectedMicName != null && !selectedMicName.isBlank()) {
@@ -149,9 +162,9 @@ public final class NeoForgeClientBootstrap {
                     new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter, presenceRuntime, namedObjectIndexManager),
                     () -> {
                         ClientLlmRuntimeBridge.bind(currentCoreManager, config);
-                        LOGGER.info("NEOFORGE_WORLD_SESSION_STARTED");
+                        diagnosticRouter.info("neoforge.world.session_started");
                     },
-                    failure -> LOGGER.error("NEOFORGE_WORLD_SESSION_LIFECYCLE_FAILED", failure)
+                    failure -> diagnosticRouter.error("neoforge.world.session_lifecycle_failed", failure)
             );
             lifecycleAdapter = new NeoForgeClientLifecycleAdapter(clientRuntime);
             NeoForgeClientLifecycleAdapter currentLifecycleAdapter = lifecycleAdapter;
@@ -164,7 +177,7 @@ public final class NeoForgeClientBootstrap {
             currentLifecycleAdapter.onClientReady();
             startingSession.own(worldIdentityCapture::clear);
 
-            NeoForgePresenceHooks.bind(currentPresenceRuntime);
+            NeoForgePresenceHooks.bind(currentPresenceRuntime, diagnosticRouter);
             startingSession.own(() -> NeoForgePresenceHooks.clear(currentPresenceRuntime));
 
             externalSettingsContributors = new TianshuSettingsContributorRegistry();
@@ -183,7 +196,8 @@ public final class NeoForgeClientBootstrap {
                     presenceRuntime,
                     presenceHudRenderer,
                     worldIdentityCapture,
-                    () -> voiceKey
+                    () -> voiceKey,
+                    diagnosticRouter
             );
             NeoForgeClientEvents currentEvents = events;
             NeoForgeEventRegistration eventRegistration = NeoForgeEventRegistration.register(
@@ -221,7 +235,8 @@ public final class NeoForgeClientBootstrap {
     public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(new NamedObjectReloadListener(
                 this::createNamedObjectIndexManager,
-                this::refreshNamedObjectSnapshot
+                this::refreshNamedObjectSnapshot,
+                diagnosticRouter == null ? com.rheinmetal.tianshu.api.LogSink.NOOP : diagnosticRouter
         ));
     }
 
@@ -231,15 +246,17 @@ public final class NeoForgeClientBootstrap {
             return;
         }
         clientSession = null;
-        LOGGER.info("NEOFORGE_CLIENT_SHUTDOWN_STARTING");
+        com.rheinmetal.tianshu.api.LogSink currentLogSink = diagnosticRouter == null
+                ? com.rheinmetal.tianshu.api.LogSink.NOOP : diagnosticRouter;
+        currentLogSink.info("neoforge.client.shutdown_starting");
         try {
             currentSession.close();
         } catch (RuntimeException failure) {
-            LOGGER.error("NEOFORGE_CLIENT_SHUTDOWN_FAILED", failure);
+            currentLogSink.error("neoforge.client.shutdown_failed", failure);
         } finally {
             clearSessionReferences();
         }
-        LOGGER.info("NEOFORGE_CLIENT_SHUTDOWN_COMPLETED");
+        currentLogSink.info("neoforge.client.shutdown_completed");
     }
 
     private void clearSessionReferences() {
@@ -296,6 +313,7 @@ public final class NeoForgeClientBootstrap {
                             .resolve("ir")
                             .resolve("cache"),
                     languageSnapshot::languageCode
+                    , diagnosticRouter
             );
         }
         return namedObjectIndexManager;
@@ -309,7 +327,9 @@ public final class NeoForgeClientBootstrap {
             languageSnapshot.update(ClientLanguagePolicy.captureCurrentLanguageCode());
             namedObjectDictionaryProvider.refresh();
         } catch (RuntimeException failure) {
-            LOGGER.error("NEOFORGE_IR_DICTIONARY_REFRESH_FAILED", failure);
+            if (diagnosticRouter != null) {
+                diagnosticRouter.error("neoforge.ir.dictionary_refresh_failed", failure);
+            }
         }
     }
 
@@ -319,7 +339,9 @@ public final class NeoForgeClientBootstrap {
         }
         shutdownHookRegistered = true;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            LOGGER.info("NEOFORGE_JVM_SHUTDOWN_FALLBACK");
+            if (diagnosticRouter != null) {
+                diagnosticRouter.info("neoforge.jvm.shutdown_fallback");
+            }
             shutdown();
         }, "Tianshu-Shutdown-Hook"));
     }

@@ -25,6 +25,7 @@ final class AXTurnExecution {
     private volatile String requestKey = "";
     private volatile String llmRequestId = "";
     private volatile AXTurnCancellation cancellation;
+    private volatile AXTurnLatencyTracker latencyTracker;
 
     AXTurnExecution(long generation, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope) {
         this.generation = generation;
@@ -72,6 +73,15 @@ final class AXTurnExecution {
 
     AXTurnCancellation cancellation() {
         return cancellation;
+    }
+
+    void latencyTracker(AXTurnLatencyTracker tracker) {
+        latencyTracker = tracker;
+    }
+
+    AXTurnLatencyTracker latencyTracker() {
+        AXTurnLatencyTracker tracker = latencyTracker;
+        return tracker == null ? AXTurnLatencyTracker.noop() : tracker;
     }
 
     void dynamicFactRequestId(String requestId) {

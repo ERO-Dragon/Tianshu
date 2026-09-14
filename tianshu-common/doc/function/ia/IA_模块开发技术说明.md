@@ -300,8 +300,8 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 - 状态广播只发布 session 状态，不附带正文、prompt、response、完整上下文。
 - owner 定向投递只包含处理当前 turn 所需的输入和上下文。
 - 非 owner 只能获得会话状态，不能获得本轮正文。
-- IA 模块诊断默认关闭；关闭时不记录玩家正文。
-- 用户显式开启 IA 模块诊断后，`repairedText` / `normalizedText` 可以作为 `RAW_CONTENT` 进入宿主集中管理的异步诊断落盘链路。普通日志和公共 session event 始终不携带正文。
+- IA 结构化诊断默认关闭；Debug 构建中由设置页右下角的全局 Debug 开关统一控制，关闭时不记录玩家正文。
+- 用户开启全局 Debug 后，`repairedText` / `normalizedText` 可以作为 `RAW_CONTENT` 进入宿主集中管理的异步诊断落盘链路。普通日志和公共 session event 始终不携带正文；诊断文件为独立的 `logs/tianshu-diagnostics.log`。
 
 换句话说，仲裁机关本身就是授权边界。只要消息准备离开仲裁机关内部、发给参与方、UI、日志、诊断或公共 topic，就必须先经过仲裁机关的授权判断。
 

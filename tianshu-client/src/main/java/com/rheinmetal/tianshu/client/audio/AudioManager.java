@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.audio;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
+import com.rheinmetal.tianshu.api.LogSink;
 
 import javax.sound.sampled.*;
 import java.io.ByteArrayOutputStream;
@@ -17,7 +18,7 @@ import java.util.function.Consumer;
 
 public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
-    private static final System.Logger LOGGER = System.getLogger(AudioManager.class.getName());
+    private final LogSink logSink;
 
     private TargetDataLine targetDataLine;
     private SourceDataLine sourceDataLine;
@@ -57,6 +58,14 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     private volatile List<String> availableMicNames = List.of();
     private final AtomicBoolean micEnumerationRunning = new AtomicBoolean(false);
 
+    public AudioManager() {
+        this(LogSink.NOOP);
+    }
+
+    public AudioManager(LogSink logSink) {
+        this.logSink = logSink == null ? LogSink.NOOP : logSink;
+    }
+
     private Mixer.Info findRealPhysicalMic(DataLine.Info info) {
         Mixer.Info fallbackMic = null;
         for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
@@ -76,7 +85,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                     if (desc.contains("high definition audio") || desc.contains("usb audio") ||
                             desc.contains("realtek") || name.contains("usb") || desc.contains("logitech") ||
                             desc.contains("razer") || desc.contains("hyperx") || desc.contains("steelseries")) {
-                        LOGGER.log(System.Logger.Level.INFO, "Selected physical microphone: " + mixerInfo.getName());
+                        logSink.info("audio.microphone.selected name=" + mixerInfo.getName());
                         return mixerInfo;
                     }
                     if (fallbackMic == null)
@@ -86,7 +95,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
             }
         }
         if (fallbackMic != null)
-            LOGGER.log(System.Logger.Level.WARNING, "Using fallback microphone: " + fallbackMic.getName());
+            logSink.warn("audio.microphone.fallback name=" + fallbackMic.getName());
         return fallbackMic;
     }
 
@@ -105,17 +114,17 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 if (bestMixer != null) {
                     captureLine = (TargetDataLine) AudioSystem.getMixer(bestMixer).getLine(info);
                     targetDataLine = captureLine;
-                    LOGGER.log(System.Logger.Level.INFO, "Opened persistent microphone: " + bestMixer.getName());
+                    logSink.info("audio.microphone.opened name=" + bestMixer.getName());
                 }
                 if (captureLine == null) {
-                    LOGGER.log(System.Logger.Level.ERROR, "No usable microphone was found");
+                    logSink.error("audio.microphone.unavailable", null);
                     isHardwareRunning.set(false);
                     return;
                 }
 
                 captureLine.open(format);
                 captureLine.start();
-                LOGGER.log(System.Logger.Level.INFO, "Persistent microphone worker started");
+                logSink.info("audio.microphone.worker_started");
 
                 byte[] rawBuffer = new byte[1600];
                 while (isHardwareRunning.get()) {
@@ -136,7 +145,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                     }
                 }
             } catch (Exception e) {
-                LOGGER.log(System.Logger.Level.ERROR, "Persistent microphone worker failed", e);
+                logSink.error("audio.microphone.worker_failed", e);
             } finally {
                 if (captureLine != null) {
                     try {
@@ -154,7 +163,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 isHardwareRunning.set(false);
                 isRecording.set(false);
                 isStreaming.set(false);
-                LOGGER.log(System.Logger.Level.INFO, "Persistent microphone worker stopped");
+                logSink.info("audio.microphone.worker_stopped");
             }
         }, () -> isHardwareRunning.set(false));
     }
@@ -166,7 +175,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         ensureHardwareRunning();
         audioBuffer = new ByteArrayOutputStream();
         isRecording.set(true);
-        LOGGER.log(System.Logger.Level.INFO, "PTT recording started");
+        logSink.info("audio.ptt.started");
     }
 
     @Override
@@ -178,7 +187,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         }
         if (audioBuffer != null) {
             byte[] data = audioBuffer.toByteArray();
-            LOGGER.log(System.Logger.Level.INFO, "PTT recording completed, bytes=" + data.length);
+            logSink.info("audio.ptt.completed bytes=" + data.length);
             return data;
         }
         return new byte[0];
@@ -191,7 +200,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         this.streamChunkConsumer = onAudioChunk;
         ensureHardwareRunning();
         isStreaming.set(true);
-        LOGGER.log(System.Logger.Level.INFO, "Streaming capture started");
+        logSink.info("audio.streaming.started");
     }
 
     @Override
@@ -203,7 +212,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         if (consumer != null && tail.length > 0) {
             consumer.accept(tail);
         }
-        LOGGER.log(System.Logger.Level.INFO, "Streaming capture stopped");
+        logSink.info("audio.streaming.stopped");
     }
 
     private byte[] appendStreamChunk(byte[] rawBuffer, int bytesRead) {
@@ -261,9 +270,9 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 sourceDataLine.write(audioData, 0, audioData.length);
                 sourceDataLine.drain();
             } catch (LineUnavailableException e) {
-                LOGGER.log(System.Logger.Level.ERROR, "Unable to open playback device", e);
+                logSink.error("audio.playback.open_failed", e);
             } catch (Exception e) {
-                LOGGER.log(System.Logger.Level.ERROR, "Audio playback failed", e);
+                logSink.error("audio.playback.failed", e);
             } finally {
                 if (sourceDataLine != null) {
                     sourceDataLine.stop();
@@ -287,9 +296,9 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
             ttsDataLine = (SourceDataLine) AudioSystem.getLine(info);
             ttsDataLine.open(format);
             ttsDataLine.start();
-            LOGGER.log(System.Logger.Level.INFO, "TTS playback channel opened, sampleRate=" + sampleRate);
+            logSink.info("audio.tts_channel.opened sampleRate=" + sampleRate);
         } catch (LineUnavailableException e) {
-            LOGGER.log(System.Logger.Level.ERROR, "Unable to open TTS playback channel", e);
+            logSink.error("audio.tts_channel.open_failed", e);
         }
     }
 
@@ -311,7 +320,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
             try {
                 line.drain();
             } catch (Exception e) {
-                LOGGER.log(System.Logger.Level.ERROR, "TTS playback drain failed", e);
+                logSink.error("audio.tts_channel.drain_failed", e);
             }
         }
         stopTtsPlayback();
@@ -337,7 +346,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 line.stop();
                 line.close();
             } catch (Exception e) {
-                LOGGER.log(System.Logger.Level.ERROR, "TTS playback channel close failed", e);
+                logSink.error("audio.tts_channel.close_failed", e);
             }
         }
     }
@@ -503,7 +512,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         int nextIdx = (currentMicIndex + 1) % mixers.size();
         String nextName = mixers.get(nextIdx).getName();
         selectMic(nextName);
-        LOGGER.log(System.Logger.Level.INFO, "Requested microphone switch: " + nextName);
+        logSink.info("audio.microphone.switch_requested name=" + nextName);
     }
 
     @Override
@@ -518,7 +527,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 targetDataLine.stop();
                 targetDataLine.close();
             } catch (Exception e) {
-                LOGGER.log(System.Logger.Level.ERROR, "Microphone capture channel close failed", e);
+                logSink.error("audio.microphone.close_failed", e);
             } finally {
                 targetDataLine = null;
             }
@@ -542,7 +551,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
             executorService.execute(task);
         } catch (RejectedExecutionException rejected) {
             onRejected.run();
-            LOGGER.log(System.Logger.Level.WARNING, "Audio task rejected because the bounded worker is unavailable");
+            logSink.warn("audio.worker.rejected");
         }
     }
 

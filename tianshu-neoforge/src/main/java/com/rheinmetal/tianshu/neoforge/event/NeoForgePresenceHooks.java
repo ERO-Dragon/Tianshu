@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
+import com.rheinmetal.tianshu.api.LogSink;
 import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -12,7 +13,11 @@ public final class NeoForgePresenceHooks {
     }
 
     public static void bind(PresenceClientRuntime runtime) {
-        binding.set(runtime == null ? null : new Binding(runtime, new NeoForgePresenceAdvancementTracker()));
+        bind(runtime, LogSink.NOOP);
+    }
+
+    public static void bind(PresenceClientRuntime runtime, LogSink logSink) {
+        binding.set(runtime == null ? null : new Binding(runtime, new NeoForgePresenceAdvancementTracker(logSink)));
     }
 
     public static void clear(PresenceClientRuntime runtime) {

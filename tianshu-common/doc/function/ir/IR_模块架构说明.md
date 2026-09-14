@@ -67,7 +67,7 @@ IrResultPayload
 IA
 ```
 
-空文本不会发布 `IR_RESULT`，只产生受模块诊断开关控制的 `EMPTY_INPUT` 诊断。
+空文本不会发布 `IR_RESULT`，只产生受全局 Debug 开关控制的 `EMPTY_INPUT` 诊断。
 
 ## 3. 模块组成
 

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.mojang.logging.LogUtils;
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
@@ -24,7 +24,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
-import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -33,13 +32,17 @@ import java.util.Map;
 import java.util.Set;
 
 public final class NeoForgePresencePlatform implements ClientGameContextProvider {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
     private final NeoForgePresenceScreenClassifier screenClassifier = new NeoForgePresenceScreenClassifier();
     private final ClientLanguageSnapshot languageSnapshot;
+    private final LogSink logSink;
 
     public NeoForgePresencePlatform(ClientLanguageSnapshot languageSnapshot) {
+        this(languageSnapshot, LogSink.NOOP);
+    }
+
+    public NeoForgePresencePlatform(ClientLanguageSnapshot languageSnapshot, LogSink logSink) {
         this.languageSnapshot = java.util.Objects.requireNonNull(languageSnapshot, "languageSnapshot");
+        this.logSink = logSink == null ? LogSink.NOOP : logSink;
     }
 
     @Override
@@ -122,7 +125,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                     .map(key -> ClientLanguagePolicy.registryDisplayName(key.location(), "biome", languageCode))
                     .orElse(biomeId);
         } catch (RuntimeException exception) {
-            LOGGER.warn("NEOFORGE_PRESENCE_BIOME_CAPTURE_FAILED detail={}", exception.getMessage());
+            logSink.warn("neoforge.presence.biome_capture_failed detail=" + exception.getMessage());
         }
         return new PresenceWorldEnvironment(level.isRaining(), level.isThundering(), dayTime, biomeId, biomeDisplayName);
     }
@@ -163,7 +166,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                         effect.getEffect().value().isBeneficial()
                 ));
             } catch (RuntimeException exception) {
-                LOGGER.warn("NEOFORGE_PRESENCE_EFFECT_CAPTURE_FAILED detail={}", exception.getMessage());
+                logSink.warn("neoforge.presence.effect_capture_failed detail=" + exception.getMessage());
             }
         }
         return List.copyOf(result);

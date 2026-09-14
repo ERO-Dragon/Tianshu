@@ -73,7 +73,7 @@ Minecraft 主线程只执行：
 | 资源 | 所有者 | 容量/策略 |
 |---|---|---|
 | IR index | `ClientNamedObjectIndexManager` | 单线程，队列 2，关闭 generation 防旧写入 |
-| diagnostics | `ClientDiagnosticWriter` | 单线程，有界 2048，满时非阻塞丢弃并计数 |
+| logs/diagnostics | `ClientDiagnosticRouter` + `ClientDiagnosticWriter` | Common/Client/NeoForge 的运行日志和结构化诊断事件统一写入独立的 `logs/tianshu-diagnostics.log`，单线程、有界 2048，满时非阻塞丢弃并计数，保留当前文件及 5 个轮转文件，不复用 Minecraft 日志；日志系统自身故障仅保留最小宿主兜底 |
 | audio | `AudioManager` | 2 线程，队列 8，拒绝不回退到调用线程 |
 | GPU detection | `GpuInfo` | 单线程，队列 1，只响应显式刷新并保留最后完整快照 |
 | Presence query | `PresenceContextQueryCoordinator` | 有界 64，每 tick 最多处理 8 个，满时返回 `PRESENCE_BUSY` |
@@ -109,7 +109,9 @@ Presence 设置只保留 HUD 总开关和状态文本开关。旧的 ASR / LLM /
 
 旧的 ASR/LLM 服务端口以及语义不完整的隐藏总开关已经删除。ASR、LLM、TTS、AX 等模块继续使用各自明确的启用状态，不再存在只停止语音 tick、却没有停用其他模块的第二套总开关。
 
-IR 与 IA 是内部工作模块，不注册玩家设置分类。ASR、AX、LLM、TTS 也不再各自持有诊断开关；`debug.enabled` 是唯一调试配置，由设置页右下角的独立草稿控件统一保存。开启后统一允许各模块诊断事件写入，并显示映迹模块流水线；关闭后全部停用。
+IR 与 IA 是内部工作模块，不注册玩家设置分类。ASR、AX、LLM、TTS 也不再各自持有诊断开关；Debug 构建中的 `debug.enabled` 是唯一调试配置，由设置页右下角的独立草稿控件统一保存。普通运行日志始终写入独立天枢日志；开启 Debug 后，结构化诊断事件也写入该文件并在游戏聊天窗口显示摘要，关闭后诊断事件和聊天摘要停用。Release 构建不显示该控件并固定关闭调试输出。
+
+构建通道按使用场景区分：从 Gradle 面板运行 `runClient` 时默认使用 Debug 配置，便于开发时查看统一调试信息；执行 `build`、`jar` 等打包任务时默认使用 Release 配置。需要明确指定时，可使用 `-PtianshuDebugBuild=true` 或 `-PtianshuDebugBuild=false` 覆盖默认值。构建通道写入资源配置，运行时不会依赖启动参数临时改变 Release 行为。
 
 GPU 设备发现和占用采样使用最后一次完整快照。打开设置页或 LLM 请求需要性能判断时可以显式请求后台刷新，但 `devices()`、`detected()` 和 `detecting()` 本身不会启动任务。已有结果在刷新期间继续展示，因此不会在“检测中”和设备结果之间闪烁，也不会由 GUI 读取每秒启动外部进程。
 

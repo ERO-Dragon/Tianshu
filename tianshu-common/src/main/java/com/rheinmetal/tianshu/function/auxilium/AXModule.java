@@ -206,7 +206,8 @@ public final class AXModule implements TianshuManagedModule {
                 outputProcessor,
                 memoryRetriever,
                 turnStatusPublisher,
-                assistantSettings.allowInterruption()
+                assistantSettings.allowInterruption(),
+                context.diagnostics()
         );
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);

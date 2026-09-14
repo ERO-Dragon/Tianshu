@@ -226,4 +226,4 @@ TtsControlPayload load = new TtsControlPayload(
 
 ## 11. 诊断
 
-TTS 诊断只进入宿主集中诊断服务，并受 TTS 模块诊断开关控制。backend 不创建私有日志文件或线程。正式包不运行 MOSS smoke，也不包含测试 WAV 和生成音频。
+TTS 诊断只进入宿主集中诊断服务。Debug 构建中由设置页右下角的全局 Debug 开关统一控制结构化诊断；普通运行日志和已启用的诊断事件统一写入独立的 `logs/tianshu-diagnostics.log`，backend 不创建私有日志文件或线程。正式包不运行 MOSS smoke，也不包含测试 WAV 和生成音频。

@@ -1,19 +1,18 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.mojang.logging.LogUtils;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import net.minecraft.client.Minecraft;
-import org.slf4j.Logger;
 
 import java.nio.file.Path;
 import java.util.Objects;
 
 public class NeoForgeEnvironment implements IGameEnvironment {
 
-    private static final Logger LOGGER = LogUtils.getLogger();
     private final Path gameDirectory;
     private volatile DiagnosticSink diagnosticSink = DiagnosticSink.NOOP;
+    private volatile LogSink logSink = LogSink.NOOP;
 
     public NeoForgeEnvironment(Path gameDirectory) {
         this.gameDirectory = Objects.requireNonNull(gameDirectory, "gameDirectory").toAbsolutePath().normalize();
@@ -21,6 +20,10 @@ public class NeoForgeEnvironment implements IGameEnvironment {
 
     public void bindDiagnostics(DiagnosticSink diagnosticSink) {
         this.diagnosticSink = diagnosticSink == null ? DiagnosticSink.NOOP : diagnosticSink;
+    }
+
+    public void bindLogs(LogSink logSink) {
+        this.logSink = logSink == null ? LogSink.NOOP : logSink;
     }
 
     @Override
@@ -58,27 +61,23 @@ public class NeoForgeEnvironment implements IGameEnvironment {
         try {
             net.minecraft.Util.getPlatform().openFile(dir.toFile());
         } catch (Exception e) {
-            LOGGER.error("NEOFORGE_OPEN_FOLDER_FAILED path={}", dir, e);
+            logSink.error("neoforge.open_folder.failed path=" + dir, e);
         }
     }
 
     @Override
     public void info(String msg) {
-        LOGGER.info(msg);
+        logSink.info(msg);
     }
 
     @Override
     public void warn(String msg) {
-        LOGGER.warn(msg);
+        logSink.warn(msg);
     }
 
     @Override
     public void error(String msg, Throwable t) {
-        if (t != null) {
-            LOGGER.error(msg, t);
-        } else {
-            LOGGER.error(msg);
-        }
+        logSink.error(msg, t);
     }
 
     @Override

@@ -21,7 +21,11 @@ public final class AXOutputProcessor {
     }
 
     public AXOutputTurn startTurn(TianshuEnvelope parent, AXOutputContext context, boolean chatLane) {
-        return new AXOutputTurn(parent, context, chatLane);
+        return startTurn(parent, context, chatLane, () -> { });
+    }
+
+    public AXOutputTurn startTurn(TianshuEnvelope parent, AXOutputContext context, boolean chatLane, Runnable firstTtsSubmission) {
+        return new AXOutputTurn(parent, context, chatLane, firstTtsSubmission);
     }
 
     public void interrupt(String reasonCode) {
@@ -34,14 +38,16 @@ public final class AXOutputProcessor {
         private final TianshuEnvelope parent;
         private final AXOutputContext context;
         private final boolean chatLane;
+        private final Runnable firstTtsSubmission;
         private final AXSentenceBuffer ttsBuffer = new AXSentenceBuffer();
         private boolean streamSeen;
         private boolean closed;
 
-        private AXOutputTurn(TianshuEnvelope parent, AXOutputContext context, boolean chatLane) {
+        private AXOutputTurn(TianshuEnvelope parent, AXOutputContext context, boolean chatLane, Runnable firstTtsSubmission) {
             this.parent = parent;
             this.context = Objects.requireNonNull(context, "context");
             this.chatLane = chatLane;
+            this.firstTtsSubmission = firstTtsSubmission == null ? () -> { } : firstTtsSubmission;
             if (enabledForChat() && settings.uiEnabled()) {
                 chatSink.begin(context);
             }
@@ -105,6 +111,7 @@ public final class AXOutputProcessor {
         }
 
         private void speak(String sentence) {
+            firstTtsSubmission.run();
             adapter.streamTtsSentence(parent, payload(sentence));
         }
 

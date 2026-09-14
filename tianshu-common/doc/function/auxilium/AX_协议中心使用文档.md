@@ -153,4 +153,12 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 - [ ] 不读取 AX 内部 memory、prompt、timeout 或 pending request 实现。
 ## 诊断记录
 
-AX 设置面板中的“诊断记录”开关控制 `module.ax` 的对话调试记录。开启后允许记录交付文本、会话标识和阶段信息；关闭时不会写入集中诊断文件。AX 不自行落盘，也不创建诊断线程。
+设置页右下角的全局 Debug 开关控制 `module.ax` 的对话调试记录。开启后允许记录交付文本、会话标识和阶段信息；关闭时不会写入集中诊断文件。普通运行日志始终写入独立的 `logs/tianshu-diagnostics.log`。AX 不自行落盘，也不创建诊断线程。
+
+## 调试延迟观测
+
+AX Chat 在调试诊断开启时，按同一回合发布以下无正文延迟阶段：
+
+`IA_DELIVERY` → `PROMPT_READY` → `LLM_SUBMITTED` → `LLM_FIRST_TOKEN` → `AX_FIRST_SENTENCE` → `TTS_SUBMITTED`
+
+每个阶段最多发布一次，并携带 `sessionId`、`requestId`、`turnId`、阶段耗时和阶段名称。阶段只用于诊断，不改变 AX 的思考、回复、打断或会话释放逻辑。LLM、TTS 和音频桥的后续阶段由各自模块通过集中诊断服务补充，AX 不直接依赖平台音频实现。

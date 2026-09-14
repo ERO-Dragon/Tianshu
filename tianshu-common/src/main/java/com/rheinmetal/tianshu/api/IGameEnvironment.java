@@ -21,4 +21,8 @@ public interface IGameEnvironment {
     void error(String msg, Throwable t);
 
     DiagnosticSink diagnostics();
+
+    default LogSink logs() {
+        return LogSink.NOOP;
+    }
 }

@@ -41,6 +41,7 @@ import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 
 public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final AXScopeProvider scopeProvider;
@@ -60,6 +61,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final AXMemoryRetriever memoryRetriever;
     private final AXTurnStatusPublisher statusPublisher;
     private final boolean allowInterruption;
+    private final DiagnosticSink diagnostics;
     private volatile boolean accepting = true;
     private final AtomicLong generation = new AtomicLong();
     private final AtomicReference<AXTurnExecution> activeExecution = new AtomicReference<>();
@@ -98,7 +100,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 outputProcessor,
                 memoryRetriever,
                 null,
-                true
+                true,
+                DiagnosticSink.NOOP
         );
     }
 
@@ -137,7 +140,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 outputProcessor,
                 memoryRetriever,
                 statusPublisher,
-                true
+                true,
+                DiagnosticSink.NOOP
         );
     }
 
@@ -160,6 +164,48 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXTurnStatusPublisher statusPublisher,
             boolean allowInterruption
     ) {
+        this(
+                scopeProvider,
+                dialogueInputMapper,
+                inputNormalizer,
+                maintenanceCoordinator,
+                dynamicFactClient,
+                contextCollector,
+                llmRequestBuilder,
+                contextBudget,
+                budgetResolver,
+                llmClient,
+                sessionController,
+                memorySystem,
+                recentDialogueSystem,
+                outputProcessor,
+                memoryRetriever,
+                statusPublisher,
+                allowInterruption,
+                DiagnosticSink.NOOP
+        );
+    }
+
+    public AXTurnOrchestrator(
+            AXScopeProvider scopeProvider,
+            AXDialogueInputMapper dialogueInputMapper,
+            AXInputNormalizer inputNormalizer,
+            AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
+            AXDynamicFactClient dynamicFactClient,
+            AXContextCollector contextCollector,
+            AXLlmPromptRequestBuilder llmRequestBuilder,
+            AXContextBudget contextBudget,
+            AXRuntimeLlmBudgetResolver budgetResolver,
+            AXLlmClient llmClient,
+            AXSessionController sessionController,
+            AXMemorySystem memorySystem,
+            AXRecentDialogueSystem recentDialogueSystem,
+            AXOutputProcessor outputProcessor,
+            AXMemoryRetriever memoryRetriever,
+            AXTurnStatusPublisher statusPublisher,
+            boolean allowInterruption,
+            DiagnosticSink diagnostics
+    ) {
         this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
         this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
         this.inputNormalizer = Objects.requireNonNull(inputNormalizer, "inputNormalizer");
@@ -178,6 +224,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         this.memoryRetriever = memoryRetriever;
         this.statusPublisher = statusPublisher;
         this.allowInterruption = allowInterruption;
+        this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
     }
 
     public AXTurnOrchestrator(
@@ -235,6 +282,14 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return;
         }
         AXTurnExecution execution = new AXTurnExecution(generation.incrementAndGet(), deliveryEnvelope, delivery, scope);
+        execution.latencyTracker(new AXTurnLatencyTracker(
+                diagnostics,
+                System::nanoTime,
+                delivery.sessionId(),
+                delivery.requestId(),
+                delivery.turnId()
+        ));
+        execution.latencyTracker().mark(AXTurnLatencyStage.IA_DELIVERY);
         execution.requestKey(input.requestKey());
         activeExecution.set(execution);
         if (statusPublisher != null) {
@@ -307,12 +362,19 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
         LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context, contextBudget)
                 .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
+        execution.latencyTracker().mark(AXTurnLatencyStage.PROMPT_READY);
         extendSessionIfNeeded(deliveryEnvelope, delivery);
         appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
-        AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(deliveryEnvelope, AXOutputContext.from(delivery), isChatLane(llmPayload));
+        AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(
+                deliveryEnvelope,
+                AXOutputContext.from(delivery),
+                isChatLane(llmPayload),
+                () -> execution.latencyTracker().mark(AXTurnLatencyStage.TTS_SUBMITTED)
+        );
         if (statusPublisher != null) {
             statusPublisher.active(execution, "THINKING", allowInterruption);
         }
+        execution.latencyTracker().mark(AXTurnLatencyStage.LLM_SUBMITTED);
         TianshuEnvelope llmEnvelope = llmClient.submit(
                 deliveryEnvelope,
                 llmPayload,
@@ -459,6 +521,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 return;
             }
             publishRespondingOnce();
+            execution.latencyTracker().mark(AXTurnLatencyStage.LLM_FIRST_TOKEN);
             streamed.append(payload.text());
             appendOutput(payload.text(), "output.stream_failed");
         }
@@ -574,6 +637,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 return false;
             }
             try {
+                execution.latencyTracker().mark(AXTurnLatencyStage.AX_FIRST_SENTENCE);
                 outputTurn.append(text);
                 execution.appendDisplayedText(text);
                 return true;

@@ -10,8 +10,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ClientDiagnosticRouterTest {
@@ -93,6 +95,50 @@ final class ClientDiagnosticRouterTest {
         Path logFile = root.resolve("logs/tianshu-diagnostics.log");
         assertTrue(Files.exists(logFile));
         assertTrue(Files.exists(logFile.resolveSibling("tianshu-diagnostics.log.1")));
+    }
+
+    @Test
+    void enabledDiagnosticCanBeForwardedAsOneLineSummary() throws Exception {
+        Path root = Files.createTempDirectory("tianshu-diagnostics-chat");
+        java.util.List<String> messages = new java.util.ArrayList<>();
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16, 8L * 1024L * 1024L, 5, messages::add);
+        router.publish(event("module.ax", "LLM_SUBMITTED"));
+        router.close();
+
+        assertEquals(1, messages.size());
+        assertTrue(messages.get(0).contains("module.ax"));
+        assertTrue(messages.get(0).contains("LLM_SUBMITTED"));
+        assertTrue(messages.get(0).contains("raw-content"));
+    }
+
+    @Test
+    void ordinaryRuntimeLogIsWrittenWithoutDebugChatSummary() throws Exception {
+        Path root = Files.createTempDirectory("tianshu-runtime-log");
+        java.util.List<String> messages = new java.util.ArrayList<>();
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16,
+                8L * 1024L * 1024L, 5, messages::add);
+        router.info("runtime.started");
+        router.warn("runtime.warning");
+        router.error("runtime.failed", new IllegalStateException("broken"));
+        router.close();
+
+        String content = Files.readString(root.resolve("logs/tianshu-diagnostics.log"), StandardCharsets.UTF_8);
+        assertTrue(content.contains("runtime.started"));
+        assertTrue(content.contains("runtime.warning"));
+        assertTrue(content.contains("runtime.failed"));
+        assertTrue(messages.isEmpty());
+    }
+
+    @Test
+    void clientDiagnosticImplementationDoesNotDependOnHostLogger() throws Exception {
+        Path sourceRoot = Path.of("src/main/java/com/rheinmetal/tianshu/client/diagnostics");
+        try (Stream<Path> files = Files.walk(sourceRoot)) {
+            for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                String source = Files.readString(file, StandardCharsets.UTF_8);
+                assertFalse(source.contains("System.Logger"), () -> "Host logger dependency in " + file);
+                assertFalse(source.contains("org.slf4j"), () -> "Host logger dependency in " + file);
+            }
+        }
     }
 
     private static DiagnosticEvent event(String moduleId, String code) {

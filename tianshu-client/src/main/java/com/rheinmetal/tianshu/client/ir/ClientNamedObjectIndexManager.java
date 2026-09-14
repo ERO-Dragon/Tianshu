@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.ir;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.function.ir.core.IRCommandService;
 import com.rheinmetal.tianshu.function.ir.core.IRParseResult;
 import com.rheinmetal.tianshu.function.ir.core.IRSnapshot;
@@ -22,7 +23,7 @@ import java.util.function.Supplier;
 
 /** Client-lifetime IR index. It is shared by all world sessions and owns one bounded worker. */
 public final class ClientNamedObjectIndexManager implements AutoCloseable {
-    private static final System.Logger LOGGER = System.getLogger(ClientNamedObjectIndexManager.class.getName());
+    private final LogSink logSink;
 
     private final IRCommandService irService = new IRCommandService();
     private final NamedObjectDictionaryProvider dictionaryProvider;
@@ -38,8 +39,18 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
             Path cacheDirectory,
             Supplier<String> languageCodeSupplier
     ) {
+        this(dictionaryProvider, cacheDirectory, languageCodeSupplier, LogSink.NOOP);
+    }
+
+    public ClientNamedObjectIndexManager(
+            NamedObjectDictionaryProvider dictionaryProvider,
+            Path cacheDirectory,
+            Supplier<String> languageCodeSupplier,
+            LogSink logSink
+    ) {
         this.dictionaryProvider = Objects.requireNonNull(dictionaryProvider, "dictionaryProvider");
         this.cacheStore = new IRCacheStore(cacheDirectory, languageCodeSupplier);
+        this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.indexExecutor = new ThreadPoolExecutor(
                 1,
                 1,
@@ -140,7 +151,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
             }
             result.complete(rebuildIndexNow(reason, taskGeneration));
         } catch (RuntimeException failure) {
-            LOGGER.log(System.Logger.Level.ERROR, "IR named object index rebuild failed, reason=" + reason, failure);
+            logSink.error("ir.index.rebuild_failed reason=" + reason, failure);
             result.complete(false);
         } catch (Error failure) {
             result.completeExceptionally(failure);
@@ -154,7 +165,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
             return false;
         }
         if (dictionary.isEmpty()) {
-            LOGGER.log(System.Logger.Level.WARNING, "IR named object dictionary is empty, clear index, reason=" + reason);
+            logSink.warn("ir.index.dictionary_empty reason=" + reason);
             irService.clear();
             return false;
         }
@@ -191,7 +202,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
         try {
             return cacheStore.loadIfMatches(fingerprint);
         } catch (IOException exception) {
-            LOGGER.log(System.Logger.Level.WARNING, "IR index cache read failed, reason=" + reason, exception);
+            logSink.warn("ir.index.cache_read_failed reason=" + reason + " exception=" + exception);
             return null;
         }
     }
@@ -200,7 +211,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
         try {
             cacheStore.save(irService.snapshot(fingerprint));
         } catch (IOException exception) {
-            LOGGER.log(System.Logger.Level.WARNING, "IR index cache write failed, reason=" + reason, exception);
+            logSink.warn("ir.index.cache_write_failed reason=" + reason + " exception=" + exception);
         }
     }
 

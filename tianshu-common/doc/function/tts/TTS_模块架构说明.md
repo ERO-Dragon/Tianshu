@@ -180,7 +180,7 @@ TTS 复用 model 域下载能力，不重写 transport：
 - GitHub archive 支持 proxy 到 direct URI 降级。
 - 下载使用 staging、完整性校验、暂停/继续/取消和原子提交，半成品目录不可被选为模型。
 
-TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务，并受 TTS 模块诊断开关控制。backend 不自行创建日志文件或线程。
+TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务。Debug 构建中由设置页右下角的全局 Debug 开关统一控制结构化诊断；所有天枢运行日志和已启用的诊断事件由 Client 写入独立的 `logs/tianshu-diagnostics.log`，backend 不自行创建日志文件或线程。
 
 ## 10. 配置和 GUI
 

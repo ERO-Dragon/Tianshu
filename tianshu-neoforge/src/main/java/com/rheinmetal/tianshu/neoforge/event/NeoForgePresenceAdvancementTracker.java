@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.mojang.logging.LogUtils;
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
@@ -11,7 +11,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,10 +21,17 @@ import java.util.Optional;
 import java.util.Set;
 
 final class NeoForgePresenceAdvancementTracker {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
+    private final LogSink logSink;
     private final Set<String> completedAdvancementIds = new HashSet<>();
     private boolean baselineInitialized;
+
+    NeoForgePresenceAdvancementTracker() {
+        this(LogSink.NOOP);
+    }
+
+    NeoForgePresenceAdvancementTracker(LogSink logSink) {
+        this.logSink = logSink == null ? LogSink.NOOP : logSink;
+    }
 
     void reset() {
         completedAdvancementIds.clear();
@@ -138,7 +144,8 @@ final class NeoForgePresenceAdvancementTracker {
                 }
             }
         } catch (RuntimeException exception) {
-            LOGGER.warn("NEOFORGE_PRESENCE_ADVANCEMENT_RESOLVE_FAILED advancementId={} detail={}", advancementId, exception.getMessage());
+            logSink.warn("neoforge.presence.advancement_resolve_failed advancementId=" + advancementId
+                    + " detail=" + exception.getMessage());
         }
         return null;
     }

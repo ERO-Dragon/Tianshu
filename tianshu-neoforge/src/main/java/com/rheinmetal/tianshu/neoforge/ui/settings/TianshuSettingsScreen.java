@@ -148,7 +148,7 @@ public final class TianshuSettingsScreen extends Screen {
 
     private void addBottomActions(SettingsScreenLayout layout) {
         int margin = 8;
-        int debugWidth = 110;
+        int debugWidth = debugSession == null ? 0 : 110;
         int buttonHeight = 20;
         int gap = 8;
         int y = layout.actionsY();
@@ -171,6 +171,9 @@ public final class TianshuSettingsScreen extends Screen {
         saveButton.active = coordinator().canSave();
         addRenderableWidget(saveButton);
 
+        if (debugSession == null) {
+            return;
+        }
         Button debugButton = Button.builder(debugLabel(), button -> {
                     debugSession.toggle();
                     rebuildCurrentPage();

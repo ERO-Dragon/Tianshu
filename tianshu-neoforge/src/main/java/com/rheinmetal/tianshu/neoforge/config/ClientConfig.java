@@ -339,7 +339,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     @Override
     public boolean isDebugEnabled() {
-        return DEBUG_ENABLED.get();
+        return TianshuBuildProfile.debugBuild() && DEBUG_ENABLED.get();
     }
 
     @Override

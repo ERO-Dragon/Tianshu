@@ -23,6 +23,8 @@ final class NeoForgeDiagnosticTextBoundaryTest {
                 String source = Files.readString(file, StandardCharsets.UTF_8);
                 assertFalse(HAN_TEXT.matcher(source).find(), () -> "Hardcoded diagnostic text in " + file);
                 assertFalse(source.contains("Presence failed to"), () -> "Unstable diagnostic sentence in " + file);
+                assertFalse(source.contains("org.slf4j"), () -> "NeoForge host logger dependency in " + file);
+                assertFalse(source.contains("System.Logger"), () -> "NeoForge host logger dependency in " + file);
             }
         }
     }

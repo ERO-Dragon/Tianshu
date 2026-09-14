@@ -15,13 +15,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class ClientDiagnosticWriter implements AutoCloseable {
-    private static final System.Logger LOGGER = System.getLogger(ClientDiagnosticWriter.class.getName());
     private static final int QUEUE_CAPACITY = 2_048;
     private static final long MAX_FILE_BYTES = 8L * 1024L * 1024L;
-    private static final int MAX_ARCHIVES = 3;
+    private static final int MAX_ARCHIVES = 5;
 
     private final Path logFile;
-    private final ArrayBlockingQueue<DiagnosticEvent> queue;
+    private final ArrayBlockingQueue<String> queue;
     private final long maxFileBytes;
     private final int maxArchives;
     private final AtomicBoolean accepting = new AtomicBoolean(true);
@@ -43,7 +42,14 @@ final class ClientDiagnosticWriter implements AutoCloseable {
     }
 
     boolean offer(DiagnosticEvent event) {
-        return accepting.get() && queue.offer(event);
+        return accepting.get() && queue.offer(serialize(event));
+    }
+
+    boolean offerRuntime(String level, String message, Throwable failure) {
+        if (!accepting.get()) {
+            return false;
+        }
+        return queue.offer(serializeRuntime(level, message, failure));
     }
 
     @Override
@@ -57,9 +63,7 @@ final class ClientDiagnosticWriter implements AutoCloseable {
         }
         worker.interrupt();
         try {
-            if (!terminated.await(5L, TimeUnit.SECONDS)) {
-                LOGGER.log(System.Logger.Level.WARNING, "Tianshu diagnostic writer did not flush before timeout");
-            }
+            terminated.await(5L, TimeUnit.SECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
@@ -69,16 +73,16 @@ final class ClientDiagnosticWriter implements AutoCloseable {
         BufferedWriter writer = null;
         try {
             while (accepting.get() || !queue.isEmpty()) {
-                DiagnosticEvent event;
+                String line;
                 try {
-                    event = queue.poll(250L, TimeUnit.MILLISECONDS);
+                    line = queue.poll(250L, TimeUnit.MILLISECONDS);
                 } catch (InterruptedException interrupted) {
                     if (!accepting.get() && queue.isEmpty()) {
                         break;
                     }
                     continue;
                 }
-                if (event == null) {
+                if (line == null) {
                     continue;
                 }
                 if (writer == null) {
@@ -91,18 +95,20 @@ final class ClientDiagnosticWriter implements AutoCloseable {
                     rotateIfNeeded();
                     writer = openWriter();
                 }
-                writer.write(serialize(event));
+                writer.write(line);
                 writer.newLine();
                 writer.flush();
             }
         } catch (Exception exception) {
-            LOGGER.log(System.Logger.Level.ERROR, "Tianshu diagnostic writer failed", exception);
+            // Stop accepting new records after an unrecoverable file error. The
+            // router counts rejected records, while the host remains untouched.
+            accepting.set(false);
         } finally {
             if (writer != null) {
                 try {
                     writer.close();
                 } catch (IOException ignored) {
-                    // The writer is already shutting down; the primary failure is logged above.
+                    // The writer is already shutting down; no host logger is used.
                 }
             }
             terminated.countDown();
@@ -149,6 +155,19 @@ final class ClientDiagnosticWriter implements AutoCloseable {
             json.append('\"').append(escape(entry.getKey())).append("\":\"").append(escape(entry.getValue())).append('\"');
         }
         return json.append("}}" ).toString();
+    }
+
+    private static String serializeRuntime(String level, String message, Throwable failure) {
+        StringBuilder json = new StringBuilder(192)
+                .append('{')
+                .append("\"type\":\"runtime\",")
+                .append("\"severity\":\"").append(escape(level)).append("\",")
+                .append("\"timestamp\":").append(System.currentTimeMillis()).append(',')
+                .append("\"message\":\"").append(escape(message == null ? "" : message)).append('"');
+        if (failure != null) {
+            json.append(",\"exception\":\"").append(escape(failure.toString())).append('"');
+        }
+        return json.append('}').toString();
     }
 
     private static String escape(String value) {

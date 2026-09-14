@@ -8,6 +8,26 @@ plugins {
 version = mod_version
 group = mod_group_id
 
+// Running the NeoForge client from the Gradle panel is the development path,
+// so it defaults to the Debug channel. Artifact builds remain Release by
+// default. An explicit property always wins over the task-based default.
+def runClientRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.tokenize(':').last() == 'runClient'
+}
+def tianshuDebugBuild = providers.gradleProperty('tianshuDebugBuild')
+        .map { it.toBoolean() }
+        .orElse(runClientRequested)
+def tianshuBuildProfile = layout.buildDirectory.file('generated/resources/tianshu-build.properties')
+tasks.register('generateTianshuBuildProfile') {
+    inputs.property('debugBuild', tianshuDebugBuild)
+    outputs.file(tianshuBuildProfile)
+    doLast {
+        def output = tianshuBuildProfile.get().asFile
+        output.parentFile.mkdirs()
+        output.text = "debugBuild=${tianshuDebugBuild.get()}\n"
+    }
+}
+
 base {
     archivesName = mod_id
 }
@@ -69,6 +89,7 @@ test {
 
 sourceSets.main.resources {
     srcDir('src/generated/resources')
+    srcDir(tianshuBuildProfile.map { it.asFile.parentFile })
     exclude("**/*.bbmodel")
     exclude("src/generated/**/.cache")
 }
@@ -124,4 +145,7 @@ idea {
         downloadSources = true
         downloadJavadoc = true
     }
+}
+tasks.named('processResources') {
+    dependsOn tasks.named('generateTianshuBuildProfile')
 }
