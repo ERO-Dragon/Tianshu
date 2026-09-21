@@ -5,8 +5,6 @@ import com.google.gson.GsonBuilder;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.StandardCopyOption;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,11 +78,7 @@ public class ModelSettings {
             String json = GSON.toJson(settings);
             staging = Files.createTempFile(modelDir, ".model-settings-", ".tmp");
             Files.writeString(staging, json, StandardCharsets.UTF_8);
-            try {
-                Files.move(staging, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(staging, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            ModelDownloadFileMover.moveReplacing(staging, file);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {

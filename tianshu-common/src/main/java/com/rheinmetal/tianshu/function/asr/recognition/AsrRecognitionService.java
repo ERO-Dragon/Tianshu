@@ -165,6 +165,7 @@ public final class AsrRecognitionService {
         if (!runtime.hasAudio()) {
             return;
         }
+        env.info("asr.recognition.continuous.flush mode=" + inputMode + " sessionId=" + runtime.sessionId());
         adapter.publishRecognitionActivity(true, runtime.sessionId());
         try {
             publishStreamingResult(flushRuntime(runtime), runtime, inputMode, onResult);

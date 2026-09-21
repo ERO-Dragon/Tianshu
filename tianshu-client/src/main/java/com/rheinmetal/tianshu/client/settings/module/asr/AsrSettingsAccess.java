@@ -10,6 +10,5 @@ public interface AsrSettingsAccess extends AsrConfiguration {
     void setTriggerMode(com.rheinmetal.tianshu.constant.TriggerMode mode);
     void setCustomAsrName(String name);
     void setAsrHighPassFilterEnabled(boolean enabled);
-    void setAsrVadEnabled(boolean enabled);
     void save();
 }

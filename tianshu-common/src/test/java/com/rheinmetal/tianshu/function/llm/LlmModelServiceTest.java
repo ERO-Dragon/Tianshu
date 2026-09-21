@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -49,6 +50,24 @@ class LlmModelServiceTest {
 
             assertNull(service.resolveModelDir(null));
             assertEquals(0L, service.modelSizeBytes(modelInfo("", "")));
+        }
+    }
+
+    @Test
+    void startupCleanupKeepsPartialModelFileForResume() throws Exception {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        String modelName = "qwen3.5-2B-MTP-unsloth-Q4_K_M";
+        Path partial = config.getLlmBasePath()
+                .resolve("model")
+                .resolve(modelName)
+                .resolve("Qwen3.5-2B-Q4_K_M.gguf.downloading");
+        Files.createDirectories(partial.getParent());
+        Files.writeString(partial, "partial", StandardCharsets.UTF_8);
+
+        try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
+            new LlmModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
+            Thread.sleep(100L);
+            assertTrue(Files.exists(partial));
         }
     }
 

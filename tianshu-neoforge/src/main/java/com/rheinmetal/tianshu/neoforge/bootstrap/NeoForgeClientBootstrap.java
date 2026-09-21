@@ -107,9 +107,10 @@ public final class NeoForgeClientBootstrap {
         try {
             NeoForgeEnvironment environment = new NeoForgeEnvironment(gameDirectory);
             ClientDiagnosticMessageSink chatSink = message -> Minecraft.getInstance().execute(() -> {
-                if (Minecraft.getInstance().player != null && message != null && !message.isBlank()) {
+                if (Minecraft.getInstance().player != null && message != null) {
                     Minecraft.getInstance().player.displayClientMessage(
-                            net.minecraft.network.chat.Component.literal(message), false
+                            net.minecraft.network.chat.Component.translatable(
+                                    message.translationKey(), message.arguments().toArray()), false
                     );
                 }
             });

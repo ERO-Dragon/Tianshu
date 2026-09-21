@@ -83,7 +83,6 @@ class AsrEngineBootstrapActivityTest {
         @Override public String getSelectedMicName() { return ""; }
         @Override public boolean isAsrRnnoiseEnabled() { return false; }
         @Override public boolean isAsrHighPassFilterEnabled() { return true; }
-        @Override public boolean isAsrVadEnabled() { return true; }
         @Override public String getCustomAsrName() { return modelName; }
         @Override public Path getAsrBasePath() { return basePath; }
     }

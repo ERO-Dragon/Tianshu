@@ -25,6 +25,26 @@ class ModelDownloadHttpClientTest {
     Path tempDir;
 
     @Test
+    void fallsBackToRegularReplacementWhenAtomicMoveIsRejected() throws Exception {
+        Path source = tempDir.resolve("source.bin");
+        Path target = tempDir.resolve("target.bin");
+        Files.writeString(source, "new", StandardCharsets.UTF_8);
+        Files.writeString(target, "old", StandardCharsets.UTF_8);
+
+        ModelDownloadFileMover.moveReplacing(source, target, (from, to, options) -> {
+            for (java.nio.file.CopyOption option : options) {
+                if (option == java.nio.file.StandardCopyOption.ATOMIC_MOVE) {
+                    throw new java.nio.file.FileSystemException(from.toString(), to.toString(), "atomic move rejected");
+                }
+            }
+            return Files.move(from, to, options);
+        });
+
+        assertEquals("new", Files.readString(target, StandardCharsets.UTF_8));
+        assertFalse(Files.exists(source));
+    }
+
+    @Test
     void switchesToFallbackCandidateAndReportsProgress() throws Exception {
         try (ModelDownloadTestServer server = new ModelDownloadTestServer()) {
             server.enqueue("/primary", ModelDownloadTestServer.text(503, "unavailable"));

@@ -138,6 +138,7 @@ public final class AsrController {
         }
         long sessionId = sessionManager.activeRecognitionSession();
         recognition.forceFlush(sessionId);
+        audioCapture.resetStreamSegmentBoundary();
     }
 
     private void cancelInput() {
@@ -201,12 +202,20 @@ public final class AsrController {
             sessionManager.beginRecognitionSession(sessionId);
         }
         long activeSessionId = sessionId;
-        if (!recognition.startStreaming(activeSessionId, this::publishIfCurrent, config.isAsrVadEnabled())) {
+        boolean vadEnabled = mode == TriggerMode.ALWAYS;
+        if (!recognition.startStreaming(activeSessionId, this::publishIfCurrent, vadEnabled)) {
             stateMachine.moveTo(AsrState.ERROR);
             return;
         }
         audioCapture.startStreamCapture(activeSessionId,
-                (chunk, decision) -> recognition.acceptAudioChunk(chunk, activeSessionId, decision));
+                (chunk, decision) -> {
+                    if (decision != null && decision.startsSegment()) {
+                        env.info("asr.vad.segment_started sessionId=" + activeSessionId);
+                    } else if (decision != null && decision.endsSegment()) {
+                        env.info("asr.vad.segment_ended sessionId=" + activeSessionId);
+                    }
+                    recognition.acceptAudioChunk(chunk, activeSessionId, decision);
+                });
         stateMachine.moveTo(AsrState.STREAMING);
         env.info("asr.continuous_input.started mode=" + mode + " sessionId=" + activeSessionId);
     }

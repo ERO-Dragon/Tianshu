@@ -94,7 +94,7 @@ public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
 | `sessionId` | `long` | 对应的输入 session。 |
 | `occurredAtMillis` | `long` | 状态变化时间；传入非正值时 payload 会使用当前时间。 |
 
-该事件表示连续输入中经过高通等音频处理后的说话活动状态，不表示按键按下、麦克风刚启动或最终文本已经产生。只有 ASR VAD 设置开启时才会发布该事件；VAD 关闭时没有事件是正常行为。它也不是自动分段完成通知；需要识别结果时仍应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
+该事件表示连续输入中经过高通等音频处理后的说话活动状态，不表示按键按下、麦克风刚启动或最终文本已经产生。只有 `TriggerMode.ALWAYS` 的持续输入路径会启用 VAD 并发布该事件；`PUSH_TO_TALK` 不使用 VAD，也不会发布该事件。它也不是自动分段完成通知；需要识别结果时仍应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
 
 ## 5. 订阅 ASR 模块状态
 

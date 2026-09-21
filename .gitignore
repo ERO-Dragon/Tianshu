@@ -50,4 +50,3 @@ tianshu-common/src/main/resources/JavaLlamaServer/*.jar
 *.env
 *.key
 *.pem
-docs

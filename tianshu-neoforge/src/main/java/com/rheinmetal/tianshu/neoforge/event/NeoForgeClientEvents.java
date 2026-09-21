@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
+import com.rheinmetal.tianshu.neoforge.ui.hud.AsrVadDebugOverlay;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -33,6 +34,7 @@ public final class NeoForgeClientEvents {
     private final NeoForgeClientLifecycleAdapter lifecycleAdapter;
     private final PresenceClientRuntime presenceRuntime;
     private final PresenceHudRenderer presenceHudRenderer;
+    private final AsrVadDebugOverlay asrVadDebugOverlay;
     private final NeoForgeWorldIdentityCapture worldIdentityCapture;
     private final Supplier<KeyMapping> voiceKeySupplier;
     private final NeoForgeVoiceInputController voiceInputController;
@@ -54,6 +56,7 @@ public final class NeoForgeClientEvents {
         this.lifecycleAdapter = Objects.requireNonNull(lifecycleAdapter, "lifecycleAdapter");
         this.presenceRuntime = Objects.requireNonNull(presenceRuntime, "presenceRuntime");
         this.presenceHudRenderer = Objects.requireNonNull(presenceHudRenderer, "presenceHudRenderer");
+        this.asrVadDebugOverlay = new AsrVadDebugOverlay(config, coreManager);
         this.worldIdentityCapture = Objects.requireNonNull(worldIdentityCapture, "worldIdentityCapture");
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
@@ -129,6 +132,7 @@ public final class NeoForgeClientEvents {
     public void onRenderGui(RenderGuiEvent.Post event) {
         ClientLlmRuntimeBridge.markFrame();
         presenceHudRenderer.render(event.getGuiGraphics());
+        asrVadDebugOverlay.render(event.getGuiGraphics());
     }
 
     @SubscribeEvent

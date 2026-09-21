@@ -37,6 +37,7 @@ public final class TtsModelDownloadCoordinator {
         private final Object pauseMonitor = new Object();
         private final AtomicBoolean paused = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicBoolean keepPartialDownload = new AtomicBoolean(false);
 
         private DownloadSession(HuggingFaceDownloader hfDownloader, ModelArchiveDownloader archiveDownloader) {
             this.hfDownloader = hfDownloader;
@@ -49,6 +50,10 @@ public final class TtsModelDownloadCoordinator {
 
         public boolean isCancelled() {
             return cancelled.get();
+        }
+
+        public boolean shouldKeepPartialDownload() {
+            return keepPartialDownload.get();
         }
 
         public void pause() {
@@ -69,8 +74,17 @@ public final class TtsModelDownloadCoordinator {
         }
 
         public void cancel() {
+            cancel(false);
+        }
+
+        public void cancelKeepingPartial() {
+            cancel(true);
+        }
+
+        private void cancel(boolean keepPartial) {
             synchronized (pauseMonitor) {
                 cancelled.set(true);
+                keepPartialDownload.set(keepPartial);
                 paused.set(false);
                 pauseMonitor.notifyAll();
             }

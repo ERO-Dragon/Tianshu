@@ -247,10 +247,12 @@ public class TtsModelService {
             List<Path> paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList();
             for (Path path : paths) {
                 String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
-                if (Files.isRegularFile(path) && (name.endsWith(".tmp") || name.endsWith(".downloading"))) {
+                if (Files.isRegularFile(path) && name.endsWith(".tmp")) {
                     Files.deleteIfExists(path);
                 } else if (Files.isDirectory(path) && (name.endsWith("-extract") || name.endsWith("-staging"))) {
-                    deleteRecursively(path);
+                    if (name.endsWith("-extract")) {
+                        deleteRecursively(path);
+                    }
                 }
             }
         } catch (IOException e) {
@@ -525,6 +527,14 @@ public class TtsModelService {
         publishWaiting("tianshu.presence.module.tts.download_cancelling");
     }
 
+    /** Cancels an in-flight model transfer when the owning module stops. */
+    public void stop() {
+        DownloadTask task = activeDownload.get();
+        if (task != null) {
+            task.session().cancelKeepingPartial();
+        }
+    }
+
     private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
         try {
             if (task.hadModelContent()) {
@@ -532,7 +542,6 @@ public class TtsModelService {
                 return;
             }
             Path stagingDir = stagingDir(task.modelDir());
-            deleteRecursivelyIfExists(stagingDir);
             Files.createDirectories(stagingDir);
 
             if (info.downloadUri != null && !info.downloadUri.isBlank()) {
@@ -785,7 +794,9 @@ public class TtsModelService {
         if (!finishTask(task)) {
             return;
         }
-        cleanupIncompleteDownload(task);
+        if (!task.session().shouldKeepPartialDownload()) {
+            cleanupIncompleteDownload(task);
+        }
         refreshModelAvailability();
         int progress = downloadStatus.get().progress().percent();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.cancelled"));
@@ -799,7 +810,6 @@ public class TtsModelService {
         if (!finishTask(task)) {
             return;
         }
-        cleanupIncompleteDownload(task);
         refreshModelAvailability();
         int progress = downloadStatus.get().progress().percent();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.failed"));

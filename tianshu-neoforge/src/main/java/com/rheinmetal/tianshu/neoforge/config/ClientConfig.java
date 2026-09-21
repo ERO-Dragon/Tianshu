@@ -39,7 +39,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<String> ASR_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue ASR_HIGH_PASS_FILTER_ENABLED;
     public static final ModConfigSpec.BooleanValue ASR_RNNOISE_ENABLED;
-    public static final ModConfigSpec.BooleanValue ASR_VAD_ENABLED;
     public static final ModConfigSpec.BooleanValue TTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> TTS_PREVIEW_TEXT;
     public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
@@ -79,7 +78,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         TRIGGER_MODE = builder.defineEnum("triggerMode", TriggerMode.PUSH_TO_TALK);
         ASR_HIGH_PASS_FILTER_ENABLED = builder.define("highPassFilterEnabled", true);
         ASR_RNNOISE_ENABLED = builder.define("rnnoiseEnabled", false);
-        ASR_VAD_ENABLED = builder.define("vadEnabled", false);
         builder.pop();
 
         builder.push("tts");
@@ -194,15 +192,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     public void setAsrHighPassFilterEnabled(boolean enabled) {
         ASR_HIGH_PASS_FILTER_ENABLED.set(enabled);
-    }
-
-    @Override
-    public boolean isAsrVadEnabled() {
-        return ASR_VAD_ENABLED.get();
-    }
-
-    public void setAsrVadEnabled(boolean enabled) {
-        ASR_VAD_ENABLED.set(enabled);
     }
 
     @Override

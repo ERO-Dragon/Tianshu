@@ -15,8 +15,6 @@ public interface AsrConfiguration {
 
     boolean isAsrHighPassFilterEnabled();
 
-    boolean isAsrVadEnabled();
-
     String getCustomAsrName();
 
     Path getAsrBasePath();

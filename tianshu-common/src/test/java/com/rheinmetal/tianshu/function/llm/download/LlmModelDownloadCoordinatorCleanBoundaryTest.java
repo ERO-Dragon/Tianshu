@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LlmModelDownloadCoordinatorCleanBoundaryTest {
     @Test
@@ -51,6 +52,16 @@ class LlmModelDownloadCoordinatorCleanBoundaryTest {
 
         CompletionException failure = assertThrows(CompletionException.class, waiting::join);
         assertInstanceOf(LlmModelDownloader.DownloadCancelledException.class, failure.getCause());
+    }
+
+    @Test
+    void lifecycleCancellationMarksPartialDownloadForResume() {
+        LlmModelDownloadCoordinator.DownloadSession session = newSession();
+
+        session.cancelKeepingPartial();
+
+        assertTrue(session.isCancelled());
+        assertTrue(session.shouldKeepPartialDownload());
     }
 
     private static LlmModelDownloadCoordinator.DownloadSession newSession() {

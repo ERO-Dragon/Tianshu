@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.asr.audio;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrVadSpeechSegmenter;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -58,6 +60,133 @@ class AudioCaptureServiceTest {
     }
 
     @Test
+    void streamCaptureDetectsQuietSpeechAfterHighPassProcessing() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        List<Boolean> states = new ArrayList<>();
+        AudioCaptureService service = new AudioCaptureService(
+                bridge,
+                new FakeGameEnvironment(),
+                (speaking, sessionId, occurredAtMillis) -> states.add(speaking)
+        );
+        service.setFrameProcessor(new HighPassFilterProcessor(16000, 80.0D));
+
+        service.startStreamCapture(42L, ignored -> { });
+        repeat(20, () -> bridge.push(sinePcm(0.015D, 220.0D, 16000, 1600)));
+        repeat(50, () -> bridge.push(pcm(0.0D, 1600)));
+
+        assertEquals(List.of(true, false), states);
+    }
+
+    @Test
+    void streamCaptureKeepsDetectingAfterManualCommitBoundary() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        List<AsrSpeechSegmenter.Decision> decisions = new ArrayList<>();
+        AudioCaptureService service = new AudioCaptureService(
+                bridge,
+                new FakeGameEnvironment(),
+                new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> { })
+        );
+
+        service.startStreamCapture(42L, (chunk, decision) -> decisions.add(decision));
+        emitSpeechAndSilence(bridge);
+        service.resetStreamSegmentBoundary();
+        emitSpeechAndSilence(bridge);
+
+        assertEquals(2, decisions.stream().filter(AsrSpeechSegmenter.Decision::startsSegment).count());
+        assertEquals(2, decisions.stream().filter(AsrSpeechSegmenter.Decision::endsSegment).count());
+    }
+
+    @Test
+    void lateStreamCallbackAfterStopCannotReachTheConsumer() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        List<AsrSpeechSegmenter.Decision> decisions = new ArrayList<>();
+        AudioCaptureService service = new AudioCaptureService(
+                bridge,
+                new FakeGameEnvironment(),
+                new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> { })
+        );
+
+        service.startStreamCapture(42L, (chunk, decision) -> decisions.add(decision));
+        Consumer<byte[]> staleCallback = bridge.lastStreamConsumer;
+        service.stopStreamCapture();
+
+        staleCallback.accept(pcm(0.03D, 160));
+
+        assertEquals(List.of(), decisions);
+    }
+
+    @Test
+    void replacingSegmenterDuringStreamRebindsTheActiveSession() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        RecordingSegmenter original = new RecordingSegmenter();
+        RecordingSegmenter replacement = new RecordingSegmenter();
+        AudioCaptureService service = new AudioCaptureService(
+                bridge,
+                new FakeGameEnvironment(),
+                original
+        );
+
+        service.startStreamCapture(42L, (chunk, decision) -> { });
+        service.setSpeechSegmenter(replacement);
+
+        assertEquals(List.of(42L), original.startedSessions);
+        assertEquals(List.of(42L), replacement.startedSessions);
+    }
+
+    @Test
+    void streamCaptureRecordsRawAndProcessedWaveformsForEnabledDiagnostics() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
+        diagnostics.setEnabled(true);
+        AudioCaptureService service = new AudioCaptureService(
+                bridge,
+                new FakeGameEnvironment(),
+                new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> { }),
+                diagnostics
+        );
+        service.setFrameProcessor(audio -> pcm(0.01D, audio.length / 2));
+
+        service.startStreamCapture(42L, ignored -> { });
+        bridge.push(pcm(0.04D, 160));
+
+        AsrAudioDiagnostics.Snapshot snapshot = diagnostics.snapshot();
+        assertEquals(1, snapshot.sampleCount());
+        assertEquals(0.04F, snapshot.rawMax()[0], 0.01F);
+        assertEquals(0.01F, snapshot.processedMax()[0], 0.01F);
+        assertEquals(42L, snapshot.sessionId());
+
+        service.stopStreamCapture();
+        assertFalse(diagnostics.snapshot().captureActive());
+    }
+
+    @Test
+    void diagnosticsPreservesRawWaveformWhenProcessorMutatesInput() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
+        diagnostics.setEnabled(true);
+        AudioCaptureService service = new AudioCaptureService(
+                bridge,
+                new FakeGameEnvironment(),
+                AsrSpeechSegmenter.disabled(),
+                diagnostics
+        );
+        service.setFrameProcessor(audio -> {
+            for (int index = 0; index + 1 < audio.length; index += 2) {
+                audio[index] = 0;
+                audio[index + 1] = 0;
+            }
+            return audio;
+        });
+
+        service.startStreamCapture(42L, ignored -> { });
+        bridge.push(pcm(0.04D, 160));
+
+        AsrAudioDiagnostics.Snapshot snapshot = diagnostics.snapshot();
+        assertEquals(0.04F, snapshot.rawMax()[0], 0.01F);
+        assertEquals(0.0F, snapshot.processedMax()[0], 0.001F);
+    }
+
+    @Test
     void ordinaryStopFailureDoesNotPreventRemainingHardwareCleanup() {
         FakeAudioBridge bridge = new FakeAudioBridge();
         bridge.stopRecordingFailure = new IllegalStateException("PTT stop failed");
@@ -102,6 +231,11 @@ class AudioCaptureServiceTest {
         }
     }
 
+    private static void emitSpeechAndSilence(FakeAudioBridge bridge) {
+        repeat(20, () -> bridge.push(sinePcm(0.015D, 220.0D, 16000, 1600)));
+        repeat(50, () -> bridge.push(pcm(0.0D, 1600)));
+    }
+
     private static byte[] pcm(double amplitude, int samples) {
         byte[] audio = new byte[samples * 2];
         short value = (short) Math.round(Math.max(-1.0D, Math.min(1.0D, amplitude)) * Short.MAX_VALUE);
@@ -112,8 +246,20 @@ class AudioCaptureServiceTest {
         return audio;
     }
 
+    private static byte[] sinePcm(double amplitude, double frequency, int sampleRate, int samples) {
+        byte[] audio = new byte[samples * 2];
+        for (int sample = 0; sample < samples; sample++) {
+            short value = (short) Math.round(Math.sin(2.0D * Math.PI * frequency * sample / sampleRate)
+                    * Math.max(-1.0D, Math.min(1.0D, amplitude)) * Short.MAX_VALUE);
+            audio[sample * 2] = (byte) (value & 0xFF);
+            audio[sample * 2 + 1] = (byte) ((value >>> 8) & 0xFF);
+        }
+        return audio;
+    }
+
     private static final class FakeAudioBridge implements IAudioBridge {
         private Consumer<byte[]> streamConsumer;
+        private Consumer<byte[]> lastStreamConsumer;
         private Throwable stopRecordingFailure;
         private int stopRecordingCalls;
         private int stopStreamRecordingCalls;
@@ -142,6 +288,7 @@ class AudioCaptureServiceTest {
         @Override
         public void startStreamRecording(Consumer<byte[]> onAudioChunk) {
             streamConsumer = onAudioChunk;
+            lastStreamConsumer = onAudioChunk;
         }
 
         @Override
@@ -229,6 +376,15 @@ class AudioCaptureServiceTest {
             if (failure instanceof Error error) {
                 throw error;
             }
+        }
+    }
+
+    private static final class RecordingSegmenter implements AsrSpeechSegmenter {
+        private final List<Long> startedSessions = new ArrayList<>();
+
+        @Override
+        public void start(long sessionId) {
+            startedSessions.add(sessionId);
         }
     }
 

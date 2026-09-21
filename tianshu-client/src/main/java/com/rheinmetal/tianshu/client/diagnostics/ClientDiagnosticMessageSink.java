@@ -4,5 +4,5 @@ package com.rheinmetal.tianshu.client.diagnostics;
 public interface ClientDiagnosticMessageSink {
     ClientDiagnosticMessageSink NOOP = message -> { };
 
-    void publish(String message);
+    void publish(ClientDiagnosticMessage message);
 }

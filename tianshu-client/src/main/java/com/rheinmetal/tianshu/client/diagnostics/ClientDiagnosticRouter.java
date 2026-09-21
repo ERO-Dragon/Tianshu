@@ -40,10 +40,13 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
         if (!writer.offer(event)) {
             droppedEvents.incrementAndGet();
         }
-        try {
-            messageSink.publish(summary(event));
-        } catch (RuntimeException failure) {
-            writer.offerRuntime("ERROR", "diagnostic.message_sink_failed", failure);
+        ClientDiagnosticMessage message = ClientDiagnosticProgress.messageFor(event);
+        if (message != null) {
+            try {
+                messageSink.publish(message);
+            } catch (RuntimeException failure) {
+                writer.offerRuntime("ERROR", "diagnostic.message_sink_failed", failure);
+            }
         }
     }
 
@@ -83,29 +86,4 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
         return droppedEvents.get();
     }
 
-    private static String summary(DiagnosticEvent event) {
-        StringBuilder message = new StringBuilder(96)
-                .append('[').append(event.moduleId()).append("] ")
-                .append(event.code()).append(" ")
-                .append(event.severity());
-        event.attributes().forEach((key, value) -> {
-            if ("text".equalsIgnoreCase(key) || "prompt".equalsIgnoreCase(key)
-                    || "output".equalsIgnoreCase(key) || "repairedText".equalsIgnoreCase(key)
-                    || "normalizedText".equalsIgnoreCase(key)) {
-                value = summarizeContent(value);
-            }
-            if (message.length() < 400) {
-                message.append(' ').append(key).append('=').append(value);
-            }
-        });
-        return message.length() > 420 ? message.substring(0, 420) + "…" : message.toString();
-    }
-
-    private static String summarizeContent(String value) {
-        if (value == null) {
-            return "";
-        }
-        String normalized = value.replaceAll("\\s+", " ").trim();
-        return normalized.length() <= 96 ? normalized : normalized.substring(0, 96) + "…";
-    }
 }

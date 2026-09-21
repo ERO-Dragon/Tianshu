@@ -8,8 +8,7 @@ public record AsrSettingsSnapshot(
         TriggerMode triggerMode,
         String modelName,
         boolean highPassFilterEnabled,
-        boolean rnnoiseEnabled,
-        boolean vadEnabled
+        boolean rnnoiseEnabled
 ) {
     public AsrSettingsSnapshot {
         selectedMicName = selectedMicName == null ? "" : selectedMicName;
@@ -24,8 +23,7 @@ public record AsrSettingsSnapshot(
                 config.getTriggerMode(),
                 modelName,
                 config.isAsrHighPassFilterEnabled(),
-                config.isAsrRnnoiseEnabled(),
-                config.isAsrVadEnabled()
+                config.isAsrRnnoiseEnabled()
         );
     }
 

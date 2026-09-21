@@ -245,16 +245,6 @@ public final class LlmModelService {
             return;
         }
         task.session().cancel();
-        executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId("module.llm")
-                        .lane(ExecutionLane.IO)
-                        .concurrencyKey("module.llm:model.download.cancel")
-                        .maxConcurrency(1)
-                        .queueCapacity(4)
-                        .build(),
-                task.session()::cancelActiveTransfers
-        );
         updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING), "");
         publishWaiting("tianshu.presence.module.llm.download_cancelling");
     }
@@ -269,17 +259,7 @@ public final class LlmModelService {
         if (task == null) {
             return;
         }
-        task.session().cancel();
-        executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId("module.llm")
-                        .lane(ExecutionLane.IO)
-                        .concurrencyKey("module.llm:model.download.stop")
-                        .maxConcurrency(1)
-                        .queueCapacity(1)
-                        .build(),
-                task.session()::cancelActiveTransfers
-        );
+        task.session().cancelKeepingPartial();
     }
 
     public DownloadSnapshot downloadSnapshot() {
@@ -425,7 +405,7 @@ public final class LlmModelService {
         try (var stream = Files.walk(modelDir)) {
             for (Path path : stream.filter(Files::isRegularFile).toList()) {
                 String fileName = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
-                if (fileName.endsWith(".tmp") || fileName.endsWith(".downloading")) {
+                if (fileName.endsWith(".tmp")) {
                     Files.deleteIfExists(path);
                 }
             }
@@ -476,7 +456,9 @@ public final class LlmModelService {
         if (!finishTask(task)) {
             return;
         }
-        cleanupCancelledDownload(task);
+        if (!task.session().shouldKeepPartialDownload()) {
+            cleanupCancelledDownload(task);
+        }
         refreshModelAvailability();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, downloadSnapshot.get().progress().percent(), STATUS_CANCELLED_KEY), "");
         publishWaiting("tianshu.presence.module.llm.download_cancelled");

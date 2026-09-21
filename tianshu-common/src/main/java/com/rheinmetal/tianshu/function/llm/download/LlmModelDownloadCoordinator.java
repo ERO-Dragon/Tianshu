@@ -24,6 +24,7 @@ public final class LlmModelDownloadCoordinator {
         private final LlmModelDownloader downloader;
         private final AtomicBoolean paused = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicBoolean keepPartialDownload = new AtomicBoolean(false);
         private final Object pauseMonitor = new Object();
         private volatile boolean cancelNotified;
 
@@ -37,6 +38,10 @@ public final class LlmModelDownloadCoordinator {
 
         public boolean isCancelled() {
             return cancelled.get();
+        }
+
+        public boolean shouldKeepPartialDownload() {
+            return keepPartialDownload.get();
         }
 
         public void pause() {
@@ -55,11 +60,23 @@ public final class LlmModelDownloadCoordinator {
         }
 
         public void cancel() {
-            cancelled.set(true);
-            paused.set(false);
             synchronized (pauseMonitor) {
+                cancelled.set(true);
+                keepPartialDownload.set(false);
+                paused.set(false);
                 pauseMonitor.notifyAll();
             }
+            cancelActiveTransfers();
+        }
+
+        public void cancelKeepingPartial() {
+            synchronized (pauseMonitor) {
+                cancelled.set(true);
+                keepPartialDownload.set(true);
+                paused.set(false);
+                pauseMonitor.notifyAll();
+            }
+            cancelActiveTransfers();
         }
 
         public void cancelActiveTransfers() {

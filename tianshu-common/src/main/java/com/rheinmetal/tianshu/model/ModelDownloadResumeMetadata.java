@@ -8,10 +8,8 @@ import java.io.Writer;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -118,11 +116,7 @@ record ModelDownloadResumeMetadata(
     }
 
     private static void move(Path source, Path target) throws java.io.IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException unsupported) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        ModelDownloadFileMover.moveReplacing(source, target);
     }
 
     enum ValidatorKind {

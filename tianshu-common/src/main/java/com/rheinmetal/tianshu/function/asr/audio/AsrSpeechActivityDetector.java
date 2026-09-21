@@ -3,13 +3,16 @@ package com.rheinmetal.tianshu.function.asr.audio;
 public final class AsrSpeechActivityDetector {
     private static final int BYTES_PER_SAMPLE = 2;
     private static final int DEFAULT_SAMPLE_RATE = 16000;
-    private static final double DEFAULT_MIN_START_RMS = 0.012D;
-    private static final double DEFAULT_MIN_STOP_RMS = 0.005D;
+    private static final double DEFAULT_MIN_START_RMS = 0.006D;
+    private static final double DEFAULT_MIN_STOP_RMS = 0.0025D;
     private static final double DEFAULT_NOISE_START_MULTIPLIER = 3.0D;
     private static final double DEFAULT_NOISE_STOP_MULTIPLIER = 1.5D;
     private static final double DEFAULT_INITIAL_NOISE_FLOOR = 0.002D;
     private static final double DEFAULT_MAX_START_THRESHOLD = 0.03D;
     private static final long DEFAULT_NOISE_UPDATE_COOLDOWN_MILLIS = 300L;
+    private static final long DEFAULT_STARTUP_CALIBRATION_MILLIS = 300L;
+    private static final double SPEAKING_NOISE_ADAPTATION_ALPHA = 0.20D;
+    private static final double SPEAKING_NOISE_ADAPTATION_LIMIT_MULTIPLIER = 2.0D;
     private static final long DEFAULT_MIN_SPEAKING_MILLIS = 300L;
     private static final long DEFAULT_SHORT_SPEECH_MILLIS = 2000L;
     private static final long DEFAULT_MEDIUM_SPEECH_MILLIS = 5000L;
@@ -22,6 +25,7 @@ public final class AsrSpeechActivityDetector {
     private final double minStopRms;
     private final double noiseStartMultiplier;
     private final double noiseStopMultiplier;
+    private final double initialNoiseFloor;
     private final double maxStartThreshold;
     private final double maxNoiseFloor;
     private final long noiseUpdateCooldownMillis;
@@ -37,7 +41,10 @@ public final class AsrSpeechActivityDetector {
     private long speakingMillis;
     private long silentMillis;
     private long silentSinceLastSpeechMillis;
+    private long startupCalibrationMillis;
     private long sessionId;
+    private double latestRms;
+    private long latestOccurredAtMillis;
 
     public AsrSpeechActivityDetector(AsrSpeechActivityListener listener) {
         this(
@@ -83,7 +90,8 @@ public final class AsrSpeechActivityDetector {
         this.noiseStopMultiplier = Math.max(1.0D, Math.min(this.noiseStartMultiplier, noiseStopMultiplier));
         this.maxStartThreshold = Math.max(this.minStartRms, maxStartThreshold);
         this.maxNoiseFloor = this.maxStartThreshold / this.noiseStartMultiplier;
-        this.noiseFloor = clamp(initialNoiseFloor, 0.0D, this.maxNoiseFloor);
+        this.initialNoiseFloor = clamp(initialNoiseFloor, 0.0D, this.maxNoiseFloor);
+        this.noiseFloor = this.initialNoiseFloor;
         this.noiseUpdateCooldownMillis = Math.max(0L, noiseUpdateCooldownMillis);
         this.minSpeakingMillis = Math.max(0L, minSpeakingMillis);
         this.shortSpeechMillis = Math.max(1L, shortSpeechMillis);
@@ -96,6 +104,7 @@ public final class AsrSpeechActivityDetector {
 
     public synchronized void start(long sessionId) {
         reset(false);
+        noiseFloor = initialNoiseFloor;
         this.sessionId = Math.max(0L, sessionId);
     }
 
@@ -104,13 +113,25 @@ public final class AsrSpeechActivityDetector {
             return;
         }
         double rms = rms(pcm16le);
+        latestRms = rms;
+        latestOccurredAtMillis = System.currentTimeMillis();
         long chunkMillis = chunkMillis(pcm16le);
         if (!speaking) {
+            // Establish a floor at capture start, while allowing a clear onset through immediately.
+            if (startupCalibrationMillis < DEFAULT_STARTUP_CALIBRATION_MILLIS) {
+                if (isStrongOnset(rms)) {
+                    beginSpeech(chunkMillis);
+                    return;
+                }
+                updateStartupNoiseFloor(rms);
+                startupCalibrationMillis = Math.min(
+                        DEFAULT_STARTUP_CALIBRATION_MILLIS,
+                        startupCalibrationMillis + chunkMillis
+                );
+                return;
+            }
             if (rms >= startThreshold()) {
-                speaking = true;
-                speakingMillis = chunkMillis;
-                silentMillis = 0L;
-                listener.onSpeechActivity(true, sessionId, System.currentTimeMillis());
+                beginSpeech(chunkMillis);
                 return;
             }
             silentSinceLastSpeechMillis += chunkMillis;
@@ -120,6 +141,10 @@ public final class AsrSpeechActivityDetector {
             return;
         }
         speakingMillis += chunkMillis;
+        // A sustained level in the transition band can be the ambient floor that caused onset.
+        if (rms < startThreshold() * SPEAKING_NOISE_ADAPTATION_LIMIT_MULTIPLIER) {
+            updateNoiseFloorDuringSpeech(rms);
+        }
         if (rms < stopThreshold()) {
             silentMillis += chunkMillis;
             if (speakingMillis >= minSpeakingMillis && silentMillis >= silenceToStopMillis()) {
@@ -138,8 +163,25 @@ public final class AsrSpeechActivityDetector {
         reset(true);
     }
 
+    public synchronized void resetForSegmentBoundary(long sessionId) {
+        reset(true);
+        startupCalibrationMillis = DEFAULT_STARTUP_CALIBRATION_MILLIS;
+        this.sessionId = Math.max(0L, sessionId);
+    }
+
     public synchronized boolean speaking() {
         return speaking;
+    }
+
+    public synchronized AsrSpeechActivitySnapshot snapshot() {
+        return new AsrSpeechActivitySnapshot(
+                latestRms,
+                startThreshold(),
+                stopThreshold(),
+                speaking,
+                sessionId,
+                latestOccurredAtMillis
+        );
     }
 
     private void reset(boolean notifyStop) {
@@ -150,7 +192,10 @@ public final class AsrSpeechActivityDetector {
         speakingMillis = 0L;
         silentMillis = 0L;
         silentSinceLastSpeechMillis = 0L;
+        startupCalibrationMillis = 0L;
         sessionId = 0L;
+        latestRms = 0.0D;
+        latestOccurredAtMillis = 0L;
     }
 
     private double startThreshold() {
@@ -172,8 +217,38 @@ public final class AsrSpeechActivityDetector {
     }
 
     private void updateNoiseFloor(double rms) {
+        if (rms >= startThreshold()) {
+            return;
+        }
         double alpha = rms > noiseFloor ? 0.02D : 0.12D;
         noiseFloor = clamp(noiseFloor + alpha * (rms - noiseFloor), 0.0D, maxNoiseFloor);
+    }
+
+    private void updateNoiseFloorDuringSpeech(double rms) {
+        if (rms <= noiseFloor || rms >= startThreshold() * SPEAKING_NOISE_ADAPTATION_LIMIT_MULTIPLIER) {
+            return;
+        }
+        noiseFloor = clamp(
+                noiseFloor + SPEAKING_NOISE_ADAPTATION_ALPHA * (rms - noiseFloor),
+                0.0D,
+                maxNoiseFloor
+        );
+    }
+
+    private void updateStartupNoiseFloor(double rms) {
+        noiseFloor = Math.max(noiseFloor, Math.min(maxNoiseFloor, Math.max(0.0D, rms)));
+    }
+
+    private boolean isStrongOnset(double rms) {
+        return rms >= startThreshold();
+    }
+
+    private void beginSpeech(long chunkMillis) {
+        speaking = true;
+        startupCalibrationMillis = DEFAULT_STARTUP_CALIBRATION_MILLIS;
+        speakingMillis = chunkMillis;
+        silentMillis = 0L;
+        listener.onSpeechActivity(true, sessionId, System.currentTimeMillis());
     }
 
     private long chunkMillis(byte[] audio) {

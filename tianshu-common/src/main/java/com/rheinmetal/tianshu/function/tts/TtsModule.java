@@ -194,12 +194,18 @@ public final class TtsModule implements TianshuManagedModule {
         if (ttsRuntime != null) {
             ttsRuntime.stop();
         }
+        if (modelService != null) {
+            modelService.stop();
+        }
         endActiveRequestActivities();
     }
 
     @Override
     public void destroy() {
         destroyed = true;
+        if (modelService != null) {
+            modelService.stop();
+        }
         if (ttsRuntime != null) {
             if (moduleService != null) {
                 moduleService.unbindRuntime(ttsRuntime);

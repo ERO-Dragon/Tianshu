@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsrSpeechActivityDetectorTest {
     @Test
@@ -99,6 +100,61 @@ class AsrSpeechActivityDetectorTest {
         detector.start(42L);
         detector.accept(pcm(0.02D, 160));
         detector.stop();
+
+        assertEquals(List.of(true, false), states);
+    }
+
+    @Test
+    void snapshotExposesCurrentSessionRmsThresholdsAndState() {
+        AsrSpeechActivityDetector detector = detector(new ArrayList<>());
+
+        detector.start(42L);
+        detector.accept(pcm(0.02D, 160));
+
+        AsrSpeechActivitySnapshot snapshot = detector.snapshot();
+
+        assertEquals(42L, snapshot.sessionId());
+        assertEquals(0.02D, snapshot.rms(), 0.002D);
+        assertTrue(snapshot.speaking());
+        assertTrue(snapshot.startThreshold() >= snapshot.stopThreshold());
+        assertTrue(snapshot.occurredAtMillis() > 0L);
+    }
+
+    @Test
+    void adaptsToAmbientAudioBelowStartThresholdAndEndsTheSegment() {
+        List<Boolean> states = new ArrayList<>();
+        AsrSpeechActivityDetector detector = detector(states);
+
+        detector.start(42L);
+        detector.accept(pcm(0.02D, 160));
+        repeat(180, () -> detector.accept(pcm(0.004D, 160)));
+
+        assertEquals(List.of(true, false), states);
+    }
+
+    @Test
+    void endsSpeechWhenAmbientFloorIsAboveTheMinimumStopThreshold() {
+        List<Boolean> states = new ArrayList<>();
+        AsrSpeechActivityDetector detector = detector(states);
+
+        detector.start(42L);
+        detector.accept(pcm(0.08D, 160));
+        repeat(50, () -> detector.accept(pcm(0.01D, 160)));
+
+        assertEquals(List.of(true, false), states);
+    }
+
+    @Test
+    void adaptsWhenStartupAmbientNoiseIsAboveTheDefaultStartThreshold() {
+        List<Boolean> states = new ArrayList<>();
+        AsrSpeechActivityDetector detector = new AsrSpeechActivityDetector(
+                (speaking, sessionId, occurredAtMillis) -> states.add(speaking)
+        );
+
+        detector.start(42L);
+        repeat(20, () -> detector.accept(pcm(0.01D, 160)));
+        detector.accept(pcm(0.04D, 160));
+        repeat(50, () -> detector.accept(pcm(0.01D, 160)));
 
         assertEquals(List.of(true, false), states);
     }

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.neoforge.ui.hud;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -83,7 +84,9 @@ public final class PresenceHudPositionEditorScreen extends Screen {
         int iconY = canvasY(canvasTop, canvasBottom, positionY);
         graphics.fill(iconX - ICON_RADIUS, iconY - ICON_RADIUS, iconX + ICON_RADIUS + 1, iconY + ICON_RADIUS + 1, ICON_COLOR);
         graphics.renderOutline(iconX - ICON_RADIUS - 2, iconY - ICON_RADIUS - 2, ICON_RADIUS * 2 + 5, ICON_RADIUS * 2 + 5, 0xFFFFFFFF);
-        super.render(graphics, mouseX, mouseY, partialTick);
+        for (Renderable renderable : renderables) {
+            renderable.render(graphics, mouseX, mouseY, partialTick);
+        }
     }
 
     @Override

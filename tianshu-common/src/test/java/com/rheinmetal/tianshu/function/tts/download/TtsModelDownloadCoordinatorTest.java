@@ -46,6 +46,17 @@ class TtsModelDownloadCoordinatorTest {
         assertTrue(exception.getCause().getCause() instanceof TtsModelDownloadCoordinator.DownloadCancelledException);
     }
 
+    @Test
+    void lifecycleCancellationMarksPartialDownloadForResume() {
+        TtsModelDownloadCoordinator.DownloadSession session = new TtsModelDownloadCoordinator(
+                new FakeGameEnvironment()).newSession();
+
+        session.cancelKeepingPartial();
+
+        assertTrue(session.isCancelled());
+        assertTrue(session.shouldKeepPartialDownload());
+    }
+
     private static void await(TtsModelDownloadCoordinator.DownloadSession session) {
         try {
             session.awaitReady();

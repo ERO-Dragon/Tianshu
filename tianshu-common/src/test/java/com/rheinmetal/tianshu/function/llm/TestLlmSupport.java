@@ -89,7 +89,6 @@ public final class TestLlmSupport {
         @Override public String getSelectedMicName() { return ""; }
         @Override public boolean isAsrRnnoiseEnabled() { return false; }
         @Override public boolean isAsrHighPassFilterEnabled() { return true; }
-        @Override public boolean isAsrVadEnabled() { return false; }
         @Override public String getCustomAsrName() { return ""; }
         @Override public String getCustomLlmName() { return customLlmName; }
         @Override public String getCustomTtsName() { return ""; }

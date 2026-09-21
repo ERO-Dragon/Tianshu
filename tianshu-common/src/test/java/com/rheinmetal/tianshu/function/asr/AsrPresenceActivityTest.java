@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.asr;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
+import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionResult;
 import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
@@ -126,6 +127,32 @@ class AsrPresenceActivityTest {
             assertEquals(List.of(PresenceActivityAction.STARTED, PresenceActivityAction.ENDED),
                     activities.stream().map(PresenceActivityPayload::action).toList());
             assertEquals("asr.recognition.9", activities.get(0).activityId());
+        }
+    }
+
+    @Test
+    void vadStreamingSessionAcceptsAnotherSegmentAfterTheFirstFlush() {
+        try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            AsrRecognitionService service = new AsrRecognitionService(
+                    new FakeEnvironment(),
+                    () -> new FakeEngine("segment result"),
+                    new AsrProtocolAdapter(runtime)
+            );
+            List<AsrRecognitionResult> results = java.util.Collections.synchronizedList(new ArrayList<>());
+
+            service.startStreaming(10L, results::add, true);
+            service.acceptAudioChunk(new byte[]{1, 2}, 10L, com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter.Decision.START_SEGMENT);
+            service.acceptAudioChunk(new byte[]{3, 4}, 10L, com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter.Decision.END_SEGMENT);
+            service.acceptAudioChunk(new byte[]{5, 6}, 10L, com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter.Decision.START_SEGMENT);
+            service.acceptAudioChunk(new byte[]{7, 8}, 10L, com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter.Decision.END_SEGMENT);
+
+            long deadline = System.currentTimeMillis() + 2_000L;
+            while (results.size() < 2 && System.currentTimeMillis() < deadline) {
+                Thread.onSpinWait();
+            }
+            assertEquals(2, results.size());
+            assertEquals("vad_segment", results.get(1).inputMode());
+            service.stopStreaming();
         }
     }
 

@@ -38,6 +38,29 @@ class AsrVadSpeechSegmenterTest {
         assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, segmenter.accept(pcm(0.02D, 160)));
     }
 
+    @Test
+    void manualBoundaryResetsDetectorBeforeTheNextSpeechSegment() {
+        AsrVadSpeechSegmenter segmenter = new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> {
+        });
+        segmenter.start(42L);
+
+        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, firstSpeechDecision(segmenter));
+        segmenter.resetSegmentBoundary();
+
+        assertEquals(AsrSpeechSegmenter.Decision.CONTINUE, segmenter.accept(pcm(0.0D, 160)));
+        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, segmenter.accept(pcm(0.02D, 160)));
+    }
+
+    private AsrSpeechSegmenter.Decision firstSpeechDecision(AsrVadSpeechSegmenter segmenter) {
+        for (int index = 0; index < 510; index++) {
+            AsrSpeechSegmenter.Decision decision = segmenter.accept(pcm(0.02D, 160));
+            if (decision.startsSegment()) {
+                return decision;
+            }
+        }
+        return AsrSpeechSegmenter.Decision.CONTINUE;
+    }
+
     private void repeat(int count, Runnable runnable) {
         for (int index = 0; index < count; index++) {
             runnable.run();

@@ -2,12 +2,14 @@ package com.rheinmetal.tianshu.function.asr.recognition;
 
 import com.rheinmetal.tianshu.function.asr.audio.AsrSpeechActivityDetector;
 import com.rheinmetal.tianshu.function.asr.audio.AsrSpeechActivityListener;
+import com.rheinmetal.tianshu.function.asr.audio.AsrSpeechActivitySnapshot;
 
 /** Reuses the ASR activity detector to produce one-shot segment boundaries. */
 public final class AsrVadSpeechSegmenter implements AsrSpeechSegmenter {
     private final AsrSpeechActivityDetector detector;
     private boolean speechStarted;
     private boolean speechEnded;
+    private long sessionId;
 
     public AsrVadSpeechSegmenter(AsrSpeechActivityListener activityListener) {
         this.detector = new AsrSpeechActivityDetector((speaking, sessionId, occurredAtMillis) -> {
@@ -25,6 +27,7 @@ public final class AsrVadSpeechSegmenter implements AsrSpeechSegmenter {
     @Override
     public synchronized void start(long sessionId) {
         clearPendingTransitions();
+        this.sessionId = sessionId;
         detector.start(sessionId);
     }
 
@@ -46,6 +49,23 @@ public final class AsrVadSpeechSegmenter implements AsrSpeechSegmenter {
     public synchronized void reset() {
         clearPendingTransitions();
         detector.stop();
+        sessionId = 0L;
+    }
+
+    @Override
+    public synchronized void resetSegmentBoundary() {
+        clearPendingTransitions();
+        if (sessionId > 0L) {
+            detector.resetForSegmentBoundary(sessionId);
+        } else {
+            detector.stop();
+        }
+        clearPendingTransitions();
+    }
+
+    @Override
+    public synchronized AsrSpeechActivitySnapshot activitySnapshot() {
+        return detector.snapshot();
     }
 
     private void clearPendingTransitions() {

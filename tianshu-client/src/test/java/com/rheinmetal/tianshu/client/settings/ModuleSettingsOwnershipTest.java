@@ -37,4 +37,16 @@ final class ModuleSettingsOwnershipTest {
             assertFalse(source.contains("debugPipelineEnabled"), relativePath);
         }
     }
+
+    @Test
+    void asrSettingsDoNotExposeAnInternalVadSwitch() throws Exception {
+        String source = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/asr/AsrSettingsRegistrySource.java"),
+                StandardCharsets.UTF_8
+        );
+
+        assertFalse(source.contains("asr.vad"));
+        assertFalse(source.contains("option.vad"));
+        assertFalse(source.contains("vadEnabled"));
+    }
 }

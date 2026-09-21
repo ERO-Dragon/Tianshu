@@ -9,10 +9,8 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -482,16 +480,7 @@ final class ModelDownloadHttpClient {
     }
 
     private static void moveIntoPlace(Path temporary, Path target) throws IOException {
-        try {
-            Files.move(
-                    temporary,
-                    target,
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE
-            );
-        } catch (AtomicMoveNotSupportedException unsupported) {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        ModelDownloadFileMover.moveReplacing(temporary, target);
     }
 
     private void close(HttpURLConnection connection) {

@@ -122,8 +122,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
                 .options("as.main", asr("section.main"), draft::buildMainOptions)
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
-                        .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get)
-                        .toggle("asr.vad", asr("option.vad"), draft.vadEnabled, draft.enabled::get))
+                        .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get))
                 .actions("asr.preview", asr("section.preview"), actions -> actions
                         .button("asr.preview.start", asr("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
                         .button("asr.preview.stop", asr("action.preview_stop"), draft::stopPreview, draft::previewRunning))
@@ -159,7 +158,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<TriggerMode> triggerMode;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<Boolean> highPassFilterEnabled;
-        private final MutableSettingsValue<Boolean> vadEnabled;
         private final MutableSettingsValue<String> githubProxyUrl;
         private final MutableSettingsValue<String> languageFilter;
         private final MutableSettingsValue<SortDirection> performanceDirection;
@@ -193,7 +191,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.triggerMode = new MutableSettingsValue<>(config::getTriggerMode, config::setTriggerMode, Objects::nonNull);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.highPassFilterEnabled = new MutableSettingsValue<>(config::isAsrHighPassFilterEnabled, config::setAsrHighPassFilterEnabled);
-            this.vadEnabled = new MutableSettingsValue<>(config::isAsrVadEnabled, config::setAsrVadEnabled);
             this.githubProxyUrl = new MutableSettingsValue<>(config::getAsrGithubProxyUrl, config::setAsrGithubProxyUrl, Objects::nonNull);
             this.languageFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.performanceDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
@@ -243,7 +240,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                     || triggerMode.dirty()
                     || selectedModelName.dirty()
                     || highPassFilterEnabled.dirty()
-                    || vadEnabled.dirty()
                     || githubProxyUrl.dirty();
         }
 
@@ -262,7 +258,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         public SettingsSaveResult save() {
             AsrSettingsSnapshot before = AsrSettingsSnapshot.from(config);
             String mic = selectedMic.get();
-            new SettingsSaveTransaction(enabled, triggerMode, highPassFilterEnabled, vadEnabled,
+            new SettingsSaveTransaction(enabled, triggerMode, highPassFilterEnabled,
                     githubProxyUrl, selectedMic, selectedModelName)
                     .write(config::getSelectedMicName, config::setSelectedMicName, DEFAULT_MIC.equals(mic) ? "" : mic)
                     .write(config::getCustomAsrName, config::setCustomAsrName, selectedModelName.get())
@@ -279,7 +275,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             triggerMode.reset();
             selectedModelName.reset();
             highPassFilterEnabled.reset();
-            vadEnabled.reset();
             githubProxyUrl.reset();
         }
 

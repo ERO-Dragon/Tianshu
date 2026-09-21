@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.asr.recognition;
 
+import com.rheinmetal.tianshu.function.asr.audio.AsrSpeechActivitySnapshot;
+
 public interface AsrSpeechSegmenter {
     AsrSpeechSegmenter DISABLED = new AsrSpeechSegmenter() {
     };
@@ -28,6 +30,14 @@ public interface AsrSpeechSegmenter {
     }
 
     default void reset() {
+    }
+
+    /** Resets the detector at a manual segment boundary while keeping the capture session active. */
+    default void resetSegmentBoundary() {
+    }
+
+    default AsrSpeechActivitySnapshot activitySnapshot() {
+        return AsrSpeechActivitySnapshot.inactive();
     }
 
     static AsrSpeechSegmenter disabled() {
