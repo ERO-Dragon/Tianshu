@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.presence.status;
 
 import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualState;
 
 public record PresenceHudDisplay(
         boolean visible,
@@ -15,6 +16,9 @@ public record PresenceHudDisplay(
         text = text == null ? "" : text.trim();
         primaryState = primaryState == null ? PresencePrimaryState.IDLE : primaryState;
         sourceModuleId = sourceModuleId == null ? "" : sourceModuleId.trim();
-        visible = visible && !text.isBlank();
+    }
+
+    public PresenceHudVisualState visualState() {
+        return PresenceHudVisualState.from(primaryState);
     }
 }

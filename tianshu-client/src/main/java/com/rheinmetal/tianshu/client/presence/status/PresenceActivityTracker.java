@@ -17,6 +17,9 @@ public final class PresenceActivityTracker {
     private final Map<ActivityKey, ActiveActivity> activities = new LinkedHashMap<>();
     private boolean worldSessionActive;
     private long worldSessionStartedAtMillis;
+    private PresenceActivitySnapshot cachedSnapshot = PresenceActivitySnapshot.idle(0L);
+    private long cachedSnapshotExpiryAtMillis;
+    private boolean snapshotDirty = true;
 
     public PresenceActivityTracker() {
         this(System::currentTimeMillis);
@@ -30,12 +33,18 @@ public final class PresenceActivityTracker {
         activities.clear();
         worldSessionStartedAtMillis = clock.getAsLong();
         worldSessionActive = true;
+        cachedSnapshot = PresenceActivitySnapshot.idle(worldSessionStartedAtMillis);
+        cachedSnapshotExpiryAtMillis = 0L;
+        snapshotDirty = true;
     }
 
     public synchronized void stopWorldSession() {
         worldSessionActive = false;
         worldSessionStartedAtMillis = 0L;
         activities.clear();
+        cachedSnapshot = PresenceActivitySnapshot.idle(clock.getAsLong());
+        cachedSnapshotExpiryAtMillis = 0L;
+        snapshotDirty = true;
     }
 
     public synchronized void accept(String sourceId, PresenceActivityPayload payload) {
@@ -49,6 +58,7 @@ public final class PresenceActivityTracker {
         ActivityKey key = new ActivityKey(source, payload.activityId(), payload.activityType());
         if (payload.action() == PresenceActivityAction.ENDED) {
             activities.remove(key);
+            snapshotDirty = true;
             return;
         }
         activities.put(key, new ActiveActivity(
@@ -56,14 +66,26 @@ public final class PresenceActivityTracker {
                 payload.occurredAtMillis(),
                 payload.occurredAtMillis() + payload.ttlMillis()
         ));
+        snapshotDirty = true;
     }
 
     public synchronized PresenceActivitySnapshot snapshot() {
         long now = clock.getAsLong();
         if (!worldSessionActive) {
-            return PresenceActivitySnapshot.idle(now);
+            if (snapshotDirty) {
+                cachedSnapshot = PresenceActivitySnapshot.idle(now);
+                snapshotDirty = false;
+            }
+            return cachedSnapshot;
         }
-        activities.values().removeIf(activity -> activity.expired(now));
+        if (!snapshotDirty && (cachedSnapshotExpiryAtMillis <= 0L || now < cachedSnapshotExpiryAtMillis)) {
+            return cachedSnapshot;
+        }
+        boolean expired = activities.values().removeIf(activity -> activity.expired(now));
+        snapshotDirty |= expired;
+        if (!snapshotDirty && (cachedSnapshotExpiryAtMillis <= 0L || now < cachedSnapshotExpiryAtMillis)) {
+            return cachedSnapshot;
+        }
         boolean listening = activities.values().stream()
                 .anyMatch(activity -> activity.key().activityType() == PresenceActivityType.LISTENING);
         ActiveActivity primary = null;
@@ -76,14 +98,29 @@ public final class PresenceActivityTracker {
             }
         }
         if (primary == null) {
-            return new PresenceActivitySnapshot(PresencePrimaryState.IDLE, listening, "", now);
+            cachedSnapshot = new PresenceActivitySnapshot(PresencePrimaryState.IDLE, listening, "", now);
+        } else {
+            cachedSnapshot = new PresenceActivitySnapshot(
+                    primaryState(primary.key().activityType()),
+                    listening,
+                    primary.key().sourceId(),
+                    Math.max(now, primary.occurredAtMillis())
+            );
         }
-        return new PresenceActivitySnapshot(
-                primaryState(primary.key().activityType()),
-                listening,
-                primary.key().sourceId(),
-                Math.max(now, primary.occurredAtMillis())
-        );
+        cachedSnapshotExpiryAtMillis = nextExpiryAtMillis();
+        snapshotDirty = false;
+        return cachedSnapshot;
+    }
+
+    private long nextExpiryAtMillis() {
+        long next = 0L;
+        for (ActiveActivity activity : activities.values()) {
+            long expiry = activity.expiresAtMillis();
+            if (expiry > 0L && (next == 0L || expiry < next)) {
+                next = expiry;
+            }
+        }
+        return next;
     }
 
     private boolean sourceAllowed(String sourceId, PresenceActivityType type) {

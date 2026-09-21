@@ -60,7 +60,7 @@ Minecraft 主线程只执行：
 - 原版 GUI/HUD 绘制。
 - 读取当前 Minecraft 对象并立即转换为不可变快照。
 - 必要的 Screen 切换和 Widget 更新。
-- 每 tick 更新一次 HUD 展示快照。
+- Presence 活动聚合可随协议事件、世界生命周期和自然时间 TTL 变化；HUD 在渲染事件中逐帧读取缓存的不可变展示快照，动画使用单调渲染时钟。
 
 禁止在主线程执行模型下载、文件解包、模型目录/音色目录扫描、音色文件复制、IR 索引、GPU 进程探测、模型推理、诊断写盘或阻塞等待。
 
@@ -90,7 +90,7 @@ Minecraft 活对象只能存在于 NeoForge adapter。跨入 client/common 的�
 - IR：NeoForge registry provider 构建命名对象字典；client 负责缓存和索引。
 - IR 资源重载：prepare 阶段读取关键词资源，apply 阶段刷新当前语言与 registry 快照，后台索引始终解析当前会话的索引管理器，不持有首次启动的旧实例。
 - GUI：client 生成 `UiText` 和设置模型；NeoForge 转换为原版文本与 Widget。
-- HUD：client 通过显式 `PRESENCE.ACTIVITY` 聚合出 `PresenceHudDisplay`，其中主状态与 `listening` 独立；NeoForge 每 tick 生成一次渲染快照，渲染帧只读缓存并执行字体和 `GuiGraphics` 绘制。
+- HUD：client 通过显式 `PRESENCE.ACTIVITY` 聚合出 `PresenceHudDisplay`，其中主状态与 `listening` 独立；NeoForge 在渲染事件中逐帧读取缓存的展示快照并执行字体、shader 或 `GuiGraphics` 绘制，活动聚合与动画采样保持分离。
 
 禁止把 Player、Level、Entity、ItemStack、Screen 或原生 packet 以 `Object` 形式穿过边界。
 
@@ -127,6 +127,16 @@ GPU 设备发现和占用采样使用最后一次完整快照。打开设置页�
 
 固定显示文本必须通过资源 key。client 使用 `UiText`，只有 NeoForge adapter 能转换成 Minecraft 文本组件。
 
+HUD core shader 遵循 Minecraft 的资源约定：
+
+```text
+assets/tianshu/shaders/core/<program>.json
+assets/tianshu/shaders/core/<vertex>.vsh
+assets/tianshu/shaders/core/<fragment>.fsh
+```
+
+程序 JSON 通过 `vertex` 和 `fragment` 的基础名称关联两个阶段；`ShaderInstance` 注册 `tianshu:<program>` 后由资源系统加载这三个文件。`.fsh` 是 fragment shader 的标准后缀，不是把 Shadertoy 源码机械改名。`libs/ShaderToy/*.glsl` 只作为视觉参考和移植输入，不能直接作为 Minecraft core shader 运行资源；移植后的代码必须使用 Minecraft 的 GLSL 150 阶段输入输出约定。
+
 ## 7. 外部接入
 
 功能模块之间仍只通过 Protocol Center 通信。NeoForge 平台层不能成为业务消息总线。
@@ -142,7 +152,7 @@ GPU 设备发现和占用采样使用最后一次完整快照。打开设置页�
 - 后台队列容量和关闭拒绝。
 - 设置页面下载进度刷新合并。
 - tick/world event 不执行同步等待和文件 IO。
-- HUD 渲染帧只读 tick 快照，不重复计算 Presence 展示状态。
+- HUD 渲染帧只读取当前缓存的不可变 Presence 展示快照，不重复扫描活动表或计算活动语义；图标动画按渲染帧采样。
 - NeoForge jar 同时包含共享 assets 与加载器 metadata。
 
 真实游戏仍需验证：帧时间、真实麦克风、长时间 LLM/TTS、显存压力、MOSS warmed RTF、世界反复进入退出和资源重载。自动测试不能替代这些设备与性能基线。
@@ -162,5 +172,5 @@ Common 功能模块、协议 payload、client runtime、设置 session、Presenc
 ## 10. 已知后续项
 
 - `ClientFilePicker` 返回 `CompletableFuture<Optional<Path>>`，文件窗口在 Swing 事件线程创建和显示，不占用 Minecraft 主线程等待。取消 future 会关闭窗口；设置页面关闭时取消尚未完成的选择，客户端关闭由 Bootstrap 统一释放选择器。已开始的音色复制由 TTS IO lane 完成，旧页面不再接收完成反馈。
-- 当前 HUD 已具备稳定的 `primaryState + listening` tick 快照输入和状态文字 renderer；状态机 Shader 的视觉形态、位置、尺寸与动画需要产品方案确认后再实现，不能反向扩张协议枚举。
+- 当前 HUD 已具备稳定的 `primaryState + listening` 输入、状态文字 renderer 和图标 shader/fallback renderer；位置、尺寸和视觉预设属于 NeoForge GUI 层，动画按渲染帧采样，不能反向扩张 Presence 协议枚举。
 - `ClientConfig` 的 TOML 中文注释仍是现有例外。删除注释或明确允许技术配置注释硬编码，需要单独确认。

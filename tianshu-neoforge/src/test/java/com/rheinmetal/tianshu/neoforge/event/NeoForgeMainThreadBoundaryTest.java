@@ -140,7 +140,7 @@ final class NeoForgeMainThreadBoundaryTest {
     }
 
     @Test
-    void hudRenderFramesOnlyConsumeTheTickUpdatedSnapshot() throws Exception {
+    void hudRenderFramesAreSampledAtRenderFrequency() throws Exception {
         String events = Files.readString(
                 Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"),
                 StandardCharsets.UTF_8
@@ -149,10 +149,30 @@ final class NeoForgeMainThreadBoundaryTest {
                 Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceHudRenderer.java"),
                 StandardCharsets.UTF_8
         );
+        String iconRenderer = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceIconElementRenderer.java"),
+                StandardCharsets.UTF_8
+        );
 
-        assertTrue(methodBody(events, "public void onClientTick").contains("presenceHudRenderer.update()"));
-        assertFalse(methodBody(renderer, "public void render").contains("statusTextController.update("));
-        assertTrue(methodBody(renderer, "public void render").contains("currentFrame"));
+        assertFalse(methodBody(events, "public void onClientTick").contains("presenceHudRenderer.update()"));
+        assertTrue(methodBody(events, "public void onRenderGui").contains("presenceHudRenderer.render(event.getGuiGraphics())"));
+        assertTrue(methodBody(renderer, "public void render").contains("statusTextController.update("));
+        assertTrue(methodBody(renderer, "public void render").contains("iconController.update("));
+        assertTrue(renderer.contains("System.nanoTime()"));
+        assertTrue(iconRenderer.contains("frame.timing().updatedAtMillis()"));
+        assertFalse(iconRenderer.contains("System.nanoTime()"));
+    }
+
+    @Test
+    void shaderRegistrationFailureDoesNotMakeHudStartupFatal() throws Exception {
+        String bootstrap = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
+                StandardCharsets.UTF_8
+        );
+
+        String registration = methodBody(bootstrap, "private static void registerShader");
+        assertTrue(registration.contains("event.registerShader("));
+        assertFalse(registration.contains("throw new IllegalStateException"));
     }
 
     @Test

@@ -160,18 +160,17 @@ WORLD_ENVIRONMENT
 - `PresenceStatusTextElementController` 负责状态文本元素的可见性和状态机
 - `PresenceStatusTextElementRenderer` 负责状态文本元素的 Minecraft 绘制
 - `PresenceActivityTracker` 聚合显式 `PRESENCE.ACTIVITY`，并输出主状态与独立 `listening` 标记
-- `PresenceHudSettings` 只控制 HUD 总开关和状态文本开关
+- `PresenceHudSettings` 控制 HUD 总开关、状态文本、图标、尺寸、视觉预设和位置
+- Presence 图标由 NeoForge GUI 层按渲染帧采样，使用单调时间驱动 shader 或 Java fallback；状态切换的 loading 层采用连续透明度过渡。渲染帧消费的是 Presence client 已缓存的不可变展示快照，不在每帧扫描活动表或重新计算状态。
 - 映迹设置页已接入设置控制台，不再暴露按 ASR / LLM / TTS / AX 过滤产品活动的旧选项
 - 内测调试开关已接入设置页，默认关闭
 - 模块流水线调试视图只读读取 `ModuleStatusCache`，不订阅新 topic，不保存历史
 - AX 在 IA delivery 建立有效回合后显式发布 `THINKING`，首次可见输出后切换为 `RESPONDING`
 
-三期预留：
+后续方向：
 
 可能方向：
 
-- icon / shader 类 HUD 元素
-- shader 参数由具体元素 controller 从状态和 `stateAgeMillis()` 推导，不写进映迹核心
 - 更细的状态展示样式
 - 新的低频 Presence topic
 - 新模块接入统一查询

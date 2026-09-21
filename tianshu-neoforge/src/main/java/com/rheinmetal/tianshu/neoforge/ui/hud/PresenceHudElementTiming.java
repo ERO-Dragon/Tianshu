@@ -1,20 +1,17 @@
 package com.rheinmetal.tianshu.neoforge.ui.hud;
 
+/** Timing values supplied by the renderer; this type never reads a system clock. */
 public record PresenceHudElementTiming(
         long updatedAtMillis,
         long stateEnteredAtMillis
 ) {
     public PresenceHudElementTiming {
-        long now = System.currentTimeMillis();
-        if (updatedAtMillis <= 0L) {
-            updatedAtMillis = now;
-        }
+        updatedAtMillis = Math.max(0L, updatedAtMillis);
         if (stateEnteredAtMillis <= 0L) {
             stateEnteredAtMillis = updatedAtMillis;
+        } else {
+            stateEnteredAtMillis = Math.max(0L, stateEnteredAtMillis);
         }
     }
 
-    public long stateAgeMillis() {
-        return Math.max(0L, updatedAtMillis - stateEnteredAtMillis);
-    }
 }

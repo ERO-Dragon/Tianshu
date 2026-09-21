@@ -1,0 +1,17 @@
+{
+  "blend": {
+    "func": "add",
+    "srcrgb": "srcalpha",
+    "dstrgb": "1-srcalpha"
+  },
+  "vertex": "tianshu:presence_icon",
+  "fragment": "tianshu:presence_loading",
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+    { "name": "Time", "type": "float", "count": 1, "values": [0.0] },
+    { "name": "Intensity", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "Speed", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "Opacity", "type": "float", "count": 1, "values": [1.0] }
+  ]
+}

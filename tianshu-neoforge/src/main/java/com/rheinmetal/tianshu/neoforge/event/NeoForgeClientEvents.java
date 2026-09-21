@@ -89,7 +89,6 @@ public final class NeoForgeClientEvents {
 
     @SubscribeEvent
     public void onClientTick(ClientTickEvent.Post event) {
-        presenceHudRenderer.update();
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
             return;
@@ -129,7 +128,7 @@ public final class NeoForgeClientEvents {
     @SubscribeEvent
     public void onRenderGui(RenderGuiEvent.Post event) {
         ClientLlmRuntimeBridge.markFrame();
-        presenceHudRenderer.render(event.getGuiGraphics(), 0.0F);
+        presenceHudRenderer.render(event.getGuiGraphics());
     }
 
     @SubscribeEvent

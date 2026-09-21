@@ -12,10 +12,12 @@ import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
 import com.rheinmetal.tianshu.client.runtime.TianshuClientRuntime;
 import com.rheinmetal.tianshu.client.runtime.module.ClientOnnxRuntimeModuleInstaller;
 import com.rheinmetal.tianshu.client.runtime.module.ClientTianshuModuleAssembler;
+import com.rheinmetal.tianshu.neoforge.TianshuNeoForge;
 import com.rheinmetal.tianshu.client.settings.module.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.ax.AXSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.llm.LlmSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.presence.PresenceSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.settings.module.presence.PresenceHudPositionEditorOpener;
 import com.rheinmetal.tianshu.client.settings.module.tts.TtsSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.registry.ExternalSettingsRegistrySource;
@@ -48,10 +50,18 @@ import com.rheinmetal.tianshu.neoforge.event.NeoForgeEventRegistration;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgePresenceHooks;
 import com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
+import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudShaderRegistry;
+import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudPositionEditorScreen;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.RegisterShadersEvent;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.resources.ResourceLocation;
+
+import java.io.IOException;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.fml.loading.FMLPaths;
@@ -242,6 +252,28 @@ public final class NeoForgeClientBootstrap {
         ));
     }
 
+    public void registerShaders(RegisterShadersEvent event) {
+        registerShader(event, "presence_loading", PresenceHudShaderRegistry::setLoading);
+        registerShader(event, "presence_preset_one", PresenceHudShaderRegistry::setPresetOne);
+        registerShader(event, "presence_preset_two", PresenceHudShaderRegistry::setPresetTwo);
+    }
+
+    private void registerShader(RegisterShadersEvent event, String path, java.util.function.Consumer<ShaderInstance> sink) {
+        ResourceLocation shaderLocation = ResourceLocation.fromNamespaceAndPath(TianshuNeoForge.MOD_ID, path);
+        try {
+            event.registerShader(
+                    new ShaderInstance(event.getResourceProvider(), shaderLocation, DefaultVertexFormat.POSITION_TEX),
+                    sink
+            );
+        } catch (IOException | RuntimeException failure) {
+            // A visual shader is optional; clear this handle so the renderer selects its Java fallback.
+            sink.accept(null);
+            if (diagnosticRouter != null) {
+                diagnosticRouter.error("neoforge.presence.shader_registration_failed name=" + shaderLocation, failure);
+            }
+        }
+    }
+
     public synchronized void shutdown() {
         NeoForgeClientSession currentSession = clientSession;
         if (currentSession == null) {
@@ -262,6 +294,7 @@ public final class NeoForgeClientBootstrap {
     }
 
     private void clearSessionReferences() {
+        PresenceHudShaderRegistry.clear();
         events = null;
         integrationApi = null;
         lifecycleAdapter = null;
@@ -289,7 +322,13 @@ public final class NeoForgeClientBootstrap {
         );
         TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config, scheduler, uiHost);
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, config);
-        TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(config, coreManager, presenceTextProvider, config::isDebugEnabled);
+        PresenceHudPositionEditorOpener positionEditorOpener = (positionX, positionY, apply) -> {
+            Minecraft minecraft = Minecraft.getInstance();
+            minecraft.setScreen(new PresenceHudPositionEditorScreen(minecraft.screen, positionX, positionY, apply));
+        };
+        TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(
+                config, coreManager, presenceTextProvider, config::isDebugEnabled, positionEditorOpener
+        );
         return CompositeSettingsRegistrySource.of(
                 moduleSource,
                 externalSource,

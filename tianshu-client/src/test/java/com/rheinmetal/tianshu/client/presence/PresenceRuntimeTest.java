@@ -37,6 +37,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceRuntimeTest {
@@ -181,6 +182,24 @@ class PresenceRuntimeTest {
         ));
 
         assertEquals("localized-responding", display.text());
+    }
+
+    @Test
+    void hudIsHiddenOutsideAnActiveWorldSession() {
+        PresenceClientRuntime runtime = new PresenceClientRuntime(
+                (groups, inputKind) -> PresenceContextSnapshot.empty(),
+                PresenceTextProvider.NOOP
+        );
+
+        assertFalse(runtime.currentHudDisplay().visible());
+
+        runtime.startWorldSession();
+        var firstDisplay = runtime.currentHudDisplay();
+        assertTrue(firstDisplay.visible());
+        assertSame(firstDisplay, runtime.currentHudDisplay());
+
+        runtime.stopWorldSession();
+        assertFalse(runtime.currentHudDisplay().visible());
     }
 
     private static PresenceWorldEventPayload worldEvent(String id) {

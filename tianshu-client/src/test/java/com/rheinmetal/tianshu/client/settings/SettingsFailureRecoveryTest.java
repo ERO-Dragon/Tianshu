@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.settings;
 
 import com.rheinmetal.tianshu.client.settings.global.*;
 import com.rheinmetal.tianshu.client.settings.module.presence.PresenceSettingsAccess;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualPreset;
 import com.rheinmetal.tianshu.client.settings.session.*;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +56,16 @@ class SettingsFailureRecoveryTest {
         public void setPresenceHudEnabled(boolean value) { hud = value; }
         public boolean isPresenceStatusTextEnabled() { return text; }
         public void setPresenceStatusTextEnabled(boolean value) { text = value; }
+        public boolean isPresenceIconEnabled() { return true; }
+        public void setPresenceIconEnabled(boolean value) { }
+        public double getPresenceIconSize() { return 28.0D; }
+        public void setPresenceIconSize(double value) { }
+        public PresenceHudVisualPreset getPresenceVisualPreset() { return PresenceHudVisualPreset.PRESET_ONE; }
+        public void setPresenceVisualPreset(PresenceHudVisualPreset value) { }
+        public double getPresenceIconPositionX() { return 0.5D; }
+        public void setPresenceIconPositionX(double value) { }
+        public double getPresenceIconPositionY() { return -1.0D; }
+        public void setPresenceIconPositionY(double value) { }
         public boolean isDebugEnabled() { return debug; }
         public void setDebugEnabled(boolean value) { debug = value; }
         public void save() {

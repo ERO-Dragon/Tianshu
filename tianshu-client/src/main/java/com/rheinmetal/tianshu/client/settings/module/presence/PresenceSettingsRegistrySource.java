@@ -16,6 +16,8 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudSettings;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualPreset;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,20 +31,27 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
     private final PresenceTextProvider textProvider;
     private final PresenceDebugPipelineSnapshot debugPipelineSnapshot;
     private final BooleanSupplier debugEnabled;
+    private final PresenceHudPositionEditorOpener positionEditorOpener;
 
     public PresenceSettingsRegistrySource(PresenceSettingsAccess config, PresenceTextProvider textProvider) {
-        this(config, null, textProvider, () -> false);
+        this(config, null, textProvider, () -> false, PresenceHudPositionEditorOpener.NOOP);
     }
 
     public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider) {
-        this(config, coreManager, textProvider, () -> false);
+        this(config, coreManager, textProvider, () -> false, PresenceHudPositionEditorOpener.NOOP);
     }
 
     public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider, BooleanSupplier debugEnabled) {
+        this(config, coreManager, textProvider, debugEnabled, PresenceHudPositionEditorOpener.NOOP);
+    }
+
+    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider,
+                                          BooleanSupplier debugEnabled, PresenceHudPositionEditorOpener positionEditorOpener) {
         this.config = config;
         this.debugPipelineSnapshot = new PresenceDebugPipelineSnapshot(coreManager);
         this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
         this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
+        this.positionEditorOpener = positionEditorOpener == null ? PresenceHudPositionEditorOpener.NOOP : positionEditorOpener;
     }
 
     @Override
@@ -63,14 +72,38 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
     private void buildPanel(ModuleSettingsPanel panel, PresenceSettingsSession session) {
         panel.toggles("presence.hud.elements", presence("section.hud_elements"), group -> group
                         .toggle("presence.hud.enabled", presence("option.hud_enabled"), session.hudEnabled)
-                        .toggle("presence.hud.status_text", presence("option.status_text"), session.statusTextEnabled, session.hudEnabled::get))
+                        .toggle("presence.hud.status_text", presence("option.status_text"), session.statusTextEnabled, session.hudEnabled::get)
+                        .toggle("presence.hud.icon", presence("option.icon"), session.iconEnabled, session.hudEnabled::get))
+                .options("presence.hud.icon_style", presence("section.icon_style"),
+                        () -> session.hudEnabled.get() && session.iconEnabled.get(), options -> options
+                        .slider("presence.hud.icon_size", presence("option.icon_size"), session.iconSize,
+                                PresenceHudSettings.MIN_ICON_SIZE_PIXELS, PresenceHudSettings.MAX_ICON_SIZE_PIXELS)
+                        .select("presence.hud.visual_preset", presence("option.visual_preset"), List.of(PresenceHudVisualPreset.values()), session.visualPreset, this::visualPresetLabel)
+                )
+                .actions("presence.hud.position_editor", presence("section.position_editor"),
+                        () -> session.hudEnabled.get() && session.iconEnabled.get(), actions -> actions
+                        .button("presence.hud.edit_position", presence("action.edit_position"),
+                                () -> positionEditorOpener.open(
+                                        session.positionX::get,
+                                        session.positionY::get,
+                                        (x, y) -> {
+                                            session.positionX.set(x);
+                                            session.positionY.set(y);
+                                        }
+                                )))
                 .status("presence.hud.status", presence("section.current"), status -> status
                         .row("presence.status.hud", presence("row.hud"), () -> common(session.hudEnabled.get() ? "on" : "off"))
-                        .row("presence.status.text", presence("row.status_text"), () -> common(session.statusTextEnabled.get() ? "on" : "off")))
+                        .row("presence.status.text", presence("row.status_text"), () -> common(session.statusTextEnabled.get() ? "on" : "off"))
+                        .row("presence.status.icon", presence("row.icon"), () -> common(session.iconEnabled.get() ? "on" : "off")))
                 .<PresenceDebugPipelineSnapshot.Row>list("presence.debug.pipeline", presence("section.debug_pipeline"), debugEnabled, list -> list
                         .items(debugPipelineSnapshot::rows)
                         .card(this::debugPipelineCard)
                         .emptyText(presence("debug.empty")));
+    }
+
+    private UiText visualPresetLabel(PresenceHudVisualPreset value) {
+        PresenceHudVisualPreset effective = value == null ? PresenceHudVisualPreset.PRESET_ONE : value;
+        return presence("visual_preset." + effective.name().toLowerCase(Locale.ROOT));
     }
 
     private SettingsListCard debugPipelineCard(PresenceDebugPipelineSnapshot.Row row) {
@@ -144,11 +177,21 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         private final PresenceSettingsAccess config;
         private final MutableSettingsValue<Boolean> hudEnabled;
         private final MutableSettingsValue<Boolean> statusTextEnabled;
+        private final MutableSettingsValue<Boolean> iconEnabled;
+        private final MutableSettingsValue<Double> iconSize;
+        private final MutableSettingsValue<PresenceHudVisualPreset> visualPreset;
+        private final MutableSettingsValue<Double> positionX;
+        private final MutableSettingsValue<Double> positionY;
 
         private PresenceSettingsSession(PresenceSettingsAccess config) {
             this.config = config;
             this.hudEnabled = new MutableSettingsValue<>(config::isPresenceHudEnabled, config::setPresenceHudEnabled);
             this.statusTextEnabled = new MutableSettingsValue<>(config::isPresenceStatusTextEnabled, config::setPresenceStatusTextEnabled);
+            this.iconEnabled = new MutableSettingsValue<>(config::isPresenceIconEnabled, config::setPresenceIconEnabled);
+            this.iconSize = new MutableSettingsValue<>(config::getPresenceIconSize, config::setPresenceIconSize);
+            this.visualPreset = new MutableSettingsValue<>(config::getPresenceVisualPreset, config::setPresenceVisualPreset);
+            this.positionX = new MutableSettingsValue<>(config::getPresenceIconPositionX, config::setPresenceIconPositionX);
+            this.positionY = new MutableSettingsValue<>(config::getPresenceIconPositionY, config::setPresenceIconPositionY);
         }
 
         @Override
@@ -159,7 +202,12 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         @Override
         public boolean dirty() {
             return hudEnabled.dirty()
-                    || statusTextEnabled.dirty();
+                    || statusTextEnabled.dirty()
+                    || iconEnabled.dirty()
+                    || iconSize.dirty()
+                    || visualPreset.dirty()
+                    || positionX.dirty()
+                    || positionY.dirty();
         }
 
         @Override
@@ -170,7 +218,8 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         @Override
         public SettingsSaveResult save() {
             boolean changed = dirty();
-            new SettingsSaveTransaction(hudEnabled, statusTextEnabled).commit(config::save);
+            new SettingsSaveTransaction(hudEnabled, statusTextEnabled, iconEnabled, iconSize, visualPreset, positionX, positionY)
+                    .commit(config::save);
             return SettingsSaveResult.success(presence("message.saved"), changed, false, false);
         }
 
@@ -178,6 +227,11 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
         public void reset() {
             hudEnabled.reset();
             statusTextEnabled.reset();
+            iconEnabled.reset();
+            iconSize.reset();
+            visualPreset.reset();
+            positionX.reset();
+            positionY.reset();
         }
     }
 }

@@ -37,6 +37,10 @@ final class ClientConfigBoundaryTest {
 
         assertTrue(source.contains("PRESENCE_HUD_ENABLED"));
         assertTrue(source.contains("PRESENCE_STATUS_TEXT_ENABLED"));
+        assertTrue(source.contains("PRESENCE_ICON_ENABLED"));
+        assertTrue(source.contains("PRESENCE_ICON_SIZE_PIXELS"));
+        assertTrue(source.contains("PRESENCE_ICON_POSITION_X"));
+        assertTrue(source.contains("PRESENCE_ICON_POSITION_Y"));
         assertFalse(source.contains("PRESENCE_ASR_STATUS_VISIBLE"));
         assertFalse(source.contains("PRESENCE_LLM_STATUS_VISIBLE"));
         assertFalse(source.contains("PRESENCE_TTS_STATUS_VISIBLE"));

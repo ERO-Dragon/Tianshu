@@ -7,8 +7,19 @@ public record PresenceHudElementFrame(
         PresenceHudElementType type,
         PresenceHudElementState state,
         PresenceHudDisplay display,
-        PresenceHudElementTiming timing
+        PresenceHudElementTiming timing,
+        PresenceHudVisualParameters visualParameters
 ) {
+    public PresenceHudElementFrame(
+            String elementId,
+            PresenceHudElementType type,
+            PresenceHudElementState state,
+            PresenceHudDisplay display,
+            PresenceHudElementTiming timing
+    ) {
+        this(elementId, type, state, display, timing, null);
+    }
+
     public PresenceHudElementFrame {
         elementId = elementId == null ? "" : elementId.trim();
         type = type == null ? PresenceHudElementType.STATUS_TEXT : type;

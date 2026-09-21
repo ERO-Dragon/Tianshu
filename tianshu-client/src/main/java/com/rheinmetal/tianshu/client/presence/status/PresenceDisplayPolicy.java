@@ -26,15 +26,13 @@ public final class PresenceDisplayPolicy {
                 ? STATUS_KEY_PREFIX + "listening"
                 : STATUS_KEY_PREFIX + keySuffix(effective.primaryState());
         String text = textProvider.exists(key) ? textProvider.text(key) : "";
-        return text.isBlank()
-                ? PresenceHudDisplay.HIDDEN
-                : new PresenceHudDisplay(
-                        true,
-                        text,
-                        effective.primaryState(),
-                        effective.listening(),
-                        effective.primarySourceId()
-                );
+        return new PresenceHudDisplay(
+                true,
+                text,
+                effective.primaryState(),
+                effective.listening(),
+                effective.primarySourceId()
+        );
     }
 
     private String keySuffix(PresencePrimaryState state) {

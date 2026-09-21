@@ -10,6 +10,8 @@ import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualPreset;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudSettings;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -53,6 +55,11 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.BooleanValue AX_ALLOW_INTERRUPTION;
     public static final ModConfigSpec.BooleanValue PRESENCE_HUD_ENABLED;
     public static final ModConfigSpec.BooleanValue PRESENCE_STATUS_TEXT_ENABLED;
+    public static final ModConfigSpec.BooleanValue PRESENCE_ICON_ENABLED;
+    public static final ModConfigSpec.DoubleValue PRESENCE_ICON_SIZE_PIXELS;
+    public static final ModConfigSpec.EnumValue<PresenceHudVisualPreset> PRESENCE_VISUAL_PRESET;
+    public static final ModConfigSpec.DoubleValue PRESENCE_ICON_POSITION_X;
+    public static final ModConfigSpec.DoubleValue PRESENCE_ICON_POSITION_Y;
     public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_ASR_NAME;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_LLM_NAME;
@@ -97,9 +104,15 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         AX_ALLOW_INTERRUPTION = builder.define("allowInterruption", true);
         builder.pop();
 
-        builder.comment("映迹 HUD 显示设置").push("presence");
+        builder.push("presence");
         PRESENCE_HUD_ENABLED = builder.define("hudEnabled", true);
         PRESENCE_STATUS_TEXT_ENABLED = builder.define("statusTextEnabled", true);
+        PRESENCE_ICON_ENABLED = builder.define("iconEnabled", true);
+        PRESENCE_ICON_SIZE_PIXELS = builder.defineInRange("iconSizePixels", PresenceHudSettings.DEFAULT_ICON_SIZE_PIXELS,
+                PresenceHudSettings.MIN_ICON_SIZE_PIXELS, PresenceHudSettings.MAX_ICON_SIZE_PIXELS);
+        PRESENCE_VISUAL_PRESET = builder.defineEnum("visualPreset", PresenceHudVisualPreset.PRESET_ONE);
+        PRESENCE_ICON_POSITION_X = builder.defineInRange("iconPositionX", 0.5D, 0.0D, 1.0D);
+        PRESENCE_ICON_POSITION_Y = builder.defineInRange("iconPositionY", -1.0D, -1.0D, 1.0D);
         builder.pop();
 
         builder.comment("底层服务设置（尽量不要修改）").push("internal");
@@ -338,6 +351,59 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     }
 
     @Override
+    public boolean isPresenceIconEnabled() {
+        return PRESENCE_ICON_ENABLED.get();
+    }
+
+    @Override
+    public void setPresenceIconEnabled(boolean enabled) {
+        PRESENCE_ICON_ENABLED.set(enabled);
+    }
+
+    @Override
+    public double getPresenceIconSize() {
+        return clampPosition(PRESENCE_ICON_SIZE_PIXELS.get(), PresenceHudSettings.DEFAULT_ICON_SIZE_PIXELS,
+                PresenceHudSettings.MIN_ICON_SIZE_PIXELS, PresenceHudSettings.MAX_ICON_SIZE_PIXELS);
+    }
+
+    @Override
+    public void setPresenceIconSize(double size) {
+        PRESENCE_ICON_SIZE_PIXELS.set(clampPosition(size, PresenceHudSettings.DEFAULT_ICON_SIZE_PIXELS,
+                PresenceHudSettings.MIN_ICON_SIZE_PIXELS, PresenceHudSettings.MAX_ICON_SIZE_PIXELS));
+    }
+
+    @Override
+    public PresenceHudVisualPreset getPresenceVisualPreset() {
+        PresenceHudVisualPreset preset = PRESENCE_VISUAL_PRESET.get();
+        return preset == null ? PresenceHudVisualPreset.PRESET_ONE : preset;
+    }
+
+    @Override
+    public void setPresenceVisualPreset(PresenceHudVisualPreset preset) {
+        PRESENCE_VISUAL_PRESET.set(preset == null ? PresenceHudVisualPreset.PRESET_ONE : preset);
+    }
+
+    @Override
+    public double getPresenceIconPositionX() {
+        return clampPosition(PRESENCE_ICON_POSITION_X.get(), 0.5D);
+    }
+
+    @Override
+    public void setPresenceIconPositionX(double position) {
+        PRESENCE_ICON_POSITION_X.set(clampPosition(position, 0.5D));
+    }
+
+    @Override
+    public double getPresenceIconPositionY() {
+        return clampPosition(PRESENCE_ICON_POSITION_Y.get(), -1.0D, -1.0D, 1.0D);
+    }
+
+    @Override
+    public void setPresenceIconPositionY(double position) {
+        PRESENCE_ICON_POSITION_Y.set(clampPosition(position, -1.0D, -1.0D, 1.0D));
+    }
+
+    @Override
     public boolean isDebugEnabled() {
         return TianshuBuildProfile.debugBuild() && DEBUG_ENABLED.get();
     }
@@ -414,5 +480,16 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     public void save() {
         SPEC.save();
+    }
+
+    private static double clampPosition(double value, double fallback) {
+        return clampPosition(value, fallback, 0.0D, 1.0D);
+    }
+
+    private static double clampPosition(double value, double fallback, double min, double max) {
+        if (!Double.isFinite(value)) {
+            return fallback;
+        }
+        return Math.max(min, Math.min(max, value));
     }
 }

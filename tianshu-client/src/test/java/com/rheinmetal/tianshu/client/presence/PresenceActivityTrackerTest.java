@@ -101,6 +101,25 @@ class PresenceActivityTrackerTest {
         assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState());
     }
 
+    @Test
+    void unchangedSnapshotsAreCachedUntilAnActivityChangesOrExpires() {
+        AtomicLong now = new AtomicLong(30_000L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 5_000L));
+
+        PresenceActivitySnapshot first = tracker.snapshot();
+        now.set(31_000L);
+        PresenceActivitySnapshot unchanged = tracker.snapshot();
+
+        assertTrue(first == unchanged);
+
+        now.set(35_001L);
+        PresenceActivitySnapshot expired = tracker.snapshot();
+        assertFalse(expired == unchanged);
+        assertEquals(PresencePrimaryState.IDLE, expired.primaryState());
+    }
+
     private static PresenceActivityPayload started(
             String id,
             PresenceActivityType type,
