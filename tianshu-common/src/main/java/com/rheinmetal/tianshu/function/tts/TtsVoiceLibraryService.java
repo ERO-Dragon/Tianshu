@@ -11,7 +11,6 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -79,8 +78,13 @@ public class TtsVoiceLibraryService {
         ProtocolTaskHandle handle = execution.submit(
                 taskSpec("import", 2),
                 () -> {
-                    String imported = importVoiceSample(source);
-                    refreshVoiceSamples();
+                    String imported = "";
+                    try {
+                        imported = importVoiceSample(source);
+                        refreshVoiceSamples();
+                    } catch (RuntimeException failure) {
+                        env.error("tts.voice_library.import_failed", failure);
+                    }
                     if (completion != null) {
                         completion.accept(imported);
                     }
@@ -164,9 +168,9 @@ public class TtsVoiceLibraryService {
             Path dir = config.getVoiceLibraryPath();
             Files.createDirectories(dir);
             Path target = uniqueTarget(dir, fileName);
-            Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
+            Files.copy(source, target);
             return target.getFileName().toString();
-        } catch (IOException e) {
+        } catch (Exception e) {
             env.error("tts.voice_library.import_failed", e);
             return "";
         }

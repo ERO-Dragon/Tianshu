@@ -65,6 +65,7 @@ public class TtsModelService {
     private final TtsModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
+    private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
     private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
     private final AtomicBoolean availabilityRefreshQueued = new AtomicBoolean(false);
     private final ConcurrentLinkedQueue<Runnable> availabilityRefreshCallbacks = new ConcurrentLinkedQueue<>();
@@ -475,6 +476,14 @@ public class TtsModelService {
                         .build(),
                 () -> runDownloadModel(task, info, proxyUrl, callback)
         );
+        if (activeDownload.get() == task) {
+            activeDownloadHandle.set(handle);
+            if (task.session().isCancelled()) {
+                handle.cancel("model_download_cancelled");
+            }
+        } else {
+            handle.cancel("model_download_already_finished");
+        }
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"));
@@ -523,6 +532,10 @@ public class TtsModelService {
             return;
         }
         task.session().cancel();
+        ProtocolTaskHandle handle = activeDownloadHandle.get();
+        if (handle != null) {
+            handle.cancel("model_download_cancelled");
+        }
         updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING));
         publishWaiting("tianshu.presence.module.tts.download_cancelling");
     }
@@ -570,28 +583,28 @@ public class TtsModelService {
 
     private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
         task.session().awaitReady();
-        emitProgress(task, callback, ModelDownloadStage.RESOLVING_FILES, 5, "files.resolve");
+        emitProgress(task, callback, ModelDownloadStage.RESOLVING_FILES, 0, "files.resolve");
         ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
         task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onOverallProgress(long downloadedBytes, long totalBytes) {
-                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 5, 94, "model.files.download");
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 0, 100, "model.files.download");
                     }
                 });
         task.session().awaitReady();
-        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
     }
 
     private void downloadMossModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
         task.session().awaitReady();
-        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 5, "model.files.download");
+        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 0, "model.files.download");
         ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
         task.session().downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onOverallProgress(long downloadedBytes, long totalBytes) {
-                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 5, 94, "model.files.download");
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 0, 100, "model.files.download");
                     }
                 });
         task.session().awaitReady();
@@ -600,11 +613,11 @@ public class TtsModelService {
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onOverallProgress(long downloadedBytes, long totalBytes) {
-                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 5, 94, "model.files.download");
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 0, 100, "model.files.download");
                     }
                 });
         task.session().awaitReady();
-        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
     }
 
     private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
@@ -614,17 +627,17 @@ public class TtsModelService {
         String archiveName = archiveName(archiveUri);
         Path archivePath = modelDir.resolve(archiveName);
 
-        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 5, "archive.download");
+        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 0, "archive.download");
         task.session().downloadArchive(archiveUri, proxyBaseUri, proxyBaseUri != null, archivePath, 5, 60_000, (downloaded, total) -> {
             long effectiveTotal = total > 0L ? total : Math.max(0L, info.size);
             int percent = effectiveTotal > 0L
-                    ? Math.min(85, (int) (downloaded * 80 / effectiveTotal) + 5)
-                    : 5;
+                    ? (int) Math.min(100L, downloaded * 100L / effectiveTotal)
+                    : 0;
             emitProgressBytes(task, callback, ModelDownloadStage.DOWNLOADING, percent, downloaded, effectiveTotal, "archive.download");
         });
 
         task.session().awaitReady();
-        emitProgress(task, callback, ModelDownloadStage.EXTRACTING, 90, "archive.extract");
+        emitProgress(task, callback, ModelDownloadStage.EXTRACTING, 0, "archive.extract");
         Path tempDir = modelDir.resolveSibling(modelDir.getFileName().toString() + "-extract");
         deleteRecursivelyIfExists(tempDir);
         Files.createDirectories(tempDir);
@@ -636,7 +649,7 @@ public class TtsModelService {
         deleteRecursivelyIfExists(tempDir);
         Files.deleteIfExists(archivePath);
         task.session().awaitReady();
-        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
     }
 
     private Path resolveExtractedModelDir(Path extractedRoot, TtsModelInfo info) throws IOException {
@@ -815,7 +828,11 @@ public class TtsModelService {
     }
 
     private boolean finishTask(DownloadTask task) {
-        return task != null && activeDownload.compareAndSet(task, null);
+        boolean finished = task != null && activeDownload.compareAndSet(task, null);
+        if (finished) {
+            activeDownloadHandle.set(null);
+        }
+        return finished;
     }
 
     private void finishDownloadComplete(DownloadTask task, DownloadProgressCallback callback) {
@@ -922,10 +939,8 @@ public class TtsModelService {
 
         private long totalBytes() {
             long observedTotal = completedBytes + currentTotalBytes;
-            if (observedTotal > 0L) {
-                return observedTotal;
-            }
-            return Math.max(fallbackTotalBytes, completedBytes + currentDownloadedBytes);
+            long currentBytes = completedBytes + currentDownloadedBytes;
+            return Math.max(fallbackTotalBytes, Math.max(observedTotal, currentBytes));
         }
 
         private void completeCurrentFileSet() {

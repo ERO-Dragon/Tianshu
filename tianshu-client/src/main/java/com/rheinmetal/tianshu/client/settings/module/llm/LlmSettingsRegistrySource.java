@@ -277,16 +277,13 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             java.util.ArrayList<String> values = new java.util.ArrayList<>(downloaded.size() + 2);
             values.add("");
             String configured = config.getCustomLlmName();
-            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && downloaded.stream().noneMatch(name -> name.equalsIgnoreCase(configured))) {
-                values.add(configured.trim());
-            }
             values.addAll(downloaded);
             return values;
         }
 
         private String currentModelName() {
             String configured = config.getCustomLlmName();
-            if (configured != null && !configured.isBlank() && resolveModel(configured) != null) {
+            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && isDownloaded(resolveModel(configured))) {
                 return configured;
             }
             return "";
@@ -738,6 +735,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 } else {
                     context.showStatus(llm("message.delete_failed"), 3000);
                 }
+                availabilitySnapshot = modelService.modelAvailability();
                 refreshSettingsScreen();
             }));
         }

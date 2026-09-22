@@ -75,6 +75,7 @@ public final class LlmModelService {
     private final LlmModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
+    private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
     private final AtomicBoolean availabilityRefreshQueued = new AtomicBoolean(false);
     private final ConcurrentLinkedQueue<Runnable> availabilityRefreshCallbacks = new ConcurrentLinkedQueue<>();
@@ -208,6 +209,14 @@ public final class LlmModelService {
                         .build(),
                 () -> runDownload(task, info, callback)
         );
+        if (activeDownload.get() == task) {
+            activeDownloadHandle.set(handle);
+            if (task.session().isCancelled()) {
+                handle.cancel("model_download_cancelled");
+            }
+        } else {
+            handle.cancel("model_download_already_finished");
+        }
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             updateDownload(false, false, false, info.name, ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"), ERROR_DOWNLOAD_QUEUE_FULL_KEY);
@@ -245,6 +254,10 @@ public final class LlmModelService {
             return;
         }
         task.session().cancel();
+        ProtocolTaskHandle handle = activeDownloadHandle.get();
+        if (handle != null) {
+            handle.cancel("model_download_cancelled");
+        }
         updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING), "");
         publishWaiting("tianshu.presence.module.llm.download_cancelling");
     }
@@ -439,7 +452,11 @@ public final class LlmModelService {
     }
 
     private boolean finishTask(DownloadTask task) {
-        return task != null && activeDownload.compareAndSet(task, null);
+        boolean finished = task != null && activeDownload.compareAndSet(task, null);
+        if (finished) {
+            activeDownloadHandle.set(null);
+        }
+        return finished;
     }
 
     private void finishDownloadComplete(DownloadTask task, DownloadProgressCallback callback) {

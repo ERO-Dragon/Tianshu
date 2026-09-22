@@ -154,7 +154,7 @@ public class AsrModelDownloader {
     }
 
     private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
-        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 2, "network.check"));
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "network.check"));
         String preferredBase = preferredHfBaseSupplier.get();
         String repoId = info.remoteRepoId();
         if (repoId.isBlank()) {
@@ -162,7 +162,7 @@ public class AsrModelDownloader {
         }
         env.info("ASR_HF_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
 
-        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.RESOLVING_FILES, 5, "files.resolve"));
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.RESOLVING_FILES, 0, "files.resolve"));
         List<RemoteFile> repoFiles = fetchFileTree(preferredBase, repoId, REVISION, control);
         control.awaitReady();
         List<SourceTarget> downloads = resolveRequestedFiles(
@@ -195,8 +195,8 @@ public class AsrModelDownloader {
                                 : fileTotal > 0L ? fileStartBytes + fileTotal : 0L;
                         long aggregateDownloaded = fileStartBytes + downloaded;
                         int percent = effectiveTotal > 0L
-                                ? 5 + (int) Math.min(90L, aggregateDownloaded * 90L / effectiveTotal)
-                                : 5;
+                                ? (int) Math.min(100L, aggregateDownloaded * 100L / effectiveTotal)
+                                : 0;
                         callback.onProgress(ModelDownloadProgress.bytes(
                                 ModelDownloadStage.DOWNLOADING,
                                 percent,
@@ -212,7 +212,7 @@ public class AsrModelDownloader {
     }
 
     private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
-        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 2, "network.check"));
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "network.check"));
         boolean proxyFirst = shouldUseGithubProxy(githubProxyUrl);
         List<URI> candidates = ModelDownloadSourcePolicy.githubArchiveCandidates(
                 info.downloadUrl,
@@ -226,7 +226,7 @@ public class AsrModelDownloader {
         Files.deleteIfExists(archivePath);
         deleteRecursivelyIfExists(extractDir);
         try {
-            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 5, "archive.download"));
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 0, "archive.download"));
             http.download(
                     candidates,
                     archivePath,
@@ -235,8 +235,8 @@ public class AsrModelDownloader {
                     (downloaded, total) -> {
                         long effectiveTotal = total > 0L ? total : Math.max(0L, info.size);
                         int percent = effectiveTotal > 0L
-                                ? Math.min(80, (int) (downloaded * 75 / effectiveTotal) + 5)
-                                : 5;
+                                ? (int) Math.min(100L, downloaded * 100L / effectiveTotal)
+                                : 0;
                         callback.onProgress(ModelDownloadProgress.bytes(
                                 ModelDownloadStage.DOWNLOADING,
                                 percent,
@@ -248,12 +248,12 @@ public class AsrModelDownloader {
             );
             control.awaitReady();
 
-            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.EXTRACTING, 82, "archive.extract"));
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.EXTRACTING, 0, "archive.extract"));
             Files.createDirectories(extractDir);
             extractArchive(archivePath, extractDir, info.downloadUrl);
             control.awaitReady();
 
-            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.MATERIALIZING, 92, "model.materialize"));
+            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.MATERIALIZING, 0, "model.materialize"));
             List<String> archiveFiles = listRelativeFiles(extractDir);
             for (SourceTarget item : resolveRequestedFiles(requiredFiles, archiveFiles)) {
                 control.awaitReady();

@@ -47,9 +47,15 @@ class LlmModelDownloaderTest {
 
             assertEquals(new String(body, StandardCharsets.UTF_8),
                     Files.readString(tempDir.resolve("model.gguf"), StandardCharsets.UTF_8));
-            assertTrue(progress.stream().anyMatch(item -> item.downloadedBytes() > 0L
+            assertTrue(progress.stream().anyMatch(item -> item.stage() == ModelDownloadStage.DOWNLOADING
+                    && item.downloadedBytes() == 0L
+                    && item.percent() == 0));
+            assertTrue(progress.stream().anyMatch(item -> item.stage() == ModelDownloadStage.DOWNLOADING
+                    && item.downloadedBytes() > 0L
                     && item.totalBytes() == body.length
-                    && item.percent() > 5));
+                    && item.percent() > 0));
+            assertTrue(progress.stream().anyMatch(item -> item.stage() == ModelDownloadStage.COMPLETED
+                    && item.percent() == 100));
             assertFalse(progress.stream().anyMatch(item -> item.totalBytes() < 0L));
         }
     }

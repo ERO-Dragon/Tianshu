@@ -126,6 +126,12 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
         if (info == null) {
             return false;
         }
+        if (initialized && loadedModel != null && loadedModel.modelInfo() != null
+                && loadedModel.modelInfo().name != null
+                && loadedModel.modelInfo().name.equalsIgnoreCase(info.name)
+                && activeBackend != null && activeBackend.isInitialized()) {
+            return true;
+        }
         modelSelection.activate(info.name);
         shutdown();
         return initialize();

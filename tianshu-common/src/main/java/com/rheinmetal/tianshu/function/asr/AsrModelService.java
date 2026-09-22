@@ -74,6 +74,7 @@ public class AsrModelService {
     private final AtomicReference<ModelAvailabilitySnapshot> availabilitySnapshot = new AtomicReference<>(ModelAvailabilitySnapshot.empty());
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
+    private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
 
     public AsrModelService(IGameEnvironment env, AsrConfiguration config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
         this(env, config, audioBridge, executorManager, engineSupplier, readySupplier, null);
@@ -369,6 +370,14 @@ public class AsrModelService {
                     }
                 }
         );
+        if (activeDownload.get() == task) {
+            activeDownloadHandle.set(handle);
+            if (task.session().isCancelled()) {
+                handle.cancel("model_download_cancelled");
+            }
+        } else {
+            handle.cancel("model_download_already_finished");
+        }
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             publishFailed("tianshu.presence.module.asr.download_queue_full");
@@ -449,6 +458,10 @@ public class AsrModelService {
             return;
         }
         task.session().cancel();
+        ProtocolTaskHandle handle = activeDownloadHandle.get();
+        if (handle != null) {
+            handle.cancel("model_download_cancelled");
+        }
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, false, true, task.modelKey(), withStage(current.progress(), ModelDownloadStage.CANCELLING)));
         publishWaiting("tianshu.presence.module.asr.download_cancelling");
@@ -621,7 +634,11 @@ public class AsrModelService {
     }
 
     private boolean finishTask(DownloadTask task) {
-        return activeDownload.compareAndSet(task, null);
+        boolean finished = task != null && activeDownload.compareAndSet(task, null);
+        if (finished) {
+            activeDownloadHandle.set(null);
+        }
+        return finished;
     }
 
     private static ModelDownloadProgress withStage(ModelDownloadProgress progress, ModelDownloadStage stage) {

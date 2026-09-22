@@ -96,7 +96,10 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         renderSection(active, () -> {
                 renderControlRow(safeComponent(enable.label(), Component.empty()), active, SWITCH_CONTROL, item -> {
                     CycleButton<Boolean> button = booleanToggleBuilder(safeBoolean(enable.getter(), false))
-                        .create(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), (btn, selected) -> enable.setter().accept(selected));
+                        .create(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), (btn, selected) -> {
+                            enable.setter().accept(selected);
+                            requestSettingsRebuild();
+                        });
                     addIfVisible(button, item.row(), active);
                 });
         });
@@ -112,7 +115,10 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 }
                 renderControlRow(safeComponent(entry.label(), Component.empty()), groupActive && safeBoolean(entry.enabled(), true), SWITCH_CONTROL, item -> {
                     CycleButton<Boolean> button = booleanToggleBuilder(safeBoolean(entry.getter(), false))
-                            .create(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), (btn, selected) -> entry.setter().accept(selected));
+                            .create(item.controlX(), item.screenY(), item.controlWidth(), SettingsLayoutMetrics.CONTROL_HEIGHT, Component.empty(), (btn, selected) -> {
+                                entry.setter().accept(selected);
+                                requestSettingsRebuild();
+                            });
                     addIfVisible(button, item.row(), groupActive && safeBoolean(entry.enabled(), true));
                 });
             }
@@ -711,6 +717,12 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             if (screen != null) {
                 screen.requestRebuildCurrentPage();
             }
+        }
+    }
+
+    private void requestSettingsRebuild() {
+        if (screen != null) {
+            screen.requestRebuildCurrentPage();
         }
     }
 

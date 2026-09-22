@@ -106,14 +106,14 @@ public class LlmModelDownloader {
         env.info("LLM 模型下载: repo=" + info.repoId + " file=" + filePath + " → " + targetFile);
 
         control.awaitReady();
-        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 5, "model.file.download"));
+        callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, 0, "model.file.download"));
         hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3, control::awaitReady, new HuggingFaceDownloader.DownloadProgressListener() {
             @Override
             public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
                 long effectiveTotalBytes = totalBytes > 0L ? totalBytes : info.getDownloadSizeBytes();
                 int percent = effectiveTotalBytes > 0L
-                        ? 5 + (int) Math.min(90L, downloadedBytes * 90L / effectiveTotalBytes)
-                        : 5;
+                        ? (int) Math.min(100L, downloadedBytes * 100L / effectiveTotalBytes)
+                        : 0;
                 callback.onProgress(ModelDownloadProgress.bytes(
                         ModelDownloadStage.DOWNLOADING,
                         percent,

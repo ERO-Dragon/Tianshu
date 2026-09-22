@@ -321,7 +321,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             String custom = config.getCustomAsrName();
             if (custom != null && !custom.isBlank()) {
                 AsrModelInfo customModel = resolveModel(custom);
-                if (customModel != null) {
+                if (customModel != null && isDownloaded(customModel)) {
                     return custom;
                 }
             }
@@ -339,9 +339,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             List<String> values = new ArrayList<>(downloaded.size() + 2);
             values.add("");
             String configured = config.getCustomAsrName();
-            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && downloaded.stream().noneMatch(name -> name.equalsIgnoreCase(configured))) {
-                values.add(configured.trim());
-            }
             values.addAll(downloaded);
             return values;
         }
@@ -554,6 +551,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 } else {
                     context.showStatus(asr("message.delete_failed"), 3000);
                 }
+                availabilitySnapshot = asrModelService().modelAvailability();
                 queueDownloadRefresh();
             }));
         }

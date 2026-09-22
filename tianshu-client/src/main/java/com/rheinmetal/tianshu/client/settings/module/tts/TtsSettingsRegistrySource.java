@@ -303,9 +303,6 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             List<String> values = new ArrayList<>(downloaded.size() + 2);
             values.add("");
             String configured = config.getCustomTtsName();
-            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && downloaded.stream().noneMatch(name -> name.equalsIgnoreCase(configured))) {
-                values.add(configured.trim());
-            }
             values.addAll(downloaded);
             return values;
         }
@@ -314,7 +311,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             String configured = config.getCustomTtsName();
             if (configured != null && !configured.isBlank()) {
                 TtsModelInfo configuredModel = resolveModel(configured);
-                if (configuredModel != null) {
+                if (configuredModel != null && isDownloaded(configuredModel)) {
                     return configured;
                 }
             }
@@ -624,6 +621,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 } else {
                     context.showStatus(tts("message.delete_failed"), 3000);
                 }
+                availabilitySnapshot = ttsModelService().modelAvailability();
                 refreshSettingsScreen();
             }));
         }
