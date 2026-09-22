@@ -65,6 +65,10 @@ final class ModelDownloadTestServer implements AutoCloseable {
         return new Response(status, body, body.length, Map.of());
     }
 
+    static Response chunked(int status, byte[] body) {
+        return new Response(status, body, 0L, Map.of());
+    }
+
     static Response declaredLength(int status, byte[] body, long declaredLength) {
         return new Response(status, body, declaredLength, Map.of());
     }

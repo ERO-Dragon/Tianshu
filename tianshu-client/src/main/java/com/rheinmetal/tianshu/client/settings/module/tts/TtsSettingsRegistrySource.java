@@ -532,6 +532,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onComplete() {
                     runOnClient(() -> {
+                        availabilitySnapshot = ttsModelService().modelAvailability();
                         context.showStatus(tts("message.download_complete"), 3000);
                         coreManager.refreshRuntime(RuntimeRefreshReason.RESOURCE_CHANGED);
                         refreshSettingsScreen();

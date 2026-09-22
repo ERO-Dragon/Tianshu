@@ -163,27 +163,51 @@ public class AsrModelDownloader {
         env.info("ASR_HF_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
 
         callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.RESOLVING_FILES, 5, "files.resolve"));
-        List<String> repoFiles = fetchFileTree(preferredBase, repoId, REVISION, control);
+        List<RemoteFile> repoFiles = fetchFileTree(preferredBase, repoId, REVISION, control);
         control.awaitReady();
-        List<SourceTarget> downloads = resolveRequestedFiles(requiredFiles, repoFiles);
+        List<SourceTarget> downloads = resolveRequestedFiles(
+                requiredFiles,
+                repoFiles.stream().map(RemoteFile::path).toList()
+        );
         env.info("ASR selected files: " + downloads.stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
 
         int total = downloads.size();
+        long totalBytes = knownTotalBytes(downloads, repoFiles);
+        if (totalBytes <= 0L) {
+            totalBytes = Math.max(0L, info.size);
+        }
+        final long aggregateTotalBytes = totalBytes;
+        long completedBytes = 0L;
         for (int i = 0; i < total; i++) {
             control.awaitReady();
             SourceTarget item = downloads.get(i);
             Path localPath = stagingDir.resolve(item.targetPath()).normalize();
             ensureWithinTarget(localPath, stagingDir);
+            long fileStartBytes = completedBytes;
             http.download(
                     sources.huggingFaceFileCandidates(preferredBase, repoId, REVISION, item.sourcePath()),
                     localPath,
                     HF_FILE_RETRY,
                     adapt(control),
-                    null
+                    (downloaded, fileTotal) -> {
+                        long effectiveTotal = aggregateTotalBytes > 0L
+                                ? aggregateTotalBytes
+                                : fileTotal > 0L ? fileStartBytes + fileTotal : 0L;
+                        long aggregateDownloaded = fileStartBytes + downloaded;
+                        int percent = effectiveTotal > 0L
+                                ? 5 + (int) Math.min(90L, aggregateDownloaded * 90L / effectiveTotal)
+                                : 5;
+                        callback.onProgress(ModelDownloadProgress.bytes(
+                                ModelDownloadStage.DOWNLOADING,
+                                percent,
+                                aggregateDownloaded,
+                                effectiveTotal,
+                                "model.files.download"
+                        ));
+                    }
             );
             control.awaitReady();
-            int percent = 5 + (int) (((i + 1) / (double) total) * 90);
-            callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.DOWNLOADING, percent, "model.files.download"));
+            completedBytes += Files.size(localPath);
         }
     }
 
@@ -209,8 +233,17 @@ public class AsrModelDownloader {
                     ARCHIVE_RETRY,
                     adapt(control),
                     (downloaded, total) -> {
-                        int percent = total > 0 ? Math.min(80, (int) (downloaded * 75 / total) + 5) : 40;
-                        callback.onProgress(ModelDownloadProgress.bytes(ModelDownloadStage.DOWNLOADING, percent, downloaded, total, "archive.download"));
+                        long effectiveTotal = total > 0L ? total : Math.max(0L, info.size);
+                        int percent = effectiveTotal > 0L
+                                ? Math.min(80, (int) (downloaded * 75 / effectiveTotal) + 5)
+                                : 5;
+                        callback.onProgress(ModelDownloadProgress.bytes(
+                                ModelDownloadStage.DOWNLOADING,
+                                percent,
+                                downloaded,
+                                effectiveTotal,
+                                "archive.download"
+                        ));
                     }
             );
             control.awaitReady();
@@ -325,7 +358,7 @@ public class AsrModelDownloader {
         throw new IOException("Unsupported ASR model archive type: " + downloadUrl);
     }
 
-    private List<String> fetchFileTree(
+    private List<RemoteFile> fetchFileTree(
             String preferredBase,
             String repoId,
             String revision,
@@ -340,7 +373,7 @@ public class AsrModelDownloader {
         if (root == null) {
             throw new IOException("ASR_HF_TREE_RESPONSE_INVALID repo=" + repoId);
         }
-        List<String> result = new ArrayList<>();
+        List<RemoteFile> result = new ArrayList<>();
         for (JsonElement element : root) {
             if (!element.isJsonObject()) {
                 continue;
@@ -348,7 +381,7 @@ public class AsrModelDownloader {
             JsonObject node = element.getAsJsonObject();
             if (node.has("type") && node.has("path")
                     && "file".equalsIgnoreCase(node.get("type").getAsString())) {
-                result.add(node.get("path").getAsString());
+                result.add(new RemoteFile(node.get("path").getAsString(), readSize(node)));
             }
         }
         return List.copyOf(result);
@@ -495,5 +528,36 @@ public class AsrModelDownloader {
         private String display() {
             return sourcePath + " -> " + targetPath;
         }
+    }
+
+    private long knownTotalBytes(List<SourceTarget> downloads, List<RemoteFile> repoFiles) {
+        long total = 0L;
+        for (SourceTarget download : downloads) {
+            long size = repoFiles.stream()
+                    .filter(file -> file.path().equals(download.sourcePath()))
+                    .mapToLong(RemoteFile::size)
+                    .findFirst()
+                    .orElse(-1L);
+            if (size <= 0L || Long.MAX_VALUE - total < size) {
+                return 0L;
+            }
+            total += size;
+        }
+        return total;
+    }
+
+    private long readSize(JsonObject node) {
+        if (node == null || !node.has("size") || !node.get("size").isJsonPrimitive()) {
+            return -1L;
+        }
+        try {
+            long size = node.get("size").getAsLong();
+            return size > 0L ? size : -1L;
+        } catch (RuntimeException invalidSize) {
+            return -1L;
+        }
+    }
+
+    private record RemoteFile(String path, long size) {
     }
 }

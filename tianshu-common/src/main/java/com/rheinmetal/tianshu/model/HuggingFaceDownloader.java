@@ -43,6 +43,9 @@ public class HuggingFaceDownloader {
         default void onFileListResolved(int totalFiles) {
         }
 
+        default void onOverallProgress(long downloadedBytes, long totalBytes) {
+        }
+
         default void onFileProgress(
                 String filePath,
                 int fileIndex,
@@ -122,22 +125,28 @@ public class HuggingFaceDownloader {
         String preferredBase = preferredBaseSupplier.get();
         env.info("HF_REPOSITORY_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
         checkControl(control);
-        List<String> allFiles = fetchFileTree(preferredBase, repoId, revision, control);
-        List<String> toDownload = allFiles.stream().filter(path -> !shouldSkipFile(path)).toList();
+        List<RepositoryFile> allFiles = fetchFileTree(preferredBase, repoId, revision, control);
+        List<RepositoryFile> toDownload = allFiles.stream().filter(file -> !shouldSkipFile(file.path())).toList();
+        long totalBytes = totalBytes(toDownload);
+        long completedBytes = 0L;
         if (progress != null) {
             progress.onFileListResolved(toDownload.size());
+            progress.onOverallProgress(completedBytes, totalBytes);
         }
 
         for (int index = 0; index < toDownload.size(); index++) {
             checkControl(control);
-            String filePath = toDownload.get(index);
+            RepositoryFile repositoryFile = toDownload.get(index);
+            String filePath = repositoryFile.path();
             int fileIndex = index + 1;
             Path localPath = targetDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, targetDir);
             if (skipExisting && Files.isRegularFile(localPath) && Files.size(localPath) > 0L) {
-                notifySkipped(progress, filePath, fileIndex, toDownload.size());
+                notifySkipped(progress, filePath, fileIndex, toDownload.size(), completedBytes, totalBytes, repositoryFile.size());
+                completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
                 continue;
             }
+            long fileStartBytes = completedBytes;
             downloadRepositoryFile(
                     preferredBase,
                     repoId,
@@ -148,8 +157,12 @@ public class HuggingFaceDownloader {
                     control,
                     progress,
                     fileIndex,
-                    toDownload.size()
+                    toDownload.size(),
+                    fileStartBytes,
+                    totalBytes,
+                    repositoryFile.size()
             );
+            completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
     }
 
@@ -167,24 +180,30 @@ public class HuggingFaceDownloader {
         Files.createDirectories(vocoderDir);
         String preferredBase = preferredBaseSupplier.get();
         checkControl(control);
-        List<String> toDownload = fetchFileTree(preferredBase, VOCODER_REPO, MAIN_REVISION, control)
+        List<RepositoryFile> toDownload = fetchFileTree(preferredBase, VOCODER_REPO, MAIN_REVISION, control)
                 .stream()
-                .filter(filePath -> filePath.toLowerCase(Locale.ROOT).endsWith(".onnx"))
-                .filter(filePath -> !shouldSkipFile(filePath))
+                .filter(file -> file.path().toLowerCase(Locale.ROOT).endsWith(".onnx"))
+                .filter(file -> !shouldSkipFile(file.path()))
                 .toList();
+        long totalBytes = totalBytes(toDownload);
+        long completedBytes = 0L;
         if (progress != null) {
             progress.onFileListResolved(toDownload.size());
+            progress.onOverallProgress(completedBytes, totalBytes);
         }
         for (int index = 0; index < toDownload.size(); index++) {
             checkControl(control);
-            String filePath = toDownload.get(index);
+            RepositoryFile repositoryFile = toDownload.get(index);
+            String filePath = repositoryFile.path();
             int fileIndex = index + 1;
             Path localPath = vocoderDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, vocoderDir);
             if (Files.isRegularFile(localPath) && Files.size(localPath) > 0L) {
-                notifySkipped(progress, filePath, fileIndex, toDownload.size());
+                notifySkipped(progress, filePath, fileIndex, toDownload.size(), completedBytes, totalBytes, repositoryFile.size());
+                completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
                 continue;
             }
+            long fileStartBytes = completedBytes;
             downloadRepositoryFile(
                     preferredBase,
                     VOCODER_REPO,
@@ -195,8 +214,12 @@ public class HuggingFaceDownloader {
                     control,
                     progress,
                     fileIndex,
-                    toDownload.size()
+                    toDownload.size(),
+                    fileStartBytes,
+                    totalBytes,
+                    repositoryFile.size()
             );
+            completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
     }
 
@@ -231,7 +254,7 @@ public class HuggingFaceDownloader {
         Files.createDirectories(parent);
         ensureWithinTarget(absoluteTarget, parent);
         if (Files.isRegularFile(absoluteTarget) && Files.size(absoluteTarget) > 0L) {
-            notifySkipped(progress, filePath, 1, 1);
+            notifySkipped(progress, filePath, 1, 1, 0L, 0L, Files.size(absoluteTarget));
             return;
         }
         if (progress != null) {
@@ -248,11 +271,14 @@ public class HuggingFaceDownloader {
                 control,
                 progress,
                 1,
-                1
+                1,
+                0L,
+                0L,
+                -1L
         );
     }
 
-    private List<String> fetchFileTree(
+    private List<RepositoryFile> fetchFileTree(
             String preferredBase,
             String repoId,
             String revision,
@@ -267,7 +293,7 @@ public class HuggingFaceDownloader {
         if (root == null) {
             throw new IOException("HF_TREE_RESPONSE_INVALID repo=" + repoId);
         }
-        List<String> result = new ArrayList<>();
+        List<RepositoryFile> result = new ArrayList<>();
         for (JsonElement element : root) {
             if (!element.isJsonObject()) {
                 continue;
@@ -277,7 +303,7 @@ public class HuggingFaceDownloader {
                 continue;
             }
             if ("file".equalsIgnoreCase(node.get("type").getAsString())) {
-                result.add(node.get("path").getAsString());
+                result.add(new RepositoryFile(node.get("path").getAsString(), readSize(node)));
             }
         }
         return List.copyOf(result);
@@ -293,7 +319,10 @@ public class HuggingFaceDownloader {
             DownloadControl control,
             DownloadProgressListener progress,
             int fileIndex,
-            int totalFiles
+            int totalFiles,
+            long fileStartBytes,
+            long overallTotalBytes,
+            long knownFileSize
     ) throws IOException {
         http.download(
                 sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath),
@@ -303,6 +332,10 @@ public class HuggingFaceDownloader {
                 (downloaded, total) -> {
                     if (progress != null) {
                         progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
+                        long effectiveFileTotal = total > 0L ? total : knownFileSize;
+                        long overallDownloaded = fileStartBytes + downloaded;
+                        long overallTotal = overallTotalBytes > 0L ? overallTotalBytes : 0L;
+                        progress.onOverallProgress(overallDownloaded, overallTotal);
                     }
                 }
         );
@@ -327,13 +360,44 @@ public class HuggingFaceDownloader {
             DownloadProgressListener progress,
             String filePath,
             int fileIndex,
-            int totalFiles
+            int totalFiles,
+            long completedBytes,
+            long overallTotalBytes,
+            long knownFileSize
     ) {
         if (progress != null) {
             if (totalFiles == 1) {
                 progress.onFileListResolved(1);
             }
-            progress.onFileProgress(filePath, fileIndex, totalFiles, 1L, 1L);
+            progress.onFileProgress(filePath, fileIndex, totalFiles, knownFileSize > 0L ? knownFileSize : 1L, knownFileSize);
+            progress.onOverallProgress(completedBytes + (knownFileSize > 0L ? knownFileSize : 1L), overallTotalBytes);
+        }
+    }
+
+    private static long totalBytes(List<RepositoryFile> files) {
+        long total = 0L;
+        for (RepositoryFile file : files) {
+            if (file.size() <= 0L || Long.MAX_VALUE - total < file.size()) {
+                return 0L;
+            }
+            total += file.size();
+        }
+        return total;
+    }
+
+    private static long knownSize(long metadataSize, long actualSize) {
+        return actualSize > 0L ? actualSize : Math.max(0L, metadataSize);
+    }
+
+    private static long readSize(JsonObject node) {
+        if (node == null || !node.has("size") || !node.get("size").isJsonPrimitive()) {
+            return -1L;
+        }
+        try {
+            long size = node.get("size").getAsLong();
+            return size > 0L ? size : -1L;
+        } catch (RuntimeException invalidSize) {
+            return -1L;
         }
     }
 
@@ -358,5 +422,8 @@ public class HuggingFaceDownloader {
         if (!normalizedPath.startsWith(normalizedTarget)) {
             throw new IOException("HF_UNSAFE_TARGET_PATH path=" + path);
         }
+    }
+
+    private record RepositoryFile(String path, long size) {
     }
 }

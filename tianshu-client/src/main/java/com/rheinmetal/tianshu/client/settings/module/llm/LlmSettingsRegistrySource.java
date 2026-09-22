@@ -659,6 +659,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onComplete() {
                     runOnClient(() -> {
+                        availabilitySnapshot = modelService.modelAvailability();
                         context.showStatus(llm("message.download_complete"), 3000);
                         refreshSettingsScreen();
                     });

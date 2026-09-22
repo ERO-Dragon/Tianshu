@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -19,6 +20,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsrModelDownloaderTest {
     @TempDir
@@ -145,6 +147,44 @@ class AsrModelDownloaderTest {
         }
     }
 
+    @Test
+    void reportsAggregatedByteProgressAcrossChunkedHuggingFaceFiles() throws Exception {
+        try (ModelDownloadTestServer server = new ModelDownloadTestServer()) {
+            String treePath = "/api/models/org/asr/tree/main";
+            String firstPath = "/org/asr/resolve/main/first.onnx";
+            String secondPath = "/org/asr/resolve/main/second.onnx";
+            byte[] first = "first".getBytes(StandardCharsets.UTF_8);
+            byte[] second = "second-file".getBytes(StandardCharsets.UTF_8);
+            server.enqueue(treePath, ModelDownloadTestServer.text(
+                    200,
+                    "[{\"type\":\"file\",\"path\":\"first.onnx\",\"size\":" + first.length + "},"
+                            + "{\"type\":\"file\",\"path\":\"second.onnx\",\"size\":" + second.length + "}]"
+            ));
+            server.enqueue(firstPath, ModelDownloadTestServer.chunked(200, first));
+            server.enqueue(secondPath, ModelDownloadTestServer.chunked(200, second));
+
+            AsrModelInfo info = new AsrModelInfo();
+            info.name = "chunked-asr";
+            info.id = "org/asr";
+            info.modelFiles = List.of("first.onnx", "second.onnx");
+            info.size = first.length + second.length;
+            List<ModelDownloadProgress> progress = new ArrayList<>();
+
+            downloader(server::baseUrl, () -> true).downloadSync(
+                    info,
+                    tempDir.resolve("chunked-asr"),
+                    "",
+                    new RecordingCallback(progress),
+                    () -> {}
+            );
+
+            assertTrue(progress.stream().anyMatch(item -> item.downloadedBytes() > 0L
+                    && item.totalBytes() == info.size
+                    && item.percent() > 5));
+            assertTrue(progress.stream().anyMatch(item -> item.downloadedBytes() == info.size));
+        }
+    }
+
     private AsrModelDownloader downloader(
             Supplier<String> preferredHfBase,
             BooleanSupplier githubReachable
@@ -184,9 +224,19 @@ class AsrModelDownloaderTest {
 
     private static final class RecordingCallback implements AsrModelDownloader.DownloadProgressCallback {
         private final AtomicInteger completed = new AtomicInteger();
+        private final List<ModelDownloadProgress> progress;
+
+        private RecordingCallback() {
+            this(new ArrayList<>());
+        }
+
+        private RecordingCallback(List<ModelDownloadProgress> progress) {
+            this.progress = progress;
+        }
 
         @Override
-        public void onProgress(ModelDownloadProgress progress) {
+        public void onProgress(ModelDownloadProgress value) {
+            progress.add(value);
         }
 
         @Override

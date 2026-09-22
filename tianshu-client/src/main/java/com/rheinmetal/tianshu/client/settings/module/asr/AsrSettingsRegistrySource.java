@@ -465,6 +465,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 @Override
                 public void onComplete() {
                     runOnClient(() -> {
+                        availabilitySnapshot = asrModelService().modelAvailability();
                         context.showStatus(asr("message.download_complete"), 3000);
                         queueDownloadRefresh();
                     });

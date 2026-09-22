@@ -31,8 +31,12 @@ public class LlmModelDownloader {
     private volatile boolean paused = false;
 
     public LlmModelDownloader(IGameEnvironment env) {
+        this(env, new HuggingFaceDownloader(env));
+    }
+
+    LlmModelDownloader(IGameEnvironment env, HuggingFaceDownloader hfDownloader) {
         this.env = env;
-        this.hfDownloader = new HuggingFaceDownloader(env);
+        this.hfDownloader = Objects.requireNonNull(hfDownloader, "hfDownloader");
     }
 
     public void cancelDownload() {
@@ -106,10 +110,17 @@ public class LlmModelDownloader {
         hfDownloader.downloadSingleFile(info.repoId, filePath, targetFile, "main", 3, control::awaitReady, new HuggingFaceDownloader.DownloadProgressListener() {
             @Override
             public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
-                if (totalBytes > 0L) {
-                    int percent = 5 + (int) Math.min(90L, downloadedBytes * 90L / totalBytes);
-                    callback.onProgress(ModelDownloadProgress.bytes(ModelDownloadStage.DOWNLOADING, percent, downloadedBytes, totalBytes, "model.file.download"));
-                }
+                long effectiveTotalBytes = totalBytes > 0L ? totalBytes : info.getDownloadSizeBytes();
+                int percent = effectiveTotalBytes > 0L
+                        ? 5 + (int) Math.min(90L, downloadedBytes * 90L / effectiveTotalBytes)
+                        : 5;
+                callback.onProgress(ModelDownloadProgress.bytes(
+                        ModelDownloadStage.DOWNLOADING,
+                        percent,
+                        downloadedBytes,
+                        effectiveTotalBytes,
+                        "model.file.download"
+                ));
             }
         });
 

@@ -547,7 +547,7 @@ public class TtsModelService {
             if (info.downloadUri != null && !info.downloadUri.isBlank()) {
                 downloadArchiveModel(task, info, stagingDir, proxyUrl, callback);
             } else if ("moss".equals(info.getEngineType())) {
-                downloadMossModel(task, stagingDir, callback);
+                downloadMossModel(task, info, stagingDir, callback);
             } else {
                 downloadSherpaModel(task, info, stagingDir, callback);
             }
@@ -571,36 +571,36 @@ public class TtsModelService {
     private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.RESOLVING_FILES, 5, "files.resolve");
+        ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
         task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
-                    public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
-                        int percent = totalFiles <= 0 ? 90 : Math.min(94, 5 + (int) ((fileIndex - 1L) * 80 / totalFiles));
-                         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "model.files.download");
+                    public void onOverallProgress(long downloadedBytes, long totalBytes) {
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 5, 94, "model.files.download");
                     }
                 });
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 95, "model.materialize");
     }
 
-    private void downloadMossModel(DownloadTask task, Path modelDir, DownloadProgressCallback callback) throws Exception {
+    private void downloadMossModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 5, "model.files.download");
+        ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
         task.session().downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
-                    public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
-                        int percent = totalFiles <= 0 ? 45 : Math.min(48, 5 + (int) ((fileIndex - 1L) * 40 / totalFiles));
-                         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "model.files.download");
+                    public void onOverallProgress(long downloadedBytes, long totalBytes) {
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 5, 94, "model.files.download");
                     }
                 });
         task.session().awaitReady();
+        aggregate.completeCurrentFileSet();
         task.session().downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
-                    public void onFileProgress(String filePath, int fileIndex, int totalFiles, long downloadedBytes, long totalBytes) {
-                        int percent = totalFiles <= 0 ? 90 : Math.min(94, 50 + (int) ((fileIndex - 1L) * 40 / totalFiles));
-                         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "model.files.download");
+                    public void onOverallProgress(long downloadedBytes, long totalBytes) {
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 5, 94, "model.files.download");
                     }
                 });
         task.session().awaitReady();
@@ -616,8 +616,11 @@ public class TtsModelService {
 
         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 5, "archive.download");
         task.session().downloadArchive(archiveUri, proxyBaseUri, proxyBaseUri != null, archivePath, 5, 60_000, (downloaded, total) -> {
-            int percent = total > 0 ? Math.min(85, (int) (downloaded * 80 / total) + 5) : 40;
-            emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, percent, "archive.download");
+            long effectiveTotal = total > 0L ? total : Math.max(0L, info.size);
+            int percent = effectiveTotal > 0L
+                    ? Math.min(85, (int) (downloaded * 80 / effectiveTotal) + 5)
+                    : 5;
+            emitProgressBytes(task, callback, ModelDownloadStage.DOWNLOADING, percent, downloaded, effectiveTotal, "archive.download");
         });
 
         task.session().awaitReady();
@@ -660,6 +663,43 @@ public class TtsModelService {
             return;
         }
         ModelDownloadProgress progress = ModelDownloadProgress.stage(stage, percent, detailCode);
+        updateDownload(true, task.session().isPaused(), false, task.modelName(), progress);
+        if (callback != null) {
+            callback.onProgress(progress);
+        }
+    }
+
+    private void emitByteProgress(
+            DownloadTask task,
+            DownloadProgressCallback callback,
+            long downloadedBytes,
+            long totalBytes,
+            int startPercent,
+            int endPercent,
+            String detailCode
+    ) {
+        long effectiveTotal = Math.max(0L, totalBytes);
+        int percent = effectiveTotal > 0L
+                ? startPercent + (int) Math.min(endPercent - startPercent, downloadedBytes * (long) (endPercent - startPercent) / effectiveTotal)
+                : startPercent;
+        emitProgressBytes(task, callback, ModelDownloadStage.DOWNLOADING, percent, downloadedBytes, effectiveTotal, detailCode);
+    }
+
+    private void emitProgressBytes(
+            DownloadTask task,
+            DownloadProgressCallback callback,
+            ModelDownloadStage stage,
+            int percent,
+            long downloadedBytes,
+            long totalBytes,
+            String detailCode
+    ) {
+        if (!isCurrentTask(task) || task.session().isCancelled()) {
+            return;
+        }
+        ModelDownloadProgress progress = ModelDownloadProgress.bytes(
+                stage, percent, downloadedBytes, totalBytes, detailCode
+        );
         updateDownload(true, task.session().isPaused(), false, task.modelName(), progress);
         if (callback != null) {
             callback.onProgress(progress);
@@ -859,6 +899,39 @@ public class TtsModelService {
     ) {
         private DownloadTask {
             modelName = modelName == null ? "" : modelName.trim();
+        }
+    }
+
+    private static final class ByteProgressAccumulator {
+        private final long fallbackTotalBytes;
+        private long completedBytes;
+        private long currentDownloadedBytes;
+        private long currentTotalBytes;
+
+        private ByteProgressAccumulator(long fallbackTotalBytes) {
+            this.fallbackTotalBytes = Math.max(0L, fallbackTotalBytes);
+        }
+
+        private long update(long downloadedBytes, long totalBytes) {
+            currentDownloadedBytes = Math.max(currentDownloadedBytes, Math.max(0L, downloadedBytes));
+            if (totalBytes > 0L) {
+                currentTotalBytes = totalBytes;
+            }
+            return completedBytes + currentDownloadedBytes;
+        }
+
+        private long totalBytes() {
+            long observedTotal = completedBytes + currentTotalBytes;
+            if (observedTotal > 0L) {
+                return observedTotal;
+            }
+            return Math.max(fallbackTotalBytes, completedBytes + currentDownloadedBytes);
+        }
+
+        private void completeCurrentFileSet() {
+            completedBytes += currentDownloadedBytes;
+            currentDownloadedBytes = 0L;
+            currentTotalBytes = 0L;
         }
     }
 }
