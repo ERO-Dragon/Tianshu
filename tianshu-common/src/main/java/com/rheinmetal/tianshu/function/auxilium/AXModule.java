@@ -31,12 +31,14 @@ import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicKnowledgeFormatter;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXSharedKnowledgePlanner;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.AXDialogueContextInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceChatMessageMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPresenceWorldEventMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryMaintenanceService;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemoryTaskPromptRepository;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurnCheckpointStore;
+import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
@@ -50,6 +52,7 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -85,6 +88,7 @@ public final class AXModule implements TianshuManagedModule {
     private AXTurnOrchestrator turnOrchestrator;
     private AXTurnStatusPublisher turnStatusPublisher;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
+    private final AXDialogueContextInputMapper contextInputMapper = new AXDialogueContextInputMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
 
     public AXModule(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime) {
@@ -139,6 +143,7 @@ public final class AXModule implements TianshuManagedModule {
     @Override
     public void register(ModuleRegistrationContext context) {
         adapter.registerDialogueInputCapability(this::handleDialogueDelivery);
+        adapter.registerContextInputCapability(this::handleContextInput);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
         adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
     }
@@ -324,17 +329,46 @@ public final class AXModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX presence chat message payload is invalid", null);
             return;
         }
-        AXMemorySystem currentMemory = memorySystem;
-        AXScopeProvider currentScopeProvider = scopeProvider;
-        if (currentMemory != null && currentScopeProvider != null) {
-            AXScope scope = currentScopeProvider.currentScope();
-            if (scope != null && scope.writable()) {
-                if (recentDialogueSystem != null) {
-                    recentDialogueSystem.append(scope, chatMessageMapper.map(scope, payload));
-                }
-            }
+        AXScope scope = currentWritableScope();
+        if (scope != null) {
+            recordThirdPartyUtterance(scope, chatMessageMapper.map(scope, payload));
         }
         context.complete(envelope.envelopeId());
+    }
+
+    /**
+     * 上下文型投递处理。只把第三方话语并入近期对话上下文，不调用 LLM、不产生语音、不占用会话，
+     * 也不经过 IA 仲裁。需要回答的输入必须走 {@code AX.DIALOGUE_INPUT}。
+     */
+    private void handleContextInput(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof DialogueContextInputPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX context input payload is invalid", null);
+            return;
+        }
+        AXScope scope = currentWritableScope();
+        if (scope != null && !payload.messageText().isBlank()) {
+            recordThirdPartyUtterance(
+                    scope,
+                    contextInputMapper.map(scope, envelope.header().sourceId(), payload)
+            );
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void recordThirdPartyUtterance(AXScope scope, AXRawTurn turn) {
+        if (scope == null || turn == null || recentDialogueSystem == null) {
+            return;
+        }
+        recentDialogueSystem.append(scope, turn);
+    }
+
+    private AXScope currentWritableScope() {
+        AXScopeProvider currentScopeProvider = scopeProvider;
+        if (memorySystem == null || currentScopeProvider == null) {
+            return null;
+        }
+        AXScope scope = currentScopeProvider.currentScope();
+        return scope != null && scope.writable() ? scope : null;
     }
 
 }

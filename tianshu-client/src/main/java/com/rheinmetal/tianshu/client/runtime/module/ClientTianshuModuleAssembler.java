@@ -14,9 +14,8 @@ import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
-import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityCoreAdapter;
-import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
+import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
@@ -107,12 +106,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
         }
         installers.add(new IaModuleInstaller(moduleRuntime));
         installers.add(new ClientIrModuleInstaller(moduleRuntime, indexManager));
-        installers.add(new LlmModuleInstaller(
-                env,
-                configurations.llm(),
-                moduleRuntime,
-                axWorldIdentityProvider == null ? null : new AXWorldIdentityCoreAdapter(axWorldIdentityProvider)
-        ));
+        installers.add(new LlmModuleInstaller(env, configurations.llm(), moduleRuntime));
         installers.add(new AXModuleInstaller(
                 env,
                 configurations.ax(),

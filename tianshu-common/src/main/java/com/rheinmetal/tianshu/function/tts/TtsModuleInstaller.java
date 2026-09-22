@@ -23,6 +23,12 @@ public final class TtsModuleInstaller implements TianshuModuleInstaller {
 
     @Override
     public void install(TianshuModuleHost moduleHost, ModuleServiceRegistry moduleServices) {
-        moduleHost.registerOptionalModule(new TtsModule(audioBridge, moduleRuntime, env, config), TtsRuntimeCapabilities.SYNTHESIS, TtsRuntimeCapabilities.PLAYBACK);
+        moduleHost.registerOptionalModule(
+                new TtsModule(audioBridge, moduleRuntime, env, config),
+                TtsRuntimeCapabilities.SYNTHESIS,
+                TtsRuntimeCapabilities.PLAYBACK,
+                TtsRuntimeCapabilities.VOICE_LIBRARY,
+                TtsRuntimeCapabilities.MODEL_MANAGEMENT
+        );
     }
 }

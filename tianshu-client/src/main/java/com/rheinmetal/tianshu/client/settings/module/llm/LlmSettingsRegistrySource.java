@@ -97,6 +97,19 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled)
                 .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
+                .compound("llm.embedding", llm("section.embedding"), draft.enabled::get,
+                        options -> { },
+                        actions -> actions.button(
+                                "llm.embedding.download",
+                                llm("action.download_embedding"),
+                                SettingsButtonStyle.PRIMARY,
+                                () -> draft.downloadEmbeddingModel(context),
+                                draft::canDownloadEmbeddingModel
+                        ),
+                        status -> {
+                            status.row("llm.embedding.model", llm("row.embedding_model"), draft::embeddingModelNameStatus);
+                            status.row("llm.embedding.state", llm("row.embedding_state"), draft::embeddingModelStateStatus);
+                        })
                 .compound("llm.load", llm("section.load_settings"), draft.enabled::get,
                         draft::buildLoadOptions,
                         actions -> actions
@@ -352,6 +365,84 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private boolean isDownloaded(LlmModelInfo info) {
             ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
             return entry != null && entry.installed();
+        }
+
+        /**
+         * 当前语言对应的 RAG 向量模型。它不在对话模型目录里，因此不出现在右侧下载列表中，
+         * 由设备能力下方的独立入口下载。
+         */
+        private LlmModelInfo embeddingModel() {
+            String name = config.getLlmEmbeddingModelName();
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            return modelService.embeddingModelByName(name);
+        }
+
+        private UiText embeddingModelNameStatus() {
+            LlmModelInfo info = embeddingModel();
+            return info == null ? common("unknown") : UiText.literal(info.getDisplayName());
+        }
+
+        private UiText embeddingModelStateStatus() {
+            LlmModelInfo info = embeddingModel();
+            if (info == null) return common("unknown");
+            return common(modelService.isModelInstalled(info) ? "downloaded" : "not_downloaded");
+        }
+
+        private boolean canDownloadEmbeddingModel() {
+            LlmModelInfo info = embeddingModel();
+            return enabled.get()
+                    && info != null
+                    && !modelService.isModelInstalled(info)
+                    && !modelService.isDownloading()
+                    && !modelService.isDeleting();
+        }
+
+        private void downloadEmbeddingModel(ModuleSettingsContext context) {
+            LlmModelInfo info = embeddingModel();
+            if (info == null) {
+                context.showStatus(llm("error.embedding_unavailable"), 4000);
+                return;
+            }
+            if (modelService.isModelInstalled(info)) {
+                context.showStatus(llm("message.embedding_already_downloaded"), 3000);
+                return;
+            }
+            if (!canDownloadEmbeddingModel()) {
+                return;
+            }
+            modelService.downloadModel(info, new LlmModelService.DownloadProgressCallback() {
+                @Override
+                public void onProgress(ModelDownloadProgress progress) {
+                    requestDownloadRefresh();
+                }
+
+                @Override
+                public void onComplete() {
+                    runOnClient(() -> {
+                        availabilitySnapshot = modelService.modelAvailability();
+                        context.showStatus(llm("message.embedding_download_complete"), 3000);
+                        refreshSettingsScreen();
+                    });
+                }
+
+                @Override
+                public void onError(String message) {
+                    runOnClient(() -> {
+                        context.showStatus(localizedDownloadMessage(message), 4000);
+                        refreshSettingsScreen();
+                    });
+                }
+
+                @Override
+                public void onCancelled() {
+                    runOnClient(() -> {
+                        context.showStatus(llm("status.cancelled"), 1500);
+                        refreshSettingsScreen();
+                    });
+                }
+            });
         }
 
         private long cachedModelSizeBytes(LlmModelInfo info) {

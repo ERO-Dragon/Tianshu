@@ -16,7 +16,7 @@ participantId = tianshu.AX
 routeCapability = AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY
 ```
 
-`AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY` 当前值为 `AX.DIALOGUE_INPUT`，契约为：
+`AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY` 当前值为 `ProtocolCapabilities.AX_DIALOGUE_INPUT`，契约为：
 
 | 项目 | 值 |
 | --- | --- |
@@ -27,6 +27,41 @@ routeCapability = AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY
 | 完成策略 | `MANUAL_COMPLETE` |
 
 该 capability 是 IA 选中 AX 为当前 owner 后的定向 delivery 入口，不是外部模块的通用 prompt API。外部模块不得直接向它发送正文，否则会绕过 participant claim、session owner、turn、expireAt 和 LLM 授权边界。
+
+## 2.1 两种输入入口的分工
+
+AX 对外提供两个 `COMMAND` 入口，分别对应“需要回答”和“只需要被记住”：
+
+| 入口 | 能力名 | Payload | 语义 |
+| --- | --- | --- | --- |
+| 提问型 | `ProtocolCapabilities.AX_DIALOGUE_INPUT` | `DialogueDeliveryPayload` | 需要 AX 回答。只由 IA 仲裁后投递，走完整回合。 |
+| 上下文型 | `ProtocolCapabilities.AX_CONTEXT_INPUT` | `DialogueContextInputPayload` | 只需要并入 AX 的近期对话上下文。 |
+
+`AXProtocolAdapter.CONTEXT_INPUT_CAPABILITY` 的契约为：
+
+| 项目 | 值 |
+| --- | --- |
+| PayloadType | `DIALOGUE_CONTEXT_INPUT` |
+| Payload | `DialogueContextInputPayload` |
+| PacketType | `COMMAND` |
+| Broker | `BOUNDED_QUEUE` |
+| 完成策略 | `AUTO_COMPLETE_ON_RETURN` |
+
+上下文型入口面向产生第三方话语的模块，例如 NPC 对白、任务播报或环境台词。AX 收到后只把内容写入当前 scope 的近期对话上下文，**不调用 LLM、不产生语音、不占用会话，也不经过 IA 仲裁**。需要 AX 回应的内容必须走提问型入口，并由 IA 决定 owner。
+
+`DialogueContextInputPayload` 字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `speakerName` | 发言人显示名，可为空。 |
+| `messageText` | 话语正文；空正文不会写入上下文。 |
+| `sourceTurnId` | 同一模块内稳定标识这段话语的可选字段。 |
+
+协议信封 `sourceId` 标识话语的产出模块，AX 用它和 `sourceTurnId` 一起构成稳定来源标识。发言人以第三方身份进入上下文，不与 AX/玩家二元对话混淆。
+
+**AX 不对上下文型输入去重。** 同一 `sourceTurnId` 重复投递会产生重复的上下文条目，因此调用方必须保证每段话语只在自己真正发生时投递一次。
+
+上下文型入口不是“让 AX 记住这件事”的长期记忆入口，也不是无限制注入通道：写入的内容进入正常近期对话窗口，因此同样受窗口容量和后台记忆维护策略约束。调用方不得用它伪造玩家身份或 IR/ASR 事件。
 
 ## 3. 唤醒词与 participant 注册
 
@@ -43,7 +78,7 @@ AX 发送 `DialogueParticipantRegisterPayload` / `DialogueParticipantUnregisterP
 
 ## 4. 外部文本如何到达 AX
 
-当前没有面向任意外部模块的通用文本注入入口。标准玩家语音链路按下面的顺序工作：
+标准玩家语音链路按下面的顺序工作：
 
 ```text
 ASR 发布 INPUT_ASR_FINAL_TEXT
@@ -54,7 +89,17 @@ ASR 发布 INPUT_ASR_FINAL_TEXT
   -> AX 处理本轮并通过 IA session control 完成或释放
 ```
 
-不要直接调用 `AX.DIALOGUE_INPUT`，也不要伪造 ASR 或 IR topic。如果你的模组希望自己成为 owner，应按 `../ia/IA_外部模组仲裁接入说明.md` 注册自己的 participant，而不是把内容塞给 AX。未来新增聊天或其他玩家输入来源时，应先建立统一输入协议，再接入 IR。
+不要直接调用 `AX.DIALOGUE_INPUT`，也不要伪造 ASR 或 IR topic。如果你的模组希望自己成为 owner，应按 `../ia/IA_外部模组仲裁接入说明.md` 注册自己的 participant，而不是把内容塞给 AX。
+
+如果内容**不需要 AX 回答**，而是希望作为第三方话语进入 AX 的对话上下文，应走上下文型入口：
+
+```text
+外部模块直接向 AX.CONTEXT_INPUT 投递 DialogueContextInputPayload
+  -> AX 把话语写入当前 scope 的近期对话
+  -> 不经过 IA，不建立会话，不产生回答
+```
+
+这条路径不经过 IR 和 IA 是有意的：IR 与 IA 服务于“玩家说了什么、这轮该谁回答”，而上下文型输入不产生回合所有权问题。外部模块不应为了注入上下文而伪造 ASR/IR 事件或注册虚假 participant。
 
 ## 5. DialogueDeliveryPayload 边界
 
@@ -132,7 +177,8 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 
 | 需求 | 正确入口 |
 | --- | --- |
-| 把任意文本注入开放对话 | 当前没有公共入口；不要伪造 ASR/IR 事件。 |
+| 让 AX 回答某句话 | 注册 IA participant 竞争 owner；不要直接投递 `AX.DIALOGUE_INPUT`。 |
+| 让第三方话语进入 AX 上下文但不回答 | `ProtocolCapabilities.AX_CONTEXT_INPUT` + `DialogueContextInputPayload`。 |
 | 自己成为对话 owner | IA participant 注册。 |
 | 直接调用模型 | LLM 公共 capability，并遵守 IA CHAT 授权。 |
 | 播放或合成语音 | TTS 公共 capability。 |
@@ -144,7 +190,7 @@ AX 当前没有面向任意外部模块的公共 `REQUEST` capability。需要�
 ## 11. 最小接入检查表
 
 - [ ] 不直接发送 `AX.DIALOGUE_INPUT`。
-- [ ] 不伪造 ASR final text 或 IR result 注入正文。
+- [ ] 上下文型注入只使用 `AX.CONTEXT_INPUT`，不伪造 ASR final text 或 IR result。
 - [ ] 空唤醒词时不假定 AX 已注册。
 - [ ] 不冒用 `module.ax / tianshu.AX` 身份。
 - [ ] LLM、TTS、IA 请求分别遵循对应模块文档。

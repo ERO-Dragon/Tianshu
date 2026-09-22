@@ -20,6 +20,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -114,8 +115,33 @@ public final class LlmModelService {
         return LlmModelManager.getModelByName(name);
     }
 
+    /**
+     * Resolves the RAG embedding model for a language. Embedding models share the same local model
+     * root and availability snapshot as chat models, but they live in a separate catalog.
+     */
+    public LlmModelInfo resolveEmbeddingModel(String language) {
+        return LlmModelManager.getDefaultEmbeddingModel(language);
+    }
+
+    /** Resolves a RAG embedding model by name; the chat and embedding catalogs are separate. */
+    public LlmModelInfo embeddingModelByName(String name) {
+        return LlmModelManager.getEmbeddingModelByName(name);
+    }
+
     public boolean hasModelContent(LlmModelInfo info) {
         return LlmModelManager.isModelDownloaded(info, modelBasePath());
+    }
+
+    /**
+     * Authoritative installed check: prefers the availability snapshot and falls back to a direct
+     * file check for models the snapshot does not cover yet.
+     */
+    public boolean isModelInstalled(LlmModelInfo info) {
+        if (info == null || info.name == null || info.name.isBlank()) {
+            return false;
+        }
+        ModelAvailabilitySnapshot.Entry entry = availabilitySnapshot.get().entry(info.name);
+        return entry != null ? entry.installed() : hasModelContent(info);
     }
 
     public ModelAvailabilitySnapshot modelAvailability() {
@@ -386,7 +412,7 @@ public final class LlmModelService {
 
     private void refreshModelAvailability() {
         Map<String, ModelAvailabilitySnapshot.Entry> entries = new LinkedHashMap<>();
-        for (LlmModelInfo info : allModels()) {
+        for (LlmModelInfo info : availabilityModels()) {
             if (info == null || info.name == null || info.name.isBlank()) {
                 continue;
             }
@@ -397,6 +423,16 @@ public final class LlmModelService {
             ));
         }
         availabilitySnapshot.set(new ModelAvailabilitySnapshot(entries, true, System.currentTimeMillis()));
+    }
+
+    /**
+     * Availability covers both the chat catalog and the RAG embedding catalog, because both share
+     * the same local model root.
+     */
+    private List<LlmModelInfo> availabilityModels() {
+        List<LlmModelInfo> models = new ArrayList<>(allModels());
+        models.addAll(LlmModelManager.getAllEmbeddingModels());
+        return models;
     }
 
     private void cleanupStaleIncompleteDownloads() {

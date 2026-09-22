@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.model.LlmModelManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -69,6 +70,37 @@ class LlmModelServiceTest {
             Thread.sleep(100L);
             assertTrue(Files.exists(partial));
         }
+    }
+
+    @Test
+    void embeddingModelAvailabilityIsTrackedOutsideTheChatCatalog() throws Exception {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        LlmModelInfo embedding = LlmModelManager.getDefaultEmbeddingModel("zh_cn");
+        assertTrue(embedding != null, "zh_cn must resolve a default embedding model");
+        Path modelDir = config.getLlmBasePath().resolve("model").resolve(embedding.name);
+
+        try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
+            LlmModelService service = new LlmModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
+
+            assertFalse(service.isModelInstalled(embedding), "embedding model must start as not installed");
+            assertTrue(service.allModels().stream().noneMatch(info -> embedding.name.equals(info.name)),
+                    "chat catalog must not contain the embedding model");
+
+            Files.createDirectories(modelDir);
+            Files.writeString(modelDir.resolve(embedding.getModelFile()), "fake embedding model");
+
+            refreshAvailability(service);
+
+            assertTrue(service.isModelInstalled(embedding), "installed embedding model must be reported as installed");
+            assertTrue(service.modelAvailability().entry(embedding.name) != null,
+                    "availability snapshot must cover the embedding catalog");
+        }
+    }
+
+    private static void refreshAvailability(LlmModelService service) throws Exception {
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        service.refreshModelAvailabilityAsync(done::countDown);
+        assertTrue(done.await(5L, java.util.concurrent.TimeUnit.SECONDS), "availability refresh must complete");
     }
 
     private static LlmModelInfo modelInfo(String name, String modelFile) {

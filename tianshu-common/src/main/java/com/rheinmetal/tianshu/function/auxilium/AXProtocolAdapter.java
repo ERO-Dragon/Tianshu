@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
@@ -42,7 +43,8 @@ import java.time.Duration;
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
     public static final String SOURCE_ID = ProtocolSourceIds.AX;
-    public static final String DIALOGUE_INPUT_CAPABILITY = "AX.DIALOGUE_INPUT";
+    public static final String DIALOGUE_INPUT_CAPABILITY = ProtocolCapabilities.AX_DIALOGUE_INPUT;
+    public static final String CONTEXT_INPUT_CAPABILITY = ProtocolCapabilities.AX_CONTEXT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
     private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
 
@@ -59,6 +61,23 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 EnumSet.of(PacketType.COMMAND),
                 Priority.LOW,
                 CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    /**
+     * 上下文型输入入口。外部模块直接投递“只需要被记住”的话语，不经过 IA，也不触发回答。
+     */
+    public void registerContextInputCapability(EnvelopeHandler handler) {
+        registerCapability(
+                CONTEXT_INPUT_CAPABILITY,
+                PayloadType.DIALOGUE_CONTEXT_INPUT,
+                DialogueContextInputPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
                 handler,
                 defaults()
         );

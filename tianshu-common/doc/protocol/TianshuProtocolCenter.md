@@ -109,6 +109,7 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `DIALOGUE.SESSION_CONTROL` | `DIALOGUE_SESSION_CONTROL` | 会话释放和控制。 |
 | `DIALOGUE.LLM_USAGE_AUTHORIZE` | `DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST` | LLM 使用授权。 |
 | `AX.DIALOGUE_INPUT` | `DIALOGUE_DELIVERY` | IA 仲裁后投递给 AX 的对话输入。外部参与方可自定义同类能力名，但必须接收 `DialogueDeliveryPayload`。 |
+| `AX.CONTEXT_INPUT` | `DIALOGUE_CONTEXT_INPUT` | 外部模块投递给 AX 的上下文型输入。只并入 AX 近期对话上下文，不触发回答、不经过 IA、不占用会话。 |
 
 能力注册必须声明：
 

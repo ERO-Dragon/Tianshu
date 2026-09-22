@@ -14,6 +14,25 @@
 | `ProtocolTopics.TTS_REQUEST_STATUS` | `TtsRequestStatusPayload` | 单个播放 Session 的状态。 |
 | `ProtocolTopics.PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载及非 AX 播放、纯合成任务的产品活动。 |
 
+## 1.1 能力状态与外部模块边界
+
+外部模块通过 `RuntimeCapability` 探测 TTS 当前可用范围：
+
+| RuntimeCapability | ready 含义 |
+|---|---|
+| `TtsRuntimeCapabilities.SYNTHESIS` | 纯合成后端已可用。 |
+| `TtsRuntimeCapabilities.PLAYBACK` | 播放运行时已可用。 |
+| `TtsRuntimeCapabilities.VOICE_LIBRARY` | 音色加载、导入、卸载可用。 |
+| `TtsRuntimeCapabilities.MODEL_MANAGEMENT` | 模型加载状态可用。 |
+
+TTS 禁用时四个能力都标记 failed；模型加载中标记 failed 并在加载完成后转为 ready；综合引擎初始化失败时 `SYNTHESIS` 与 `VOICE_LIBRARY` 为 failed，`PLAYBACK` 与 `MODEL_MANAGEMENT` 仍为 ready。
+
+外部模块的职责边界：
+
+- 音色归外部模块自己管理。模块应当知道自己导入了哪些音色，并自行维护自己的音色标识；TTS 不提供音色列表查询能力。
+- 模型选择属于宿主级设置。外部模块不得通过 `RELOAD_MODEL` 切换全局模型，因为该操作会影响所有正在使用 TTS 的模块。
+- 外部模块只按 `TtsVoiceOptions.voiceId` 在请求中指定音色，音色所有权仍由协议信封 `sourceId` 决定。
+
 ## 2. 播放完整文本
 
 `COMMAND` 必须使用 `DOCUMENT`：
