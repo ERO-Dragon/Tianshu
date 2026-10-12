@@ -5,14 +5,13 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 final class AsrAudioDiagnosticsTest {
     @Test
     void disabledDiagnosticsDoesNotRetainAudio() {
         AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
 
         diagnostics.record(pcm(0.4D, 160), pcm(0.2D, 160),
-                new AsrSpeechActivitySnapshot(0.2D, 0.08D, 0.04D, true, 7L, 10L));
+                new AsrSpeechActivitySnapshot(0.2D, 0.2D, 0.08D, 0.04D, true, 7L, 10L));
 
         AsrAudioDiagnostics.Snapshot snapshot = diagnostics.snapshot();
         assertEquals(0, snapshot.sampleCount());
@@ -26,9 +25,9 @@ final class AsrAudioDiagnosticsTest {
         diagnostics.beginCapture(7L);
 
         diagnostics.record(pcm(0.4D, 160), pcm(0.2D, 160),
-                new AsrSpeechActivitySnapshot(0.2D, 0.08D, 0.04D, true, 7L, 10L));
+                new AsrSpeechActivitySnapshot(0.2D, 0.2D, 0.08D, 0.04D, true, 7L, 10L));
         diagnostics.record(pcm(-0.3D, 160), pcm(-0.1D, 160),
-                new AsrSpeechActivitySnapshot(0.1D, 0.07D, 0.03D, false, 7L, 20L));
+                new AsrSpeechActivitySnapshot(0.1D, 0.1D, 0.07D, 0.03D, false, 7L, 20L));
 
         AsrAudioDiagnostics.Snapshot snapshot = diagnostics.snapshot();
         assertEquals(2, snapshot.sampleCount());
@@ -70,7 +69,7 @@ final class AsrAudioDiagnosticsTest {
         diagnostics.setEnabled(true);
         diagnostics.beginCapture(7L);
         diagnostics.record(pcm(0.2D, 160), pcm(0.1D, 160),
-                new AsrSpeechActivitySnapshot(0.1D, 0.08D, 0.04D, true, 7L, 10L));
+                new AsrSpeechActivitySnapshot(0.1D, 0.1D, 0.08D, 0.04D, true, 7L, 10L));
 
         diagnostics.endCapture();
 
@@ -79,6 +78,46 @@ final class AsrAudioDiagnosticsTest {
         assertFalse(snapshot.speaking());
         assertEquals(0.08D, snapshot.startThreshold(), 0.001D);
         assertFalse(snapshot.captureActive());
+    }
+
+    @Test
+    void recordingCapturesObservationsEvenWhileTheOverlayIsDisabled() {
+        AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
+        diagnostics.beginCapture(7L);
+        diagnostics.beginRecording();
+
+        diagnostics.record(pcm(0.4D, 160), pcm(0.2D, 160),
+                new AsrSpeechActivitySnapshot(0.2D, 0.05D, 0.16D, 0.11D, true, 7L, 10L));
+        diagnostics.record(pcm(0.3D, 160), pcm(0.1D, 160),
+                new AsrSpeechActivitySnapshot(0.1D, 0.05D, 0.16D, 0.11D, false, 7L, 20L));
+
+        assertTrue(diagnostics.isRecording());
+        assertEquals(2, diagnostics.recordedSamples());
+        assertEquals(0, diagnostics.snapshot().sampleCount(), "overlay history stays disabled");
+
+        String dump = diagnostics.endRecordingDump();
+
+        assertFalse(diagnostics.isRecording());
+        String[] lines = dump.split("\n");
+        assertEquals("index,rms,noiseFloor,startThreshold,stopThreshold,speaking", lines[0]);
+        assertEquals("0,0.200000,0.050000,0.160000,0.110000,true", lines[1]);
+        assertEquals("1,0.100000,0.050000,0.160000,0.110000,false", lines[2]);
+    }
+
+    @Test
+    void recordingIsBoundedAndStopsAcceptingObservationsWhenFull() {
+        AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
+        diagnostics.beginCapture(7L);
+        diagnostics.beginRecording();
+
+        for (int index = 0; index < AsrAudioDiagnostics.RECORDING_CAPACITY + 50; index++) {
+            diagnostics.record(pcm(0.01D, 160), pcm(0.01D, 160),
+                    new AsrSpeechActivitySnapshot(0.01D, 0.01D, 0.02D, 0.015D, false, 7L, index));
+        }
+
+        assertEquals(AsrAudioDiagnostics.RECORDING_CAPACITY, diagnostics.recordedSamples());
+        String dump = diagnostics.endRecordingDump();
+        assertEquals(AsrAudioDiagnostics.RECORDING_CAPACITY + 1, dump.split("\n").length);
     }
 
     private static byte[] pcm(double amplitude, int samples) {

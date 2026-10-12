@@ -1,6 +1,7 @@
 {
   "key.categories.tianshu": "Tianshu AI",
   "key.tianshu.activate": "Toggle Voice (Press to Talk)",
+  "key.tianshu.vad_record": "VAD Sample Recording (Debug Build)",
 
   "tianshu.gui.common.all": "All",
   "tianshu.gui.common.on": "On",
@@ -557,6 +558,8 @@
   "tianshu.presence.context.dimension.minecraft.the_end": "End",
 
   "tianshu.debug.asr_vad.title": "ASR VAD monitor",
+  "tianshu.debug.asr_vad.record_started": "VAD sample recording started, up to %s samples; press again to stop and write the log",
+  "tianshu.debug.asr_vad.record_saved": "VAD sample recording written to the log, %s samples",
   "tianshu.debug.asr_vad.metadata": "State: %s",
   "tianshu.debug.asr_vad.speaking": "speaking",
   "tianshu.debug.asr_vad.silent": "silent",

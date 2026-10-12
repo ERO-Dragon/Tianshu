@@ -11,6 +11,9 @@ public final class AsrAudioDiagnostics {
     public static final int BIN_SAMPLES = 1600;
     /** Five seconds of bounded history at one observation per 100 ms callback. */
     public static final int HISTORY_BINS = 50;
+    /** Thirty seconds of tuning data at one observation per 100 ms callback. */
+    public static final int RECORDING_CAPACITY = 300;
+    private static final int RECORDING_COLUMNS = 5;
 
     private final float[] rawMin = new float[HISTORY_BINS];
     private final float[] rawMax = new float[HISTORY_BINS];
@@ -20,8 +23,11 @@ public final class AsrAudioDiagnostics {
     private final float[] processedRmsHistory = new float[HISTORY_BINS];
     private final float[] startThresholdHistory = new float[HISTORY_BINS];
     private final float[] stopThresholdHistory = new float[HISTORY_BINS];
+    private final float[] recording = new float[RECORDING_CAPACITY * RECORDING_COLUMNS];
     private volatile boolean enabled;
     private boolean captureActive;
+    private boolean recordingActive;
+    private int recordingSize;
     private long sessionId;
     private int size;
     private int writeIndex;
@@ -51,6 +57,7 @@ public final class AsrAudioDiagnostics {
         captureActive = false;
         latestVad = new AsrSpeechActivitySnapshot(
                 latestVad.rms(),
+                latestVad.noiseFloor(),
                 latestVad.startThreshold(),
                 latestVad.stopThreshold(),
                 false,
@@ -59,7 +66,69 @@ public final class AsrAudioDiagnostics {
         );
     }
 
+    /**
+     * Starts capturing one observation per audio callback into the tuning buffer. The buffer is
+     * bounded, so a forgotten recording cannot grow without limit.
+     */
+    public synchronized void beginRecording() {
+        recordingActive = true;
+        recordingSize = 0;
+    }
+
+    public synchronized boolean isRecording() {
+        return recordingActive;
+    }
+
+    public synchronized int recordedSamples() {
+        return recordingSize;
+    }
+
+    /**
+     * Stops capturing and returns the recorded observations in order. Each line is
+     * {@code rms,noiseFloor,startThreshold,stopThreshold,speaking}, which is everything needed to
+     * judge whether the detector learned the right floor for this input device.
+     */
+    public synchronized String endRecordingDump() {
+        recordingActive = false;
+        StringBuilder dump = new StringBuilder();
+        dump.append("index,rms,noiseFloor,startThreshold,stopThreshold,speaking\n");
+        for (int index = 0; index < recordingSize; index++) {
+            int slot = index * RECORDING_COLUMNS;
+            dump.append(index).append(',')
+                    .append(format(recording[slot])).append(',')
+                    .append(format(recording[slot + 1])).append(',')
+                    .append(format(recording[slot + 2])).append(',')
+                    .append(format(recording[slot + 3])).append(',')
+                    .append(recording[slot + 4] > 0.5F).append('\n');
+        }
+        recordingSize = 0;
+        return dump.toString();
+    }
+
+    private static String format(float value) {
+        return String.format(java.util.Locale.ROOT, "%.6f", value);
+    }
+
+    private void appendRecording(AsrSpeechActivitySnapshot vad) {
+        if (recordingSize >= RECORDING_CAPACITY) {
+            return;
+        }
+        int slot = recordingSize * RECORDING_COLUMNS;
+        recording[slot] = (float) vad.rms();
+        recording[slot + 1] = (float) vad.noiseFloor();
+        recording[slot + 2] = (float) vad.startThreshold();
+        recording[slot + 3] = (float) vad.stopThreshold();
+        recording[slot + 4] = vad.speaking() ? 1.0F : 0.0F;
+        recordingSize++;
+    }
+
     public synchronized void record(byte[] rawPcm, byte[] processedPcm, AsrSpeechActivitySnapshot vad) {
+        AsrSpeechActivitySnapshot currentVad = vad == null ? AsrSpeechActivitySnapshot.inactive() : vad;
+        // Tuning capture is independent of the on-screen overlay and of the five second history,
+        // so a recording keeps running while the player looks at anything else.
+        if (recordingActive) {
+            appendRecording(currentVad);
+        }
         if (!enabled || !captureActive) {
             return;
         }
@@ -72,7 +141,6 @@ public final class AsrAudioDiagnostics {
         processedMax[index] = processedEnvelope[1];
         rawRmsHistory[index] = rms(rawPcm);
         processedRmsHistory[index] = rms(processedPcm);
-        AsrSpeechActivitySnapshot currentVad = vad == null ? AsrSpeechActivitySnapshot.inactive() : vad;
         startThresholdHistory[index] = (float) currentVad.startThreshold();
         stopThresholdHistory[index] = (float) currentVad.stopThreshold();
         writeIndex = (writeIndex + 1) % HISTORY_BINS;

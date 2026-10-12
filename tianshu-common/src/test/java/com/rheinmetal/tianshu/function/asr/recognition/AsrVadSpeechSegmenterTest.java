@@ -7,58 +7,80 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * The detector announces a segment only after it has lasted the minimum segment length, so a
+ * boundary is observed within the following frames rather than on a single frame.
+ */
 class AsrVadSpeechSegmenterTest {
     @Test
     void startsOnSpeechEndsOnceAfterAdaptiveSilenceAndWaitsForNextSpeech() {
-        AsrVadSpeechSegmenter segmenter = new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> {
-        });
+        AsrVadSpeechSegmenter segmenter = newSegmenter();
         segmenter.start(42L);
+        primeCalibration(segmenter);
 
         List<AsrSpeechSegmenter.Decision> decisions = new ArrayList<>();
         repeat(510, () -> decisions.add(segmenter.accept(pcm(0.02D, 160))));
-        repeat(25, () -> decisions.add(segmenter.accept(pcm(0.0D, 160))));
-        repeat(20, () -> decisions.add(segmenter.accept(pcm(0.0D, 160))));
+        repeat(60, () -> decisions.add(segmenter.accept(pcm(0.0D, 160))));
 
         assertEquals(1, decisions.stream().filter(AsrSpeechSegmenter.Decision::startsSegment).count());
         assertEquals(1, decisions.stream().filter(AsrSpeechSegmenter.Decision::endsSegment).count());
 
-        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, segmenter.accept(pcm(0.02D, 160)));
+        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, nextStart(segmenter));
     }
 
     @Test
     void resetWaitsForNewSpeechAndDoesNotEmitAnEmptyBoundary() {
-        AsrVadSpeechSegmenter segmenter = new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> {
-        });
+        AsrVadSpeechSegmenter segmenter = newSegmenter();
         segmenter.start(42L);
+        primeCalibration(segmenter);
         segmenter.accept(pcm(0.02D, 160));
         segmenter.reset();
         segmenter.start(43L);
+        primeCalibration(segmenter);
 
         assertEquals(AsrSpeechSegmenter.Decision.CONTINUE, segmenter.accept(pcm(0.0D, 160)));
-        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, segmenter.accept(pcm(0.02D, 160)));
+        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, nextStart(segmenter));
     }
 
     @Test
     void manualBoundaryResetsDetectorBeforeTheNextSpeechSegment() {
-        AsrVadSpeechSegmenter segmenter = new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> {
-        });
+        AsrVadSpeechSegmenter segmenter = newSegmenter();
         segmenter.start(42L);
+        primeCalibration(segmenter);
 
-        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, firstSpeechDecision(segmenter));
+        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, nextStart(segmenter));
         segmenter.resetSegmentBoundary();
 
         assertEquals(AsrSpeechSegmenter.Decision.CONTINUE, segmenter.accept(pcm(0.0D, 160)));
-        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, segmenter.accept(pcm(0.02D, 160)));
+        assertEquals(AsrSpeechSegmenter.Decision.START_SEGMENT, nextStart(segmenter));
     }
 
-    private AsrSpeechSegmenter.Decision firstSpeechDecision(AsrVadSpeechSegmenter segmenter) {
+    private static AsrVadSpeechSegmenter newSegmenter() {
+        return new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> {
+        });
+    }
+
+    /** Drives speech frames until a segment start is reported, or gives up after plenty of frames. */
+    private AsrSpeechSegmenter.Decision nextStart(AsrVadSpeechSegmenter segmenter) {
+        byte[] speech = pcm(0.02D, 160);
         for (int index = 0; index < 510; index++) {
-            AsrSpeechSegmenter.Decision decision = segmenter.accept(pcm(0.02D, 160));
+            AsrSpeechSegmenter.Decision decision = segmenter.accept(speech);
             if (decision.startsSegment()) {
                 return decision;
             }
         }
         return AsrSpeechSegmenter.Decision.CONTINUE;
+    }
+
+    /**
+     * The detector measures the room for 500 ms before it decides anything, so every test lets that
+     * opening measurement finish at a low level first. A frame here is 10 ms.
+     */
+    private void primeCalibration(AsrVadSpeechSegmenter segmenter) {
+        byte[] quiet = pcm(0.002D, 160);
+        for (int index = 0; index < 60; index++) {
+            segmenter.accept(quiet);
+        }
     }
 
     private void repeat(int count, Runnable runnable) {

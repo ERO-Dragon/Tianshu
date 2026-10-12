@@ -37,8 +37,9 @@ class AudioCaptureServiceTest {
         AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment(), (speaking, sessionId, occurredAtMillis) -> states.add(speaking));
 
         service.startStreamCapture(42L, ignored -> {});
-        bridge.push(pcm(0.03D, 160));
-        repeat(45, () -> bridge.push(pcm(0.0D, 160)));
+        emitNoise(bridge, 55);
+        emitSpeech(bridge, 40);
+        emitNoise(bridge, 120);
 
         assertEquals(List.of(true, false), states);
     }
@@ -52,8 +53,9 @@ class AudioCaptureServiceTest {
                 }));
 
         service.startStreamCapture(42L, (chunk, decision) -> decisions.add(decision));
-        repeat(510, () -> bridge.push(pcm(0.03D, 160)));
-        repeat(25, () -> bridge.push(pcm(0.0D, 160)));
+        emitNoise(bridge, 55);
+        emitSpeech(bridge, 40);
+        emitNoise(bridge, 120);
 
         assertEquals(1, decisions.stream().filter(AsrSpeechSegmenter.Decision::startsSegment).count());
         assertEquals(1, decisions.stream().filter(AsrSpeechSegmenter.Decision::endsSegment).count());
@@ -71,6 +73,7 @@ class AudioCaptureServiceTest {
         service.setFrameProcessor(new HighPassFilterProcessor(16000, 80.0D));
 
         service.startStreamCapture(42L, ignored -> { });
+        repeat(5, () -> bridge.push(pcm(0.0D, 1600)));
         repeat(20, () -> bridge.push(sinePcm(0.015D, 220.0D, 16000, 1600)));
         repeat(50, () -> bridge.push(pcm(0.0D, 1600)));
 
@@ -231,7 +234,23 @@ class AudioCaptureServiceTest {
         }
     }
 
+    /**
+     * The detector measures the ambient floor during its startup window before deciding anything,
+     * so tests feed a quiet stretch first and then a clearly louder one.
+     */
+    private static void emitNoise(FakeAudioBridge bridge, int frames) {
+        byte[] quiet = pcm(0.002D, 160);
+        repeat(frames, () -> bridge.push(quiet));
+    }
+
+    private static void emitSpeech(FakeAudioBridge bridge, int frames) {
+        // Well above the calibrated floor so the segment actually opens.
+        byte[] speech = pcm(0.06D, 160);
+        repeat(frames, () -> bridge.push(speech));
+    }
+
     private static void emitSpeechAndSilence(FakeAudioBridge bridge) {
+        repeat(5, () -> bridge.push(pcm(0.0D, 1600)));
         repeat(20, () -> bridge.push(sinePcm(0.015D, 220.0D, 16000, 1600)));
         repeat(50, () -> bridge.push(pcm(0.0D, 1600)));
     }

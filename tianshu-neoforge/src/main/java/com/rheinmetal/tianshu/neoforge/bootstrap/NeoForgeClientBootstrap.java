@@ -43,6 +43,7 @@ import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresenceTextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfigPresenceHudSettings;
+import com.rheinmetal.tianshu.neoforge.config.TianshuBuildProfile;
 import com.rheinmetal.tianshu.neoforge.event.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientEvents;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientLifecycleAdapter;
@@ -76,6 +77,7 @@ public final class NeoForgeClientBootstrap {
     private final Path gameDirectory;
     private final ClientConfig config;
     private KeyMapping voiceKey;
+    private KeyMapping vadRecordKey;
     private AudioManager audioManager;
     private TianshuCoreManager coreManager;
     private TianshuSettingsModule settingsModule;
@@ -210,6 +212,7 @@ public final class NeoForgeClientBootstrap {
                     presenceHudRenderer,
                     worldIdentityCapture,
                     () -> voiceKey,
+                    () -> vadRecordKey,
                     diagnosticRouter
             );
             NeoForgeClientEvents currentEvents = events;
@@ -243,6 +246,15 @@ public final class NeoForgeClientBootstrap {
                 "key.categories.tianshu"
         );
         event.register(voiceKey);
+        if (TianshuBuildProfile.debugBuild()) {
+            vadRecordKey = new KeyMapping(
+                    "key.tianshu.vad_record",
+                    InputConstants.Type.KEYSYM,
+                    GLFW.GLFW_KEY_J,
+                    "key.categories.tianshu"
+            );
+            event.register(vadRecordKey);
+        }
     }
 
     public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {
