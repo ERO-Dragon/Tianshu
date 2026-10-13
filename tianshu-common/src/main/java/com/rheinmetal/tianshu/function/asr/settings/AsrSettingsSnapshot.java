@@ -1,11 +1,8 @@
 package com.rheinmetal.tianshu.function.asr.settings;
 
-import com.rheinmetal.tianshu.constant.TriggerMode;
-
 public record AsrSettingsSnapshot(
         boolean enabled,
         String selectedMicName,
-        TriggerMode triggerMode,
         String modelName,
         boolean highPassFilterEnabled,
         boolean rnnoiseEnabled
@@ -20,7 +17,6 @@ public record AsrSettingsSnapshot(
         return new AsrSettingsSnapshot(
                 config.isAsrEnabled(),
                 config.getSelectedMicName(),
-                config.getTriggerMode(),
                 modelName,
                 config.isAsrHighPassFilterEnabled(),
                 config.isAsrRnnoiseEnabled()

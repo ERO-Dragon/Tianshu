@@ -9,7 +9,6 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.asr.audio.AudioCaptureService;
 import com.rheinmetal.tianshu.function.asr.audio.AsrAudioPipelineFactory;
-import com.rheinmetal.tianshu.function.asr.audio.AsrAudioDiagnostics;
 import com.rheinmetal.tianshu.function.asr.control.AsrController;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngineBootstrap;
@@ -18,13 +17,9 @@ import com.rheinmetal.tianshu.function.asr.engine.AsrHotwordSupport;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputGateway;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
 import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
-import com.rheinmetal.tianshu.function.asr.recognition.AsrSpeechSegmenter;
-import com.rheinmetal.tianshu.function.asr.recognition.AsrVadSpeechSegmenter;
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.asr.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.asr.state.AsrStateMachine;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
-import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -62,7 +57,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private volatile long appliedVoiceResourceVersion = -1L;
     private volatile boolean destroyed;
     private AsrModelService modelService;
-    private AsrAudioDiagnostics audioDiagnostics;
 
     public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this.audioBridge = audioBridge;
@@ -82,8 +76,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     @Override
     public void register(ModuleRegistrationContext context) {
         modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::asrEngine, this::isAsrReady, this::publishModuleStatus);
-        audioDiagnostics = new AsrAudioDiagnostics();
-        context.services().register(AsrAudioDiagnostics.class, audioDiagnostics);
         context.services().register(AsrModelService.class, modelService);
         context.services().register(AsrModuleRuntimeControl.class, this);
         inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
@@ -100,10 +92,10 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         bindVoiceResources(context.voiceResources());
         AsrStateMachine stateMachine = new AsrStateMachine();
         AsrSessionManager sessionManager = new AsrSessionManager();
-        audioCapture = new AudioCaptureService(audioBridge, env, AsrSpeechSegmenter.disabled(), audioDiagnostics);
+        audioCapture = new AudioCaptureService(audioBridge, env);
         reconfigureAudioPipeline();
         AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
-        controller = new AsrController(env, config, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus);
+        controller = new AsrController(env, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus);
         if (inputGateway == null) {
             inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
         }
@@ -135,7 +127,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             modelService = null;
         }
         controller = null;
-        audioDiagnostics = null;
         audioCapture = null;
         if (inputGateway != null) {
             inputGateway.unbind();
@@ -174,14 +165,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         AudioCaptureService capture = audioCapture;
         if (capture != null) {
             capture.setFrameProcessor(new AsrAudioPipelineFactory(config, env).create());
-            capture.setSpeechSegmenter(createSpeechSegmenter());
         }
-    }
-
-    private AsrSpeechSegmenter createSpeechSegmenter() {
-        return config.getTriggerMode() == TriggerMode.ALWAYS
-                ? new AsrVadSpeechSegmenter(this::publishSpeechActivity)
-                : AsrSpeechSegmenter.disabled();
     }
 
     private AsrEngine asrEngine() {
@@ -194,15 +178,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     private boolean canAcceptVoiceInput() {
         return config.isAsrEnabled() && voiceInputAcceptance.getAsBoolean();
-    }
-
-    private void publishSpeechActivity(boolean speaking, long sessionId, long occurredAtMillis) {
-        AsrProtocolAdapter currentAdapter = adapter;
-        if (currentAdapter == null || sessionId <= 0L) {
-            return;
-        }
-        currentAdapter.publishSpeechActivity(new AsrSpeechActivityPayload(speaking, sessionId, occurredAtMillis));
-        currentAdapter.publishListeningActivity(speaking, sessionId);
     }
 
     private void handleRuntimeInterrupt(com.rheinmetal.tianshu.protocol.TianshuEnvelope envelope, ProtocolContext context) {

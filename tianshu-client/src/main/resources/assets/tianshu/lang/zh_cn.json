@@ -1,7 +1,6 @@
 {
   "key.categories.tianshu": "天枢AI",
   "key.tianshu.activate": "语音开关 (按住说话)",
-  "key.tianshu.vad_record": "VAD 采样记录 (调试版)",
 
   "tianshu.gui.common.all": "全部",
   "tianshu.gui.common.on": "开",
@@ -216,7 +215,7 @@
   "tianshu.gui.asr.option.model": "当前识别模型",
   "tianshu.gui.asr.option.mic": "录音麦克风",
   "tianshu.gui.asr.option.default_mic": "默认麦克风",
-  "tianshu.gui.asr.option.trigger": "触发方式",
+  "tianshu.gui.asr.option.voice_switch": "语音开关",
   "tianshu.gui.asr.option.rnnoise": "RNNoise 降噪",
   "tianshu.gui.asr.option.high_pass": "低频噪声过滤",
   "tianshu.gui.asr.option.github_proxy": "GitHub 代理地址",
@@ -224,8 +223,6 @@
   "tianshu.gui.asr.option.performance": "性能友好度",
   "tianshu.gui.asr.option.quality": "识别质量",
   "tianshu.gui.asr.option.recommended": "推荐程度",
-  "tianshu.gui.asr.trigger.push_to_talk": "按键说话",
-  "tianshu.gui.asr.trigger.always": "连续输入（实验性）",
   "tianshu.gui.asr.action.preview_start": "开始试听识别模型",
   "tianshu.gui.asr.action.preview_stop": "停止试听",
   "tianshu.gui.asr.action.download": "下载",
@@ -555,19 +552,6 @@
   "tianshu.presence.context.screen.other": "其他界面",
   "tianshu.presence.context.dimension.minecraft.overworld": "主世界",
   "tianshu.presence.context.dimension.minecraft.the_nether": "下界",
-  "tianshu.presence.context.dimension.minecraft.the_end": "末地",
+  "tianshu.presence.context.dimension.minecraft.the_end": "末地"
 
-  "tianshu.debug.asr_vad.title": "ASR VAD 波形监视",
-  "tianshu.debug.asr_vad.record_started": "VAD 采样记录已开始，最多 %s 个样本；再按一次结束并写入日志",
-  "tianshu.debug.asr_vad.record_saved": "VAD 采样记录已写入日志，共 %s 个样本",
-  "tianshu.debug.asr_vad.metadata": "状态：%s",
-  "tianshu.debug.asr_vad.speaking": "语音中",
-  "tianshu.debug.asr_vad.silent": "静音",
-  "tianshu.debug.asr_vad.scale.high": "+0.10",
-  "tianshu.debug.asr_vad.scale.zero": "0",
-  "tianshu.debug.asr_vad.scale.low": "-0.10",
-  "tianshu.debug.asr_vad.latest.start": "起始 %s",
-  "tianshu.debug.asr_vad.latest.stop": "结束 %s",
-  "tianshu.debug.asr_vad.latest.raw": "生音频 %s",
-  "tianshu.debug.asr_vad.latest.processed": "滤波后 %s"
 }

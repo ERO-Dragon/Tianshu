@@ -4,7 +4,6 @@ public enum AsrState {
     IDLE,
     CAPTURING,
     RECOGNIZING,
-    STREAMING,
     STOPPING,
     ERROR
 }

@@ -1,8 +1,6 @@
 package com.rheinmetal.tianshu.function.asr.control;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.asr.audio.AudioCaptureService;
 import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionResult;
@@ -20,7 +18,6 @@ import java.util.function.LongSupplier;
 
 public final class AsrController {
     private final IGameEnvironment env;
-    private final AsrConfiguration config;
     private final BooleanSupplier voiceInputAcceptance;
     private final BooleanSupplier asrReady;
     private final LongSupplier interruptProcessing;
@@ -33,7 +30,6 @@ public final class AsrController {
 
     public AsrController(
             IGameEnvironment env,
-            AsrConfiguration config,
             BooleanSupplier voiceInputAcceptance,
             BooleanSupplier asrReady,
             LongSupplier interruptProcessing,
@@ -43,12 +39,11 @@ public final class AsrController {
             AudioCaptureService audioCapture,
             AsrRecognitionService recognition
     ) {
-        this(env, config, voiceInputAcceptance, asrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, null);
+        this(env, voiceInputAcceptance, asrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, null);
     }
 
     public AsrController(
             IGameEnvironment env,
-            AsrConfiguration config,
             BooleanSupplier voiceInputAcceptance,
             BooleanSupplier asrReady,
             LongSupplier interruptProcessing,
@@ -60,7 +55,6 @@ public final class AsrController {
             Consumer<ModuleStatus> moduleStatusSink
     ) {
         this.env = env;
-        this.config = config;
         this.voiceInputAcceptance = voiceInputAcceptance;
         this.asrReady = asrReady;
         this.interruptProcessing = interruptProcessing;
@@ -112,33 +106,15 @@ public final class AsrController {
             notifyAsrWaking();
             return;
         }
-        TriggerMode mode = config.getTriggerMode();
-        if (mode == TriggerMode.PUSH_TO_TALK) {
-            beginPtt();
-            return;
-        }
-        ensureStreaming(mode);
+        beginPtt();
     }
 
     private void endInput() {
-        if (config.getTriggerMode() == TriggerMode.PUSH_TO_TALK) {
-            endPtt();
-        }
+        endPtt();
     }
 
     private void commitInput() {
-        TriggerMode mode = config.getTriggerMode();
-        if (mode == TriggerMode.PUSH_TO_TALK) {
-            endPtt();
-            return;
-        }
-        if (!recognition.isStreaming()) {
-            ensureStreaming(mode);
-            return;
-        }
-        long sessionId = sessionManager.activeRecognitionSession();
-        recognition.forceFlush(sessionId);
-        audioCapture.resetStreamSegmentBoundary();
+        endPtt();
     }
 
     private void cancelInput() {
@@ -149,18 +125,11 @@ public final class AsrController {
 
     private void stopActiveInput() {
         audioCapture.stopAll();
-        if (recognition.isStreaming()) {
-            recognition.stopStreaming();
-        }
     }
 
     private void beginPtt() {
         if (!stateMachine.canBeginCapture()) {
             return;
-        }
-        if (recognition.isStreaming()) {
-            recognition.stopStreaming();
-            audioCapture.stopStreamCapture();
         }
         long sessionId = interruptProcessing.getAsLong();
         sessionManager.beginRecognitionSession(sessionId);
@@ -182,42 +151,6 @@ public final class AsrController {
         long sessionId = sessionManager.activeRecognitionSession();
         stateMachine.moveTo(AsrState.RECOGNIZING);
         recognition.recognizeComplete(audioData, sessionId, "push_to_talk", this::publishIfCurrent, stateMachine::reset);
-    }
-
-    private void ensureStreaming(TriggerMode mode) {
-        if (!canAcceptInput()) {
-            notifyAsrWaking();
-            return;
-        }
-        if (recognition.isStreaming()) {
-            stateMachine.moveTo(AsrState.STREAMING);
-            return;
-        }
-        if (!stateMachine.canStartStreaming()) {
-            return;
-        }
-        long sessionId = sessionManager.activeRecognitionSession();
-        if (sessionId == 0L) {
-            sessionId = interruptProcessing.getAsLong();
-            sessionManager.beginRecognitionSession(sessionId);
-        }
-        long activeSessionId = sessionId;
-        boolean vadEnabled = mode == TriggerMode.ALWAYS;
-        if (!recognition.startStreaming(activeSessionId, this::publishIfCurrent, vadEnabled)) {
-            stateMachine.moveTo(AsrState.ERROR);
-            return;
-        }
-        audioCapture.startStreamCapture(activeSessionId,
-                (chunk, decision) -> {
-                    if (decision != null && decision.startsSegment()) {
-                        env.info("asr.vad.segment_started sessionId=" + activeSessionId);
-                    } else if (decision != null && decision.endsSegment()) {
-                        env.info("asr.vad.segment_ended sessionId=" + activeSessionId);
-                    }
-                    recognition.acceptAudioChunk(chunk, activeSessionId, decision);
-                });
-        stateMachine.moveTo(AsrState.STREAMING);
-        env.info("asr.continuous_input.started mode=" + mode + " sessionId=" + activeSessionId);
     }
 
     private void publishIfCurrent(AsrRecognitionResult result) {

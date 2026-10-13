@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.asr.engine;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
@@ -79,7 +78,6 @@ class AsrEngineBootstrapActivityTest {
 
     private record FakeConfiguration(boolean enabled, Path basePath, String modelName) implements AsrConfiguration {
         @Override public boolean isAsrEnabled() { return enabled; }
-        @Override public TriggerMode getTriggerMode() { return TriggerMode.ALWAYS; }
         @Override public String getSelectedMicName() { return ""; }
         @Override public boolean isAsrRnnoiseEnabled() { return false; }
         @Override public boolean isAsrHighPassFilterEnabled() { return true; }

@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
@@ -85,7 +84,6 @@ public final class TestLlmSupport {
         @Override public boolean isAsrEnabled() { return aiEnabled; }
         @Override public boolean isLlmEnabled() { return aiEnabled; }
         @Override public boolean isTtsEnabled() { return aiEnabled; }
-        @Override public TriggerMode getTriggerMode() { return TriggerMode.ALWAYS; }
         @Override public String getSelectedMicName() { return ""; }
         @Override public boolean isAsrRnnoiseEnabled() { return false; }
         @Override public boolean isAsrHighPassFilterEnabled() { return true; }

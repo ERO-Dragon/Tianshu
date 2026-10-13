@@ -46,4 +46,16 @@ final class ClientConfigBoundaryTest {
         assertFalse(source.contains("PRESENCE_TTS_STATUS_VISIBLE"));
         assertFalse(source.contains("PRESENCE_AX_STATUS_VISIBLE"));
     }
+
+    @Test
+    void asrDoesNotExposeTheRetiredContinuousTriggerConfiguration() throws Exception {
+        String source = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/config/ClientConfig.java"),
+                StandardCharsets.UTF_8
+        );
+
+        assertFalse(source.contains("TRIGGER_MODE"));
+        assertFalse(source.contains("getTriggerMode"));
+        assertFalse(source.contains("setTriggerMode"));
+    }
 }

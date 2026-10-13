@@ -5,12 +5,9 @@ import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.llm.performance.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.function.asr.audio.AsrAudioDiagnostics;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
-import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
-import com.rheinmetal.tianshu.neoforge.ui.hud.AsrVadDebugOverlay;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -36,14 +33,11 @@ public final class NeoForgeClientEvents {
     private final NeoForgeClientLifecycleAdapter lifecycleAdapter;
     private final PresenceClientRuntime presenceRuntime;
     private final PresenceHudRenderer presenceHudRenderer;
-    private final AsrVadDebugOverlay asrVadDebugOverlay;
     private final NeoForgeWorldIdentityCapture worldIdentityCapture;
     private final Supplier<KeyMapping> voiceKeySupplier;
-    private final Supplier<KeyMapping> vadRecordKeySupplier;
     private final NeoForgeVoiceInputController voiceInputController;
 
     public NeoForgeClientEvents(
-            ClientConfig config,
             TianshuCoreManager coreManager,
             TianshuSettingsModule settingsModule,
             NeoForgeClientLifecycleAdapter lifecycleAdapter,
@@ -51,22 +45,17 @@ public final class NeoForgeClientEvents {
             PresenceHudRenderer presenceHudRenderer,
             NeoForgeWorldIdentityCapture worldIdentityCapture,
             Supplier<KeyMapping> voiceKeySupplier,
-            Supplier<KeyMapping> vadRecordKeySupplier,
             LogSink logSink
     ) {
-        Objects.requireNonNull(config, "config");
         this.coreManager = Objects.requireNonNull(coreManager, "coreManager");
         this.settingsModule = Objects.requireNonNull(settingsModule, "settingsModule");
         this.lifecycleAdapter = Objects.requireNonNull(lifecycleAdapter, "lifecycleAdapter");
         this.presenceRuntime = Objects.requireNonNull(presenceRuntime, "presenceRuntime");
         this.presenceHudRenderer = Objects.requireNonNull(presenceHudRenderer, "presenceHudRenderer");
-        this.asrVadDebugOverlay = new AsrVadDebugOverlay(config, coreManager);
         this.worldIdentityCapture = Objects.requireNonNull(worldIdentityCapture, "worldIdentityCapture");
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
-        this.vadRecordKeySupplier = Objects.requireNonNull(vadRecordKeySupplier, "vadRecordKeySupplier");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.voiceInputController = new NeoForgeVoiceInputController(
-                config::getTriggerMode,
                 () -> coreManager.findService(AsrInputService.class),
                 presenceRuntime::recordVoiceKeyInput
         );
@@ -109,42 +98,6 @@ public final class NeoForgeClientEvents {
         KeyMapping voiceKey = voiceKeySupplier.get();
         voiceInputController.tick(voiceKey != null, voiceKey != null && voiceKey.isDown());
 
-        tickVadRecording(minecraft);
-    }
-
-    /**
-     * Debug-build only. Pressing the record key starts a bounded capture of the VAD inputs; pressing
-     * it again stops the capture and writes the observations to the diagnostics log so the detector
-     * can be tuned against the real microphone instead of a synthetic signal.
-     */
-    private void tickVadRecording(Minecraft minecraft) {
-        KeyMapping recordKey = vadRecordKeySupplier.get();
-        if (recordKey == null) {
-            return;
-        }
-        while (recordKey.consumeClick()) {
-            AsrAudioDiagnostics diagnostics = coreManager.findService(AsrAudioDiagnostics.class).orElse(null);
-            if (diagnostics == null) {
-                return;
-            }
-            if (diagnostics.isRecording()) {
-                int samples = diagnostics.recordedSamples();
-                logSink.info("asr.vad.record.stopped samples=" + samples);
-                logSink.info("asr.vad.record.dump\n" + diagnostics.endRecordingDump());
-                showChat(minecraft, "tianshu.debug.asr_vad.record_saved", samples);
-            } else {
-                diagnostics.beginRecording();
-                logSink.info("asr.vad.record.started capacity=" + AsrAudioDiagnostics.RECORDING_CAPACITY);
-                showChat(minecraft, "tianshu.debug.asr_vad.record_started", AsrAudioDiagnostics.RECORDING_CAPACITY);
-            }
-        }
-    }
-
-    private static void showChat(Minecraft minecraft, String key, int samples) {
-        if (minecraft.player == null) {
-            return;
-        }
-        minecraft.player.displayClientMessage(Component.translatable(key, samples), false);
     }
 
     @SubscribeEvent
@@ -174,7 +127,6 @@ public final class NeoForgeClientEvents {
     public void onRenderGui(RenderGuiEvent.Post event) {
         ClientLlmRuntimeBridge.markFrame();
         presenceHudRenderer.render(event.getGuiGraphics());
-        asrVadDebugOverlay.render(event.getGuiGraphics());
     }
 
     @SubscribeEvent

@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -134,59 +133,6 @@ class AudioCaptureServiceTest {
 
         assertEquals(List.of(42L), original.startedSessions);
         assertEquals(List.of(42L), replacement.startedSessions);
-    }
-
-    @Test
-    void streamCaptureRecordsRawAndProcessedWaveformsForEnabledDiagnostics() {
-        FakeAudioBridge bridge = new FakeAudioBridge();
-        AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
-        diagnostics.setEnabled(true);
-        AudioCaptureService service = new AudioCaptureService(
-                bridge,
-                new FakeGameEnvironment(),
-                new AsrVadSpeechSegmenter((speaking, sessionId, occurredAtMillis) -> { }),
-                diagnostics
-        );
-        service.setFrameProcessor(audio -> pcm(0.01D, audio.length / 2));
-
-        service.startStreamCapture(42L, ignored -> { });
-        bridge.push(pcm(0.04D, 160));
-
-        AsrAudioDiagnostics.Snapshot snapshot = diagnostics.snapshot();
-        assertEquals(1, snapshot.sampleCount());
-        assertEquals(0.04F, snapshot.rawMax()[0], 0.01F);
-        assertEquals(0.01F, snapshot.processedMax()[0], 0.01F);
-        assertEquals(42L, snapshot.sessionId());
-
-        service.stopStreamCapture();
-        assertFalse(diagnostics.snapshot().captureActive());
-    }
-
-    @Test
-    void diagnosticsPreservesRawWaveformWhenProcessorMutatesInput() {
-        FakeAudioBridge bridge = new FakeAudioBridge();
-        AsrAudioDiagnostics diagnostics = new AsrAudioDiagnostics();
-        diagnostics.setEnabled(true);
-        AudioCaptureService service = new AudioCaptureService(
-                bridge,
-                new FakeGameEnvironment(),
-                AsrSpeechSegmenter.disabled(),
-                diagnostics
-        );
-        service.setFrameProcessor(audio -> {
-            for (int index = 0; index + 1 < audio.length; index += 2) {
-                audio[index] = 0;
-                audio[index + 1] = 0;
-            }
-            return audio;
-        });
-
-        service.startStreamCapture(42L, ignored -> { });
-        bridge.push(pcm(0.04D, 160));
-
-        AsrAudioDiagnostics.Snapshot snapshot = diagnostics.snapshot();
-        assertEquals(0.04F, snapshot.rawMax()[0], 0.01F);
-        assertEquals(0.0F, snapshot.processedMax()[0], 0.001F);
     }
 
     @Test

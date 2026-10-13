@@ -66,7 +66,7 @@ public void subscribeAsrFinalText(EnvelopeHandler handler) {
 
 `ProtocolTopics.INPUT_ASR_FINAL_TEXT` 在协议中心使用 `WAIT_IN_QUEUE` delivery policy，目的是保留有序文本事件。订阅者仍必须尽快返回，不能把协议投递线程当业务工作线程。
 
-连续输入支持两种结束方式：玩家按键可以提前提交当前语音段；VAD 在检测到新的语音活动结束并达到动态静音门限后自动提交。提交完成后 ASR 回到等待状态，必须出现下一次新的语音活动才会开始下一段；没有有效文本的空提交不会发布 `INPUT_ASR_FINAL_TEXT`。无论底层模型是否支持在线识别，最终文本都必须经过这条统一边界；调用方不需要订阅 partial/interim 文本。
+当前客户端只支持 PTT：按住语音开关采集音频，松开后进行一次完整识别；没有有效文本的空提交不会发布 `INPUT_ASR_FINAL_TEXT`。连续输入和 VAD 分段入口已封存，调用方不应依赖 `force_flush` 或 `vad_segment` 输入模式。
 
 ## 4. 订阅说话活动
 
@@ -94,7 +94,7 @@ public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
 | `sessionId` | `long` | 对应的输入 session。 |
 | `occurredAtMillis` | `long` | 状态变化时间；传入非正值时 payload 会使用当前时间。 |
 
-该事件表示连续输入中经过高通等音频处理后的说话活动状态，不表示按键按下、麦克风刚启动或最终文本已经产生。只有 `TriggerMode.ALWAYS` 的持续输入路径会启用 VAD 并发布该事件；`PUSH_TO_TALK` 不使用 VAD，也不会发布该事件。它也不是自动分段完成通知；需要识别结果时仍应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
+该事件用于描述经过音频处理后的说话活动状态，不表示按键按下、麦克风刚启动或最终文本已经产生。当前客户端只使用 PTT（按键说话），不会启用 VAD 或发布该事件；保留该协议符号是为了兼容已有协议消费者。需要识别结果时应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
 
 ## 5. 订阅 ASR 模块状态
 
@@ -118,8 +118,9 @@ if (!AsrProtocolAdapter.MODULE_ID.equals(status.moduleId())) {
 | 活动 ID | 类型 | 边界 |
 | --- | --- | --- |
 | `asr.model.load` | `LOADING` | `AsrEngine.initialize()` 真正开始至成功、失败或取消。禁用、未配置或未安装模型不伪报加载。 |
-| `asr.recognition.<sessionId>` | `PROCESSING_TASK` | 完整识别或 VAD 分段识别真正执行期间。 |
-| `asr.speech.<sessionId>` | `LISTENING` | VAD 检测到处理后音频中的说话活动期间。 |
+| `asr.recognition.<sessionId>` | `PROCESSING_TASK` | PTT 完整识别真正执行期间。 |
+
+当前 PTT 链路不发布 `asr.speech.<sessionId>`；该活动 ID 仅为旧协议消费者保留兼容语义。
 
 `LISTENING` 是客观前景状态，不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动；ASR 自身仍会在成功、失败、取消和停止路径配对结束活动。
 

@@ -17,28 +17,21 @@ public final class AudioCaptureService {
     private volatile AsrSpeechSegmenter speechSegmenter;
     private volatile AudioFrameProcessor frameProcessor = AudioFrameProcessor.identity();
     private volatile ByteArrayOutputStream pttBuffer;
-    private final AsrAudioDiagnostics diagnostics;
     private final AtomicLong captureGeneration = new AtomicLong();
     private volatile long activeStreamSessionId;
 
     public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env) {
-        this(audioBridge, env, AsrSpeechSegmenter.disabled(), null);
+        this(audioBridge, env, AsrSpeechSegmenter.disabled());
     }
 
     public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env, AsrSpeechActivityListener speechActivityListener) {
-        this(audioBridge, env, new AsrVadSpeechSegmenter(speechActivityListener), null);
+        this(audioBridge, env, new AsrVadSpeechSegmenter(speechActivityListener));
     }
 
     public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env, AsrSpeechSegmenter speechSegmenter) {
-        this(audioBridge, env, speechSegmenter, null);
-    }
-
-    public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env,
-                               AsrSpeechSegmenter speechSegmenter, AsrAudioDiagnostics diagnostics) {
         this.audioBridge = audioBridge;
         this.env = env;
         this.speechSegmenter = speechSegmenter == null ? AsrSpeechSegmenter.disabled() : speechSegmenter;
-        this.diagnostics = diagnostics;
     }
 
     public void setSpeechSegmenter(AsrSpeechSegmenter speechSegmenter) {
@@ -64,17 +57,14 @@ public final class AudioCaptureService {
         frameProcessor.reset();
         long generation = captureGeneration.incrementAndGet();
         activeStreamSessionId = 0L;
-        diagnosticsBegin(sessionId);
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         pttBuffer = buffer;
         audioBridge.startStreamRecording(chunk -> {
             if (!isCurrentGeneration(generation)) {
                 return;
             }
-            byte[] raw = rawForDiagnostics(chunk);
             byte[] processed = processChunk(chunk);
             if (processed != null && processed.length > 0) {
-                recordDiagnostics(raw, processed);
                 synchronized (buffer) {
                     buffer.write(processed, 0, processed.length);
                 }
@@ -85,7 +75,6 @@ public final class AudioCaptureService {
     public byte[] stopPttCapture() {
         audioBridge.stopStreamRecording();
         captureGeneration.incrementAndGet();
-        diagnosticsEnd();
         ByteArrayOutputStream buffer = pttBuffer;
         pttBuffer = null;
         if (buffer == null) {
@@ -105,19 +94,16 @@ public final class AudioCaptureService {
         activeStreamSessionId = Math.max(0L, sessionId);
         frameProcessor.reset();
         speechSegmenter.start(sessionId);
-        diagnosticsBegin(sessionId);
         audioBridge.startStreamRecording(chunk -> {
             if (!isCurrentGeneration(generation)) {
                 return;
             }
-            byte[] raw = rawForDiagnostics(chunk);
             byte[] processed = processChunk(chunk);
             if (processed != null && processed.length > 0) {
                 AsrSpeechSegmenter.Decision decision = speechSegmenter.accept(processed);
                 if (!isCurrentGeneration(generation)) {
                     return;
                 }
-                recordDiagnostics(raw, processed);
                 consumer.accept(processed, decision);
             }
         });
@@ -128,7 +114,6 @@ public final class AudioCaptureService {
         activeStreamSessionId = 0L;
         audioBridge.stopStreamRecording();
         speechSegmenter.reset();
-        diagnosticsEnd();
     }
 
     public void resetStreamSegmentBoundary() {
@@ -141,7 +126,6 @@ public final class AudioCaptureService {
         attemptCleanup("tianshu.asr.audio.ptt_stop_failed", audioBridge::stopRecording);
         attemptCleanup("tianshu.asr.audio.stream_stop_failed", audioBridge::stopStreamRecording);
         speechSegmenter.reset();
-        diagnosticsEnd();
         pttBuffer = null;
     }
 
@@ -160,30 +144,6 @@ public final class AudioCaptureService {
 
     private byte[] processChunk(byte[] chunk) {
         return frameProcessor.process(chunk);
-    }
-
-    private void diagnosticsBegin(long sessionId) {
-        if (diagnostics != null) {
-            diagnostics.beginCapture(sessionId);
-        }
-    }
-
-    private void diagnosticsEnd() {
-        if (diagnostics != null) {
-            diagnostics.endCapture();
-        }
-    }
-
-    private void recordDiagnostics(byte[] raw, byte[] processed) {
-        if (diagnostics != null) {
-            diagnostics.record(raw, processed, speechSegmenter.activitySnapshot());
-        }
-    }
-
-    private byte[] rawForDiagnostics(byte[] chunk) {
-        return diagnostics != null && diagnostics.isEnabled() && chunk != null
-                ? chunk.clone()
-                : chunk;
     }
 
     private boolean isCurrentGeneration(long generation) {

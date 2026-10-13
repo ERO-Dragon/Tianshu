@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class SettingsRegistryTest {
     @Test
@@ -30,6 +31,19 @@ final class SettingsRegistryTest {
         assertFalse(source.contains("llmStatusVisible"));
         assertFalse(source.contains("ttsStatusVisible"));
         assertFalse(source.contains("axStatusVisible"));
+    }
+
+    @Test
+    void asrSettingsExposeTheVoiceSwitchAsReadOnlyState() throws Exception {
+        String source = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/asr/AsrSettingsRegistrySource.java"),
+                StandardCharsets.UTF_8
+        );
+
+        assertFalse(source.contains("triggerMode"));
+        assertFalse(source.contains("option.trigger"));
+        assertTrue(source.contains("option.voice_switch"));
+        assertTrue(source.contains("key.tianshu.activate"));
     }
 
     @Test

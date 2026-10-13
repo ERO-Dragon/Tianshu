@@ -1,13 +1,9 @@
 package com.rheinmetal.tianshu.function.asr.settings;
 
-import com.rheinmetal.tianshu.constant.TriggerMode;
-
 import java.nio.file.Path;
 
 public interface AsrConfiguration {
     boolean isAsrEnabled();
-
-    TriggerMode getTriggerMode();
 
     String getSelectedMicName();
 

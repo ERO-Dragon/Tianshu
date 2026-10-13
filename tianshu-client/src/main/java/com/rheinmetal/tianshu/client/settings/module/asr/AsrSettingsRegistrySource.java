@@ -16,7 +16,6 @@ import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
 import com.rheinmetal.tianshu.function.asr.AsrModelService;
@@ -39,6 +38,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 public final class AsrSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = "module.asr";
@@ -76,16 +76,25 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
     private final ClientUiHost uiHost;
     private final PresenceTextProvider textProvider;
     private final ClientAudioDeviceCatalog audioDeviceCatalog;
+    private final Supplier<UiText> voiceKeyDisplay;
 
     public AsrSettingsRegistrySource(TianshuCoreManager coreManager, AsrSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider) {
         this(coreManager, config, audioBridge, scheduler, uiHost, textProvider,
-                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null);
+                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null,
+                () -> UiText.key("key.tianshu.activate"));
     }
 
     public AsrSettingsRegistrySource(TianshuCoreManager coreManager, AsrSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider,
                                      ClientAudioDeviceCatalog audioDeviceCatalog) {
+        this(coreManager, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog,
+                () -> UiText.key("key.tianshu.activate"));
+    }
+
+    public AsrSettingsRegistrySource(TianshuCoreManager coreManager, AsrSettingsAccess config, IAudioBridge audioBridge,
+                                     ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider,
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay) {
         this.coreManager = coreManager;
         this.config = config;
         this.audioBridge = audioBridge;
@@ -93,6 +102,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         this.uiHost = uiHost;
         this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
         this.audioDeviceCatalog = audioDeviceCatalog;
+        this.voiceKeyDisplay = voiceKeyDisplay == null ? () -> UiText.key("key.tianshu.activate") : voiceKeyDisplay;
     }
 
     @Override
@@ -101,7 +111,8 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             return;
         }
         AsrSettingsDraft draft = new AsrSettingsDraft(
-                config, audioBridge, coreManager, context, scheduler, uiHost, textProvider, audioDeviceCatalog
+                config, audioBridge, coreManager, context, scheduler, uiHost, textProvider, audioDeviceCatalog,
+                voiceKeyDisplay
         );
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
@@ -120,7 +131,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
-                .options("as.main", asr("section.main"), draft::buildMainOptions)
+                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, draft::buildMainStatus)
                 .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get))
                 .actions("asr.preview", asr("section.preview"), actions -> actions
@@ -153,9 +164,9 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         private final ClientScheduler scheduler;
         private final ClientUiHost uiHost;
         private final PresenceTextProvider textProvider;
+        private final Supplier<UiText> voiceKeyDisplay;
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedMic;
-        private final MutableSettingsValue<TriggerMode> triggerMode;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<Boolean> highPassFilterEnabled;
         private final MutableSettingsValue<String> githubProxyUrl;
@@ -175,7 +186,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private AsrSettingsDraft(AsrSettingsAccess config, IAudioBridge audioBridge, TianshuCoreManager coreManager, ModuleSettingsContext context,
                                  ClientScheduler scheduler, ClientUiHost uiHost, PresenceTextProvider textProvider,
-                                 ClientAudioDeviceCatalog audioDeviceCatalog) {
+                                 ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay) {
             this.config = config;
             this.audioBridge = audioBridge;
             this.coreManager = coreManager;
@@ -183,12 +194,12 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             this.scheduler = scheduler;
             this.uiHost = uiHost;
             this.textProvider = textProvider;
+            this.voiceKeyDisplay = voiceKeyDisplay;
             this.audioDeviceCatalog = audioDeviceCatalog;
             this.catalog = AsrModelManager.getAllModels();
             this.availabilitySnapshot = asrModelService().modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
             this.selectedMic = new MutableSettingsValue<>(this::currentMicName, ignored -> {}, Objects::nonNull);
-            this.triggerMode = new MutableSettingsValue<>(config::getTriggerMode, config::setTriggerMode, Objects::nonNull);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.highPassFilterEnabled = new MutableSettingsValue<>(config::isAsrHighPassFilterEnabled, config::setAsrHighPassFilterEnabled);
             this.githubProxyUrl = new MutableSettingsValue<>(config::getAsrGithubProxyUrl, config::setAsrGithubProxyUrl, Objects::nonNull);
@@ -205,8 +216,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
     private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
             refreshMicrophoneNames();
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
-                    .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get)
-                    .select("asr.trigger", asr("option.trigger"), List.of(TriggerMode.values()), triggerMode, this::triggerLabel, enabled::get);
+                    .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get);
+        }
+
+        private void buildMainStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
+            status.row("asr.voice_switch", asr("option.voice_switch"), voiceKeyDisplay, enabled::get);
         }
 
         private void buildDownloadAdvancedOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
@@ -237,7 +251,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         public boolean dirty() {
             return enabled.dirty()
                     || selectedMic.dirty()
-                    || triggerMode.dirty()
                     || selectedModelName.dirty()
                     || highPassFilterEnabled.dirty()
                     || githubProxyUrl.dirty();
@@ -258,7 +271,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         public SettingsSaveResult save() {
             AsrSettingsSnapshot before = AsrSettingsSnapshot.from(config);
             String mic = selectedMic.get();
-            new SettingsSaveTransaction(enabled, triggerMode, highPassFilterEnabled,
+            new SettingsSaveTransaction(enabled, highPassFilterEnabled,
                     githubProxyUrl, selectedMic, selectedModelName)
                     .write(config::getSelectedMicName, config::setSelectedMicName, DEFAULT_MIC.equals(mic) ? "" : mic)
                     .write(config::getCustomAsrName, config::setCustomAsrName, selectedModelName.get())
@@ -272,7 +285,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         public void reset() {
             enabled.reset();
             selectedMic.reset();
-            triggerMode.reset();
             selectedModelName.reset();
             highPassFilterEnabled.reset();
             githubProxyUrl.reset();
@@ -300,16 +312,6 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 return asr("option.default_mic");
             }
             return UiText.literal(name);
-        }
-
-        private UiText triggerLabel(TriggerMode mode) {
-            if (mode == TriggerMode.PUSH_TO_TALK) {
-                return asr("trigger.push_to_talk");
-            }
-            if (mode == TriggerMode.ALWAYS) {
-                return asr("trigger.always");
-            }
-            return UiText.literal(String.valueOf(mode));
         }
 
         private String currentMicName() {

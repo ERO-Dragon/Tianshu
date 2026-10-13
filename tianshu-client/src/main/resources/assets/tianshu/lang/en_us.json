@@ -1,7 +1,6 @@
 {
   "key.categories.tianshu": "Tianshu AI",
   "key.tianshu.activate": "Toggle Voice (Press to Talk)",
-  "key.tianshu.vad_record": "VAD Sample Recording (Debug Build)",
 
   "tianshu.gui.common.all": "All",
   "tianshu.gui.common.on": "On",
@@ -216,7 +215,7 @@
   "tianshu.gui.asr.option.model": "Active Recognition Model",
   "tianshu.gui.asr.option.mic": "Recording Microphone",
   "tianshu.gui.asr.option.default_mic": "Default Microphone",
-  "tianshu.gui.asr.option.trigger": "Trigger Mode",
+  "tianshu.gui.asr.option.voice_switch": "Voice Switch",
   "tianshu.gui.asr.option.rnnoise": "RNNoise Denoising",
   "tianshu.gui.asr.option.high_pass": "Low-Frequency Noise Filter",
   "tianshu.gui.asr.option.github_proxy": "GitHub Proxy URL",
@@ -224,8 +223,6 @@
   "tianshu.gui.asr.option.performance": "Performance Friendliness",
   "tianshu.gui.asr.option.quality": "Recognition Quality",
   "tianshu.gui.asr.option.recommended": "Recommendation",
-  "tianshu.gui.asr.trigger.push_to_talk": "Push to Talk",
-  "tianshu.gui.asr.trigger.always": "Continuous Input",
   "tianshu.gui.asr.action.preview_start": "Preview Recognition Model",
   "tianshu.gui.asr.action.preview_stop": "Stop Preview",
   "tianshu.gui.asr.action.download": "Download",
@@ -555,19 +552,6 @@
   "tianshu.presence.context.screen.other": "other screen",
   "tianshu.presence.context.dimension.minecraft.overworld": "Overworld",
   "tianshu.presence.context.dimension.minecraft.the_nether": "Nether",
-  "tianshu.presence.context.dimension.minecraft.the_end": "End",
+  "tianshu.presence.context.dimension.minecraft.the_end": "End"
 
-  "tianshu.debug.asr_vad.title": "ASR VAD monitor",
-  "tianshu.debug.asr_vad.record_started": "VAD sample recording started, up to %s samples; press again to stop and write the log",
-  "tianshu.debug.asr_vad.record_saved": "VAD sample recording written to the log, %s samples",
-  "tianshu.debug.asr_vad.metadata": "State: %s",
-  "tianshu.debug.asr_vad.speaking": "speaking",
-  "tianshu.debug.asr_vad.silent": "silent",
-  "tianshu.debug.asr_vad.scale.high": "+0.10",
-  "tianshu.debug.asr_vad.scale.zero": "0",
-  "tianshu.debug.asr_vad.scale.low": "-0.10",
-  "tianshu.debug.asr_vad.latest.start": "start %s",
-  "tianshu.debug.asr_vad.latest.stop": "stop %s",
-  "tianshu.debug.asr_vad.latest.raw": "raw %s",
-  "tianshu.debug.asr_vad.latest.processed": "filtered %s"
 }

@@ -7,7 +7,6 @@ public interface AsrSettingsAccess extends AsrConfiguration {
     void setSelectedMicName(String name);
     String getAsrGithubProxyUrl();
     void setAsrGithubProxyUrl(String url);
-    void setTriggerMode(com.rheinmetal.tianshu.constant.TriggerMode mode);
     void setCustomAsrName(String name);
     void setAsrHighPassFilterEnabled(boolean enabled);
     void save();

@@ -68,7 +68,7 @@ Minecraft 主线程只执行：
 
 游戏目录在 Bootstrap 构造时通过加载器路径捕获为稳定 `Path`。配置、模型目录、诊断和 IR 缓存的后台调用只读该路径，不再从后台访问 `Minecraft` 单例。语言和 AX 世界身份同样在客户端线程捕获为不可变快照；后台 prompt、embedding 选择、IR 索引和记忆隔离只读快照。
 
-语音按键由 `NeoForgeVoiceInputController` 单独维护平台输入状态。持续监听模式只在按键按下沿提前提交当前分段，PTT 模式按下开始、松开结束；模式切换或 ASR 中途不可用时会取消旧输入并清除陈旧按键状态。`NeoForgeClientEvents` 只负责事件接收和有界转发。
+语音按键由 `NeoForgeVoiceInputController` 单独维护平台输入状态。当前只使用 PTT：按下开始、松开结束；ASR 中途不可用时会取消旧输入并清除陈旧按键状态。连续监听入口已封存，`NeoForgeClientEvents` 只负责事件接收和有界转发。
 
 当前 client 自有后台资源：
 

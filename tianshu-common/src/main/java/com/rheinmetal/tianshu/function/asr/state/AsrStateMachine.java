@@ -24,19 +24,11 @@ public final class AsrStateMachine {
     }
 
     public synchronized boolean canBeginCapture() {
-        return state == AsrState.IDLE || state == AsrState.STREAMING;
+        return state == AsrState.IDLE;
     }
 
     public synchronized boolean canEndCapture() {
         return state == AsrState.CAPTURING;
-    }
-
-    public synchronized boolean canStartStreaming() {
-        return state == AsrState.IDLE;
-    }
-
-    public synchronized boolean canCommitStream() {
-        return state == AsrState.STREAMING;
     }
 
     public synchronized void reset() {

@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.config;
 
-import com.rheinmetal.tianshu.constant.TriggerMode;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
@@ -59,7 +58,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.EnumValue<PresenceHudVisualPreset> PRESENCE_VISUAL_PRESET;
     public static final ModConfigSpec.DoubleValue PRESENCE_ICON_POSITION_X;
     public static final ModConfigSpec.DoubleValue PRESENCE_ICON_POSITION_Y;
-    public static final ModConfigSpec.EnumValue<TriggerMode> TRIGGER_MODE;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_ASR_NAME;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_LLM_NAME;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_TTS_NAME;
@@ -75,7 +73,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         ASR_ENABLED = builder.define("enabled", true);
         SELECTED_MIC_NAME = builder.define("selectedMicName", "");
         ASR_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
-        TRIGGER_MODE = builder.defineEnum("triggerMode", TriggerMode.PUSH_TO_TALK);
         ASR_HIGH_PASS_FILTER_ENABLED = builder.define("highPassFilterEnabled", true);
         ASR_RNNOISE_ENABLED = builder.define("rnnoiseEnabled", false);
         builder.pop();
@@ -138,15 +135,6 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     public void setAsrEnabled(boolean enabled) {
         ASR_ENABLED.set(enabled);
-    }
-
-    @Override
-    public TriggerMode getTriggerMode() {
-        return TRIGGER_MODE.get();
-    }
-
-    public void setTriggerMode(TriggerMode mode) {
-        TRIGGER_MODE.set(mode);
     }
 
     @Override

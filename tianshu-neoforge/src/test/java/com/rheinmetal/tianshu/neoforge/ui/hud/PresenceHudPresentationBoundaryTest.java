@@ -88,15 +88,20 @@ final class PresenceHudPresentationBoundaryTest {
     }
 
     @Test
-    void asrVadOverlayUsesHistoricalThresholdCurves() throws Exception {
-        String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/AsrVadDebugOverlay.java"),
+    void vadDebugOverlayAndRecordingKeyAreRetired() throws Exception {
+        String events = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"),
+                StandardCharsets.UTF_8
+        );
+        String bootstrap = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(source.contains("snapshot.startThresholds()"));
-        assertTrue(source.contains("snapshot.stopThresholds()"));
-        assertTrue(source.contains("drawThresholdCurve"));
-        assertFalse(source.contains("drawThreshold(graphics, snapshot.startThreshold()"));
+        assertFalse(events.contains("AsrVadDebugOverlay"));
+        assertFalse(events.contains("vadRecordKey"));
+        assertFalse(events.contains("tickVadRecording"));
+        assertFalse(bootstrap.contains("vadRecordKey"));
+        assertFalse(bootstrap.contains("key.tianshu.vad_record"));
     }
 }
