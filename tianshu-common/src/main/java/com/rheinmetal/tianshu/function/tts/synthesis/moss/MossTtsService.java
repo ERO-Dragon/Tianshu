@@ -12,14 +12,29 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class MossTtsService implements AutoCloseable {
     private static final int MAX_CONTEXT_TOKENS = 75;
+    /** Small first batch keeps first-audio latency low. */
+    static final int FIRST_CHUNK_FRAMES = 4;
+    /**
+     * Later batches are larger because the codec decode step pays a fixed cost per invocation.
+     * <p>
+     * Hard ceiling: one MOSS frame is 80 ms of audio, so this must stay well below
+     * {@code TtsPreviewPlaybackPolicy.maxQueueMillis} (800 ms). A single chunk that alone exceeds
+     * the playback queue capacity can never be accepted - the queue blocks until timeout and then
+     * rejects it, silently dropping that audio. 8 frames = 640 ms leaves headroom for the 320 ms
+     * first chunk to still be buffered.
+     */
+    static final int STEADY_CHUNK_FRAMES = 8;
+    private static final LongSupplier RANDOM_SEED_SOURCE = () -> ThreadLocalRandom.current().nextLong();
     private final MossModelRuntime modelRuntime;
     private final MossFrameGenerator frameGenerator;
     private final MossAudioCodec audioCodec;
     private final MossTextChunker textChunker;
+    private volatile LongSupplier synthesisSeedSource = RANDOM_SEED_SOURCE;
     private final MossStreamingDecodePipeline streamingDecodePipeline;
 
     public MossTtsService(
@@ -44,7 +59,7 @@ public class MossTtsService implements AutoCloseable {
                 modelRootDir,
                 resourcePolicy,
                 codecExecution,
-                MossStreamingDecodeCadence.fixed(4)
+                MossStreamingDecodeCadence.firstChunkThenBatched(FIRST_CHUNK_FRAMES, STEADY_CHUNK_FRAMES)
         );
     }
 
@@ -79,6 +94,15 @@ public class MossTtsService implements AutoCloseable {
 
     public void setGenerationSeed(long seed) {
         frameGenerator.setGenerationSeed(seed);
+    }
+
+    /**
+     * Overrides the per-attempt synthesis seed source. Production keeps the random default; a
+     * reproducible benchmark pins it so every run generates identical audio and RTF comparisons
+     * stop being dominated by randomly varying utterance length.
+     */
+    public void setSynthesisSeedSource(LongSupplier seedSource) {
+        this.synthesisSeedSource = seedSource == null ? RANDOM_SEED_SOURCE : seedSource;
     }
 
     public int contextualSentenceLimit(List<String> sentences) {
@@ -250,9 +274,7 @@ public class MossTtsService implements AutoCloseable {
             BooleanSupplier cancellationRequested
     ) throws Exception {
         BooleanSupplier cancellation = cancellationRequested == null ? () -> false : cancellationRequested;
-        MossOfflineSynthesisRetry retry = new MossOfflineSynthesisRetry(
-                () -> ThreadLocalRandom.current().nextLong()
-        );
+        MossOfflineSynthesisRetry retry = new MossOfflineSynthesisRetry(synthesisSeedSource);
         return retry.execute(cancellation, seed -> {
             setGenerationSeed(seed);
             return synthesizeToWaveform(text, promptAudioCodes, cancellation, true);
@@ -261,6 +283,27 @@ public class MossTtsService implements AutoCloseable {
 
     public interface StreamingAudioCallback {
         void onChunkAudio(float[][] audio, int chunkIndex, int totalChunks);
+
+        default void onChunkAudio(
+                float[][] audio,
+                int chunkIndex,
+                int totalChunks,
+                StreamingChunkMetadata metadata
+        ) {
+            onChunkAudio(audio, chunkIndex, totalChunks);
+        }
+    }
+
+    public record StreamingChunkMetadata(
+            long pcmDurationMillis,
+            long generationElapsedMillis,
+            long interChunkIntervalMillis
+    ) {
+        public StreamingChunkMetadata {
+            pcmDurationMillis = Math.max(0L, pcmDurationMillis);
+            generationElapsedMillis = Math.max(0L, generationElapsedMillis);
+            interChunkIntervalMillis = Math.max(0L, interChunkIntervalMillis);
+        }
     }
 
     public void synthesizeStreaming(String text, List<List<Integer>> promptAudioCodes, StreamingAudioCallback callback) throws Exception {
@@ -279,6 +322,8 @@ public class MossTtsService implements AutoCloseable {
             return;
         }
         int emittedAudioChunkIndex = 0;
+        long startedNanos = System.nanoTime();
+        long[] previousChunkNanos = {0L};
         for (String chunk : chunks) {
             if (cancellation.getAsBoolean()) {
                 return;
@@ -288,6 +333,9 @@ public class MossTtsService implements AutoCloseable {
                     promptAudioCodes,
                     callback,
                     emittedAudioChunkIndex,
+                    -1,
+                    startedNanos,
+                    previousChunkNanos,
                     cancellation
             );
         }
@@ -298,6 +346,9 @@ public class MossTtsService implements AutoCloseable {
             List<List<Integer>> promptAudioCodes,
             StreamingAudioCallback callback,
             int firstAudioChunkIndex,
+            int totalChunks,
+            long startedNanos,
+            long[] previousChunkNanos,
             BooleanSupplier cancellationRequested
     ) throws Exception {
         int[] textTokenIds = encodeText(text);
@@ -313,7 +364,22 @@ public class MossTtsService implements AutoCloseable {
                         pipelineCancellation
                 ),
                 () -> new StreamingDecoderAdapter(audioCodec.openStreamingDecoder()),
-                audio -> callback.onChunkAudio(audio, chunkIndex[0]++, -1),
+                audio -> {
+                    long nowNanos = System.nanoTime();
+                    long previousNanos = previousChunkNanos[0];
+                    previousChunkNanos[0] = nowNanos;
+                    long pcmDurationMillis = pcmDurationMillis(audio);
+                    callback.onChunkAudio(
+                            audio,
+                            chunkIndex[0]++,
+                            totalChunks,
+                            new StreamingChunkMetadata(
+                                    pcmDurationMillis,
+                                    elapsedMillis(startedNanos),
+                                    previousNanos == 0L ? 0L : elapsedMillis(previousNanos)
+                            )
+                    );
+                },
                 cancellationRequested
         );
         if (cancellationRequested.getAsBoolean() || generation.cancelled()) {
@@ -321,6 +387,17 @@ public class MossTtsService implements AutoCloseable {
         }
         generation.requireNaturalEnd(textTokenIds.length);
         return chunkIndex[0];
+    }
+
+    private long pcmDurationMillis(float[][] audio) {
+        return pcmDurationMillis(audio, getSampleRate());
+    }
+
+    static long pcmDurationMillis(float[][] audio, int sampleRate) {
+        if (audio == null || audio.length == 0 || audio[0] == null || audio[0].length == 0) {
+            return 0L;
+        }
+        return audio[0].length * 1_000L / Math.max(1, sampleRate);
     }
 
     private static final class StreamingDecoderAdapter implements MossStreamingDecodePipeline.Decoder {

@@ -2,10 +2,14 @@ package com.rheinmetal.tianshu.function.tts.playback;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsSession;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsSessionState;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsSynthesisScheduler;
+import com.rheinmetal.tianshu.function.tts.runtime.TtsRequestSource;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
@@ -15,6 +19,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.time.Duration;
 
 public final class TtsPlaybackController {
     private static final String MODULE_ID = "module.tts";
@@ -56,6 +61,7 @@ public final class TtsPlaybackController {
         }
         slot.cancelled = true;
         slot.audio.clear();
+        slot.cancelPreviewQueue();
         slots.remove(session);
         activateNextIfPossible();
     }
@@ -66,19 +72,54 @@ public final class TtsPlaybackController {
             return;
         }
         slot.sampleRate = sampleRate;
+        slot.previewQueue = TtsRequestSource.PREVIEW.equals(session.request().source())
+                ? new TtsPreviewAudioQueue(TtsPreviewPlaybackPolicy.defaults(sampleRate))
+                : null;
         slot.ready = true;
         session.transition(TtsSessionState.PLAYING);
         activateNextIfPossible();
     }
 
-    public synchronized boolean feed(TtsSession session, byte[] audio) {
-        PlaybackSlot slot = slots.get(session);
+    public boolean feed(TtsSession session, byte[] audio) {
+        PlaybackSlot slot;
+        synchronized (this) {
+            slot = slots.get(session);
+        }
         if (audio == null || audio.length == 0 || slot == null || slot.cancelled || slot.finishRequested || session.isTerminal()) {
             return false;
         }
-        slot.audio.addLast(audio);
-        if (slot == activeSlot) {
-            schedulePump(slot);
+        if (slot.previewQueue != null) {
+            long offerStartedNanos = System.nanoTime();
+            TtsPreviewAudioQueue.OfferResult result = slot.previewQueue.offer(audio, Duration.ofSeconds(30), session::isTerminal);
+            long blockedMillis = Math.max(0L, (System.nanoTime() - offerStartedNanos) / 1_000_000L);
+            if (result != TtsPreviewAudioQueue.OfferResult.ACCEPTED) {
+                return false;
+            }
+            synchronized (this) {
+                if (slot.cancelled || session.isTerminal()) {
+                    return false;
+                }
+                if (slot.firstChunkAtMillis == 0L) {
+                    slot.firstChunkAtMillis = System.currentTimeMillis();
+                }
+                slot.chunkCount++;
+                slot.generatedPcmMillis += slot.previewQueue.audioDurationMillis(audio);
+                slot.backpressureMillis += blockedMillis;
+                slot.lowestQueueMillis = Math.min(slot.lowestQueueMillis, slot.previewQueue.bufferedMillis());
+                if (slot == activeSlot) {
+                    schedulePump(slot);
+                }
+            }
+            return true;
+        }
+        synchronized (this) {
+            if (slot.cancelled || slot.finishRequested || session.isTerminal()) {
+                return false;
+            }
+            slot.audio.addLast(audio);
+            if (slot == activeSlot) {
+                schedulePump(slot);
+            }
         }
         return true;
     }
@@ -89,6 +130,9 @@ public final class TtsPlaybackController {
             return;
         }
         slot.finishRequested = true;
+        if (slot.previewQueue != null) {
+            slot.previewQueue.finish();
+        }
         session.transition(TtsSessionState.DRAINING);
         if (slot == activeSlot) {
             schedulePump(slot);
@@ -119,6 +163,7 @@ public final class TtsPlaybackController {
             slot.session.cancel(reason);
             slot.cancelled = true;
             slot.audio.clear();
+            slot.cancelPreviewQueue();
         }
         slots.clear();
         activeSlot = null;
@@ -144,10 +189,27 @@ public final class TtsPlaybackController {
         activateNextIfPossible();
     }
 
+    /**
+     * Releases a slot whose audio has been fully handed to the audio device.
+     * <p>
+     * Session level bookkeeping stays with {@link TtsPlaybackListener}, which the audio bridge
+     * notifies. This method only guarantees that the controller never keeps an active slot whose
+     * FINISH has already been issued, so a missing or late completion hook can never wedge
+     * playback into permanent silence.
+     */
+    private void releaseFinishedSlot(PlaybackSlot slot) {
+        slots.remove(slot.session);
+        if (activeSlot == slot) {
+            activeSlot = null;
+            activateNextIfPossible();
+        }
+    }
+
     private void cancelSlot(PlaybackSlot slot, String reason) {
         slot.session.cancel(reason);
         slot.cancelled = true;
         slot.audio.clear();
+        slot.cancelPreviewQueue();
         slots.remove(slot.session);
         if (activeSlot != slot) {
             activateNextIfPossible();
@@ -199,8 +261,24 @@ public final class TtsPlaybackController {
                     return;
                 }
                 if (!slot.startIssued) {
+                    if (slot.previewQueue != null && !slot.previewQueue.canStart()) {
+                        slot.pumpScheduled = false;
+                        return;
+                    }
                     slot.startIssued = true;
                     command = PlaybackCommand.start(slot.sampleRate);
+                } else if (slot.previewQueue != null) {
+                    TtsPreviewAudioQueue.Poll polled = slot.previewQueue.poll();
+                    if (polled.result() == TtsPreviewAudioQueue.PollResult.AUDIO) {
+                        command = PlaybackCommand.feed(polled.audio());
+                    } else if (slot.finishRequested && !slot.finishIssued) {
+                        slot.finishIssued = true;
+                        command = PlaybackCommand.finish();
+                    } else {
+                        slot.underrunCount++;
+                        slot.pumpScheduled = false;
+                        return;
+                    }
                 } else if (!slot.audio.isEmpty()) {
                     command = PlaybackCommand.feed(slot.audio.removeFirst());
                 } else if (slot.finishRequested && !slot.finishIssued) {
@@ -225,6 +303,8 @@ public final class TtsPlaybackController {
             if (command.type == PlaybackCommandType.FINISH) {
                 synchronized (this) {
                     slot.pumpScheduled = false;
+                    publishPreviewMetrics(slot);
+                    releaseFinishedSlot(slot);
                 }
                 return;
             }
@@ -235,11 +315,49 @@ public final class TtsPlaybackController {
         switch (command.type) {
             case START -> {
                 audioBridge.setOnPlaybackFinished(() -> listener.onPlaybackFinished(slot.session));
-                audioBridge.startTtsPlayback(command.sampleRate);
+                audioBridge.startTtsPlayback(slot.session.request().requestId(), command.sampleRate);
+                synchronized (this) {
+                    slot.startedAtMillis = System.currentTimeMillis();
+                }
             }
-            case FEED -> audioBridge.feedTtsAudio(command.audio);
-            case FINISH -> audioBridge.finishTtsPlayback();
+            case FEED -> audioBridge.feedTtsAudio(slot.session.request().requestId(), command.audio);
+            case FINISH -> audioBridge.finishTtsPlayback(slot.session.request().requestId());
         }
+    }
+
+    private void publishPreviewMetrics(PlaybackSlot slot) {
+        if (slot == null || slot.previewQueue == null || slot.metricsPublished || slot.chunkCount == 0) {
+            return;
+        }
+        slot.metricsPublished = true;
+        TtsPlaybackMetrics metrics = new TtsPlaybackMetrics(
+                slot.session.request().requestId(),
+                slot.firstChunkAtMillis,
+                slot.startedAtMillis,
+                slot.chunkCount,
+                slot.generatedPcmMillis,
+                slot.lowestQueueMillis == Long.MAX_VALUE ? 0L : slot.lowestQueueMillis,
+                slot.backpressureMillis,
+                slot.underrunCount
+        );
+        env.diagnostics().publish(DiagnosticEvent.now(
+                MODULE_ID,
+                "TTS_PREVIEW_PLAYBACK_METRICS",
+                DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "requestId", metrics.requestId(),
+                        "chunkCount", Integer.toString(metrics.chunkCount()),
+                        "generatedPcmMillis", Long.toString(metrics.generatedPcmMillis()),
+                        "lowestQueueMillis", Long.toString(metrics.lowestQueueMillis()),
+                        "backpressureMillis", Long.toString(metrics.backpressureMillis()),
+                        "queueEmptyCount", Integer.toString(metrics.underrunCount()),
+                        "firstChunkLatencyMillis", Long.toString(Math.max(0L,
+                                metrics.firstChunkAtMillis() - slot.session.createdAtMillis())),
+                        "playbackStartWaitMillis", Long.toString(Math.max(0L,
+                                metrics.startedAtMillis() - metrics.firstChunkAtMillis()))
+                )
+        ));
     }
 
     private void submitStopCommand() {
@@ -288,11 +406,26 @@ public final class TtsPlaybackController {
         private boolean finishIssued;
         private boolean pumpScheduled;
         private boolean cancelled;
+        private TtsPreviewAudioQueue previewQueue;
+        private long firstChunkAtMillis;
+        private long startedAtMillis;
+        private int chunkCount;
+        private long generatedPcmMillis;
+        private long lowestQueueMillis = Long.MAX_VALUE;
+        private long backpressureMillis;
+        private int underrunCount;
+        private boolean metricsPublished;
 
         private PlaybackSlot(TtsSession session, Priority admissionPriority, long sequence) {
             this.session = session;
             this.admissionPriority = admissionPriority;
             this.sequence = sequence;
+        }
+
+        private void cancelPreviewQueue() {
+            if (previewQueue != null) {
+                previewQueue.cancel();
+            }
         }
     }
 

@@ -27,7 +27,7 @@ class InferenceResourcePolicyTest {
     }
 
     @Test
-    void autoregressiveMossUsesMeasuredTwoThreadBudgetOnEveryCpuTier() {
+    void autoregressiveMossUsesSmallModelThreadBudget() {
         assertEquals(2, InferenceResourcePolicy.fixedProcessors(4).mossTtsThreads());
         assertEquals(2, InferenceResourcePolicy.fixedProcessors(8).mossTtsThreads());
         assertEquals(2, InferenceResourcePolicy.fixedProcessors(12).mossTtsThreads());

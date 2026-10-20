@@ -50,3 +50,14 @@ tianshu-common/src/main/resources/JavaLlamaServer/*.jar
 *.env
 *.key
 *.pem
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
+.agents
+.codegraph
+.codex
+.comet
+.dsh
+docs

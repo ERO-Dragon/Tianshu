@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.tts.synthesis;
 
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRuntimeFailurePolicy;
@@ -92,15 +95,15 @@ public final class MossTtsBackend implements TtsBackend {
         }
         interrupted = false;
         setVoiceSamplePath(request.voiceProfile().voiceSample());
-        env.info("MOSS-TTS synthesis started: " + request.text());
+        env.info("MOSS-TTS synthesis started requestId=" + request.requestId());
         try {
             if (interrupted) {
-                env.info("MOSS-TTS synthesis interrupted before synthesis: " + request.text());
+                env.info("MOSS-TTS synthesis interrupted before synthesis requestId=" + request.requestId());
                 return;
             }
             List<List<Integer>> promptAudioCodes = resolvePromptAudioCodes(current);
             if (interrupted) {
-                env.info("MOSS-TTS synthesis interrupted after prompt preparation: " + request.text());
+                env.info("MOSS-TTS synthesis interrupted after prompt preparation requestId=" + request.requestId());
                 return;
             }
             TtsSynthesisMode mode = sink.preferredSynthesisMode();
@@ -112,13 +115,13 @@ public final class MossTtsBackend implements TtsBackend {
                 synthesizeFull(current, request, promptAudioCodes, sink);
             }
             if (interrupted) {
-                env.info("MOSS-TTS synthesis interrupted: " + request.text());
+                env.info("MOSS-TTS synthesis interrupted requestId=" + request.requestId());
             } else {
-                env.info("MOSS-TTS synthesis completed: " + request.text());
+                env.info("MOSS-TTS synthesis completed requestId=" + request.requestId());
             }
         } catch (Throwable t) {
             TtsRuntimeFailurePolicy.rethrowFatal(t);
-            env.error("MOSS-TTS synthesis failed: " + request.text(), t);
+            env.error("MOSS-TTS synthesis failed requestId=" + request.requestId(), t);
             throw new IllegalStateException("MOSS-TTS synthesis failed", t);
         }
     }
@@ -127,22 +130,44 @@ public final class MossTtsBackend implements TtsBackend {
         long startedNanos = System.nanoTime();
         long[] firstAudioMillis = {0L};
         long[] audioMillis = {0L};
-        current.synthesizeStreaming(request.text(), promptAudioCodes, (audio, chunkIndex, totalChunks) -> {
-            if (interrupted) {
-                return;
+        current.synthesizeStreaming(request.text(), promptAudioCodes, new MossTtsService.StreamingAudioCallback() {
+            @Override
+            public void onChunkAudio(float[][] audio, int chunkIndex, int totalChunks) {
+                onChunkAudio(audio, chunkIndex, totalChunks, new MossTtsService.StreamingChunkMetadata(0L, 0L, 0L));
             }
-            byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
-            if (pcm.length > 0) {
-                if (firstAudioMillis[0] == 0L) {
-                    firstAudioMillis[0] = elapsedMillis(startedNanos);
+
+            @Override
+            public void onChunkAudio(
+                    float[][] audio,
+                    int chunkIndex,
+                    int totalChunks,
+                    MossTtsService.StreamingChunkMetadata metadata
+            ) {
+                if (interrupted) {
+                    return;
                 }
-                audioMillis[0] += pcmMillis(pcm);
-                sink.accept(pcm);
-            }
-            if (totalChunks > 0) {
-                env.info("MOSS-TTS sub-chunk " + (chunkIndex + 1) + "/" + totalChunks + " completed");
-            } else {
-                env.info("MOSS-TTS stream chunk " + (chunkIndex + 1) + " completed");
+                byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
+                if (pcm.length > 0) {
+                    if (firstAudioMillis[0] == 0L) {
+                        firstAudioMillis[0] = elapsedMillis(startedNanos);
+                    }
+                    audioMillis[0] += pcmMillis(pcm);
+                    sink.accept(pcm);
+                }
+                env.diagnostics().publish(DiagnosticEvent.now(
+                        "module.tts",
+                        "MOSS_TTS_STREAM_CHUNK",
+                        DiagnosticSeverity.DEBUG,
+                        DiagnosticPrivacy.REDACTED,
+                        java.util.Map.of(
+                                "requestId", request.requestId(),
+                                "chunkIndex", Integer.toString(chunkIndex),
+                                "totalChunks", Integer.toString(totalChunks),
+                                "pcmDurationMillis", Long.toString(metadata.pcmDurationMillis()),
+                                "generationElapsedMillis", Long.toString(metadata.generationElapsedMillis()),
+                                "interChunkIntervalMillis", Long.toString(metadata.interChunkIntervalMillis())
+                        )
+                ));
             }
         }, this::isInterrupted);
         sink.reportSynthesisMetrics(new TtsSynthesisMetrics(

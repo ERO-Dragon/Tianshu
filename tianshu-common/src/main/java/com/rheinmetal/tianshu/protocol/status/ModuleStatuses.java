@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.protocol.status;
 import java.util.Map;
 
 public final class ModuleStatuses {
+    public static final String TYPE_LIFECYCLE = "runtime.lifecycle";
     public static final String TYPE_READY = "runtime.ready";
     public static final String TYPE_STARTING = "runtime.starting";
     public static final String TYPE_FAILED = "runtime.failed";
@@ -18,6 +19,22 @@ public final class ModuleStatuses {
 
     public static ModuleStatus readyKeyed(String moduleId, String messageKey) {
         return keyed(moduleId, TYPE_READY, messageKey, ModuleStatusSeverity.NOTICE, READY_TTL_MILLIS);
+    }
+
+    public static ModuleStatus lifecycleStarting(String moduleId, String messageKey, long generation) {
+        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.INFO, generation);
+    }
+
+    public static ModuleStatus lifecycleReady(String moduleId, String messageKey, long generation) {
+        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.NOTICE, generation);
+    }
+
+    public static ModuleStatus lifecycleFailed(String moduleId, String messageKey, long generation) {
+        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.CRITICAL, generation);
+    }
+
+    public static ModuleStatus lifecycleStopped(String moduleId, String messageKey, long generation) {
+        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.INFO, generation);
     }
 
     public static ModuleStatus startingKeyed(String moduleId, String messageKey) {
@@ -40,5 +57,21 @@ public final class ModuleStatuses {
             long ttlMillis
     ) {
         return ModuleStatus.keyed(moduleId, statusType, messageKey, severity, ttlMillis, Map.of());
+    }
+
+    private static ModuleStatus lifecycle(
+            String moduleId,
+            String messageKey,
+            ModuleStatusSeverity severity,
+            long generation
+    ) {
+        return ModuleStatus.keyed(
+                moduleId,
+                TYPE_LIFECYCLE,
+                messageKey,
+                severity,
+                0L,
+                Map.of("generation", Long.toString(Math.max(0L, generation)))
+        );
     }
 }

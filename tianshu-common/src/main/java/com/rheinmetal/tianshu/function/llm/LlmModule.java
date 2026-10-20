@@ -52,6 +52,8 @@ public final class LlmModule implements TianshuManagedModule {
     private boolean destroyed;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle delayedAutoLoad;
+    private volatile long lifecycleStatusGeneration;
+    private volatile boolean lifecycleActive;
 
     public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime) {
         this.env = env;
@@ -71,6 +73,11 @@ public final class LlmModule implements TianshuManagedModule {
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
         this.engineProvider = new LlmEngineProvider(env, config, this::publishInferenceStatus, llmExecutor.modelLoadExecutor());
+        // Load failures only surface the native "Cannot load model" message, so the engine records
+        // the GPU snapshot next to system memory to tell a VRAM shortfall from a RAM shortfall.
+        this.engineProvider.bindPerformanceProvider(() -> moduleService == null
+                ? com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot.unavailable()
+                : moduleService.performanceSnapshot());
     }
 
     @Override
@@ -105,6 +112,9 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
+        lifecycleStatusGeneration++;
+        lifecycleActive = true;
+        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.llm.starting", lifecycleStatusGeneration));
         runtimeContext = context;
         markCapabilitiesInstalled(context);
         if (config.isLlmEnabled()) {
@@ -118,6 +128,7 @@ public final class LlmModule implements TianshuManagedModule {
             if (moduleService != null) {
                 moduleService.markStopped();
             }
+            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
         }
     }
 
@@ -252,6 +263,7 @@ public final class LlmModule implements TianshuManagedModule {
                     markStorageCapabilitiesReady();
                     moduleService.markFailed("LLM service failed to start");
                     publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed"));
+                    publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
                     return;
                 }
                 JavaLlamaInferenceClient inferenceClient = new JavaLlamaInferenceClient(aiService);
@@ -277,6 +289,7 @@ public final class LlmModule implements TianshuManagedModule {
                 moduleService.markReady();
             }
             publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
+            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.llm.ready", lifecycleStatusGeneration));
         }, () -> {
             if (generation != lifecycleGeneration.get()) {
                 return;
@@ -287,6 +300,7 @@ public final class LlmModule implements TianshuManagedModule {
                 moduleService.markFailed("LLM service failed to start");
             }
             publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed"));
+            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
             synchronized (lifecycleLock) {
                 adapter.setLlmService(null);
                 LLMService failedService = llmService;
@@ -330,6 +344,10 @@ public final class LlmModule implements TianshuManagedModule {
             } else {
                 disableCapabilities();
             }
+        }
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.llm.stopped", lifecycleStatusGeneration));
         }
     }
 

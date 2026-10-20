@@ -57,6 +57,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
 import java.util.Map;
 
@@ -87,6 +88,8 @@ public final class AXModule implements TianshuManagedModule {
     private AXDialogueGateway dialogueGateway;
     private AXTurnOrchestrator turnOrchestrator;
     private AXTurnStatusPublisher turnStatusPublisher;
+    private long lifecycleStatusGeneration;
+    private boolean lifecycleActive;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
     private final AXDialogueContextInputMapper contextInputMapper = new AXDialogueContextInputMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
@@ -153,6 +156,9 @@ public final class AXModule implements TianshuManagedModule {
         if (dialogueGateway != null) {
             return;
         }
+        lifecycleStatusGeneration++;
+        lifecycleActive = true;
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.ax.starting", lifecycleStatusGeneration));
         llmClient = new AXLlmClient(adapter);
         turnStatusPublisher = new AXTurnStatusPublisher(adapter);
         retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.retrievalPrimitiveTimeoutMillis());
@@ -217,6 +223,7 @@ public final class AXModule implements TianshuManagedModule {
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
         participantRegistrar.register();
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.ax.ready", lifecycleStatusGeneration));
     }
 
     @Override
@@ -266,6 +273,10 @@ public final class AXModule implements TianshuManagedModule {
         }
         dialogueGateway = null;
         turnOrchestrator = null;
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.ax.stopped", lifecycleStatusGeneration));
+        }
     }
 
     @Override

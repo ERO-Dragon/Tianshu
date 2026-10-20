@@ -132,6 +132,15 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
             details.add(presence("debug.detail.stage", UiText.literal(pipelineStage)));
         }
         details.add(presence("debug.detail.age", UiText.literal(Long.toString(ageSeconds(status)))));
+        if (row.lifecycleStatus() != null && row.operationStatus() != null) {
+            ModuleStatus operation = row.operationStatus();
+            UiText operationMessage = statusMessage(operation);
+            details.add(presence(
+                    "debug.detail.operation_status",
+                    operationMessage.isBlank() ? UiText.literal(operation.statusType()) : operationMessage
+            ));
+            details.add(presence("debug.detail.operation_age", UiText.literal(Long.toString(ageSeconds(operation)))));
+        }
 
         return new SettingsListCard(
                 title,

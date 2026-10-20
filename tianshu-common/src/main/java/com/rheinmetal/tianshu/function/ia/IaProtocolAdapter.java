@@ -11,6 +11,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegis
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionEventPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueScoreRequestPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueScoreResponsePayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -25,11 +27,13 @@ import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.time.Duration;
 import java.util.EnumSet;
@@ -110,6 +114,63 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
                 handler,
                 defaults()
         );
+    }
+
+    public void registerScoreCapability(String capabilityId, EnvelopeHandler handler) {
+        registerCapability(
+                capabilityId,
+                PayloadType.DIALOGUE_SCORE_REQUEST,
+                DialogueScoreRequestPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.REQUEST),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    public TianshuEnvelope buildScoreRequest(TianshuEnvelope parent, String capabilityId, DialogueScoreRequestPayload payload) {
+        return buildRequestCapability(parent, capabilityId, PayloadType.DIALOGUE_SCORE_REQUEST, payload);
+    }
+
+    public TianshuEnvelope submitScoreRequest(TianshuEnvelope envelope) {
+        return submitPrepared(envelope);
+    }
+
+    public TianshuEnvelope respondScore(TianshuEnvelope parent, DialogueScoreResponsePayload payload) {
+        return respondTo(parent, PayloadType.DIALOGUE_SCORE_RESPONSE, payload);
+    }
+
+    public ProtocolTaskHandle scheduleScoreTimeout(String requestEnvelopeId, Runnable task, Duration delay) {
+        return runtime().schedule(
+                ProtocolTaskSpec.builder()
+                        .moduleId(MODULE_ID)
+                        .lane(ExecutionLane.SCHEDULED)
+                        .taskId("ia.score-timeout." + requestEnvelopeId)
+                        .envelopeId(requestEnvelopeId)
+                        .build(),
+                task,
+                delay
+        );
+    }
+
+    public void registerScoreResponse(String requestEnvelopeId, EnvelopeHandler handler) {
+        registerResponseHandler(
+                requestEnvelopeId,
+                PayloadType.DIALOGUE_SCORE_RESPONSE,
+                DialogueScoreResponsePayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.RESPONSE),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    public void unregisterScoreResponses(String requestEnvelopeId) {
+        unregisterResponseHandlers(requestEnvelopeId);
     }
 
     public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
@@ -207,6 +268,14 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
             return publishTopic(ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, payload);
         }
         return publishTopic(parent, ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, payload);
+    }
+
+    public TianshuEnvelope publishModuleStatus(ModuleStatus status) {
+        return status == null ? null : publishTopic(
+                ProtocolTopics.MODULE_STATUS,
+                PayloadType.MODULE_STATUS,
+                new ModuleStatusPayload(status)
+        );
     }
 
     @Override

@@ -59,4 +59,23 @@ class MossTtsServiceTest {
         assertFalse(defaults.get("do_sample").getAsBoolean());
         assertEquals(MossFrameGenerator.SAMPLE_MODE_GREEDY, defaults.get("sample_mode").getAsString());
     }
+
+    @Test
+    void streamingMetadataReportsPcmDurationAndInterChunkInterval() {
+        assertEquals(100L, MossTtsService.pcmDurationMillis(
+                new float[][]{new float[2_400], new float[2_400]},
+                24_000
+        ));
+        assertEquals(0L, MossTtsService.pcmDurationMillis(new float[][]{new float[0]}, 24_000));
+
+        MossTtsService.StreamingChunkMetadata metadata = new MossTtsService.StreamingChunkMetadata(100L, 250L, 75L);
+        assertEquals(100L, metadata.pcmDurationMillis());
+        assertEquals(250L, metadata.generationElapsedMillis());
+        assertEquals(75L, metadata.interChunkIntervalMillis());
+
+        MossTtsService.StreamingChunkMetadata sanitized = new MossTtsService.StreamingChunkMetadata(-1L, -2L, -3L);
+        assertEquals(0L, sanitized.pcmDurationMillis());
+        assertEquals(0L, sanitized.generationElapsedMillis());
+        assertEquals(0L, sanitized.interChunkIntervalMillis());
+    }
 }

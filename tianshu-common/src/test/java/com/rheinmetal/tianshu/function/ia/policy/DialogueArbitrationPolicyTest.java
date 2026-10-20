@@ -6,16 +6,102 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimStrength;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantScore;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueArbitrationPolicyTest {
+    @Test
+    void attentionIsMergedIntoItsParticipantScore() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        DialogueParticipantDescriptor owner = descriptor("owner", 1);
+        DialogueParticipantDescriptor other = descriptor("other", 1);
+        DialogueAttentionState attention = new DialogueAttentionState(
+                "player", owner.moduleId(), owner.participantId(), 0.8D, DialogueAttentionDecay.SLOW, 1_000L
+        );
+
+        Map<String, DialogueParticipantScore> scores = policy.effectiveScores(
+                List.of(owner, other, defaultOwner()),
+                Map.of("owner", new DialogueParticipantScore("owner", 0.5D, DialogueParticipantScore.Source.DYNAMIC, "")),
+                Optional.of(attention),
+                1_000L
+        );
+
+        assertEquals(3, scores.size());
+        assertEquals(0.8D, scores.get("owner").score());
+        assertEquals(DialogueParticipantScore.Source.ATTENTION, scores.get("owner").source());
+    }
+
+    @Test
+    void higherCurrentScoreOfAttentionOwnerRemainsItsEffectiveScore() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        DialogueParticipantDescriptor owner = descriptor("owner", 1);
+        DialogueAttentionState attention = new DialogueAttentionState(
+                "player", owner.moduleId(), owner.participantId(), 0.8D, DialogueAttentionDecay.SLOW, 1_000L
+        );
+
+        Map<String, DialogueParticipantScore> scores = policy.effectiveScores(
+                List.of(owner, defaultOwner()),
+                Map.of("owner", new DialogueParticipantScore("owner", 0.9D, DialogueParticipantScore.Source.DYNAMIC, "")),
+                Optional.of(attention),
+                1_000L
+        );
+
+        assertEquals(0.9D, scores.get("owner").score());
+        assertEquals(DialogueParticipantScore.Source.DYNAMIC, scores.get("owner").source());
+    }
+
+    @Test
+    void hardClaimBeatsHigherDynamicScore() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        var decision = policy.decide(
+                List.of(descriptor("dynamic", 100), descriptor("claimed", 1), defaultOwner()),
+                List.of(claim("claimed", DialogueClaimStrength.NORMAL, 1)),
+                Map.of("dynamic", new DialogueParticipantScore("dynamic", 1.0D, DialogueParticipantScore.Source.DYNAMIC, "")),
+                Optional.empty(),
+                1_000L
+        );
+
+        assertEquals("claimed", decision.owner().participantId());
+        assertEquals("HARD_CLAIM", decision.reason());
+    }
+
+    @Test
+    void highestDynamicScoreWinsAndAxEqualityRetainsAx() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        var decision = policy.decide(
+                List.of(descriptor("other", 1), defaultOwner()),
+                List.of(),
+                Map.of("other", new DialogueParticipantScore("other", 0.4D, DialogueParticipantScore.Source.DYNAMIC, "")),
+                Optional.empty(),
+                1_000L
+        );
+
+        assertEquals("default", decision.owner().participantId());
+        assertEquals("DEFAULT_OWNER", decision.reason());
+    }
+
+    @Test
+    void nonAxMustStrictlyExceedAxBaseline() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        var decision = policy.decide(
+                List.of(descriptor("other", 1), defaultOwner()),
+                List.of(),
+                Map.of("other", new DialogueParticipantScore("other", 0.41D, DialogueParticipantScore.Source.DYNAMIC, "")),
+                Optional.empty(),
+                1_000L
+        );
+
+        assertEquals("other", decision.owner().participantId());
+        assertEquals("DYNAMIC_SCORE", decision.reason());
+    }
     @Test
     void strongHardClaimBeatsNormalHardClaim() {
         DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
@@ -79,7 +165,7 @@ class DialogueArbitrationPolicyTest {
         DialogueParticipantDescriptor owner = descriptor("owner", 1);
         DialogueAttentionState attention = new DialogueAttentionState("player", "module.owner", "owner", 0.7D, DialogueAttentionDecay.SLOW, 100L);
 
-        var decision = policy.decide(List.of(owner, defaultOwner()), List.of(), Optional.of(attention));
+        var decision = policy.decide(List.of(owner, defaultOwner()), List.of(), Map.of(), Optional.of(attention), 1_000L);
 
         assertTrue(decision.accepted());
         assertEquals("owner", decision.owner().participantId());
@@ -148,6 +234,17 @@ class DialogueArbitrationPolicyTest {
     }
 
     private DialogueParticipantDescriptor defaultOwner() {
-        return new DialogueParticipantDescriptor("default", "module.default", "default", 0, DialogueClaimProfile.DEFAULT_OWNER, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(
+                "default",
+                "module.default",
+                "default",
+                0,
+                DialogueClaimProfile.DEFAULT_OWNER,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                "ROUTE",
+                DialogueTurnProcessingPolicy.DEFAULT,
+                "",
+                0.4D
+        );
     }
 }

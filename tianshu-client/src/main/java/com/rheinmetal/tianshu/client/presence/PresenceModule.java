@@ -11,6 +11,9 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class PresenceModule implements TianshuManagedModule {
     private final PresenceStateStore stateStore;
@@ -19,6 +22,8 @@ public final class PresenceModule implements TianshuManagedModule {
     private final PresenceContextFactMapper contextFactMapper;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final PresenceProtocolAdapter adapter;
+    private final AtomicLong lifecycleGeneration = new AtomicLong();
+    private volatile boolean lifecycleActive;
 
     public PresenceModule(
             PresenceProtocolAdapter adapter,
@@ -46,9 +51,29 @@ public final class PresenceModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        publishLifecycle(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.presence.starting", lifecycleGeneration.incrementAndGet()));
         adapter.registerOwnedTopics(context.protocol());
         adapter.registerQueryContextCapability(this::handleQueryContext);
         adapter.subscribePresenceActivity(this::handlePresenceActivity);
+        lifecycleActive = true;
+        publishLifecycle(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.presence.ready", lifecycleGeneration.get()));
+    }
+
+    @Override
+    public void stop() {
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            publishLifecycle(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.presence.stopped", lifecycleGeneration.get()));
+        }
+    }
+
+    @Override
+    public void destroy() {
+        stop();
+    }
+
+    private void publishLifecycle(com.rheinmetal.tianshu.protocol.status.ModuleStatus status) {
+        adapter.publishModuleStatus(status);
     }
 
     private void handleQueryContext(TianshuEnvelope envelope, ProtocolContext context) {

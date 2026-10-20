@@ -140,7 +140,7 @@ public final class NeoForgeClientBootstrap {
             NeoForgeAXWorldIdentityProvider worldIdentityProvider = new NeoForgeAXWorldIdentityProvider();
             NeoForgeWorldIdentityCapture worldIdentityCapture = new NeoForgeWorldIdentityCapture(worldIdentityProvider, gameDirectory);
 
-            audioManager = new AudioManager(diagnosticRouter);
+            audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
             NeoForgeClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
             String selectedMicName = config.getSelectedMicName();
             if (selectedMicName != null && !selectedMicName.isBlank()) {

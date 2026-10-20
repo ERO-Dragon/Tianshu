@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.ia.claim.DialogueClaimEngine;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueScoringContext;
 import com.rheinmetal.tianshu.function.ia.context.DialoguePresenceContextClient;
 import com.rheinmetal.tianshu.function.ia.context.DialoguePresenceFactPlanner;
 import com.rheinmetal.tianshu.function.ia.control.DialogueSessionControlDecision;
@@ -21,6 +22,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionState;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantScore;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
@@ -34,6 +36,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegis
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.function.ia.policy.DialogueArbitrationPolicy;
+import com.rheinmetal.tianshu.function.ia.score.DialogueScoreCoordinator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueVoiceTriggerSynchronizer;
@@ -55,6 +58,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
 import java.time.Duration;
 import java.util.HashSet;
@@ -77,6 +81,7 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueContextFreezeStore contextFreezeStore;
     private final DialogueClaimEngine claimEngine;
     private final DialogueArbitrationPolicy arbitrationPolicy;
+    private final DialogueScoreCoordinator scoreCoordinator;
     private final DialogueSessionControlPolicy sessionControlPolicy;
     private final DialogueAccessController accessController;
     private final DialogueLlmUsageAuthorizationPolicy llmUsageAuthorizationPolicy;
@@ -97,6 +102,8 @@ public final class IaModule implements TianshuManagedModule {
     private final AtomicLong runtimeGeneration = new AtomicLong(1L);
     private ModuleRuntimeContext runtimeContext;
     private volatile boolean runtimeAccepting = true;
+    private volatile long lifecycleStatusGeneration;
+    private volatile boolean lifecycleActive;
     private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
 
     public IaModule(ModuleRuntimeAccess runtime) {
@@ -107,6 +114,7 @@ public final class IaModule implements TianshuManagedModule {
         this.contextFreezeStore = new DialogueContextFreezeStore(SPEECH_CONTEXT_RETENTION);
         this.claimEngine = new DialogueClaimEngine();
         this.arbitrationPolicy = new DialogueArbitrationPolicy();
+        this.scoreCoordinator = new DialogueScoreCoordinator(adapter, 120L, runtimeGeneration::get);
         this.sessionControlPolicy = new DialogueSessionControlPolicy();
         this.accessController = new DialogueAccessController();
         this.llmUsageAuthorizationPolicy = new DialogueLlmUsageAuthorizationPolicy(accessController);
@@ -159,16 +167,20 @@ public final class IaModule implements TianshuManagedModule {
     @Override
     public synchronized void prepare(ModuleRuntimeContext context) {
         ModuleRuntimeContext nextContext = Objects.requireNonNull(context, "context");
+        lifecycleStatusGeneration = runtimeGeneration.get() + 1L;
+        runtimeGeneration.incrementAndGet();
+        lifecycleActive = true;
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.ia.starting", lifecycleStatusGeneration));
         if (runtimeContext != null) {
             deactivateRuntime();
         }
         runtimeContext = nextContext;
-        runtimeGeneration.incrementAndGet();
         runtimeAccepting = true;
         diagnostics = nextContext.diagnostics();
         voiceTriggerSynchronizer.bind(nextContext.voiceResources(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         ownerPreviewRefreshCoordinator.start();
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.ia.ready", lifecycleStatusGeneration));
     }
 
     @Override
@@ -176,6 +188,10 @@ public final class IaModule implements TianshuManagedModule {
         deactivateRuntime();
         long now = System.currentTimeMillis();
         participantLifecycleCoordinator.unregisterModule(null, moduleId(), now);
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.ia.stopped", lifecycleStatusGeneration));
+        }
     }
 
     @Override
@@ -336,20 +352,79 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+        if (participants.isEmpty()) {
+            DialogueArbitrationInput input = DialogueArbitrationInput.from(
+                    payload,
+                    withPlayerId(contextFrame, payload.playerId())
+            );
+            completeArbitration(
+                    envelope,
+                    context,
+                    payload,
+                    input,
+                    List.of(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(),
+                    Map.of(),
+                    now
+            );
+            return;
+        }
         Optional<DialogueSession> activeSession = sessionStore.activeForPlayer(payload.playerId(), now);
         Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(payload.playerId(), participants, now);
         DialogueArbitrationInput input = DialogueArbitrationInput.from(payload, withPlayerId(contextFrame, payload.playerId()));
-        DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, claimEngine.collectLocalClaims(participants, input), attentionState);
+        List<com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim> hardClaims = claimEngine.collectLocalClaims(participants, input);
+        if (hardClaims.isEmpty()) {
+            long generation = runtimeGeneration.get();
+            DialogueScoringContext scoringContext = new DialogueScoringContext(
+                    payload.requestId(),
+                    payload.playerId(),
+                    payload.turnId(),
+                    payload.matchedWakeWords(),
+                    payload.matchedItemIds(),
+                    payload.matchedEntityTypeIds(),
+                    input.interactionHints(),
+                    input.contextSnapshot(),
+                    payload.timestampMillis(),
+                    payload.expireAtMillis()
+            );
+            scoreCoordinator.collect(envelope, scoringContext, participants, generation, result -> {
+                if (result.stale() || !isRuntimeGenerationActive(generation)) {
+                    context.complete(envelope.envelopeId());
+                    return;
+                }
+                completeArbitration(envelope, context, payload, input, participants, activeSession, attentionState,
+                        hardClaims, result.scores(), System.currentTimeMillis());
+            });
+            return;
+        }
+        completeArbitration(envelope, context, payload, input, participants, activeSession, attentionState,
+                hardClaims, Map.of(), now);
+    }
+
+    private void completeArbitration(
+            TianshuEnvelope envelope,
+            ProtocolContext context,
+            DialogueArbitrationRequestPayload payload,
+            DialogueArbitrationInput input,
+            List<DialogueParticipantDescriptor> participants,
+            Optional<DialogueSession> activeSession,
+            Optional<DialogueAttentionState> attentionState,
+            List<com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim> hardClaims,
+            Map<String, DialogueParticipantScore> dynamicScores,
+            long now
+    ) {
+        DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, hardClaims, dynamicScores, attentionState, now);
         diagnostics.publish(DiagnosticEvent.now(
                 moduleId(),
                 decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
                 decision.accepted() ? DiagnosticSeverity.INFO : DiagnosticSeverity.DEBUG,
-                DiagnosticPrivacy.RAW_CONTENT,
+                DiagnosticPrivacy.REDACTED,
                 Map.of(
                         "requestId", payload.requestId(),
                         "playerId", payload.playerId(),
-                        "repairedText", payload.repairedText(),
-                        "normalizedText", payload.normalizedText(),
+                        "owner", decision.owner() == null ? "" : decision.owner().participantId(),
                         "reason", decision.reason() == null ? "" : decision.reason()
                 )
         ));

@@ -96,7 +96,7 @@ class AXPromptAssemblySnapshotTest {
         String joined = messages.stream().map(LLMPromptRequestPayload.MessageItemPayload::content).collect(java.util.stream.Collectors.joining("\n\n"));
         // system 段内顺序：ax_system → game_context → player_memory（recent_dialogue 已展开为对话流）
         assertOrdered(joined, "<ax_system>", "<game_context>", "<player_memory>", "当前输入：这个怎么修？");
-        assertTrue(joined.contains("正常对话长度"));
+        assertTrue(joined.contains("一到三句"));
         assertTrue(joined.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(joined.contains("minecraft:anvil | 铁砧可以修复工具。"));
         assertTrue(joined.contains("你记得此前与玩家发生过这些事情"));

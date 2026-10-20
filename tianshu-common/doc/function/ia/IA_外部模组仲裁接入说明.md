@@ -33,7 +33,7 @@ owner 释放 session 或延长当前轮处理期限
 IA 负责：
 
 - 管理 dialogue participant 注册表。
-- 根据 participant 声明的 claim 条件、claim strength、priority、历史 attention 和默认 owner 选择本轮 owner。attention decay 只决定历史 attention 的持续时间，不参与本轮 owner 排序。当前默认 owner 由 AX 注册。
+- 有硬 claim 时根据 claim strength、priority 和稳定 participant ID 选择本轮 owner；没有硬 claim 时比较每个 participant 的动态值、fallback score 和其 owner 的衰减 attention。AX 当前通过注册契约提供 0.4 的默认 fallback，其他 participant 必须严格更高才能替代。attention decay 只决定历史 attention 的持续时间，不单独绕过本轮比较。
 - 创建和维护 dialogue session。
 - 记录 session owner、turn、processing deadline、状态和释放原因。
 - 将对话正文定向投递给当前 owner。
@@ -76,7 +76,9 @@ DialogueParticipantDescriptor(
     DialogueClaimProfile claimProfile,
     DialogueVoiceTriggerGroup voiceTriggerGroup,
     String routeCapability,
-    DialogueTurnProcessingPolicy turnProcessingPolicy
+    DialogueTurnProcessingPolicy turnProcessingPolicy,
+    String scoreCapability,
+    double fallbackScore
 )
 ```
 
@@ -92,8 +94,16 @@ DialogueParticipantDescriptor(
 | `voiceTriggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
 | `routeCapability` | IA 选中该 participant 后投递正文的 capability。能力名由模块自定义，但能力契约必须接收标准 `DialogueDeliveryPayload`。 |
 | `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理，不决定下一轮归属。默认初始窗口为 10 秒，默认绝对上限为 session 创建后 180 秒。 |
+| `scoreCapability` | 可选评分 capability。没有硬 claim 时，IA 用结构化仲裁上下文请求本 participant 的本轮动态值。 |
+| `fallbackScore` | 评分 provider 缺失、超时或未返回时使用的分值，范围为 `[0,1]`。AX 默认值为 `0.4`。 |
 
-如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `VoiceTriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `VoiceTriggerRegistration`。
+如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `VoiceTriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `VoiceTriggerRegistration`。空 wake word 仍可注册 participant，但不会产生 wake-word claim，也不会注册空触发词。
+
+### 3.3 动态评分
+
+没有硬 claim 时，IA 会按 participant 分别发送 `DialogueScoreRequestPayload`。同一个 capability 可以服务多个 participant，但每个 participant 都有独立的 `participantId` 和响应，不能用一个值代表整个模块。评分请求只携带 `DialogueScoringContext` 中已有的结构化目标、物品、交互和上下文快照，不携带识别正文、prompt 或 LLM 内容。
+
+IA 在同一轮截止时间内收集已返回的有限 `[0,1]` 分值。provider 不存在、超时、异常或返回非法值时，使用注册的 `fallbackScore`；所有 participant 的有效值都参与最高值比较。历史 attention 只与其 owner 的本轮值取较高者。平分时按 priority 和稳定 participant ID 决胜。
 
 ### 3.1 通过协议 capability 注册
 

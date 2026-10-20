@@ -32,16 +32,27 @@ public final class PresenceDebugPipelineSnapshot {
     }
 
     private Row row(ModuleEntry entry) {
-        ModuleStatus status = null;
+        ModuleStatus lifecycleStatus = null;
+        ModuleStatus operationStatus = null;
         if (coreManager != null) {
-            status = coreManager.latestModuleStatus(entry.moduleId()).orElse(null);
+            lifecycleStatus = coreManager.latestModuleStatus(entry.moduleId()).orElse(null);
+            operationStatus = coreManager.latestModuleOperationStatus(entry.moduleId()).orElse(null);
         }
-        return new Row(entry.moduleId(), entry.labelKey(), status);
+        return new Row(entry.moduleId(), entry.labelKey(), lifecycleStatus, operationStatus);
     }
 
-    public record Row(String moduleId, String labelKey, ModuleStatus status) {
+    public record Row(
+            String moduleId,
+            String labelKey,
+            ModuleStatus lifecycleStatus,
+            ModuleStatus operationStatus
+    ) {
+        public ModuleStatus status() {
+            return lifecycleStatus != null ? lifecycleStatus : operationStatus;
+        }
+
         public boolean available() {
-            return status != null;
+            return lifecycleStatus != null || operationStatus != null;
         }
     }
 

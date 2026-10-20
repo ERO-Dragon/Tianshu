@@ -62,6 +62,8 @@ public final class TtsModule implements TianshuManagedModule {
     private TtsVoiceCloneRegistry voiceCloneRegistry;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle delayedAutoLoad;
+    private volatile long lifecycleStatusGeneration;
+    private volatile boolean lifecycleActive;
     private volatile boolean destroyed;
     private final Set<String> activeRequestActivities = ConcurrentHashMap.newKeySet();
 
@@ -99,11 +101,15 @@ public final class TtsModule implements TianshuManagedModule {
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
+        lifecycleStatusGeneration++;
+        lifecycleActive = true;
+        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.tts.starting", lifecycleStatusGeneration));
         if (!config.isTtsEnabled()) {
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS is disabled");
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS is disabled");
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.VOICE_LIBRARY, moduleId(), "TTS is disabled");
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.MODEL_MANAGEMENT, moduleId(), "TTS is disabled");
+            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.tts.failed", lifecycleStatusGeneration));
             return;
         }
         DefaultTtsSynthesisEngine synthesisEngine = new DefaultTtsSynthesisEngine(
@@ -134,18 +140,23 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private void completePreparation(ModuleRuntimeContext context, boolean initialized) {
+        if (lifecycleStatusGeneration <= 0L) {
+            return;
+        }
         if (initialized) {
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.SYNTHESIS, moduleId());
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.PLAYBACK, moduleId());
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.VOICE_LIBRARY, moduleId());
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.MODEL_MANAGEMENT, moduleId());
             publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.tts.ready"));
+            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.tts.ready", lifecycleStatusGeneration));
         } else {
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS synthesis engine initialization failed");
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.PLAYBACK, moduleId());
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.VOICE_LIBRARY, moduleId(), "TTS synthesis engine initialization failed");
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.MODEL_MANAGEMENT, moduleId());
             publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.tts.failed"));
+            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.tts.failed", lifecycleStatusGeneration));
         }
     }
 
@@ -206,6 +217,10 @@ public final class TtsModule implements TianshuManagedModule {
             modelService.stop();
         }
         endActiveRequestActivities();
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.tts.stopped", lifecycleStatusGeneration));
+        }
     }
 
     @Override

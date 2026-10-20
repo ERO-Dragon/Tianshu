@@ -2,11 +2,16 @@ package com.rheinmetal.tianshu.client.audio;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 
 import javax.sound.sampled.*;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -17,13 +22,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
-
     private final LogSink logSink;
+    private final DiagnosticSink diagnostics;
 
     private TargetDataLine targetDataLine;
     private SourceDataLine sourceDataLine;
     private SourceDataLine ttsDataLine;
     private final AtomicInteger ttsPlaybackTurnId = new AtomicInteger(0);
+    private volatile String ttsRequestId = "";
+    private volatile long ttsOpenedAtNanos;
+    private volatile long ttsLastWriteAtNanos;
+    private volatile long ttsWriteNanos;
+    private volatile long ttsDrainNanos;
+    private volatile long ttsWriteCount;
+    private volatile long ttsBytesWritten;
+    private volatile long ttsMaxWriteGapMillis;
+    private volatile int ttsMinAvailableBytes = Integer.MAX_VALUE;
 
     private final AtomicBoolean isHardwareRunning = new AtomicBoolean(false);
     private final AtomicBoolean isRecording = new AtomicBoolean(false);
@@ -59,11 +73,16 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     private final AtomicBoolean micEnumerationRunning = new AtomicBoolean(false);
 
     public AudioManager() {
-        this(LogSink.NOOP);
+        this(LogSink.NOOP, DiagnosticSink.NOOP);
     }
 
     public AudioManager(LogSink logSink) {
+        this(logSink, DiagnosticSink.NOOP);
+    }
+
+    public AudioManager(LogSink logSink, DiagnosticSink diagnostics) {
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
+        this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
     }
 
     private Mixer.Info findRealPhysicalMic(DataLine.Info info) {
@@ -286,7 +305,21 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     @Override
     public void startTtsPlayback(int sampleRate) {
+        startTtsPlayback("", sampleRate);
+    }
+
+    @Override
+    public void startTtsPlayback(String requestId, int sampleRate) {
         stopTtsPlayback();
+        ttsRequestId = requestId == null ? "" : requestId.trim();
+        ttsOpenedAtNanos = 0L;
+        ttsLastWriteAtNanos = 0L;
+        ttsWriteNanos = 0L;
+        ttsDrainNanos = 0L;
+        ttsWriteCount = 0L;
+        ttsBytesWritten = 0L;
+        ttsMaxWriteGapMillis = 0L;
+        ttsMinAvailableBytes = Integer.MAX_VALUE;
         ttsPlaybackTurnId.incrementAndGet();
         try {
             AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
@@ -296,6 +329,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
             ttsDataLine = (SourceDataLine) AudioSystem.getLine(info);
             ttsDataLine.open(format);
             ttsDataLine.start();
+            ttsOpenedAtNanos = System.nanoTime();
             logSink.info("audio.tts_channel.opened sampleRate=" + sampleRate);
         } catch (LineUnavailableException e) {
             logSink.error("audio.tts_channel.open_failed", e);
@@ -304,31 +338,110 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     @Override
     public void feedTtsAudio(byte[] audioData) {
+        feedTtsAudio(ttsRequestId, audioData);
+    }
+
+    @Override
+    public void feedTtsAudio(String requestId, byte[] audioData) {
         SourceDataLine line = ttsDataLine;
         if (line == null || !line.isOpen()) return;
         if (audioData == null || audioData.length == 0) return;
         try {
+            long writeStarted = System.nanoTime();
             line.write(audioData, 0, audioData.length);
+            long now = System.nanoTime();
+            if (ttsLastWriteAtNanos > 0L) {
+                ttsMaxWriteGapMillis = Math.max(ttsMaxWriteGapMillis,
+                        Math.max(0L, (writeStarted - ttsLastWriteAtNanos) / 1_000_000L));
+            }
+            ttsLastWriteAtNanos = now;
+            ttsWriteNanos += Math.max(0L, now - writeStarted);
+            ttsWriteCount++;
+            ttsBytesWritten += audioData.length;
+            try {
+                ttsMinAvailableBytes = Math.min(ttsMinAvailableBytes, line.available());
+            } catch (IllegalStateException ignored) {
+            }
         } catch (Exception ignored) {
         }
     }
 
     @Override
     public void finishTtsPlayback() {
+        finishTtsPlayback(ttsRequestId);
+    }
+
+    @Override
+    public void finishTtsPlayback(String requestId) {
         SourceDataLine line = ttsDataLine;
         if (line != null) {
             try {
+                long drainStarted = System.nanoTime();
                 line.drain();
+                ttsDrainNanos = Math.max(0L, System.nanoTime() - drainStarted);
             } catch (Exception e) {
                 logSink.error("audio.tts_channel.drain_failed", e);
             }
         }
-        stopTtsPlayback();
-        Runnable cb = onPlaybackFinished;
-        onPlaybackFinished = null;
-        if (cb != null) {
-            cb.run();
+        publishTtsPlaybackMetrics(requestId);
+        // Detach the completion hook before closing the device: a graceful finish must still
+        // deliver it, while an abort through stopTtsPlayback() drops it. Closing the channel and
+        // reporting completion are separate responsibilities and must not share one call.
+        Runnable finished = detachPlaybackFinishedCallback();
+        closeTtsChannel();
+        if (finished != null) {
+            finished.run();
         }
+    }
+
+    private void publishTtsPlaybackMetrics(String requestId) {
+        if (requestId == null || requestId.isBlank() || ttsOpenedAtNanos <= 0L) {
+            return;
+        }
+        long endedAtNanos = System.nanoTime();
+        diagnostics.publish(DiagnosticEvent.now(
+                "module.tts",
+                "TTS_AUDIO_LINE_METRICS",
+                DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.REDACTED,
+                ttsPlaybackMetricAttributes(
+                        requestId,
+                        ttsOpenedAtNanos,
+                        endedAtNanos,
+                        ttsWriteNanos,
+                        ttsDrainNanos,
+                        ttsWriteCount,
+                        ttsBytesWritten,
+                        ttsMaxWriteGapMillis,
+                        ttsMinAvailableBytes
+                )
+        ));
+    }
+
+    static Map<String, String> ttsPlaybackMetricAttributes(
+            String requestId,
+            long openedAtNanos,
+            long endedAtNanos,
+            long writeNanos,
+            long drainNanos,
+            long writeCount,
+            long bytesWritten,
+            long maxWriteGapMillis,
+            int minAvailableBytes
+    ) {
+        String normalizedRequestId = requestId == null ? "" : requestId.trim();
+        long lineOpenMillis = Math.max(0L, endedAtNanos - openedAtNanos) / 1_000_000L;
+        return Map.of(
+                "requestId", normalizedRequestId,
+                "lineOpenMillis", Long.toString(lineOpenMillis),
+                "writeMillis", Long.toString(Math.max(0L, writeNanos) / 1_000_000L),
+                "drainMillis", Long.toString(Math.max(0L, drainNanos) / 1_000_000L),
+                "writeCount", Long.toString(Math.max(0L, writeCount)),
+                "bytesWritten", Long.toString(Math.max(0L, bytesWritten)),
+                "maxWriteGapMillis", Long.toString(Math.max(0L, maxWriteGapMillis)),
+                "minAvailableBytes", Integer.toString(Math.max(0, minAvailableBytes == Integer.MAX_VALUE ? 0 : minAvailableBytes)),
+                "writeGapObserved", Boolean.toString(maxWriteGapMillis > 0L && writeCount > 1L)
+        );
     }
 
     @Override
@@ -336,19 +449,33 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         this.onPlaybackFinished = callback;
     }
 
-    @Override
-    public void stopTtsPlayback() {
+    /** Removes and returns the pending completion hook so it is delivered at most once. */
+    private Runnable detachPlaybackFinishedCallback() {
+        Runnable callback = onPlaybackFinished;
         onPlaybackFinished = null;
+        return callback;
+    }
+
+    /** Closes the TTS channel without touching completion bookkeeping. */
+    private void closeTtsChannel() {
         SourceDataLine line = ttsDataLine;
         ttsDataLine = null;
-        if (line != null) {
-            try {
-                line.stop();
-                line.close();
-            } catch (Exception e) {
-                logSink.error("audio.tts_channel.close_failed", e);
-            }
+        if (line == null) {
+            return;
         }
+        try {
+            line.stop();
+            line.close();
+        } catch (Exception e) {
+            logSink.error("audio.tts_channel.close_failed", e);
+        }
+    }
+
+    @Override
+    public void stopTtsPlayback() {
+        // An aborted utterance must never report playback completion.
+        onPlaybackFinished = null;
+        closeTtsChannel();
     }
 
     @Override

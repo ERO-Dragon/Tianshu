@@ -152,7 +152,7 @@ TTS 是输出能力，不是仲裁方。
 - 订阅 IR 发布的结构化分析结果，并将其作为标准语音仲裁输入。
 - 为诊断、测试和受信模块保留显式仲裁 capability。
 - 维护可参与对话的 participant 注册表。
-- 基于 participant 声明的 claim 条件、claim strength、participant priority、历史 attention 和默认 owner 选择本轮 owner。attention decay 只影响历史 attention 的存续时间，不参与当前 owner 排序。
+- 先基于 participant 声明的 claim 条件收集硬 claim；有硬 claim 时只按 claim strength、participant priority 和稳定 participant ID 选择 owner。没有硬 claim 时，IA 向声明评分 capability 的 participant 请求本轮动态值，并把无 provider 或超时 participant 的 fallback score 一并纳入比较；历史 attention 只作为其 owner 的额外有效值，不能绕过本轮比较。AX 通过注册契约提供默认 fallback score 0.4，其他 participant 必须严格更高才能替代 AX。
 - 创建 dialogue session。
 - 维护 session owner、turn id、processing deadline、状态和释放原因。
 - 处理 owner 处理期限延长、主动释放、超时释放。
@@ -411,13 +411,15 @@ DialogueParticipantDescriptor(
     claimProfile,
     voiceTriggerGroup,
     routeCapability,
-    turnProcessingPolicy
+    turnProcessingPolicy,
+    scoreCapability,
+    fallbackScore
 )
 ```
 
 参与方注册时，仲裁机关会校验 `routeCapability` 对应的能力是否已经注册，且是否满足统一对话投递契约。IA 只投递 `DialogueDeliveryPayload`，不识别也不适配各模组内部 payload；外部模组需要在自己的 adapter 内把 `DialogueDeliveryPayload` 转换成内部业务模型。
 
-参与方声明自己在什么条件下应该接管。IA 不向参与方发起逐轮评分请求，而是在注册时保存参与方的 claim profile，并在每轮仲裁时用 IR 文本结果和 IA 自己捕获的游戏状态快照做硬命中判断。
+参与方声明自己在什么条件下应该接管，并可声明一个评分 capability 为每轮结构化上下文返回动态值。IA 仍只使用 IR 文本结果和自己捕获的游戏状态快照做硬命中判断；只有没有硬 claim 时才发起评分请求。评分上下文不包含修复文本、识别正文、prompt 或 LLM 内容。
 
 参与方模型由两层组成：
 
@@ -545,15 +547,15 @@ session 可以因为以下原因释放：
 | `claim strength` | 当前硬命中强度，固定为 `NORMAL` / `STRONG`。 |
 | `attention` | 上一轮硬命中后留下的隐性关注值。 |
 | `decay` | attention 按秒线性衰减速度，固定为 `FAST` / `SLOW`。 |
-| `default owner baseline` | 默认 owner 的基准线，attention 衰减到该值以下后回到默认 owner，当前由 AX 注册。 |
+| `fallback score` | 评分 provider 缺失、超时或未返回时使用的参与方分值；AX 当前注册为 0.4 的默认基准。 |
 
 仲裁规则：
 
 1. 每轮输入都创建新的 claimed session。
 2. 如果本轮存在硬 claim，IA 只在这些硬 claim 之间按 `strength`、`priority` 和稳定 tie-break 选择 owner。
-3. 如果本轮没有硬 claim，IA 才检查上一轮 owner 的 attention 是否仍高于 default owner baseline。
-4. attention 高于 default owner baseline 时继续交给上一轮 owner；否则选择 `DEFAULT_OWNER` participant，当前由 AX 注册。
-5. 每个新 IR turn 都会抢占并结束上一轮 active session；只有 owner 确实变化时才额外发布 `conversation.owner_changed`。
+3. 如果本轮没有硬 claim，IA 收集每个 participant 的动态值；没有 provider 或超时时使用其 fallback score。
+4. 上一轮 owner 的衰减 attention 与该 owner 本轮 score 取较高值，再与所有其他 participant 的有效值比较；AX 的 fallback score 是其默认基准，非 AX 必须严格更高才能替代。
+5. 动态值相同时按 participant priority 和稳定 participant ID 决胜；每个新 IR turn 都会抢占并结束上一轮 active session，只有 owner 确实变化时才额外发布 `conversation.owner_changed`。
 6. 当前轮 processing deadline 默认是 10 秒，owner 可按实际异步处理需要续期，但绝对截止时间固定为 session 创建时间后 180 秒，反复续期不能绕过该上限。
 7. claim rule 的 decay 不参与 owner 排序，只决定本轮硬 claim 留下的 attention 可以延续多久。
 
@@ -686,7 +688,7 @@ common DTO 可以表达：
 |---|---|
 | Participant Registry | 管理参与方注册、注销、能力描述、可见性和生命周期绑定。 |
 | Claim Engine | 根据 participant 的 claim profile 和当前输入快照收集硬 claim。 |
-| Arbitration Policy | 按硬 claim strength、participant priority、历史 attention 和默认 owner 决定本轮 owner；decay 不参与排序。 |
+| Arbitration Policy | 先按硬 claim strength、participant priority 和稳定 ID 处理硬 claim；无硬 claim 时按 participant 动态值、fallback score 与 attention 合并值决定 owner；decay 不参与排序。 |
 | Session Store | 维护 session 状态、owner、turn、processing deadline、释放原因和审计信息。 |
 | Access Control | 校验模块是否有权读取正文、控制 session、调用 LLM/TTS 或接收事件。 |
 | Message Gateway | 对入站和出站正文消息做授权检查和定向投递，拒绝旁路访问。 |

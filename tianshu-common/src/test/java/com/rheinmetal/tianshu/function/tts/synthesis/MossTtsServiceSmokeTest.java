@@ -28,16 +28,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MossTtsServiceSmokeTest {
     @Test
     void synthesizesShortVoiceCloneSample() throws Exception {
-        Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("TIANSHU_MOSS_SMOKE")),
-                "Set TIANSHU_MOSS_SMOKE=true to run the real MOSS-TTS smoke test");
+        Assumptions.assumeTrue("true".equalsIgnoreCase(setting("tianshu.moss.smoke", "TIANSHU_MOSS_SMOKE")),
+                "Set -Dtianshu.moss.smoke=true (or TIANSHU_MOSS_SMOKE=true) to run the real MOSS-TTS benchmark");
         NativeLibraryLoader.ensureLoaded();
 
-        Path modelDir = resolveExistingPath(
-                Path.of("libs", "MOSS-TTS-Nano-main", "model"),
-                Path.of("..", "libs", "MOSS-TTS-Nano-main", "model")
-        );
-        Path voiceSample = modelDir.resolve("\uD83C\uDDE8\uD83C\uDDF3 \u6B22\u8FCE\u5173\u6CE8\u6A21\u601D\u667A\u80FD.wav");
-        Path outputDir = modelDir.resolve("moss-smoke-output");
+        Path modelDir = smokeModelDir();
+        Path voiceSample = smokeVoiceSample(modelDir);
+        Path outputDir = smokeOutputDir(modelDir);
 
         Assumptions.assumeTrue(Files.isRegularFile(modelDir.resolve("browser_poc_manifest.json")), "MOSS model manifest is missing");
         Assumptions.assumeTrue(Files.isRegularFile(voiceSample), "MOSS reference voice sample is missing");
@@ -87,6 +84,7 @@ class MossTtsServiceSmokeTest {
             long synthAllStart = System.nanoTime();
             for (int i = 0; i < texts.size(); i++) {
                 List<float[][]> chunks = new ArrayList<>();
+                applyPinnedSeed(service);
                 long synthStart = System.nanoTime();
                 AtomicLong firstAudioMillis = new AtomicLong(-1L);
                 long generateMillis = -1L;
@@ -177,21 +175,77 @@ class MossTtsServiceSmokeTest {
         return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
+    /**
+     * Resets the frame generator RNG to a fixed seed before each synthesis so repeated benchmark
+     * runs produce byte-identical audio. Without this, utterance length varies per run and RTF
+     * differences between configurations are dominated by that variation instead of the hot path.
+     */
+    private static void applyPinnedSeed(MossTtsService service) {
+        String configured = setting("tianshu.moss.seed", "TIANSHU_MOSS_SEED");
+        if (configured.isBlank()) {
+            return;
+        }
+        long seed;
+        try {
+            seed = Long.parseLong(configured);
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("Invalid MOSS benchmark seed: " + configured, invalid);
+        }
+        service.setGenerationSeed(seed);
+    }
+
+    private static Path smokeModelDir() {
+        String configured = setting("tianshu.moss.modelDir", "TIANSHU_MOSS_MODEL_DIR");
+        if (!configured.isBlank()) {
+            return Path.of(configured).toAbsolutePath().normalize();
+        }
+        return resolveExistingPath(
+                Path.of("libs", "MOSS-TTS-Nano-main", "model"),
+                Path.of("..", "libs", "MOSS-TTS-Nano-main", "model")
+        );
+    }
+
+    private static Path smokeVoiceSample(Path modelDir) {
+        String configured = setting("tianshu.moss.voiceWav", "TIANSHU_MOSS_VOICE_WAV");
+        if (!configured.isBlank()) {
+            return Path.of(configured).toAbsolutePath().normalize();
+        }
+        return modelDir.resolve("\uD83C\uDDE8\uD83C\uDDF3 \u6B22\u8FCE\u5173\u6CE8\u6A21\u601D\u667A\u80FD.wav");
+    }
+
+    private static Path smokeOutputDir(Path modelDir) {
+        String configured = setting("tianshu.moss.outputDir", "TIANSHU_MOSS_OUTPUT_DIR");
+        if (!configured.isBlank()) {
+            return Path.of(configured).toAbsolutePath().normalize();
+        }
+        return modelDir.resolve("moss-smoke-output");
+    }
+
+    /** Reads an explicit system property first, then the environment variable for the same setting. */
+    private static String setting(String propertyKey, String environmentKey) {
+        String property = System.getProperty(propertyKey);
+        if (property != null && !property.isBlank()) {
+            return property.trim();
+        }
+        String environment = System.getenv(environmentKey);
+        return environment == null ? "" : environment.trim();
+    }
+
     private static int smokeProcessors() {
-        String value = System.getenv("TIANSHU_MOSS_PROCESSORS");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.processors", "TIANSHU_MOSS_PROCESSORS");
+        if (value.isBlank()) {
             return Runtime.getRuntime().availableProcessors();
         }
         try {
-            return Math.max(1, Integer.parseInt(value.trim()));
+            return Math.max(1, Integer.parseInt(value));
         } catch (NumberFormatException ignored) {
             return Runtime.getRuntime().availableProcessors();
         }
     }
 
     private static List<Integer> smokeProcessorSet() {
-        String value = System.getenv("TIANSHU_MOSS_PROCESSOR_SET");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.processorSet", "TIANSHU_MOSS_PROCESSOR_SET");
+        if (value.isBlank()) {
             return List.of(smokeProcessors());
         }
         List<Integer> processors = new ArrayList<>();
@@ -205,30 +259,30 @@ class MossTtsServiceSmokeTest {
     }
 
     private static String smokePromptSource() {
-        String value = System.getenv("TIANSHU_MOSS_PROMPT_SOURCE");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.promptSource", "TIANSHU_MOSS_PROMPT_SOURCE");
+        if (value.isBlank()) {
             return "reference";
         }
-        String normalized = value.trim().toLowerCase();
-        return "builtin".equals(normalized) ? "builtin" : "reference";
+        return "builtin".equals(value.toLowerCase(java.util.Locale.ROOT)) ? "builtin" : "reference";
     }
 
     private static String smokeVoiceName() {
-        String value = System.getenv("TIANSHU_MOSS_VOICE");
-        return value == null || value.isBlank() ? "Junhao" : value.trim();
+        String value = setting("tianshu.moss.voice", "TIANSHU_MOSS_VOICE");
+        return value.isBlank() ? "Junhao" : value;
     }
 
     private static boolean smokeStreaming() {
-        return "true".equalsIgnoreCase(System.getenv("TIANSHU_MOSS_STREAMING"));
+        return "true".equalsIgnoreCase(setting("tianshu.moss.streaming", "TIANSHU_MOSS_STREAMING"));
     }
 
     private static String smokeCadenceName() {
-        String value = System.getenv("TIANSHU_MOSS_CADENCE");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.cadence", "TIANSHU_MOSS_CADENCE");
+        if (value.isBlank()) {
             return "fixed4";
         }
-        return switch (value.trim().toLowerCase(java.util.Locale.ROOT)) {
+        return switch (value.toLowerCase(java.util.Locale.ROOT)) {
             case "fixed8" -> "fixed8";
+            case "mixed", "first4then16" -> "mixed";
             case "upstream", "adaptive", "1-2-4-8" -> "upstream";
             default -> "fixed4";
         };
@@ -237,25 +291,28 @@ class MossTtsServiceSmokeTest {
     private static MossStreamingDecodeCadence smokeCadence() {
         return switch (smokeCadenceName()) {
             case "fixed8" -> MossStreamingDecodeCadence.fixed(8);
+            case "mixed" -> MossStreamingDecodeCadence.firstChunkThenBatched(
+                    MossTtsService.FIRST_CHUNK_FRAMES,
+                    MossTtsService.STEADY_CHUNK_FRAMES);
             case "upstream" -> MossStreamingDecodeCadence.upstreamAdaptive();
             default -> MossStreamingDecodeCadence.fixed(4);
         };
     }
 
     private static int smokePreRollMillis() {
-        String value = System.getenv("TIANSHU_MOSS_PREROLL_MS");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.preRollMillis", "TIANSHU_MOSS_PREROLL_MS");
+        if (value.isBlank()) {
             return 0;
         }
         try {
-            return Math.max(0, Integer.parseInt(value.trim()));
+            return Math.max(0, Integer.parseInt(value));
         } catch (NumberFormatException ignored) {
             return 0;
         }
     }
 
     private static List<String> smokeTexts() {
-        List<String> baseTexts = parseTexts(System.getenv("TIANSHU_MOSS_TEXTS"));
+        List<String> baseTexts = parseTexts(setting("tianshu.moss.texts", "TIANSHU_MOSS_TEXTS"));
         if (baseTexts.isEmpty()) {
             baseTexts = List.of(
                     "\u4F60\u597D\uFF0C\u6211\u662F\u5929\u67A2\u4EBA\u5DE5\u667A\u80FD\u52A9\u624B\u3002",
@@ -286,24 +343,24 @@ class MossTtsServiceSmokeTest {
     }
 
     private static int smokeRepeat() {
-        String value = System.getenv("TIANSHU_MOSS_REPEAT");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.repeat", "TIANSHU_MOSS_REPEAT");
+        if (value.isBlank()) {
             return 1;
         }
         try {
-            return Math.max(1, Integer.parseInt(value.trim()));
+            return Math.max(1, Integer.parseInt(value));
         } catch (NumberFormatException ignored) {
             return 1;
         }
     }
 
     private static double smokeMaxRtf() {
-        String value = System.getenv("TIANSHU_MOSS_MAX_RTF");
-        if (value == null || value.isBlank()) {
+        String value = setting("tianshu.moss.maxRtf", "TIANSHU_MOSS_MAX_RTF");
+        if (value.isBlank()) {
             return Double.NaN;
         }
         try {
-            double parsed = Double.parseDouble(value.trim());
+            double parsed = Double.parseDouble(value);
             return parsed > 0.0D ? parsed : Double.NaN;
         } catch (NumberFormatException ignored) {
             return Double.NaN;

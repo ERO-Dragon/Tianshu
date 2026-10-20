@@ -1,6 +1,13 @@
 package com.rheinmetal.tianshu.protocol.dialogue;
 
 import org.junit.jupiter.api.Test;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueScoringContext;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
+import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueScoreResponsePayload;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -9,6 +16,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DialogueContractBoundaryTest {
     private static final List<String> CONSUMER_MODULES = List.of(
@@ -58,5 +67,47 @@ class DialogueContractBoundaryTest {
                 || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot")
                 || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef")
                 || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints");
+    }
+
+    @Test
+    void participantDescriptorRetainsCompatibilityAndNormalizesFallbackScore() {
+        DialogueParticipantDescriptor legacy = new DialogueParticipantDescriptor(
+                "legacy", "module.legacy", "Legacy", 1,
+                DialogueClaimProfile.DISABLED,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                "LEGACY.ROUTE", DialogueTurnProcessingPolicy.DEFAULT
+        );
+        DialogueParticipantDescriptor scored = new DialogueParticipantDescriptor(
+                "scored", "module.scored", "Scored", 1,
+                DialogueClaimProfile.DISABLED,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                "SCORE.ROUTE", DialogueTurnProcessingPolicy.DEFAULT,
+                "SCORE.CAPABILITY", 2.0D
+        );
+
+        assertEquals("", legacy.scoreCapability());
+        assertEquals(0.0D, legacy.fallbackScore());
+        assertEquals("SCORE.CAPABILITY", scored.scoreCapability());
+        assertEquals(1.0D, scored.fallbackScore());
+    }
+
+    @Test
+    void scoringContextContainsOnlyStructuredDialogueContext() {
+        DialogueScoringContext context = new DialogueScoringContext(
+                "request", "player", "turn", List.of("wake"), List.of("item"), List.of("entity"),
+                DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"), 10L, 20L
+        );
+
+        List<String> components = Stream.of(context.getClass().getRecordComponents())
+                .map(component -> component.getName())
+                .toList();
+        assertTrue(components.stream().noneMatch(name -> List.of("repairedText", "normalizedText", "prompt", "rawText").contains(name)));
+    }
+
+    @Test
+    void scoreResponseRejectsNonFiniteScore() {
+        assertThrows(IllegalArgumentException.class, () -> new DialogueScoreResponsePayload(
+                "request", "participant", Double.NaN, 10L, true
+        ));
     }
 }

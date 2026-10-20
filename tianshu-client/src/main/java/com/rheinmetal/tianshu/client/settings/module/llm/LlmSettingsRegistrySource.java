@@ -674,9 +674,12 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 return LoadCompatibility.ok();
             }
             if (isCpuDevice(effectiveDeviceTargetId())) {
-                long availableBytes = availableJvmMemoryBytes();
-                if (availableBytes > 0L && availableBytes < requiredBytes) {
-                    return LoadCompatibility.unsupported(llm("validation.insufficient_memory", formatBytes(requiredBytes), formatBytes(availableBytes)));
+                // A GGUF is mapped natively, not held in the Java heap, so free heap is the wrong
+                // budget to compare a model size against. Only the physically impossible case is
+                // rejected here; the runtime reports a real allocation failure otherwise.
+                long systemTotalBytes = systemTotalMemoryBytes();
+                if (systemTotalBytes > 0L && requiredBytes > systemTotalBytes) {
+                    return LoadCompatibility.unsupported(llm("validation.insufficient_memory", formatBytes(requiredBytes), formatBytes(availableJvmMemoryBytes())));
                 }
                 return LoadCompatibility.ok();
             }
@@ -685,10 +688,24 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 return LoadCompatibility.ok();
             }
             long availableBytes = Math.max(0L, device.vramTotalBytes() - device.vramUsedBytes());
-            if (availableBytes < requiredBytes) {
+            // The GPU snapshot is refreshed asynchronously, so its "used" figure can still include a
+            // model that was just unloaded. Comparing against the live free figure therefore
+            // produced false "insufficient VRAM" reports right after an unload. Only the physically
+            // impossible case is rejected here; everything else is left to the runtime, which is the
+            // authoritative judge and reports a real allocation failure when it cannot load.
+            if (requiredBytes > device.vramTotalBytes()) {
                 return LoadCompatibility.unsupported(llm("validation.insufficient_vram", formatBytes(requiredBytes), formatBytes(availableBytes)));
             }
             return LoadCompatibility.ok();
+        }
+
+        /** Total physical memory of the machine, or 0 when the platform cannot report it. */
+        private long systemTotalMemoryBytes() {
+            java.lang.management.OperatingSystemMXBean bean =
+                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            return bean instanceof com.sun.management.OperatingSystemMXBean memoryBean
+                    ? memoryBean.getTotalMemorySize()
+                    : 0L;
         }
 
         private long estimatedRequiredMemoryBytes(LlmModelInfo info) {

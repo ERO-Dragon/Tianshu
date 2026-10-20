@@ -439,6 +439,8 @@
   "tianshu.gui.presence.debug.detail.message": "消息：%s",
   "tianshu.gui.presence.debug.detail.stage": "阶段：%s",
   "tianshu.gui.presence.debug.detail.age": "%s 秒前更新",
+  "tianshu.gui.presence.debug.detail.operation_status": "操作状态：%s",
+  "tianshu.gui.presence.debug.detail.operation_age": "操作状态 %s 秒前更新",
   "tianshu.gui.presence.debug.severity.trace": "追踪",
   "tianshu.gui.presence.debug.severity.info": "信息",
   "tianshu.gui.presence.debug.severity.notice": "提示",

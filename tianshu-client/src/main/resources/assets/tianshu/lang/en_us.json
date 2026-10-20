@@ -439,6 +439,8 @@
   "tianshu.gui.presence.debug.detail.message": "Message: %s",
   "tianshu.gui.presence.debug.detail.stage": "Stage: %s",
   "tianshu.gui.presence.debug.detail.age": "Updated %s seconds ago",
+  "tianshu.gui.presence.debug.detail.operation_status": "Operation status: %s",
+  "tianshu.gui.presence.debug.detail.operation_age": "Operation status updated %s seconds ago",
   "tianshu.gui.presence.debug.severity.trace": "Trace",
   "tianshu.gui.presence.debug.severity.info": "Info",
   "tianshu.gui.presence.debug.severity.notice": "Notice",

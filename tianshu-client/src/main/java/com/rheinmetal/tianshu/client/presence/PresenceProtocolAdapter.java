@@ -16,10 +16,12 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
 
@@ -90,6 +92,14 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishChatMessage(PresenceChatMessagePayload payload) {
         return publishTopic(PresenceChatMessagePayload.TOPIC, PayloadType.CUSTOM, payload);
+    }
+
+    public TianshuEnvelope publishModuleStatus(ModuleStatus status) {
+        return status == null ? null : publishTopic(
+                ProtocolTopics.MODULE_STATUS,
+                PayloadType.MODULE_STATUS,
+                new ModuleStatusPayload(status)
+        );
     }
 
 }

@@ -19,13 +19,29 @@ public interface IAudioBridge {
 
     void startTtsPlayback(int sampleRate);
 
+    default void startTtsPlayback(String requestId, int sampleRate) {
+        startTtsPlayback(sampleRate);
+    }
+
     void feedTtsAudio(byte[] audio);
 
+    default void feedTtsAudio(String requestId, byte[] audio) {
+        feedTtsAudio(audio);
+    }
+
     void finishTtsPlayback();
+
+    default void finishTtsPlayback(String requestId) {
+        finishTtsPlayback();
+    }
 
     void setOnPlaybackFinished(Runnable callback);
 
     void stopTtsPlayback();
+
+    default void stopTtsPlayback(String requestId) {
+        stopTtsPlayback();
+    }
 
     void playAudio(byte[] audioData, int sampleRate);
 

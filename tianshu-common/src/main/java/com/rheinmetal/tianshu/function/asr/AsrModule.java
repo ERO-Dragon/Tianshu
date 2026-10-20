@@ -57,6 +57,8 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private volatile long appliedVoiceResourceVersion = -1L;
     private volatile boolean destroyed;
     private AsrModelService modelService;
+    private volatile long lifecycleStatusGeneration;
+    private volatile boolean lifecycleActive;
 
     public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this.audioBridge = audioBridge;
@@ -85,21 +87,30 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
-        destroyed = false;
-        runtimeContext = context;
-        runtimeState = context.runtimeState();
-        initializeEngine(context);
-        bindVoiceResources(context.voiceResources());
-        AsrStateMachine stateMachine = new AsrStateMachine();
-        AsrSessionManager sessionManager = new AsrSessionManager();
-        audioCapture = new AudioCaptureService(audioBridge, env);
-        reconfigureAudioPipeline();
-        AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
-        controller = new AsrController(env, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus);
-        if (inputGateway == null) {
-            inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
+        lifecycleStatusGeneration++;
+        lifecycleActive = true;
+        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.asr.starting", lifecycleStatusGeneration));
+        try {
+            destroyed = false;
+            runtimeContext = context;
+            runtimeState = context.runtimeState();
+            initializeEngine(context);
+            bindVoiceResources(context.voiceResources());
+            AsrStateMachine stateMachine = new AsrStateMachine();
+            AsrSessionManager sessionManager = new AsrSessionManager();
+            audioCapture = new AudioCaptureService(audioBridge, env);
+            reconfigureAudioPipeline();
+            AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
+            controller = new AsrController(env, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus);
+            if (inputGateway == null) {
+                inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
+            }
+            inputGateway.bind(controller);
+            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.asr.ready", lifecycleStatusGeneration));
+        } catch (RuntimeException | Error failure) {
+            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.asr.failed", lifecycleStatusGeneration));
+            throw failure;
         }
-        inputGateway.bind(controller);
     }
 
     @Override
@@ -109,6 +120,10 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
         if (controller != null) {
             controller.stop();
+        }
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.asr.stopped", lifecycleStatusGeneration));
         }
     }
 

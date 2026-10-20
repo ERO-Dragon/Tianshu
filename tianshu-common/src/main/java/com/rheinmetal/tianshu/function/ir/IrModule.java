@@ -17,6 +17,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class IrModule implements TianshuManagedModule {
     private static final long PRESENCE_CONTEXT_TIMEOUT_MILLIS = 300L;
@@ -51,6 +53,8 @@ public final class IrModule implements TianshuManagedModule {
     private VoiceResourceAccess voiceResources;
     private volatile boolean acceptingInput = true;
     private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
+    private final AtomicLong lifecycleGeneration = new AtomicLong();
+    private volatile boolean lifecycleActive;
 
     public IrModule(ModuleRuntimeAccess runtime) {
         this(runtime, IrNamedObjectEnhancer.noop());
@@ -78,16 +82,24 @@ public final class IrModule implements TianshuManagedModule {
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
+        long generation = lifecycleGeneration.incrementAndGet();
+        lifecycleActive = true;
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.ir.starting", generation));
         acceptingInput = true;
         diagnostics = context == null ? com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP : context.diagnostics();
         voiceResources = context == null ? null : context.voiceResources();
         refreshVoiceTriggerIndex(currentVoiceTriggerRegistrations());
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.ir.ready", generation));
     }
 
     @Override
     public void stop() {
         acceptingInput = false;
         clearPendingPresenceContexts();
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.ir.stopped", lifecycleGeneration.get()));
+        }
     }
 
     @Override

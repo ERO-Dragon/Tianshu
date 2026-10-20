@@ -27,9 +27,6 @@ public final class AXParticipantRegistrar {
 
     public void register() {
         List<String> wakeWords = wakeWords();
-        if (wakeWords.isEmpty()) {
-            return;
-        }
         if (adapter.dialogueParticipantRegistrationProviderCount() <= 0) {
             return;
         }
@@ -39,12 +36,14 @@ public final class AXParticipantRegistrar {
         adapter.registerDialogueParticipant(new DialogueParticipantRegisterPayload(new DialogueParticipantDescriptor(
                 PARTICIPANT_ID,
                 AXModule.MODULE_ID,
-                wakeWords.get(0),
+                settings.wakeWord(),
                 0,
                 claimProfile(wakeWords),
                 voiceTriggerGroup(wakeWords),
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                DialogueTurnProcessingPolicy.DEFAULT
+                DialogueTurnProcessingPolicy.DEFAULT,
+                "",
+                settings.fallbackScore()
         ), System.currentTimeMillis()));
     }
 
@@ -61,6 +60,9 @@ public final class AXParticipantRegistrar {
     }
 
     private DialogueClaimProfile claimProfile(List<String> wakeWords) {
+        if (wakeWords.isEmpty()) {
+            return DialogueClaimProfile.DEFAULT_OWNER;
+        }
         return DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
                 "ax.wake_word",
                 DialogueAttentionDecay.SLOW,

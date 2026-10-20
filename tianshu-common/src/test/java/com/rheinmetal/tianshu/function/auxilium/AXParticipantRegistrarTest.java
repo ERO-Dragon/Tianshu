@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -10,11 +12,11 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class AXParticipantRegistrarTest {
     @Test
-    void emptyWakeWordDoesNotRegisterDialogueParticipant() {
+    void emptyWakeWordRegistersAxAsDefaultParticipantWithoutTrigger() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AtomicReference<DialogueParticipantRegisterPayload> registered = new AtomicReference<>();
         IaProtocolAdapter iaAdapter = new IaProtocolAdapter(runtime);
@@ -26,8 +28,12 @@ class AXParticipantRegistrarTest {
 
         registrar.register();
 
-        await(() -> registered.get() != null, 150L);
-        assertNull(registered.get());
+        await(() -> registered.get() != null);
+        DialogueParticipantRegisterPayload payload = registered.get();
+        assertNotNull(payload);
+        assertEquals(DialogueClaimMode.DEFAULT_OWNER, payload.descriptor().claimProfile().mode());
+        assertEquals(DialogueVoiceTriggerGroup.EMPTY, payload.descriptor().voiceTriggerGroup());
+        assertEquals(0.4D, payload.descriptor().fallbackScore());
     }
 
     @Test

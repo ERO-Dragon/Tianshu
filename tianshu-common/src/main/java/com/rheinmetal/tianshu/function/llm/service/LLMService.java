@@ -81,6 +81,7 @@ public class LLMService {
 
     public LLMResult chat(LLMRequest request) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
+        publishPreparedRequestDiagnostic(request, prepared);
         try {
             LlmGenerationResult result = inferenceClient.chatWithUsage(
                     prepared.messages(),
@@ -121,6 +122,7 @@ public class LLMService {
             List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
+        publishPreparedRequestDiagnostic(request, prepared);
         copyRagHits(prepared, ragHitsSink);
         try {
             LlmStreamFinishHolder finishHolder = new LlmStreamFinishHolder();
@@ -151,6 +153,7 @@ public class LLMService {
             List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
+        publishPreparedRequestDiagnostic(request, prepared);
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.task(
@@ -172,6 +175,7 @@ public class LLMService {
             List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
+        publishPreparedRequestDiagnostic(request, prepared);
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.taskWithUsage(
@@ -194,6 +198,7 @@ public class LLMService {
             List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
+        publishPreparedRequestDiagnostic(request, prepared);
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.taskStream(
@@ -228,6 +233,7 @@ public class LLMService {
             List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
+        publishPreparedRequestDiagnostic(request, prepared);
         copyRagHits(prepared, ragHitsSink);
         try {
             return inferenceClient.taskStreamWithUsage(
@@ -268,6 +274,27 @@ public class LLMService {
                 DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT,
                 Map.of("input", input, "output", response == null ? "" : response)
+        ));
+    }
+
+    private void publishPreparedRequestDiagnostic(LLMRequest request, LlmRequestPreparer.PreparedRequest prepared) {
+        if (prepared == null) {
+            return;
+        }
+        env.diagnostics().publish(DiagnosticEvent.now(
+                "module.llm",
+                "LLM_REQUEST_PREPARED",
+                DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "lane", request != null && request.isTaskLane() ? "TASK" : "CHAT",
+                        "thinking", Boolean.toString(Boolean.TRUE.equals(prepared.sampler().getEnableThinking())),
+                        "captureThinkingContent", Boolean.toString(prepared.options().captureThinkingContent()),
+                        "maxTokens", Integer.toString(prepared.maxTokens()),
+                        "messageCount", Integer.toString(prepared.messages().size()),
+                        "taskPriority", Integer.toString(prepared.taskPriority()),
+                        "taskPreemptible", Boolean.toString(prepared.taskPreemptible())
+                )
         ));
     }
 

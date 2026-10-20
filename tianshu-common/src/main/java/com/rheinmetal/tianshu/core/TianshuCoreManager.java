@@ -31,6 +31,7 @@ import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
@@ -176,8 +177,23 @@ public class TianshuCoreManager {
         if (normalizedModuleId.isEmpty()) {
             return Optional.empty();
         }
+        Optional<ModuleStatus> lifecycle = protocolRuntime.moduleStatusCache().latestLifecycle(normalizedModuleId);
+        if (lifecycle.isPresent()) {
+            return lifecycle;
+        }
         return queryModuleStatuses(new ModuleStatusQuery(normalizedModuleId, ""))
                 .stream()
+                .max(java.util.Comparator.comparingLong(ModuleStatus::updatedAtMillis));
+    }
+
+    public Optional<ModuleStatus> latestModuleOperationStatus(String moduleId) {
+        String normalizedModuleId = moduleId == null ? "" : moduleId.trim();
+        if (normalizedModuleId.isEmpty()) {
+            return Optional.empty();
+        }
+        return queryModuleStatuses(new ModuleStatusQuery(normalizedModuleId, ""))
+                .stream()
+                .filter(status -> !ModuleStatuses.TYPE_LIFECYCLE.equals(status.statusType()))
                 .max(java.util.Comparator.comparingLong(ModuleStatus::updatedAtMillis));
     }
 

@@ -642,8 +642,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
                     "module.tts",
                     "SYNTHESIS_COMPLETED",
                     DiagnosticSeverity.INFO,
-                    DiagnosticPrivacy.RAW_CONTENT,
-                    Map.of("requestId", session.request().requestId(), "text", session.request().text())
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of("requestId", session.request().requestId())
             ));
             if (!session.isTerminal()) {
                 playbackController.finish(session);
@@ -656,10 +656,9 @@ public final class TtsRuntime implements TtsPlaybackListener {
                     "module.tts",
                     "SYNTHESIS_FAILED",
                     DiagnosticSeverity.ERROR,
-                    DiagnosticPrivacy.RAW_CONTENT,
+                    DiagnosticPrivacy.REDACTED,
                     Map.of(
                             "requestId", session.request().requestId(),
-                            "text", session.request().text(),
                             "failureCode", failure.code().name()
                     )
             ));
