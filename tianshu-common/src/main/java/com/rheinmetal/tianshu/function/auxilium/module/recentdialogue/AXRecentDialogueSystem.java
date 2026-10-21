@@ -37,6 +37,18 @@ public final class AXRecentDialogueSystem {
         this.checkpointStore = checkpointStore;
     }
 
+    /**
+     * Points the retention window at the per-turn budget.
+     *
+     * <p>The system is built once, before any turn knows the model's real context size, so its window
+     * starts on the construction-time fallback policy. Every resolved turn replaces it through this
+     * method; without that the retained history and the compression watermarks would stay frozen at the
+     * reference budget while the prompt side already assumed the real one.</p>
+     */
+    public void applyWindowPolicy(AXMemoryWindowPolicy policy) {
+        rawTurnWindow.applyPolicy(policy);
+    }
+
     public void append(AXScope scope, AXRawTurn turn) {
         restoreIfNeeded(scope);
         rawTurnWindow.append(scope, withTokenCount(scope, turn));

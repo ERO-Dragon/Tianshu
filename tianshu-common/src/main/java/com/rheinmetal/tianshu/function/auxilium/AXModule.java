@@ -166,13 +166,23 @@ public final class AXModule implements TianshuManagedModule {
         ragClient = new AXLlmRagClient(adapter, runtimePolicy.ragTimeoutMillis());
         storageLayout = new AXStorageLayout(storageConfiguration);
         AXJsonStore jsonStore = new AXJsonStore(env);
-        AXMemoryWindowPolicy memoryPolicy = AXMemoryWindowPolicy.DEFAULT;
+        // Construction-time fallback only. The real budget is resolved per turn
+        // (AXTurnOrchestrator -> AXRuntimeLlmBudgetResolver.resolveContextBudget -> fromSnapshot ->
+        // AXMemoryWindowPolicy.fromBudget) and overrides this value for everything a turn touches.
+        // This one is what runs before the first resolution and whenever resolution fails, so it must
+        // stay the contract floor rather than an optimistic guess.
+        AXMemoryWindowPolicy constructionFallbackPolicy = AXMemoryWindowPolicy.DEFAULT;
         scopeProvider = worldIdentityProvider == null
                 ? new DefaultAXScopeProvider(env)
                 : new DefaultAXScopeProvider(worldIdentityProvider);
-        memorySystem = new AXMemorySystem(storageLayout, jsonStore, memoryPolicy);
+        // The memory system only reads shortTermChatBlockLimit out of the policy, and fromSnapshot
+        // carries that field over unchanged, so a construction-time value is correct here by design:
+        // it needs no per-turn refresh.
+        memorySystem = new AXMemorySystem(storageLayout, jsonStore, constructionFallbackPolicy);
         AXRawTurnCheckpointStore rawTurnCheckpointStore = new AXRawTurnCheckpointStore(storageLayout, jsonStore);
-        recentDialogueSystem = new AXRecentDialogueSystem(memoryPolicy, retrievalPrimitiveClient::countMessageTokens, rawTurnCheckpointStore);
+        // The recent-dialogue window does depend on the real window size, so it starts on the fallback
+        // and is re-pointed every resolved turn (AXTurnOrchestrator.applyWindowPolicy).
+        recentDialogueSystem = new AXRecentDialogueSystem(constructionFallbackPolicy, retrievalPrimitiveClient::countMessageTokens, rawTurnCheckpointStore);
         AXMemoryTaskPromptRepository memoryTaskPromptRepository = new AXMemoryTaskPromptRepository(storageLayout, promptLanguageProvider);
         AXMemoryMaintenanceService memoryMaintenanceService = new AXMemoryMaintenanceService(
                 adapter,
@@ -191,12 +201,14 @@ public final class AXModule implements TianshuManagedModule {
                 promptRepository,
                 promptLanguageProvider,
                 new AXSharedKnowledgePlanner(ragClient),
-                null,
-                retrievalPrimitiveClient::countMessageTokens
+                null
         );
-        AXContextBudget contextBudget = AXContextBudget.fromPolicy(memoryPolicy);
+        // Fallback context budget for the very first turn (and for a failed budget lookup). The prompt
+        // side of every resolved turn uses AXRuntimeLlmBudget.contextBudget() instead, which is derived
+        // from the same real window as the memory window policy.
+        AXContextBudget contextBudget = AXContextBudget.fromPolicy(constructionFallbackPolicy);
         AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator, assistantSettings);
-        AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, memoryPolicy);
+        AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, constructionFallbackPolicy);
         dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), runtimePolicy.dynamicFactTimeoutMillis());
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);

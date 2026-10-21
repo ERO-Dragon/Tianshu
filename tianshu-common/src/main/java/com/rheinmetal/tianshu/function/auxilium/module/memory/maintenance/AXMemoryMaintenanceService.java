@@ -311,13 +311,13 @@ public final class AXMemoryMaintenanceService {
                 return;
             }
             String namespace = status.runtimeSnapshot().embeddingNamespace();
-            List<AXMemoryEvent> missing = missingVectorEvents(scope, namespace);
-            if (missing.isEmpty()) {
+            List<AXMemoryEvent> withoutVector = eventsWithoutVector(scope, namespace);
+            if (withoutVector.isEmpty()) {
                 done.complete(new VectorRebuildResult(namespace, 0));
                 return;
             }
             publishStartedStatus(startedStatusPublished);
-            embedBatches(scope, namespace, status.runtimeSnapshot().embeddingModelName(), missing, 0, 0, done, generation);
+            embedBatches(scope, namespace, status.runtimeSnapshot().embeddingModelName(), withoutVector, 0, 0, done, generation);
         });
         return done;
     }
@@ -398,17 +398,25 @@ public final class AXMemoryMaintenanceService {
         return recentDialogueSystem;
     }
 
-    private List<AXMemoryEvent> missingVectorEvents(AXScope scope, String namespace) {
+    /**
+     * 向量补齐的<b>对账查询</b>：列出"已有事件、但索引里还没有对应向量"的事件，交给 embedding 重算。
+     *
+     * <p>这不是去重，也不许删：embedding 失败（模型未就绪、批次超时、进程中断）过的事件不会自己
+     * 长出向量，只有这个查询能把它们找回来补齐；删掉它，RAG 会静默缺块——那些事件永远召不回来
+     * 却也不报错。判据是 {@link AXEventVector#idempotencyKey()}（与写入侧同一份键），
+     * 所以补齐重跑同一批事件不会写出重复向量。</p>
+     */
+    private List<AXMemoryEvent> eventsWithoutVector(AXScope scope, String namespace) {
         List<AXMemoryEvent> events = memorySystem.events().loadAll(scope);
         if (events.isEmpty()) {
             return List.of();
         }
-        Set<String> existing = new HashSet<>();
+        Set<String> indexed = new HashSet<>();
         for (AXEventVector vector : memorySystem.vectors().load(scope, namespace)) {
-            existing.add(vector.eventId() + "\n" + vector.eventFactHash());
+            indexed.add(vector.idempotencyKey());
         }
         return events.stream()
-                .filter(event -> !existing.contains(event.id() + "\n" + event.factHash()))
+                .filter(event -> !indexed.contains(AXEventVector.idempotencyKey(event.id(), event.factHash())))
                 .toList();
     }
 

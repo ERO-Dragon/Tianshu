@@ -282,7 +282,9 @@ class AXMemorySystemTest {
         AXRawTurnBatch batch = recentDialogueSystem.selectCompressionBatch(scope);
 
         assertFalse(batch.isEmpty());
-        assertEquals(3, recentDialogueSystem.snapshot(scope).turns().size());
+        // The kept window is now both the render bound and the compression threshold, so only the
+        // newest round still fits under KEEP; the older one is visible only as a pending batch.
+        assertEquals(1, recentDialogueSystem.snapshot(scope).turns().size());
         assertEquals(batch.turns().size(), recentDialogueSystem.confirmConsumed(scope, batch));
         assertEquals(3 - batch.turns().size(), recentDialogueSystem.snapshot(scope).turns().size());
     }
@@ -322,22 +324,20 @@ class AXMemorySystemTest {
         AXMemoryWindowPolicy policy = new AXMemoryWindowPolicy(
                 1000,
                 1000,
-                0,
-                100,
-                300,
-                250,
                 100,
                 1000,
-                50,
-                1000,
-                0,
                 125,
                 125,
                 750,
+                400,
                 10,
                 10,
                 10,
                 1000,
+                8_192,
+                14_000,
+                512,
+                128,
                 10000,
                 10000,
                 3,

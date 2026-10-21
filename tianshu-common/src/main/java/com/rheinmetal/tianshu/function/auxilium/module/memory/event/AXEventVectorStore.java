@@ -65,17 +65,28 @@ public final class AXEventVectorStore {
                 .filter(vector -> vector != null && !vector.isEmpty())
                 .collect(java.util.stream.Collectors.groupingBy(AXEventVector::embeddingNamespace))
                 .forEach((namespace, values) -> {
-                    Set<String> existing = load(scope, namespace).stream()
-                            .map(vector -> vector.eventId() + "\n" + vector.eventFactHash())
-                            .collect(Collectors.toSet());
-                    List<AXEventVector> normalized = values.stream()
-                            .filter(vector -> existing.add(vector.eventId() + "\n" + vector.eventFactHash()))
-                            .toList();
+                    List<AXEventVector> normalized = notYetIndexed(scope, namespace, values);
                     jsonStore.appendJsonLines(
                             layout.eventVectorsFile(scope, namespace),
                             normalized.stream().map(AXEventVector::toJson).toList()
                     );
                 });
+    }
+
+    /**
+     * 索引写入的<b>幂等闸门</b>：只放行索引里还没有的 {@link AXEventVector#idempotencyKey()}。
+     *
+     * <p>挡的是"同一次写入被重放"（批次重试、维护补齐重跑、进程重启后续写），<b>不是事件去重</b>：
+     * 事件入库从不去重，同一件事发生两次是两条 eventId 不同的事件，两条都会进索引。也正因为判据是
+     * {@code (eventId, factHash)} 这对键，同一批次内部的重复向量会在这里一起被去掉。</p>
+     */
+    private List<AXEventVector> notYetIndexed(AXScope scope, String namespace, List<AXEventVector> values) {
+        Set<String> indexed = load(scope, namespace).stream()
+                .map(AXEventVector::idempotencyKey)
+                .collect(Collectors.toSet());
+        return values.stream()
+                .filter(vector -> indexed.add(vector.idempotencyKey()))
+                .toList();
     }
 
     private boolean usable(AXScope scope) {

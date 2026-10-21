@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.core.runtime;
 import java.util.Locale;
 
 public final class InferenceResourcePolicy {
-    private static final int FULL_GPU_LAYERS = 999;
     private static final int MOSS_TTS_THREADS = 2;
 
     private final int processors;
@@ -22,10 +21,6 @@ public final class InferenceResourcePolicy {
 
     public int processors() {
         return processors;
-    }
-
-    public int fullGpuLayers() {
-        return FULL_GPU_LAYERS;
     }
 
     public int llmGpuHelperThreads() {

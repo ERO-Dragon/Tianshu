@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
-import com.rheinmetal.tianshu.client.llm.performance.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
@@ -169,13 +168,9 @@ public final class NeoForgeClientBootstrap {
                     () -> assembledCoreManager.destroy().join()
             );
 
-            TianshuCoreManager currentCoreManager = coreManager;
             TianshuClientRuntime clientRuntime = new TianshuClientRuntime(
                     new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter, presenceRuntime, namedObjectIndexManager),
-                    () -> {
-                        ClientLlmRuntimeBridge.bind(currentCoreManager, config);
-                        diagnosticRouter.info("neoforge.world.session_started");
-                    },
+                    () -> diagnosticRouter.info("neoforge.world.session_started"),
                     failure -> diagnosticRouter.error("neoforge.world.session_lifecycle_failed", failure)
             );
             lifecycleAdapter = new NeoForgeClientLifecycleAdapter(clientRuntime);
@@ -185,7 +180,6 @@ public final class NeoForgeClientBootstrap {
             audioOwnership.release();
             diagnosticsOwnership.release();
             indexOwnership.release();
-            startingSession.own(ClientLlmRuntimeBridge::close);
             currentLifecycleAdapter.onClientReady();
             startingSession.own(worldIdentityCapture::clear);
 

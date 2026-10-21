@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact;
@@ -215,6 +216,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         this.llmRequestBuilder = Objects.requireNonNull(llmRequestBuilder, "llmRequestBuilder");
         AXContextBudget fallbackContextBudget = contextBudget == null ? AXContextBudget.DEFAULT : contextBudget;
         this.budgetResolver = budgetResolver;
+        // Construction-time fallback only: used when there is no resolver or a turn arrives before one
+        // resolves. Every resolved turn replaces it through continueTurnWithBudget.
         this.fallbackRuntimeBudget = new AXRuntimeLlmBudget(null, fallbackContextBudget);
         this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
         this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
@@ -328,6 +331,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return;
         }
         AXRuntimeLlmBudget budget = runtimeBudget == null ? fallbackRuntimeBudget : runtimeBudget;
+        // The resolved budget is the per-turn truth: it wins over the construction-time fallback for
+        // everything this turn touches, including the recent-dialogue retention window.
+        applyWindowPolicy(budget.memoryPolicy());
         if (memoryRetriever == null) {
             submitLlmTurn(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, AXMemoryRetrievalResult.empty(), budget.contextBudget());
             return;
@@ -340,10 +346,26 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                         scope,
                         request,
                         budget.contextBudget().maxRetrievedMemoryItems(),
-                        budget.contextBudget().retrievedMemoryTokenBudget()
+                        budget.contextBudget().memoryRetrievalTokenBudget(),
+                        budget.memoryPolicy().tier()
                 ),
                 memory -> submitLlmTurn(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, memory, budget.contextBudget())
         );
+    }
+
+    /**
+     * Hands the per-turn window policy to the retention buffer.
+     *
+     * <p>The raw dialogue window is built once with the construction-time fallback policy, so without
+     * this call its retention and compression watermarks would stay frozen at the reference budget no
+     * matter how large the model window is. Re-applying the per-turn policy is what makes the retained
+     * history follow the real context size.</p>
+     */
+    private void applyWindowPolicy(AXMemoryWindowPolicy memoryPolicy) {
+        if (recentDialogueSystem == null || memoryPolicy == null) {
+            return;
+        }
+        recentDialogueSystem.applyWindowPolicy(memoryPolicy);
     }
 
     private void submitLlmTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {

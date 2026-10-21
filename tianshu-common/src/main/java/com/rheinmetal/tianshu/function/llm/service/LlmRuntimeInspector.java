@@ -132,9 +132,15 @@ final class LlmRuntimeInspector {
         );
     }
 
+    /**
+     * Loaded context size: the plan when the client can produce one, otherwise the declared cloud
+     * window. The fallback has to be the cloud window, not a local model-catalog entry — the cloud
+     * endpoint reports nothing, and a catalog lookup would silently pin every AX budget to a model this
+     * runtime never loads.
+     */
     private int loadedContextSize(LlmContextBudgetSnapshot budget) {
         int planned = budget == null ? 0 : budget.plannedContextSize();
-        return planned > 0 ? planned : metadata.configuredContextSize();
+        return planned > 0 ? planned : metadata.declaredContextWindowTokens();
     }
 
     private int contextTokenBudget(LlmContextBudgetSnapshot budget, int loadedContextSize) {

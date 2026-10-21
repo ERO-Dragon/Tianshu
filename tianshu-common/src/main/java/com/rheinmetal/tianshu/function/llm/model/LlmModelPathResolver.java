@@ -13,52 +13,34 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class LlmModelPathResolver {
+    /** Fallback window when the embedding catalog has no entry for the selected model. */
+    private static final int DEFAULT_EMBEDDING_CONTEXT_SIZE = 4096;
+
     private final LlmConfiguration configuration;
-    private final Function<String, LlmModelInfo> chatCatalog;
     private final Function<String, LlmModelInfo> embeddingCatalog;
 
     public LlmModelPathResolver(LlmConfiguration configuration) {
-        this(configuration, LlmModelManager::getModelByName, LlmModelManager::getEmbeddingModelByName);
+        this(configuration, LlmModelManager::getEmbeddingModelByName);
     }
 
     LlmModelPathResolver(
             LlmConfiguration configuration,
-            Function<String, LlmModelInfo> chatCatalog,
             Function<String, LlmModelInfo> embeddingCatalog
     ) {
         this.configuration = Objects.requireNonNull(configuration, "configuration");
-        this.chatCatalog = Objects.requireNonNull(chatCatalog, "chatCatalog");
         this.embeddingCatalog = Objects.requireNonNull(embeddingCatalog, "embeddingCatalog");
     }
 
-    public Path resolveChatModel() {
-        return resolve(configuration.getCustomLlmName(), chatCatalog);
-    }
-
     public Path resolveEmbeddingModel() {
-        return resolve(configuration.getLlmEmbeddingModelName(), embeddingCatalog);
-    }
-
-    public Path resolveMtpDraftModel() {
-        return configuration.getLlmMtpDraftGgufFilePath();
-    }
-
-    public int chatContextSize() {
-        LlmModelInfo info = chatCatalog.apply(normalize(configuration.getCustomLlmName()));
-        return info == null ? 4096 : info.getContextSize();
-    }
-
-    public int promptTokenBudget() {
-        LlmModelInfo info = chatCatalog.apply(normalize(configuration.getCustomLlmName()));
-        return info == null ? 3000 : info.getPromptTokenBudget();
+        return resolve(configuration.getLlmEmbeddingModelName());
     }
 
     public int embeddingContextSize() {
         LlmModelInfo info = embeddingCatalog.apply(normalize(configuration.getLlmEmbeddingModelName()));
-        return info == null ? 4096 : info.getContextSize();
+        return info == null ? DEFAULT_EMBEDDING_CONTEXT_SIZE : info.getContextSize();
     }
 
-    private Path resolve(String selection, Function<String, LlmModelInfo> catalog) {
+    private Path resolve(String selection) {
         String normalizedSelection = normalize(selection);
         if (normalizedSelection.isEmpty()) {
             return null;
@@ -69,7 +51,7 @@ public final class LlmModelPathResolver {
             return selectedPath;
         }
 
-        LlmModelInfo catalogInfo = catalog.apply(normalizedSelection);
+        LlmModelInfo catalogInfo = embeddingCatalog.apply(normalizedSelection);
         if (Files.isDirectory(selectedPath)) {
             Path catalogFile = selectedPath.resolve(catalogFileName(catalogInfo)).normalize();
             requireWithin(selectedPath, catalogFile);

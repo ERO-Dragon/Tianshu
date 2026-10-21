@@ -18,75 +18,64 @@ class LlmModelPathResolverTest {
 
     @Test
     void catalogFileWinsOverOtherGgufFiles() throws Exception {
-        Path modelDir = modelDir("chat-model");
+        Path modelDir = modelDir("embedding-model");
         Files.createDirectories(modelDir);
         Files.writeString(modelDir.resolve("catalog.gguf"), "catalog");
         Files.writeString(modelDir.resolve("aaa.gguf"), "other");
-        LlmModelInfo info = model("chat-model", "catalog.gguf");
+        LlmModelInfo info = model("embedding-model", "catalog.gguf");
 
         LlmModelPathResolver resolver = new LlmModelPathResolver(
-                configuration("chat-model", ""),
-                name -> info,
-                name -> null
+                configuration("embedding-model"),
+                name -> info
         );
 
-        assertEquals(modelDir.resolve("catalog.gguf"), resolver.resolveChatModel());
+        assertEquals(modelDir.resolve("catalog.gguf"), resolver.resolveEmbeddingModel());
     }
 
     @Test
     void deterministicFirstGgufIsUsedWhenCatalogFileIsAbsent() throws Exception {
-        Path modelDir = modelDir("chat-model");
+        Path modelDir = modelDir("embedding-model");
         Files.createDirectories(modelDir);
         Files.writeString(modelDir.resolve("b.gguf"), "b");
         Files.writeString(modelDir.resolve("A.gguf"), "a");
 
         LlmModelPathResolver resolver = new LlmModelPathResolver(
-                configuration("chat-model", ""),
-                name -> null,
+                configuration("embedding-model"),
                 name -> null
         );
 
-        assertEquals(modelDir.resolve("A.gguf"), resolver.resolveChatModel());
+        assertEquals(modelDir.resolve("A.gguf"), resolver.resolveEmbeddingModel());
     }
 
     @Test
     void blankSelectionDoesNotGuessAFile() {
         LlmModelPathResolver resolver = new LlmModelPathResolver(
-                configuration("", ""),
-                name -> null,
+                configuration(""),
                 name -> null
         );
 
-        assertNull(resolver.resolveChatModel());
         assertNull(resolver.resolveEmbeddingModel());
     }
 
     @Test
     void selectionCannotEscapeModelRoot() {
         LlmModelPathResolver resolver = new LlmModelPathResolver(
-                configuration("../outside.gguf", ""),
-                name -> null,
+                configuration("../outside.gguf"),
                 name -> null
         );
 
-        assertThrows(IllegalArgumentException.class, resolver::resolveChatModel);
+        assertThrows(IllegalArgumentException.class, resolver::resolveEmbeddingModel);
     }
 
     @Test
-    void modelBudgetsComeFromCatalogMetadata() {
-        LlmModelInfo chat = model("chat-model", "chat.gguf");
-        chat.contextSize = 8192;
-        chat.promptTokenBudget = 6000;
+    void embeddingContextSizeComesFromCatalogMetadata() {
         LlmModelInfo embedding = model("embedding-model", "embedding.gguf");
         embedding.contextSize = 512;
         LlmModelPathResolver resolver = new LlmModelPathResolver(
-                configuration("chat-model", "embedding-model"),
-                name -> chat,
+                configuration("embedding-model"),
                 name -> embedding
         );
 
-        assertEquals(8192, resolver.chatContextSize());
-        assertEquals(6000, resolver.promptTokenBudget());
         assertEquals(512, resolver.embeddingContextSize());
     }
 
@@ -94,7 +83,7 @@ class LlmModelPathResolverTest {
         return tempDir.resolve("llm").resolve("model").resolve(name);
     }
 
-    private LlmConfiguration configuration(String chatModel, String embeddingModel) {
+    private LlmConfiguration configuration(String embeddingModel) {
         return new LlmConfiguration() {
             @Override
             public boolean isLlmEnabled() {
@@ -103,7 +92,7 @@ class LlmModelPathResolverTest {
 
             @Override
             public String getCustomLlmName() {
-                return chatModel;
+                return "";
             }
 
             @Override

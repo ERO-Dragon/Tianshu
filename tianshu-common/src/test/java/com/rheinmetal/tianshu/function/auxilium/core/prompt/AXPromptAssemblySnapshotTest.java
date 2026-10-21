@@ -144,11 +144,9 @@ class AXPromptAssemblySnapshotTest {
                 layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
                 """
                 {
-                  "schemaVersion": 3,
+                  "schemaVersion": 4,
                   "systemPrompts": {
-                    "short": "测试 system prompt",
-                    "standard": "测试 system prompt",
-                    "full": "测试 system prompt"
+                    "system": "测试 system prompt"
                   },
                   "sectionOrder": [
                     "game_context",

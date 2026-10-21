@@ -47,12 +47,15 @@ class TtsPresenceActivityTest {
             module.publishRequestStatus(status("ax-1", "module.ax", TtsRequestStatus.COMPLETED));
             module.publishRequestStatus(status("external-1", "module.external", TtsRequestStatus.COMPLETED));
 
-            awaitSize(activities, 2);
+            awaitAction(activities, "tts.request.external-1", PresenceActivityAction.ENDED);
+            List<PresenceActivityPayload> externalActivities = activities.stream()
+                    .filter(activity -> "tts.request.external-1".equals(activity.activityId()))
+                    .toList();
             assertEquals(List.of(PresenceActivityAction.STARTED, PresenceActivityAction.ENDED),
-                    activities.stream().map(PresenceActivityPayload::action).toList());
+                    externalActivities.stream().map(PresenceActivityPayload::action).toList());
             assertEquals(List.of(PresenceActivityType.PROCESSING_TASK, PresenceActivityType.PROCESSING_TASK),
-                    activities.stream().map(PresenceActivityPayload::activityType).toList());
-            assertEquals("tts.request.external-1", activities.get(0).activityId());
+                    externalActivities.stream().map(PresenceActivityPayload::activityType).toList());
+            assertEquals("tts.request.external-1", externalActivities.getFirst().activityId());
         }
     }
 
@@ -83,7 +86,7 @@ class TtsPresenceActivityTest {
     }
 
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
-        List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
+        List<PresenceActivityPayload> activities = new java.util.concurrent.CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.subscribeTopic(
                 new ModuleDescriptor(

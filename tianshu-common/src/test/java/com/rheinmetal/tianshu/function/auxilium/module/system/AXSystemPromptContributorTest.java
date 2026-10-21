@@ -10,48 +10,29 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXSystemPromptContributorTest {
+    private static final String SYSTEM_PROMPT =
+            "single complete system prompt with many extra descriptive words for grounded reliable immersive assistant behavior";
+
     @Test
-    void usesTheMostCompleteSystemPromptRegardlessOfTokenBudget() {
+    void usesTheSingleConfiguredSystemPrompt() {
         AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
 
-        new AXSystemPromptContributor().contribute(buildContext(8), builder);
+        new AXSystemPromptContributor().contribute(buildContext(), builder);
 
         String content = builder.build().messages().get(0).content();
-        assertTrue(content.contains("full complete prompt"));
-        assertFalse(content.contains("standard complete prompt"));
+        assertTrue(content.contains(SYSTEM_PROMPT));
     }
 
-    @Test
-    void systemPromptIsByteStableAcrossTokenBudgets() {
-        AXPromptAssemblyBuilder small = new AXPromptAssemblyBuilder();
-        AXPromptAssemblyBuilder large = new AXPromptAssemblyBuilder();
-
-        new AXSystemPromptContributor().contribute(buildContext(1), small);
-        new AXSystemPromptContributor().contribute(buildContext(200), large);
-
-        assertEquals(
-                small.build().messages().get(0).content(),
-                large.build().messages().get(0).content()
-        );
-    }
-
-    private AXPromptBuildContext buildContext(int systemTokenBudget) {
-        AXSystemPromptSet prompts = new AXSystemPromptSet(
-                "short complete prompt",
-                "standard complete prompt with several extra words for reliable behavior",
-                "full complete prompt with many extra descriptive words for grounded reliable immersive assistant behavior"
-        );
+    private AXPromptBuildContext buildContext() {
         return new AXPromptBuildContext(
                 new AXRequest("request", "hello", ""),
                 AXContextSnapshot.empty(),
-                new AXContextBudget(systemTokenBudget, 0, 0, 0, 0, 1000, 0, 0),
+                AXContextBudget.DEFAULT,
                 AXPromptLanguage.EN_US,
-                new AXPromptProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, prompts, List.of("ax_system")),
+                new AXPromptProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, SYSTEM_PROMPT, List.of("ax_system")),
                 new AXPromptTexts(AXPromptLanguage.EN_US, Map.of(
                         AXPromptTexts.SECTION_AX_SYSTEM, "<ax_system>\n{{content}}\n</ax_system>"
                 ))

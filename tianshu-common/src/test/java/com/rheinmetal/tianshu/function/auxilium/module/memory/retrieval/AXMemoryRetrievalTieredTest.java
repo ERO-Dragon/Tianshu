@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval;
 
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextTier;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVector;
@@ -28,7 +29,7 @@ class AXMemoryRetrievalTieredTest {
     Path tempDir;
 
     @Test
-    void selectsAcrossHotWarmColdTiersByScoreThresholds() {
+    void selectsAcrossHotWarmColdTiersByRelativeScoreCutoffs() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AXMemoryRagTestProvider.register(runtime);
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
@@ -60,7 +61,7 @@ class AXMemoryRetrievalTieredTest {
         AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 3, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 3, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
 
@@ -104,7 +105,7 @@ class AXMemoryRetrievalTieredTest {
         AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
 
@@ -113,7 +114,7 @@ class AXMemoryRetrievalTieredTest {
     }
 
     @Test
-    void coldTierCandidatesBelowThresholdAreExcluded() {
+    void candidatesBelowTheColdFloorAreExcluded() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AXMemoryRagTestProvider.register(runtime);
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
@@ -134,14 +135,17 @@ class AXMemoryRetrievalTieredTest {
 
         memorySystem.vectors().appendAll(scope, List.of(
                 vector(hotEvent, new float[]{0.95F, 0.05F}),
-                vector(noiseEvent, new float[]{0.05F, 0.95F})
+                // 噪声与查询的余弦相似度约 0.0143（>= RAG 搜索地板 0.01，但仍低于 Cold 绝对地板
+                // COLD_FLOOR=0.02 × 时间衰减），因此这条测试验证的是"低于 Cold 线被排除"，
+                // 而不是被 RAG 地板提前滤掉。
+                vector(noiseEvent, new float[]{1.0F, 70.0F})
         ));
 
         new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
         AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 5, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 5, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
 

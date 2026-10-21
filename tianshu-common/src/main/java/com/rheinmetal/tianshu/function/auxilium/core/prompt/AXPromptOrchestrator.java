@@ -47,16 +47,6 @@ public final class AXPromptOrchestrator {
         this.contributors = contributors == null ? defaultContributors(effectivePlanner) : List.copyOf(contributors);
     }
 
-    public AXPromptOrchestrator(
-            AXPromptResourceRepository resourceRepository,
-            AXPromptLanguageProvider languageProvider,
-            AXGameContextKnowledgePlanner knowledgePlanner,
-            List<AXPromptContributor> contributors,
-            AXTokenCounter tokenCounter
-    ) {
-        this(resourceRepository, languageProvider, knowledgePlanner, contributors);
-    }
-
     public static List<AXPromptContributor> defaultContributors() {
         return defaultContributors(AXGameContextKnowledgePlanner.NONE);
     }

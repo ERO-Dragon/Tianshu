@@ -20,7 +20,12 @@ import java.util.regex.Pattern;
  *
  * 降级解析约束：跳过明显非事实行（纯符号、JSON 控制符、markdown 围栏）；
  * 去行首编号与列表标记；
- * 仍受长度上限、Unicode 替换符过滤和去重约束。
+ * 仍受长度上限与 Unicode 替换符过滤约束。
+ *
+ * <p><b>本类的去重不是事件去重</b>：{@code parse} 里的 {@code seenInThisResponse} 作用域只有
+ * <b>一次调用</b>（即模型的一次响应），它清洗的是"模型把同一句话吐了两遍"这种输出噪声；
+ * 两次响应之间完全不共享。事件是客观事实记录，入库时<b>永不去重</b>，两者的语义不同，
+ * 不要把这里的清洗当成事件去重删掉。</p>
  */
 public final class AXMemoryFactExtractionParser {
     private static final int MAX_FACT_CHARS = 512;
@@ -36,12 +41,13 @@ public final class AXMemoryFactExtractionParser {
         }
 
         List<String> facts = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        // 仅覆盖本次响应（一次 parse 调用）的去重集合；不跨响应，也不参与事件入库去重。
+        Set<String> seenInThisResponse = new HashSet<>();
 
         List<String> jsonFacts = parseJsonArray(normalized);
         if (!jsonFacts.isEmpty()) {
             for (String fact : jsonFacts) {
-                if (acceptFact(fact, seen)) {
+                if (acceptFact(fact, seenInThisResponse)) {
                     facts.add(fact);
                 }
             }
@@ -53,7 +59,7 @@ public final class AXMemoryFactExtractionParser {
             if (fact.isBlank()) {
                 continue;
             }
-            if (acceptFact(fact, seen)) {
+            if (acceptFact(fact, seenInThisResponse)) {
                 facts.add(fact);
             }
         }
@@ -93,11 +99,16 @@ public final class AXMemoryFactExtractionParser {
         return value == null ? "" : value.trim();
     }
 
-    private boolean acceptFact(String fact, Set<String> seen) {
+    /**
+     * 单条事实的过滤 + 本次响应内清洗。
+     *
+     * @param seenInThisResponse 本次响应已接受事实的哈希集合（调用方持有，生命周期只有一次 parse）
+     */
+    private boolean acceptFact(String fact, Set<String> seenInThisResponse) {
         if (fact.isBlank() || fact.length() > MAX_FACT_CHARS || fact.indexOf('\uFFFD') >= 0) {
             return false;
         }
-        return seen.add(AXHashing.sha256Short(fact));
+        return seenInThisResponse.add(AXHashing.sha256Short(fact));
     }
 
     private String cleanLine(String raw) {

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
+import com.rheinmetal.tianshu.function.llm.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
@@ -84,4 +85,61 @@ public interface LlmInferenceClient {
     LlmContextBudgetSnapshot getContextBudgetPlan(String lane);
 
     CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request);
+
+    /*
+     * Cache-aware entry points. The provider's prompt-cache split exists only inside the client that
+     * parsed the response, so a caller that needs it hands in a per-request sink. Implementations
+     * that cannot report a split leave the sink untouched, which the caller reads as "not reported"
+     * rather than "no cache hits".
+     */
+
+    default LlmGenerationResult chatWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            LlmInferenceOptions options,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) throws Exception {
+        return chatWithUsage(messages, sampler, maxTokens, options);
+    }
+
+    default CompletableFuture<String> chatStreamWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            LlmInferenceOptions options,
+            Consumer<String> onToken,
+            Consumer<String> onThinking,
+            Consumer<LlmStreamFinish> onFinish,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) throws Exception {
+        return chatStreamWithUsage(messages, sampler, maxTokens, options, onToken, onThinking, onFinish);
+    }
+
+    default CompletableFuture<LlmGenerationResult> taskWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            int priority,
+            boolean preemptible,
+            LlmInferenceOptions options,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) {
+        return taskWithUsage(messages, sampler, maxTokens, priority, preemptible, options);
+    }
+
+    default CompletableFuture<LlmGenerationResult> taskStreamWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            int priority,
+            boolean preemptible,
+            LlmInferenceOptions options,
+            Consumer<String> onToken,
+            Consumer<String> onThinking,
+            Consumer<LlmStreamFinish> onFinish,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) {
+        return taskStreamWithUsage(messages, sampler, maxTokens, priority, preemptible, options, onToken, onThinking, onFinish);
+    }
 }

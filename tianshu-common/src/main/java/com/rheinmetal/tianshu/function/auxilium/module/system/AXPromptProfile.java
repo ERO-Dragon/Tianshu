@@ -11,16 +11,37 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * One prompt profile: the single system prompt, the section order, and the task/language keys.
+ *
+ * <p>{@code systemPrompt} is the complete system prompt. There are no length variants any more: the
+ * same bytes are emitted on every turn so the provider can cache the whole prefix, and the context
+ * tier only scales the surrounding sections, never this text (see {@code AXSystemPromptContributor}).</p>
+ */
 public record AXPromptProfile(
         AXPromptTask task,
         AXPromptLanguage language,
-        AXSystemPromptSet systemPrompts,
+        String systemPrompt,
         List<String> sectionOrder
 ) {
+    /** Profile key holding the prompt object. */
+    private static final String KEY_SYSTEM_PROMPTS = "systemPrompts";
+
+    /** Prompt-object key of the single system prompt. */
+    private static final String KEY_SYSTEM = "system";
+
+    /**
+     * Keys of the removed short/standard/full model, in the order a reader must prefer them.
+     *
+     * <p>A profile file written by an older build still carries all three; the most complete variant
+     * wins so behaviour matches what the assembler used before the model collapsed into one prompt.</p>
+     */
+    private static final List<String> LEGACY_PROMPT_KEYS = List.of("full", "standard", "short");
+
     public AXPromptProfile {
         task = task == null ? AXPromptTask.GENERAL_AX : task;
         language = language == null ? AXPromptLanguage.EN_US : language;
-        systemPrompts = systemPrompts == null ? AXSystemPromptSet.single("") : systemPrompts;
+        systemPrompt = systemPrompt == null ? "" : systemPrompt.trim();
         sectionOrder = sectionOrder == null ? List.of() : List.copyOf(sectionOrder);
     }
 
@@ -30,7 +51,7 @@ public record AXPromptProfile(
         return loadBuiltin(effectiveTask, effectiveLanguage).orElseGet(() -> new AXPromptProfile(
                 effectiveTask,
                 effectiveLanguage,
-                AXSystemPromptSet.single(""),
+                "",
                 DEFAULT_SECTION_ORDER
         ));
     }
@@ -54,25 +75,39 @@ public record AXPromptProfile(
     }
 
     private static AXPromptProfile fromJson(AXPromptTask task, AXPromptLanguage language, JsonObject json) {
-        AXSystemPromptSet systemPrompts = readSystemPrompts(json, AXSystemPromptSet.single(""));
+        String systemPrompt = readSystemPrompt(json, "");
         List<String> sectionOrder = readStringArray(json, "sectionOrder");
         if (sectionOrder.isEmpty()) {
             sectionOrder = DEFAULT_SECTION_ORDER;
         }
-        return new AXPromptProfile(task, language, systemPrompts, sectionOrder);
+        return new AXPromptProfile(task, language, systemPrompt, sectionOrder);
     }
 
-    static AXSystemPromptSet readSystemPrompts(JsonObject json, AXSystemPromptSet fallback) {
-        AXSystemPromptSet effectiveFallback = fallback == null ? AXSystemPromptSet.single("") : fallback;
-        if (json == null || !json.has("systemPrompts") || !json.get("systemPrompts").isJsonObject()) {
+    /**
+     * Reads the single system prompt out of a profile JSON object.
+     *
+     * <p>Current shape: {@code systemPrompts.system}. Profiles written before the three-tier model was
+     * removed are still accepted; they fall back to their most complete variant
+     * ({@code full} → {@code standard} → {@code short}), which is the text the assembler already used.
+     * Only the current shape is ever written: {@link #KEY_SYSTEM} is the sole key emitted by this build.</p>
+     */
+    static String readSystemPrompt(JsonObject json, String fallback) {
+        String effectiveFallback = fallback == null ? "" : fallback;
+        if (json == null || !json.has(KEY_SYSTEM_PROMPTS) || !json.get(KEY_SYSTEM_PROMPTS).isJsonObject()) {
             return effectiveFallback;
         }
-        JsonObject prompts = json.getAsJsonObject("systemPrompts");
-        return new AXSystemPromptSet(
-                readString(prompts, "short", effectiveFallback.shortPrompt()),
-                readString(prompts, "standard", effectiveFallback.standardPrompt()),
-                readString(prompts, "full", effectiveFallback.fullPrompt())
-        );
+        JsonObject prompts = json.getAsJsonObject(KEY_SYSTEM_PROMPTS);
+        String current = readString(prompts, KEY_SYSTEM, "");
+        if (!current.isBlank()) {
+            return current;
+        }
+        for (String legacyKey : LEGACY_PROMPT_KEYS) {
+            String legacy = readString(prompts, legacyKey, "");
+            if (!legacy.isBlank()) {
+                return legacy;
+            }
+        }
+        return effectiveFallback;
     }
 
     static String readString(JsonObject json, String key, String fallback) {

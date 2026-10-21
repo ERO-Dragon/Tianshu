@@ -10,8 +10,7 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
-import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
+import com.rheinmetal.tianshu.function.llm.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
@@ -41,9 +40,6 @@ public class LLMService {
         this.env = Objects.requireNonNull(builder.env, "env");
         this.inferenceClient = Objects.requireNonNull(builder.inferenceClient, "inferenceClient");
         LlmServiceMetadata metadata = LlmServiceMetadata.from(builder.config);
-        LlmInferenceGovernor governor = builder.inferenceGovernor != null
-                ? builder.inferenceGovernor
-                : new LlmInferenceGovernor(LlmInferenceDefaults.from(builder.config), builder.performanceProvider);
         EmbeddingService embeddingService = new LlmEmbeddingServiceAdapter(inferenceClient);
         this.ragService = builder.ragStorageService != null
                 ? new LlmRagService(env, inferenceClient, builder.ragStorageService)
@@ -64,7 +60,7 @@ public class LLMService {
                 builder.cacheNamespace,
                 builder.embeddingConfigured
         );
-        this.requestPreparer = new LlmRequestPreparer(inferenceClient, governor, ragService, metadata);
+        this.requestPreparer = new LlmRequestPreparer(inferenceClient, ragService, metadata);
         this.initialized = true;
         env.info("[LLMService] Initialized, cache mode: " + (builder.usePersistentCache ? "PERSISTENT" : "MEMORY"));
     }
@@ -80,6 +76,14 @@ public class LLMService {
     }
 
     public LLMResult chat(LLMRequest request) {
+        return chat(request, null);
+    }
+
+    /**
+     * @param cacheSink receives the provider's prompt-cache split for this request; may be null when
+     *                  the caller does not account for token usage
+     */
+    public LLMResult chat(LLMRequest request, Consumer<LlmPromptCacheUsage> cacheSink) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
         publishPreparedRequestDiagnostic(request, prepared);
         try {
@@ -87,7 +91,8 @@ public class LLMService {
                     prepared.messages(),
                     prepared.sampler(),
                     prepared.maxTokens(),
-                    prepared.options()
+                    prepared.options(),
+                    cacheSink
             );
             LLMResult response = new LLMResult(
                     result == null ? "" : result.text(),
@@ -121,6 +126,20 @@ public class LLMService {
             Consumer<String> onThinking,
             List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
     ) {
+        return chatStream(request, onToken, onThinking, ragHitsSink, null);
+    }
+
+    /**
+     * @param cacheSink receives the provider's prompt-cache split for this request; may be null when
+     *                  the caller does not account for token usage
+     */
+    public LLMStreamResult chatStream(
+            LLMRequest request,
+            Consumer<String> onToken,
+            Consumer<String> onThinking,
+            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
         publishPreparedRequestDiagnostic(request, prepared);
         copyRagHits(prepared, ragHitsSink);
@@ -133,7 +152,8 @@ public class LLMService {
                     prepared.options(),
                     safeTokenConsumer(onToken),
                     safeTokenConsumer(onThinking),
-                    finishHolder::set
+                    finishHolder::set,
+                    cacheSink
             );
             String response = future.get();
             publishDialogueDiagnostic("STREAM_COMPLETED", request, response);
@@ -172,7 +192,8 @@ public class LLMService {
 
     public CompletableFuture<LlmGenerationResult> submitTaskWithUsage(
             LLMRequest request,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
+            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
+            Consumer<LlmPromptCacheUsage> cacheSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
         publishPreparedRequestDiagnostic(request, prepared);
@@ -184,7 +205,8 @@ public class LLMService {
                     prepared.maxTokens(),
                     prepared.taskPriority(),
                     prepared.taskPreemptible(),
-                    prepared.options()
+                    prepared.options(),
+                    cacheSink
             );
         } catch (Exception exception) {
             env.error("[LLMService] Task submit failed", exception);
@@ -220,9 +242,10 @@ public class LLMService {
             LLMRequest request,
             Consumer<String> onToken,
             Consumer<LLMStreamFinish> onFinish,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
+            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
+            Consumer<LlmPromptCacheUsage> cacheSink
     ) {
-        return submitTaskStreamWithUsage(request, onToken, null, onFinish, ragHitsSink);
+        return submitTaskStreamWithUsage(request, onToken, null, onFinish, ragHitsSink, cacheSink);
     }
 
     public CompletableFuture<LlmGenerationResult> submitTaskStreamWithUsage(
@@ -230,7 +253,8 @@ public class LLMService {
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LLMStreamFinish> onFinish,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
+            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
+            Consumer<LlmPromptCacheUsage> cacheSink
     ) {
         LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
         publishPreparedRequestDiagnostic(request, prepared);
@@ -249,7 +273,8 @@ public class LLMService {
                         if (onFinish != null) {
                             onFinish.accept(toStreamFinish(finish));
                         }
-                    }
+                    },
+                    cacheSink
             );
         } catch (Exception exception) {
             env.error("[LLMService] Stream task submit failed", exception);
@@ -676,8 +701,6 @@ public class LLMService {
         private IGameEnvironment env;
         private LlmConfiguration config;
         private LlmInferenceClient inferenceClient;
-        private LlmInferenceGovernor inferenceGovernor;
-        private LlmPerformanceProvider performanceProvider = LlmPerformanceProvider.UNAVAILABLE;
         private boolean usePersistentCache = true;
         private Path cacheDirectory;
         private String cacheNamespace = "default";
@@ -696,25 +719,8 @@ public class LLMService {
             return this;
         }
 
-        public Builder aiService(JavaLlamaServer aiService) {
-            this.inferenceClient = new JavaLlamaInferenceClient(aiService);
-            return this;
-        }
-
         public Builder inferenceClient(LlmInferenceClient inferenceClient) {
             this.inferenceClient = inferenceClient;
-            return this;
-        }
-
-        public Builder inferenceGovernor(LlmInferenceGovernor inferenceGovernor) {
-            this.inferenceGovernor = inferenceGovernor;
-            return this;
-        }
-
-        public Builder performanceProvider(LlmPerformanceProvider performanceProvider) {
-            this.performanceProvider = performanceProvider == null
-                    ? LlmPerformanceProvider.UNAVAILABLE
-                    : performanceProvider;
             return this;
         }
 

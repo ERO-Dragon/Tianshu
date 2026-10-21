@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.llm;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.llm.service.RagCacheManager;
+import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -58,6 +59,21 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             LLMService llmService,
             LlmTaskAdmissionController taskAdmissionController
     ) {
+        this(runtime, llmService, taskAdmissionController, new LlmUsageLedger());
+    }
+
+    /**
+     * @param usageLedger ledger this adapter's requests are accounted into; the owning module passes
+     *                    the same instance it exposes to readers, so recording and reading agree.
+     *                    An adapter built without one still accounts for itself, it just has no
+     *                    reader.
+     */
+    public LlmProtocolAdapter(
+            ModuleRuntimeAccess runtime,
+            LLMService llmService,
+            LlmTaskAdmissionController taskAdmissionController,
+            LlmUsageLedger usageLedger
+    ) {
         super(
                 MODULE_ID,
                 SOURCE_ID,
@@ -74,7 +90,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         this.promptRequestHandler = new LlmPromptRequestHandler(
                 this,
                 this.taskAdmissionController,
-                promptPayloadMapper
+                promptPayloadMapper,
+                usageLedger == null ? new LlmUsageLedger() : usageLedger
         );
     }
 

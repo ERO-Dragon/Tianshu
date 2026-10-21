@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
+import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,7 +19,7 @@ class LlmModuleServiceTest {
 
     @Test
     void loadRejectsWhenDisabled() {
-        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir).llmEnabled(false));
+        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir).llmEnabled(false), new LlmUsageLedger());
 
         LlmControlResult result = service.load();
 
@@ -28,7 +29,7 @@ class LlmModuleServiceTest {
 
     @Test
     void loadFailsWhenRuntimeControllerIsNotBound() {
-        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir));
+        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir), new LlmUsageLedger());
 
         LlmControlResult result = service.load();
 
@@ -39,7 +40,7 @@ class LlmModuleServiceTest {
 
     @Test
     void loadStartsBoundRuntimeController() {
-        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir));
+        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir), new LlmUsageLedger());
         AtomicInteger starts = new AtomicInteger();
         service.bindRuntimeController(new CountingRuntimeController(starts, new AtomicInteger()));
 
@@ -53,7 +54,7 @@ class LlmModuleServiceTest {
     @Test
     void readyFailedAndStoppedRespectDisabledConfig() {
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir).llmEnabled(false);
-        LlmModuleService service = new LlmModuleService(config);
+        LlmModuleService service = new LlmModuleService(config, new LlmUsageLedger());
 
         service.markReady();
         assertEquals(LlmRuntimeState.DISABLED, service.snapshot().state());
@@ -67,7 +68,7 @@ class LlmModuleServiceTest {
 
     @Test
     void unloadStopsRuntimeAndMovesToStoppedWhenControllerMarksStopped() {
-        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir));
+        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir), new LlmUsageLedger());
         AtomicInteger stops = new AtomicInteger();
         service.bindRuntimeController(new LlmModuleService.RuntimeController() {
             @Override public void start() {}

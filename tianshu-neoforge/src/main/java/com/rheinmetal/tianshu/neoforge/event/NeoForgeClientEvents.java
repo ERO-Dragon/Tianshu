@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.neoforge.event;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.client.llm.performance.ClientLlmRuntimeBridge;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
@@ -125,7 +124,6 @@ public final class NeoForgeClientEvents {
 
     @SubscribeEvent
     public void onRenderGui(RenderGuiEvent.Post event) {
-        ClientLlmRuntimeBridge.markFrame();
         presenceHudRenderer.render(event.getGuiGraphics());
     }
 

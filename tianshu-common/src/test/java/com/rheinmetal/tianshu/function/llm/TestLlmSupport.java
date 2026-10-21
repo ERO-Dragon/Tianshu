@@ -38,7 +38,7 @@ public final class TestLlmSupport {
         private String customLlmName = "test-llm";
         private int taskAdmissionQueueSize = 0;
         private int taskAgingBoostPerRequest = 1;
-        private int libsChatQueueSize = 1;
+        private String embeddingModelName = "";
         private long llmAutoLoadDelayMillis = 3_000L;
         private long ttsAutoLoadDelayMillis = 1_000L;
         private String remoteApiKey = "";
@@ -67,8 +67,8 @@ public final class TestLlmSupport {
             return this;
         }
 
-        public FakeConfig libsChatQueueSize(int value) {
-            this.libsChatQueueSize = value;
+        public FakeConfig embeddingModelName(String name) {
+            this.embeddingModelName = name == null ? "" : name;
             return this;
         }
 
@@ -105,7 +105,7 @@ public final class TestLlmSupport {
         @Override public Path storageRoot() { return root.resolve("ax").resolve("cache"); }
         @Override public int getLlmTaskAdmissionQueueSize() { return taskAdmissionQueueSize; }
         @Override public int getLlmTaskAgingBoostPerRequest() { return taskAgingBoostPerRequest; }
-        @Override public int getLlmLibsChatQueueSize() { return libsChatQueueSize; }
+        @Override public String getLlmEmbeddingModelName() { return embeddingModelName; }
         @Override public long getLlmAutoLoadDelayMillis() { return llmAutoLoadDelayMillis; }
         @Override public long getTtsAutoLoadDelayMillis() { return ttsAutoLoadDelayMillis; }
     }

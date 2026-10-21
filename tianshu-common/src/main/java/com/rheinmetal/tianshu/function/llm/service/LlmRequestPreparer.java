@@ -11,18 +11,15 @@ import java.util.List;
 
 final class LlmRequestPreparer {
     private final LlmInferenceClient inferenceClient;
-    private final LlmInferenceGovernor inferenceGovernor;
     private final LlmRagService ragService;
     private final LlmServiceMetadata metadata;
 
     LlmRequestPreparer(
             LlmInferenceClient inferenceClient,
-            LlmInferenceGovernor inferenceGovernor,
             LlmRagService ragService,
             LlmServiceMetadata metadata
     ) {
         this.inferenceClient = inferenceClient;
-        this.inferenceGovernor = inferenceGovernor;
         this.ragService = ragService;
         this.metadata = metadata;
     }
@@ -46,21 +43,23 @@ final class LlmRequestPreparer {
             }
         }
 
+        LlmInferencePolicy inferencePolicy = effectiveRequest.getInferencePolicy();
+        boolean mtpEnabled = inferencePolicy != null
+                && Boolean.TRUE.equals(inferencePolicy.mtpEnabled())
+                && inferenceClient.supportsMtp();
         return new PreparedRequest(
                 buildLibsMessages(messages.finish()),
                 createSampler(effectiveRequest),
                 maxTokens(effectiveRequest),
                 effectiveRequest.getTaskPriority(),
                 effectiveRequest.getTaskPreemptible(),
-                inferenceGovernor.resolve(
-                                effectiveRequest.getInferencePolicy(),
-                                effectiveRequest.isTaskLane(),
-                                inferenceClient.supportsMtp()
-                        )
-                        .withRequestOptions(
-                                Boolean.TRUE.equals(effectiveRequest.getCaptureThinkingContent()),
-                                effectiveRequest.getToolsJson()
-                        ),
+                new LlmInferenceOptions(
+                        mtpEnabled,
+                        null,
+                        null,
+                        Boolean.TRUE.equals(effectiveRequest.getCaptureThinkingContent()),
+                        effectiveRequest.getToolsJson()
+                ),
                 ragHits
         );
     }

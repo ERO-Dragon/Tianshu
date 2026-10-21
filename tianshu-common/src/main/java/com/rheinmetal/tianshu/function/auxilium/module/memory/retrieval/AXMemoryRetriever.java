@@ -124,6 +124,9 @@ public final class AXMemoryRetriever {
         if (l2Results == null || l2Results.isEmpty()) {
             return AXMemoryRetrievalResult.empty();
         }
+        // Chain expansion is the tier-sensitive part of the policy: it follows this turn's real
+        // context budget instead of a constant, and falls back to the compact tier when unknown.
+        AXMemoryRetrievalPolicy policy = retrievalPolicy.forTier(request.contextTier());
         Map<String, AXMemoryEvent> eventsById = memorySystem.events().loadAll(request.scope()).stream()
                 .collect(Collectors.toMap(AXMemoryEvent::id, event -> event, (first, second) -> first, LinkedHashMap::new));
         long nowMillis = System.currentTimeMillis();
@@ -141,7 +144,7 @@ public final class AXMemoryRetriever {
                         continue;
                     }
                     double relevance = timeWeight(event, nowMillis, hit.score());
-                    if (relevance < retrievalPolicy.coldScoreThreshold()) {
+                    if (relevance < policy.coldScoreCutoff()) {
                         if (relevance > 0.0D) {
                             subColdStmIds.add(event.stmId());
                         }
@@ -163,7 +166,7 @@ public final class AXMemoryRetriever {
             blocksById.putIfAbsent(block.id(), block);
             blockOrder.putIfAbsent(block.id(), order++);
         }
-        List<SelectedBlock> selected = selectBlocks(request, contributions, subColdStmIds, blocksById, blockOrder, allBlocks);
+        List<SelectedBlock> selected = selectBlocks(request, policy, contributions, subColdStmIds, blocksById, blockOrder, allBlocks);
         List<AXStmBlock> timeline = selected.stream()
                 .sorted(Comparator.comparingInt(SelectedBlock::order))
                 .map(SelectedBlock::block)
@@ -207,6 +210,7 @@ public final class AXMemoryRetriever {
 
     private List<SelectedBlock> selectBlocks(
             AXMemoryRetrievalRequest request,
+            AXMemoryRetrievalPolicy policy,
             Map<String, StmContribution> contributions,
             Set<String> subColdStmIds,
             Map<String, AXStmBlock> blocksById,
@@ -223,16 +227,22 @@ public final class AXMemoryRetriever {
                 .mapToDouble(StmContribution::maxRelevance)
                 .max()
                 .orElse(0.0D);
+        // Tiering is relative: the cutoffs are derived from this request's own top score, so a weak and a
+        // strong result set are tiered the same way (see AXMemoryRetrievalPolicy). The absolute floor is
+        // the only fixed part, and it is what keeps a uniformly bad set out of Hot.
+        double hotCutoff = policy.hotScoreCutoff(topScore);
+        double warmCutoff = policy.warmScoreCutoff(topScore);
+        double coldCutoff = policy.coldScoreCutoff();
         List<StmContribution> hotCandidates = new ArrayList<>();
         List<StmContribution> warmCandidates = new ArrayList<>();
         List<StmContribution> coldCandidates = new ArrayList<>();
         for (StmContribution contribution : ordered) {
             double relevance = contribution.maxRelevance();
-            if (relevance >= retrievalPolicy.hotScoreThreshold()) {
+            if (relevance >= hotCutoff) {
                 hotCandidates.add(contribution);
-            } else if (relevance >= retrievalPolicy.warmScoreThreshold()) {
+            } else if (relevance >= warmCutoff) {
                 warmCandidates.add(contribution);
-            } else if (relevance >= retrievalPolicy.coldScoreThreshold()) {
+            } else if (relevance >= coldCutoff) {
                 coldCandidates.add(contribution);
             }
         }
@@ -245,30 +255,31 @@ public final class AXMemoryRetriever {
         Set<String> seen = new HashSet<>();
         List<SelectedBlock> selected = new ArrayList<>();
         int[] tokens = {0};
-        TierBudget hotTier = new TierBudget(retrievalPolicy.hotBlockBudget(maxBlocks), retrievalPolicy.hotTokenBudget(tokenBudget));
-        selectFromTier(hotCandidates, hotTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        TierBudget hotTier = new TierBudget(policy.hotBlockBudget(maxBlocks), policy.hotTokenBudget(tokenBudget));
+        selectFromTier(hotCandidates, policy, hotTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
         TierBudget warmTier = new TierBudget(
-                Math.min(retrievalPolicy.warmBlockBudget(maxBlocks), maxBlocks - selected.size()),
-                tokenBudget <= 0 ? 0 : Math.min(retrievalPolicy.warmTokenBudget(tokenBudget), Math.max(0, tokenBudget - tokens[0]))
+                Math.min(policy.warmBlockBudget(maxBlocks), maxBlocks - selected.size()),
+                tokenBudget <= 0 ? 0 : Math.min(policy.warmTokenBudget(tokenBudget), Math.max(0, tokenBudget - tokens[0]))
         );
-        selectFromTier(warmCandidates, warmTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        selectFromTier(warmCandidates, policy, warmTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
         TierBudget coldTier = new TierBudget(
-                Math.min(retrievalPolicy.coldBlockBudget(maxBlocks), maxBlocks - selected.size()),
-                tokenBudget <= 0 ? 0 : Math.min(retrievalPolicy.coldTokenBudget(tokenBudget), Math.max(0, tokenBudget - tokens[0]))
+                Math.min(policy.coldBlockBudget(maxBlocks), maxBlocks - selected.size()),
+                tokenBudget <= 0 ? 0 : Math.min(policy.coldTokenBudget(tokenBudget), Math.max(0, tokenBudget - tokens[0]))
         );
-        selectFromTier(coldCandidates, coldTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+        selectFromTier(coldCandidates, policy, coldTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
         if (selected.size() < maxBlocks) {
             TierBudget remainingTier = new TierBudget(
                     maxBlocks - selected.size(),
                     tokenBudget <= 0 ? 0 : Math.max(0, tokenBudget - tokens[0])
             );
-            selectFromTier(eligible, remainingTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
+            selectFromTier(eligible, policy, remainingTier, topScore, subColdStmIds, blocksById, blockOrder, allBlocks, seen, selected, tokens, maxBlocks);
         }
         return selected;
     }
 
     private void selectFromTier(
             List<StmContribution> candidates,
+            AXMemoryRetrievalPolicy policy,
             TierBudget tier,
             double topScore,
             Set<String> subColdStmIds,
@@ -295,7 +306,7 @@ public final class AXMemoryRetriever {
             if (block == null || block.isEmpty()) {
                 continue;
             }
-            List<AXStmBlock> chain = chainExpansionCandidates(block, contribution, topScore, subColdStmIds, blockOrder, allBlocks);
+            List<AXStmBlock> chain = chainExpansionCandidates(policy, block, contribution, topScore, subColdStmIds, blocksById, blockOrder, allBlocks);
             boolean selectedAny = false;
             for (AXStmBlock candidate : chain) {
                 if (selected.size() >= maxBlocks) {
@@ -321,58 +332,138 @@ public final class AXMemoryRetriever {
     private record TierBudget(int blockBudget, int tokenBudget) {
     }
 
+    /**
+     * Expands one confident anchor along the STM chain.
+     *
+     * <p>The walk is driven by the policy of the current context tier: {@code chainExpansionRadius}
+     * bounds how many linked hops each direction may be followed and {@code chainExpansionBreadth}
+     * bounds how many neighbour blocks the anchor may pull in. Both are data, not constants in this
+     * method, and the returned list is ordered anchor-first, nearest link first, so a truncating block
+     * or token budget always keeps the anchor before its neighbours.</p>
+     */
     private List<AXStmBlock> chainExpansionCandidates(
+            AXMemoryRetrievalPolicy policy,
             AXStmBlock center,
             StmContribution contribution,
             double topScore,
             Set<String> subColdStmIds,
+            Map<String, AXStmBlock> blocksById,
             Map<String, Integer> blockOrder,
             List<AXStmBlock> allBlocks
     ) {
-        int radius = retrievalPolicy.chainExpansionRadius();
-        if (radius <= 0 || !shouldExpandChain(contribution, topScore)) {
+        int radius = policy.chainExpansionRadius();
+        int breadth = policy.chainExpansionBreadth();
+        if (radius <= 0 || breadth <= 0 || !shouldExpandChain(policy, contribution, topScore)) {
             return List.of(center);
         }
         Integer centerOrder = blockOrder.get(center.id());
         if (centerOrder == null || centerOrder < 0 || centerOrder >= allBlocks.size()) {
             return List.of(center);
         }
-        int from = Math.max(0, centerOrder - radius);
-        int to = Math.min(allBlocks.size() - 1, centerOrder + radius);
+        // The timeline window keeps a stale chain link from dragging in a block far away in file order.
+        int windowFrom = Math.max(0, centerOrder - radius);
+        int windowTo = Math.min(allBlocks.size() - 1, centerOrder + radius);
+        List<AXStmBlock> backwardArm = chainArm(center, blocksById, radius, true, subColdStmIds);
+        List<AXStmBlock> forwardArm = chainArm(center, blocksById, radius, false, subColdStmIds);
         List<AXStmBlock> candidates = new ArrayList<>();
-        for (int index = from; index <= to; index++) {
+        candidates.add(center);
+        Set<String> admitted = new HashSet<>();
+        admitted.add(center.id());
+        int expanded = 0;
+        for (int index = 0; index < radius && expanded < breadth; index++) {
+            expanded += admitChainBlock(candidates, admitted, armEntry(backwardArm, index), breadth - expanded, windowFrom, windowTo, blockOrder);
+            expanded += admitChainBlock(candidates, admitted, armEntry(forwardArm, index), breadth - expanded, windowFrom, windowTo, blockOrder);
+        }
+        // A block may carry only one side of a link (the store patches the predecessor lazily, and a
+        // chain is normalised by the maintenance pass). The pre-tier behaviour matched such a neighbour
+        // in either direction, so it stays admitted here as the last, capped safety net.
+        for (int index = windowFrom; index <= windowTo && expanded < breadth; index++) {
             AXStmBlock candidate = allBlocks.get(index);
-            if (!center.id().equals(candidate.id()) && subColdStmIds != null && subColdStmIds.contains(candidate.id())) {
+            if (!linksTo(center, candidate) || (subColdStmIds != null && subColdStmIds.contains(candidate.id()))) {
                 continue;
             }
-            if (sameChain(center, candidate)) {
-                candidates.add(candidate);
+            expanded += admitChainBlock(candidates, admitted, candidate, breadth - expanded, windowFrom, windowTo, blockOrder);
+        }
+        return candidates;
+    }
+
+    private AXStmBlock armEntry(List<AXStmBlock> arm, int index) {
+        return index >= 0 && index < arm.size() ? arm.get(index) : null;
+    }
+
+    /**
+     * Collects the chain links reachable from {@code center} in one direction, nearest link first.
+     *
+     * <p>{@code radius} bounds the number of links kept. A sub-cold block is skipped but does not stop
+     * the walk, so one cold neighbour cannot cut the chain in half.</p>
+     */
+    private List<AXStmBlock> chainArm(
+            AXStmBlock center,
+            Map<String, AXStmBlock> blocksById,
+            int radius,
+            boolean backward,
+            Set<String> subColdStmIds
+    ) {
+        List<AXStmBlock> arm = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        visited.add(center.id());
+        String cursor = backward ? center.previousStmId() : center.nextStmId();
+        int hops = 0;
+        while (hops < radius && cursor != null && !cursor.isBlank() && visited.add(cursor)) {
+            hops++;
+            AXStmBlock block = blocksById.get(cursor);
+            if (block == null || block.isEmpty()) {
+                break;
             }
+            boolean subCold = subColdStmIds != null && subColdStmIds.contains(block.id());
+            if (!subCold) {
+                arm.add(block);
+            }
+            cursor = backward ? block.previousStmId() : block.nextStmId();
         }
-        return candidates.isEmpty() ? List.of(center) : candidates;
+        return arm;
     }
 
-    private boolean shouldExpandChain(StmContribution contribution, double topScore) {
-        if (contribution == null || topScore <= 0.0D) {
+    /** Whether either side of the pair holds a chain pointer to the other. */
+    private boolean linksTo(AXStmBlock center, AXStmBlock candidate) {
+        if (center == null || candidate == null || center.id().equals(candidate.id())) {
             return false;
-        }
-        if (contribution.maxRelevance() < retrievalPolicy.chainExpansionMinScore()) {
-            return false;
-        }
-        return contribution.maxRelevance() >= topScore * retrievalPolicy.chainExpansionScoreRatio();
-    }
-
-    private boolean sameChain(AXStmBlock center, AXStmBlock candidate) {
-        if (center == null || candidate == null) {
-            return false;
-        }
-        if (center.id().equals(candidate.id())) {
-            return true;
         }
         return center.id().equals(candidate.previousStmId())
                 || center.id().equals(candidate.nextStmId())
                 || candidate.id().equals(center.previousStmId())
                 || candidate.id().equals(center.nextStmId());
+    }
+
+    /** Adds one neighbour if the breadth budget allows it and the timeline window still covers it. */
+    private int admitChainBlock(
+            List<AXStmBlock> candidates,
+            Set<String> admitted,
+            AXStmBlock candidate,
+            int remainingBreadth,
+            int windowFrom,
+            int windowTo,
+            Map<String, Integer> blockOrder
+    ) {
+        if (remainingBreadth <= 0 || candidate == null || candidate.isEmpty() || !admitted.add(candidate.id())) {
+            return 0;
+        }
+        Integer candidateOrder = blockOrder.get(candidate.id());
+        if (candidateOrder == null || candidateOrder < windowFrom || candidateOrder > windowTo) {
+            return 0;
+        }
+        candidates.add(candidate);
+        return 1;
+    }
+
+    private boolean shouldExpandChain(AXMemoryRetrievalPolicy policy, StmContribution contribution, double topScore) {
+        if (contribution == null || topScore <= 0.0D) {
+            return false;
+        }
+        if (contribution.maxRelevance() < policy.chainExpansionMinScore()) {
+            return false;
+        }
+        return contribution.maxRelevance() >= topScore * policy.chainExpansionScoreRatio();
     }
 
     public interface Completion {

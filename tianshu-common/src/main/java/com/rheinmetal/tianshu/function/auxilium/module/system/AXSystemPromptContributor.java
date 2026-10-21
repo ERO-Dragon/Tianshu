@@ -9,10 +9,10 @@ import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptSectionRende
  * Contributes the single, byte-frozen system prompt.
  *
  * <p>There used to be three prompt sizes selected against the remaining token budget. That selection
- * is gone: a shortened system prompt saves a few hundred tokens once, while a byte-stable prompt lets
- * the provider cache the whole prefix on every turn. Constant bytes win by two orders of magnitude,
- * so the largest configured prompt is used unconditionally and the tier is chosen only by context
- * budget, never by prompt length.
+ * is gone, and so is the three-field data model behind it: the profile now carries exactly one
+ * complete system prompt. A shortened prompt saves a few hundred tokens once, while a byte-stable
+ * prompt lets the provider cache the whole prefix on every turn; constant bytes win by two orders of
+ * magnitude. The context tier therefore scales the surrounding sections only, never this text.
  */
 public final class AXSystemPromptContributor implements AXPromptContributor {
     public static final String SECTION_ID = "ax_system";
@@ -31,14 +31,9 @@ public final class AXSystemPromptContributor implements AXPromptContributor {
         builder.addContextSection(renderSystemSection(context, prompt));
     }
 
-    /** The one system prompt: the most complete configured variant, byte-identical on every turn. */
+    /** The one system prompt, byte-identical on every turn. */
     private String singleSystemPrompt(AXPromptBuildContext context) {
-        for (String prompt : context.profile().systemPrompts().largestFirst()) {
-            if (!prompt.isBlank()) {
-                return prompt;
-            }
-        }
-        return "";
+        return context.profile().systemPrompt();
     }
 
     private String renderSystemSection(AXPromptBuildContext context, String content) {

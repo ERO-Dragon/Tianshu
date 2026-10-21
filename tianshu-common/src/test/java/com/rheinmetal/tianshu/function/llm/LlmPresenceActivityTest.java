@@ -62,7 +62,7 @@ class LlmPresenceActivityTest {
     }
 
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
-        List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
+        List<PresenceActivityPayload> activities = new java.util.concurrent.CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.subscribeTopic(
                 new ModuleDescriptor(

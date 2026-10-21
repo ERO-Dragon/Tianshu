@@ -7,10 +7,6 @@ public record LlmInferenceOptions(
         boolean captureThinkingContent,
         String toolsJson
 ) {
-    public LlmInferenceOptions(boolean mtpEnabled, Integer mtpDraftMax, Float vulkanPriority) {
-        this(mtpEnabled, mtpDraftMax, vulkanPriority, false, null);
-    }
-
     public LlmInferenceOptions {
         mtpDraftMax = mtpDraftMax != null && mtpDraftMax > 0 ? mtpDraftMax : null;
         vulkanPriority = normalizePriority(vulkanPriority);
@@ -19,15 +15,6 @@ public record LlmInferenceOptions(
 
     public static LlmInferenceOptions defaults() {
         return new LlmInferenceOptions(false, null, null, false, null);
-    }
-
-    public boolean hasExecutionOptions() {
-        return mtpEnabled || mtpDraftMax != null || vulkanPriority != null
-                || captureThinkingContent || toolsJson != null;
-    }
-
-    public LlmInferenceOptions withRequestOptions(boolean captureThinkingContent, String toolsJson) {
-        return new LlmInferenceOptions(mtpEnabled, mtpDraftMax, vulkanPriority, captureThinkingContent, toolsJson);
     }
 
     private static Float normalizePriority(Float value) {

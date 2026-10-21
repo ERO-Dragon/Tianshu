@@ -13,13 +13,10 @@ class ClientRuntimeBackpressureTest {
     @Test
     void clientOwnedWorkersUseBoundedQueuesAndExplicitExecutors() throws Exception {
         String audio = source("com/rheinmetal/tianshu/client/audio/AudioManager.java");
-        String gpu = source("com/rheinmetal/tianshu/client/llm/performance/GpuInfo.java");
         String presence = source("com/rheinmetal/tianshu/client/presence/context/PresenceContextQueryCoordinator.java");
 
         assertTrue(audio.contains("new ArrayBlockingQueue<>(8)"));
         assertFalse(audio.contains("Executors.newFixedThreadPool"));
-        assertTrue(gpu.contains("new ArrayBlockingQueue<>(1)"));
-        assertTrue(gpu.contains("}, DETECTION_EXECUTOR)"));
         assertTrue(presence.contains("new ArrayBlockingQueue<>(MAX_PENDING_QUERIES)"));
         assertTrue(presence.contains("\"PRESENCE_BUSY\""));
     }

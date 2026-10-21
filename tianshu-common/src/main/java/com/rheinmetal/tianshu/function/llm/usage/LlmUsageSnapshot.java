@@ -49,6 +49,8 @@ public record LlmUsageSnapshot(
         if (pricing == null || !pricing.configured() || counter == null) {
             return -1L;
         }
-        return pricing.costMicros(counter.cacheMissInputTokens(), counter.cacheHitInputTokens(), counter.outputTokens());
+        // The miss side is derived from the input total inside the pricing, so a request whose cache
+        // split was never reported is priced as fully uncached instead of dropping out of the amount.
+        return pricing.costMicros(counter.inputTokens(), counter.cacheHitInputTokens(), counter.outputTokens());
     }
 }

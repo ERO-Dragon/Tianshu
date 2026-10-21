@@ -10,9 +10,13 @@ import java.math.RoundingMode;
  * magnitude less than uncached input, so charging both at the same rate would overstate the cost
  * by several times.
  *
+ * <p>One currency unit is whatever the configured prices are denominated in — the same unit for all
+ * three prices, never mixed. The configured defaults are DeepSeek's mainland-China list price, so
+ * the unit is CNY; the display layer decides how to render the amount.
+ *
  * <p>Money is held as an integer count of "micro units" (1e-6 of one currency unit) so that
- * accumulating many requests never drifts. The {@code double} accepted by the constructor is
- * quantised exactly once, here.
+ * accumulating many requests never drifts. The {@code double} accepted by {@link #microsFromPrice}
+ * is quantised exactly once, there.
  */
 public record LlmPricing(
         long inputMissMicrosPerMillion,
@@ -51,11 +55,26 @@ public record LlmPricing(
                 .longValueExact();
     }
 
-    /** Cost of one request in micro units, with cached and uncached input priced separately. */
-    public long costMicros(long cacheMissInputTokens, long cacheHitInputTokens, long outputTokens) {
-        long miss = Math.max(0L, cacheMissInputTokens) * inputMissMicrosPerMillion / TOKENS_PER_MILLION;
-        long hit = Math.max(0L, cacheHitInputTokens) * inputHitMicrosPerMillion / TOKENS_PER_MILLION;
-        long out = Math.max(0L, outputTokens) * outputMicrosPerMillion / TOKENS_PER_MILLION;
-        return miss + hit + out;
+    /**
+     * Cost of one request in micro units, with cached and uncached input priced separately.
+     *
+     * <p>The uncached quantity is always derived as {@code inputTokens - cacheHitInputTokens} and is
+     * never a separate figure the caller supplies. A provider that reports no cache split looks
+     * exactly like a fully uncached request, which is the only safe reading: inventing hits would
+     * understate the amount, while the worst case of this rule is the full-miss upper bound. Cache
+     * hits are clamped to the input total so that no input token is ever billed twice.
+     *
+     * @param inputTokens         total prompt tokens the provider reported
+     * @param cacheHitInputTokens prompt tokens it served from its prefix cache; 0 when unreported
+     * @param outputTokens        generated tokens
+     */
+    public long costMicros(long inputTokens, long cacheHitInputTokens, long outputTokens) {
+        long input = Math.max(0L, inputTokens);
+        long hit = Math.min(input, Math.max(0L, cacheHitInputTokens));
+        long miss = input - hit;
+        long missMicros = miss * inputMissMicrosPerMillion / TOKENS_PER_MILLION;
+        long hitMicros = hit * inputHitMicrosPerMillion / TOKENS_PER_MILLION;
+        long outputMicros = Math.max(0L, outputTokens) * outputMicrosPerMillion / TOKENS_PER_MILLION;
+        return missMicros + hitMicros + outputMicros;
     }
 }

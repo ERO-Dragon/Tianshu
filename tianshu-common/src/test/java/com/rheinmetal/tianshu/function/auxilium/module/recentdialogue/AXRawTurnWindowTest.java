@@ -14,7 +14,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void recentWindowKeepsCompleteDialogueRoundBoundary() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 1000, 1100, 1000, 1000, 10000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 20, 1000, 1000, 10000));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -27,7 +27,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void interleavedGameChatStaysInsideDialogueRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 1000, 1100, 1000, 1000, 10000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 20, 1000, 1000, 10000));
         window.append(scope, turn("u1", "user", "帮我看附近", "turn-1", 10));
         window.append(scope, gameChat("g1", "Steve", "附近有村庄吗？", 5));
         window.append(scope, turn("a1", "assistant", "我会结合聊天判断", "turn-1", 10));
@@ -39,7 +39,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void compressionBatchPeelsCompleteOldestDialogueRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 20, 30, 10, 20, 10000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(30, 20, 10, 20, 10000));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -52,7 +52,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void compressionWaitsUntilRawKeepUpperLimitIsExceeded() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 20, 40, 10, 20, 10000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(40, 20, 10, 20, 10000));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -62,7 +62,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void recentWindowRejectsOversizedRoundInsteadOfSplittingIt() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(15, 1000, 1100, 1000, 1000, 10000));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(15, 10, 1000, 1000, 10000));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
 
@@ -71,7 +71,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void hardCapacityTrimRemovesWholeOldestRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 1, 1, 1, 1, 25));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1, 1, 1, 1, 25));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -81,7 +81,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void hardCapacityTrimDoesNotSplitNewestRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 1, 1, 1, 1, 15));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1, 1, 1, 1, 15));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
 
@@ -90,7 +90,7 @@ class AXRawTurnWindowTest {
 
     @Test
     void hardCapacityTrimKeepsGameChatWithInProgressDialogueRound() {
-        AXRawTurnWindow window = new AXRawTurnWindow(policy(1000, 1, 1, 1, 1, 12));
+        AXRawTurnWindow window = new AXRawTurnWindow(policy(1, 1, 1, 1, 12));
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
@@ -108,32 +108,33 @@ class AXRawTurnWindowTest {
     }
 
     private AXMemoryWindowPolicy policy(
-            int rawDialogueBudget,
-            int keepTarget,
             int keepMax,
+            int keepTarget,
             int compressTarget,
             int compressMax,
             int maxRawTokens
     ) {
+        // This harness drives the kept-window triple and the raw capacity only; the summary block,
+        // the compression unit, the watermark and the tail are carried along inert. The kept window
+        // is also the window that gets rendered, so a single threshold drives both — there is no
+        // separate raw-dialogue ratio any more.
         return new AXMemoryWindowPolicy(
                 1000,
                 1000,
                 0,
-                100,
-                300,
-                250,
-                100,
-                rawDialogueBudget,
-                50,
                 1000,
                 0,
                 125,
-                125,
                 750,
+                400,
                 keepTarget,
                 keepMax,
                 compressTarget,
                 compressMax,
+                8_192,
+                14_000,
+                512,
+                128,
                 maxRawTokens,
                 10000,
                 3,

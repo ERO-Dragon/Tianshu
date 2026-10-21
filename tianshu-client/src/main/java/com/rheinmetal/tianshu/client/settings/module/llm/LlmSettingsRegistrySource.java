@@ -10,7 +10,6 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
-import com.rheinmetal.tianshu.client.llm.performance.GpuInfo;
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
@@ -18,8 +17,6 @@ import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.function.llm.LlmModelService;
 import com.rheinmetal.tianshu.function.llm.LlmModuleService;
-import com.rheinmetal.tianshu.function.llm.service.LLMService;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
@@ -42,9 +39,6 @@ import java.util.regex.Pattern;
 
 public final class LlmSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = "module.llm";
-    private static final String AUTO_DEVICE_ID = "auto";
-    private static final String LEGACY_CPU_DEVICE_ID = "cpu";
-    private static final String CPU_DEVICE_ID = "cpu:manual";
     private static final String ALL = "all";
     private static final String DOWNLOADED = "downloaded";
     private static final String NOT_DOWNLOADED = "not_downloaded";
@@ -119,7 +113,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                             status.row("llm.remote.state", llm("row.remote_state"), draft::remoteConfigurationStatus);
                             status.row("llm.remote.key", llm("row.remote_api_key"), draft::remoteApiKeyStatus);
                         })
-                .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
                 .compound("llm.embedding", llm("section.embedding"), draft.enabled::get,
                         options -> { },
                         actions -> actions.button(
@@ -137,8 +130,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                         draft::buildLoadOptions,
                         actions -> actions
                                 .button("llm.load.start", llm("action.load"), SettingsButtonStyle.PRIMARY, () -> draft.startLoad(context), draft::canLoad)
-                                .button("llm.load.stop", llm("action.unload"), SettingsButtonStyle.DANGER, () -> draft.stopLoad(context), draft::canUnload)
-                                .button("llm.mtp.calibrate", llm("action.mtp_calibrate"), () -> draft.calibrateMtp(context), draft::canCalibrateMtp, draft::mtpSupported),
+                                .button("llm.load.stop", llm("action.unload"), SettingsButtonStyle.DANGER, () -> draft.stopLoad(context), draft::canUnload),
                         status -> {
                             draft.buildModelInfo(status);
                             draft.buildLoadStatus(status);
@@ -155,17 +147,12 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
     private static final class LlmSettingsDraft implements com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSession {
         private final LlmSettingsAccess config;
-        private final TianshuCoreManager coreManager;
         private final LlmModuleService moduleService;
         private final LlmModelService modelService;
         private final ClientScheduler scheduler;
         private final ClientUiHost uiHost;
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedModelName;
-        private final MutableSettingsValue<String> selectedGpuDeviceId;
-        private final MutableSettingsValue<Boolean> frameGuardEnabled;
-        private final MutableSettingsValue<Double> frameGuardTargetFps;
-        private final MutableSettingsValue<Boolean> mtpEnabled;
         private final MutableSettingsValue<String> remoteBaseUrl;
         private final MutableSettingsValue<String> remoteModel;
         private final MutableSettingsValue<String> seriesFilter;
@@ -182,7 +169,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private LlmSettingsDraft(LlmSettingsAccess config, TianshuCoreManager coreManager,
                                  ClientScheduler scheduler, ClientUiHost uiHost) {
             this.config = config;
-            this.coreManager = coreManager;
             this.scheduler = scheduler;
             this.uiHost = uiHost;
             this.moduleService = coreManager.requireService(LlmModuleService.class);
@@ -190,14 +176,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.availabilitySnapshot = modelService.modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isLlmEnabled, config::setLlmEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
-            this.selectedGpuDeviceId = new MutableSettingsValue<>(this::currentDeviceTargetId, ignored -> {}, Objects::nonNull);
-            this.frameGuardEnabled = new MutableSettingsValue<>(config::isLlmFrameGuardEnabled, config::setLlmFrameGuardEnabled);
-            this.frameGuardTargetFps = new MutableSettingsValue<>(
-                    () -> (double) config.getLlmFrameGuardTargetFps(),
-                    value -> config.setLlmFrameGuardTargetFps(value == null ? 60 : (int) Math.round(value)),
-                    value -> value != null && value >= 15.0D && value <= 240.0D
-            );
-            this.mtpEnabled = new MutableSettingsValue<>(config::isLlmMtpEnabled, config::setLlmMtpEnabled);
             this.remoteBaseUrl = new MutableSettingsValue<>(config::getLlmRemoteBaseUrl, ignored -> {});
             this.remoteModel = new MutableSettingsValue<>(config::getLlmRemoteModel, ignored -> {});
             this.seriesFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
@@ -206,31 +184,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 availabilitySnapshot = modelService.modelAvailability();
                 refreshSettingsScreen();
             }));
-            GpuInfo.requestRefresh(() -> runOnClient(this::refreshSettingsScreen));
-        }
-
-        private void buildDeviceStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
-            status.row("llm.device.gpu", llm("row.gpu"), this::selectedGpuStatus);
-            status.row("llm.device.vram", llm("row.vram"), this::vramStatusText, () -> true, this::showVramStatus);
-            status.row("llm.device.memory", llm("row.memory"), this::memoryStatusText, () -> true, this::showMemoryStatus);
-        }
-
-        private UiText vramStatusText() {
-            GpuInfo.GpuDevice device = selectedGpuDevice();
-            if (device == null || device.vramTotalBytes() <= 0L) return common("unknown");
-            long totalMb = device.vramTotalBytes() / (1024 * 1024);
-            long usedMb = Math.max(0L, device.vramUsedBytes() / (1024 * 1024));
-            long freeMb = Math.max(0L, totalMb - usedMb);
-            return llm("vram.usage", usedMb, freeMb, totalMb);
-        }
-
-        private UiText memoryStatusText() {
-            Runtime runtime = Runtime.getRuntime();
-            long gameMb = Math.max(0L, (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024));
-            long llmMb = llmResourceUsageMb();
-            long totalMb = runtime.maxMemory() / (1024 * 1024);
-            long freeMb = Math.max(0L, totalMb - gameMb - llmMb);
-            return llm("memory.usage", gameMb, llmMb, freeMb, totalMb);
         }
 
         private void buildModelInfo(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
@@ -277,11 +230,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void buildLoadOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
-            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
-                    .select("llm.gpu.device", llm("option.gpu_device"), deviceTargetIds(), selectedGpuDeviceId, this::deviceTargetOptionLabel, enabled::get)
-                    .select("llm.frame_guard.enabled", llm("option.frame_guard"), List.of(Boolean.TRUE, Boolean.FALSE), frameGuardEnabled, this::enabledLabel, enabled::get)
-                    .slider("llm.frame_guard.target_fps", llm("option.target_fps"), frameGuardTargetFps, 15.0D, 240.0D, () -> enabled.get() && frameGuardEnabled.get())
-                    .select("llm.mtp.enabled", llm("option.mtp"), List.of(Boolean.TRUE, Boolean.FALSE), mtpEnabled, this::enabledLabel, enabled::get, this::mtpSupported);
+            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, this::modelOptionLabel, enabled::get);
         }
 
         private void buildDownloadFilters(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
@@ -291,8 +240,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private void buildLoadStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
             status.row("llm.load.state", llm("row.load_state"), this::loadStateStatus);
-            status.row("llm.load.compatibility", llm("row.load_compatibility"), this::loadCompatibilityStatus);
-            status.row("llm.mtp.capability", llm("row.mtp"), this::mtpStatusText, () -> true, this::mtpSupported);
             status.row("llm.download.progress", llm("row.download_status"), this::downloadStatusText);
         }
 
@@ -305,10 +252,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         public boolean dirty() {
             return enabled.dirty()
                     || selectedModelName.dirty()
-                    || selectedGpuDeviceId.dirty()
-                    || frameGuardEnabled.dirty()
-                    || frameGuardTargetFps.dirty()
-                    || mtpEnabled.dirty()
                     || remoteBaseUrl.dirty()
                     || remoteModel.dirty()
                     || !pendingRemoteApiKey.isBlank();
@@ -345,10 +288,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             String persistedApiKey = pendingRemoteApiKey.isBlank()
                     ? config.getLlmRemoteApiKey()
                     : trimmed(pendingRemoteApiKey);
-            new SettingsSaveTransaction(enabled, selectedModelName, selectedGpuDeviceId,
-                    frameGuardEnabled, frameGuardTargetFps, mtpEnabled, remoteBaseUrl, remoteModel)
+            new SettingsSaveTransaction(enabled, selectedModelName, remoteBaseUrl, remoteModel)
                     .write(config::getCustomLlmName, config::setCustomLlmName, selectedModelName.get())
-                    .write(config::getLlmGpuDeviceId, config::setLlmGpuDeviceId, persistedDeviceTargetId())
                     .write(config::getLlmRemoteBaseUrl, config::setLlmRemoteBaseUrl, trimmed(remoteBaseUrl.get()))
                     .write(config::getLlmRemoteApiKey, config::setLlmRemoteApiKey, persistedApiKey)
                     .write(config::getLlmRemoteModel, config::setLlmRemoteModel, trimmed(remoteModel.get()))
@@ -367,10 +308,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         public void reset() {
             enabled.reset();
             selectedModelName.reset();
-            selectedGpuDeviceId.reset();
-            frameGuardEnabled.reset();
-            frameGuardTargetFps.reset();
-            mtpEnabled.reset();
             remoteBaseUrl.reset();
             remoteModel.reset();
             pendingRemoteApiKey = "";
@@ -397,10 +334,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             return value.startsWith("https://") || value.startsWith("http://");
         }
 
-        private UiText enabledLabel(Boolean value) {
-            return common(Boolean.TRUE.equals(value) ? "on" : "off");
-        }
-
         private List<String> downloadedModelNames() {
             List<String> downloaded = modelService.allModels().stream()
                     .filter(this::isDownloaded)
@@ -410,7 +343,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     .toList();
             java.util.ArrayList<String> values = new java.util.ArrayList<>(downloaded.size() + 2);
             values.add("");
-            String configured = config.getCustomLlmName();
             values.addAll(downloaded);
             return values;
         }
@@ -425,54 +357,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         private UiText modelOptionLabel(String modelName) {
             return modelName == null || modelName.isBlank() ? common("not_selected") : UiText.literal(modelName);
-        }
-
-        private String currentDeviceTargetId() {
-            String configured = normalizeDeviceId(config.getLlmGpuDeviceId());
-            if (configured.isBlank() || isAutoDevice(configured)) {
-                return AUTO_DEVICE_ID;
-            }
-            if (isLegacyCpuDevice(configured)) {
-                return AUTO_DEVICE_ID;
-            }
-            if (isCpuDevice(configured) || gpuDeviceById(configured) != null) {
-                return configured;
-            }
-            return AUTO_DEVICE_ID;
-        }
-
-        private List<String> deviceTargetIds() {
-            List<GpuInfo.GpuDevice> devices = GpuInfo.devices();
-            List<String> values = new ArrayList<>(devices.size() + 2);
-            values.add(AUTO_DEVICE_ID);
-            for (GpuInfo.GpuDevice device : devices) {
-                values.add(device.id());
-            }
-            values.add(CPU_DEVICE_ID);
-            return values;
-        }
-
-        private UiText deviceTargetOptionLabel(String deviceId) {
-            if (isAutoDevice(deviceId)) {
-                return llm("device.auto", resolvedDeviceTargetLabel());
-            }
-            if (isCpuDevice(deviceId)) {
-                return llm("device.cpu");
-            }
-            if (!GpuInfo.detected()) {
-                return llm("device.detecting");
-            }
-            GpuInfo.GpuDevice device = gpuDeviceById(deviceId);
-            return device == null ? common("unknown") : UiText.literal(device.name());
-        }
-
-        private GpuInfo.GpuDevice gpuDeviceById(String deviceId) {
-            for (GpuInfo.GpuDevice device : GpuInfo.devices()) {
-                if (device.id().equalsIgnoreCase(deviceId == null ? "" : deviceId.trim())) {
-                    return device;
-                }
-            }
-            return null;
         }
 
         private LlmModelInfo resolveModel(String name) {
@@ -490,7 +374,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         /**
          * 当前语言对应的 RAG 向量模型。它不在对话模型目录里，因此不出现在右侧下载列表中，
-         * 由设备能力下方的独立入口下载。
+         * 由「RAG 向量模型」分组的独立入口下载。
          */
         private LlmModelInfo embeddingModel() {
             String name = config.getLlmEmbeddingModelName();
@@ -625,48 +509,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             context.showStatus(result.accepted() ? llm("message.unload_started") : UiText.literal(result.message()), 3000);
         }
 
-        private boolean mtpSupported() {
-            return coreManager.findService(LLMService.class)
-                    .map(LLMService::supportsMtp)
-                    .orElse(false);
-        }
-
-        private boolean canCalibrateMtp() {
-            LlmRuntimeSnapshot snapshot = moduleService.snapshot();
-            return enabled.get() && snapshot.running() && mtpSupported();
-        }
-
-        private void calibrateMtp(ModuleSettingsContext context) {
-            coreManager.findService(LLMService.class).ifPresentOrElse(service -> {
-                context.showStatus(llm("message.mtp_calibration_started"), 3000);
-                service.calibrateMtpAsync(LlmMtpCalibrationRequest.defaults()).whenComplete((result, error) -> runOnClient(() -> {
-                    if (error != null) {
-                        context.showStatus(llm("message.mtp_calibration_failed", error.getMessage()), 5000);
-                    } else if (result == null || !result.supported() || result.bestDraftMax() <= 0) {
-                        context.showStatus(llm("message.mtp_calibration_unsupported"), 4000);
-                    } else {
-                        context.showStatus(llm("message.mtp_calibration_complete", result.bestDraftMax()), 5000);
-                    }
-                    refreshSettingsScreen();
-                }));
-            }, () -> context.showStatus(llm("state.unloaded"), 3000));
-        }
-
-        private UiText mtpStatusText() {
-            return coreManager.findService(LLMService.class)
-                    .map(service -> {
-                        var capability = service.getMtpCapability();
-                        if (capability == null || !capability.supported()) {
-                            return common("unsupported");
-                        }
-                        if (capability.calibrated() && capability.recommendedDraftMax() > 0) {
-                            return llm("mtp.status.calibrated", capability.recommendedDraftMax());
-                        }
-                        return llm("mtp.status.supported");
-                    })
-                    .orElse(common("unsupported"));
-        }
-
         /**
          * Chat is served by the cloud lane, so the runtime state no longer depends on a downloaded
          * GGUF: a local model is only the parked embedding/RAG engine and never gates the lane.
@@ -695,163 +537,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             return failureMessage.startsWith("tianshu.")
                     ? UiText.key(failureMessage)
                     : UiText.literal(failureMessage);
-        }
-
-        private UiText loadCompatibilityStatus() {
-            LlmModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null || !isDownloaded(info)) {
-                return common("dash");
-            }
-            LoadCompatibility compatibility = loadCompatibility(info);
-            return compatibility.supported() ? llm("compatibility.supported") : compatibility.message();
-        }
-
-        private long llmResourceUsageMb() {
-            LlmRuntimeSnapshot snapshot = moduleService.snapshot();
-            return snapshot.running() || snapshot.state() == LlmRuntimeState.STARTING ? Math.max(0L, cachedModelSizeBytes(resolveModel(selectedModelName.get())) / (1024 * 1024)) : 0L;
-        }
-
-        private GpuInfo.GpuDevice selectedGpuDevice() {
-            String targetId = effectiveDeviceTargetId();
-            return isCpuDevice(targetId) ? null : GpuInfo.selectedDevice(targetId);
-        }
-
-        private String effectiveDeviceTargetId() {
-            String configured = normalizeDeviceId(selectedGpuDeviceId.get());
-            if (isAutoDevice(configured)) {
-                return defaultDeviceTargetId();
-            }
-            if (!GpuInfo.detected()) {
-                return configured;
-            }
-            if (isCpuDevice(configured) || gpuDeviceById(configured) != null) {
-                return configured;
-            }
-            return defaultDeviceTargetId();
-        }
-
-        private String persistedDeviceTargetId() {
-            String configured = normalizeDeviceId(selectedGpuDeviceId.get());
-            return isAutoDevice(configured) ? "" : effectiveDeviceTargetId();
-        }
-
-        private UiText resolvedDeviceTargetLabel() {
-            String targetId = effectiveDeviceTargetId();
-            if (!GpuInfo.detected()) {
-                return llm("device.detecting");
-            }
-            if (isCpuDevice(targetId)) {
-                return llm("device.cpu");
-            }
-            GpuInfo.GpuDevice device = gpuDeviceById(targetId);
-            return device == null ? common("unknown") : UiText.literal(device.name());
-        }
-
-        private String defaultDeviceTargetId() {
-            if (!GpuInfo.detected()) {
-                return AUTO_DEVICE_ID;
-            }
-            List<GpuInfo.GpuDevice> devices = GpuInfo.devices();
-            if (devices.size() >= 2) {
-                return devices.get(1).id();
-            }
-            if (devices.size() == 1) {
-                return devices.get(0).id();
-            }
-            return CPU_DEVICE_ID;
-        }
-
-        private String normalizeDeviceId(String value) {
-            return value == null ? "" : value.trim();
-        }
-
-        private boolean isCpuDevice(String value) {
-            String normalized = normalizeDeviceId(value);
-            return CPU_DEVICE_ID.equalsIgnoreCase(normalized) || LEGACY_CPU_DEVICE_ID.equalsIgnoreCase(normalized);
-        }
-
-        private boolean isLegacyCpuDevice(String value) {
-            return LEGACY_CPU_DEVICE_ID.equalsIgnoreCase(normalizeDeviceId(value));
-        }
-
-        private boolean isAutoDevice(String value) {
-            String normalized = normalizeDeviceId(value);
-            return normalized.isBlank() || AUTO_DEVICE_ID.equalsIgnoreCase(normalized);
-        }
-
-        private UiText selectedGpuStatus() {
-            if (!GpuInfo.detected()) {
-                return llm("device.detecting");
-            }
-            if (isCpuDevice(effectiveDeviceTargetId())) {
-                return llm("device.cpu");
-            }
-            GpuInfo.GpuDevice device = selectedGpuDevice();
-            if (device == null) {
-                return llm("device.not_detected");
-            }
-            return UiText.literal(device.name());
-        }
-
-        private boolean showVramStatus() {
-            return GpuInfo.detected() && !isCpuDevice(effectiveDeviceTargetId()) && selectedGpuDevice() != null;
-        }
-
-        private boolean showMemoryStatus() {
-            return GpuInfo.detected() && isCpuDevice(effectiveDeviceTargetId());
-        }
-
-        private LoadCompatibility loadCompatibility(LlmModelInfo info) {
-            long requiredBytes = estimatedRequiredMemoryBytes(info);
-            if (requiredBytes <= 0L) {
-                return LoadCompatibility.ok();
-            }
-            if (isCpuDevice(effectiveDeviceTargetId())) {
-                // A GGUF is mapped natively, not held in the Java heap, so free heap is the wrong
-                // budget to compare a model size against. Only the physically impossible case is
-                // rejected here; the runtime reports a real allocation failure otherwise.
-                long systemTotalBytes = systemTotalMemoryBytes();
-                if (systemTotalBytes > 0L && requiredBytes > systemTotalBytes) {
-                    return LoadCompatibility.unsupported(llm("validation.insufficient_memory", formatBytes(requiredBytes), formatBytes(availableJvmMemoryBytes())));
-                }
-                return LoadCompatibility.ok();
-            }
-            GpuInfo.GpuDevice device = selectedGpuDevice();
-            if (device == null || device.vramTotalBytes() <= 0L) {
-                return LoadCompatibility.ok();
-            }
-            long availableBytes = Math.max(0L, device.vramTotalBytes() - device.vramUsedBytes());
-            // The GPU snapshot is refreshed asynchronously, so its "used" figure can still include a
-            // model that was just unloaded. Comparing against the live free figure therefore
-            // produced false "insufficient VRAM" reports right after an unload. Only the physically
-            // impossible case is rejected here; everything else is left to the runtime, which is the
-            // authoritative judge and reports a real allocation failure when it cannot load.
-            if (requiredBytes > device.vramTotalBytes()) {
-                return LoadCompatibility.unsupported(llm("validation.insufficient_vram", formatBytes(requiredBytes), formatBytes(availableBytes)));
-            }
-            return LoadCompatibility.ok();
-        }
-
-        /** Total physical memory of the machine, or 0 when the platform cannot report it. */
-        private long systemTotalMemoryBytes() {
-            java.lang.management.OperatingSystemMXBean bean =
-                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
-            return bean instanceof com.sun.management.OperatingSystemMXBean memoryBean
-                    ? memoryBean.getTotalMemorySize()
-                    : 0L;
-        }
-
-        private long estimatedRequiredMemoryBytes(LlmModelInfo info) {
-            long modelBytes = Math.max(cachedModelSizeBytes(info), estimatedModelSizeBytes(info));
-            if (modelBytes <= 0L) {
-                return 0L;
-            }
-            return Math.round(modelBytes * 1.15D) + 512L * 1024L * 1024L;
-        }
-
-        private long availableJvmMemoryBytes() {
-            Runtime runtime = Runtime.getRuntime();
-            return Math.max(0L, runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory()));
         }
 
         private List<LlmModelInfo> downloadableModels() {
@@ -1120,19 +805,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             return llm("thinking_capability." + info.getThinkingCapability());
         }
 
-        private UiText selectedModelSizeStatusFor(LlmModelInfo info) {
-            if (info == null) return common("dash");
-            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
-            if (entry == null) return common("unknown");
-            if (!entry.installed()) return common("not_downloaded");
-            long sizeBytes = entry.sizeBytes();
-            if (sizeBytes <= 0L) return common("unknown");
-            if (sizeBytes > 1024L * 1024 * 1024) {
-                return UiText.literal(String.format(Locale.ROOT, "%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
-            }
-            return UiText.literal(String.format(Locale.ROOT, "%.0f MB", sizeBytes / (1024.0 * 1024)));
-        }
-
         private long estimatedModelSizeBytes(LlmModelInfo info) {
             if (info == null) return 0L;
             long catalogSize = info.getDownloadSizeBytes();
@@ -1202,16 +874,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 return UiText.literal(String.format(Locale.ROOT, "%.1f GB", bytes / (1024.0 * 1024 * 1024)));
             }
             return UiText.literal(String.format(Locale.ROOT, "%.0f MB", bytes / (1024.0 * 1024)));
-        }
-    }
-
-    private record LoadCompatibility(boolean supported, UiText message) {
-        private static LoadCompatibility ok() {
-            return new LoadCompatibility(true, UiText.literal(""));
-        }
-
-        private static LoadCompatibility unsupported(UiText message) {
-            return new LoadCompatibility(false, message == null ? UiText.literal("") : message);
         }
     }
 

@@ -2,41 +2,37 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
+import com.rheinmetal.tianshu.function.llm.usage.LlmPricing;
+import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
+import com.rheinmetal.tianshu.function.llm.usage.LlmUsageSnapshot;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class LlmModuleService implements LlmPerformanceProvider {
+public final class LlmModuleService {
     public interface RuntimeController {
         void start();
         void stop();
     }
 
     private final LlmConfiguration config;
+    private final LlmUsageLedger usageLedger;
     private final AtomicReference<LlmRuntimeState> state = new AtomicReference<>(LlmRuntimeState.STOPPED);
     private final AtomicReference<String> failureMessage = new AtomicReference<>("");
     private final AtomicReference<RuntimeController> runtimeController = new AtomicReference<>();
-    private final AtomicReference<LlmPerformanceProvider> performanceProvider = new AtomicReference<>(LlmPerformanceProvider.UNAVAILABLE);
 
-    public LlmModuleService(LlmConfiguration config) {
+    /**
+     * @param usageLedger the ledger the request path records into; this service only reads it
+     */
+    public LlmModuleService(LlmConfiguration config, LlmUsageLedger usageLedger) {
         this.config = Objects.requireNonNull(config, "config");
+        this.usageLedger = usageLedger == null ? new LlmUsageLedger() : usageLedger;
     }
 
     public void bindRuntimeController(RuntimeController controller) {
         runtimeController.set(controller);
-    }
-
-    public void bindPerformanceProvider(LlmPerformanceProvider provider) {
-        performanceProvider.set(provider == null ? LlmPerformanceProvider.UNAVAILABLE : provider);
-    }
-
-    @Override
-    public LlmPerformanceSnapshot performanceSnapshot() {
-        return performanceProvider.get().performanceSnapshot();
     }
 
     public LlmControlResult load() {
@@ -122,5 +118,25 @@ public final class LlmModuleService implements LlmPerformanceProvider {
         boolean running = enabled && current == LlmRuntimeState.RUNNING;
         boolean healthy = enabled && current == LlmRuntimeState.RUNNING;
         return new LlmRuntimeSnapshot(enabled, current, running, healthy, config.getCustomLlmName(), failureMessage.get(), System.currentTimeMillis());
+    }
+
+    /**
+     * Read-only token accounting for every request the module has served, per attribution key and in
+     * total. The view is an immutable copy, so a reader can hold it without locking the recorder.
+     */
+    public LlmUsageSnapshot usageSnapshot() {
+        return usageLedger.snapshot();
+    }
+
+    /**
+     * Prices the ledger is read against, taken from configuration. Amounts must be hidden rather
+     * than shown as zero when {@link LlmPricing#configured()} is false.
+     */
+    public LlmPricing usagePricing() {
+        return new LlmPricing(
+                LlmPricing.microsFromPrice(config.getLlmUsageCacheMissInputPricePerMillion()),
+                LlmPricing.microsFromPrice(config.getLlmUsageCacheHitInputPricePerMillion()),
+                LlmPricing.microsFromPrice(config.getLlmUsageOutputPricePerMillion())
+        );
     }
 }

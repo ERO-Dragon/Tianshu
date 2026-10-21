@@ -29,6 +29,29 @@ public record AXEventVector(
         return eventId.isBlank() || embeddingNamespace.isBlank() || dimension <= 0 || vector.length == 0;
     }
 
+    /**
+     * 向量索引的<b>幂等键</b>：同一个事件的同一个事实哈希，在索引里只允许存在一条向量。
+     *
+     * <p><b>这是索引幂等，不是事件去重</b>。事件是客观事实记录，入库时<b>永不去重</b>——
+     * 同一件事发生两次就是两条事件、两条向量，它们的 {@code eventId} 不同。这里挡的只有
+     * "同一次写入被重放"：批次重试、维护补齐重跑、进程重启后续写，都会把同一条
+     * {@code (eventId, eventFactHash)} 再送一遍，若不挡就会产生内容完全相同的重复向量，
+     * 让召回里同一事件反复挤占候选。因此判据必须是"事件身份 + 事实内容"这一对键，
+     * 而不是事实内容本身。</p>
+     *
+     * <p>键的格式只在本处定义：写入侧（{@code AXEventVectorStore}）与对账侧
+     * （{@code AXMemoryMaintenanceService} 的向量补齐查询）必须用同一个函数，否则"哪些事件
+     * 已经有向量"会被算错。</p>
+     */
+    public String idempotencyKey() {
+        return idempotencyKey(eventId, eventFactHash);
+    }
+
+    /** 幂等键的事件侧重载：对账时从一个 {@code AXMemoryEvent} 的 {@code id} / {@code factHash} 取同一份键。 */
+    public static String idempotencyKey(String eventId, String factHash) {
+        return (eventId == null ? "" : eventId.trim()) + "\n" + (factHash == null ? "" : factHash.trim());
+    }
+
     public JsonObject toJson() {
         JsonObject json = new JsonObject();
         json.addProperty("schemaVersion", SCHEMA_VERSION);

@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.service.LLMRequest;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
+import com.rheinmetal.tianshu.function.llm.usage.LlmPromptCacheUsage;
+import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationRequestPayload;
@@ -15,21 +17,26 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 final class LlmPromptRequestHandler {
     private final LlmProtocolAdapter adapter;
     private final LlmTaskAdmissionController taskAdmissionController;
     private final LlmPromptPayloadMapper payloadMapper;
+    private final LlmUsageLedger usageLedger;
 
     LlmPromptRequestHandler(
             LlmProtocolAdapter adapter,
             LlmTaskAdmissionController taskAdmissionController,
-            LlmPromptPayloadMapper payloadMapper
+            LlmPromptPayloadMapper payloadMapper,
+            LlmUsageLedger usageLedger
     ) {
         this.adapter = adapter;
         this.taskAdmissionController = taskAdmissionController;
         this.payloadMapper = payloadMapper;
+        this.usageLedger = usageLedger;
     }
 
     void handle(TianshuEnvelope envelope, ProtocolContext context) {
@@ -37,21 +44,25 @@ final class LlmPromptRequestHandler {
             complete(context, envelope);
             return;
         }
+        // One request, one accounting record: the same instance follows the request through every
+        // lane and the dialogue authorization hop, so the ledger sees each finished request once.
+        UsageRecording usage = new UsageRecording(envelope);
         if (adapter.currentLlmService() == null) {
             reject(envelope, payload, context, "LLM_SERVICE_NOT_READY", "LLM service is not initialized");
             return;
         }
         if (requiresDialogueAuthorization(payload)) {
-            authorizeDialogueChatThenHandle(envelope, payload, context);
+            authorizeDialogueChatThenHandle(envelope, payload, context, usage);
         } else {
-            handleAuthorized(envelope, payload, context);
+            handleAuthorized(envelope, payload, context, usage);
         }
     }
 
     private void handleAuthorized(
             TianshuEnvelope envelope,
             LLMPromptRequestPayload payload,
-            ProtocolContext context
+            ProtocolContext context,
+            UsageRecording usage
     ) {
         LLMService service = adapter.currentLlmService();
         if (service == null) {
@@ -63,15 +74,15 @@ final class LlmPromptRequestHandler {
             boolean stream = Boolean.TRUE.equals(payload.stream());
             boolean task = "TASK".equalsIgnoreCase(payload.lane());
             if (task) {
-                admitTaskRequest(service, envelope, request, payload, context, stream);
+                admitTaskRequest(service, envelope, request, payload, context, stream, usage);
             } else if (stream) {
-                if (handleChatStream(service, envelope, request, payload)) {
+                if (handleChatStream(service, envelope, request, payload, usage)) {
                     complete(context, envelope);
                 } else {
                     fail(context, envelope, "LLM_INFERENCE_FAILED", "LLM stream chat failed", null);
                 }
             } else {
-                handleChat(service, envelope, request, payload, context);
+                handleChat(service, envelope, request, payload, context, usage);
             }
         } catch (Exception exception) {
             reject(envelope, payload, context, "LLM_REQUEST_FAILED", exception.getMessage(), exception);
@@ -84,14 +95,15 @@ final class LlmPromptRequestHandler {
             LLMRequest request,
             LLMPromptRequestPayload payload,
             ProtocolContext context,
-            boolean stream
+            boolean stream,
+            UsageRecording usage
     ) {
         taskAdmissionController.submit(
                 payload.taskPriority(),
                 payload.taskPreemptible(),
                 () -> stream
-                        ? startTaskStream(service, envelope, request, payload, context)
-                        : startTask(service, envelope, request, payload, context),
+                        ? startTaskStream(service, envelope, request, payload, context, usage)
+                        : startTask(service, envelope, request, payload, context, usage),
                 (code, message) -> reject(envelope, payload, context, code, message)
         );
     }
@@ -101,10 +113,12 @@ final class LlmPromptRequestHandler {
             TianshuEnvelope envelope,
             LLMRequest request,
             LLMPromptRequestPayload payload,
-            ProtocolContext context
+            ProtocolContext context,
+            UsageRecording usage
     ) {
         try {
-            LLMService.LLMResult result = service.chat(request);
+            LLMService.LLMResult result = service.chat(request, usage.cacheSink());
+            usage.record(result.usage());
             adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
                     payload.requestId(),
                     result.text(),
@@ -138,7 +152,8 @@ final class LlmPromptRequestHandler {
             LLMService service,
             TianshuEnvelope envelope,
             LLMRequest request,
-            LLMPromptRequestPayload payload
+            LLMPromptRequestPayload payload,
+            UsageRecording usage
     ) {
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
         LlmStreamState state = new LlmStreamState(payload.requestId(), ragHits,
@@ -148,9 +163,11 @@ final class LlmPromptRequestHandler {
                     request,
                     state::onVisible,
                     state::onThinking,
-                    ragHits
+                    ragHits,
+                    usage.cacheSink()
             );
             LLMService.LLMStreamFinish finish = result.finish();
+            usage.record(finish.usage());
             LlmStreamState.TerminalSnapshot terminal = state.terminal(result.text(), finish.thinkingContent());
             adapter.publishLLMPromptStreamEnd(
                     envelope,
@@ -202,18 +219,22 @@ final class LlmPromptRequestHandler {
             TianshuEnvelope envelope,
             LLMRequest request,
             LLMPromptRequestPayload payload,
-            ProtocolContext context
+            ProtocolContext context,
+            UsageRecording usage
     ) {
         try {
             List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
-            return service.submitTaskWithUsage(request, ragHits)
+            return service.submitTaskWithUsage(request, ragHits, usage.cacheSink())
                     .thenAccept(result -> {
+                        LLMPromptResultPayload.TokenUsagePayload tokenUsage =
+                                LLMService.toUsagePayload(result == null ? null : result.usage());
+                        usage.record(tokenUsage);
                         adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
                                 payload.requestId(),
                                 result == null ? "" : result.text(),
                                 result == null ? "" : result.thinkingContent(),
                                 ragHits,
-                                LLMService.toUsagePayload(result == null ? null : result.usage())
+                                tokenUsage
                         ));
                         complete(context, envelope);
                     })
@@ -248,7 +269,8 @@ final class LlmPromptRequestHandler {
             TianshuEnvelope envelope,
             LLMRequest request,
             LLMPromptRequestPayload payload,
-            ProtocolContext context
+            ProtocolContext context,
+            UsageRecording usage
     ) {
         List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
         LlmStreamState state = new LlmStreamState(payload.requestId(), ragHits,
@@ -260,18 +282,20 @@ final class LlmPromptRequestHandler {
                         state::onVisible,
                         state::onThinking,
                         finishReference::set,
-                        ragHits
+                        ragHits,
+                        usage.cacheSink()
                 );
         state.publishRagHitsIfNeeded();
 
         return future.thenAccept(result -> {
             LLMService.LLMStreamFinish finish = finishReference.get();
-            LLMPromptResultPayload.TokenUsagePayload usage = finish == null
+            LLMPromptResultPayload.TokenUsagePayload usagePayload = finish == null
                     ? LLMService.toUsagePayload(result == null ? null : result.usage())
                     : finish.usage();
             if (finish == null) {
-                finish = new LLMService.LLMStreamFinish("COMPLETED", usage, null);
+                finish = new LLMService.LLMStreamFinish("COMPLETED", usagePayload, null);
             }
+            usage.record(usagePayload);
             LlmStreamState.TerminalSnapshot terminal = state.terminal(
                     result == null ? "" : result.text(),
                     finish.thinkingContent(),
@@ -289,16 +313,18 @@ final class LlmPromptRequestHandler {
             complete(context, envelope);
         }).exceptionally(exception -> {
             Throwable cause = unwrapCompletion(exception);
-            LLMPromptResultPayload.TokenUsagePayload usage = finishReference.get() == null
+            LLMPromptResultPayload.TokenUsagePayload failedUsage = finishReference.get() == null
                     ? LLMPromptResultPayload.TokenUsagePayload.empty()
                     : finishReference.get().usage();
+            // A failed or cancelled task can still have consumed prompt tokens; account for them.
+            usage.record(failedUsage);
             LlmStreamState.TerminalSnapshot terminal = state.terminal("", "");
             if (isTaskCancellation(cause)) {
                 adapter.publishLLMPromptStreamEnd(
                         envelope,
                         terminal.nextIndex(),
                         "CANCELLED",
-                        usage,
+                        failedUsage,
                         null,
                         terminal.thinkingContent()
                 );
@@ -307,7 +333,7 @@ final class LlmPromptRequestHandler {
                         terminal.visibleText(),
                         terminal.thinkingContent(),
                         terminal.ragHits(),
-                        usage
+                        failedUsage
                 ));
                 cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
             } else {
@@ -315,7 +341,7 @@ final class LlmPromptRequestHandler {
                         envelope,
                         terminal.nextIndex(),
                         "FAILED",
-                        usage,
+                        failedUsage,
                         failureMessage(cause),
                         terminal.thinkingContent()
                 );
@@ -326,7 +352,7 @@ final class LlmPromptRequestHandler {
                         terminal.visibleText(),
                         terminal.thinkingContent(),
                         terminal.ragHits(),
-                        usage
+                        failedUsage
                 ));
                 fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(cause), cause);
             }
@@ -341,7 +367,8 @@ final class LlmPromptRequestHandler {
     private void authorizeDialogueChatThenHandle(
             TianshuEnvelope envelope,
             LLMPromptRequestPayload payload,
-            ProtocolContext context
+            ProtocolContext context,
+            UsageRecording usage
     ) {
         if (!payload.hasDialogueAuthorizationContext()) {
             reject(envelope, payload, context, "DIALOGUE_AUTH_CONTEXT_MISSING",
@@ -393,7 +420,7 @@ final class LlmPromptRequestHandler {
                             return;
                         }
                         complete(responseContext, responseEnvelope);
-                        handleAuthorized(envelope, payload, context);
+                        handleAuthorized(envelope, payload, context, usage);
                     } finally {
                         adapter.unregisterAuthorizationResponse(authorizationEnvelope.envelopeId());
                     }
@@ -526,5 +553,47 @@ final class LlmPromptRequestHandler {
                 terminal.ragHits(),
                 usage
         );
+    }
+
+    /**
+     * Accounts for exactly one finished request.
+     *
+     * <p>Attribution is the envelope's {@code sourceId}: every request names the module that issued
+     * it, so per-module figures need no separate instrumentation layer.
+     *
+     * <p>The provider reports the prompt-cache split only inside the inference client, so this
+     * instance is handed out as a sink before the call and read back afterwards. A request that
+     * finishes through two callbacks (a cancellation racing a completion) is still recorded once.
+     */
+    private final class UsageRecording {
+        private final String sourceId;
+        private final AtomicReference<LlmPromptCacheUsage> cacheUsage =
+                new AtomicReference<>(LlmPromptCacheUsage.unknown());
+        private final AtomicBoolean recorded = new AtomicBoolean();
+
+        UsageRecording(TianshuEnvelope envelope) {
+            this.sourceId = clean(envelope.header().sourceId());
+        }
+
+        /** Per-request hook the inference client reports this request's cache split through. */
+        Consumer<LlmPromptCacheUsage> cacheSink() {
+            return cacheUsage::set;
+        }
+
+        void record(LLMPromptResultPayload.TokenUsagePayload usage) {
+            if (usage == null || !recorded.compareAndSet(false, true)) {
+                return;
+            }
+            LlmPromptCacheUsage reported = cacheUsage.get();
+            boolean known = reported != null && reported.known();
+            long input = usage.promptTokens();
+            // An unreported split is passed on as unreported, not as a measured zero: the ledger must
+            // be able to say "no data" instead of rendering a 0% hit rate. Money is unaffected by the
+            // gap — pricing derives the uncached quantity from the input total, so a silent provider
+            // is still billed as a full miss (never below it).
+            long cacheHit = known ? reported.cacheHitTokens() : 0L;
+            long cacheMiss = known ? reported.cacheMissTokens() : 0L;
+            usageLedger.record(sourceId, input, cacheHit, cacheMiss, usage.outputTokens(), known);
+        }
     }
 }

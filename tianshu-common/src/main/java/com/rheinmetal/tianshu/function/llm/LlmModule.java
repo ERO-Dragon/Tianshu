@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.function.llm.service.EmbeddingService;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.llm.service.OpenAiCompatibleInferenceClient;
+import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -49,6 +50,12 @@ public final class LlmModule implements TianshuManagedModule {
     private final LlmExecutor llmExecutor;
     private final LlmEngineProvider engineProvider;
     private final LlmProtocolAdapter adapter;
+    /**
+     * Token accounting for every request this module serves. The module owns it and injects it, so
+     * the request path records into the same instance the HUD reads through {@link LlmModuleService};
+     * there is no static lookup anywhere in the chain.
+     */
+    private final LlmUsageLedger usageLedger = new LlmUsageLedger();
     private final Object lifecycleLock = new Object();
     private LLMService llmService;
     private ModuleRuntimeContext runtimeContext;
@@ -76,15 +83,10 @@ public final class LlmModule implements TianshuManagedModule {
                 llmExecutor.cpuExecutor(),
                 llmExecutor.ragPersistenceScheduler()
         );
-        this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config));
+        this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config), usageLedger);
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
-        this.engineProvider = new LlmEngineProvider(env, config, this::publishInferenceStatus, llmExecutor.modelLoadExecutor());
-        // Load failures only surface the native "Cannot load model" message, so the engine records
-        // the GPU snapshot next to system memory to tell a VRAM shortfall from a RAM shortfall.
-        this.engineProvider.bindPerformanceProvider(() -> moduleService == null
-                ? com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot.unavailable()
-                : moduleService.performanceSnapshot());
+        this.engineProvider = new LlmEngineProvider(env, config, llmExecutor.modelLoadExecutor());
     }
 
     @Override
@@ -95,7 +97,7 @@ public final class LlmModule implements TianshuManagedModule {
     @Override
     public void register(ModuleRegistrationContext context) {
         serviceRegistry = context == null ? null : context.services();
-        moduleService = new LlmModuleService(config);
+        moduleService = new LlmModuleService(config, usageLedger);
         moduleService.bindRuntimeController(new LlmModuleService.RuntimeController() {
             @Override
             public void start() {
@@ -306,7 +308,6 @@ public final class LlmModule implements TianshuManagedModule {
                     .env(env)
                     .config(config)
                     .inferenceClient(client)
-                    .performanceProvider(moduleService)
                     .usePersistentCache(true)
                     .cacheDirectory(ragCacheLayout.cacheDirectory())
                     .cacheNamespace(ragCacheLayout.cacheNamespace())

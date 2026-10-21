@@ -13,11 +13,23 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class AXRawTurnWindow {
-    private final AXMemoryWindowPolicy policy;
+    /**
+     * Volatile because the retention watermarks follow the per-turn LLM budget: the window is created
+     * with the construction-time fallback policy and re-pointed on every resolved turn. A single
+     * method always reads this field once, so one turn never mixes two policies.
+     */
+    private volatile AXMemoryWindowPolicy policy;
     private final Map<String, Deque<AXRawTurn>> turnsByWorld = new ConcurrentHashMap<>();
 
     public AXRawTurnWindow(AXMemoryWindowPolicy policy) {
         this.policy = policy == null ? AXMemoryWindowPolicy.DEFAULT : policy;
+    }
+
+    /** Replaces the window policy; called with the per-turn budget once it is resolved. */
+    public void applyPolicy(AXMemoryWindowPolicy policy) {
+        if (policy != null) {
+            this.policy = policy;
+        }
     }
 
     public void append(AXScope scope, AXRawTurn turn) {
@@ -32,7 +44,8 @@ public final class AXRawTurnWindow {
     }
 
     public List<AXRawTurn> recent(AXScope scope) {
-        if (!writable(scope) || policy.recentRawDialogueTokenBudget() <= 0) {
+        AXMemoryWindowPolicy activePolicy = policy;
+        if (!writable(scope) || activePolicy.recentRawKeepTokenMax() <= 0) {
             return List.of();
         }
         Deque<AXRawTurn> turns = turnsByWorld.get(scope.worldId());
@@ -48,12 +61,12 @@ public final class AXRawTurnWindow {
         int tokens = 0;
         for (int i = groups.size() - 1; i >= 0; i--) {
             TurnGroup group = groups.get(i);
-            if (tokens + group.tokenCount() > policy.recentRawDialogueTokenBudget()) {
+            if (tokens + group.tokenCount() > activePolicy.recentRawKeepTokenMax()) {
                 break;
             }
             selectedGroups.add(group);
             tokens += group.tokenCount();
-            if (tokens >= policy.recentRawDialogueTokenBudget()) {
+            if (tokens >= activePolicy.recentRawKeepTokenMax()) {
                 break;
             }
         }
@@ -111,7 +124,8 @@ public final class AXRawTurnWindow {
     }
 
     public AXRawTurnBatch selectCompressionBatch(AXScope scope) {
-        if (!writable(scope) || policy.shortTermCompressTokenTarget() <= 0) {
+        AXMemoryWindowPolicy activePolicy = policy;
+        if (!writable(scope) || activePolicy.shortTermCompressTokenTarget() <= 0) {
             return AXRawTurnBatch.empty();
         }
         Deque<AXRawTurn> turns = turnsByWorld.get(scope.worldId());
@@ -123,20 +137,20 @@ public final class AXRawTurnWindow {
             int totalTokens = groups.stream().mapToInt(TurnGroup::compressibleTokens).sum();
             int totalCharacters = groups.stream().mapToInt(TurnGroup::compressibleCharacters).sum();
             boolean tokenBudgetKnown = totalTokens > 0;
-            if (tokenBudgetKnown && totalTokens <= policy.recentRawKeepTokenMax()) {
+            if (tokenBudgetKnown && totalTokens <= activePolicy.recentRawKeepTokenMax()) {
                 return AXRawTurnBatch.empty();
             }
-            if (!tokenBudgetKnown && totalCharacters <= policy.maxRawCharacters()) {
+            if (!tokenBudgetKnown && totalCharacters <= activePolicy.maxRawCharacters()) {
                 return AXRawTurnBatch.empty();
             }
             int removableBudget = tokenBudgetKnown
-                    ? Math.max(0, totalTokens - policy.recentRawKeepTokenTarget())
-                    : Math.max(0, totalCharacters - policy.maxRawCharacters());
+                    ? Math.max(0, totalTokens - activePolicy.recentRawKeepTokenTarget())
+                    : Math.max(0, totalCharacters - activePolicy.maxRawCharacters());
             int target = tokenBudgetKnown
-                    ? Math.min(policy.shortTermCompressTokenTarget(), removableBudget)
+                    ? Math.min(activePolicy.shortTermCompressTokenTarget(), removableBudget)
                     : removableBudget;
             int max = tokenBudgetKnown
-                    ? Math.min(policy.shortTermCompressTokenMax(), removableBudget)
+                    ? Math.min(activePolicy.shortTermCompressTokenMax(), removableBudget)
                     : removableBudget;
             if (target <= 0 || max <= 0) {
                 return AXRawTurnBatch.empty();
@@ -208,7 +222,8 @@ public final class AXRawTurnWindow {
     }
 
     private boolean exceedsRawCapacity(int tokens, int characters) {
-        return tokens > policy.maxRawTokenCount() || characters > policy.maxRawCharacters();
+        AXMemoryWindowPolicy activePolicy = policy;
+        return tokens > activePolicy.maxRawTokenCount() || characters > activePolicy.maxRawCharacters();
     }
 
     private boolean writable(AXScope scope) {

@@ -11,6 +11,7 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmTokenEstimator;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.llm.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
@@ -174,17 +175,28 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception {
-        return await(startStream(messages, sampler, maxTokens, options, null, null, null));
+        return await(startStream(messages, sampler, maxTokens, options, null, null, null, null));
+    }
+
+    @Override
+    public LlmGenerationResult chatWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            LlmInferenceOptions options,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) throws Exception {
+        return await(startStream(messages, sampler, maxTokens, options, null, null, null, cacheSink));
     }
 
     @Override
     public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) throws Exception {
-        await(startStream(messages, sampler, 0, null, onToken, null, null));
+        await(startStream(messages, sampler, 0, null, onToken, null, null, null));
     }
 
     @Override
     public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) throws Exception {
-        await(startStream(messages, sampler, maxTokens, options, onToken, null, null));
+        await(startStream(messages, sampler, maxTokens, options, onToken, null, null, null));
     }
 
     // --- chat lane -------------------------------------------------------------------------------
@@ -196,7 +208,21 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) throws Exception {
-        return textOf(startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish));
+        return textOf(startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, null));
+    }
+
+    @Override
+    public CompletableFuture<String> chatStreamWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            LlmInferenceOptions options,
+            Consumer<String> onToken,
+            Consumer<String> onThinking,
+            Consumer<LlmStreamFinish> onFinish,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) throws Exception {
+        return textOf(startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, cacheSink));
     }
 
     // --- task lane -------------------------------------------------------------------------------
@@ -219,7 +245,20 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
-        return startStream(messages, sampler, maxTokens, options, null, null, null);
+        return startStream(messages, sampler, maxTokens, options, null, null, null, null);
+    }
+
+    @Override
+    public CompletableFuture<LlmGenerationResult> taskWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            int priority,
+            boolean preemptible,
+            LlmInferenceOptions options,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) {
+        return startStream(messages, sampler, maxTokens, options, null, null, null, cacheSink);
     }
 
     @Override
@@ -229,7 +268,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken) {
-        return textOf(startStream(messages, sampler, maxTokens, options, onToken, null, null));
+        return textOf(startStream(messages, sampler, maxTokens, options, onToken, null, null, null));
     }
 
     @Override
@@ -239,7 +278,23 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
-        return startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish);
+        return startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, null);
+    }
+
+    @Override
+    public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(
+            List<ChatMessage> messages,
+            SamplerConfig sampler,
+            int maxTokens,
+            int priority,
+            boolean preemptible,
+            LlmInferenceOptions options,
+            Consumer<String> onToken,
+            Consumer<String> onThinking,
+            Consumer<LlmStreamFinish> onFinish,
+            Consumer<LlmPromptCacheUsage> cacheSink
+    ) {
+        return startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, cacheSink);
     }
 
     // --- embeddings and retrieval ----------------------------------------------------------------
@@ -378,7 +433,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             LlmInferenceOptions options,
             Consumer<String> onToken,
             Consumer<String> onThinking,
-            Consumer<LlmStreamFinish> onFinish
+            Consumer<LlmStreamFinish> onFinish,
+            Consumer<LlmPromptCacheUsage> cacheSink
     ) {
         CompletableFuture<LlmGenerationResult> future = new CompletableFuture<>();
         RemoteStream stream = new RemoteStream();
@@ -395,7 +451,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         try {
             executor.execute(() -> {
                 try {
-                    LlmGenerationResult result = streamChat(messages, sampler, maxTokens, tokenSink, thinkingSink, stream);
+                    LlmGenerationResult result = streamChat(messages, sampler, maxTokens, tokenSink, thinkingSink, stream, cacheSink);
                     notifyFinish(onFinish, result, null);
                     future.complete(result);
                 } catch (CancellationException cancelled) {
@@ -444,7 +500,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             int maxTokens,
             Consumer<String> onToken,
             Consumer<String> onThinking,
-            RemoteStream stream
+            RemoteStream stream,
+            Consumer<LlmPromptCacheUsage> cacheSink
     ) throws Exception {
         if (closed.get()) {
             throw new IllegalStateException("REMOTE_LLM_CLIENT_CLOSED");
@@ -466,7 +523,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 if (status < 200 || status >= 300) {
                     throw new IllegalStateException("REMOTE_LLM_HTTP_STATUS status=" + status + errorDetail(readErrorBody(body)));
                 }
-                LlmGenerationResult result = readStream(body, onToken, onThinking, stream);
+                LlmGenerationResult result = readStream(body, onToken, onThinking, stream, cacheSink);
                 calibrateUsage(messages, result);
                 return result;
             } catch (IOException failure) {
@@ -481,10 +538,6 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
     }
 
-    /**
-     * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
-     * tokenizer, so this is the only way the estimate converges on the real number.
-     */
     /**
      * Surfaces prefix-cache health. The provider reports how much of the prompt it served from its
      * cache; a low ratio on a non-trivial prompt means our prefix stopped being byte-stable, which is
@@ -507,6 +560,33 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 + " — the prompt prefix is drifting, so the cache never warms up.");
     }
 
+    /**
+     * Hands the provider's prompt-cache split to the caller's accounting hook. This is the only place
+     * the split exists: the token counters travel with the result, but the hit/miss breakdown does
+     * not, so an observer has to be offered it here or it is lost.
+     *
+     * <p>A broken observer must not fail a generation that already streamed its tokens, and a
+     * provider that reported nothing must leave the hook untouched instead of reporting zero hits.
+     */
+    private static void reportPromptCacheUsage(
+            Consumer<LlmPromptCacheUsage> cacheSink,
+            int cacheHitTokens,
+            int cacheMissTokens
+    ) {
+        if (cacheSink == null || cacheHitTokens < 0 || cacheMissTokens < 0) {
+            return;
+        }
+        try {
+            cacheSink.accept(new LlmPromptCacheUsage(cacheHitTokens, cacheMissTokens));
+        } catch (RuntimeException ignored) {
+            // Accounting is strictly an observer of a request that already finished successfully.
+        }
+    }
+
+    /**
+     * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
+     * tokenizer, so this is the only way the estimate converges on the real number.
+     */
     private void calibrateUsage(List<ChatMessage> messages, LlmGenerationResult result) {
         if (result == null || result.usage() == null || messages == null) {
             return;
@@ -522,7 +602,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             InputStream body,
             Consumer<String> onToken,
             Consumer<String> onThinking,
-            RemoteStream stream
+            RemoteStream stream,
+            Consumer<LlmPromptCacheUsage> cacheSink
     ) throws IOException {
         long deadline = System.nanoTime() + timeout.toNanos();
         StringBuilder text = new StringBuilder();
@@ -574,6 +655,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             }
         }
         reportCacheHitRatio(promptTokens, cacheHitTokens, cacheMissTokens);
+        reportPromptCacheUsage(cacheSink, cacheHitTokens, cacheMissTokens);
         return new LlmGenerationResult(text.toString(), new LlmTokenUsage(promptTokens, completionTokens), thinking.toString());
     }
 

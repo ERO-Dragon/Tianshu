@@ -6,6 +6,15 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Resolves one turn's budget from the LLM-reported context total.
+ *
+ * <p>This is the only place where the construction-time fallback is swapped for the real per-turn
+ * budget: on success {@link AXRuntimeLlmBudget#fromSnapshot} derives a policy from the reported
+ * {@code contextTokenBudget}, and on any failure the construction-time {@code fallbackPolicy} of the
+ * module is used unchanged. Callers must not re-read {@link AXMemoryWindowPolicy#DEFAULT} afterwards —
+ * whatever this resolver completes with is the turn's truth.</p>
+ */
 public final class AXRuntimeLlmBudgetResolver {
     private final AXLlmPrimitiveClient primitiveClient;
     private final AXMemoryWindowPolicy fallbackPolicy;

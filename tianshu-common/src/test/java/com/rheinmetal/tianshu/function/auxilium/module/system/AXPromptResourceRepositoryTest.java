@@ -44,9 +44,8 @@ class AXPromptResourceRepositoryTest {
 
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.en_us.default.json")));
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.zh_cn.default.json")));
-        assertTrue(profile.systemPrompts().standardPrompt().contains("随行聊天助手"));
-        assertTrue(profile.systemPrompts().shortPrompt().contains("简洁"));
-        assertTrue(profile.systemPrompts().fullPrompt().contains("信息不足"));
+        assertTrue(profile.systemPrompt().contains("随行聊天助手"));
+        assertTrue(profile.systemPrompt().contains("信息不足"));
         assertTrue(profile.sectionOrder().contains("ax_system"));
         assertTrue(profile.sectionOrder().contains("game_context"));
         assertTrue(profile.sectionOrder().contains("player_memory"));
@@ -89,11 +88,9 @@ class AXPromptResourceRepositoryTest {
                 layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
                 """
                 {
-                  "schemaVersion": 3,
+                  "schemaVersion": 4,
                   "systemPrompts": {
-                    "short": "完整的短提示词",
-                    "standard": "完整的测试提示词",
-                    "full": "完整的完整提示词"
+                    "system": "完整的测试提示词"
                   },
                   "sectionOrder": [
                     "ax_system",
@@ -108,9 +105,60 @@ class AXPromptResourceRepositoryTest {
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 
-        assertEquals("完整的测试提示词", profile.systemPrompts().standardPrompt());
-        assertEquals("完整的短提示词", profile.systemPrompts().shortPrompt());
-        assertEquals("完整的完整提示词", profile.systemPrompts().fullPrompt());
+        assertEquals("完整的测试提示词", profile.systemPrompt());
         assertEquals(List.of("ax_system", "game_context", "current_input"), profile.sectionOrder());
+    }
+
+    @Test
+    void legacyThreeTierProfileFallsBackToItsMostCompletePrompt() throws Exception {
+        AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
+        Files.createDirectories(layout.promptsRoot());
+        Files.writeString(
+                layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
+                """
+                {
+                  "schemaVersion": 3,
+                  "systemPrompts": {
+                    "short": "旧格式的短提示词",
+                    "standard": "旧格式的标准提示词",
+                    "full": "旧格式的完整提示词"
+                  },
+                  "sectionOrder": [
+                    "ax_system",
+                    "current_input"
+                  ]
+                }
+                """,
+                StandardCharsets.UTF_8
+        );
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+
+        AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
+
+        assertEquals("旧格式的完整提示词", profile.systemPrompt());
+    }
+
+    @Test
+    void legacyThreeTierProfileWithoutFullPromptFallsBackToStandardThenShort() throws Exception {
+        AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
+        Files.createDirectories(layout.promptsRoot());
+        Files.writeString(
+                layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
+                """
+                {
+                  "schemaVersion": 3,
+                  "systemPrompts": {
+                    "short": "旧格式的短提示词",
+                    "standard": "旧格式的标准提示词"
+                  }
+                }
+                """,
+                StandardCharsets.UTF_8
+        );
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+
+        AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
+
+        assertEquals("旧格式的标准提示词", profile.systemPrompt());
     }
 }

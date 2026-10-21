@@ -37,13 +37,23 @@ public class LlmModelManager {
         try (InputStream is = LlmModelManager.class.getResourceAsStream(resourcePath)) {
             if (is == null) return Collections.emptyList();
             try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                Type listType = new TypeToken<List<LlmModelInfo>>() {}.getType();
-                List<LlmModelInfo> result = GSON.fromJson(reader, listType);
-                return result != null ? result : Collections.emptyList();
+                return parseCatalog(reader);
             }
         } catch (IOException e) {
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Parses a catalog array. Gson ignores keys the model class does not declare, which is what makes a
+     * catalog from an older build (still carrying a since-removed field such as the retired
+     * {@code mtpDraftModelFile}) load without error. Kept as its own seam so the tolerance is testable
+     * against a string, not only against the bundled resource.
+     */
+    static List<LlmModelInfo> parseCatalog(java.io.Reader reader) {
+        Type listType = new TypeToken<List<LlmModelInfo>>() {}.getType();
+        List<LlmModelInfo> result = GSON.fromJson(reader, listType);
+        return result != null ? result : Collections.emptyList();
     }
 
     public static synchronized void invalidateCache() {

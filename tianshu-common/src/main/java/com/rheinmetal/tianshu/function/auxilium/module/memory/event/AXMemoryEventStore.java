@@ -6,9 +6,17 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStoreWriteResult;
 
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
+/**
+ * Append-only store of memory events.
+ *
+ * <p>An event is an objective record of something that happened, so this store never removes events
+ * that look like older ones. Two identical facts written at two different moments are two events, not
+ * one; collapsing them here used to hide facts and cost a full read of the event log on every append.
+ * The only identity this store preserves is the one the event itself carries ({@link AXMemoryEvent#id()}),
+ * and keeping the vector index free of repeated entries is the index layer's job
+ * ({@code AXEventVectorStore}), not this store's.</p>
+ */
 public final class AXMemoryEventStore {
     private final AXStorageLayout layout;
     private final AXJsonStore jsonStore;
@@ -39,12 +47,8 @@ public final class AXMemoryEventStore {
         if (!usable(scope) || events == null || events.isEmpty()) {
             return AXStoreWriteResult.failed();
         }
-        Set<String> existing = loadAll(scope).stream()
-                .map(event -> event.stmId() + "\n" + event.factHash())
-                .collect(Collectors.toSet());
         List<AXMemoryEvent> normalized = events.stream()
                 .filter(event -> event != null && !event.isEmpty())
-                .filter(event -> existing.add(event.stmId() + "\n" + event.factHash()))
                 .toList();
         if (normalized.isEmpty()) {
             return AXStoreWriteResult.success(0);

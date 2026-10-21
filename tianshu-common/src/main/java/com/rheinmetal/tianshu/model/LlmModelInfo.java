@@ -3,6 +3,15 @@ package com.rheinmetal.tianshu.model;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * One entry of a bundled GGUF model catalog ({@code llm_models.json} / {@code llm_embedding_models.json}).
+ *
+ * <p>The catalog is <b>data</b>, not code: a catalog shipped or cached by an older build may still carry
+ * keys this class no longer declares (the retired local-chat MTP pair {@code mtpDraftModelFile} /
+ * {@code mtpDraftHfFilePath} is the current example). Parsing is Gson reflection over these public
+ * fields, and Gson skips unknown keys, so such a catalog keeps loading untouched. Do not add a strict
+ * adapter or unknown-key rejection here — an old data file must never fail to parse.</p>
+ */
 public class LlmModelInfo {
 
     public String name;
@@ -18,8 +27,6 @@ public class LlmModelInfo {
     public long estimatedVramBytes;
     public int contextSize;
     public int promptTokenBudget;
-    public String mtpDraftModelFile;
-    public String mtpDraftHfFilePath;
     public SamplingProfiles sampling;
     public List<String> lang;
 
@@ -64,14 +71,6 @@ public class LlmModelInfo {
 
     public int getPromptTokenBudget() {
         return promptTokenBudget > 0 ? promptTokenBudget : 3000;
-    }
-
-    public String getMtpDraftModelFile() {
-        return mtpDraftModelFile == null ? "" : mtpDraftModelFile.trim();
-    }
-
-    public String getMtpDraftHfFilePath() {
-        return mtpDraftHfFilePath == null ? "" : mtpDraftHfFilePath.trim();
     }
 
     public SamplingSettings getSamplingSettings(boolean thinking) {

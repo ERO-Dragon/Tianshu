@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval;
 
+import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextTier;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
@@ -58,7 +59,7 @@ class AXMemoryRetrieverTest {
         AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
         assertEquals(1, result.get().blocks().size());
@@ -100,7 +101,7 @@ class AXMemoryRetrieverTest {
         AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 2, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 2, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
         assertEquals(List.of(s2.id(), s3.id()), result.get().blocks().stream().map(view -> view.block().id()).toList());
@@ -127,10 +128,52 @@ class AXMemoryRetrieverTest {
         AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 3, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 3, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
         assertEquals(List.of(s1.id(), s2.id(), s3.id()), result.get().blocks().stream().map(view -> view.block().id()).toList());
+    }
+
+    @Test
+    void widerContextTierFollowsTwoChainHopsInsteadOfOne() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
+        AXMemorySystem memorySystem = new AXMemorySystem(
+                new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+        );
+        AXScope scope = scope();
+        AXStmBlock s1 = linkedBlock(scope, "s1", "", "stm_s2", "玩家出发去找村庄。");
+        AXStmBlock s2 = linkedBlock(scope, "s2", "stm_s1", "stm_s3", "玩家在村庄铁匠铺找到钻石镐。");
+        AXStmBlock s3 = linkedBlock(scope, "s3", "stm_s2", "stm_s4", "玩家把钻石镐放进末影箱。");
+        AXStmBlock s4 = linkedBlock(scope, "s4", "stm_s3", "stm_s5", "玩家离开村庄继续赶路。");
+        AXStmBlock s5 = linkedBlock(scope, "s5", "stm_s4", "", "玩家回到了自己的基地。");
+        memorySystem.stmBlocks().rewrite(scope, List.of(s1, s2, s3, s4, s5));
+        AXMemoryEvent anchor = event(scope, s3, "玩家把钻石镐放进末影箱。");
+        memorySystem.events().appendAll(scope, List.of(anchor));
+        memorySystem.vectors().appendAll(scope, List.of(vector(anchor, new float[]{1.0F, 0.0F})));
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
+        AtomicReference<AXMemoryRetrievalResult> compact = new AtomicReference<>();
+        AtomicReference<AXMemoryRetrievalResult> standard = new AtomicReference<>();
+
+        retriever.retrieve(
+                new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 5, 1000, AXContextTier.COMPACT),
+                compact::set
+        );
+        retriever.retrieve(
+                new AXMemoryRetrievalRequest(scope, new AXRequest("query", "钻石镐在哪里？", ""), 5, 1000, AXContextTier.STANDARD),
+                standard::set
+        );
+
+        await(() -> compact.get() != null && standard.get() != null);
+        assertEquals(List.of(s2.id(), s3.id(), s4.id()), blockIds(compact.get()), "紧凑档只跟一跳");
+        assertEquals(List.of(s1.id(), s2.id(), s3.id(), s4.id(), s5.id()), blockIds(standard.get()), "标准档跟两跳");
+    }
+
+    private static List<String> blockIds(AXMemoryRetrievalResult result) {
+        return result == null ? List.of() : result.blocks().stream().map(view -> view.block().id()).toList();
     }
 
     @Test
@@ -145,7 +188,7 @@ class AXMemoryRetrieverTest {
         );
         AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
 
-        retriever.retrieve(new AXMemoryRetrievalRequest(scope(), new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000), result::set);
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope(), new AXRequest("query", "钻石镐在哪里？", ""), 1, 1000, AXContextTier.COMPACT), result::set);
 
         await(() -> result.get() != null);
         assertEquals(0, result.get().blocks().size());

@@ -5,12 +5,6 @@ import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 public interface LlmSettingsAccess extends LlmConfiguration {
     void setLlmEnabled(boolean enabled);
     void setCustomLlmName(String name);
-    String getLlmGpuDeviceId();
-    void setLlmGpuDeviceId(String deviceId);
-    void setLlmFrameGuardEnabled(boolean enabled);
-    int getLlmFrameGuardTargetFps();
-    void setLlmFrameGuardTargetFps(int fps);
-    void setLlmMtpEnabled(boolean enabled);
     void setLlmRemoteBaseUrl(String baseUrl);
     /** The credential itself is never read back into the settings page; only written here. */
     void setLlmRemoteApiKey(String apiKey);
