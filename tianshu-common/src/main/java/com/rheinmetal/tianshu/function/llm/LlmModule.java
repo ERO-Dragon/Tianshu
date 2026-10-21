@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.llm.settings.LlmContextTiers;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
@@ -347,12 +348,19 @@ public final class LlmModule implements TianshuManagedModule {
         if (isBlank(baseUrl) || isBlank(apiKey) || isBlank(model)) {
             return null;
         }
+        int windowTokens = config.getLlmContextWindowTokens();
+        int tier = LlmContextTiers.downgradeToLargestAvailable(config.getLlmContextTier(), windowTokens);
+        if (tier != config.getLlmContextTier()) {
+            env.warn("[LLM] Context tier downgraded to fit the declared window: requested="
+                    + config.getLlmContextTier() + " window=" + windowTokens + " effective=" + tier);
+        }
         return new OpenAiCompatibleInferenceClient(
                 baseUrl,
                 apiKey,
                 model,
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
-                env::warn
+                env::warn,
+                tier
         );
     }
 

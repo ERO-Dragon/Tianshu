@@ -26,7 +26,6 @@ public final class AXPromptOrchestrator {
     private final AXPromptResourceRepository resourceRepository;
     private final AXPromptLanguageProvider languageProvider;
     private final List<AXPromptContributor> contributors;
-    private final AXTokenCounter tokenCounter;
 
     public AXPromptOrchestrator(
             AXPromptResourceRepository resourceRepository,
@@ -42,7 +41,10 @@ public final class AXPromptOrchestrator {
             AXGameContextKnowledgePlanner knowledgePlanner,
             List<AXPromptContributor> contributors
     ) {
-        this(resourceRepository, languageProvider, knowledgePlanner, contributors, null);
+        this.resourceRepository = resourceRepository;
+        this.languageProvider = languageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : languageProvider;
+        AXGameContextKnowledgePlanner effectivePlanner = knowledgePlanner == null ? AXGameContextKnowledgePlanner.NONE : knowledgePlanner;
+        this.contributors = contributors == null ? defaultContributors(effectivePlanner) : List.copyOf(contributors);
     }
 
     public AXPromptOrchestrator(
@@ -52,11 +54,7 @@ public final class AXPromptOrchestrator {
             List<AXPromptContributor> contributors,
             AXTokenCounter tokenCounter
     ) {
-        this.resourceRepository = resourceRepository;
-        this.languageProvider = languageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : languageProvider;
-        AXGameContextKnowledgePlanner effectivePlanner = knowledgePlanner == null ? AXGameContextKnowledgePlanner.NONE : knowledgePlanner;
-        this.contributors = contributors == null ? defaultContributors(effectivePlanner) : List.copyOf(contributors);
-        this.tokenCounter = tokenCounter == null ? AXTokenCounter.unavailable() : tokenCounter;
+        this(resourceRepository, languageProvider, knowledgePlanner, contributors);
     }
 
     public static List<AXPromptContributor> defaultContributors() {
@@ -77,7 +75,7 @@ public final class AXPromptOrchestrator {
         AXPromptLanguage language = languageProvider.currentLanguage();
         AXPromptProfile profile = loadProfile(language);
         AXPromptTexts texts = loadTexts(language);
-        AXPromptBuildContext buildContext = new AXPromptBuildContext(request, context, budget, language, profile, texts, tokenCounter);
+        AXPromptBuildContext buildContext = new AXPromptBuildContext(request, context, budget, language, profile, texts);
         AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
         for (AXPromptContributor contributor : orderedContributors(profile)) {
             if (contributor != null) {

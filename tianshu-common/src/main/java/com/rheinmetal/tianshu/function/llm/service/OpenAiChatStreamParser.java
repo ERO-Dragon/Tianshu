@@ -27,15 +27,27 @@ final class OpenAiChatStreamParser {
     /**
      * One parsed frame. The text fields are empty when the frame carries no content, and the token
      * counts stay {@code null} unless the frame carries a usage report.
+     *
+     * <p>{@code cacheHitTokens} / {@code cacheMissTokens} are the provider's own account of how much
+     * of the prompt it served from its prefix cache. They are the only ground truth we have about
+     * whether our prompt is actually cache-stable, so they are carried through verbatim.
      */
-    record Event(String text, String thinking, boolean done, Integer promptTokens, Integer completionTokens) {
+    record Event(
+            String text,
+            String thinking,
+            boolean done,
+            Integer promptTokens,
+            Integer completionTokens,
+            Integer cacheHitTokens,
+            Integer cacheMissTokens
+    ) {
         Event {
             text = text == null ? "" : text;
             thinking = thinking == null ? "" : thinking;
         }
 
         static Event endOfStream() {
-            return new Event("", "", true, null, null);
+            return new Event("", "", true, null, null, null, null);
         }
     }
 
@@ -67,7 +79,9 @@ final class OpenAiChatStreamParser {
                 content(frame, REASONING_FIELD),
                 false,
                 usage(frame, "prompt_tokens"),
-                usage(frame, "completion_tokens")
+                usage(frame, "completion_tokens"),
+                usage(frame, "prompt_cache_hit_tokens"),
+                usage(frame, "prompt_cache_miss_tokens")
         );
     }
 

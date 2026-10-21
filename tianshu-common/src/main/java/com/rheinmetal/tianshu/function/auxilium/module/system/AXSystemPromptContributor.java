@@ -5,8 +5,15 @@ import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptBuildContext
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptSectionRenderer;
 
-import java.util.OptionalInt;
-
+/**
+ * Contributes the single, byte-frozen system prompt.
+ *
+ * <p>There used to be three prompt sizes selected against the remaining token budget. That selection
+ * is gone: a shortened system prompt saves a few hundred tokens once, while a byte-stable prompt lets
+ * the provider cache the whole prefix on every turn. Constant bytes win by two orders of magnitude,
+ * so the largest configured prompt is used unconditionally and the tier is chosen only by context
+ * budget, never by prompt length.
+ */
 public final class AXSystemPromptContributor implements AXPromptContributor {
     public static final String SECTION_ID = "ax_system";
 
@@ -17,45 +24,21 @@ public final class AXSystemPromptContributor implements AXPromptContributor {
 
     @Override
     public void contribute(AXPromptBuildContext context, AXPromptAssemblyBuilder builder) {
-        int tokenBudget = context.budget().systemTokenBudget();
-        String prompt = selectSystemPrompt(context, tokenBudget);
+        String prompt = singleSystemPrompt(context);
         if (prompt.isBlank()) {
             return;
         }
         builder.addContextSection(renderSystemSection(context, prompt));
     }
 
-    private String selectSystemPrompt(AXPromptBuildContext context, int tokenBudget) {
-        String fallback = "";
-        String standard = context.profile().systemPrompts().standardPrompt();
-        int index = 0;
+    /** The one system prompt: the most complete configured variant, byte-identical on every turn. */
+    private String singleSystemPrompt(AXPromptBuildContext context) {
         for (String prompt : context.profile().systemPrompts().largestFirst()) {
-            if (prompt.isBlank()) {
-                index++;
-                continue;
-            }
-            if (fallback.isBlank()) {
-                fallback = prompt;
-            }
-            if (tokenBudget <= 0) {
+            if (!prompt.isBlank()) {
                 return prompt;
             }
-            OptionalInt count = countTokens(context, renderSystemSection(context, prompt), "profile." + index);
-            if (count.isEmpty()) {
-                return standard.isBlank() ? prompt : standard;
-            }
-            if (count.getAsInt() <= tokenBudget) {
-                return prompt;
-            }
-            index++;
         }
-        String shortest = context.profile().systemPrompts().shortPrompt();
-        return shortest.isBlank() ? fallback : shortest;
-    }
-
-    private OptionalInt countTokens(AXPromptBuildContext context, String text, String suffix) {
-        String requestId = context.request() == null ? "ax.system_profile" : context.request().requestKey();
-        return context.tokenCounter().countMessageTokens(requestId + "." + suffix, "system", text);
+        return "";
     }
 
     private String renderSystemSection(AXPromptBuildContext context, String content) {

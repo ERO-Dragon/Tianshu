@@ -180,7 +180,15 @@ class AXPromptAssemblySnapshotTest {
         String joined = payload.chunks().get(0).messageContent().stream()
                 .map(LLMPromptRequestPayload.MessageItemPayload::content)
                 .collect(java.util.stream.Collectors.joining("\n\n"));
-        assertOrdered(joined, "<game_context>", "<ax_system>", "本轮唯一输入-排序测试");
+        // 装配位置不再由 sectionOrder 决定：system 恒定在最前，动态段恒定落在当前输入之前。
+        java.util.List<LLMPromptRequestPayload.MessageItemPayload> ordered = payload.chunks().get(0).messageContent();
+        assertEquals("system", ordered.get(0).role());
+        assertTrue(ordered.get(0).content().contains("<ax_system>"));
+        assertEquals("本轮唯一输入-排序测试", ordered.get(ordered.size() - 1).content());
+        assertTrue(
+                ordered.get(ordered.size() - 2).content().contains("<game_context>"),
+                "动态上下文必须落在当前输入之前"
+        );
     }
 
     private static AXStmBlock stm(AXScope scope, String id, String content, long createdAtMillis) {

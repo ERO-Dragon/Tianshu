@@ -9,6 +9,8 @@ import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmTokenEstimator;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
@@ -64,6 +66,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private static final String STREAM_MEDIA_TYPE = "text/event-stream";
     private static final String REDACTED = "<redacted>";
     private static final int MAX_ERROR_BODY_CHARS = 512;
+    /** Below this prompt size the cache ratio is noise: the first turns of a session are all misses. */
+    private static final int CACHE_RATIO_MIN_PROMPT_TOKENS = 1_024;
+    /** A steady-state prompt should mostly hit the prefix cache; below this the prefix is drifting. */
+    private static final double CACHE_RATIO_WARN_THRESHOLD = 0.3D;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private final String endpoint;
@@ -76,6 +82,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private final ExecutorService ownedExecutor;
     private final Set<RemoteStream> activeStreams = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
+    /** Budget derived once from the declared window; the cloud endpoint never reports one. */
+    private final LlmContextBudgetSnapshot contextBudget;
+    /** The endpoint ships no tokenizer, so prompt size is estimated and calibrated from usage. */
+    private final LlmTokenEstimator tokenEstimator = new LlmTokenEstimator();
 
     public OpenAiCompatibleInferenceClient(
             String baseUrl,
@@ -84,7 +94,18 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Duration timeout,
             Consumer<String> diagnostics
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, null, null);
+        this(baseUrl, apiKey, model, timeout, diagnostics, LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS);
+    }
+
+    public OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            int contextWindowTokens
+    ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, contextWindowTokens, null, null);
     }
 
     /** Transport seam: tests drive the real stream loop with a stub {@link HttpClient}, no socket. */
@@ -97,6 +118,20 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             HttpClient httpClient,
             Executor executor
     ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics,
+                LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS, httpClient, executor);
+    }
+
+    OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            int contextWindowTokens,
+            HttpClient httpClient,
+            Executor executor
+    ) {
         this.endpoint = normalizeEndpoint(baseUrl);
         this.apiKey = requireHeaderSafe(apiKey == null ? "" : apiKey.trim());
         this.model = requireText(model, "model");
@@ -105,6 +140,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         this.httpClient = httpClient != null ? httpClient : newHttpClient(this.timeout);
         this.ownedExecutor = executor == null ? newOwnedExecutor() : null;
         this.executor = executor != null ? executor : ownedExecutor;
+        this.contextBudget = LlmContextBudgetSnapshot.ofConfiguredWindow(contextWindowTokens);
     }
 
     /** {@code baseUrl} plus the completions path, with trailing slashes collapsed. */
@@ -241,12 +277,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
-        throw new UnsupportedOperationException("REMOTE_LLM_TOKEN_COUNT_UNAVAILABLE");
+        return tokenEstimator.estimate(messages);
     }
 
     @Override
     public boolean supportsTokenCounting() {
-        return false;
+        return true;
     }
 
     // --- runtime inspection ----------------------------------------------------------------------
@@ -313,12 +349,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     @Override
     public LlmContextBudgetSnapshot getContextBudgetPlan() {
-        return contextBudget();
+        return contextBudget;
     }
 
     @Override
     public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) {
-        return contextBudget();
+        return contextBudget;
     }
 
     @Override
@@ -430,7 +466,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 if (status < 200 || status >= 300) {
                     throw new IllegalStateException("REMOTE_LLM_HTTP_STATUS status=" + status + errorDetail(readErrorBody(body)));
                 }
-                return readStream(body, onToken, onThinking, stream);
+                LlmGenerationResult result = readStream(body, onToken, onThinking, stream);
+                calibrateUsage(messages, result);
+                return result;
             } catch (IOException failure) {
                 if (stream.cancelled()) {
                     throw new CancellationException("REMOTE_LLM_REQUEST_CANCELLED");
@@ -441,6 +479,43 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             stream.detach();
             activeStreams.remove(stream);
         }
+    }
+
+    /**
+     * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
+     * tokenizer, so this is the only way the estimate converges on the real number.
+     */
+    /**
+     * Surfaces prefix-cache health. The provider reports how much of the prompt it served from its
+     * cache; a low ratio on a non-trivial prompt means our prefix stopped being byte-stable, which is
+     * the single most expensive regression this prompt layout can suffer.
+     */
+    private void reportCacheHitRatio(int promptTokens, int cacheHitTokens, int cacheMissTokens) {
+        if (cacheHitTokens < 0 || cacheMissTokens < 0 || promptTokens < CACHE_RATIO_MIN_PROMPT_TOKENS) {
+            return;
+        }
+        int total = cacheHitTokens + cacheMissTokens;
+        if (total <= 0) {
+            return;
+        }
+        double ratio = (double) cacheHitTokens / (double) total;
+        if (ratio >= CACHE_RATIO_WARN_THRESHOLD) {
+            return;
+        }
+        diagnostics.accept("[LLM] Prefix cache hit ratio is low: ratio=" + String.format(Locale.ROOT, "%.2f", ratio)
+                + " hit=" + cacheHitTokens + " miss=" + cacheMissTokens + " prompt=" + promptTokens
+                + " — the prompt prefix is drifting, so the cache never warms up.");
+    }
+
+    private void calibrateUsage(List<ChatMessage> messages, LlmGenerationResult result) {
+        if (result == null || result.usage() == null || messages == null) {
+            return;
+        }
+        int actual = result.usage().promptTokens();
+        if (actual <= 0) {
+            return;
+        }
+        tokenEstimator.calibrate(tokenEstimator.estimate(messages), actual);
     }
 
     private LlmGenerationResult readStream(
@@ -454,6 +529,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         StringBuilder thinking = new StringBuilder();
         int promptTokens = 0;
         int completionTokens = 0;
+        int cacheHitTokens = -1;
+        int cacheMissTokens = -1;
         BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
         String line;
         while ((line = reader.readLine()) != null) {
@@ -473,6 +550,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             if (event.completionTokens() != null) {
                 completionTokens = event.completionTokens();
             }
+            if (event.cacheHitTokens() != null) {
+                cacheHitTokens = event.cacheHitTokens();
+            }
+            if (event.cacheMissTokens() != null) {
+                cacheMissTokens = event.cacheMissTokens();
+            }
             if (!event.thinking().isEmpty()) {
                 thinking.append(event.thinking());
                 if (onThinking != null) {
@@ -490,6 +573,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 throw new IllegalStateException("REMOTE_LLM_STREAM_TIMEOUT timeoutSeconds=" + timeout.toSeconds());
             }
         }
+        reportCacheHitRatio(promptTokens, cacheHitTokens, cacheMissTokens);
         return new LlmGenerationResult(text.toString(), new LlmTokenUsage(promptTokens, completionTokens), thinking.toString());
     }
 
@@ -627,10 +711,6 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             }
         }
         return apiKey;
-    }
-
-    private static LlmContextBudgetSnapshot contextBudget() {
-        return LlmContextBudgetSnapshot.unavailable("REMOTE_LLM_CONTEXT_SIZE_NOT_REPORTED");
     }
 
     private static boolean capturesThinking(LlmInferenceOptions options) {

@@ -7,6 +7,13 @@ public interface LlmConfiguration {
     String DEFAULT_LLM_REMOTE_BASE_URL = "https://api.deepseek.com/v1";
     String DEFAULT_LLM_REMOTE_MODEL = "deepseek-chat";
 
+    /**
+     * Declared context window of the cloud model, in tokens. The cloud endpoint does not report its
+     * window, so it has to be configured; every AX budget value is derived from this single number.
+     * Defaults to the 100K tier.
+     */
+    int DEFAULT_LLM_CONTEXT_WINDOW_TOKENS = 102_400;
+
     boolean isLlmEnabled();
 
     String getCustomLlmName();
@@ -29,6 +36,19 @@ public interface LlmConfiguration {
 
     default String getLlmRemoteModel() {
         return DEFAULT_LLM_REMOTE_MODEL;
+    }
+
+    /** Usable context window of the active cloud model; see {@link #DEFAULT_LLM_CONTEXT_WINDOW_TOKENS}. */
+    default int getLlmContextWindowTokens() {
+        return DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
+    }
+
+    /**
+     * Selected context budget tier. The window above only says which tiers physically fit; this is
+     * the one the player actually chose, and every budget value derives from it.
+     */
+    default int getLlmContextTier() {
+        return LlmContextTiers.DEFAULT_TIER;
     }
 
     default Path getLlmMtpDraftGgufFilePath() {

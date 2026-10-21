@@ -46,7 +46,7 @@ public final class AXGameContextPromptContributor implements AXPromptContributor
         if (content.isBlank()) {
             return;
         }
-        builder.addContextSection(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_GAME_CONTEXT, content));
+        builder.addTailSection(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_GAME_CONTEXT, content));
     }
 
     private List<String> dynamicFacts(AXPromptBuildContext context, int limit) {

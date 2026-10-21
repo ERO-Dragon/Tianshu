@@ -53,7 +53,7 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
         if (content.isBlank()) {
             return;
         }
-        builder.addContextSection(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_PLAYER_MEMORY, content));
+        builder.addTailSection(AXPromptSectionRenderer.renderContent(context, AXPromptTexts.SECTION_PLAYER_MEMORY, content));
     }
 
     private String renderHistoryGroup(AXPromptBuildContext context, String groupTemplateKey, List<AXMemoryBlockView> blocks) {

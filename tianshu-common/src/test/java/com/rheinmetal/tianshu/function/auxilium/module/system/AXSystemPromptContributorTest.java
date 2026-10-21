@@ -10,39 +10,34 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXSystemPromptContributorTest {
     @Test
-    void selectsShortSystemProfileWhenTokenBudgetIsSmall() {
+    void usesTheMostCompleteSystemPromptRegardlessOfTokenBudget() {
         AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
 
         new AXSystemPromptContributor().contribute(buildContext(8), builder);
 
         String content = builder.build().messages().get(0).content();
-        assertTrue(content.contains("short complete prompt"));
-        assertFalse(content.contains("standard complete prompt"));
-        assertFalse(content.contains("full complete prompt"));
-    }
-
-    @Test
-    void selectsFullSystemProfileWhenTokenBudgetAllowsIt() {
-        AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
-
-        new AXSystemPromptContributor().contribute(buildContext(200), builder);
-
-        String content = builder.build().messages().get(0).content();
         assertTrue(content.contains("full complete prompt"));
+        assertFalse(content.contains("standard complete prompt"));
     }
 
     @Test
-    void keepsShortestSystemPromptWholeWhenEveryProfileExceedsItsSlot() {
-        AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
+    void systemPromptIsByteStableAcrossTokenBudgets() {
+        AXPromptAssemblyBuilder small = new AXPromptAssemblyBuilder();
+        AXPromptAssemblyBuilder large = new AXPromptAssemblyBuilder();
 
-        new AXSystemPromptContributor().contribute(buildContext(1), builder);
+        new AXSystemPromptContributor().contribute(buildContext(1), small);
+        new AXSystemPromptContributor().contribute(buildContext(200), large);
 
-        assertTrue(builder.build().messages().get(0).content().contains("short complete prompt"));
+        assertEquals(
+                small.build().messages().get(0).content(),
+                large.build().messages().get(0).content()
+        );
     }
 
     private AXPromptBuildContext buildContext(int systemTokenBudget) {
@@ -59,15 +54,7 @@ class AXSystemPromptContributorTest {
                 new AXPromptProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, prompts, List.of("ax_system")),
                 new AXPromptTexts(AXPromptLanguage.EN_US, Map.of(
                         AXPromptTexts.SECTION_AX_SYSTEM, "<ax_system>\n{{content}}\n</ax_system>"
-                )),
-                (requestId, role, content) -> java.util.OptionalInt.of(countWords(content))
+                ))
         );
-    }
-
-    private int countWords(String content) {
-        if (content == null || content.isBlank()) {
-            return 0;
-        }
-        return content.trim().split("\\s+").length;
     }
 }

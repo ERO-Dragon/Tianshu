@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.llm.settings.LlmContextTiers;
 import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
@@ -50,6 +51,8 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_BASE_URL;
     public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_API_KEY;
     public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_MODEL;
+    public static final ModConfigSpec.IntValue LLM_CONTEXT_WINDOW_TOKENS;
+    public static final ModConfigSpec.IntValue LLM_CONTEXT_TIER;
     public static final ModConfigSpec.BooleanValue AX_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> AX_WAKE_WORD;
     public static final ModConfigSpec.BooleanValue AX_REPLY_SPEECH_ENABLED;
@@ -97,6 +100,16 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         LLM_REMOTE_BASE_URL = builder.define("remoteBaseUrl", LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
         LLM_REMOTE_API_KEY = builder.define("remoteApiKey", "");
         LLM_REMOTE_MODEL = builder.define("remoteModel", LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL);
+        LLM_CONTEXT_WINDOW_TOKENS = builder.defineInRange(
+                "contextWindowTokens",
+                LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS,
+                4_096,
+                2_097_152);
+        LLM_CONTEXT_TIER = builder.defineInRange(
+                "contextTier",
+                LlmContextTiers.DEFAULT_TIER,
+                LlmContextTiers.TIER_50K,
+                LlmContextTiers.TIER_500K);
         builder.pop();
 
         builder.comment("AX 辅星设置").push("ax");
@@ -307,6 +320,24 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     @Override
     public void setLlmRemoteModel(String model) {
         LLM_REMOTE_MODEL.set(model == null ? "" : model.trim());
+    }
+
+    @Override
+    public int getLlmContextWindowTokens() {
+        return LLM_CONTEXT_WINDOW_TOKENS.get();
+    }
+
+    public void setLlmContextWindowTokens(int windowTokens) {
+        LLM_CONTEXT_WINDOW_TOKENS.set(windowTokens);
+    }
+
+    @Override
+    public int getLlmContextTier() {
+        return LLM_CONTEXT_TIER.get();
+    }
+
+    public void setLlmContextTier(int tier) {
+        LLM_CONTEXT_TIER.set(tier);
     }
 
     @Override

@@ -21,8 +21,7 @@ class AXRecentDialogueSystemCheckpointTest {
     Path tempDir;
 
     @Test
-    void compressionConfirmationCheckpointsOnlyRemainingRawTurns() {
-        AXStorageLayout layout = layout();
+    void compressionConfirmationCheckpointsOnlyRemainingRawTurns() {        AXStorageLayout layout = layout();
         AXScope scope = scope();
         AXRecentDialogueSystem system = system(layout);
         system.append(scope, turn(scope, "u1", "user", "第一问", "turn-1", 10));
@@ -37,6 +36,26 @@ class AXRecentDialogueSystemCheckpointTest {
         assertEquals(2, store.load(scope).size());
         assertEquals("u2", store.load(scope).get(0).id());
         assertEquals("a2", store.load(scope).get(1).id());
+    }
+
+    @Test
+    void generationAdvancesOnlyWhenARawTurnBatchIsActuallyConsumed() {
+        AXStorageLayout layout = layout();
+        AXScope scope = scope();
+        AXRecentDialogueSystem system = system(layout);
+        system.append(scope, turn(scope, "u1", "user", "第一问", "turn-1", 10));
+        system.append(scope, turn(scope, "a1", "assistant", "第一答", "turn-1", 10));
+        system.append(scope, turn(scope, "u2", "user", "第二问", "turn-2", 10));
+        system.append(scope, turn(scope, "a2", "assistant", "第二答", "turn-2", 10));
+
+        assertEquals(0, system.generation(scope));
+        system.confirmConsumed(scope, null);
+        assertEquals(0, system.generation(scope), "没有真实消费时不得推进代次");
+
+        AXRawTurnBatch batch = system.selectCompressionBatch(scope);
+        assertEquals(2, batch.turnIds().size(), "测试前提：前两轮应进入压缩批次");
+        system.confirmConsumed(scope, batch);
+        assertEquals(1, system.generation(scope), "换代必须被记录，它解释了唯一预期的一次全 miss");
     }
 
     @Test

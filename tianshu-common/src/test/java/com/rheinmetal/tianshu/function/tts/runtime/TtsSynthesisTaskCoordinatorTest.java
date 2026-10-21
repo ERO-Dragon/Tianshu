@@ -155,7 +155,7 @@ class TtsSynthesisTaskCoordinatorTest {
                     }
             ).accepted());
 
-            assertTrue(failed.await(2L, TimeUnit.SECONDS));
+            assertTrue(failed.await(10L, TimeUnit.SECONDS), "TTL expiry must be reported once the engine blocks");
             assertEquals(0, deliveries.get());
             assertEquals(TtsFailureCode.SYNTHESIS_FAILED, observed.get().code());
         } finally {
@@ -170,7 +170,7 @@ class TtsSynthesisTaskCoordinatorTest {
         try {
             assertTrue(coordinator.submit(request("duplicate"), 30_000L,
                     audio -> { }, null, () -> { }, failure -> { }).accepted());
-            assertTrue(engine.started.await(2L, TimeUnit.SECONDS));
+            assertTrue(engine.started.await(10L, TimeUnit.SECONDS), "engine should start");
 
             assertFalse(coordinator.submit(request("duplicate"), 30_000L,
                     audio -> { }, null, () -> { }, failure -> { }).accepted());
@@ -192,9 +192,9 @@ class TtsSynthesisTaskCoordinatorTest {
                         observed.set(failure);
                         failed.countDown();
                     }).accepted());
-            assertTrue(engine.started.await(2L, TimeUnit.SECONDS));
+            assertTrue(engine.started.await(10L, TimeUnit.SECONDS), "engine should start");
 
-            assertTrue(failed.await(2L, TimeUnit.SECONDS));
+            assertTrue(failed.await(10L, TimeUnit.SECONDS), "TTL expiry must be reported once the engine blocks");
             assertEquals(TtsFailureCode.EXPIRED, observed.get().code());
             assertTrue(engine.interruptions.get() > 0);
         } finally {

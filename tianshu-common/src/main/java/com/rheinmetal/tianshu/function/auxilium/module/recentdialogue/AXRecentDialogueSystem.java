@@ -16,6 +16,11 @@ public final class AXRecentDialogueSystem {
     private final AXRawTurnCheckpointStore checkpointStore;
     private final Set<String> restoredWorlds = ConcurrentHashMap.newKeySet();
     private final Map<String, AXScope> scopesByWorld = new ConcurrentHashMap<>();
+    /**
+     * 已发生的压缩换代次数，按世界计。换代意味着"压缩窗口里的一批轮次已被消费"，
+     * 提示词前缀从这一刻起必然不同，因此它是缓存观测里唯一被预期的一次全 miss。
+     */
+    private final Map<String, Integer> generationByWorld = new ConcurrentHashMap<>();
     private volatile String activeWorldId = "";
 
     public AXRecentDialogueSystem(AXMemoryWindowPolicy policy) {
@@ -58,9 +63,23 @@ public final class AXRecentDialogueSystem {
         }
         int consumed = rawTurnWindow.confirmConsumed(scope, turnIds);
         if (consumed > 0) {
+            generationByWorld.merge(worldKey(scope), 1, Integer::sum);
             checkpoint(scope);
         }
         return consumed;
+    }
+
+    /** 当前世界的压缩代次；换代时自增，用于区分"正常轮次"与"换轮引发的全 miss"。 */
+    public int generation(AXScope scope) {
+        if (scope == null) {
+            return 0;
+        }
+        return generationByWorld.getOrDefault(worldKey(scope), 0);
+    }
+
+    private static String worldKey(AXScope scope) {
+        String worldId = scope.worldId();
+        return worldId == null || worldId.isBlank() ? "" : worldId;
     }
 
     public void checkpoint(AXScope scope) {
