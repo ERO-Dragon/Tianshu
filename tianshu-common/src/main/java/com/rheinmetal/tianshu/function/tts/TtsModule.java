@@ -126,7 +126,8 @@ public final class TtsModule implements TianshuManagedModule {
                 ignored -> { },
                 this::publishPlaybackStatus,
                 this::publishRequestStatus,
-                adapter::publishLoadingActivity
+                adapter::publishLoadingActivity,
+                config::isTtsStreamingSynthesisEnabled
         );
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);

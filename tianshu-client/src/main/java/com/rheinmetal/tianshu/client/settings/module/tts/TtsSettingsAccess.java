@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 
 public interface TtsSettingsAccess extends TtsConfiguration {
     void setTtsEnabled(boolean enabled);
+    void setTtsStreamingSynthesisEnabled(boolean enabled);
     String getTtsPreviewText();
     void setTtsPreviewText(String text);
     String getTtsGithubProxyUrl();

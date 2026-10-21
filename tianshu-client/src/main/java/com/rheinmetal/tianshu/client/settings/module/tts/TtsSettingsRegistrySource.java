@@ -100,6 +100,8 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
         panel.enable("tts.enabled", tts("enabled"), draft.enabled)
                 .options("tts.main", tts("section.main"), draft::buildMainOptions)
+                .toggles("tts.synthesis", tts("section.synthesis"), draft.enabled::get, toggles -> toggles
+                        .toggle("tts.streaming.synthesis", tts("option.streaming_synthesis"), draft.streamingSynthesis, draft.enabled::get))
                 .actions("tts.preview", tts("section.preview"), actions -> actions
                         .button("tts.preview.start", tts("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
                         .button("tts.preview.stop", tts("action.preview_stop"), draft::stopPreview, draft::previewRunning))
@@ -141,6 +143,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         private final TtsVoiceImportController voiceImport;
         private final ClientTextProvider textProvider;
         private final MutableSettingsValue<Boolean> enabled;
+        private final MutableSettingsValue<Boolean> streamingSynthesis;
         private final MutableSettingsValue<String> selectedModelName;
         private final MutableSettingsValue<String> previewText;
         private final MutableSettingsValue<Double> speed;
@@ -180,6 +183,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
                     .sorted(Comparator.comparing(info -> info.name, String.CASE_INSENSITIVE_ORDER))
                     .toList();
             this.enabled = new MutableSettingsValue<>(config::isTtsEnabled, config::setTtsEnabled);
+            this.streamingSynthesis = new MutableSettingsValue<>(config::isTtsStreamingSynthesisEnabled, config::setTtsStreamingSynthesisEnabled);
             this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             ModelSettings.TtsSettings settings = modelSettings(resolveModel(this.selectedModelName.get()));
             this.previewText = new MutableSettingsValue<>(this::initialPreviewText, config::setTtsPreviewText, value -> value != null && !value.isBlank());
@@ -233,6 +237,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
+                    || streamingSynthesis.dirty()
                     || selectedModelName.dirty()
                     || previewText.dirty()
                     || speed.dirty()
@@ -265,7 +270,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public SettingsSaveResult save() {
             TtsSettingsSnapshot before = TtsSettingsSnapshot.from(config);
-            var transaction = new SettingsSaveTransaction(enabled, previewText, githubProxyUrl,
+            var transaction = new SettingsSaveTransaction(enabled, streamingSynthesis, previewText, githubProxyUrl,
                     selectedModelName, speed, speakerId, selectedVoiceSample)
                     .write(config::getCustomTtsName, config::setCustomTtsName, selectedModelName.get());
             TtsModelInfo info = resolveModel(selectedModelName.get());
@@ -285,6 +290,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
+            streamingSynthesis.reset();
             selectedModelName.reset();
             previewText.reset();
             speed.reset();

@@ -41,6 +41,7 @@ public final class TestLlmSupport {
         private int libsChatQueueSize = 1;
         private long llmAutoLoadDelayMillis = 3_000L;
         private long ttsAutoLoadDelayMillis = 1_000L;
+        private String remoteApiKey = "";
 
         public FakeConfig(Path root) {
             this.root = root;
@@ -81,6 +82,12 @@ public final class TestLlmSupport {
             return this;
         }
 
+        /** Cloud credential; blank means the cloud lane is unconfigured and cannot start. */
+        public FakeConfig remoteApiKey(String apiKey) {
+            this.remoteApiKey = apiKey == null ? "" : apiKey;
+            return this;
+        }
+
         @Override public boolean isAsrEnabled() { return aiEnabled; }
         @Override public boolean isLlmEnabled() { return aiEnabled; }
         @Override public boolean isTtsEnabled() { return aiEnabled; }
@@ -90,6 +97,7 @@ public final class TestLlmSupport {
         @Override public String getCustomAsrName() { return ""; }
         @Override public String getCustomLlmName() { return customLlmName; }
         @Override public String getCustomTtsName() { return ""; }
+        @Override public String getLlmRemoteApiKey() { return remoteApiKey; }
         @Override public Path getAsrBasePath() { return root.resolve("asr"); }
         @Override public Path getLlmBasePath() { return root.resolve("llm"); }
         @Override public Path getTtsBasePath() { return root.resolve("tts"); }

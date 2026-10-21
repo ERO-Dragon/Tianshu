@@ -9,11 +9,10 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagCacheLayout;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
-import com.rheinmetal.tianshu.function.llm.service.JavaLlamaInferenceClient;
-import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
+import com.rheinmetal.tianshu.function.llm.service.EmbeddingService;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
-import com.rheinmetal.tianshu.function.llm.service.LlmEmbeddingServiceAdapter;
 import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
+import com.rheinmetal.tianshu.function.llm.service.OpenAiCompatibleInferenceClient;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -34,6 +33,12 @@ public final class LlmModule implements TianshuManagedModule {
             LlmRuntimeCapabilities.LLM_CACHE_MANAGE,
             LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY
     );
+    /** Cloud settings a request needs; used verbatim in the diagnostics, never in player-facing text. */
+    private static final String REMOTE_SETTING_API_KEY = "remoteApiKey";
+    private static final String REMOTE_SETTING_BASE_URL = "remoteBaseUrl";
+    private static final String REMOTE_SETTING_MODEL = "remoteModel";
+    private static final String STATUS_KEY_MISSING_API_KEY = "tianshu.presence.module.llm.missing_api_key";
+    private static final String STATUS_KEY_REMOTE_INCOMPLETE = "tianshu.presence.module.llm.remote_incomplete";
 
     private final IGameEnvironment env;
     private final LlmConfiguration config;
@@ -49,6 +54,7 @@ public final class LlmModule implements TianshuManagedModule {
     private LlmModuleService moduleService;
     private LlmModelService modelService;
     private ModuleServiceRegistry serviceRegistry;
+    private volatile OpenAiCompatibleInferenceClient remoteClient;
     private boolean destroyed;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle delayedAutoLoad;
@@ -251,66 +257,125 @@ public final class LlmModule implements TianshuManagedModule {
         }
 
         publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting"));
-        engineProvider.startAsync(() -> adapter.publishLoadingActivity(true), () -> {
-            synchronized (lifecycleLock) {
-                if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
-                        || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
-                    return;
-                }
-                JavaLlamaServer aiService = engineProvider.currentAiService();
-                if (aiService == null) {
-                    markGenerationCapabilityFailed("LLM service failed to start");
-                    markStorageCapabilitiesReady();
-                    moduleService.markFailed("LLM service failed to start");
-                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed"));
-                    publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
-                    return;
-                }
-                JavaLlamaInferenceClient inferenceClient = new JavaLlamaInferenceClient(aiService);
-                ragStorageService.bindEmbeddingService(new LlmEmbeddingServiceAdapter(inferenceClient));
-                llmService = LLMService.builder()
-                        .env(env)
-                        .config(config)
-                        .inferenceClient(inferenceClient)
-                        .performanceProvider(moduleService)
-                        .usePersistentCache(true)
-                        .cacheDirectory(ragCacheLayout.cacheDirectory())
-                        .cacheNamespace(ragCacheLayout.cacheNamespace())
-                        .embeddingConfigured(engineProvider.isEmbeddingConfigured())
-                        .ragStorage(ragStorageService)
-                        .ragSearchExecutor(llmExecutor.cpuExecutor())
-                        .ragPersistenceScheduler(llmExecutor.ragPersistenceScheduler())
-                        .build();
-                if (serviceRegistry != null) {
-                    serviceRegistry.register(LLMService.class, llmService);
-                }
-                adapter.setLlmService(llmService);
-                markCapabilitiesReady();
-                moduleService.markReady();
-            }
-            publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
-            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.llm.ready", lifecycleStatusGeneration));
-        }, () -> {
-            if (generation != lifecycleGeneration.get()) {
+        // Cloud is the only chat lane. There is no local fallback: an unconfigured cloud endpoint
+        // fails the lane and tells the player what to fill in, instead of quietly loading a GGUF.
+        startRemoteRuntime(generation);
+    }
+
+    /**
+     * The cloud lane builds its inference client straight from configuration, so no chat GGUF is
+     * mapped and no chat model is downloaded. Vector RAG keeps running locally: the embedding engine
+     * is started in embedding-only mode, which is why a cloud user still gets retrieval without ever
+     * owning a chat model.
+     */
+    private void startRemoteRuntime(long generation) {
+        String missingSetting = missingRemoteSetting();
+        if (!missingSetting.isEmpty()) {
+            markRemoteFailure(missingSetting);
+            return;
+        }
+        OpenAiCompatibleInferenceClient client;
+        try {
+            client = createRemoteClient();
+        } catch (RuntimeException invalidConfiguration) {
+            env.warn("[LLM] Remote inference client rejected its configuration: " + invalidConfiguration.getMessage());
+            client = null;
+        }
+        if (client == null) {
+            markRemoteFailure(REMOTE_SETTING_API_KEY);
+            return;
+        }
+        boolean embeddingReady = engineProvider.startEmbeddingOnly();
+        synchronized (lifecycleLock) {
+            if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
+                    || moduleService.snapshot().state() != LlmRuntimeState.STARTING) {
+                client.shutdown();
                 return;
             }
-            markGenerationCapabilityFailed("LLM service failed to start");
-            markStorageCapabilitiesReady();
-            if (moduleService != null) {
-                moduleService.markFailed("LLM service failed to start");
+            OpenAiCompatibleInferenceClient replaced = remoteClient;
+            remoteClient = client;
+            if (replaced != null) {
+                replaced.shutdown();
             }
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.llm.failed"));
-            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
-            synchronized (lifecycleLock) {
-                adapter.setLlmService(null);
-                LLMService failedService = llmService;
-                llmService = null;
-                if (failedService != null) {
-                    failedService.shutdown();
-                }
-                engineProvider.stop();
+            // Only the embedding side of the local engine is live here, so vector RAG keeps writing
+            // and searching while generation itself is remote.
+            EmbeddingService embeddingService = embeddingReady ? engineProvider.embeddingService() : null;
+            ragStorageService.bindEmbeddingService(embeddingService);
+            LLMService service = LLMService.builder()
+                    .env(env)
+                    .config(config)
+                    .inferenceClient(client)
+                    .performanceProvider(moduleService)
+                    .usePersistentCache(true)
+                    .cacheDirectory(ragCacheLayout.cacheDirectory())
+                    .cacheNamespace(ragCacheLayout.cacheNamespace())
+                    .embeddingConfigured(embeddingService != null)
+                    .ragStorage(ragStorageService)
+                    .ragSearchExecutor(llmExecutor.cpuExecutor())
+                    .ragPersistenceScheduler(llmExecutor.ragPersistenceScheduler())
+                    .build();
+            llmService = service;
+            if (serviceRegistry != null) {
+                serviceRegistry.register(LLMService.class, service);
             }
-        }, () -> adapter.publishLoadingActivity(false));
+            adapter.setLlmService(service);
+            markCapabilitiesReady();
+            moduleService.markReady();
+        }
+        publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
+        publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.llm.ready", lifecycleStatusGeneration));
+    }
+
+    /** The first cloud setting a request would need, or an empty string when the lane is complete. */
+    private String missingRemoteSetting() {
+        if (isBlank(config.getLlmRemoteApiKey())) {
+            return REMOTE_SETTING_API_KEY;
+        }
+        if (isBlank(config.getLlmRemoteBaseUrl())) {
+            return REMOTE_SETTING_BASE_URL;
+        }
+        if (isBlank(config.getLlmRemoteModel())) {
+            return REMOTE_SETTING_MODEL;
+        }
+        return "";
+    }
+
+    private OpenAiCompatibleInferenceClient createRemoteClient() {
+        String baseUrl = config.getLlmRemoteBaseUrl();
+        String apiKey = config.getLlmRemoteApiKey();
+        String model = config.getLlmRemoteModel();
+        if (isBlank(baseUrl) || isBlank(apiKey) || isBlank(model)) {
+            return null;
+        }
+        return new OpenAiCompatibleInferenceClient(
+                baseUrl,
+                apiKey,
+                model,
+                Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
+                env::warn
+        );
+    }
+
+    /**
+     * Fails the lane with an actionable status key so the player is told to fill in the credential.
+     * The credential itself never appears in a log, a diagnostic or a status line.
+     */
+    private void markRemoteFailure(String missingSetting) {
+        String statusKey = REMOTE_SETTING_API_KEY.equals(missingSetting)
+                ? STATUS_KEY_MISSING_API_KEY
+                : STATUS_KEY_REMOTE_INCOMPLETE;
+        env.warn("[LLM] Cloud LLM lane is not configured: missing " + missingSetting);
+        markGenerationCapabilityFailed("Cloud LLM is not configured: missing " + missingSetting);
+        markStorageCapabilitiesReady();
+        if (moduleService != null) {
+            moduleService.markFailed(statusKey);
+        }
+        publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), statusKey));
+        publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), statusKey, lifecycleStatusGeneration));
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void stopRuntime() {
@@ -332,6 +397,11 @@ public final class LlmModule implements TianshuManagedModule {
             }
             if (stoppingService != null) {
                 stoppingService.shutdown();
+            }
+            OpenAiCompatibleInferenceClient stoppingRemote = remoteClient;
+            remoteClient = null;
+            if (stoppingRemote != null) {
+                stoppingRemote.shutdown();
             }
             engineProvider.stop();
             ragStorageService.shutdown();

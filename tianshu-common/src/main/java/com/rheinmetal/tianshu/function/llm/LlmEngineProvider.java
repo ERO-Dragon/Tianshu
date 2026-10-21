@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.model.LlmModelPathResolver;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceProvider;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmPerformanceSnapshot;
+import com.rheinmetal.tianshu.function.llm.service.EmbeddingService;
+import com.rheinmetal.tianshu.function.llm.service.LocalEmbeddingEngine;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 import com.rheinmetal.tianshu.libs.llm.InferenceEvent;
@@ -19,6 +21,7 @@ import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
 
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +36,13 @@ public final class LlmEngineProvider {
     private static final String AUTO_DEVICE_ID = "auto";
     private static final String CPU_DEVICE_ID = "cpu";
     private static final String MANUAL_CPU_DEVICE_ID = "cpu:manual";
-    /** Embedding stays on CPU so the chat model keeps the whole GPU budget. */
+    /**
+     * Embedding runs on the CPU on purpose. A query embedding is one short burst per turn and memory
+     * indexing happens in the background, so the lane does not need the card, while the chat model is
+     * the one competing for VRAM and needs its weights plus compute buffers there. This holds for both
+     * shapes: the local chat server that carries both models, and the embedding-only server used when
+     * chat is remote.
+     */
     private static final int EMBEDDING_GPU_LAYERS = 0;
     /**
      * Context sizes tried in descending order when the full requested context does not fit GPU
@@ -50,6 +59,7 @@ public final class LlmEngineProvider {
     private final Executor modelLoadExecutor;
     private volatile LlmPerformanceProvider performanceProvider = LlmPerformanceProvider.UNAVAILABLE;
     private JavaLlamaServer aiService;
+    private LocalEmbeddingEngine embeddingEngine;
     private volatile boolean embeddingConfigured;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
 
@@ -120,7 +130,6 @@ public final class LlmEngineProvider {
     }
 
     private JavaLlamaServer.Builder configureBuilder(Path modelPath, int contextSize, String deviceId, boolean cpuOnly, int gpuLayers, LlmContextBudgetPolicy budgetPolicy) {
-        int processors = resourcePolicy.processors();
         int chatThreads = resourcePolicy.llmGpuHelperThreads();
         int taskThreads = resourcePolicy.llmGpuHelperThreads();
         JavaLlamaServer.Builder builder = JavaLlamaServer.builder()
@@ -154,12 +163,9 @@ public final class LlmEngineProvider {
             embeddingConfigured = true;
             builder.embeddingModel(embeddingPath.toString())
                     .embeddingContextSize(modelPaths.embeddingContextSize())
-                    .embeddingThreads(Math.max(1, Math.min(processors, resourcePolicy.llmGpuHelperThreads())))
+                    .embeddingThreads(embeddingThreads())
                     .embeddingAlias(blankToNull(config.getLlmEmbeddingModelName()))
-                    // The embedding model runs on CPU on purpose: a query embedding is one short
-                    // burst per turn and memory indexing happens in the background, so it does not
-                    // need the GPU. Keeping it off the card frees its weights plus compute buffers
-                    // for the chat model, which is the one competing for VRAM.
+                    // CPU-only embedding; the VRAM budget argument is documented on the constant.
                     .embeddingGpuLayers(EMBEDDING_GPU_LAYERS);
             if (EMBEDDING_GPU_LAYERS > 0 && deviceId != null && !cpuOnly) {
                 // Only open a Vulkan device for the embedding model when it actually offloads.
@@ -234,6 +240,83 @@ public final class LlmEngineProvider {
 
     public boolean isEmbeddingConfigured() {
         return embeddingConfigured;
+    }
+
+    /**
+     * Starts the local engine in embedding-only mode and reports whether an embedding model is now
+     * bound. The cloud lane is the only chat channel, so the chat GGUF is never touched here: cloud
+     * users usually have not downloaded one, and a missing chat model must not fail the module.
+     *
+     * <p>libs 1.0.7 accepts a server configuration that carries only an embedding model, so this goes
+     * through the public API: {@link LocalEmbeddingEngine} builds a {@link JavaLlamaServer} with
+     * {@code embeddingModel(...)} and no {@code model(...)}, and {@code start()} loads the embedding
+     * GGUF on its own. The load itself runs on the model-load executor and therefore does not block
+     * the runtime start.
+     *
+     * @return true when the embedding engine was created and may be bound to the RAG storage
+     */
+    public boolean startEmbeddingOnly() {
+        Path embeddingPath = modelPaths.resolveEmbeddingModel();
+        String unavailableReason = "";
+        LocalEmbeddingEngine prepared = null;
+        if (embeddingPath == null) {
+            unavailableReason = "no embedding model is selected";
+        } else if (!Files.isRegularFile(embeddingPath)) {
+            unavailableReason = "the embedding model file does not exist: " + embeddingPath;
+        } else {
+            prepared = new LocalEmbeddingEngine(
+                    env,
+                    embeddingPath,
+                    modelPaths.embeddingContextSize(),
+                    embeddingThreads(),
+                    EMBEDDING_GPU_LAYERS,
+                    blankToNull(config.getLlmEmbeddingModelName())
+            );
+        }
+        LocalEmbeddingEngine replaced;
+        synchronized (this) {
+            replaced = embeddingEngine;
+            embeddingEngine = prepared;
+            embeddingConfigured = prepared != null;
+        }
+        if (replaced != null && replaced != prepared) {
+            replaced.shutdown();
+        }
+        if (prepared == null) {
+            publishEmbeddingUnavailable(unavailableReason);
+            return false;
+        }
+        prepared.warmUp(modelLoadExecutor);
+        return true;
+    }
+
+    /** The embedding engine created by {@link #startEmbeddingOnly()}, or null when none is configured. */
+    public EmbeddingService embeddingService() {
+        return embeddingEngine;
+    }
+
+    private int embeddingThreads() {
+        return Math.max(1, Math.min(resourcePolicy.processors(), resourcePolicy.llmGpuHelperThreads()));
+    }
+
+    private void publishEmbeddingUnavailable(String reason) {
+        String detail = reason == null || reason.isBlank() ? "no embedding model is configured" : reason;
+        env.warn("[LLM] Vector RAG stays disabled: " + detail + ". Chat is unaffected.");
+        try {
+            env.diagnostics().publish(DiagnosticEvent.now(
+                    "module.llm",
+                    "LLM_EMBEDDING_UNAVAILABLE",
+                    DiagnosticSeverity.WARN,
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of(
+                            "reason", detail,
+                            "embeddingModel", value(config.getLlmEmbeddingModelName()),
+                            "embeddingConfigured", "false"
+                    )
+            ));
+        } catch (RuntimeException diagnosticFailure) {
+            env.warn("Failed to publish LLM embedding diagnostics: " + diagnosticFailure.getMessage());
+        }
     }
 
     private int positiveOrOne(int value) {
@@ -565,13 +648,19 @@ public final class LlmEngineProvider {
     public void stop() {
         lifecycleGeneration.incrementAndGet();
         JavaLlamaServer service;
+        LocalEmbeddingEngine embedding;
         synchronized (this) {
             service = aiService;
             aiService = null;
+            embedding = embeddingEngine;
+            embeddingEngine = null;
             embeddingConfigured = false;
         }
         if (service != null) {
             service.shutdown();
+        }
+        if (embedding != null) {
+            embedding.shutdown();
         }
     }
 

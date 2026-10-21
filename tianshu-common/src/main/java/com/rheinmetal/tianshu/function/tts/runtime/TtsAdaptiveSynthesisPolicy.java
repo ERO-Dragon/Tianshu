@@ -6,7 +6,17 @@ import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
 
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
+/**
+ * Chooses between streaming and full synthesis for playback batches.
+ *
+ * <p>When streaming synthesis is disabled the policy never selects
+ * {@link TtsSynthesisMode#STREAMING} and never merges sentences: every plan covers exactly one
+ * sentence, synthesised completely before playback. That ties the first-audio delay to a single
+ * sentence instead of scaling it with the reply length. The rolling estimates below are still
+ * collected, so re-enabling streaming restores the adaptive behaviour immediately.
+ */
 final class TtsAdaptiveSynthesisPolicy {
     private static final long FULL_MODE_SAFETY_MILLIS = 350L;
     private static final long STREAMING_START_TOLERANCE_MILLIS = 60L;
@@ -21,8 +31,17 @@ final class TtsAdaptiveSynthesisPolicy {
 
     private final RollingEstimate fullEstimate = new RollingEstimate(DEFAULT_FULL_RTF);
     private final RollingEstimate streamingEstimate = new RollingEstimate(DEFAULT_STREAMING_RTF);
+    private final BooleanSupplier streamingSynthesisEnabled;
     private double firstAudioMillisPerChar = DEFAULT_FIRST_AUDIO_MILLIS_PER_CHAR;
     private double audioMillisPerChar = DEFAULT_AUDIO_MILLIS_PER_CHAR;
+
+    TtsAdaptiveSynthesisPolicy() {
+        this(() -> true);
+    }
+
+    TtsAdaptiveSynthesisPolicy(BooleanSupplier streamingSynthesisEnabled) {
+        this.streamingSynthesisEnabled = streamingSynthesisEnabled == null ? () -> true : streamingSynthesisEnabled;
+    }
 
     synchronized TtsSynthesisDecision planPlayback(
             TtsBackendSnapshot backend,
@@ -36,6 +55,9 @@ final class TtsAdaptiveSynthesisPolicy {
             return new TtsSynthesisDecision(0, "", TtsSynthesisMode.FULL);
         }
         if (!isMossAutoregressive(backend)) {
+            return decision(availableSentences, 1, TtsSynthesisMode.FULL);
+        }
+        if (!streamingSynthesisAllowed()) {
             return decision(availableSentences, 1, TtsSynthesisMode.FULL);
         }
         if (firstBatch) {
@@ -69,9 +91,14 @@ final class TtsAdaptiveSynthesisPolicy {
             int contextualSentenceLimit
     ) {
         int sentenceCount = availableSentenceCount(availableSentences, contextualSentenceLimit);
-        return sentenceCount == 0
-                ? new TtsSynthesisDecision(0, "", TtsSynthesisMode.FULL)
-                : decision(availableSentences, sentenceCount, TtsSynthesisMode.FULL);
+        if (sentenceCount == 0) {
+            return new TtsSynthesisDecision(0, "", TtsSynthesisMode.FULL);
+        }
+        return decision(
+                availableSentences,
+                streamingSynthesisAllowed() ? sentenceCount : 1,
+                TtsSynthesisMode.FULL
+        );
     }
 
     synchronized void record(TtsSynthesisMetrics metrics) {
@@ -99,6 +126,10 @@ final class TtsAdaptiveSynthesisPolicy {
         if (observedAudioMillisPerChar > 0L) {
             audioMillisPerChar = ewma(audioMillisPerChar, observedAudioMillisPerChar, EWMA_ALPHA);
         }
+    }
+
+    private boolean streamingSynthesisAllowed() {
+        return streamingSynthesisEnabled.getAsBoolean();
     }
 
     private boolean fullFits(String text, long remainingAudioMillis) {

@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 public final class TtsRuntime implements TtsPlaybackListener {
@@ -55,7 +56,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private final Set<TtsSpeechSessionKey> droppedStreams = ConcurrentHashMap.newKeySet();
     private final TtsTextNormalizer normalizer = new TtsTextNormalizer();
     private final TtsPlaybackBufferTracker playbackBufferTracker = new TtsPlaybackBufferTracker();
-    private final TtsAdaptiveSynthesisPolicy synthesisPolicy = new TtsAdaptiveSynthesisPolicy();
+    private final TtsAdaptiveSynthesisPolicy synthesisPolicy;
     private final Consumer<TtsSession> sessionStatusPublisher;
     private final Consumer<TtsPlaybackState> playbackStatePublisher;
     private final Consumer<TtsRequestStatusPayload> requestStatusPublisher;
@@ -64,7 +65,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private final AtomicReference<TtsPlaybackState> lastPublishedState = new AtomicReference<>();
 
     public TtsRuntime(IGameEnvironment env, ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine, IAudioBridge audioBridge, Consumer<TtsSession> sessionStatusPublisher, Consumer<TtsPlaybackState> playbackStatePublisher) {
-        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, ignored -> { }, ignored -> { });
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, ignored -> { });
     }
 
     public TtsRuntime(
@@ -76,7 +77,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher
     ) {
-        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, requestStatusPublisher, ignored -> { });
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, requestStatusPublisher, ignored -> { }, () -> true);
     }
 
     public TtsRuntime(
@@ -87,12 +88,14 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsSession> sessionStatusPublisher,
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher,
-            Consumer<Boolean> modelLoadingPublisher
+            Consumer<Boolean> modelLoadingPublisher,
+            BooleanSupplier streamingSynthesisEnabled
     ) {
         this.env = env;
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;
         this.synthesisScheduler = new TtsSynthesisScheduler(executorManager, synthesisEngine);
+        this.synthesisPolicy = new TtsAdaptiveSynthesisPolicy(streamingSynthesisEnabled);
         this.synthesisTaskCoordinator = new TtsSynthesisTaskCoordinator(synthesisEngine, synthesisScheduler, synthesisPolicy, lastFailure::set);
         this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher);
         this.playbackController = new TtsPlaybackController(audioBridge, env, this, executorManager);

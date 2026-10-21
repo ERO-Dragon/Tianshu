@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
 import com.rheinmetal.tianshu.client.api.settings.SettingsListCard;
+import com.rheinmetal.tianshu.client.api.settings.TextBlockLevel;
 import com.rheinmetal.tianshu.client.settings.model.ModuleSettingsCategory;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
@@ -89,13 +90,35 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
     }
 
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
+        buildLaneSelector(panel, context);
+        panel.text("llm.lane.sealed", llm("lane.local_sealed"), TextBlockLevel.INFO);
         panel.columns("llm.layout", 0.42D, 0.58D, columns -> columns
                 .column(0, left -> buildSettingsColumn(left, context, draft))
                 .column(1, right -> buildDownloadColumn(right, context, draft)));
     }
 
+    /**
+     * Lane selector at the top of the page. The framework has no segmented control, so the two lanes
+     * are an action row: the cloud tab is the active, styled one and the sealed local tab is rendered
+     * with its enabled predicate switched off, which greys it out and makes it unclickable.
+     */
+    private void buildLaneSelector(ModuleSettingsPanel panel, ModuleSettingsContext context) {
+        panel.actions("llm.lane.selector", llm("section.lane"), actions -> actions
+                .button("llm.lane.cloud", llm("lane.cloud"), SettingsButtonStyle.PRIMARY,
+                        () -> context.showStatus(llm("lane.cloud_active"), 2000), () -> true)
+                .button("llm.lane.local", llm("lane.local"),
+                        () -> { }, () -> false));
+    }
+
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled)
+                .compound("llm.remote", llm("section.cloud"), draft.enabled::get,
+                        draft::buildRemoteOptions,
+                        null,
+                        status -> {
+                            status.row("llm.remote.state", llm("row.remote_state"), draft::remoteConfigurationStatus);
+                            status.row("llm.remote.key", llm("row.remote_api_key"), draft::remoteApiKeyStatus);
+                        })
                 .status("llm.device", llm("section.device"), draft::buildDeviceStatus)
                 .compound("llm.embedding", llm("section.embedding"), draft.enabled::get,
                         options -> { },
@@ -143,11 +166,18 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<Boolean> frameGuardEnabled;
         private final MutableSettingsValue<Double> frameGuardTargetFps;
         private final MutableSettingsValue<Boolean> mtpEnabled;
+        private final MutableSettingsValue<String> remoteBaseUrl;
+        private final MutableSettingsValue<String> remoteModel;
         private final MutableSettingsValue<String> seriesFilter;
         private final MutableSettingsValue<String> downloadStateFilter;
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
         private volatile ModelAvailabilitySnapshot availabilitySnapshot;
         private volatile long lastDownloadRefreshMillis;
+        /**
+         * Buffer for the cloud credential. The stored key is deliberately never read back into the
+         * widget, so a blank field means "keep the saved key" and the secret is never rendered.
+         */
+        private String pendingRemoteApiKey = "";
 
         private LlmSettingsDraft(LlmSettingsAccess config, TianshuCoreManager coreManager,
                                  ClientScheduler scheduler, ClientUiHost uiHost) {
@@ -168,6 +198,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     value -> value != null && value >= 15.0D && value <= 240.0D
             );
             this.mtpEnabled = new MutableSettingsValue<>(config::isLlmMtpEnabled, config::setLlmMtpEnabled);
+            this.remoteBaseUrl = new MutableSettingsValue<>(config::getLlmRemoteBaseUrl, ignored -> {});
+            this.remoteModel = new MutableSettingsValue<>(config::getLlmRemoteModel, ignored -> {});
             this.seriesFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.downloadStateFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             modelService.refreshModelAvailabilityAsync(() -> runOnClient(() -> {
@@ -206,6 +238,44 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             status.row("llm.info.size", llm("row.model_size"), this::selectedModelSizeStatus);
         }
 
+        private void buildRemoteOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+            options.text("llm.remote.base_url", llm("option.remote_base_url"), remoteBaseUrl)
+                    .text("llm.remote.model", llm("option.remote_model"), remoteModel)
+                    // Last so the credential sits under the endpoint it belongs to; the widget starts
+                    // empty on purpose, a typed value replaces the saved key and blanks keep it.
+                    .text("llm.remote.api_key", llm("option.remote_api_key"),
+                            () -> pendingRemoteApiKey,
+                            value -> pendingRemoteApiKey = value == null ? "" : value);
+        }
+
+        private UiText remoteConfigurationStatus() {
+            if (trimmed(remoteBaseUrl.get()).isEmpty()) {
+                return llm("remote.state.missing_base_url");
+            }
+            if (!hasRemoteApiKey()) {
+                return llm("remote.state.missing_key");
+            }
+            if (trimmed(remoteModel.get()).isEmpty()) {
+                return llm("remote.state.missing_model");
+            }
+            return llm("remote.state.ready");
+        }
+
+        private UiText remoteApiKeyStatus() {
+            if (!pendingRemoteApiKey.isBlank()) {
+                return llm("remote.state.key_pending");
+            }
+            return hasRemoteApiKey() ? llm("remote.state.key_saved") : llm("remote.state.key_missing");
+        }
+
+        private boolean hasRemoteApiKey() {
+            if (!pendingRemoteApiKey.isBlank()) {
+                return true;
+            }
+            String stored = config.getLlmRemoteApiKey();
+            return stored != null && !stored.isBlank();
+        }
+
         private void buildLoadOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
             options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .select("llm.gpu.device", llm("option.gpu_device"), deviceTargetIds(), selectedGpuDeviceId, this::deviceTargetOptionLabel, enabled::get)
@@ -238,7 +308,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     || selectedGpuDeviceId.dirty()
                     || frameGuardEnabled.dirty()
                     || frameGuardTargetFps.dirty()
-                    || mtpEnabled.dirty();
+                    || mtpEnabled.dirty()
+                    || remoteBaseUrl.dirty()
+                    || remoteModel.dirty()
+                    || !pendingRemoteApiKey.isBlank();
         }
 
         @Override
@@ -250,20 +323,44 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (enabled.get() && selected != null && !isDownloaded(selected)) {
                 return SettingsValidationResult.failure(llm("validation.model_not_installed"));
             }
+            if (enabled.get()) {
+                if (!isHttpUrl(trimmed(remoteBaseUrl.get()))) {
+                    return SettingsValidationResult.failure(llm("validation.invalid_base_url"));
+                }
+                if (trimmed(remoteModel.get()).isEmpty()) {
+                    return SettingsValidationResult.failure(llm("validation.missing_model"));
+                }
+                if (!hasRemoteApiKey()) {
+                    return SettingsValidationResult.failure(llm("validation.missing_api_key"));
+                }
+            }
             return SettingsValidationResult.successful();
         }
 
         @Override
         public SettingsSaveResult save() {
+            boolean cloudSettingsChanged = remoteBaseUrl.dirty() || remoteModel.dirty() || !pendingRemoteApiKey.isBlank();
+            // A blank widget keeps the stored credential: the key is never echoed back, so writing the
+            // (always empty) field value would silently erase it.
+            String persistedApiKey = pendingRemoteApiKey.isBlank()
+                    ? config.getLlmRemoteApiKey()
+                    : trimmed(pendingRemoteApiKey);
             new SettingsSaveTransaction(enabled, selectedModelName, selectedGpuDeviceId,
-                    frameGuardEnabled, frameGuardTargetFps, mtpEnabled)
+                    frameGuardEnabled, frameGuardTargetFps, mtpEnabled, remoteBaseUrl, remoteModel)
                     .write(config::getCustomLlmName, config::setCustomLlmName, selectedModelName.get())
                     .write(config::getLlmGpuDeviceId, config::setLlmGpuDeviceId, persistedDeviceTargetId())
+                    .write(config::getLlmRemoteBaseUrl, config::setLlmRemoteBaseUrl, trimmed(remoteBaseUrl.get()))
+                    .write(config::getLlmRemoteApiKey, config::setLlmRemoteApiKey, persistedApiKey)
+                    .write(config::getLlmRemoteModel, config::setLlmRemoteModel, trimmed(remoteModel.get()))
                     .commit(config::save);
+            pendingRemoteApiKey = "";
             if (!enabled.get()) {
                 moduleService.unload();
+            } else if (cloudSettingsChanged) {
+                restartRunningRemoteRuntime();
             }
-            return SettingsSaveResult.success(llm("message.saved"), true, true);
+            // The cloud lane re-reads its endpoint without any model reload, so no restart is needed.
+            return SettingsSaveResult.success(llm("message.saved"), true, false, false);
         }
 
         @Override
@@ -274,6 +371,30 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             frameGuardEnabled.reset();
             frameGuardTargetFps.reset();
             mtpEnabled.reset();
+            remoteBaseUrl.reset();
+            remoteModel.reset();
+            pendingRemoteApiKey = "";
+        }
+
+        /**
+         * The cloud client is built from configuration, so a running lane keeps serving the previous
+         * endpoint until it is rebuilt. Rebuilding is cheap (no GGUF is mapped) and applies the new
+         * credential immediately instead of asking the player to reload.
+         */
+        private void restartRunningRemoteRuntime() {
+            if (!moduleService.snapshot().running()) {
+                return;
+            }
+            moduleService.unload();
+            moduleService.load();
+        }
+
+        private static String trimmed(String value) {
+            return value == null ? "" : value.trim();
+        }
+
+        private static boolean isHttpUrl(String value) {
+            return value.startsWith("https://") || value.startsWith("http://");
         }
 
         private UiText enabledLabel(Boolean value) {
@@ -473,8 +594,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (!enabled.get()) return false;
             LlmRuntimeSnapshot snapshot = moduleService.snapshot();
             if (snapshot.state() == LlmRuntimeState.STARTING || snapshot.state() == LlmRuntimeState.STOPPING || snapshot.running()) return false;
-            LlmModelInfo info = resolveModel(selectedModelName.get());
-            return info != null && isDownloaded(info);
+            // Chat runs in the cloud, so a downloaded local GGUF is no longer a precondition: the lane
+            // only needs a complete endpoint configuration.
+            return validate().success();
         }
 
         private boolean canUnload() {
@@ -484,19 +606,16 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         private void startLoad(ModuleSettingsContext context) {
-            LlmModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null || !isDownloaded(info)) {
-                context.showStatus(llm("state.not_downloaded"), 3000);
+            SettingsValidationResult validation = validate();
+            if (!validation.success()) {
+                context.showStatus(validation.message(), 4000);
                 return;
             }
-            config.setCustomLlmName(info.name);
-            LoadCompatibility compatibility = loadCompatibility(info);
-            if (!compatibility.supported()) {
-                context.showStatus(compatibility.message(), 4000);
-                return;
+            if (dirty()) {
+                // The runtime reads the persisted endpoint, so unsaved edits are written first.
+                save();
+                refreshSettingsScreen();
             }
-            config.setLlmGpuDeviceId(persistedDeviceTargetId());
-            config.save();
             LlmControlResult result = moduleService.load();
             context.showStatus(result.accepted() ? llm("message.load_started") : UiText.literal(result.message()), 3000);
         }
@@ -548,20 +667,34 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     .orElse(common("unsupported"));
         }
 
+        /**
+         * Chat is served by the cloud lane, so the runtime state no longer depends on a downloaded
+         * GGUF: a local model is only the parked embedding/RAG engine and never gates the lane.
+         */
         private UiText loadStateStatus() {
             if (!enabled.get()) return llm("state.disabled");
-            LlmModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null) return llm("state.no_model");
-            if (!isDownloaded(info)) return llm("state.not_downloaded");
             LlmRuntimeSnapshot snapshot = moduleService.snapshot();
             return switch (snapshot.state()) {
                 case DISABLED -> llm("state.disabled");
                 case STARTING -> llm("state.loading");
                 case RUNNING -> llm("state.loaded");
                 case STOPPING -> llm("state.unloading");
-                case FAILED -> snapshot.failureMessage().isBlank() ? llm("state.failed") : UiText.literal(snapshot.failureMessage());
+                case FAILED -> failureMessageText(snapshot.failureMessage());
                 case STOPPED -> llm("state.unloaded");
             };
+        }
+
+        /**
+         * The runtime reports a resource key when it knows the actionable cause (for example an
+         * unconfigured cloud credential); anything else is shown as the raw diagnostic.
+         */
+        private UiText failureMessageText(String failureMessage) {
+            if (failureMessage == null || failureMessage.isBlank()) {
+                return llm("state.failed");
+            }
+            return failureMessage.startsWith("tianshu.")
+                    ? UiText.key(failureMessage)
+                    : UiText.literal(failureMessage);
         }
 
         private UiText loadCompatibilityStatus() {

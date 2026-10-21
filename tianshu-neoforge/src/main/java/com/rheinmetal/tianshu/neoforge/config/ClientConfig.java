@@ -39,6 +39,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.BooleanValue ASR_HIGH_PASS_FILTER_ENABLED;
     public static final ModConfigSpec.BooleanValue ASR_RNNOISE_ENABLED;
     public static final ModConfigSpec.BooleanValue TTS_ENABLED;
+    public static final ModConfigSpec.BooleanValue TTS_STREAMING_SYNTHESIS;
     public static final ModConfigSpec.ConfigValue<String> TTS_PREVIEW_TEXT;
     public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue LLM_ENABLED;
@@ -46,6 +47,9 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.BooleanValue LLM_FRAME_GUARD_ENABLED;
     public static final ModConfigSpec.IntValue LLM_FRAME_GUARD_TARGET_FPS;
     public static final ModConfigSpec.BooleanValue LLM_MTP_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_BASE_URL;
+    public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_API_KEY;
+    public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_MODEL;
     public static final ModConfigSpec.BooleanValue AX_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> AX_WAKE_WORD;
     public static final ModConfigSpec.BooleanValue AX_REPLY_SPEECH_ENABLED;
@@ -79,6 +83,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
         builder.push("tts");
         TTS_ENABLED = builder.define("enabled", true);
+        TTS_STREAMING_SYNTHESIS = builder.define("streamingSynthesis", true);
         TTS_PREVIEW_TEXT = builder.define("previewText", "");
         TTS_GITHUB_PROXY_URL = builder.define("githubProxyUrl", "https://gh-proxy.org/");
         builder.pop();
@@ -89,6 +94,9 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         LLM_FRAME_GUARD_ENABLED = builder.define("frameGuardEnabled", true);
         LLM_FRAME_GUARD_TARGET_FPS = builder.defineInRange("frameGuardTargetFps", 60, 15, 240);
         LLM_MTP_ENABLED = builder.define("mtpEnabled", false);
+        LLM_REMOTE_BASE_URL = builder.define("remoteBaseUrl", LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
+        LLM_REMOTE_API_KEY = builder.define("remoteApiKey", "");
+        LLM_REMOTE_MODEL = builder.define("remoteModel", LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL);
         builder.pop();
 
         builder.comment("AX 辅星设置").push("ax");
@@ -191,6 +199,15 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         TTS_ENABLED.set(enabled);
     }
 
+    @Override
+    public boolean isTtsStreamingSynthesisEnabled() {
+        return TTS_STREAMING_SYNTHESIS.get();
+    }
+
+    public void setTtsStreamingSynthesisEnabled(boolean enabled) {
+        TTS_STREAMING_SYNTHESIS.set(enabled);
+    }
+
     public String getTtsPreviewText() {
         return TTS_PREVIEW_TEXT.get();
     }
@@ -259,6 +276,37 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     public void setLlmMtpEnabled(boolean enabled) {
         LLM_MTP_ENABLED.set(enabled);
+    }
+
+    @Override
+    public String getLlmRemoteBaseUrl() {
+        return orDefault(LLM_REMOTE_BASE_URL.get(), LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
+    }
+
+    @Override
+    public void setLlmRemoteBaseUrl(String baseUrl) {
+        LLM_REMOTE_BASE_URL.set(baseUrl == null ? "" : baseUrl.trim());
+    }
+
+    @Override
+    public String getLlmRemoteApiKey() {
+        String value = LLM_REMOTE_API_KEY.get();
+        return value == null ? "" : value.trim();
+    }
+
+    @Override
+    public void setLlmRemoteApiKey(String apiKey) {
+        LLM_REMOTE_API_KEY.set(apiKey == null ? "" : apiKey.trim());
+    }
+
+    @Override
+    public String getLlmRemoteModel() {
+        return orDefault(LLM_REMOTE_MODEL.get(), LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL);
+    }
+
+    @Override
+    public void setLlmRemoteModel(String model) {
+        LLM_REMOTE_MODEL.set(model == null ? "" : model.trim());
     }
 
     @Override
@@ -461,6 +509,12 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     private static double clampPosition(double value, double fallback) {
         return clampPosition(value, fallback, 0.0D, 1.0D);
+    }
+
+    /** A blank config entry would otherwise disable the remote lane, so it falls back to the default. */
+    private static String orDefault(String value, String fallback) {
+        String trimmed = value == null ? "" : value.trim();
+        return trimmed.isEmpty() ? fallback : trimmed;
     }
 
     private static double clampPosition(double value, double fallback, double min, double max) {
