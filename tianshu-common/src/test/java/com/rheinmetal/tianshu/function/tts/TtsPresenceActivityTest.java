@@ -27,6 +27,7 @@ import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class TtsPresenceActivityTest {
     @TempDir
@@ -67,10 +68,13 @@ class TtsPresenceActivityTest {
             module.publishRequestStatus(status("external-destroy", "module.external", TtsRequestStatus.QUEUED));
             module.destroy();
 
-            awaitSize(activities, 2);
+            awaitAction(activities, "tts.request.external-destroy", PresenceActivityAction.ENDED);
+            List<PresenceActivityPayload> requestActivities = activities.stream()
+                    .filter(activity -> "tts.request.external-destroy".equals(activity.activityId()))
+                    .toList();
             assertEquals(List.of(PresenceActivityAction.STARTED, PresenceActivityAction.ENDED),
-                    activities.stream().map(PresenceActivityPayload::action).toList());
-            assertEquals("tts.request.external-destroy", activities.getFirst().activityId());
+                    requestActivities.stream().map(PresenceActivityPayload::action).toList());
+            assertEquals("tts.request.external-destroy", requestActivities.getFirst().activityId());
         }
     }
 
@@ -95,6 +99,28 @@ class TtsPresenceActivityTest {
                 (envelope, context) -> activities.add((PresenceActivityPayload) envelope.payload())
         );
         return activities;
+    }
+
+    /**
+     * Waits for a specific terminal transition rather than for a list length: activity publication is
+     * asynchronous, so a length check can be satisfied by intermediate events and then read a
+     * half-filled list.
+     */
+    private static void awaitAction(
+            List<PresenceActivityPayload> activities,
+            String activityId,
+            PresenceActivityAction expected
+    ) {
+        long deadline = System.currentTimeMillis() + 5_000L;
+        while (System.currentTimeMillis() < deadline) {
+            boolean reached = activities.stream()
+                    .anyMatch(activity -> activityId.equals(activity.activityId()) && activity.action() == expected);
+            if (reached) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        fail("activity " + activityId + " never reached " + expected);
     }
 
     private static void awaitSize(List<?> values, int expected) {

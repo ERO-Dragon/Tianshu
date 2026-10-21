@@ -196,7 +196,13 @@ class TtsSynthesisTaskCoordinatorTest {
 
             assertTrue(failed.await(10L, TimeUnit.SECONDS), "TTL expiry must be reported once the engine blocks");
             assertEquals(TtsFailureCode.EXPIRED, observed.get().code());
-            assertTrue(engine.interruptions.get() > 0);
+            // Reporting the failure and interrupting the worker are two separate effects and may
+            // land in either order, so wait for the interruption instead of assuming it already ran.
+            long interruptDeadline = System.currentTimeMillis() + 5_000L;
+            while (engine.interruptions.get() == 0 && System.currentTimeMillis() < interruptDeadline) {
+                Thread.onSpinWait();
+            }
+            assertTrue(engine.interruptions.get() > 0, "TTL interruption must reach the blocked engine");
         } finally {
             coordinator.cancelAll("test cleanup");
             engine.release.countDown();

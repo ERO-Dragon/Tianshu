@@ -1,13 +1,19 @@
 package com.rheinmetal.tianshu.protocol;
 
+/**
+ * Wire vocabulary of payload kinds.
+ *
+ * <p>Every constant here must have a payload that is actually constructed somewhere. Constants whose
+ * payload was never built were removed together with those payloads — an enum value nobody sends is
+ * just a misleading promise about what the protocol can carry.
+ */
 public enum PayloadType {
     NONE,
+    /** Backed by {@code TextPayload}; exercised by the dialogue contract validator. */
     TEXT,
     ASR_SPEECH_ACTIVITY,
     ASR_TEXT,
-    IR_COMMAND,
     IR_RESULT,
-    LLM_PROMPT,
     LLM_PROMPT_REQUEST,
     LLM_PROMPT_RESULT,
     LLM_PROMPT_STREAM_CHUNK,
@@ -24,26 +30,8 @@ public enum PayloadType {
     TTS_REQUEST_STATUS,
     TTS_AUDIO,
     TTS_AUDIO_ACK,
-    UI_TOAST,
-    ALERT,
-    FEEDBACK,
-    SYSTEM_STATE,
-    INPUT_ACTION,
-    STATUS,
-    ERROR,
-    HEARTBEAT,
-    PROGRESS,
     CANCEL,
-    CORE_CAPABILITY_PROBE,
-    INTEGRATION_MODULE_REGISTER,
-    INTEGRATION_MODULE_UNREGISTER,
     MODULE_STATUS,
-    GUI_CONTRIBUTION,
-    GUI_ACTION_EVENT,
-    CORE_LIFECYCLE_EVENT,
-    RESOURCE_RELOAD_EVENT,
-    VOICE_TRIGGER_REGISTRY,
-    VOICE_TRIGGER,
     DIALOGUE_ARBITRATION_REQUEST,
     DIALOGUE_ARBITRATION_RESULT,
     DIALOGUE_PARTICIPANT_REGISTER,
@@ -59,4 +47,3 @@ public enum PayloadType {
     DIALOGUE_SCORE_RESPONSE,
     CUSTOM
 }
-

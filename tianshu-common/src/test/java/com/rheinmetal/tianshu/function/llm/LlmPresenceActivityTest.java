@@ -24,6 +24,7 @@ import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class LlmPresenceActivityTest {
     @TempDir
@@ -44,11 +45,14 @@ class LlmPresenceActivityTest {
             module.publishInferenceStatus(status("chat-1", "CHAT", LlmStatusPayload.COMPLETED));
             module.publishInferenceStatus(status("task-1", "TASK", LlmStatusPayload.COMPLETED));
 
-            awaitSize(activities, 2);
+            awaitAction(activities, "llm.task.task-1", PresenceActivityAction.ENDED);
+            List<PresenceActivityPayload> taskActivities = activities.stream()
+                    .filter(activity -> "llm.task.task-1".equals(activity.activityId()))
+                    .toList();
             assertEquals(List.of(PresenceActivityAction.STARTED, PresenceActivityAction.ENDED),
-                    activities.stream().map(PresenceActivityPayload::action).toList());
+                    taskActivities.stream().map(PresenceActivityPayload::action).toList());
             assertEquals(List.of(PresenceActivityType.PROCESSING_TASK, PresenceActivityType.PROCESSING_TASK),
-                    activities.stream().map(PresenceActivityPayload::activityType).toList());
+                    taskActivities.stream().map(PresenceActivityPayload::activityType).toList());
             assertEquals("llm.task.task-1", activities.get(0).activityId());
         }
     }
@@ -76,11 +80,25 @@ class LlmPresenceActivityTest {
         return activities;
     }
 
-    private static void awaitSize(List<?> values, int expected) {
-        long deadline = System.currentTimeMillis() + 2_000L;
-        while (values.size() < expected && System.currentTimeMillis() < deadline) {
+    /**
+     * Waits for a specific terminal transition instead of for a list length: activity publication is
+     * asynchronous, so a length check can be satisfied by intermediate events and then read a
+     * half-filled list.
+     */
+    private static void awaitAction(
+            List<PresenceActivityPayload> activities,
+            String activityId,
+            PresenceActivityAction expected
+    ) {
+        long deadline = System.currentTimeMillis() + 5_000L;
+        while (System.currentTimeMillis() < deadline) {
+            boolean reached = activities.stream()
+                    .anyMatch(activity -> activityId.equals(activity.activityId()) && activity.action() == expected);
+            if (reached) {
+                return;
+            }
             Thread.onSpinWait();
         }
-        assertEquals(expected, values.size());
+        fail("activity " + activityId + " never reached " + expected);
     }
 }
