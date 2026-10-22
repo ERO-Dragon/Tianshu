@@ -132,8 +132,16 @@ final class LlmRequestPreparer {
         return sampler;
     }
 
+    /**
+     * Applies the configured cloud model's sampling defaults before the request's own overrides.
+     *
+     * <p>The catalog is keyed by cloud model id, so a profile whose model id matches an entry starts from
+     * that entry's standard or thinking profile; every other model starts from
+     * {@link SamplerConfig#defaults()}. The catalog carries <em>defaults only</em>: nothing here decides a
+     * single request's temperature, so a caller that sets one still wins.
+     */
     private SamplerConfig applyModelSamplingDefaults(SamplerConfig sampler, boolean thinking) {
-        LlmModelInfo info = LlmModelManager.getModelByName(metadata.modelName());
+        LlmModelInfo info = LlmModelManager.getModelByName(metadata.samplingModelId());
         LlmModelInfo.SamplingSettings settings = info == null ? null : info.getSamplingSettings(thinking);
         if (settings == null || settings.isEmpty()) {
             return sampler;

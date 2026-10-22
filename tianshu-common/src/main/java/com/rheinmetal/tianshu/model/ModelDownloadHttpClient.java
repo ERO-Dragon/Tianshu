@@ -264,6 +264,29 @@ final class ModelDownloadHttpClient {
         return downloaded;
     }
 
+
+    /**
+     * Real HTTP liveness probe. A 2xx answer means the host serves data; a TCP handshake does not, so the
+     * reachability verdict this build relies on is made here, in the transport, and not in a facade.
+     */
+    static boolean probeReachable(String url, int timeoutMillis) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(timeoutMillis);
+            connection.setReadTimeout(timeoutMillis);
+            connection.setRequestProperty("Accept", "application/json");
+            int status = connection.getResponseCode();
+            return status >= 200 && status < 300;
+        } catch (IOException | RuntimeException unreachable) {
+            return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
     private <T> T executeCandidates(
             List<URI> candidates,
             RetryPolicy policy,

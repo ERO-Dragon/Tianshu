@@ -23,6 +23,15 @@ public final class LlmRagCacheLayout {
         return config.getLlmRagCacheRootPath().resolve("entries");
     }
 
+    /**
+     * The namespace every stored vector belongs to.
+     *
+     * <p>It is keyed by the embedding model that will actually produce the vectors, not by the raw string in
+     * the config: vectors from two models are not comparable, so a stored entry is only reusable inside the
+     * namespace of the model that wrote it. Resolving the name first also means a config that still names a
+     * retired model cannot keep reusing the retired model's vectors — it lands in the new model's
+     * namespace, where nothing matches and the index is rebuilt.
+     */
     public String cacheNamespace() {
         return stableSegment(config.getCustomLlmName()) + ":" + stableSegment(config.getLlmEmbeddingModelName());
     }

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.function.BiConsumer;
 
 /**
  * Embedding-only view of the local llama.cpp engine, exposed as an {@link EmbeddingService}.
@@ -33,47 +34,66 @@ import java.util.concurrent.Executor;
  * chat lane.
  *
  * <p>The load is deferred to {@link #warmUp(Executor)} (queued on the model-load lane) or to the first
- * embedding call, so starting the LLM module never blocks on a model read. A failed load is remembered
- * and reported once instead of retrying the disk on every RAG write.
+ * embedding call, so starting the LLM module never blocks on a model read. That load is also where the
+ * CPU/GPU position is decided: the requested position is tried first, and only a position that
+ * <em>produced a vector</em> is accepted, because a backend that loads but cannot compute is exactly
+ * the failure verification catches. A card that fails hands the lane to the CPU once; a CPU that fails
+ * as well means the model or its file is broken, and that failure is remembered and reported once
+ * instead of retrying the disk on every RAG write. Either way the outcome is reported through the load
+ * listener, so no caller has to poll for it.
  */
 public final class LocalEmbeddingEngine implements EmbeddingService {
     private static final String MODULE_ID = "module.llm";
     private static final String UNAVAILABLE_MESSAGE = "LLM_EMBEDDING_UNAVAILABLE";
+    /** One short inference: what turns "the model loaded" into "the model can embed". */
+    private static final String WARM_UP_TEXT = "tianshu embedding warm-up";
 
     private final IGameEnvironment env;
     private final Path modelPath;
     private final int contextSize;
     private final int threads;
-    private final int gpuLayers;
+    /** Layers the player asked for; 0 means the CPU is the only accepted position. */
+    private final int requestedGpuLayers;
     private final String alias;
+    private final BiConsumer<LocalEmbeddingEngine, EmbeddingLoadReport> loadListener;
     private final Object loadLock = new Object();
     private volatile JavaLlamaServer server;
+    /** Layers the running server was started with; differs from the request after a fallback. */
+    private volatile int gpuLayers;
     private volatile int dimension = -1;
     private volatile String loadFailure = "";
     private volatile boolean closed;
 
     /**
-     * @param gpuLayers layers offloaded for the embedding model; 0 keeps it on the CPU, which is what
-     *                  {@code LlmEngineProvider} asks for so the chat model keeps the whole GPU budget
-     * @param alias     optional embedding model alias, falling back to the file name inside libs
+     * @param requestedGpuLayers layers to offload first; 0 keeps the lane on the CPU and leaves no
+     *                           fallback, because the CPU is already the last position
+     * @param alias              optional embedding model alias, falling back to the file name inside libs
+     * @param loadListener       told once how the load ended, so a caller can bind or refuse the lane
+     *                           without polling it; may be null
      */
     public LocalEmbeddingEngine(
             IGameEnvironment env,
             Path modelPath,
             int contextSize,
             int threads,
-            int gpuLayers,
-            String alias
+            int requestedGpuLayers,
+            String alias,
+            BiConsumer<LocalEmbeddingEngine, EmbeddingLoadReport> loadListener
     ) {
         this.env = Objects.requireNonNull(env, "env");
         this.modelPath = Objects.requireNonNull(modelPath, "modelPath");
         this.contextSize = contextSize;
         this.threads = threads;
-        this.gpuLayers = gpuLayers;
+        this.requestedGpuLayers = Math.max(0, requestedGpuLayers);
+        this.gpuLayers = this.requestedGpuLayers;
         this.alias = alias == null || alias.isBlank() ? null : alias.trim();
+        this.loadListener = loadListener == null ? (engine, report) -> { } : loadListener;
     }
 
-    /** Queues the model read so the module start path stays non-blocking. */
+    /**
+     * Queues the load — position check included — on the given lane, so the caller never waits on a
+     * model read: the outcome arrives through the listener instead of as a return value.
+     */
     public void warmUp(Executor executor) {
         Executor target = executor == null ? Runnable::run : executor;
         try {
@@ -82,7 +102,7 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
                     ensureServer();
                 } catch (Exception failure) {
                     // The failure is already published once; RAG writes degrade instead of failing the lane.
-                    env.warn("[LLM] Local embedding engine is unavailable: " + failure.getMessage());
+                    env.warn("[LLM] Local embedding engine is unavailable: " + describe(failure));
                 }
             });
         } catch (RuntimeException rejected) {
@@ -152,24 +172,87 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
             if (hasEmbeddingEngine(server)) {
                 return server;
             }
+            return loadLocked();
+        }
+    }
+
+    /**
+     * Loads the model once, at the requested position, and reports how that ended.
+     *
+     * <p>Each attempt is verified with one embedding, so "loaded" never stands in for "works". A
+     * requested position that fails is only remembered as a failure when the CPU cannot embed either:
+     * a card that could not run the model leaves the lane working on the CPU, while a broken model
+     * leaves it off.
+     */
+    private JavaLlamaServer loadLocked() throws Exception {
+        Exception failure;
+        try {
+            JavaLlamaServer loaded = startAtPosition(requestedGpuLayers);
+            report(EmbeddingLoadReport.ready());
+            return loaded;
+        } catch (Exception requestedFailure) {
+            failure = requestedFailure;
+        }
+        String reason = describe(failure);
+        if (requestedGpuLayers > 0) {
+            env.warn("[LLM] The embedding model could not run on the card (" + reason
+                    + "), retrying on the CPU");
+            publish("LLM_EMBEDDING_DEGRADED", DiagnosticSeverity.WARN, positionAttributes(reason));
             try {
-                JavaLlamaServer created = buildEmbeddingOnlyServer();
-                // build() only validates the configuration; start() is what loads the GGUF.
-                created.start();
-                if (!created.hasEmbeddingEngine()) {
-                    created.shutdown();
-                    throw new IllegalStateException("the embedding model reported no loaded engine after start");
-                }
-                server = created;
-                publishReady();
-                return created;
-            } catch (Exception failure) {
-                // start() already rolled a partial load back and left the server unstarted, so the
-                // server instance is dropped instead of being shut down a second time.
-                loadFailure = failure.getClass().getSimpleName() + ": " + failure.getMessage();
-                publishLoadFailure(failure);
-                throw failure;
+                JavaLlamaServer loaded = startAtPosition(0);
+                report(EmbeddingLoadReport.degraded(reason));
+                return loaded;
+            } catch (Exception cpuFailure) {
+                failure = cpuFailure;
+                reason = describe(cpuFailure);
             }
+        }
+        loadFailure = reason;
+        publishLoadFailure(failure);
+        report(EmbeddingLoadReport.unavailable(reason));
+        throw failure;
+    }
+
+    /**
+     * Starts and verifies one position. A server that started owns native memory, so it is released
+     * before the next position is attempted; only a verified server is published to callers.
+     */
+    private JavaLlamaServer startAtPosition(int layers) throws Exception {
+        JavaLlamaServer created = buildEmbeddingOnlyServer(layers);
+        boolean started = false;
+        try {
+            // build() only validates the configuration; start() is what loads the GGUF.
+            created.start();
+            started = true;
+            if (!created.hasEmbeddingEngine()) {
+                throw new IllegalStateException("the embedding model reported no loaded engine after start");
+            }
+            rememberDimension(created.embed(WARM_UP_TEXT));
+        } catch (Exception failure) {
+            if (started) {
+                releaseQuietly(created);
+            }
+            throw failure;
+        }
+        server = created;
+        gpuLayers = layers;
+        publishReady();
+        return created;
+    }
+
+    private void releaseQuietly(JavaLlamaServer rejected) {
+        try {
+            rejected.shutdown();
+        } catch (RuntimeException failure) {
+            env.warn("[LLM] Failed to release a rejected embedding engine: " + describe(failure));
+        }
+    }
+
+    private void report(EmbeddingLoadReport report) {
+        try {
+            loadListener.accept(this, report);
+        } catch (RuntimeException listenerFailure) {
+            env.warn("[LLM] Failed to report the embedding load outcome: " + describe(listenerFailure));
         }
     }
 
@@ -179,12 +262,12 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
      * offloaded layers a device would only add a Vulkan initialisation that has failed on this driver
      * before ("vk::Device::createComputePipeline: ErrorUnknown").
      */
-    private JavaLlamaServer buildEmbeddingOnlyServer() {
+    private JavaLlamaServer buildEmbeddingOnlyServer(int layers) {
         return JavaLlamaServer.builder()
                 .embeddingModel(modelPath.toString())
                 .embeddingContextSize(contextSize)
                 .embeddingThreads(threads)
-                .embeddingGpuLayers(gpuLayers)
+                .embeddingGpuLayers(layers)
                 .embeddingAlias(alias)
                 .build();
     }
@@ -226,12 +309,31 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
         return attributes;
     }
 
+    /** The position in use is not the one that was asked for, so both numbers are recorded. */
+    private Map<String, String> positionAttributes(String reason) {
+        Map<String, String> attributes = attributes();
+        attributes.put("requestedGpuLayers", Integer.toString(requestedGpuLayers));
+        attributes.put("reason", reason == null ? "" : reason);
+        return attributes;
+    }
+
     private void publish(String code, DiagnosticSeverity severity, Map<String, String> attributes) {
         try {
             env.diagnostics().publish(DiagnosticEvent.now(MODULE_ID, code, severity, DiagnosticPrivacy.REDACTED, attributes));
         } catch (RuntimeException diagnosticFailure) {
             env.warn("[LLM] Failed to publish embedding diagnostics: " + diagnosticFailure.getMessage());
         }
+    }
+
+    private static String describe(Throwable failure) {
+        if (failure == null) {
+            return "";
+        }
+        String message = failure.getMessage();
+        if (message == null || message.isBlank()) {
+            return failure.getClass().getSimpleName();
+        }
+        return failure.getClass().getSimpleName() + ": " + message.trim();
     }
 
     private static String failureChain(Throwable failure) {

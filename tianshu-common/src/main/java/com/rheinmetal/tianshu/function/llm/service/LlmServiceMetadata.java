@@ -3,23 +3,28 @@ package com.rheinmetal.tianshu.function.llm.service;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 
 /**
- * Per-runtime metadata: which cloud model is configured, which embedding model feeds RAG, and the
- * declared context window of the cloud model.
+ * Per-runtime metadata: the model name the runtime is attributed to, the cloud model whose sampling
+ * defaults apply, the embedding model that feeds RAG, and the declared context window.
  *
- * <p>The window is read from {@link LlmConfiguration#getLlmContextWindowTokens()} — the cloud
- * endpoint never reports its own window, so the configured number is the only source. It is a
- * fallback only (see {@code LlmRuntimeInspector}): when the inference client can plan a budget, the
- * plan wins. The local GGUF chat catalog is deliberately not consulted here: it describes models this
- * runtime never loads for chat, and reading it would make an unlisted model silently shrink every AX
- * budget to that catalog's default.</p>
+ * <p>{@code modelName} is the configured runtime name and is what the usage ledger and the runtime
+ * snapshot are keyed by; keeping it stable keeps existing attribution intact. {@code samplingModelId} is
+ * a separate fact: the bundled catalog describes cloud models by their provider id, so the request
+ * preparer needs that id to find a model's sampling defaults. Folding the two together would re-key every
+ * usage record the moment the sampling source changed.
+ *
+ * <p>The window is read from {@link LlmConfiguration#getLlmContextWindowTokens()} — the cloud endpoint
+ * never reports its own window, so the configured number is the only source. It is a fallback only (see
+ * {@code LlmRuntimeInspector}): when the inference client can plan a budget, the plan wins.</p>
  */
-record LlmServiceMetadata(String modelName, String embeddingModelName, int declaredContextWindowTokens) {
+record LlmServiceMetadata(String modelName, String samplingModelId, String embeddingModelName,
+                          int declaredContextWindowTokens) {
     static LlmServiceMetadata from(LlmConfiguration config) {
         if (config == null) {
-            return new LlmServiceMetadata("", "", 0);
+            return new LlmServiceMetadata("", "", "", 0);
         }
         return new LlmServiceMetadata(
                 config.getCustomLlmName(),
+                config.getLlmRemoteModel(),
                 config.getLlmEmbeddingModelName(),
                 config.getLlmContextWindowTokens()
         );
@@ -27,6 +32,7 @@ record LlmServiceMetadata(String modelName, String embeddingModelName, int decla
 
     LlmServiceMetadata {
         modelName = clean(modelName);
+        samplingModelId = clean(samplingModelId);
         embeddingModelName = clean(embeddingModelName);
         declaredContextWindowTokens = Math.max(0, declaredContextWindowTokens);
     }

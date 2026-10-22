@@ -19,6 +19,13 @@ final class ModelDownloadSourcePolicy {
         this.hfMirrorBase = normalizeBase(hfMirrorBase, "hfMirrorBase");
     }
 
+    String officialBase() {
+        return hfOfficialBase;
+    }
+
+    String mirrorBase() {
+        return hfMirrorBase;
+    }
     List<URI> huggingFaceTreeCandidates(String preferredBase, String repoId, String revision) {
         String encodedRepo = encodePath(repoId, "repoId");
         String encodedRevision = encodeSegment(revision, "revision");

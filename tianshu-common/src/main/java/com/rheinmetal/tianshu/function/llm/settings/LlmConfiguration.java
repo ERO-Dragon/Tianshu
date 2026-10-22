@@ -154,6 +154,19 @@ public interface LlmConfiguration {
         return "";
     }
 
+    /** GPU layers for the embedding model: 999 offloads every layer, 0 keeps the lane on the CPU. */
+    int EMBEDDING_GPU_LAYERS_ALL = 999;
+
+    /**
+     * Where the embedding model runs; this single number is the whole CPU/GPU choice.
+     *
+     * <p>Read-only like every other member of this port: the settings page writes the position through
+     * the settings-access port, which is the only place a write belongs.
+     */
+    default int getLlmEmbeddingGpuLayers() {
+        return EMBEDDING_GPU_LAYERS_ALL;
+    }
+
     default int getLlmRequestTimeoutSeconds() {
         return 120;
     }

@@ -19,6 +19,10 @@ public enum PresenceHudVisualState {
             case PROCESSING_TASK -> TASK;
             case THINKING -> CHAT_THINKING;
             case RESPONDING -> CHAT;
+            // The two runtime states have no visual of their own on purpose: the HUD text carries the
+            // meaning, and reusing the existing visuals keeps the icon shaders unchanged.
+            case RECONNECTING -> LOADING;
+            case ERROR, DEGRADED -> TASK;
             case IDLE -> IDLE;
         };
     }

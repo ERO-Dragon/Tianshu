@@ -23,6 +23,7 @@ import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogClient;
 import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogKeySource;
 import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogResult;
 import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogState;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmModelEntry;
 import com.rheinmetal.tianshu.function.llm.settings.LlmModelSpec;
 import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
@@ -57,6 +58,7 @@ final class LlmProviderEditorPanelTest {
     private static final String TYPED_KEY = "sk-typed-into-the-editor";
     private static final String PROVIDERS_LIST = "llm.providers";
     private static final String ADD_BUTTON_GROUP = "llm.providers.add";
+    private static final String EMBEDDING_GROUP = "llm.embedding";
     private static final String EDITOR_GROUP = "llm.providers.editor";
     private static final String EDITOR_MODEL_ROW = "llm.editor.active_model";
     private static final String CUSTOM_MODEL = "my-own-model";
@@ -132,6 +134,50 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
+    void theVectorModelIsAFullWidthRowDirectlyAboveTheLaneSelector() throws Exception {
+        try (Harness harness = new Harness(gameDirectory)) {
+            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.lane.selector", "llm.panel.layout"),
+                    harness.topLevelIds(),
+                    "the vector model is the page's second row: everything below it needs an embedding "
+                            + "file, so it outranks the lane and spans the page");
+        }
+    }
+
+    @Test
+    void anUnreadyVectorModelHidesTheLaneAndBothColumns() throws Exception {
+        try (Harness harness = new Harness(gameDirectory)) {
+            assertTrue(harness.template(EMBEDDING_GROUP).visible().getAsBoolean(),
+                    "the download row itself stays on screen");
+            assertFalse(harness.template("llm.lane.selector").visible().getAsBoolean(),
+                    "an unready page does not offer a lane");
+            assertFalse(harness.template("llm.panel.layout").visible().getAsBoolean(),
+                    "and it does not draw the provider columns: the gate is visibility, not a grey-out");
+
+            assertEquals(2, harness.visibleTopLevelIds().size(),
+                    "so an unready page is exactly the enable switch and the download row");
+        }
+    }
+
+    @Test
+    void theVectorModelSectionStatesTheModelItsStateAndItsDownload() throws Exception {
+        try (Harness harness = new Harness(gameDirectory)) {
+            SettingsTemplateModel.CompoundGroup embedding = harness.group(EMBEDDING_GROUP);
+            assertNotNull(embedding, "the vector model has a section of its own");
+            assertTrue(embedding.visible().getAsBoolean(), "and it is always on screen");
+
+            assertEquals(List.of("llm.embedding.model", "llm.embedding.state"),
+                    embedding.statuses().stream().map(SettingsTemplateModel.StatusEntry::id).toList(),
+                    "the section states which vector model and what its download is doing");
+
+            SettingsTemplateModel.ActionEntry download = embedding.actions().get(0);
+            assertEquals("llm.embedding.download", download.id(),
+                    "the button comes first: it is the row's only action");
+            assertEquals("tianshu.gui.llm.action.download_embedding", download.label().value(),
+                    "and it offers a download while none was attempted");
+        }
+    }
+
+    @Test
     void theEditorIsTheFormAndOneReadOnlyModelLineWithOneButton() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
             harness.runProviderAction("llm.provider.edit");
@@ -173,7 +219,8 @@ final class LlmProviderEditorPanelTest {
             assertTrue(picker.statusKey().isEmpty(), "and nothing to report before the player asks");
 
             assertTrue(harness.editorOpen(), "the form stays where it was while the layer is open");
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP), harness.leftColumnIds(),
+            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+                    harness.leftColumnIds(),
                     "the page under the layer is untouched");
         }
     }
@@ -579,13 +626,31 @@ final class LlmProviderEditorPanelTest {
             return leftColumn().stream().map(SettingsTemplateModel::id).toList();
         }
 
+        /** Top-level row ids in render order; a columns group counts as one row. */
+        private List<String> topLevelIds() {
+            return templates().stream().map(SettingsTemplateModel::id).toList();
+        }
+
+        /** Top-level row ids the renderer would actually draw, in order. */
+        private List<String> visibleTopLevelIds() {
+            return templates().stream()
+                    .filter(template -> template.visible().getAsBoolean())
+                    .map(SettingsTemplateModel::id)
+                    .toList();
+        }
+
         private boolean editorOpen() {
             SettingsTemplateModel.CompoundGroup editor = editor();
             return editor != null && editor.visible().getAsBoolean();
         }
 
         private SettingsTemplateModel.CompoundGroup editor() {
-            SettingsTemplateModel template = template(EDITOR_GROUP);
+            return group(EDITOR_GROUP);
+        }
+
+        /** One compound section by id, or {@code null} when the page has none. */
+        private SettingsTemplateModel.CompoundGroup group(String id) {
+            SettingsTemplateModel template = template(id);
             return template instanceof SettingsTemplateModel.CompoundGroup compound ? compound : null;
         }
 
@@ -729,6 +794,7 @@ final class LlmProviderEditorPanelTest {
         private String customName = "";
         private List<LlmModelEntry> models;
         private String activeModelId = LlmModelEntry.LEGACY_ID;
+        private int embeddingGpuLayers = LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL;
         private int saves;
 
         private FakeAccess(Path basePath) {
@@ -817,6 +883,16 @@ final class LlmProviderEditorPanelTest {
             } else {
                 apiKeys.put(modelId, apiKey);
             }
+        }
+
+        @Override
+        public int getLlmEmbeddingGpuLayers() {
+            return embeddingGpuLayers;
+        }
+
+        @Override
+        public void setLlmEmbeddingGpuLayers(int layers) {
+            this.embeddingGpuLayers = layers;
         }
 
         @Override

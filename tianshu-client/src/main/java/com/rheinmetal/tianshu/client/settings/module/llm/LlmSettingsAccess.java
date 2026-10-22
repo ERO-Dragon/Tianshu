@@ -28,5 +28,16 @@ public interface LlmSettingsAccess extends LlmConfiguration {
      */
     void setLlmApiKey(String modelId, String apiKey);
 
+    /*
+     * Embedding position. The same model runs either on the card or on the CPU, so this is one value
+     * rather than a model property; the read side stays on the configuration port.
+     */
+
+    /**
+     * Puts every layer on the card ({@link LlmConfiguration#EMBEDDING_GPU_LAYERS_ALL}) or keeps the
+     * whole lane on the CPU ({@code 0}).
+     */
+    void setLlmEmbeddingGpuLayers(int layers);
+
     void save();
 }

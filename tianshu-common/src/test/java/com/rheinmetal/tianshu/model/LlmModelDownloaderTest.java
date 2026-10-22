@@ -13,6 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LlmModelDownloaderTest {
     @TempDir
@@ -80,5 +81,40 @@ class LlmModelDownloaderTest {
         public void onError(String message) {
             throw new AssertionError(message);
         }
+    }
+    @Test
+    void aHostThatDiesInTransitHandsTheNextAttemptToTheOtherHost() throws Exception {
+        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        String deadA = "http://127.0.0.1:1";
+        String deadB = "http://127.0.0.1:2";
+        HuggingFaceDownloader downloader = new HuggingFaceDownloader(
+                env,
+                new ModelDownloadSourcePolicy(deadA, deadB),
+                new ModelDownloadHttpClient(env),
+                () -> deadA
+        );
+        Path target = tempDir.resolve("dead/model.gguf");
+
+        assertThrows(Exception.class,
+                () -> downloader.downloadSingleFile("org/model", "model.gguf", target, "main", 1));
+
+        assertTrue(env.warnings.stream().anyMatch(warning -> warning.contains("retrying via " + deadB)),
+                "the retry goes to the other host: " + env.warnings);
+        assertFalse(Files.exists(target));
+    }
+
+    @Test
+    void theFailureDiagnosticNamesTheHostAndTheReason() {
+        java.io.IOException aggregate = new java.io.IOException("MODEL_DOWNLOAD_ALL_SOURCES_FAILED sources=2");
+        aggregate.addSuppressed(new java.io.IOException(
+                "MODEL_DOWNLOAD_SOURCE_FAILED source=http://127.0.0.1:1/org/model/resolve/main/model.gguf",
+                new java.net.ConnectException("Connection refused")));
+        aggregate.addSuppressed(new java.io.IOException(
+                "MODEL_DOWNLOAD_SOURCE_FAILED source=https://hf-mirror.com/org/model/resolve/main/model.gguf",
+                new java.io.IOException("MODEL_DOWNLOAD_HTTP_STATUS source=https://hf-mirror.com/x status=404")));
+
+        String diagnostic = LlmModelDownloader.failureDiagnostic(aggregate);
+
+        assertEquals("127.0.0.1: unreachable; hf-mirror.com: http-404", diagnostic);
     }
 }

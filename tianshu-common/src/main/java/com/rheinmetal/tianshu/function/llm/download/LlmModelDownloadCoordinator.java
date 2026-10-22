@@ -3,11 +3,11 @@ package com.rheinmetal.tianshu.function.llm.download;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.model.download.DownloadGate;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class LlmModelDownloadCoordinator {
     private final IGameEnvironment env;
@@ -22,68 +22,43 @@ public final class LlmModelDownloadCoordinator {
 
     public static final class DownloadSession {
         private final LlmModelDownloader downloader;
-        private final AtomicBoolean paused = new AtomicBoolean(false);
-        private final AtomicBoolean cancelled = new AtomicBoolean(false);
-        private final AtomicBoolean keepPartialDownload = new AtomicBoolean(false);
-        private final Object pauseMonitor = new Object();
-        private volatile boolean cancelNotified;
+        private final DownloadGate gate;
 
         private DownloadSession(LlmModelDownloader downloader) {
             this.downloader = downloader;
+            this.gate = new DownloadGate(downloader::cancelActiveTransfers);
         }
 
         public boolean isPaused() {
-            return paused.get();
+            return gate.isPaused();
         }
 
         public boolean isCancelled() {
-            return cancelled.get();
+            return gate.isCancelled();
         }
 
         public boolean shouldKeepPartialDownload() {
-            return keepPartialDownload.get();
+            return gate.shouldKeepPartialDownload();
         }
 
         public void pause() {
-            if (!cancelled.get()) {
-                paused.set(true);
-            }
+            gate.pause();
         }
 
         public void resume() {
-            if (!cancelled.get()) {
-                paused.set(false);
-                synchronized (pauseMonitor) {
-                    pauseMonitor.notifyAll();
-                }
-            }
+            gate.resume();
         }
 
         public void cancel() {
-            synchronized (pauseMonitor) {
-                cancelled.set(true);
-                keepPartialDownload.set(false);
-                paused.set(false);
-                pauseMonitor.notifyAll();
-            }
-            cancelActiveTransfers();
+            gate.cancel();
         }
 
         public void cancelKeepingPartial() {
-            synchronized (pauseMonitor) {
-                cancelled.set(true);
-                keepPartialDownload.set(true);
-                paused.set(false);
-                pauseMonitor.notifyAll();
-            }
-            cancelActiveTransfers();
+            gate.cancelKeepingPartial();
         }
 
         public void cancelActiveTransfers() {
-            if (!cancelNotified) {
-                cancelNotified = true;
-                downloader.cancelActiveTransfers();
-            }
+            gate.cancelActiveTransfers();
         }
 
         public void download(LlmModelInfo info, Path targetDir, LlmModelDownloader.DownloadProgressCallback callback) throws Exception {
@@ -91,20 +66,9 @@ public final class LlmModelDownloadCoordinator {
         }
 
         void awaitReady() throws IOException {
-            if (cancelled.get()) {
-                throw new LlmModelDownloader.DownloadCancelledException();
-            }
-            synchronized (pauseMonitor) {
-                while (paused.get() && !cancelled.get()) {
-                    try {
-                        pauseMonitor.wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Download thread was interrupted", e);
-                    }
-                }
-            }
-            if (cancelled.get()) {
+            try {
+                gate.awaitReady();
+            } catch (DownloadGate.CancelledException cancelled) {
                 throw new LlmModelDownloader.DownloadCancelledException();
             }
         }

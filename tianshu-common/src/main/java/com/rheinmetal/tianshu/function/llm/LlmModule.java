@@ -11,7 +11,9 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.function.llm.rag.LlmRagCacheLayout;
+import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeRetryPolicy;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
+import com.rheinmetal.tianshu.function.llm.service.EmbeddingLoadReport;
 import com.rheinmetal.tianshu.function.llm.service.EmbeddingService;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
@@ -26,9 +28,11 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class LlmModule implements TianshuManagedModule {
@@ -43,6 +47,10 @@ public final class LlmModule implements TianshuManagedModule {
     private static final String REMOTE_SETTING_MODEL = "remoteModel";
     private static final String STATUS_KEY_MISSING_API_KEY = "tianshu.presence.module.llm.missing_api_key";
     private static final String STATUS_KEY_REMOTE_INCOMPLETE = "tianshu.presence.module.llm.remote_incomplete";
+    /** How long the reconnect line stays up past the wait it announces. */
+    private static final long RETRY_STATUS_TAIL_MILLIS = 2_000L;
+    /** How long presence keeps the failure line, so a player who looks up still sees it. */
+    private static final long RUNTIME_ERROR_TTL_MILLIS = 12_000L;
 
     private final IGameEnvironment env;
     private final LlmConfiguration config;
@@ -68,6 +76,11 @@ public final class LlmModule implements TianshuManagedModule {
     private boolean destroyed;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle delayedAutoLoad;
+    /** Retries already scheduled for the current start failure; reset when the lane comes up. */
+    private final AtomicInteger runtimeRetryAttempts = new AtomicInteger();
+    private volatile ProtocolTaskHandle pendingRuntimeRetry;
+    /** The actionable key of the last start failure; reported verbatim once the retries are spent. */
+    private volatile String lastFailureStatusKey = STATUS_KEY_MISSING_API_KEY;
     private volatile long lifecycleStatusGeneration;
     private volatile boolean lifecycleActive;
 
@@ -88,7 +101,7 @@ public final class LlmModule implements TianshuManagedModule {
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config), usageLedger);
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
-        this.engineProvider = new LlmEngineProvider(env, config, llmExecutor.modelLoadExecutor());
+        this.engineProvider = new LlmEngineProvider(env, config, llmExecutor.modelLoadExecutor(), this::onEmbeddingLoadSettled);
     }
 
     @Override
@@ -334,6 +347,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
         publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
         publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.llm.ready", lifecycleStatusGeneration));
+        clearRuntimeRetry();
     }
 
     /** The first cloud setting a request would need, or an empty string when the lane is complete. */
@@ -376,6 +390,10 @@ public final class LlmModule implements TianshuManagedModule {
     /**
      * Fails the lane with an actionable status key so the player is told to fill in the credential.
      * The credential itself never appears in a log, a diagnostic or a status line.
+     *
+     * <p>This is not yet a final failure: the lane schedules a retry, so the player-facing "failed" status
+     * is published only once the attempts are spent. Until then presence shows the retry line, because a
+     * transient outage is not something the player has to act on.
      */
     private void markRemoteFailure(String missingSetting) {
         String statusKey = REMOTE_SETTING_API_KEY.equals(missingSetting)
@@ -387,8 +405,81 @@ public final class LlmModule implements TianshuManagedModule {
         if (moduleService != null) {
             moduleService.markFailed(statusKey);
         }
-        publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), statusKey));
-        publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), statusKey, lifecycleStatusGeneration));
+        lastFailureStatusKey = statusKey;
+        scheduleRuntimeRetry();
+    }
+
+    /**
+     * Schedules one more start attempt with the backoff this build ships, or reports the failure when the
+     * attempts are used up.
+     *
+     * <p>The attempt runs on the runtime's scheduled lane, so a retry can never race the start it follows:
+     * it is a separate task that only runs after the wait, and it exits immediately when the module was
+     * stopped or restarted in the meantime. Nothing here blocks a thread — the wait is the scheduler's.
+     */
+    private void scheduleRuntimeRetry() {
+        int attempt = runtimeRetryAttempts.incrementAndGet();
+        if (!LlmRuntimeRetryPolicy.canRetry(attempt - 1)) {
+            reportRuntimeRetryExhausted();
+            return;
+        }
+        long delayMillis = LlmRuntimeRetryPolicy.delayMillisForAttempt(attempt);
+        long generation = lifecycleGeneration.get();
+        env.warn("[LLM] Cloud lane start failed; retry " + attempt + "/" + LlmRuntimeRetryPolicy.MAX_ATTEMPTS
+                + " in " + delayMillis + "ms");
+        adapter.publishRuntimeActivity(PresenceActivityType.RECONNECTING, delayMillis + RETRY_STATUS_TAIL_MILLIS);
+        cancelPendingRuntimeRetry();
+        pendingRuntimeRetry = runtime.schedule(
+                ProtocolTaskSpec.builder()
+                        .moduleId(moduleId())
+                        .lane(ExecutionLane.SCHEDULED)
+                        .concurrencyKey("module.llm:runtime-retry")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .interruptible(true)
+                        .build(),
+                () -> {
+                    if (destroyed || generation != lifecycleGeneration.get()) {
+                        return;
+                    }
+                    LlmModuleService service = moduleService;
+                    if (service != null) {
+                        service.load();
+                    }
+                },
+                Duration.ofMillis(delayMillis)
+        );
+    }
+
+    /**
+     * Hands the failure to presence once the retries are spent.
+     *
+     * <p>Presence owns the player-facing channel, so this publishes the actionable setting status for the
+     * bookkeeping and one runtime activity of type {@code ERROR} — the same activity topic the thinking and
+     * responding states use, which is what turns the HUD line into readable error text. A quiet warning
+     * line goes to the log for the developer.
+     */
+    private void reportRuntimeRetryExhausted() {
+        String failureKey = lastFailureStatusKey;
+        env.warn("[LLM] Cloud lane did not start after " + LlmRuntimeRetryPolicy.MAX_ATTEMPTS
+                + " retries; reporting to presence");
+        publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), failureKey));
+        publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), failureKey, lifecycleStatusGeneration));
+        adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
+    }
+
+    /** A lane that came up clears the retry budget, so the next failure starts from the first attempt. */
+    private void clearRuntimeRetry() {
+        runtimeRetryAttempts.set(0);
+        cancelPendingRuntimeRetry();
+    }
+
+    private void cancelPendingRuntimeRetry() {
+        ProtocolTaskHandle scheduled = pendingRuntimeRetry;
+        pendingRuntimeRetry = null;
+        if (scheduled != null && !scheduled.isDone()) {
+            scheduled.cancel("LLM runtime retry replaced or stopped");
+        }
     }
 
     private static boolean isBlank(String value) {
@@ -402,6 +493,8 @@ public final class LlmModule implements TianshuManagedModule {
         if (scheduled != null && !scheduled.isDone()) {
             scheduled.cancel("LLM module stopped");
         }
+        // A stopped module keeps no retry budget: the next start begins from the first attempt.
+        clearRuntimeRetry();
         synchronized (lifecycleLock) {
             if (modelService != null) {
                 modelService.stop();
@@ -435,6 +528,26 @@ public final class LlmModule implements TianshuManagedModule {
         if (lifecycleActive) {
             lifecycleActive = false;
             publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.llm.stopped", lifecycleStatusGeneration));
+        }
+    }
+
+    /**
+     * The embedding lane settled, on the model-load lane: the card worked, the card failed and the CPU
+     * carried it (degraded, and presence says so once), or neither could embed.
+     *
+     * <p>A lane that cannot embed is unbound here rather than left in place: the RAG storage then
+     * reports "no vector lane" instead of handing every write to a service that already knows it cannot
+     * answer. The presence notice uses the same runtime activity channel as the reconnect and error
+     * states, so neither outcome is silent.
+     */
+    private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
+        switch (report.outcome()) {
+            case READY -> { }
+            case DEGRADED -> adapter.publishRuntimeActivity(PresenceActivityType.DEGRADED, RUNTIME_ERROR_TTL_MILLIS);
+            case UNAVAILABLE -> {
+                ragStorageService.bindEmbeddingService(engineProvider.embeddingService());
+                adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
+            }
         }
     }
 

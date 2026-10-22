@@ -115,6 +115,17 @@ LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoF
 
 模型 context size、prompt token budget 和 embedding context size 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有推理 builder、GPU device、MTP、frame guard 或协议请求语义。
 
+### 7.1 向量模型载入位置
+
+| 键（`config/tianshu-client.toml` 的 `[llm]` 段） | 默认 | 含义 |
+|----|----|----|
+| `embeddingGpuLayers` | `999`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL`） | 向量模型的载入位置：`999` = 全部层放到 GPU；`0` = 纯 CPU。取值域 `0..999`，写入时钳位。 |
+
+- 读端只有 `LlmConfiguration.getLlmEmbeddingGpuLayers()`；写端只有 `LlmSettingsAccess.setLlmEmbeddingGpuLayers(int)`，common 不出现 setter。
+- 载入跑在 model-load 线程：`LlmEngineProvider.startEmbeddingOnly()` 只把引擎排进队列并立即返回；位置判定在 `LocalEmbeddingEngine.warmUp()` 里做，结论经 `EmbeddingLoadReport` 回报一次。
+- 判定以"真的能产出向量"为准（载入后跑一次 embedding 验证），三种结论：`READY`（请求位置可用，诊断 `LLM_EMBEDDING_READY`）、`DEGRADED`（GPU 失败、CPU 验证通过，向量检索照常但更慢；映迹一条 DEGRADED 提示，诊断 `LLM_EMBEDDING_DEGRADED`）、`UNAVAILABLE`（GPU 与 CPU 都失败，模型或文件损坏；向量 RAG 关闭并解绑，映迹一条 ERROR 提示，诊断 `LLM_EMBEDDING_LOAD_FAILED`）。
+- 已知覆盖缺口：`DEGRADED` 分支需要真实 GGUF 才能让 CPU 侧验证通过，单测只覆盖 `READY` 与 `UNAVAILABLE` 终态。这是有意记录的缺口，不要当成已覆盖。
+
 协议提交时使用：
 
 | 项 | 值 |

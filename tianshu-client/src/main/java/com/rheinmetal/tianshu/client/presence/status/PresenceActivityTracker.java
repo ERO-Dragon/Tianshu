@@ -127,6 +127,7 @@ public final class PresenceActivityTracker {
         return switch (type) {
             case THINKING, RESPONDING -> ProtocolSourceIds.AX.equals(sourceId);
             case LISTENING -> ProtocolSourceIds.ASR.equals(sourceId);
+            case RECONNECTING, ERROR, DEGRADED -> ProtocolSourceIds.LLM.equals(sourceId);
             case LOADING, PROCESSING_TASK -> true;
         };
     }
@@ -142,8 +143,11 @@ public final class PresenceActivityTracker {
 
     private int priority(PresenceActivityType type) {
         return switch (type) {
+            case ERROR -> 60;
+            case DEGRADED -> 55;
             case RESPONDING -> 50;
             case THINKING -> 40;
+            case RECONNECTING -> 35;
             case PROCESSING_TASK -> 30;
             case LOADING -> 20;
             case LISTENING -> 0;
@@ -156,6 +160,9 @@ public final class PresenceActivityTracker {
             case PROCESSING_TASK -> PresencePrimaryState.PROCESSING_TASK;
             case THINKING -> PresencePrimaryState.THINKING;
             case RESPONDING -> PresencePrimaryState.RESPONDING;
+            case RECONNECTING -> PresencePrimaryState.RECONNECTING;
+            case ERROR -> PresencePrimaryState.ERROR;
+            case DEGRADED -> PresencePrimaryState.DEGRADED;
             case LISTENING -> PresencePrimaryState.IDLE;
         };
     }

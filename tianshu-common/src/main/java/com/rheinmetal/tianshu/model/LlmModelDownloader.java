@@ -5,6 +5,10 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
+import java.nio.file.AccessDeniedException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 public class LlmModelDownloader {
@@ -75,9 +79,97 @@ public class LlmModelDownloader {
         paused = false;
         try {
             downloadSync(info, targetDir, callback, this::awaitReady);
-        } catch (Exception e) {
+        } catch (DownloadCancelledException cancelledDownload) {
             callback.onError("tianshu.gui.llm.error.download_failed");
+        } catch (Exception failure) {
+            callback.onError(failureDiagnostic(failure));
         }
+    }
+
+    /**
+     * Turns the download failure into the one line the status row shows: which source failed and why.
+     *
+     * <p>The transport aggregates one exception per candidate and keeps each attempt as a suppressed
+     * failure, so the reason is already in the exception tree — a socket timeout, a refused connect, an
+     * HTTP status or a disk error. Reporting only "download failed" is what made a mirror-wide outage
+     * indistinguishable from a typo in a repository id.
+     */
+    static String failureDiagnostic(Throwable failure) {
+        List<String> entries = new ArrayList<>();
+        for (Throwable suppressed : failure.getSuppressed()) {
+            String source = sourceOf(suppressed);
+            if (source.isEmpty()) {
+                continue;
+            }
+            String entry = source + ": " + reasonOf(suppressed);
+            if (!entries.contains(entry)) {
+                entries.add(entry);
+            }
+        }
+        if (entries.isEmpty()) {
+            return "download failed: " + reasonOf(failure);
+        }
+        return String.join("; ", entries);
+    }
+
+    private static String sourceOf(Throwable failure) {
+        String message = failure.getMessage();
+        if (message == null) {
+            return "";
+        }
+        int index = message.indexOf("source=");
+        if (index < 0) {
+            return "";
+        }
+        String source = message.substring(index + "source=".length()).trim();
+        int end = source.indexOf(' ');
+        if (end > 0) {
+            source = source.substring(0, end);
+        }
+        try {
+            String host = URI.create(source).getHost();
+            return host == null || host.isBlank() ? source : host;
+        } catch (RuntimeException notAUrl) {
+            return source;
+        }
+    }
+
+    private static String reasonOf(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof java.net.SocketTimeoutException) {
+                return "timeout";
+            }
+            if (current instanceof java.net.ConnectException || current instanceof java.net.NoRouteToHostException) {
+                return "unreachable";
+            }
+            if (current instanceof java.net.UnknownHostException) {
+                return "unknown-host";
+            }
+            if (current instanceof javax.net.ssl.SSLException) {
+                return "tls-blocked";
+            }
+            if (current instanceof java.nio.file.AccessDeniedException) {
+                return "disk-denied";
+            }
+            if (current instanceof java.io.IOException && current.getMessage() != null) {
+                String message = current.getMessage();
+                int statusIndex = message.indexOf("status=");
+                if (statusIndex >= 0) {
+                    String status = message.substring(statusIndex + "status=".length()).trim();
+                    int end = status.indexOf(' ');
+                    if (end > 0) {
+                        status = status.substring(0, end);
+                    }
+                    return "http-" + status;
+                }
+            }
+            if (current.getClass().getSimpleName().contains("Disk")) {
+                return "disk-" + current.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
+            }
+            current = current.getCause();
+        }
+        return "failed";
     }
 
     public void downloadSync(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {

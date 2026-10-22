@@ -7,13 +7,17 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
+import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import javax.net.ssl.SSLException;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -23,6 +27,12 @@ public class HuggingFaceDownloader {
     private static final String HF_MIRROR = "https://hf-mirror.com";
     private static final String VOCODER_REPO = "csukuangfj/sherpa-onnx-vocoders";
     private static final String MAIN_REVISION = "main";
+    /** Public API listing: a real HTTP answer, so a TLS-blocked host fails the probe instead of passing it. */
+    private static final String PROBE_PATH = "/api/models?limit=1";
+    private static final int PROBE_TIMEOUT_MILLIS = 3_000;
+    private static final int FILE_CONNECT_TIMEOUT_MILLIS = 15_000;
+    private static final int FILE_READ_TIMEOUT_MILLIS = 120_000;
+    private static final long FILE_RETRY_BACKOFF_MILLIS = 1_000L;
     private static final Gson GSON = new Gson();
     private static final ModelDownloadHttpClient.RetryPolicy TREE_RETRY =
             new ModelDownloadHttpClient.RetryPolicy(1, 10_000, 15_000, 0L);
@@ -81,21 +91,72 @@ public class HuggingFaceDownloader {
         http.cancelActiveTransfers();
     }
 
+    /**
+     * Decides which host a download starts from, by asking it for data rather than for a socket.
+     *
+     * <p>A TCP handshake says nothing about whether TLS and the data path work: on a filtered network the
+     * connect succeeds and every byte after it stalls, which used to mark the official host as usable and
+     * then fail the download. The probe therefore performs a real request against the public API and only
+     * accepts a 2xx answer. The result is cached, and {@link #resetDomainCache()} clears it so one wrong
+     * verdict cannot stick for the life of the process.
+     */
     public static synchronized String getActiveBaseUrl() {
         if (activeBaseUrl != null) {
             return activeBaseUrl;
         }
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("huggingface.co", 443), 300);
-            activeBaseUrl = HF_OFFICIAL;
-        } catch (IOException unreachable) {
-            activeBaseUrl = HF_MIRROR;
-        }
+        activeBaseUrl = probeReachable(HF_OFFICIAL) ? HF_OFFICIAL : HF_MIRROR;
         return activeBaseUrl;
+    }
+
+    private static boolean probeReachable(String baseUrl) {
+        return ModelDownloadHttpClient.probeReachable(baseUrl + PROBE_PATH, PROBE_TIMEOUT_MILLIS);
     }
 
     public static synchronized void resetDomainCache() {
         activeBaseUrl = null;
+    }
+
+    /**
+     * The host to try after a connectivity failure: the other one, with the cached verdict dropped.
+     *
+     * <p>This is the part that actually self-heals. A probe can only be wrong in the direction of "looks
+     * reachable"; a download that dies in transit is proof it is not, so the cache is cleared and the
+     * sibling host gets one immediate attempt.
+     */
+    private String fallbackBaseUrl(String failedBaseUrl) {
+        resetDomainCache();
+        return sources.officialBase().equals(failedBaseUrl) ? sources.mirrorBase() : sources.officialBase();
+    }
+
+    /** Connectivity-class failures are the ones a different host may fix; HTTP and disk errors are not. */
+    private static boolean isConnectivityFailure(Throwable failure) {
+        return looksLikeConnectivityFailure(failure, 0);
+    }
+
+    /**
+     * Walks the whole failure tree, suppressed failures included: the transport aggregates one failure per
+     * source, so the reason it never reaches the surface as a plain cause chain.
+     */
+    private static boolean looksLikeConnectivityFailure(Throwable failure, int depth) {
+        if (failure == null || depth > 8) {
+            return false;
+        }
+        if (failure instanceof SocketTimeoutException
+                || failure instanceof ConnectException
+                || failure instanceof UnknownHostException
+                || failure instanceof NoRouteToHostException
+                || failure instanceof SSLException) {
+            return true;
+        }
+        if (looksLikeConnectivityFailure(failure.getCause(), depth + 1)) {
+            return true;
+        }
+        for (Throwable suppressed : failure.getSuppressed()) {
+            if (looksLikeConnectivityFailure(suppressed, depth + 1)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void downloadModelFiles(
@@ -284,11 +345,26 @@ public class HuggingFaceDownloader {
             String revision,
             DownloadControl control
     ) throws IOException {
-        String json = http.readUtf8(
-                sources.huggingFaceTreeCandidates(preferredBase, repoId, revision),
-                TREE_RETRY,
-                adapt(control)
-        );
+        String json;
+        try {
+            json = http.readUtf8(
+                    sources.huggingFaceTreeCandidates(preferredBase, repoId, revision),
+                    TREE_RETRY,
+                    adapt(control)
+            );
+        } catch (IOException failure) {
+            if (!isConnectivityFailure(failure)) {
+                throw failure;
+            }
+            String fallback = fallbackBaseUrl(preferredBase);
+            env.warn("[model.download] tree fetch died in transit on " + preferredBase
+                    + "; retrying via " + fallback);
+            json = http.readUtf8(
+                    sources.huggingFaceTreeCandidates(fallback, repoId, revision),
+                    TREE_RETRY,
+                    adapt(control)
+            );
+        }
         JsonArray root = GSON.fromJson(json, JsonArray.class);
         if (root == null) {
             throw new IOException("HF_TREE_RESPONSE_INVALID repo=" + repoId);
@@ -324,8 +400,40 @@ public class HuggingFaceDownloader {
             long overallTotalBytes,
             long knownFileSize
     ) throws IOException {
+        List<URI> candidates = sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath);
+        try {
+            downloadCandidates(candidates, target, maxRetries, control, progress,
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, knownFileSize);
+        } catch (IOException failure) {
+            if (!isConnectivityFailure(failure)) {
+                throw failure;
+            }
+            String fallback = fallbackBaseUrl(preferredBase);
+            env.warn("[model.download] file download died in transit on " + preferredBase
+                    + "; retrying via " + fallback);
+            downloadCandidates(
+                    sources.huggingFaceFileCandidates(fallback, repoId, revision, filePath),
+                    target, maxRetries, control, progress,
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, knownFileSize);
+        }
+        env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
+    }
+
+    private void downloadCandidates(
+            List<URI> candidates,
+            Path target,
+            int maxRetries,
+            DownloadControl control,
+            DownloadProgressListener progress,
+            String filePath,
+            int fileIndex,
+            int totalFiles,
+            long fileStartBytes,
+            long overallTotalBytes,
+            long knownFileSize
+    ) throws IOException {
         http.download(
-                sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath),
+                candidates,
                 target,
                 fileRetry(maxRetries),
                 adapt(control),
@@ -339,11 +447,10 @@ public class HuggingFaceDownloader {
                     }
                 }
         );
-        env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
     }
 
     private static ModelDownloadHttpClient.RetryPolicy fileRetry(int maxRetries) {
-        return new ModelDownloadHttpClient.RetryPolicy(maxRetries, 15_000, 120_000, 1_000L);
+        return new ModelDownloadHttpClient.RetryPolicy(maxRetries, FILE_CONNECT_TIMEOUT_MILLIS, FILE_READ_TIMEOUT_MILLIS, FILE_RETRY_BACKOFF_MILLIS);
     }
 
     private static ModelDownloadHttpClient.DownloadControl adapt(DownloadControl control) {

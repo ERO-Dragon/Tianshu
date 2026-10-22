@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LlmModelManagerTest {
 
@@ -47,5 +48,15 @@ class LlmModelManagerTest {
         LlmModelInfo first = models.get(0);
         assertNotNull(LlmModelManager.getModelByName(first.name));
         assertSame(first, LlmModelManager.getModelByName(first.name));
+    }
+    @Test
+    void everyEmbeddingEntryIsLanguageNeutralAndLoaded() {
+        LlmModelInfo shipped = LlmModelManager.getDefaultEmbeddingModel("en_us");
+
+        assertNotNull(shipped);
+        assertFalse(shipped.getModelFile().isBlank(), "the entry names the file it downloads");
+        assertEquals(8192, shipped.getContextSize(), "bge-m3 is capped at 8192 tokens");
+        assertTrue(shipped.supportsLanguage("zh") && shipped.supportsLanguage("en"),
+                "one multilingual model serves both languages");
     }
 }

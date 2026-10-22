@@ -62,6 +62,8 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<List<? extends String>> LLM_CREDENTIALS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_WINDOW_TOKENS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_TIER;
+    /** Embedding position: 999 puts every layer on the card, 0 keeps the lane on the CPU. */
+    public static final ModConfigSpec.IntValue LLM_EMBEDDING_GPU_LAYERS;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_CACHE_MISS_INPUT_PRICE_PER_MILLION;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_CACHE_HIT_INPUT_PRICE_PER_MILLION;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_OUTPUT_PRICE_PER_MILLION;
@@ -133,6 +135,12 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
                 LlmContextTiers.DEFAULT_TIER,
                 LlmContextTiers.TIER_50K,
                 LlmContextTiers.TIER_500K);
+        LLM_EMBEDDING_GPU_LAYERS = builder.comment("向量模型载入位置：999 表示全部层放到 GPU，0 表示只用 CPU。",
+                        "GPU 载入失败时运行时会自动回落到 CPU，本键的值不变（改回 GPU 需要重新加载一次）。")
+                .defineInRange("embeddingGpuLayers",
+                        LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL,
+                        0,
+                        LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL);
         builder.comment("Token prices in CNY per million tokens, used to turn recorded usage into a local estimate."
                         + " 0 hides the estimate. These prices never produce an authoritative amount: the provider's"
                         + " own account answer is what the HUD shows as accurate, and this estimate is reconciliation only.")
@@ -658,6 +666,17 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public String getLlmEmbeddingModelName() {
         com.rheinmetal.tianshu.model.LlmModelInfo embedding = com.rheinmetal.tianshu.model.LlmModelManager.getDefaultEmbeddingModel(languageCodeSupplier.get());
         return embedding != null ? embedding.name : "";
+    }
+
+    @Override
+    public int getLlmEmbeddingGpuLayers() {
+        return LLM_EMBEDDING_GPU_LAYERS.get();
+    }
+
+    /** The position is a two-value choice; a hand-edited file cannot push it outside that range. */
+    @Override
+    public void setLlmEmbeddingGpuLayers(int layers) {
+        LLM_EMBEDDING_GPU_LAYERS.set(Math.max(0, Math.min(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL, layers)));
     }
 
     public void save() {

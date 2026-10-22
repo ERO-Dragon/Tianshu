@@ -13,6 +13,16 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * The two bundled catalogs: the cloud models this build ships sampling defaults for, and the local RAG
+ * vector models it can download.
+ *
+ * <p>{@code llm_models.json} is not a download list. Chat runs in the cloud, so the only thing a chat
+ * model needs from a catalog is its sampling profile, and that is what its entries carry — keyed by cloud
+ * model id, so the request preparer can start a request from the model's own defaults. The local GGUF
+ * chat entries are gone with the local chat lane; {@code llm_embedding_models.json} is the catalog that
+ * still describes files on disk, and it is the one the settings page downloads and the RAG path resolves.
+ */
 public class LlmModelManager {
 
     private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/llm_models.json";

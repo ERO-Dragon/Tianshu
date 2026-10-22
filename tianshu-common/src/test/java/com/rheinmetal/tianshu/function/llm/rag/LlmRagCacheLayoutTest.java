@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class LlmRagCacheLayoutTest {
     @TempDir
@@ -20,6 +21,20 @@ class LlmRagCacheLayoutTest {
         assertEquals(
                 config.getLlmBasePath().resolve("ragCache").resolve("entries"),
                 layout.cacheDirectory()
+        );
+    }
+    @Test
+    void theNamespaceFollowsTheRuntimeIdentity() {
+        TestLlmSupport.FakeConfig first = new TestLlmSupport.FakeConfig(tempDir);
+        first.embeddingModelName("bge-m3");
+        TestLlmSupport.FakeConfig second = new TestLlmSupport.FakeConfig(tempDir);
+        second.embeddingModelName("bge-m3");
+        second.customLlmName("another-runtime");
+
+        assertNotEquals(
+                new LlmRagCacheLayout(first, null).cacheNamespace(),
+                new LlmRagCacheLayout(second, null).cacheNamespace(),
+                "a different runtime identity gets its own namespace"
         );
     }
 }

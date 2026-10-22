@@ -5,5 +5,8 @@ public enum PresencePrimaryState {
     LOADING,
     PROCESSING_TASK,
     THINKING,
-    RESPONDING
+    RESPONDING,
+    RECONNECTING,
+    ERROR,
+    DEGRADED
 }

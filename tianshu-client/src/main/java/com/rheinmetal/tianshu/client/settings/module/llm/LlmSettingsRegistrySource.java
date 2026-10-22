@@ -24,9 +24,6 @@ import com.rheinmetal.tianshu.function.llm.LlmModuleService;
 import com.rheinmetal.tianshu.function.llm.account.LlmAccountSnapshot;
 import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogKeySource;
 import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogResult;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
-import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.function.llm.settings.LlmBuiltinProviders;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmContextTiers;
@@ -42,29 +39,22 @@ import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public final class LlmSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = "module.llm";
-    private static final String ALL = "all";
-    private static final String DOWNLOADED = "downloaded";
-    private static final String NOT_DOWNLOADED = "not_downloaded";
     private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     /** How long an editor verdict stays on screen; long enough to read a rejection. */
     private static final long EDITOR_STATUS_MILLIS = 4_000L;
     /** Prefix of the ids handed to models the player adds; the storage layer accepts it as an id. */
     private static final String NEW_MODEL_ID_PREFIX = "model-";
-    private static final Pattern PARAMETER_SCALE_PATTERN = Pattern.compile("(?i)(\\d+(?:\\.\\d+)?)\\s*b\\b");
     private static final UiText TITLE = llm("title");
     private static final UiText DESCRIPTION = llm("description");
 
@@ -125,13 +115,23 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 .build());
     }
 
+    /**
+     * The page, top to bottom: the enable switch, the RAG vector model, the lane selector, then the two
+     * columns.
+     *
+     * <p>Everything below the vector model depends on it: without an embedding file there is no
+     * retrieval, and without retrieval the cloud lane cannot answer. The gate is therefore a
+     * <em>visibility</em> gate, not a disabled state — the lane and both columns are not built into the
+     * page at all until the model is on disk, which leaves an unready page as exactly two rows.
+     */
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled);
-        buildLaneSelector(panel, context);
-        panel.columns("llm.panel.layout", 0.45D, 0.55D, columns -> columns
+        buildEmbeddingSection(panel, context, draft);
+        BooleanSupplier ready = draft::embeddingReady;
+        buildLaneSelector(panel, context, ready);
+        panel.columns("llm.panel.layout", 0.45D, 0.55D, () -> true, ready, columns -> columns
                 .column(0, left -> buildProviderColumn(left, context, draft))
                 .column(1, right -> buildStatsColumn(right, draft)));
-        buildRuntimeSections(panel, context, draft);
     }
 
     /**
@@ -139,12 +139,33 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
      * are an action row: the cloud tab is the active, styled one and the sealed local tab is rendered
      * with its enabled predicate switched off, which greys it out and makes it unclickable.
      */
-    private void buildLaneSelector(ModuleSettingsPanel panel, ModuleSettingsContext context) {
-        panel.actions("llm.lane.selector", llm("section.lane"), actions -> actions
+    private void buildLaneSelector(ModuleSettingsPanel panel, ModuleSettingsContext context, BooleanSupplier visible) {
+        panel.actions("llm.lane.selector", llm("section.lane"), () -> true, visible, actions -> actions
                 .button("llm.lane.cloud", llm("lane.cloud"), SettingsButtonStyle.PRIMARY,
                         () -> context.showStatus(llm("lane.cloud_active"), 2000), () -> true)
                 .button("llm.lane.local", llm("lane.local"),
                         () -> { }, () -> false));
+    }
+
+    /**
+     * The RAG vector model: the one model this build still downloads.
+     *
+     * <p>Chat runs in the cloud, so a provider profile only needs an endpoint; retrieval needs a local
+     * embedding file. The button comes first and its label says what pressing it does, so the same row
+     * starts a download, retries a failed one, and reports its state right after the button.
+     */
+    private void buildEmbeddingSection(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
+        panel.compound("llm.embedding", llm("section.embedding"), draft.enabled::get,
+                options -> { },
+                actions -> actions
+                        .button("llm.embedding.download", draft.embeddingActionLabel(),
+                                SettingsButtonStyle.PRIMARY, () -> draft.downloadEmbeddingModel(context),
+                                draft::canDownloadEmbeddingModel)
+                        // The position is a preference, so it is always switchable while the module is on;
+                        // switching never starts a download and never blocks the page.
+                        .button("llm.embedding.position", draft.embeddingPositionLabel(),
+                                () -> draft.toggleEmbeddingPosition(context), draft.enabled::get),
+                draft::buildEmbeddingStatus);
     }
 
     /**
@@ -154,14 +175,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
      * endpoint this build does not ship, the activation dot and the model the provider currently uses —
      * and nothing more. Endpoint data lives in the editor, so no card grows a full-width paragraph.
      *
-     * <p>Those are the only three groups of the column, in that order: cards, add button, editor. The
-     * add button keeps its place while the editor is open and only the button itself is disabled, so
-     * opening a form never moves what is already on screen.
-     *
-     * <p>The editor is the form and one read-only line: which model the provider uses, and one button
-     * that opens the picker. It is the whole catalog contribution of this page — a window of its own,
-     * layered over the settings screen while it is open, so this column stays exactly as it is and
-     * closing the window puts the player back where they were.
+     * <p>Those are the only three groups of the column, in that order: cards, add button, editor. The add
+     * button keeps its place while the editor is open and only the button itself is disabled, so opening a
+     * form never moves what is already on screen. The editor is the form and one read-only line: which
+     * model the provider uses, and one button that opens the picker.
      */
     private void buildProviderColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.<LlmModelEntry>list("llm.providers", llm("section.providers"), list -> list
@@ -199,37 +216,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                         .button("llm.usage.refresh", llm("action.refresh_usage"), draft::refreshUsage));
     }
 
-    /** Full-width sections below the two columns; they are not part of the model/statistics pair. */
-    private void buildRuntimeSections(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
-        panel.compound("llm.load", llm("section.load_settings"), draft.enabled::get,
-                        draft::buildLoadOptions,
-                        actions -> actions
-                                .button("llm.load.start", llm("action.load"), SettingsButtonStyle.PRIMARY, () -> draft.startLoad(context), draft::canLoad)
-                                .button("llm.load.stop", llm("action.unload"), SettingsButtonStyle.DANGER, () -> draft.stopLoad(context), draft::canUnload),
-                        status -> {
-                            draft.buildModelInfo(status);
-                            draft.buildLoadStatus(status);
-                        })
-                .compound("llm.embedding", llm("section.embedding"), draft.enabled::get,
-                        options -> { },
-                        actions -> actions.button(
-                                "llm.embedding.download",
-                                llm("action.download_embedding"),
-                                SettingsButtonStyle.PRIMARY,
-                                () -> draft.downloadEmbeddingModel(context),
-                                draft::canDownloadEmbeddingModel
-                        ),
-                        status -> {
-                            status.row("llm.embedding.model", llm("row.embedding_model"), draft::embeddingModelNameStatus);
-                            status.row("llm.embedding.state", llm("row.embedding_state"), draft::embeddingModelStateStatus);
-                        })
-                .<LlmModelInfo>catalog("llm.download.catalog", llm("section.download_models"), draft::buildDownloadFilters, list -> list
-                        .items(draft::downloadableModels)
-                        .card(draft::downloadModelCard)
-                        .itemActions((model, actions) -> draft.buildDownloadItemActions(context, model, actions))
-                        .emptyText(llm("download.empty")));
-    }
-
     private static final class LlmSettingsDraft implements com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSession {
         private final LlmSettingsAccess config;
         private final LlmModuleService moduleService;
@@ -238,12 +224,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final ClientUiHost uiHost;
         private final SettingsLayerHost layerHost;
         private final MutableSettingsValue<Boolean> enabled;
-        private final MutableSettingsValue<String> selectedModelName;
         /** The whole model list is one draft value: add, edit and delete all rebuild it. */
         private final MutableSettingsValue<List<LlmModelEntry>> models;
         private final MutableSettingsValue<String> activeModelId;
-        private final MutableSettingsValue<String> seriesFilter;
-        private final MutableSettingsValue<String> downloadStateFilter;
         /**
          * Credentials typed into the editor, keyed by model id. They are written to the configuration
          * on save and are never read back into a widget, so a blank field keeps the stored key.
@@ -274,12 +257,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.layerHost = layerHost;
             this.availabilitySnapshot = modelService.modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isLlmEnabled, config::setLlmEnabled);
-            this.selectedModelName = new MutableSettingsValue<>(this::currentModelName, ignored -> {}, Objects::nonNull);
             this.models = new MutableSettingsValue<>(config::getLlmModels, config::setLlmModels,
                     value -> value != null && !value.isEmpty());
             this.activeModelId = new MutableSettingsValue<>(config::getLlmActiveModelId, config::setLlmActiveModelId, Objects::nonNull);
-            this.seriesFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
-            this.downloadStateFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             modelService.refreshModelAvailabilityAsync(() -> runOnClient(() -> {
                 availabilitySnapshot = modelService.modelAvailability();
                 refreshSettingsScreen();
@@ -1016,27 +996,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             runOnClient(this::refreshSettingsScreen);
         }
 
-        // ---------------------------------------------------------------- runtime sections
-
-        private void buildModelInfo(StatusTemplate status) {
-            status.row("llm.info.name", llm("row.model_name"), this::selectedModelNameStatus);
-            status.row("llm.info.size", llm("row.model_size"), this::selectedModelSizeStatus);
-        }
-
-        private void buildLoadOptions(OptionTemplate options) {
-            options.select("llm.model", llm("option.model"), downloadedModelNames(), selectedModelName, this::modelOptionLabel, enabled::get);
-        }
-
-        private void buildDownloadFilters(OptionTemplate options) {
-            options.select("llm.download.series", llm("option.series"), seriesFilterValues(), seriesFilter, this::filterLabel)
-                    .select("llm.download.state", llm("option.download_state"), List.of(ALL, DOWNLOADED, NOT_DOWNLOADED), downloadStateFilter, this::filterLabel);
-        }
-
-        private void buildLoadStatus(StatusTemplate status) {
-            status.row("llm.load.state", llm("row.load_state"), this::loadStateStatus);
-            status.row("llm.download.progress", llm("row.download_status"), this::downloadStatusText);
-        }
-
         // ---------------------------------------------------------------- session contract
 
         @Override
@@ -1047,25 +1006,28 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public boolean dirty() {
             return enabled.dirty()
-                    || selectedModelName.dirty()
-                    || models.dirty()
-                    || activeModelId.dirty()
-                    || !pendingApiKeys.isEmpty()
-                    || !retiredApiKeyIds.isEmpty()
+                    || cloudSettingsDirty()
                     // An open form is unsaved state of this module. Counting it here is what makes the
                     // page-level 保存 reach this session at all: without it, a credential typed into the
                     // form would leave the session "clean" and the save would be skipped entirely.
                     || modelEditor != null;
         }
 
+        /** The cloud profile half of the draft: providers, the active one and their credentials. */
+        private boolean cloudSettingsDirty() {
+            return models.dirty()
+                    || activeModelId.dirty()
+                    || !pendingApiKeys.isEmpty()
+                    || !retiredApiKeyIds.isEmpty();
+        }
+
         @Override
         public SettingsValidationResult validate() {
-            LlmModelInfo selected = resolveModel(selectedModelName.get());
-            if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || selected == null)) {
-                return SettingsValidationResult.failure(llm("validation.invalid_model"));
-            }
-            if (enabled.get() && selected != null && !isDownloaded(selected)) {
-                return SettingsValidationResult.failure(llm("validation.model_not_installed"));
+            // The page hides the lane and the provider columns while the vector model is missing, but a
+            // form opened before the model was removed, or a programmatic save, must not slip past that.
+            // Only cloud profile changes are refused: the enable switch stays writable.
+            if (!embeddingReady() && cloudSettingsDirty()) {
+                return SettingsValidationResult.failure(llm("validation.embedding_missing"));
             }
             // An open form is not a reason to refuse the page save. 保存 is expected to finish the job,
             // so the form is judged here as the change it would make — and applied by save(), never by
@@ -1144,8 +1106,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty();
-            SettingsSaveTransaction transaction = new SettingsSaveTransaction(enabled, selectedModelName, models, activeModelId)
-                    .write(config::getCustomLlmName, config::setCustomLlmName, selectedModelName.get());
+            SettingsSaveTransaction transaction = new SettingsSaveTransaction(enabled, models, activeModelId);
             for (String retiredModelId : retiredApiKeyIds) {
                 // An empty credential removes the entry, so a deleted model takes its key with it.
                 transaction.write(() -> config.getLlmApiKey(retiredModelId),
@@ -1172,7 +1133,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         @Override
         public void reset() {
             enabled.reset();
-            selectedModelName.reset();
             models.reset();
             activeModelId.reset();
             pendingApiKeys.clear();
@@ -1199,35 +1159,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             return value.startsWith("https://") || value.startsWith("http://");
         }
 
-        private List<String> downloadedModelNames() {
-            List<String> downloaded = modelService.allModels().stream()
-                    .filter(this::isDownloaded)
-                    .map(info -> info.name)
-                    .filter(name -> name != null && !name.isBlank())
-                    .distinct()
-                    .toList();
-            List<String> values = new ArrayList<>(downloaded.size() + 2);
-            values.add("");
-            values.addAll(downloaded);
-            return values;
-        }
-
-        private String currentModelName() {
-            String configured = config.getCustomLlmName();
-            if (configured != null && !configured.isBlank() && resolveModel(configured) != null && isDownloaded(resolveModel(configured))) {
-                return configured;
-            }
-            return "";
-        }
-
-        private UiText modelOptionLabel(String modelName) {
-            return modelName == null || modelName.isBlank() ? common("not_selected") : UiText.literal(modelName);
-        }
-
-        private LlmModelInfo resolveModel(String name) {
-            return modelService.resolveModel(name);
-        }
-
         private ModelAvailabilitySnapshot.Entry availabilityEntry(LlmModelInfo info) {
             return info == null ? null : availabilitySnapshot.entry(info.name);
         }
@@ -1238,35 +1169,90 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         /**
-         * The RAG vector model of the current language. It is not part of the cloud chat catalog, so it
-         * does not appear in the download list and has its own group with a dedicated download action.
+         * The RAG vector model of the current language: the one model this page still downloads.
+         *
+         * <p>It lives in its own catalog, so it never appears among the cloud providers, and the page
+         * states it in one section of its own — name, whether the file is on disk, and how far a running
+         * download has got.
          */
         private LlmModelInfo embeddingModel() {
             String name = config.getLlmEmbeddingModelName();
-            if (name == null || name.isBlank()) {
-                return null;
-            }
-            return modelService.embeddingModelByName(name);
+            return name == null || name.isBlank() ? null : modelService.embeddingModelByName(name);
         }
 
+        /** The embedding section: name, installed state and, while it runs, its download progress. */
+        private void buildEmbeddingStatus(StatusTemplate status) {
+            status.row("llm.embedding.model", llm("row.embedding_model"), this::embeddingModelNameStatus)
+                    .row("llm.embedding.state", llm("row.embedding_state"), this::embeddingModelStateStatus);
+        }
+
+        /**
+         * Whether the page may show anything below the vector model.
+         *
+         * <p>The lane and the provider columns are gated on this: without the embedding file there is no
+         * retrieval, so the cloud lane cannot answer and offering its configuration would be a promise the
+         * page cannot keep.
+         */
+        private boolean embeddingReady() {
+            LlmModelInfo info = embeddingModel();
+            return info != null && isDownloaded(info);
+        }
+
+        /** The edited catalog as specs, or the reason the rows cannot be committed. */
         private UiText embeddingModelNameStatus() {
             LlmModelInfo info = embeddingModel();
             return info == null ? common("unknown") : UiText.literal(info.getDisplayName());
         }
 
+        /**
+         * The one line that reports the download: on disk, running with its percentage, or failed.
+         *
+         * <p>It reads the coordinator's snapshot and only trusts it when the download is this model's own,
+         * so a chat request can never colour this row.
+         */
         private UiText embeddingModelStateStatus() {
             LlmModelInfo info = embeddingModel();
-            if (info == null) return common("unknown");
-            return common(modelService.isModelInstalled(info) ? "downloaded" : "not_downloaded");
+            if (info == null) {
+                return common("unknown");
+            }
+            LlmModelService.DownloadSnapshot snapshot = modelService.downloadSnapshot();
+            if (snapshot.running() && sameModelName(info, snapshot.modelName())) {
+                UiText label = snapshot.cancelling()
+                        ? llm("status.cancelling")
+                        : snapshot.paused() ? llm("status.paused") : llm("status.downloading");
+                return llm("download.progress", label, snapshot.progress().percent());
+            }
+            if (embeddingDownloadFailed(snapshot)) {
+                String detail = snapshot.errorMessage();
+                return detail.isBlank() || detail.startsWith("tianshu.")
+                        ? llm("status.download_failed")
+                        : llm("status.download_failed_detail", UiText.literal(detail));
+            }
+            return common(isDownloaded(info) ? "downloaded" : "not_downloaded");
+        }
+
+        /** The label of the row's first button: it starts the download, and it retries a failed one. */
+        private UiText embeddingActionLabel() {
+            return embeddingDownloadFailed(modelService.downloadSnapshot())
+                    ? llm("action.retry")
+                    : llm("action.download_embedding");
+        }
+
+        private boolean embeddingDownloadFailed(LlmModelService.DownloadSnapshot snapshot) {
+            LlmModelInfo info = embeddingModel();
+            return info != null
+                    && snapshot != null
+                    && !snapshot.running()
+                    && !snapshot.errorMessage().isBlank()
+                    && sameModelName(info, snapshot.modelName());
         }
 
         private boolean canDownloadEmbeddingModel() {
             LlmModelInfo info = embeddingModel();
             return enabled.get()
                     && info != null
-                    && !modelService.isModelInstalled(info)
-                    && !modelService.isDownloading()
-                    && !modelService.isDeleting();
+                    && !isDownloaded(info)
+                    && !modelService.isDownloading();
         }
 
         private void downloadEmbeddingModel(ModuleSettingsContext context) {
@@ -1275,7 +1261,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 context.showStatus(llm("error.embedding_unavailable"), 4000);
                 return;
             }
-            if (modelService.isModelInstalled(info)) {
+            if (isDownloaded(info)) {
                 context.showStatus(llm("message.embedding_already_downloaded"), 3000);
                 return;
             }
@@ -1315,240 +1301,34 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             });
         }
 
-        private long cachedModelSizeBytes(LlmModelInfo info) {
-            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
-            return entry == null ? 0L : entry.sizeBytes();
+        /** Whether the embedding model is configured to run on the card. */
+        private boolean embeddingUsesGpu() {
+            return config.getLlmEmbeddingGpuLayers() > 0;
         }
 
-        private UiText selectedModelNameStatus() {
-            LlmModelInfo info = resolveModel(selectedModelName.get());
-            return info == null ? common("not_selected") : UiText.literal(info.getDisplayName());
-        }
-
-        private UiText selectedModelSizeStatus() {
-            LlmModelInfo info = resolveModel(selectedModelName.get());
-            if (info == null) return common("dash");
-            ModelAvailabilitySnapshot.Entry entry = availabilityEntry(info);
-            if (entry == null) return common("unknown");
-            if (!entry.installed()) return common("not_downloaded");
-            long sizeBytes = entry.sizeBytes();
-            if (sizeBytes <= 0L) return common("unknown");
-            if (sizeBytes > 1024L * 1024 * 1024) {
-                return UiText.literal(String.format(Locale.ROOT, "%.1f GB", sizeBytes / (1024.0 * 1024 * 1024)));
-            }
-            return UiText.literal(String.format(Locale.ROOT, "%.0f MB", sizeBytes / (1024.0 * 1024)));
-        }
-
-        private boolean canLoad() {
-            if (!enabled.get()) return false;
-            LlmRuntimeSnapshot snapshot = moduleService.snapshot();
-            if (snapshot.state() == LlmRuntimeState.STARTING || snapshot.state() == LlmRuntimeState.STOPPING || snapshot.running()) return false;
-            // Chat runs in the cloud, so a downloaded local GGUF is no longer a precondition: the lane
-            // only needs a complete endpoint configuration.
-            return validate().success();
-        }
-
-        private boolean canUnload() {
-            if (!enabled.get()) return false;
-            LlmRuntimeSnapshot snapshot = moduleService.snapshot();
-            return snapshot.running() || snapshot.state() == LlmRuntimeState.STARTING;
-        }
-
-        private void startLoad(ModuleSettingsContext context) {
-            SettingsValidationResult validation = validate();
-            if (!validation.success()) {
-                context.showStatus(validation.message(), 4000);
-                return;
-            }
-            if (dirty()) {
-                // The runtime reads the persisted endpoint, so unsaved edits are written first.
-                save();
-                refreshSettingsScreen();
-            }
-            LlmControlResult result = moduleService.load();
-            context.showStatus(result.accepted() ? llm("message.load_started") : UiText.literal(result.message()), 3000);
-        }
-
-        private void stopLoad(ModuleSettingsContext context) {
-            LlmControlResult result = moduleService.unload();
-            context.showStatus(result.accepted() ? llm("message.unload_started") : UiText.literal(result.message()), 3000);
+        /** The position button states what is in use, so no second indicator is needed. */
+        private UiText embeddingPositionLabel() {
+            return llm("action.embedding_position",
+                    llm(embeddingUsesGpu() ? "action.embedding_position_gpu" : "action.embedding_position_cpu"));
         }
 
         /**
-         * Chat is served by the cloud lane, so the runtime state no longer depends on a downloaded
-         * GGUF: a local model is only the parked embedding/RAG engine and never gates the lane.
+         * Flips the single position value and lets a running runtime pick it up by reloading.
+         *
+         * <p>Reloading reuses the module start/stop path the runtime already has, so the change costs one
+         * engine start and nothing else; the page itself never waits for it.
          */
-        private UiText loadStateStatus() {
-            if (!enabled.get()) return llm("state.disabled");
-            LlmRuntimeSnapshot snapshot = moduleService.snapshot();
-            return switch (snapshot.state()) {
-                case DISABLED -> llm("state.disabled");
-                case STARTING -> llm("state.loading");
-                case RUNNING -> llm("state.loaded");
-                case STOPPING -> llm("state.unloading");
-                case FAILED -> failureMessageText(snapshot.failureMessage());
-                case STOPPED -> llm("state.unloaded");
-            };
-        }
-
-        /**
-         * The runtime reports a resource key when it knows the actionable cause (for example an
-         * unconfigured cloud credential); anything else is shown as the raw diagnostic.
-         */
-        private UiText failureMessageText(String failureMessage) {
-            if (failureMessage == null || failureMessage.isBlank()) {
-                return llm("state.failed");
-            }
-            return failureMessage.startsWith("tianshu.")
-                    ? UiText.key(failureMessage)
-                    : UiText.literal(failureMessage);
-        }
-
-        private List<LlmModelInfo> downloadableModels() {
-            return modelService.allModels().stream()
-                    .filter(this::matchesSeriesFilter)
-                    .filter(this::matchesDownloadStateFilter)
-                    .toList();
-        }
-
-        private SettingsListCard downloadModelCard(LlmModelInfo info) {
-            if (info == null) return SettingsListCard.text(UiText.literal(""));
-            LlmModelCardState state = cardState(info);
-            UiText title = UiText.literal(info.getDisplayName());
-            UiText status = state.statusLabel();
-            List<UiText> details = new ArrayList<>();
-            UiText description = modelDescriptionLabel(info);
-            if (description != null) {
-                details.add(llm("download.card.description", description));
-            }
-            details.add(llm("download.card.series", modelSeriesLabel(info)));
-            details.add(llm("download.card.size", modelDownloadSizeLabel(info)));
-            details.add(llm("download.card.vram", estimatedVramLabel(info)));
-            details.add(llm("download.card.thinking_capability", thinkingCapabilityLabel(info)));
-            return new SettingsListCard(title, status, details, List.of());
-        }
-
-        private void buildDownloadItemActions(ModuleSettingsContext context, LlmModelInfo info, com.rheinmetal.tianshu.client.api.settings.ItemActionTemplate<LlmModelInfo> actions) {
-            actions.button("llm.download.item.start", llm("action.download"), SettingsButtonStyle.PRIMARY, model -> startDownload(context, model), model -> cardState(model).canStartDownload())
-                    .button("llm.download.item.pause", llm("action.pause"), this::pauseDownload, model -> cardState(model).canPauseDownload())
-                    .button("llm.download.item.resume", llm("action.resume"), this::resumeDownload, model -> cardState(model).canResumeDownload())
-                    .button("llm.download.item.cancel", llm("action.cancel"), SettingsButtonStyle.DANGER, model -> cancelDownload(context, model), model -> cardState(model).canCancelDownload())
-                    .button("llm.download.item.delete", llm("action.delete"), SettingsButtonStyle.DANGER, model -> deleteModel(context, model), model -> cardState(model).canDeleteModel());
-        }
-
-        private void startDownload(ModuleSettingsContext context, LlmModelInfo info) {
-            if (info == null || !cardState(info).canStartDownload()) return;
-            modelService.downloadModel(info, new LlmModelService.DownloadProgressCallback() {
-                @Override
-                public void onProgress(ModelDownloadProgress progress) {
-                    requestDownloadRefresh();
-                }
-
-                @Override
-                public void onComplete() {
-                    runOnClient(() -> {
-                        availabilitySnapshot = modelService.modelAvailability();
-                        context.showStatus(llm("message.download_complete"), 3000);
-                        refreshSettingsScreen();
-                    });
-                }
-
-                @Override
-                public void onError(String message) {
-                    runOnClient(() -> {
-                        context.showStatus(localizedDownloadMessage(message), 4000);
-                        refreshSettingsScreen();
-                    });
-                }
-
-                @Override
-                public void onCancelled() {
-                    runOnClient(() -> {
-                        context.showStatus(llm("status.cancelled"), 1500);
-                        refreshSettingsScreen();
-                    });
-                }
-            });
-        }
-
-        private void pauseDownload(LlmModelInfo info) {
-            if (!cardState(info).canPauseDownload()) {
-                return;
-            }
-            modelService.pauseDownload();
-            refreshSettingsScreen();
-        }
-
-        private void resumeDownload(LlmModelInfo info) {
-            if (!cardState(info).canResumeDownload()) {
-                return;
-            }
-            modelService.resumeDownload();
-            refreshSettingsScreen();
-        }
-
-        private void cancelDownload(ModuleSettingsContext context, LlmModelInfo info) {
-            if (!cardState(info).canCancelDownload()) {
-                return;
-            }
-            modelService.cancelDownload();
-            context.showStatus(llm("status.cancelling"), 3000);
-            refreshSettingsScreen();
-        }
-
-        private LlmModelCardState cardState(LlmModelInfo info) {
-            LlmModelService.DownloadSnapshot snapshot = modelService.downloadSnapshot();
-            boolean downloading = snapshot.running();
-            boolean activeDownload = downloading && sameModelName(info, snapshot.modelName());
-            boolean paused = activeDownload && snapshot.paused();
-            boolean cancelling = activeDownload && snapshot.cancelling();
-            boolean known = availabilityEntry(info) != null;
-            boolean installed = info != null && isDownloaded(info);
-            boolean deleting = modelService.isDeletingModel(info);
-            boolean anyOperationActive = downloading || modelService.isDeleting();
-            return new LlmModelCardState(info, known, installed, anyOperationActive, activeDownload, paused, cancelling, deleting);
+        private void toggleEmbeddingPosition(ModuleSettingsContext context) {
+            boolean gpu = !embeddingUsesGpu();
+            config.setLlmEmbeddingGpuLayers(gpu ? LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL : 0);
+            config.save();
+            context.showStatus(llm("message.embedding_position_changed",
+                    llm(gpu ? "action.embedding_position_gpu" : "action.embedding_position_cpu")), 2_500);
+            restartRunningRemoteRuntime();
         }
 
         private boolean sameModelName(LlmModelInfo info, String modelName) {
             return info != null && info.name != null && modelName != null && info.name.equalsIgnoreCase(modelName);
-        }
-
-        /**
-         * Deletes a downloaded local GGUF. This is the file-management action of the download catalog,
-         * unrelated to deleting a configured cloud model.
-         */
-        private void deleteModel(ModuleSettingsContext context, LlmModelInfo info) {
-            if (info == null || modelService.isDownloading() || modelService.isDeleting()) return;
-            String deletedModelName = info.name == null ? "" : info.name;
-            UiText displayName = UiText.literal(info.getDisplayName());
-            modelService.deleteModelAsync(info, deleted -> runOnClient(() -> {
-                if (deleted) {
-                    context.showStatus(llm("message.deleted", displayName), 3000);
-                    if (!deletedModelName.isBlank() && deletedModelName.equalsIgnoreCase(selectedModelName.get())) {
-                        selectedModelName.set(currentModelName());
-                    }
-                } else {
-                    context.showStatus(llm("message.delete_failed"), 3000);
-                }
-                availabilitySnapshot = modelService.modelAvailability();
-                refreshSettingsScreen();
-            }));
-        }
-
-        private UiText downloadStatusText() {
-            LlmModelService.DownloadSnapshot snapshot = modelService.downloadSnapshot();
-            if (snapshot.running()) {
-                UiText label = snapshot.cancelling()
-                        ? llm("status.cancelling")
-                        : snapshot.paused()
-                        ? llm("status.paused")
-                        : llm("status.downloading");
-                return llm("download.progress", label, snapshot.progress().percent());
-            }
-            if (!snapshot.errorMessage().isBlank()) {
-                return localizedDownloadMessage(snapshot.errorMessage());
-            }
-            return llm("status.idle");
         }
 
         private UiText localizedDownloadMessage(String message) {
@@ -1587,171 +1367,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             uiHost.requestSettingsRefresh();
         }
 
-        private UiText filterLabel(String value) {
-            return switch (value == null ? ALL : value) {
-                case DOWNLOADED -> common("downloaded");
-                case NOT_DOWNLOADED -> common("not_downloaded");
-                case ALL -> llm("filter.all");
-                default -> UiText.literal(value);
-            };
-        }
-
-        private List<String> seriesFilterValues() {
-            Set<String> series = new LinkedHashSet<>();
-            modelService.allModels().stream()
-                    .map(this::modelSeries)
-                    .filter(value -> !value.isBlank())
-                    .sorted(Comparator.comparing(String::toLowerCase, String.CASE_INSENSITIVE_ORDER))
-                    .forEach(series::add);
-            List<String> values = new ArrayList<>(series.size() + 1);
-            values.add(ALL);
-            values.addAll(series);
-            return values;
-        }
-
-        private boolean matchesSeriesFilter(LlmModelInfo info) {
-            String selectedSeries = seriesFilter.get();
-            return selectedSeries == null || selectedSeries.isBlank() || ALL.equals(selectedSeries) || selectedSeries.equalsIgnoreCase(modelSeries(info));
-        }
-
-        private boolean matchesDownloadStateFilter(LlmModelInfo info) {
-            return switch (downloadStateFilter.get()) {
-                case DOWNLOADED -> isDownloaded(info);
-                case NOT_DOWNLOADED -> availabilityEntry(info) != null && !isDownloaded(info);
-                default -> true;
-            };
-        }
-
-        private UiText modelSeriesLabel(LlmModelInfo info) {
-            String series = modelSeries(info);
-            return series.isBlank() ? common("unknown") : UiText.literal(series);
-        }
-
-        private String modelSeries(LlmModelInfo info) {
-            if (info == null) return "";
-            String explicit = info.getSeries();
-            if (!explicit.isBlank()) return explicit;
-            String source = firstNonBlank(info.getDisplayName(), info.name, info.repoId);
-            if (source.isBlank()) return "";
-            String normalized = source.replace('\\', '/');
-            int slash = normalized.indexOf('/');
-            if (slash >= 0) {
-                normalized = normalized.substring(slash + 1);
-            }
-            normalized = normalized.trim();
-            int separator = firstSeparatorIndex(normalized);
-            String series = separator > 0 ? normalized.substring(0, separator) : normalized;
-            return series.isBlank() ? "" : series;
-        }
-
-        private UiText modelDownloadSizeLabel(LlmModelInfo info) {
-            if (info == null) return common("unknown");
-            long actualBytes = cachedModelSizeBytes(info);
-            if (actualBytes > 0L) return formatBytes(actualBytes);
-            long estimatedBytes = estimatedModelSizeBytes(info);
-            return estimatedBytes > 0L ? llm("size.estimated", formatBytes(estimatedBytes)) : common("unknown");
-        }
-
-        private UiText estimatedVramLabel(LlmModelInfo info) {
-            long bytes = estimatedVramBytes(info);
-            return bytes > 0L ? llm("size.estimated", formatBytes(bytes)) : common("unknown");
-        }
-
-        private UiText modelDescriptionLabel(LlmModelInfo info) {
-            if (info == null) return null;
-            String key = info.getDescriptionKey();
-            if (!key.isBlank()) {
-                return UiText.key(key);
-            }
-            String description = info.getDescription();
-            return description.isBlank() ? null : UiText.literal(description);
-        }
-
-        private UiText thinkingCapabilityLabel(LlmModelInfo info) {
-            if (info == null || info.getThinkingCapability().isBlank()) {
-                return common("unknown");
-            }
-            return llm("thinking_capability." + info.getThinkingCapability());
-        }
-
-        private long estimatedModelSizeBytes(LlmModelInfo info) {
-            if (info == null) return 0L;
-            long catalogSize = info.getDownloadSizeBytes();
-            if (catalogSize > 0L) return catalogSize;
-            double billionParameters = modelParameterBillions(info);
-            if (billionParameters <= 0D) return 0L;
-            return Math.round(billionParameters * 1_000_000_000D * bytesPerParameter(info)) + 256L * 1024L * 1024L;
-        }
-
-        private long estimatedVramBytes(LlmModelInfo info) {
-            if (info == null) return 0L;
-            long catalogEstimate = info.getEstimatedVramBytes();
-            if (catalogEstimate > 0L) return catalogEstimate;
-            long modelBytes = Math.max(cachedModelSizeBytes(info), estimatedModelSizeBytes(info));
-            if (modelBytes <= 0L) return 0L;
-            return Math.round(modelBytes * 1.15D) + 512L * 1024L * 1024L;
-        }
-
-        private double modelParameterBillions(LlmModelInfo info) {
-            for (String source : List.of(info.getDisplayName(), info.name == null ? "" : info.name, info.getModelFile(), info.repoId == null ? "" : info.repoId)) {
-                Matcher matcher = PARAMETER_SCALE_PATTERN.matcher(source == null ? "" : source);
-                if (matcher.find()) {
-                    try {
-                        return Double.parseDouble(matcher.group(1));
-                    } catch (NumberFormatException ignored) {
-                        return 0D;
-                    }
-                }
-            }
-            return 0D;
-        }
-
-        private double bytesPerParameter(LlmModelInfo info) {
-            String source = (firstNonBlank(info == null ? "" : info.getModelFile(), info == null ? "" : info.name) + " " + (info == null ? "" : info.repoId)).toLowerCase(Locale.ROOT);
-            if (source.contains("q2")) return 0.32D;
-            if (source.contains("q3")) return 0.42D;
-            if (source.contains("q4")) return 0.58D;
-            if (source.contains("q5")) return 0.70D;
-            if (source.contains("q6")) return 0.82D;
-            if (source.contains("q8") || source.contains("int8")) return 1.05D;
-            return source.contains("gguf") ? 0.58D : 0.65D;
-        }
-
-        private String firstNonBlank(String... values) {
-            if (values == null) return "";
-            for (String value : values) {
-                if (value != null && !value.isBlank()) {
-                    return value.trim();
-                }
-            }
-            return "";
-        }
-
-        private int firstSeparatorIndex(String value) {
-            int result = -1;
-            for (char separator : new char[] {' ', '-', '_', ':'}) {
-                int index = value.indexOf(separator);
-                if (index > 0 && (result < 0 || index < result)) {
-                    result = index;
-                }
-            }
-            return result;
-        }
-
-        private UiText formatBytes(long bytes) {
-            if (bytes >= 1024L * 1024 * 1024) {
-                return UiText.literal(String.format(Locale.ROOT, "%.1f GB", bytes / (1024.0 * 1024 * 1024)));
-            }
-            return UiText.literal(String.format(Locale.ROOT, "%.0f MB", bytes / (1024.0 * 1024)));
-        }
-
         /**
-         * The open form as the change it would make, or the reason it cannot be made. It is a value, not
-         * a mutation: {@link #validate()} builds it to judge the form, {@link #save()} builds it and hands
-         * it to {@link #commitEditor}, and only the commit touches the draft.
+         * What applying the editor form would do, decided without touching any state.
          *
-         * @param entry   the provider that would replace or join the draft list
-         * @param apiKey  the credential typed into the form; empty when the player did not replace it
+         * @param entry   the provider the form would produce, {@code null} when it cannot be applied
+         * @param apiKey  credential typed into the form, empty when none was typed
          * @param failure why the form cannot be applied, {@code null} when it can
          */
         private record EditorPlan(LlmModelEntry entry, String apiKey, UiText failure) {
@@ -1768,7 +1388,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             }
         }
 
-        /** The edited catalog as specs, or the reason the rows cannot be committed. */
         private record CatalogPlan(List<LlmModelSpec> specs, UiText failure) {
             private static CatalogPlan applied(List<LlmModelSpec> specs) {
                 return new CatalogPlan(specs, null);
@@ -2216,38 +1835,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                 }
             }
             return null;
-        }
-    }
-
-    private record LlmModelCardState(LlmModelInfo info, boolean known, boolean installed, boolean anyOperationActive, boolean activeDownload, boolean paused, boolean cancelling, boolean deleting) {
-        private boolean canStartDownload() {
-            return info != null && known && !installed && !anyOperationActive;
-        }
-
-        private boolean canPauseDownload() {
-            return activeDownload && !paused && !cancelling;
-        }
-
-        private boolean canResumeDownload() {
-            return activeDownload && paused && !cancelling;
-        }
-
-        private boolean canCancelDownload() {
-            return activeDownload && !cancelling;
-        }
-
-        private boolean canDeleteModel() {
-            return info != null && known && installed && !anyOperationActive && !deleting;
-        }
-
-        private UiText statusLabel() {
-            if (activeDownload) {
-                if (cancelling) {
-                    return llm("status.cancelling");
-                }
-                return paused ? llm("status.paused") : llm("status.downloading");
-            }
-            return common(!known ? "unknown" : (installed ? "downloaded" : "not_downloaded"));
         }
     }
 }

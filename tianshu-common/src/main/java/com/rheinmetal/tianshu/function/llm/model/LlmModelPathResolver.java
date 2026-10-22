@@ -35,8 +35,18 @@ public final class LlmModelPathResolver {
         return resolve(configuration.getLlmEmbeddingModelName());
     }
 
+    /** Resolves the model the runtime actually uses, when that is not the raw configured name. */
+    public Path resolveEmbeddingModel(String effectiveSelection) {
+        return resolve(effectiveSelection);
+    }
+
     public int embeddingContextSize() {
-        LlmModelInfo info = embeddingCatalog.apply(normalize(configuration.getLlmEmbeddingModelName()));
+        return embeddingContextSize(configuration.getLlmEmbeddingModelName());
+    }
+
+    /** The context window of the given selection, with the catalog default when it is unknown. */
+    public int embeddingContextSize(String effectiveSelection) {
+        LlmModelInfo info = embeddingCatalog.apply(normalize(effectiveSelection));
         return info == null ? DEFAULT_EMBEDDING_CONTEXT_SIZE : info.getContextSize();
     }
 

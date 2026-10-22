@@ -262,6 +262,23 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
     }
 
+    /**
+     * Tells presence about the lane itself rather than about one request: it is reconnecting, it gave up,
+     * or it kept working on a reduced backend.
+     *
+     * <p>This rides the same activity topic and the same payload as the thinking/responding states, so
+     * presence needs no separate path: the type decides the text and the TTL ends the notice by itself.
+     */
+    public TianshuEnvelope publishRuntimeActivity(PresenceActivityType type, long ttlMillis) {
+        if (type != PresenceActivityType.RECONNECTING
+                && type != PresenceActivityType.ERROR
+                && type != PresenceActivityType.DEGRADED) {
+            throw new IllegalArgumentException("runtime activity must be RECONNECTING, ERROR or DEGRADED");
+        }
+        String activityId = "llm.runtime." + type.name().toLowerCase(java.util.Locale.ROOT);
+        return publishPresenceActivity(PresenceActivityPayload.started(activityId, type, Math.max(1L, ttlMillis)));
+    }
+
     private TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
         return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
     }
