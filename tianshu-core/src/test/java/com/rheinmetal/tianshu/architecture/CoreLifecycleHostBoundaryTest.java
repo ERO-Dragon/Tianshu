@@ -38,7 +38,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void neoforgeWorldEventsOnlySubmitAsyncCoreLifecycleCommands() throws Exception {
-        Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java");
+        Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
         String events = Files.readString(
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"),
                 StandardCharsets.UTF_8
@@ -76,7 +76,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void onnxBootstrapIsAnOptionalLifecycleModuleInsteadOfLoginThreadWork() throws Exception {
-        Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java");
+        Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
                 StandardCharsets.UTF_8
@@ -106,7 +106,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void irNamedObjectIndexIsClientLifetimeAsyncResource() throws Exception {
-        Path neoforgeRoot = Path.of("../tianshu-neoforge/src/main/java/com/rheinmetal/tianshu/neoforge");
+        Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java/com/rheinmetal/tianshu/neoforge");
         Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("bootstrap/NeoForgeClientBootstrap.java"),

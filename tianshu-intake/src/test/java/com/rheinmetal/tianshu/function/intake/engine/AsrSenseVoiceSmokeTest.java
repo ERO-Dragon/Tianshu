@@ -73,8 +73,8 @@ class AsrSenseVoiceSmokeTest {
 
     private static Path resolveModelDir() {
         return resolveExistingPath(
-                Path.of("tianshu-neoforge", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY),
-                Path.of("..", "tianshu-neoforge", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY)
+                Path.of("tianshu-adapter/neoforge-1.21.1", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY),
+                Path.of("..", "tianshu-adapter/neoforge-1.21.1", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY)
         );
     }
 

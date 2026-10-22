@@ -64,8 +64,8 @@ class AsrStreamingZipformerSmokeTest {
         List<Path> candidates = List.of(
                 Path.of("libs", "asr-smoke", MODEL_KEY),
                 Path.of("..", "libs", "asr-smoke", MODEL_KEY),
-                Path.of("tianshu-neoforge", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY),
-                Path.of("..", "tianshu-neoforge", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY)
+                Path.of("tianshu-adapter/neoforge-1.21.1", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY),
+                Path.of("..", "tianshu-adapter/neoforge-1.21.1", "run", "config", "Tianshu", "module", "asr", "model", MODEL_KEY)
         );
         return candidates.stream()
                 .map(path -> path.toAbsolutePath().normalize())

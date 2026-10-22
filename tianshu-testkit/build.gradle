@@ -23,7 +23,3 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
-// Test doubles only: this module is never published and never packaged.
-tasks.named('jar') {
-    enabled = false
-}

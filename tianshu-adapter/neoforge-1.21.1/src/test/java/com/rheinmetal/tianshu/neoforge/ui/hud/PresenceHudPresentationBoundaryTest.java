@@ -35,7 +35,7 @@ final class PresenceHudPresentationBoundaryTest {
     @Test
     void presenceSettingsExposePositionOnlyThroughTheEditor() throws Exception {
         String source = Files.readString(
-                Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/settings/module/presence/PresenceSettingsRegistrySource.java"),
+                Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/settings/module/presence/PresenceSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 

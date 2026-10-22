@@ -8,6 +8,14 @@ plugins {
 version = mod_version
 group = mod_group_id
 
+// Everything that pins this adapter to one Minecraft line lives in adapter.properties.
+// Adding a platform or a version means adding a sibling directory, not editing the core build.
+def adapterProperties = new Properties()
+file('adapter.properties').withInputStream { adapterProperties.load(it) }
+def neoVersion = adapterProperties.getProperty('neo_version')
+def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings_version')
+def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
+
 // Running the NeoForge client from the Gradle panel is the development path,
 // so it defaults to the Debug channel. Artifact builds remain Release by
 // default. An explicit property always wins over the task-based default.
@@ -38,11 +46,11 @@ repositories {
 }
 
 neoForge {
-    version = project.neo_version
+    version = neoVersion
 
     parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
+        mappingsVersion = parchmentMappingsVersion
+        minecraftVersion = parchmentMinecraftVersion
     }
 
     runs {
@@ -82,8 +90,8 @@ configurations {
 
 dependencies {
     implementation project(':tianshu-client')
-    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
-    localRuntime fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    localRuntime fileTree('../../libs') { include 'tianshu_libs-*.jar' }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -108,9 +116,8 @@ jar {
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
     var replaceProperties = [
-            minecraft_version      : minecraft_version,
             minecraft_version_range: minecraft_version_range,
-            neo_version            : neo_version,
+            neo_version            : neoVersion,
             loader_version_range   : loader_version_range,
             mod_id                 : mod_id,
             mod_name               : mod_name,

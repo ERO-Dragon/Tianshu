@@ -122,8 +122,8 @@ class AXLogKnowledgePromptFixtureTest {
     private static List<Path> candidateLogFiles() {
         Path root = workspaceRoot();
         return List.of(
-                root.resolve("tianshu-neoforge/run/logs/latest.log"),
-                root.resolve("tianshu-neoforge/run/logs/debug.log")
+                root.resolve("tianshu-adapter/neoforge-1.21.1/run/logs/latest.log"),
+                root.resolve("tianshu-adapter/neoforge-1.21.1/run/logs/debug.log")
         );
     }
 
@@ -175,11 +175,11 @@ class AXLogKnowledgePromptFixtureTest {
 
     private static Path workspaceRoot() {
         Path current = Path.of("").toAbsolutePath().normalize();
-        if (Files.isDirectory(current.resolve("tianshu-neoforge/run/logs"))) {
+        if (Files.isDirectory(current.resolve("tianshu-adapter/neoforge-1.21.1/run/logs"))) {
             return current;
         }
         Path parent = current.getParent();
-        if (parent != null && Files.isDirectory(parent.resolve("tianshu-neoforge/run/logs"))) {
+        if (parent != null && Files.isDirectory(parent.resolve("tianshu-adapter/neoforge-1.21.1/run/logs"))) {
             return parent;
         }
         return current;
