@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm.service;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,7 +18,7 @@ class LlmRagStorageServiceTest {
     @Test
     void storageSupportsVectorWritesAndBm25BeforeGenerationLoads() {
         LlmRagStorageService storage = new LlmRagStorageService(
-                new TestLlmSupport.FakeGameEnvironment(),
+                new FakeGameEnvironment(),
                 tempDir,
                 "test",
                 true,

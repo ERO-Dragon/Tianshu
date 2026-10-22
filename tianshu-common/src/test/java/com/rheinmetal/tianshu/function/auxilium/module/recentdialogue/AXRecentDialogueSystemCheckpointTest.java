@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.recentdialogue;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
@@ -104,7 +105,7 @@ class AXRecentDialogueSystemCheckpointTest {
     }
 
     private AXRawTurnCheckpointStore checkpointStore(AXStorageLayout layout) {
-        return new AXRawTurnCheckpointStore(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        return new AXRawTurnCheckpointStore(layout, new AXJsonStore(new FakeGameEnvironment()));
     }
 
     private AXStorageLayout layout() {

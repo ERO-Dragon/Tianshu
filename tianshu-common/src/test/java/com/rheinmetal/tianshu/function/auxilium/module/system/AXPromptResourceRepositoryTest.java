@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.system;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
@@ -23,7 +24,7 @@ class AXPromptResourceRepositoryTest {
     @Test
     void releasesPromptTextCatalogAndLoadsBuiltInSections() {
         AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
-        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         AXPromptTexts texts = repository.loadTexts(AXPromptLanguage.ZH_CN);
 
@@ -39,7 +40,7 @@ class AXPromptResourceRepositoryTest {
     @Test
     void releasesDefaultPromptProfilesAndLoadsLocalizedProfile() {
         AXStorageLayout layout = new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
-        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 
@@ -77,7 +78,7 @@ class AXPromptResourceRepositoryTest {
                         """,
                 StandardCharsets.UTF_8
         );
-        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         AXPromptTexts texts = repository.loadTexts(AXPromptLanguage.ZH_CN);
 
@@ -106,7 +107,7 @@ class AXPromptResourceRepositoryTest {
                 """,
                 StandardCharsets.UTF_8
         );
-        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 
@@ -136,7 +137,7 @@ class AXPromptResourceRepositoryTest {
                 """,
                 StandardCharsets.UTF_8
         );
-        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 
@@ -160,7 +161,7 @@ class AXPromptResourceRepositoryTest {
                 """,
                 StandardCharsets.UTF_8
         );
-        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPromptResourceRepository repository = new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 

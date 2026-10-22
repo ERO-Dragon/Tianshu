@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
@@ -261,7 +262,7 @@ class AXMemorySummarySwapTest {
     }
 
     private AXJsonStore jsonStore() {
-        return new AXJsonStore(new TestLlmSupport.FakeGameEnvironment());
+        return new AXJsonStore(new FakeGameEnvironment());
     }
 
     /** 32K 档：KEEP_MAX 3277 / 单元 8192 / MAX_RAW 19990。 */

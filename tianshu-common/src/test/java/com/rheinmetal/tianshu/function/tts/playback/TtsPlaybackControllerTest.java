@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.playback;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.function.tts.runtime.TtsRequest;
@@ -28,7 +29,7 @@ class TtsPlaybackControllerTest {
         RecordingAudioBridge audioBridge = new RecordingAudioBridge();
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
-                new TestLlmSupport.FakeGameEnvironment(),
+                new FakeGameEnvironment(),
                 ignored -> { },
                 executors
         );
@@ -50,7 +51,7 @@ class TtsPlaybackControllerTest {
         RecordingAudioBridge audioBridge = new RecordingAudioBridge();
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
-                new TestLlmSupport.FakeGameEnvironment(),
+                new FakeGameEnvironment(),
                 ignored -> { },
                 executors
         );
@@ -74,7 +75,7 @@ class TtsPlaybackControllerTest {
         RecordingAudioBridge audioBridge = new RecordingAudioBridge();
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
-                new TestLlmSupport.FakeGameEnvironment(),
+                new FakeGameEnvironment(),
                 ignored -> { },
                 executors
         );
@@ -99,7 +100,7 @@ class TtsPlaybackControllerTest {
         RecordingAudioBridge audioBridge = new RecordingAudioBridge();
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
-                new TestLlmSupport.FakeGameEnvironment(),
+                new FakeGameEnvironment(),
                 ignored -> { },
                 executors
         );

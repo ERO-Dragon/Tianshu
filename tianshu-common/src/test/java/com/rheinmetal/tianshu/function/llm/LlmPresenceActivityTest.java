@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -36,7 +37,7 @@ class LlmPresenceActivityTest {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             LlmModule module = new LlmModule(
-                    new TestLlmSupport.FakeGameEnvironment(),
+                    new FakeGameEnvironment(),
                     new TestLlmSupport.FakeConfig(tempDir),
                     runtime
             );

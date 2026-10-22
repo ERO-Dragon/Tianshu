@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.preference;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
@@ -20,7 +21,7 @@ class AXPlayerPreferenceStoreTest {
     @Test
     void preferencesLiveUnderThePlayerDirectoryAndAreNotDeduplicated() {
         AXStorageLayout layout = layout();
-        AXPlayerPreferenceStore store = new AXPlayerPreferenceStore(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPlayerPreferenceStore store = new AXPlayerPreferenceStore(layout, new AXJsonStore(new FakeGameEnvironment()));
         AXPlayerPreference first = preference("player-a", "玩家不喜欢下矿", List.of("t1"), 1_000L);
         AXPlayerPreference second = preference("player-a", "玩家不喜欢下矿", List.of("t1"), 1_000L);
 
@@ -39,7 +40,7 @@ class AXPlayerPreferenceStoreTest {
     @Test
     void differentPlayersAreIsolated() {
         AXStorageLayout layout = layout();
-        AXPlayerPreferenceStore store = new AXPlayerPreferenceStore(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPlayerPreferenceStore store = new AXPlayerPreferenceStore(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         assertTrue(store.appendAll("player-a", List.of(preference("player-a", "玩家喜欢钓鱼", List.of("t1"), 1_000L))).success());
         assertTrue(store.appendAll("player-b", List.of(preference("player-b", "玩家讨厌下雨", List.of("t1"), 1_000L))).success());
@@ -53,12 +54,12 @@ class AXPlayerPreferenceStoreTest {
     @Test
     void preferenceSurvivesAWorldChange() {
         AXStorageLayout layout = layout();
-        AXPlayerPreferenceStore store = new AXPlayerPreferenceStore(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPlayerPreferenceStore store = new AXPlayerPreferenceStore(layout, new AXJsonStore(new FakeGameEnvironment()));
 
         // 存储键只有 playerId：换存档后再读，同一玩家的偏好仍在。
         assertTrue(store.appendAll("player-a", List.of(preference("player-a", "玩家喜欢在村庄定居", List.of("t7"), 1_000L))).success());
 
-        AXPlayerPreferenceStore reloaded = new AXPlayerPreferenceStore(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        AXPlayerPreferenceStore reloaded = new AXPlayerPreferenceStore(layout, new AXJsonStore(new FakeGameEnvironment()));
         assertEquals(1, reloaded.loadAll("player-a").size());
     }
 

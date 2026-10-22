@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.synthesis.moss;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsCodecExecution;
@@ -39,7 +40,7 @@ class MossTtsServiceSmokeTest {
         Assumptions.assumeTrue(Files.isRegularFile(modelDir.resolve("browser_poc_manifest.json")), "MOSS model manifest is missing");
         Assumptions.assumeTrue(Files.isRegularFile(voiceSample), "MOSS reference voice sample is missing");
 
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
 
         List<String> texts = smokeTexts();

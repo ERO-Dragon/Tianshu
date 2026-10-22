@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ final class TtsVoiceLibraryServiceTest {
 
         try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
             TtsVoiceLibraryService service = new TtsVoiceLibraryService(
-                    new TestLlmSupport.FakeGameEnvironment(),
+                    new FakeGameEnvironment(),
                     config,
                     executors
             );

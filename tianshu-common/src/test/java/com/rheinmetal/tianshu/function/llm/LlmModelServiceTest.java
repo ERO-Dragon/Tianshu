@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.LlmModelManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
@@ -30,7 +31,7 @@ class LlmModelServiceTest {
         Files.writeString(partial, "partial", StandardCharsets.UTF_8);
 
         try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
-            new LlmModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
+            new LlmModelService(new FakeGameEnvironment(), config, executors);
             Thread.sleep(100L);
             assertTrue(Files.exists(partial));
         }
@@ -44,7 +45,7 @@ class LlmModelServiceTest {
         Path modelDir = config.getLlmBasePath().resolve("model").resolve(embedding.name);
 
         try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
-            LlmModelService service = new LlmModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
+            LlmModelService service = new LlmModelService(new FakeGameEnvironment(), config, executors);
 
             assertFalse(service.isModelInstalled(embedding), "embedding model must start as not installed");
             Files.createDirectories(modelDir);

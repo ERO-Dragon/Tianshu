@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.asr.engine;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.k2fsa.sherpa.onnx.OfflineModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineRecognizer;
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig;
@@ -61,7 +62,7 @@ class AsrSenseVoiceSmokeTest {
         Assumptions.assumeTrue(Files.isRegularFile(modelDir.resolve("model.int8.onnx")), "SenseVoice model file is missing");
         Assumptions.assumeTrue(Files.isRegularFile(modelDir.resolve("tokens.txt")), "SenseVoice tokens file is missing");
 
-        SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(new TestLlmSupport.FakeGameEnvironment());
+        SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(new FakeGameEnvironment());
         SherpaOnnxAsrConfigFactory.ResolvedConfig resolved = factory.build(modelInfo, modelDir, null).orElseThrow();
 
         assertDoesNotThrow(() -> {

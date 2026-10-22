@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.synthesis.moss;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import ai.onnxruntime.OrtEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
@@ -29,7 +30,7 @@ class MossModelRuntimeTest {
 
     @Test
     void closeIsIdempotentBeforeInitialization() {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         MossModelRuntime runtime = new MossModelRuntime(
                 env,
                 new HuggingFaceDownloader(env),

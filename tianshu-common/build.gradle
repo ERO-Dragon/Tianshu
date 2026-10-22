@@ -29,11 +29,13 @@ def tianshuLibsJarJar = fileTree(layout.buildDirectory.dir('extracted/tianshu-li
 }
 
 dependencies {
+    api project(':tianshu-core')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
     testImplementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation project(':tianshu-testkit')
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testImplementation 'org.apache.commons:commons-compress:1.26.0'
@@ -75,4 +77,54 @@ tasks.withType(JavaCompile).configureEach {
 
 jar {
     archiveBaseName = 'tianshu-common'
+}
+
+tasks.register('verifyNoPlatformImport') {
+    group = 'verification'
+    description = 'Rejects Minecraft/NeoForge imports in the platform-neutral feature module.'
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    doLast { task ->
+        def forbidden = ['net.minecraft.', 'net.neoforged.', 'org.lwjgl.', 'com.mojang.blaze3d.']
+        task.inputs.files.files.each { source ->
+            source.eachLine('UTF-8') { line ->
+                if (forbidden.any { prefix -> line.trim().startsWith("import ${prefix}") }) {
+                    throw new GradleException("${source} imports a forbidden platform package: ${line.trim()}")
+                }
+            }
+        }
+    }
+}
+
+tasks.register('verifyFeatureIsolation') {
+    group = 'verification'
+    description = 'Rejects imports between the feature sub-packages of tianshu-common.'
+    inputs.files(fileTree('src/main/java/com/rheinmetal/tianshu/function') { include '**/*.java' })
+    doLast { task ->
+        def features = ['asr', 'ir', 'llm', 'tts', 'auxilium'] as Set
+        def violations = []
+        task.inputs.files.files.each { source ->
+            def path = source.path.replace('\\', '/')
+            def ownerMatch = path =~ /\/function\/([a-z]+)\//
+            if (!ownerMatch.find()) return
+            def owner = ownerMatch.group(1)
+            if (!(owner in features)) return
+            source.eachLine('UTF-8') { line ->
+                def m = line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.([a-z]+)\./
+                if (m.find()) {
+                    def target = m.group(1)
+                    if (target in features && target != owner) {
+                        violations << "${source.name}: ${owner} -> ${target}: ${line.trim()}"
+                    }
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Cross-feature imports found:\n" + violations.join('\n'))
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyNoPlatformImport')
+    dependsOn tasks.named('verifyFeatureIsolation')
 }

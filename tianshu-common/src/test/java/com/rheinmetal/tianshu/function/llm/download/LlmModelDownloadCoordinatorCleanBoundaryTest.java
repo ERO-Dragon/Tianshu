@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm.download;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,7 @@ class LlmModelDownloadCoordinatorCleanBoundaryTest {
     }
 
     private static LlmModelDownloadCoordinator.DownloadSession newSession() {
-        return new LlmModelDownloadCoordinator(new TestLlmSupport.FakeGameEnvironment()).newSession();
+        return new LlmModelDownloadCoordinator(new FakeGameEnvironment()).newSession();
     }
 
     private static CompletableFuture<Void> awaitReadyAsync(LlmModelDownloadCoordinator.DownloadSession session) {

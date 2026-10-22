@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.storage;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -24,7 +25,7 @@ class AXJsonStoreTest {
                         "{\"id\":\"two\"}\n",
                 StandardCharsets.UTF_8
         );
-        AXJsonStore store = new AXJsonStore(new TestLlmSupport.FakeGameEnvironment());
+        AXJsonStore store = new AXJsonStore(new FakeGameEnvironment());
 
         assertEquals(
                 java.util.List.of("one", "two"),

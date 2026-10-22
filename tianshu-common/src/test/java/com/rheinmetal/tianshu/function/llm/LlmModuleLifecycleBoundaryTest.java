@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -24,7 +25,7 @@ class LlmModuleLifecycleBoundaryTest {
 
     @Test
     void registerPublishesStableControlServicesButNotRuntimeBeforeLoad() {
-        IGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        IGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
@@ -39,7 +40,7 @@ class LlmModuleLifecycleBoundaryTest {
 
     @Test
     void startDefersAutomaticLoadUntilAfterWorldSessionIsReady() throws Exception {
-        IGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        IGameEnvironment env = new FakeGameEnvironment();
         // The cloud lane only needs an endpoint: no local chat GGUF exists for a cloud user, and its
         // absence must not stop the module from starting.
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir)
@@ -60,7 +61,7 @@ class LlmModuleLifecycleBoundaryTest {
 
     @Test
     void startWithoutCloudCredentialFailsTheLaneInsteadOfFallingBackToLocalModel() {
-        IGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        IGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir).llmAutoLoadDelayMillis(0L);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
@@ -80,7 +81,7 @@ class LlmModuleLifecycleBoundaryTest {
 
     @Test
     void storageCapabilitiesRemainReadyBeforeGenerationLoads() {
-        IGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        IGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         ModuleServiceRegistry services = new ModuleServiceRegistry();

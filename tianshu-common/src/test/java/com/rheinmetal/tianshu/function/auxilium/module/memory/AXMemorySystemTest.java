@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
@@ -327,7 +328,7 @@ class AXMemorySystemTest {
 
     private AXMemorySystem memorySystem(AXStorageLayout layout) {
         AXMemoryWindowPolicy policy = AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L);
-        return new AXMemorySystem(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()), policy);
+        return new AXMemorySystem(layout, new AXJsonStore(new FakeGameEnvironment()), policy);
     }
 
     private AXRecentDialogueSystem recentDialogueSystem() {

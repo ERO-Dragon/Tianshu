@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmMtpCalibrationRequest;
@@ -152,7 +153,7 @@ class LlmUsageWiringTest {
 
     private LlmProtocolAdapter adapter(LlmUsageLedger ledger, StubInferenceClient client) {
         LLMService service = LLMService.builder()
-                .env(new TestLlmSupport.FakeGameEnvironment())
+                .env(new FakeGameEnvironment())
                 .inferenceClient(client)
                 .usePersistentCache(false)
                 .build();

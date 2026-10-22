@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -39,7 +40,7 @@ class TtsPresenceActivityTest {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             TtsModule module = new TtsModule(
-                    new NoopAudioBridge(), runtime, new TestLlmSupport.FakeGameEnvironment(),
+                    new NoopAudioBridge(), runtime, new FakeGameEnvironment(),
                     new TestLlmSupport.FakeConfig(tempDir)
             );
 
@@ -67,7 +68,7 @@ class TtsPresenceActivityTest {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             TtsModule module = new TtsModule(
-                    new NoopAudioBridge(), runtime, new TestLlmSupport.FakeGameEnvironment(),
+                    new NoopAudioBridge(), runtime, new FakeGameEnvironment(),
                     new TestLlmSupport.FakeConfig(tempDir)
             );
 

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.summary;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
@@ -133,7 +134,7 @@ class AXMemorySummaryBlockTest {
     }
 
     private AXMemorySystem memorySystem() {
-        return new AXMemorySystem(layout(), new AXJsonStore(new TestLlmSupport.FakeGameEnvironment()));
+        return new AXMemorySystem(layout(), new AXJsonStore(new FakeGameEnvironment()));
     }
 
     private AXStorageLayout layout() {

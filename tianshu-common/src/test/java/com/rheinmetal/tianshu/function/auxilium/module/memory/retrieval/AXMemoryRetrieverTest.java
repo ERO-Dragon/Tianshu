@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextTier;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
@@ -41,7 +42,7 @@ class AXMemoryRetrieverTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = new AXScope("player", "save:Test", "Test", AXScopeKind.LOCAL_WORLD, true);
         AXStmBlock target = block(scope, "target", "玩家在村庄找到铁匠铺，并把钻石镐放进末影箱。");
@@ -83,7 +84,7 @@ class AXMemoryRetrieverTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = scope();
         AXStmBlock s2 = block(scope, "s2", "玩家先到达村庄。");
@@ -116,7 +117,7 @@ class AXMemoryRetrieverTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = scope();
         AXStmBlock s1 = linkedBlock(scope, "s1", "", "stm_s2", "玩家出发去找村庄。");
@@ -143,7 +144,7 @@ class AXMemoryRetrieverTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = scope();
         AXStmBlock s1 = linkedBlock(scope, "s1", "", "stm_s2", "玩家出发去找村庄。");
@@ -184,7 +185,7 @@ class AXMemoryRetrieverTest {
         AXMemoryRetriever retriever = new AXMemoryRetriever(
                 new AXMemorySystem(
                         new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                        new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                        new AXJsonStore(new FakeGameEnvironment())
                 ),
                 new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L)
         );
@@ -304,7 +305,7 @@ class AXMemoryRetrieverTest {
     private AXMemorySystem memorySystem() {
         return new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
     }
 

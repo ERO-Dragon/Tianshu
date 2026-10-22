@@ -1,0 +1,66 @@
+package com.rheinmetal.tianshu.core;
+
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
+import com.rheinmetal.tianshu.api.IAudioBridge;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class TianshuCoreManagerReadinessTest {
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void environmentReadinessFollowsCoreLifecycle() throws Exception {
+        TianshuCoreManager coreManager = new TianshuCoreManager(
+                new FakeGameEnvironment(),
+                () -> tempDir.resolve("asr"),
+                new NoopAudioBridge()
+        );
+
+        assertFalse(coreManager.isEnvironmentReady());
+        assertFalse(coreManager.isEnvironmentSetupCompleted());
+
+        coreManager.startRuntimeSession().get(5, TimeUnit.SECONDS);
+
+        assertTrue(coreManager.isEnvironmentReady());
+        assertTrue(coreManager.isEnvironmentSetupCompleted());
+        assertTrue(coreManager.isEngineReady());
+
+        coreManager.destroy().get(5, TimeUnit.SECONDS);
+
+        assertFalse(coreManager.isEnvironmentReady());
+        assertFalse(coreManager.isEnvironmentSetupCompleted());
+    }
+
+    private static final class NoopAudioBridge implements IAudioBridge {
+        @Override public void ensureHardwareRunning() {}
+        @Override public void releaseCaptureHardware() {}
+        @Override public void startRecording() {}
+        @Override public byte[] stopRecording() { return new byte[0]; }
+        @Override public void startStreamRecording(Consumer<byte[]> onAudioChunk) {}
+        @Override public void stopStreamRecording() {}
+        @Override public void startTtsPlayback(int sampleRate) {}
+        @Override public void feedTtsAudio(byte[] audio) {}
+        @Override public void finishTtsPlayback() {}
+        @Override public void setOnPlaybackFinished(Runnable callback) {}
+        @Override public void stopTtsPlayback() {}
+        @Override public void playAudio(byte[] audioData, int sampleRate) {}
+        @Override public void stopPlayback() {}
+        @Override public boolean isRecording() { return false; }
+        @Override public boolean isPlaying() { return false; }
+        @Override public boolean isStreaming() { return false; }
+        @Override public List<String> getAvailableMicNames() { return List.of(); }
+        @Override public String getCurrentMicName() { return ""; }
+        @Override public void selectMic(String micName) {}
+        @Override public void switchToNextMic() {}
+        @Override public void shutdown() {}
+    }
+}

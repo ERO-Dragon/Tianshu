@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
@@ -289,7 +290,7 @@ class AXMemoryMaintenanceServiceTest {
     }
 
     private AXJsonStore jsonStore() {
-        return new AXJsonStore(new TestLlmSupport.FakeGameEnvironment());
+        return new AXJsonStore(new FakeGameEnvironment());
     }
 
     /**

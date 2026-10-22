@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
@@ -24,7 +25,7 @@ class TtsModuleLifecycleBoundaryTest {
 
     @Test
     void stopCancelsDelayedAutoLoadBeforeItCanRestartRuntime() throws Exception {
-        IGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        IGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir)
                 .ttsAutoLoadDelayMillis(100L);
         ProtocolRuntime protocolRuntime = new ProtocolRuntime(Runnable::run);

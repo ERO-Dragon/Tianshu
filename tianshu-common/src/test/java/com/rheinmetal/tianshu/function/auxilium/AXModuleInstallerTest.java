@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
@@ -19,7 +20,7 @@ class AXModuleInstallerTest {
 
     @Test
     void disabledAssistantIsNotInstalledIntoTheModuleLifecycle() {
-        TestLlmSupport.FakeGameEnvironment environment = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment environment = new FakeGameEnvironment();
         TianshuModuleHost moduleHost = new TianshuModuleHost(environment);
         AXAssistantSettings disabledSettings = new AXAssistantSettings() {
             @Override
@@ -40,7 +41,7 @@ class AXModuleInstallerTest {
 
     @Test
     void enabledAssistantInstallsExactlyOneAxModule() {
-        TestLlmSupport.FakeGameEnvironment environment = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment environment = new FakeGameEnvironment();
         TianshuModuleHost moduleHost = new TianshuModuleHost(environment);
 
         installer(environment, AXAssistantSettings.DEFAULT).install(moduleHost, new ModuleServiceRegistry());
@@ -49,7 +50,7 @@ class AXModuleInstallerTest {
         assertEquals(AXModule.MODULE_ID, moduleHost.managedModules().get(0).moduleId());
     }
 
-    private AXModuleInstaller installer(TestLlmSupport.FakeGameEnvironment environment, AXAssistantSettings settings) {
+    private AXModuleInstaller installer(FakeGameEnvironment environment, AXAssistantSettings settings) {
         return new AXModuleInstaller(
                 environment,
                 new TestLlmSupport.FakeConfig(tempDir.resolve("module")),

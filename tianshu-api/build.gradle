@@ -1,0 +1,47 @@
+plugins {
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    testImplementation project(':tianshu-testkit')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('verifyNoPlatformImport') {
+    group = 'verification'
+    description = 'Rejects Minecraft/NeoForge imports in the platform-neutral api contract layer.'
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    doLast { task ->
+        def forbidden = ['net.minecraft.', 'net.neoforged.', 'org.lwjgl.', 'com.mojang.blaze3d.']
+        task.inputs.files.files.each { source ->
+            source.eachLine('UTF-8') { line ->
+                if (forbidden.any { prefix -> line.trim().startsWith("import ${prefix}") }) {
+                    throw new GradleException("${source} imports a forbidden platform package: ${line.trim()}")
+                }
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyNoPlatformImport')
+}
+
+test {
+    useJUnitPlatform()
+}

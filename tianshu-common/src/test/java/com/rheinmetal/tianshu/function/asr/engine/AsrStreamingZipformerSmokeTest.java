@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.asr.engine;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
@@ -33,7 +34,7 @@ class AsrStreamingZipformerSmokeTest {
         assertTrue(modelInfo.isStreamingModel());
         assertEquals("transducer", modelInfo.architecture());
 
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         AsrEngine engine = new AsrEngine(env);
         AsrEngine.StreamingSession session = null;
         try {

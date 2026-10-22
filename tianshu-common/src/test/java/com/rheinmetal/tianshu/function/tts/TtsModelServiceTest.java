@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
@@ -33,7 +34,7 @@ class TtsModelServiceTest {
         Files.writeString(partial, "partial", StandardCharsets.UTF_8);
 
         try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
-            new TtsModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
+            new TtsModelService(new FakeGameEnvironment(), config, executors);
             Thread.sleep(100L);
             assertTrue(Files.exists(partial));
         }
@@ -56,7 +57,7 @@ class TtsModelServiceTest {
             CountDownLatch failed = new CountDownLatch(1);
 
             try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
-                TtsModelService service = new TtsModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
+                TtsModelService service = new TtsModelService(new FakeGameEnvironment(), config, executors);
                 service.downloadModel(info, null, new ModelDownloadCallback() {
                     @Override
                     public void onProgress(ModelDownloadProgress progress) {

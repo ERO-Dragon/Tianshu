@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextTier;
@@ -35,7 +36,7 @@ class AXMemoryRetrievalTieredTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = new AXScope("player", "save:Test", "Test", AXScopeKind.LOCAL_WORLD, true);
 
@@ -79,7 +80,7 @@ class AXMemoryRetrievalTieredTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = new AXScope("player", "save:Test", "Test", AXScopeKind.LOCAL_WORLD, true);
 
@@ -120,7 +121,7 @@ class AXMemoryRetrievalTieredTest {
         AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
         AXMemorySystem memorySystem = new AXMemorySystem(
                 new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
-                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+                new AXJsonStore(new FakeGameEnvironment())
         );
         AXScope scope = new AXScope("player", "save:Test", "Test", AXScopeKind.LOCAL_WORLD, true);
 

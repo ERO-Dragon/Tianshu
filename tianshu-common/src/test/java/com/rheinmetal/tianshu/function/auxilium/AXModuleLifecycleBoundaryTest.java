@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
@@ -26,7 +27,7 @@ class AXModuleLifecycleBoundaryTest {
 
     @Test
     void participantRegistrationHappensDuringPrepareNotRegister() {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         ModuleServiceRegistry services = new ModuleServiceRegistry();

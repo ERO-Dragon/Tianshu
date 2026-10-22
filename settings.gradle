@@ -11,6 +11,9 @@ plugins {
 
 rootProject.name = 'Tianshu'
 
+include 'tianshu-api'
+include 'tianshu-core'
+include 'tianshu-testkit'
 include 'tianshu-common'
 include 'tianshu-client'
 include 'tianshu-neoforge'

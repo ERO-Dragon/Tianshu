@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.asr.engine;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import org.junit.jupiter.api.Test;
@@ -66,7 +67,7 @@ class SherpaOnnxAsrDecodingPolicyTest {
         for (String file : info.getAllRequiredFiles()) {
             Files.writeString(modelDir.resolve(file), "test");
         }
-        SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(new TestLlmSupport.FakeGameEnvironment());
+        SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(new FakeGameEnvironment());
         return factory.build(info, modelDir, null).orElseThrow();
     }
 

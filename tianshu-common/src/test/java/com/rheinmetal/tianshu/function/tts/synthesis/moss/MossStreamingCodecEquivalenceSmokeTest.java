@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.synthesis.moss;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -45,7 +46,7 @@ class MossStreamingCodecEquivalenceSmokeTest {
         Assumptions.assumeTrue(Files.isRegularFile(modelDir.resolve("browser_poc_manifest.json")),
                 "MOSS model manifest is missing");
 
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         InferenceResourcePolicy policy = InferenceResourcePolicy.fixedProcessors(smokeProcessors());
         try (MossModelRuntime runtime = new MossModelRuntime(env, new HuggingFaceDownloader(env), modelDir, policy);
              ThreadedCodecExecution execution = new ThreadedCodecExecution()) {

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.prompt;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
@@ -176,7 +177,7 @@ class AXPromptAssemblySnapshotTest {
         );
         AXContextBudget budget = AXContextBudget.DEFAULT;
         AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
-                new AXPromptResourceRepository(layout, new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())),
+                new AXPromptResourceRepository(layout, new AXJsonStore(new FakeGameEnvironment())),
                 AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN),
                 null
         ));

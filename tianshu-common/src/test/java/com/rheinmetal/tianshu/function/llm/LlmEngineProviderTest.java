@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.service.EmbeddingLoadReport;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ class LlmEngineProviderTest {
 
     @Test
     void embeddingIsNotConfiguredBeforeTheEngineStarts() {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         LlmEngineProvider provider = new LlmEngineProvider(env, new TestLlmSupport.FakeConfig(tempDir));
 
         assertFalse(provider.isEmbeddingConfigured());
@@ -32,7 +33,7 @@ class LlmEngineProviderTest {
 
     @Test
     void startWithoutSelectedEmbeddingModelKeepsVectorRagDisabled() {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         LlmEngineProvider provider = new LlmEngineProvider(env, new TestLlmSupport.FakeConfig(tempDir));
 
         assertFalse(provider.startEmbeddingOnly());
@@ -43,7 +44,7 @@ class LlmEngineProviderTest {
 
     @Test
     void startReportsAMissingEmbeddingModelFileInsteadOfChatLoading() {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         LlmEngineProvider provider = new LlmEngineProvider(
                 env,
                 new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("absent-embedding")
@@ -56,7 +57,7 @@ class LlmEngineProviderTest {
 
     @Test
     void startBindsAnEmbeddingEngineAndStopReleasesIt() throws Exception {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         Path modelFile = tempDir.resolve("llm").resolve("model").resolve("embed.gguf");
         Files.createDirectories(modelFile.getParent());
         Files.writeString(modelFile, "placeholder");
@@ -83,7 +84,7 @@ class LlmEngineProviderTest {
 
     @Test
     void startQueuesTheModelReadAndReportsAModelThatCannotEmbed() throws Exception {
-        TestLlmSupport.FakeGameEnvironment env = new TestLlmSupport.FakeGameEnvironment();
+        FakeGameEnvironment env = new FakeGameEnvironment();
         Path modelFile = tempDir.resolve("llm").resolve("model").resolve("embed.gguf");
         Files.createDirectories(modelFile.getParent());
         Files.writeString(modelFile, "placeholder");
@@ -123,11 +124,11 @@ class LlmEngineProviderTest {
         assertEquals(warningsWhileLoaded, env.warnings, "releasing a dead engine must not report a new failure");
     }
 
-    private static boolean warned(TestLlmSupport.FakeGameEnvironment env, String fragment) {
+    private static boolean warned(FakeGameEnvironment env, String fragment) {
         return env.warnings.stream().anyMatch(warning -> warning.contains(fragment));
     }
 
-    private static long warningsContaining(TestLlmSupport.FakeGameEnvironment env, String fragment) {
+    private static long warningsContaining(FakeGameEnvironment env, String fragment) {
         return env.warnings.stream().filter(warning -> warning.contains(fragment)).count();
     }
 }
