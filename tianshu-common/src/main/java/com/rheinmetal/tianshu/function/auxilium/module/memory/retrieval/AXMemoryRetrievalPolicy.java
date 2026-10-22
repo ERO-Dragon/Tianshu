@@ -42,8 +42,6 @@ public record AXMemoryRetrievalPolicy(
         int l1ClusterMaxSize,
         int l2EffectiveMappingMaxSize,
         int minRoutedL1Clusters,
-        double maxTimeDecay,
-        double timeDecayDaysToMax,
         double chainExpansionScoreRatio,
         double chainExpansionMinScore,
         int chainExpansionRadius,
@@ -96,8 +94,6 @@ public record AXMemoryRetrievalPolicy(
             256,
             48,
             4,
-            0.10D,
-            3650.0D,
             0.82D,
             0.35D,
             CHAIN_RADIUS_COMPACT,
@@ -117,8 +113,6 @@ public record AXMemoryRetrievalPolicy(
         l1ClusterMaxSize = Math.max(1, l1ClusterMaxSize);
         l2EffectiveMappingMaxSize = Math.max(1, l2EffectiveMappingMaxSize);
         minRoutedL1Clusters = Math.max(1, minRoutedL1Clusters);
-        maxTimeDecay = clamp(maxTimeDecay, 0.0D, 0.9D);
-        timeDecayDaysToMax = Math.max(1.0D, timeDecayDaysToMax);
         chainExpansionScoreRatio = clamp(chainExpansionScoreRatio, 0.0D, 1.0D);
         chainExpansionMinScore = Math.max(0.0D, chainExpansionMinScore);
         chainExpansionRadius = Math.max(0, chainExpansionRadius);
@@ -176,8 +170,6 @@ public record AXMemoryRetrievalPolicy(
                 l1ClusterMaxSize,
                 l2EffectiveMappingMaxSize,
                 minRoutedL1Clusters,
-                maxTimeDecay,
-                timeDecayDaysToMax,
                 chainExpansionScoreRatio,
                 chainExpansionMinScore,
                 radius,

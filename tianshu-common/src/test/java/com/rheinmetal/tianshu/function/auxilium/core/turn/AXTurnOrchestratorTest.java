@@ -59,6 +59,8 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -99,7 +101,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), chatSink)
+                new AXOutputProcessor(adapter, outputSettings(), chatSink),
+                agentRuns(),
+                null
         );
         DialogueDeliveryPayload delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
@@ -158,7 +162,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                agentRuns(),
+                null
         );
 
         orchestrator.startTurn(deliveryEnvelope(), delivery());
@@ -201,7 +207,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                agentRuns(),
+                null
         );
 
         orchestrator.startTurn(deliveryEnvelope(), delivery());
@@ -250,7 +258,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), chatSink)
+                new AXOutputProcessor(adapter, outputSettings(), chatSink),
+                agentRuns(),
+                null
         );
 
         orchestrator.startTurn(deliveryEnvelope(), delivery());
@@ -298,7 +308,9 @@ class AXTurnOrchestratorTest {
                 new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
                 null,
                 null,
-                true
+                true,
+                agentRuns(),
+                null
         );
 
         orchestrator.startTurn(deliveryEnvelope(), delivery());
@@ -339,7 +351,9 @@ class AXTurnOrchestratorTest {
                 RECENT_DIALOGUE_SYSTEM,
                 new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
                 null,
-                statusPublisher
+                statusPublisher,
+                agentRuns(),
+                null
         );
         DialogueDeliveryPayload delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
@@ -419,7 +433,9 @@ class AXTurnOrchestratorTest {
                 new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
                 null,
                 null,
-                false
+                false,
+                agentRuns(),
+                null
         );
 
         orchestrator.startTurn(deliveryEnvelope(), delivery());
@@ -559,7 +575,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                agentRuns(),
+                null
         );
         DialogueDeliveryPayload delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
@@ -624,7 +642,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                agentRuns(),
+                null
         );
         DialogueDeliveryPayload delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
@@ -666,7 +686,9 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink())
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                agentRuns(),
+                null
         );
         DialogueDeliveryPayload delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
@@ -701,6 +723,25 @@ class AXTurnOrchestratorTest {
     private static AXOutputSettings outputSettings() {
         return () -> AXOutputMode.UI_AND_TTS;
     }
+
+    /**
+     * Runs the agent loop on its own thread — never inline.
+     *
+     * <p>Inline would deadlock every test here: the test thread drives the result by calling
+     * {@code llmClient.handleResult(...)} after {@code startTurn} returns, while an inline run would be
+     * blocked waiting for exactly that result (design §12.8). A cached pool is used rather than a
+     * single-thread one because a test may abandon a turn: that run then holds its own thread until the
+     * 10s loop deadline instead of queueing the next test's run behind it.</p>
+     */
+    private static AXAgentRunSubmitter agentRuns() {
+        return (taskId, task) -> AGENT_RUNS.execute(task);
+    }
+
+    private static final ExecutorService AGENT_RUNS = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "ax-agent-test-run");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private static AXDynamicFactClient dynamicFactClient(AXProtocolAdapter adapter, long timeoutMillis) {
         return new AXDynamicFactClient(
@@ -762,7 +803,9 @@ class AXTurnOrchestratorTest {
                 RECENT_DIALOGUE_SYSTEM,
                 new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
                 null,
-                statusPublisher
+                statusPublisher,
+                agentRuns(),
+                null
         );
     }
 

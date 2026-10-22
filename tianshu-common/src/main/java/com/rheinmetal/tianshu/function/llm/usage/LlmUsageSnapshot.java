@@ -35,12 +35,22 @@ public record LlmUsageSnapshot(
         return byModule.getOrDefault(sourceId, LlmUsageCounter.zero());
     }
 
-    /** Global cost of today in micro units; returns -1 when no price is configured. */
+    /**
+     * Cost of today in micro units; returns -1 when no price is configured.
+     *
+     * <p>This is a <strong>local estimate</strong> computed from {@link LlmPricing}, not a bill: the
+     * authoritative amount is whatever the provider reports. The display layer keeps the two apart
+     * and labels this one as an estimate.
+     */
     public long todayCostMicros(LlmPricing pricing) {
         return costMicros(pricing, today);
     }
 
-    /** Global cost of all recorded usage in micro units; returns -1 when no price is configured. */
+    /**
+     * Cost of all recorded usage in micro units; returns -1 when no price is configured.
+     *
+     * <p>Local estimate for reconciliation only; see {@link #todayCostMicros(LlmPricing)}.
+     */
     public long totalCostMicros(LlmPricing pricing) {
         return costMicros(pricing, total);
     }

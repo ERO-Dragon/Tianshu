@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlock;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
@@ -51,10 +52,15 @@ class AXLogKnowledgePromptFixtureTest {
                         stm(scope, "retrieved", "玩家之前问过资源重载后物品索引为什么会变慢。", 1000L),
                         List.of("玩家在资源重载后等待过 IR 缓存加载。")
                 )),
-                List.of(new AXMemoryBlockView(
-                        stm(scope, "recent", "玩家正在调试 AX 与映迹的上下文展示。", 2000L),
-                        List.of()
-                ))
+                new AXMemorySummaryBlock(
+                        2,
+                        List.of(new AXMemoryBlockView(
+                                stm(scope, "recent", "玩家正在调试 AX 与映迹的上下文展示。", 2000L),
+                                List.of()
+                        )),
+                        0,
+                        0
+                )
         );
         AXContextSnapshot context = new AXContextSnapshot(
                 scope,

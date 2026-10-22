@@ -67,7 +67,9 @@ class AXMemorySystemTest {
                 true,
                 1100L,
                 950L,
-                List.of("minecraft:village")
+                List.of("minecraft:village"),
+                List.of(),
+                AXMemoryEvent.DEFAULT_IMPORTANCE
         );
         AXEventVector vector = new AXEventVector(
                 event.id(),
@@ -223,7 +225,7 @@ class AXMemorySystemTest {
         manifest.getAsJsonObject("schemas").addProperty("memoryEvent", AXMemoryEvent.SCHEMA_VERSION + 1);
         Files.writeString(layout.worldManifestFile(scope), manifest.toString(), StandardCharsets.UTF_8);
 
-        memorySystem.appendMemoryEvent(scope, new AXMemoryEvent("", "不会写入的 E。", "", "stm_block", "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, List.of()));
+        memorySystem.appendMemoryEvent(scope, new AXMemoryEvent("", "不会写入的 E。", "", "stm_block", "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, List.of(), List.of(), AXMemoryEvent.DEFAULT_IMPORTANCE));
 
         assertFalse(Files.exists(layout.eventsFile(scope)));
     }
@@ -234,7 +236,7 @@ class AXMemorySystemTest {
         AXMemorySystem memorySystem = memorySystem(layout);
         AXScope scope = scope();
         AXStmBlock block = new AXStmBlock("", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "玩家把钻石镐放进末影箱。", List.of());
-        AXMemoryEvent event = new AXMemoryEvent("", "玩家把钻石镐放进末影箱。", "", block.id(), "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, List.of("minecraft:diamond_pickaxe"));
+        AXMemoryEvent event = new AXMemoryEvent("", "玩家把钻石镐放进末影箱。", "", block.id(), "stm_fact", scope.worldId(), "", "", false, 1000L, 1000L, List.of("minecraft:diamond_pickaxe"), List.of(), AXMemoryEvent.DEFAULT_IMPORTANCE);
 
         memorySystem.appendStmBlock(scope, block);
         memorySystem.appendMemoryEvent(scope, event);
@@ -263,30 +265,38 @@ class AXMemorySystemTest {
         AXMemorySnapshot snapshot = memorySystem.load(scope);
         AXRecentDialogueSnapshot recentSnapshot = recentDialogueSystem.snapshot(scope);
 
-        assertTrue(snapshot.recentPlayerMemoryBlocks().isEmpty());
+        assertTrue(snapshot.summaryBlock().isEmpty(), "没有晋升过的摘要时块为空");
         assertEquals(2, recentSnapshot.turns().size());
         assertTrue(recentSnapshot.turns().get(1).assistantRole());
     }
 
     @Test
-    void compressionBatchIsConsumedOnlyAfterExplicitConfirmation() {
+    void compressionBatchSelectionSkipsCoveredTurnsAndNeverOwnsTheRawWindow() {
         AXStorageLayout layout = layout();
         AXMemorySystem memorySystem = memorySystem(layout);
         AXRecentDialogueSystem recentDialogueSystem = recentDialogueSystem();
         AXScope scope = scope();
 
-        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "第一句很长的玩家输入，用来触发压缩窗口。", "session", "turn-1"));
-        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "assistant", "第一句很长的回答，用来触发压缩窗口。", "session", "turn-1"));
-        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "第二句保留在窗口里。", "session", "turn-2"));
+        // 每组 5000 token，两组合计 10000（正好是 raw 容量上限，不会被硬裁剪）：
+        // 够一个 8192 的单元，但只装得下最旧的那组。
+        appendRound(recentDialogueSystem, scope, "turn-1", 2_500);
+        appendRound(recentDialogueSystem, scope, "turn-2", 2_500);
+        int rawBefore = recentDialogueSystem.rawTokenCount(scope);
 
-        AXRawTurnBatch batch = recentDialogueSystem.selectCompressionBatch(scope);
+        AXRawTurnBatch batch = recentDialogueSystem.selectCompressionBatch(scope, "");
 
         assertFalse(batch.isEmpty());
-        // The kept window is now both the render bound and the compression threshold, so only the
-        // newest round still fits under KEEP; the older one is visible only as a pending batch.
-        assertEquals(1, recentDialogueSystem.snapshot(scope).turns().size());
-        assertEquals(batch.turns().size(), recentDialogueSystem.confirmConsumed(scope, batch));
-        assertEquals(3 - batch.turns().size(), recentDialogueSystem.snapshot(scope).turns().size());
+        assertEquals(2, batch.turns().size(), "单元只装得下最旧的一组");
+        assertEquals(rawBefore, recentDialogueSystem.rawTokenCount(scope), "选批不改窗口：原文一份都不少");
+        AXRawTurnBatch afterCovered = recentDialogueSystem.selectCompressionBatch(
+                scope,
+                batch.turns().get(batch.turns().size() - 1).id());
+        assertTrue(afterCovered.isEmpty(), "覆盖游标之后的原文不够一个单元，不再重复压缩同一段");
+    }
+
+    private void appendRound(AXRecentDialogueSystem recentDialogueSystem, AXScope scope, String turnId, int tokens) {
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "user", "第" + turnId + "问。", "session", turnId).withTokenCount(tokens));
+        recentDialogueSystem.append(scope, AXRawTurn.dialogue(scope, "assistant", "第" + turnId + "答。", "session", turnId).withTokenCount(tokens));
     }
 
     @Test
@@ -297,7 +307,7 @@ class AXMemorySystemTest {
         AXStmBlock s1 = new AXStmBlock("stm_s1", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "第一段。", List.of());
         AXStmBlock s2 = new AXStmBlock("stm_s2", "", scope.worldId(), 2000L, 1900L, 1950L, "", "", 1, 0, "第二段。", List.of());
         memorySystem.stmBlocks().rewrite(scope, List.of(s1, s2));
-        AXMemoryEvent event = new AXMemoryEvent("", "玩家做了一件事。", "", s2.id(), "stm_fact", scope.worldId(), "", "", false, 2100L, 1950L, List.of());
+        AXMemoryEvent event = new AXMemoryEvent("", "玩家做了一件事。", "", s2.id(), "stm_fact", scope.worldId(), "", "", false, 2100L, 1950L, List.of(), List.of(), AXMemoryEvent.DEFAULT_IMPORTANCE);
         memorySystem.events().appendAll(scope, List.of(event));
         memorySystem.vectors().appendAll(scope, List.of(new AXEventVector(event.id(), event.factHash(), "embed", "embed:v1", 2, new float[]{1.0F, 0.0F}, 2200L)));
 

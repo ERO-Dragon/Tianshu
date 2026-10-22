@@ -12,8 +12,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.context;
  * <pre>
  *   T2 retrieval pool           = tailRetrievalTokenBudget                      (512, all tiers)
  *     memory share              = round(0.85 x pool)                            (435)
- *       recent memory blocks    = memoryShare / 40, 20% of the memory items      (2)
- *       retrieved blocks        = memoryItems - recentItems                      (8)
+ *       retrieved blocks        = memoryShare / 40                             (10)
  *     knowledge share           = pool - memoryShare                            (77)
  *       knowledge RAG facts     = knowledgeShare / 20                            (3)
  *   Q current input             = tailCurrentInputTokenBudget x 2 chars         (>= 1000 chars)
@@ -29,6 +28,11 @@ package com.rheinmetal.tianshu.function.auxilium.core.context;
  * which is a genuine fraction of {@code W}, scales — and it is capped at
  * {@link #MAX_RECENT_RAW_DIALOGUE_TURNS}.</p>
  *
+ * <p>The retired "recent memory blocks" slot is gone: window-boundary summaries are no longer a
+ * per-turn tail item, they are the cacheable summary block in front of the kept window. Its share of
+ * the retrieval pool therefore goes to the retrieved blocks, which are the only memory items the tail
+ * still renders.</p>
+ *
  * <p>{@link #MAX_RETRIEVAL_ITEMS} is a joint cap: retrieved blocks, recent blocks and knowledge
  * facts compete for one retrieval pool, so their sum is bounded rather than each of them
  * separately.</p>
@@ -39,7 +43,6 @@ package com.rheinmetal.tianshu.function.auxilium.core.context;
  */
 public record AXContextBudget(
         int maxRetrievedMemoryItems,
-        int maxRecentMemoryItems,
         int maxRecentRawDialogueTurns,
         int maxKnowledgeRagItems,
         int maxCurrentInputChars,
@@ -57,8 +60,6 @@ public record AXContextBudget(
     /** Share of the tail's retrieval pool the memory side owns; knowledge RAG takes the remainder. */
     static final double RATIO_RETRIEVAL_MEMORY_SHARE = 0.85;
 
-    /** Share of the memory items spent on the recent (hot) blocks rather than on retrieved ones. */
-    static final double RATIO_RECENT_MEMORY_ITEM_SHARE = 0.20;
 
     /**
      * Joint cap over retrieved blocks, recent blocks and knowledge facts. A pool of 516 tokens does
@@ -82,7 +83,6 @@ public record AXContextBudget(
 
     public AXContextBudget {
         maxRetrievedMemoryItems = Math.max(0, maxRetrievedMemoryItems);
-        maxRecentMemoryItems = Math.max(0, maxRecentMemoryItems);
         maxRecentRawDialogueTurns = Math.max(0, maxRecentRawDialogueTurns);
         maxKnowledgeRagItems = Math.max(0, maxKnowledgeRagItems);
         maxCurrentInputChars = Math.max(MIN_CURRENT_INPUT_CHARS, maxCurrentInputChars);
@@ -106,16 +106,10 @@ public record AXContextBudget(
         int knowledgePool = Math.max(0, retrievalPool - memoryPool);
 
         int memoryItems = memoryPool / TOKENS_PER_MEMORY_ITEM;
-        int recentMemoryItems = memoryItems <= 0
-                ? 0
-                : Math.min(memoryItems, Math.max(1, shareOf(memoryItems, RATIO_RECENT_MEMORY_ITEM_SHARE)));
-        int retrievedMemoryItems = Math.min(
-                Math.max(0, memoryItems - recentMemoryItems),
-                Math.max(0, MAX_RETRIEVAL_ITEMS - recentMemoryItems)
-        );
+        int retrievedMemoryItems = Math.min(memoryItems, MAX_RETRIEVAL_ITEMS);
         int knowledgeRagItems = Math.min(
                 knowledgePool / TOKENS_PER_KNOWLEDGE_ITEM,
-                Math.max(0, MAX_RETRIEVAL_ITEMS - recentMemoryItems - retrievedMemoryItems)
+                Math.max(0, MAX_RETRIEVAL_ITEMS - retrievedMemoryItems)
         );
 
         // The kept window is the one count that follows W, because the segment it fills does.
@@ -126,7 +120,6 @@ public record AXContextBudget(
 
         return new AXContextBudget(
                 retrievedMemoryItems,
-                recentMemoryItems,
                 recentRawDialogueTurns,
                 knowledgeRagItems,
                 Math.max(MIN_CURRENT_INPUT_CHARS,

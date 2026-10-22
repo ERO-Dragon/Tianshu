@@ -7,6 +7,8 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmContextTiers;
+import com.rheinmetal.tianshu.function.llm.settings.LlmModelEntry;
+import com.rheinmetal.tianshu.function.llm.settings.LlmModelSettings;
 import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
@@ -16,8 +18,10 @@ import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConfiguration,
         AXStorageConfiguration, VoiceResourceConfiguration, AXAssistantSettings, AXOutputSettings,
@@ -44,9 +48,18 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<String> TTS_PREVIEW_TEXT;
     public static final ModConfigSpec.ConfigValue<String> TTS_GITHUB_PROXY_URL;
     public static final ModConfigSpec.BooleanValue LLM_ENABLED;
+    /*
+     * Legacy single-model keys. They stay readable and writable so an old file keeps migrating and a
+     * downgrade keeps working; the model-list keys below take over once they are written.
+     */
     public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_BASE_URL;
     public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_API_KEY;
     public static final ModConfigSpec.ConfigValue<String> LLM_REMOTE_MODEL;
+    /** One entry per line; empty means the legacy keys above are still in charge. */
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LLM_MODELS;
+    public static final ModConfigSpec.ConfigValue<String> LLM_ACTIVE_MODEL_ID;
+    /** One {@code id=key} per line. A separate key on purpose: never part of the model list. */
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LLM_CREDENTIALS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_WINDOW_TOKENS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_TIER;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_CACHE_MISS_INPUT_PRICE_PER_MILLION;
@@ -92,20 +105,37 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
         builder.comment("LLM 大语言模型设置").push("llm");
         LLM_ENABLED = builder.define("enabled", true);
+        builder.comment("旧版单模型键（保持原位置，旧配置继续可读）。模型列表为空时，读取时由这三项加 contextWindowTokens"
+                + " 合成一条模型条目，不丢 key，且重复执行结果一致。");
         LLM_REMOTE_BASE_URL = builder.define("remoteBaseUrl", LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
         LLM_REMOTE_API_KEY = builder.define("remoteApiKey", "");
         LLM_REMOTE_MODEL = builder.define("remoteModel", LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL);
+        LLM_MODELS = builder.comment("模型与模型目录，每行一个条目，两种行：",
+                        "@entry|id|displayName|providerId|baseUrl|activeModelId —— 一个提供商，activeModelId 是它当前使用的模型",
+                        "@model|entryId|modelId|displayName|contextWindowTokens —— 该提供商的一个模型",
+                        "旧格式 id|displayName|providerId|baseUrl|modelId|contextWindowTokens 仍可读取，",
+                        "会按“只有一个模型的提供商”读入，再次写出时升级为上面的新格式（读两次结果一致）。",
+                        "带 vision 列的旧 @model 行同样可读，该列被忽略。",
+                        "留空表示沿用上面的单模型键（读取时合成，写入旧键即可）。")
+                .defineListAllowEmpty("models", List.<String>of(), () -> "", element -> element instanceof String);
+        LLM_ACTIVE_MODEL_ID = builder.comment("当前默认模型的 id；列表非空时必须是列表里的 id，否则取第一条。")
+                .define("activeModelId", LlmModelEntry.LEGACY_ID);
+        LLM_CREDENTIALS = builder.comment("模型凭据，每行 id=apiKey。故意与模型列表分开存放：条目本身不带 key，"
+                        + "列表序列化或打日志都不可能带出凭据。任何日志都不得输出本节内容。")
+                .defineListAllowEmpty("credentials", List.<String>of(), () -> "", element -> element instanceof String);
         LLM_CONTEXT_WINDOW_TOKENS = builder.defineInRange(
                 "contextWindowTokens",
                 LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS,
-                4_096,
-                2_097_152);
+                LlmContextTiers.minimumTier(),
+                LlmConfiguration.MAX_LLM_CONTEXT_WINDOW_TOKENS);
         LLM_CONTEXT_TIER = builder.defineInRange(
                 "contextTier",
                 LlmContextTiers.DEFAULT_TIER,
                 LlmContextTiers.TIER_50K,
                 LlmContextTiers.TIER_500K);
-        builder.comment("Token prices in CNY per million tokens, used to turn recorded usage into an amount. 0 hides the amount.")
+        builder.comment("Token prices in CNY per million tokens, used to turn recorded usage into a local estimate."
+                        + " 0 hides the estimate. These prices never produce an authoritative amount: the provider's"
+                        + " own account answer is what the HUD shows as accurate, and this estimate is reconciliation only.")
                 .push("usagePrice");
         LLM_USAGE_CACHE_MISS_INPUT_PRICE_PER_MILLION = builder.defineInRange(
                 "cacheMissInputPerMillion",
@@ -270,42 +300,134 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
 
     @Override
     public String getLlmRemoteBaseUrl() {
-        return orDefault(LLM_REMOTE_BASE_URL.get(), LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
+        return llmModelSettings().activeModel().baseUrl();
     }
 
     @Override
     public void setLlmRemoteBaseUrl(String baseUrl) {
-        LLM_REMOTE_BASE_URL.set(baseUrl == null ? "" : baseUrl.trim());
+        String value = baseUrl == null ? "" : baseUrl.trim();
+        LLM_REMOTE_BASE_URL.set(value);
+        mirrorIntoActiveEntry(entry -> entry.withBaseUrl(orDefault(value, LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL)));
     }
 
     @Override
     public String getLlmRemoteApiKey() {
-        String value = LLM_REMOTE_API_KEY.get();
-        return value == null ? "" : value.trim();
+        return getLlmApiKey(getLlmActiveModelId());
     }
 
     @Override
     public void setLlmRemoteApiKey(String apiKey) {
-        LLM_REMOTE_API_KEY.set(apiKey == null ? "" : apiKey.trim());
+        String value = apiKey == null ? "" : apiKey.trim();
+        LLM_REMOTE_API_KEY.set(value);
+        mirrorCredentialIntoActiveEntry(value);
     }
 
     @Override
     public String getLlmRemoteModel() {
-        return orDefault(LLM_REMOTE_MODEL.get(), LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL);
+        return llmModelSettings().activeModel().modelId();
     }
 
     @Override
     public void setLlmRemoteModel(String model) {
-        LLM_REMOTE_MODEL.set(model == null ? "" : model.trim());
+        String value = model == null ? "" : model.trim();
+        LLM_REMOTE_MODEL.set(value);
+        mirrorIntoActiveEntry(entry -> entry.withModelId(orDefault(value, LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL)));
     }
 
     @Override
     public int getLlmContextWindowTokens() {
-        return LLM_CONTEXT_WINDOW_TOKENS.get();
+        return llmModelSettings().activeModel().contextWindowTokens();
     }
 
     public void setLlmContextWindowTokens(int windowTokens) {
-        LLM_CONTEXT_WINDOW_TOKENS.set(windowTokens);
+        int clamped = clampContextWindow(windowTokens);
+        LLM_CONTEXT_WINDOW_TOKENS.set(clamped);
+        mirrorIntoActiveEntry(entry -> entry.withContextWindowTokens(clamped));
+    }
+
+    @Override
+    public List<LlmModelEntry> getLlmModels() {
+        return llmModelSettings().models();
+    }
+
+    @Override
+    public String getLlmActiveModelId() {
+        return llmModelSettings().activeModelId();
+    }
+
+    @Override
+    public String getLlmApiKey(String modelId) {
+        return llmModelSettings().apiKey(modelId);
+    }
+
+    @Override
+    public void setLlmModels(List<LlmModelEntry> models) {
+        persistModelDocument(llmModelSettings().withModels(models));
+    }
+
+    @Override
+    public void setLlmActiveModelId(String modelId) {
+        persistModelDocument(llmModelSettings().withActiveModelId(modelId));
+    }
+
+    @Override
+    public void setLlmApiKey(String modelId, String apiKey) {
+        persistCredentials(llmModelSettings().withApiKey(modelId, apiKey));
+    }
+
+    /**
+     * The one place the persisted document is assembled: the model list and the credential key, with
+     * the legacy single-model keys as the entry that an older config file still resolves to.
+     */
+    private LlmModelSettings llmModelSettings() {
+        String legacyApiKey = LLM_REMOTE_API_KEY.get();
+        return LlmModelSettings.fromStored(
+                LLM_MODELS.get(),
+                LLM_ACTIVE_MODEL_ID.get(),
+                LLM_CREDENTIALS.get(),
+                LlmModelEntry.legacy(
+                        orDefault(LLM_REMOTE_BASE_URL.get(), LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL),
+                        orDefault(LLM_REMOTE_MODEL.get(), LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL),
+                        clampContextWindow(LLM_CONTEXT_WINDOW_TOKENS.get())),
+                legacyApiKey == null ? "" : legacyApiKey.trim());
+    }
+
+    /**
+     * Writes the entry list, its active pointer and the credential store. The credential stays in its
+     * own key, and the legacy credential is adopted into that store on the way out, so a materialised
+     * model list keeps the key even if the old key is retired afterwards.
+     */
+    private void persistModelDocument(LlmModelSettings settings) {
+        LlmModelSettings document = settings.withLegacyCredentialAdopted();
+        LLM_MODELS.set(document.modelLines());
+        LLM_ACTIVE_MODEL_ID.set(document.activeModelId());
+        LLM_CREDENTIALS.set(document.credentialLines());
+    }
+
+    private void persistCredentials(LlmModelSettings settings) {
+        LLM_CREDENTIALS.set(settings.withLegacyCredentialAdopted().credentialLines());
+    }
+
+    /**
+     * Keeps the active entry in step with a write through the single-model setters, so a page that
+     * still edits them cannot silently disagree with the list. A profile without a list is left alone:
+     * its legacy keys are the only store and stay that way until something writes a list.
+     */
+    private void mirrorIntoActiveEntry(UnaryOperator<LlmModelEntry> update) {
+        LlmModelSettings settings = llmModelSettings();
+        if (!settings.storedModelsPresent()) {
+            return;
+        }
+        persistModelDocument(settings.withEntry(update.apply(settings.activeModel())));
+    }
+
+    /** Same mirroring for the credential, which lives in its own key rather than in the entry. */
+    private void mirrorCredentialIntoActiveEntry(String apiKey) {
+        LlmModelSettings settings = llmModelSettings();
+        if (!settings.storedModelsPresent()) {
+            return;
+        }
+        persistCredentials(settings.withApiKey(settings.activeModelId(), apiKey));
     }
 
     @Override
@@ -556,6 +678,12 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
         return clampPosition(value, LlmConfiguration.MIN_LLM_USAGE_PRICE_PER_MILLION,
                 LlmConfiguration.MIN_LLM_USAGE_PRICE_PER_MILLION,
                 LlmConfiguration.MAX_LLM_USAGE_PRICE_PER_MILLION);
+    }
+
+    /** Keeps a declared window inside the accepted range before it reaches an entry or the file. */
+    private static int clampContextWindow(int windowTokens) {
+        return Math.max(LlmContextTiers.minimumTier(),
+                Math.min(LlmConfiguration.MAX_LLM_CONTEXT_WINDOW_TOKENS, windowTokens));
     }
 
     private static double clampPosition(double value, double fallback, double min, double max) {

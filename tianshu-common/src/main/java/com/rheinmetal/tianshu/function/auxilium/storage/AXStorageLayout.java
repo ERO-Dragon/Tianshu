@@ -26,6 +26,24 @@ public final class AXStorageLayout {
         return root.resolve("worlds");
     }
 
+    /**
+     * 玩家级存储根目录：{@code players/{playerId}/}。
+     *
+     * <p>与 {@link #worldsRoot()} 并列而不是嵌套——玩家偏好跨存档/跨世界保留，键内不含 worldId
+     * （记忆设计 §4.5）。</p>
+     */
+    public Path playersRoot() {
+        return root.resolve("players");
+    }
+
+    public Path playerRoot(String playerId) {
+        return playersRoot().resolve(safeName(playerId));
+    }
+
+    public Path playerPreferencesFile(String playerId) {
+        return playerRoot(playerId).resolve("preferences.jsonl");
+    }
+
     public Path worldRoot(AXScope scope) {
         String worldId = scope == null ? "unknown_world" : scope.worldId();
         return worldsRoot().resolve(safeName(worldId));
@@ -65,6 +83,19 @@ public final class AXStorageLayout {
 
     public Path stmBlocksFile(AXScope scope) {
         return stmBlocksRoot(scope).resolve("stm_blocks.jsonl");
+    }
+
+    public Path summaryRoot(AXScope scope) {
+        return worldRoot(scope).resolve("summary");
+    }
+
+    /**
+     * 摘要块账本：每次换代追加一条"本代晋升进块的单元摘要 id + 代次"。
+     *
+     * <p>append-only：换代只追加，不改写、不删除，被预算淘汰的摘要因此永远留在记忆库里。</p>
+     */
+    public Path summaryBlockFile(AXScope scope) {
+        return summaryRoot(scope).resolve("summary_block.jsonl");
     }
 
     public Path eventsRoot(AXScope scope) {

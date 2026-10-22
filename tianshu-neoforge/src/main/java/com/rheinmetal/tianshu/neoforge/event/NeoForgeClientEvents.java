@@ -65,6 +65,7 @@ public final class NeoForgeClientEvents {
         logSink.info("neoforge.world.login");
         worldIdentityCapture.refresh();
         NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
+        NeoForgeGameEventHooks.resetWorldSession();
         lifecycleAdapter.onWorldLogin();
     }
 
@@ -80,7 +81,10 @@ public final class NeoForgeClientEvents {
         worldIdentityCapture.clear();
         presenceHudRenderer.clear();
         NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
+        // The world is still addressable here, so pending event aggregates can still reach history.
+        NeoForgeGameEventHooks.flush();
         lifecycleAdapter.onWorldLogout();
+        NeoForgeGameEventHooks.resetWorldSession();
     }
 
     @SubscribeEvent
@@ -93,6 +97,7 @@ public final class NeoForgeClientEvents {
             worldIdentityCapture.refresh();
         }
         lifecycleAdapter.onClientTick();
+        NeoForgeGameEventHooks.tick(minecraft);
 
         KeyMapping voiceKey = voiceKeySupplier.get();
         voiceInputController.tick(voiceKey != null, voiceKey != null && voiceKey.isDown());

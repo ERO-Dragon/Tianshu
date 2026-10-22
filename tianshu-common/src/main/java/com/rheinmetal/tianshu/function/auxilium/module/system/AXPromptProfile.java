@@ -137,6 +137,7 @@ public record AXPromptProfile(
 
     private static final List<String> DEFAULT_SECTION_ORDER = List.of(
             "ax_system",
+            "memory_summary",
             "game_context",
             "player_memory",
             "recent_dialogue",

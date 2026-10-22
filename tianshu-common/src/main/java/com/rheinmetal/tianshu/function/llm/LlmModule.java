@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.function.llm.account.DeepSeekBalanceProbe;
+import com.rheinmetal.tianshu.function.llm.catalog.OpenAiCompatibleModelCatalogClient;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.settings.LlmContextTiers;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
@@ -109,6 +111,12 @@ public final class LlmModule implements TianshuManagedModule {
                 stopRuntime();
             }
         });
+        // The provider model-list endpoint is the only network call the settings page can trigger;
+        // binding it here keeps the page free of transport code and lets a test double replace it.
+        moduleService.bindModelCatalogClient(new OpenAiCompatibleModelCatalogClient(env::warn));
+        // The balance endpoint is the provider's account API. Same rule: the page and the HUD read a
+        // snapshot, this module owns the request, and tests can replace the probe the same way.
+        moduleService.bindAccountProbe(new DeepSeekBalanceProbe(config, env::warn));
         modelService = new LlmModelService(env, config, runtime, this::publishModuleStatus);
         if (serviceRegistry != null) {
             serviceRegistry.register(LlmModuleService.class, moduleService);

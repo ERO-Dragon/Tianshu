@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateSignal;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSnapshot;
@@ -14,6 +16,16 @@ import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueIn
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXNormalizedInput;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXAgentLoop;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunCancellation;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunExpiry;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunOutcome;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunPolicy;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunTermination;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXStepContext;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXStepFailure;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXStepOutcome;
+import com.rheinmetal.tianshu.function.auxilium.core.agent.AXStepSignal;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.core.maintenance.AXRuntimeMaintenanceCoordinator;
@@ -32,6 +44,7 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -63,6 +76,23 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final AXTurnStatusPublisher statusPublisher;
     private final boolean allowInterruption;
     private final DiagnosticSink diagnostics;
+    /**
+     * Where one agent run is executed. Production is {@code AXProtocolAdapter.submitAgentTurn}
+     * ({@code LONG} lane, {@code :agent} concurrency key); tests inject an executor. Never inline:
+     * the run blocks waiting for a result that the same thread would have to deliver (design §12.8).
+     */
+    private final AXAgentRunSubmitter agentRunSubmitter;
+    /**
+     * Async delegation entry point (design §5.1 step ③). {@code null} means "not wired" (tests, and hosts
+     * that run without delegation): a {@code delegate} shaped reply is then handled as an ordinary answer.
+     */
+    private final AXDelegateService delegateService;
+    /**
+     * How many turns were finished by the {@code AXStepSignal} poll fallback instead of an event. It is
+     * expected to stay at 0: a rising value means the cancellation/completion signal is not reaching
+     * the waiting run (design §12.3, §12.9).
+     */
+    private final AtomicLong pollRescuedTurns = new AtomicLong();
     private volatile boolean accepting = true;
     private final AtomicLong generation = new AtomicLong();
     private final AtomicReference<AXTurnExecution> activeExecution = new AtomicReference<>();
@@ -82,7 +112,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXMemorySystem memorySystem,
             AXRecentDialogueSystem recentDialogueSystem,
             AXOutputProcessor outputProcessor,
-            AXMemoryRetriever memoryRetriever
+            AXMemoryRetriever memoryRetriever,
+            AXAgentRunSubmitter agentRunSubmitter,
+            AXDelegateService delegateService
     ) {
         this(
                 scopeProvider,
@@ -102,47 +134,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 memoryRetriever,
                 null,
                 true,
-                DiagnosticSink.NOOP
-        );
-    }
-
-    public AXTurnOrchestrator(
-            AXScopeProvider scopeProvider,
-            AXDialogueInputMapper dialogueInputMapper,
-            AXInputNormalizer inputNormalizer,
-            AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
-            AXDynamicFactClient dynamicFactClient,
-            AXContextCollector contextCollector,
-            AXLlmPromptRequestBuilder llmRequestBuilder,
-            AXContextBudget contextBudget,
-            AXRuntimeLlmBudgetResolver budgetResolver,
-            AXLlmClient llmClient,
-            AXSessionController sessionController,
-            AXMemorySystem memorySystem,
-            AXRecentDialogueSystem recentDialogueSystem,
-            AXOutputProcessor outputProcessor,
-            AXMemoryRetriever memoryRetriever,
-            AXTurnStatusPublisher statusPublisher
-    ) {
-        this(
-                scopeProvider,
-                dialogueInputMapper,
-                inputNormalizer,
-                maintenanceCoordinator,
-                dynamicFactClient,
-                contextCollector,
-                llmRequestBuilder,
-                contextBudget,
-                budgetResolver,
-                llmClient,
-                sessionController,
-                memorySystem,
-                recentDialogueSystem,
-                outputProcessor,
-                memoryRetriever,
-                statusPublisher,
-                true,
-                DiagnosticSink.NOOP
+                DiagnosticSink.NOOP,
+                agentRunSubmitter,
+                delegateService
         );
     }
 
@@ -163,7 +157,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXOutputProcessor outputProcessor,
             AXMemoryRetriever memoryRetriever,
             AXTurnStatusPublisher statusPublisher,
-            boolean allowInterruption
+            AXAgentRunSubmitter agentRunSubmitter,
+            AXDelegateService delegateService
     ) {
         this(
                 scopeProvider,
@@ -182,8 +177,10 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 outputProcessor,
                 memoryRetriever,
                 statusPublisher,
-                allowInterruption,
-                DiagnosticSink.NOOP
+                true,
+                DiagnosticSink.NOOP,
+                agentRunSubmitter,
+                delegateService
         );
     }
 
@@ -205,7 +202,54 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXMemoryRetriever memoryRetriever,
             AXTurnStatusPublisher statusPublisher,
             boolean allowInterruption,
-            DiagnosticSink diagnostics
+            AXAgentRunSubmitter agentRunSubmitter,
+            AXDelegateService delegateService
+    ) {
+        this(
+                scopeProvider,
+                dialogueInputMapper,
+                inputNormalizer,
+                maintenanceCoordinator,
+                dynamicFactClient,
+                contextCollector,
+                llmRequestBuilder,
+                contextBudget,
+                budgetResolver,
+                llmClient,
+                sessionController,
+                memorySystem,
+                recentDialogueSystem,
+                outputProcessor,
+                memoryRetriever,
+                statusPublisher,
+                allowInterruption,
+                DiagnosticSink.NOOP,
+                agentRunSubmitter,
+                delegateService
+        );
+    }
+
+    public AXTurnOrchestrator(
+            AXScopeProvider scopeProvider,
+            AXDialogueInputMapper dialogueInputMapper,
+            AXInputNormalizer inputNormalizer,
+            AXRuntimeMaintenanceCoordinator maintenanceCoordinator,
+            AXDynamicFactClient dynamicFactClient,
+            AXContextCollector contextCollector,
+            AXLlmPromptRequestBuilder llmRequestBuilder,
+            AXContextBudget contextBudget,
+            AXRuntimeLlmBudgetResolver budgetResolver,
+            AXLlmClient llmClient,
+            AXSessionController sessionController,
+            AXMemorySystem memorySystem,
+            AXRecentDialogueSystem recentDialogueSystem,
+            AXOutputProcessor outputProcessor,
+            AXMemoryRetriever memoryRetriever,
+            AXTurnStatusPublisher statusPublisher,
+            boolean allowInterruption,
+            DiagnosticSink diagnostics,
+            AXAgentRunSubmitter agentRunSubmitter,
+            AXDelegateService delegateService
     ) {
         this.scopeProvider = Objects.requireNonNull(scopeProvider, "scopeProvider");
         this.dialogueInputMapper = Objects.requireNonNull(dialogueInputMapper, "dialogueInputMapper");
@@ -228,6 +272,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         this.statusPublisher = statusPublisher;
         this.allowInterruption = allowInterruption;
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
+        this.agentRunSubmitter = Objects.requireNonNull(agentRunSubmitter, "agentRunSubmitter");
+        this.delegateService = delegateService;
     }
 
     public AXTurnOrchestrator(
@@ -243,7 +289,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXSessionController sessionController,
             AXMemorySystem memorySystem,
             AXRecentDialogueSystem recentDialogueSystem,
-            AXOutputProcessor outputProcessor
+            AXOutputProcessor outputProcessor,
+            AXAgentRunSubmitter agentRunSubmitter,
+            AXDelegateService delegateService
     ) {
         this(
                 scopeProvider,
@@ -260,7 +308,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 memorySystem,
                 recentDialogueSystem,
                 outputProcessor,
-                null
+                null,
+                agentRunSubmitter,
+                delegateService
         );
     }
 
@@ -397,15 +447,136 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             statusPublisher.active(execution, "THINKING", allowInterruption);
         }
         execution.latencyTracker().mark(AXTurnLatencyStage.LLM_SUBMITTED);
-        TianshuEnvelope llmEnvelope = llmClient.submit(
-                deliveryEnvelope,
-                llmPayload,
-                new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn)
-        );
-        execution.llmRequestId(llmEnvelope == null ? "" : llmEnvelope.envelopeId());
-        if (execution.isCancelled() && !execution.llmRequestId().isBlank()) {
-            llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), execution.cancellation());
+        // Design §12.2: the callbacks keep every existing duty (streaming, TTS, persistence, release)
+        // and only signal the step at their last line; this method therefore does not block. The wait
+        // for the envelope happens on the submitter's long-running thread, never on the caller's lane.
+        AXStepSignal<LLMPromptResultPayload> step = new AXStepSignal<>();
+        PendingTurn pending = new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn, step);
+        // Clear first so a stale id from a previous turn can never be cancelled (§12.2).
+        execution.llmRequestId("");
+        try {
+            agentRunSubmitter.submit(
+                    execution.activityId(),
+                    () -> runAgentTurn(execution, deliveryEnvelope, llmPayload, pending, step)
+            );
+        } catch (RuntimeException rejected) {
+            // The run never started (lane saturated or shut down). Retire the turn now instead of
+            // leaving it to the 60s envelope/lease expiry with no envelope in flight.
+            cancelExecution(execution, new AXTurnCancellation(messageOf(rejected), DialogueReleaseReason.OWNER_FAILED));
         }
+    }
+
+    /**
+     * Runs the single main-dialogue step of one turn under {@link AXRunPolicy#simple()} (§12.2).
+     *
+     * <p>The loop owns only the step count, the deadline and the terminal fallback; the step itself is
+     * "submit the CHAT request, then wait for its signal with a bounded timeout". Everything the player
+     * sees is still produced by {@link PendingTurn} on the response-delivery thread.</p>
+     */
+    private void runAgentTurn(
+            AXTurnExecution execution,
+            TianshuEnvelope deliveryEnvelope,
+            LLMPromptRequestPayload llmPayload,
+            PendingTurn pending,
+            AXStepSignal<LLMPromptResultPayload> step
+    ) {
+        AXAgentLoop loop = new AXAgentLoop(AXRunPolicy.simple());
+        AXRunOutcome<LLMPromptResultPayload> outcome = loop.run(
+                context -> nextStep(execution, deliveryEnvelope, llmPayload, pending, step, context),
+                AXRunCancellation.of(
+                        () -> execution.cancellationIfCancelled() != null,
+                        execution::cancellationIfCancelled
+                )
+        );
+        if (step.pollRescuedCount() > 0) {
+            pollRescuedTurns.incrementAndGet();
+        }
+        finishAgentTurn(execution, outcome);
+    }
+
+    /**
+     * One step: submit the request, then wait for the step signal or the remaining loop budget.
+     *
+     * <p>Cancellation is re-read on both sides of the submit so that neither "cancelled before the
+     * request went out" nor "cancelled between submit and id assignment" can leave a live envelope
+     * behind (§12.3).</p>
+     */
+    private AXStepOutcome<LLMPromptResultPayload> nextStep(
+            AXTurnExecution execution,
+            TianshuEnvelope deliveryEnvelope,
+            LLMPromptRequestPayload llmPayload,
+            PendingTurn pending,
+            AXStepSignal<LLMPromptResultPayload> step,
+            AXStepContext context
+    ) throws InterruptedException, TimeoutException {
+        AXTurnCancellation earlyCancel = execution.cancellationIfCancelled();
+        if (earlyCancel != null) {
+            // Cancelled before submit: do not send the request at all.
+            return new AXStepOutcome.Aborted<>(earlyCancel, AXRunExpiry.NONE);
+        }
+        TianshuEnvelope llmEnvelope = llmClient.submit(deliveryEnvelope, llmPayload, pending);
+        execution.llmRequestId(llmEnvelope == null ? "" : llmEnvelope.envelopeId());
+        AXTurnCancellation lateCancel = execution.cancellationIfCancelled();
+        if (lateCancel != null && !execution.llmRequestId().isBlank()) {
+            // Cancelled after submit: cancel this envelope now, then still await its terminal signal.
+            llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), lateCancel);
+        }
+        return step.await(context.remainingMillis(), context.cancellation());
+    }
+
+    /**
+     * The only place the run reacts to its own terminal (§12.5).
+     *
+     * <p>{@code COMPLETED} means the callback already finished the turn, so there is nothing left to do.
+     * Every other terminal funnels into the existing {@link #cancelExecution} — the single cancellation
+     * entry point — but only if the turn is still current: {@code cancelExecution} itself does not check
+     * whether the turn already ended, and re-running it would repeat {@code outputProcessor.interrupt}
+     * and the status publications.</p>
+     */
+    private void finishAgentTurn(AXTurnExecution execution, AXRunOutcome<LLMPromptResultPayload> outcome) {
+        if (outcome.termination() == AXRunTermination.COMPLETED) {
+            return;
+        }
+        if (!isCurrent(execution)) {
+            return;
+        }
+        cancelExecution(execution, cancellationOf(outcome));
+    }
+
+    /**
+     * Maps a non-completed terminal to the cancellation reason used to release the session (§12.5).
+     *
+     * <p>An elapsed loop deadline must actively cancel the envelope; otherwise the request keeps its
+     * pending slot for the full 60s envelope expiry even though its result will be discarded.</p>
+     */
+    private AXTurnCancellation cancellationOf(AXRunOutcome<LLMPromptResultPayload> outcome) {
+        AXRunTermination termination = outcome.termination();
+        if (termination == AXRunTermination.CANCELLED) {
+            return outcome.cancellation();
+        }
+        if (termination == AXRunTermination.ABORT_TIMEOUT) {
+            return AXTurnCancellation.expired(
+                    "AX run " + outcome.expiry().name() + " after " + outcome.elapsedMillis() + "ms");
+        }
+        Throwable failure = outcome.failure();
+        if (failure != null) {
+            // Keeps the original throwable's own text instead of inventing one (§12.5).
+            return new AXTurnCancellation(messageOf(failure), DialogueReleaseReason.OWNER_FAILED);
+        }
+        return new AXTurnCancellation("AX run terminated: " + termination.name(), DialogueReleaseReason.OWNER_FAILED);
+    }
+
+    private static String messageOf(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
+    }
+
+    /**
+     * Turns finished by polling rather than by an event. Expected to stay 0; a growing value means the
+     * completion/cancellation signal is not reaching the waiting run (design §12.3, §12.9).
+     */
+    public long pollRescuedTurns() {
+        return pollRescuedTurns.get();
     }
 
     private void extendSessionIfNeeded(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
@@ -420,8 +591,17 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         return scope == null ? AXScope.unknown() : scope;
     }
 
-    public void interruptActiveTurn(AXTurnCancellation cancellation) {
-        AXTurnExecution execution = activeExecution.get();
+    /**
+     * True while a main-dialogue turn is being processed.
+     *
+     * <p>This is one of the three inputs of the broadcast gate (design §6.2): a delegation that finishes
+     * while the player's turn is still running must queue instead of talking over it.</p>
+     */
+    public boolean hasActiveTurn() {
+        return activeExecution.get() != null;
+    }
+
+    public void interruptActiveTurn(AXTurnCancellation cancellation) {        AXTurnExecution execution = activeExecution.get();
         if (execution != null) {
             cancelExecution(execution, cancellation == null
                     ? AXTurnCancellation.playerInterrupted("AX turn interrupted")
@@ -526,15 +706,17 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         private final DialogueDeliveryPayload delivery;
         private final AXScope scope;
         private final AXOutputProcessor.AXOutputTurn outputTurn;
+        private final AXStepSignal<LLMPromptResultPayload> step;
         private final StringBuilder streamed = new StringBuilder();
         private boolean respondingPublished;
 
-        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn) {
+        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn, AXStepSignal<LLMPromptResultPayload> step) {
             this.execution = execution;
             this.deliveryEnvelope = deliveryEnvelope;
             this.delivery = delivery;
             this.scope = scope;
             this.outputTurn = outputTurn;
+            this.step = step;
         }
 
         @Override
@@ -551,16 +733,28 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         @Override
         public void onResult(LLMPromptResultPayload payload) {
             if (!isCurrent(execution)) {
+                signal(new AXStepOutcome.Rejected<>(new AXStepFailure(resultFailureReason(payload))));
                 return;
             }
             if (payload != null && payload.isCompleted()) {
                 String text = finalText(payload);
+                AXDelegateSignal delegateSignal = AXDelegateSignal.parse(text);
+                if (delegateSignal instanceof AXDelegateSignal.Delegated delegated && delegateService != null) {
+                    // 委派不是答句：这个 JSON 是控制对象，绝不念给玩家（§4.1）。本轮只登记 ticket 并立即
+                    // 结束（§5.1 ⑤ ≤1s 出声），检索结果稍后走 §6 的投递通道回来。
+                    completeOutput("");
+                    delegateService.delegate(scope, delivery.sessionId(), delegated.query());
+                    finish(execution, DialogueReleaseReason.OWNER_COMPLETED);
+                    signal(new AXStepOutcome.Finished<>(payload));
+                    return;
+                }
                 if (!text.isBlank()) {
                     publishRespondingOnce();
                 }
                 appendFinalSuffix(text);
                 if (!completeOutput(text)) {
                     finish(execution, DialogueReleaseReason.OWNER_FAILED);
+                    signal(new AXStepOutcome.Rejected<>(new AXStepFailure(resultFailureReason(payload))));
                     return;
                 }
                 appendAssistantVisibleText(text, payload);
@@ -568,6 +762,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                     maintenanceCoordinator.afterAssistantAnswer(scope);
                 }
                 finish(execution, DialogueReleaseReason.OWNER_COMPLETED);
+                // Last line, after the turn is already finished (§12.2 discipline 1): a COMPLETED run
+                // therefore always means "the turn has been wrapped up".
+                signal(new AXStepOutcome.Finished<>(payload));
                 return;
             }
             if (!execution.displayedText().isBlank()) {
@@ -578,16 +775,22 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             }
             failOutput(payload == null ? "LLM returned no result" : payload.errorMessage(), "output.failure_notice_failed");
             finish(execution, DialogueReleaseReason.OWNER_FAILED);
+            signal(new AXStepOutcome.Rejected<>(new AXStepFailure(resultFailureReason(payload))));
         }
 
         @Override
         public void onCancellationResult(LLMPromptResultPayload payload) {
             appendAssistantVisibleText(execution.displayedText(), payload);
+            signalCancelled();
         }
 
         @Override
         public void onCancelled(AXTurnCancellation cancellation) {
             if (!isCurrent(execution)) {
+                // This turn is no longer current, so the callback itself must stay a no-op: whoever
+                // cancelled the turn already did the wrap-up. Only wake the waiting run — it needs
+                // nothing but its terminal, and polling would otherwise have to discover this 50ms later.
+                signalCancelled();
                 return;
             }
             AXTurnCancellation effective = cancellation == null
@@ -602,6 +805,40 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             }
             failOutput(effective.message(), "output.cancel_notice_failed");
             finish(execution, effective.releaseReason());
+            signal(new AXStepOutcome.Aborted<>(effective, expiryOf(effective)));
+        }
+
+        /** Wakes the waiting run with this step's terminal; idempotent, so racing signals are safe. */
+        private void signal(AXStepOutcome<LLMPromptResultPayload> outcome) {
+            step.complete(outcome);
+        }
+
+        /**
+         * Wakes the waiting run as cancelled, reusing the turn's own reason so the run never reports
+         * {@code CANCELLED} without one (§12.3).
+         */
+        private void signalCancelled() {
+            AXTurnCancellation reason = execution.cancellationIfCancelled();
+            if (reason != null) {
+                signal(new AXStepOutcome.Aborted<>(reason, expiryOf(reason)));
+            }
+        }
+
+        /**
+         * Distinguishes the two external clocks that can end a turn with {@code EXPIRED} (§12.4 ②③).
+         *
+         * <p>The discriminator is local and deterministic instead of a guess: if the IA delivery lease
+         * is already past, the lease expired; otherwise the provider envelope did.</p>
+         */
+        private AXRunExpiry expiryOf(AXTurnCancellation cancellation) {
+            if (cancellation == null || cancellation.releaseReason() != DialogueReleaseReason.EXPIRED) {
+                return AXRunExpiry.NONE;
+            }
+            long expireAt = delivery == null ? 0L : delivery.expireAtMillis();
+            if (expireAt > 0L && expireAt <= System.currentTimeMillis()) {
+                return AXRunExpiry.SESSION_LEASE;
+            }
+            return AXRunExpiry.LLM_ENVELOPE;
         }
 
         private void publishRespondingOnce() {

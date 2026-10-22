@@ -16,9 +16,13 @@ public final class AXRecentDialogueSystem {
     private final AXRawTurnCheckpointStore checkpointStore;
     private final Set<String> restoredWorlds = ConcurrentHashMap.newKeySet();
     private final Map<String, AXScope> scopesByWorld = new ConcurrentHashMap<>();
+
     /**
-     * 已发生的压缩换代次数，按世界计。换代意味着"压缩窗口里的一批轮次已被消费"，
-     * 提示词前缀从这一刻起必然不同，因此它是缓存观测里唯一被预期的一次全 miss。
+     * 当前代次（按世界），与摘要块账本同步。
+     *
+     * <p>代次是缓存归因的唯一依据：换代是唯一被预期的一次前缀全 miss，其余轮次的前缀逐字节不变。
+     * 持久化在账本里（{@code summary_block.jsonl}），这里只是会话内的可读镜像——每次换代由账本值写入，
+     * 不自行累加，避免出现两份互相矛盾的代次。</p>
      */
     private final Map<String, Integer> generationByWorld = new ConcurrentHashMap<>();
     private volatile String activeWorldId = "";
@@ -59,34 +63,87 @@ public final class AXRecentDialogueSystem {
         return new AXRecentDialogueSnapshot(rawTurnWindow.recent(scope));
     }
 
-    public AXRawTurnBatch selectCompressionBatch(AXScope scope) {
+    /**
+     * 选出下一个压缩单元。
+     *
+     * @param coveredThroughTurnId 已有单元摘要覆盖到的时间上界；这些轮次的原文仍留在窗口里，
+     *                             只是不再参与压缩（换代时才移出）
+     */
+    public AXRawTurnBatch selectCompressionBatch(AXScope scope, String coveredThroughTurnId) {
         restoreIfNeeded(scope);
-        return rawTurnWindow.selectCompressionBatch(scope);
+        return rawTurnWindow.selectCompressionBatch(scope, coveredThroughTurnId);
     }
 
-    public int confirmConsumed(AXScope scope, AXRawTurnBatch batch) {
-        restoreIfNeeded(scope);
-        if (batch == null || batch.isEmpty()) {
-            return 0;
-        }
-        List<String> turnIds = batch.turnIds();
-        if (turnIds.isEmpty()) {
-            return 0;
-        }
-        int consumed = rawTurnWindow.confirmConsumed(scope, turnIds);
-        if (consumed > 0) {
-            generationByWorld.merge(worldKey(scope), 1, Integer::sum);
-            checkpoint(scope);
-        }
-        return consumed;
+    /**
+     * 压缩窗口是否装满：raw 窗口当前 token 数达到 {@code MAX_RAW_TOKENS}（= KEEP_MAX + COMPRESS_MAX）。
+     *
+     * <p>注意这里<b>不是</b>提示词水位 {@code compressionWatermarkTokenBudget}：那个数描述的是
+     * 整份 prompt（system + 摘要块 + raw + 尾部）的上限，与 raw 自己的容量是两把尺子。</p>
+     */
+    /** 窗口当前保留的 raw token 总数：换代判据与观测都用它。 */
+    public int rawTokenCount(AXScope scope) {
+        return rawTurnWindow.rawTokenCount(scope);
     }
 
-    /** 当前世界的压缩代次；换代时自增，用于区分"正常轮次"与"换轮引发的全 miss"。 */
+    public boolean shouldSwapGeneration(AXScope scope) {
+        return rawTurnWindow.capacityReached(scope);
+    }
+
+    /** 当前世界的压缩代次；换代时推进，用于区分"正常轮次"与"换代引发的全 miss"。 */
     public int generation(AXScope scope) {
         if (scope == null) {
             return 0;
         }
         return generationByWorld.getOrDefault(worldKey(scope), 0);
+    }
+
+    /**
+     * 摘要缺失时的例外：该单元没有单元块可锚定"覆盖到哪一轮"，只能当场把这段已被覆盖的 raw 移出。
+     *
+     * <p>不这样做，覆盖游标（{@code max(sourceToMillis)}）不会前进，同一段原文会被反复压成新的
+     * 事件——那既不是幂等也不是去重，而是纯粹的重复成本。正常路径（有摘要）<b>依旧不动原文</b>，
+     * 只有换代才移出。</p>
+     *
+     * @return 实际移出的轮次数
+     */
+    public int dropCoveredRaw(AXScope scope, String coveredThroughTurnId) {
+        if (scope == null) {
+            return 0;
+        }
+        int removed = rawTurnWindow.dropCompressedTurns(scope, coveredThroughTurnId);
+        rawTurnWindow.clearCapacityReached(scope);
+        if (removed > 0) {
+            checkpoint(scope);
+        }
+        return removed;
+    }
+
+    /**
+     * 换代：把压缩窗口里"已被摘要覆盖"的 raw 移出，并把代次推进到账本给的值。
+     *
+     * <p>这是 raw <b>唯一</b>被移出的时刻：单元压缩只写摘要、不碰原文。保持窗口（最近
+     * {@code KEEP} 轮逐字原文）不在移出范围内——它永远逐字保留。</p>
+     *
+     * <p>代次的权威副本在摘要块账本里（append-only，重启可重放）；这里写入的是会话内镜像，
+     * 因此只接受"不小于当前值"的代次，绝不自行累加。</p>
+     *
+     * @param generation              账本给出的新代次
+     * @param coveredThroughTurnId    已被单元摘要覆盖到的时间上界（也只删到这个边界为止）
+     * @return 实际移出窗口的 raw 轮次数
+     */
+    public int swapGeneration(AXScope scope, int generation, String coveredThroughTurnId) {
+        if (scope == null) {
+            return 0;
+        }
+        int removed = rawTurnWindow.dropCompressedTurns(scope, coveredThroughTurnId);
+        rawTurnWindow.clearCapacityReached(scope);
+        if (generation > 0) {
+            generationByWorld.merge(worldKey(scope), generation, Math::max);
+        }
+        if (removed > 0) {
+            checkpoint(scope);
+        }
+        return removed;
     }
 
     private static String worldKey(AXScope scope) {
@@ -161,6 +218,9 @@ public final class AXRecentDialogueSystem {
     private String tokenizerContent(AXRawTurn turn) {
         if (turn == null || turn.content() == null) {
             return "";
+        }
+        if (turn.worldEventRole()) {
+            return "<event>" + turn.content().trim() + "</event>";
         }
         if (turn.gameChatRole()) {
             String speaker = turn.speakerName() == null || turn.speakerName().isBlank() ? "unknown" : turn.speakerName().trim();

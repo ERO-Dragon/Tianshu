@@ -21,7 +21,8 @@ class AXRecentDialogueSystemCheckpointTest {
     Path tempDir;
 
     @Test
-    void compressionConfirmationCheckpointsOnlyRemainingRawTurns() {        AXStorageLayout layout = layout();
+    void generationSwapCheckpointsTheRemainingRawTurns() {
+        AXStorageLayout layout = layout();
         AXScope scope = scope();
         AXRecentDialogueSystem system = system(layout);
         system.append(scope, turn(scope, "u1", "user", "第一问", "turn-1", 10));
@@ -29,9 +30,10 @@ class AXRecentDialogueSystemCheckpointTest {
         system.append(scope, turn(scope, "u2", "user", "第二问", "turn-2", 10));
         system.append(scope, turn(scope, "a2", "assistant", "第二答", "turn-2", 10));
 
-        AXRawTurnBatch batch = system.selectCompressionBatch(scope);
-        system.confirmConsumed(scope, batch);
+        // 单元压缩不动原文（这里没有单元压缩，原文自然一份不少）；换代才把已覆盖的那段移出。
+        int removed = system.swapGeneration(scope, 1, "a1");
 
+        assertEquals(2, removed);
         AXRawTurnCheckpointStore store = checkpointStore(layout);
         assertEquals(2, store.load(scope).size());
         assertEquals("u2", store.load(scope).get(0).id());
@@ -39,7 +41,7 @@ class AXRecentDialogueSystemCheckpointTest {
     }
 
     @Test
-    void generationAdvancesOnlyWhenARawTurnBatchIsActuallyConsumed() {
+    void generationAdvancesOnlyOnGenerationSwap() {
         AXStorageLayout layout = layout();
         AXScope scope = scope();
         AXRecentDialogueSystem system = system(layout);
@@ -49,13 +51,17 @@ class AXRecentDialogueSystemCheckpointTest {
         system.append(scope, turn(scope, "a2", "assistant", "第二答", "turn-2", 10));
 
         assertEquals(0, system.generation(scope));
-        system.confirmConsumed(scope, null);
-        assertEquals(0, system.generation(scope), "没有真实消费时不得推进代次");
+        assertEquals(0, system.generation(scope), "没有换代时不得推进代次");
 
-        AXRawTurnBatch batch = system.selectCompressionBatch(scope);
-        assertEquals(2, batch.turnIds().size(), "测试前提：前两轮应进入压缩批次");
-        system.confirmConsumed(scope, batch);
+        assertEquals(0, system.generation(scope), "单元压缩是静默的：它不改 prompt，也不推进代次");
+        assertEquals(2, system.snapshot(scope).turns().size(), "保持窗口就是那两轮，压缩不动它");
+
+        system.swapGeneration(scope, 1, "a1");
         assertEquals(1, system.generation(scope), "换代必须被记录，它解释了唯一预期的一次全 miss");
+        system.swapGeneration(scope, 1, "a1");
+        assertEquals(1, system.generation(scope), "同一代次重复写入不得回退或重复累加");
+        system.swapGeneration(scope, 4, "a1");
+        assertEquals(4, system.generation(scope), "代次以账本给出的值为准");
     }
 
     @Test

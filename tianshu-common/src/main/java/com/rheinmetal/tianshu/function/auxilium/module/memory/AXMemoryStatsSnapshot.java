@@ -11,7 +11,11 @@ public record AXMemoryStatsSnapshot(
         int vectorCount,
         int stmTokenCount,
         long earliestEventMillis,
-        long latestEventMillis
+        long latestEventMillis,
+        int generation,
+        int summariesInBlock,
+        int summariesDroppedTotal,
+        int summaryBlockTokens
 ) {
     public static final int SCHEMA_VERSION = 1;
 
@@ -25,6 +29,10 @@ public record AXMemoryStatsSnapshot(
         stmTokenCount = Math.max(0, stmTokenCount);
         earliestEventMillis = Math.max(0L, earliestEventMillis);
         latestEventMillis = Math.max(earliestEventMillis, latestEventMillis);
+        generation = Math.max(0, generation);
+        summariesInBlock = Math.max(0, summariesInBlock);
+        summariesDroppedTotal = Math.max(0, summariesDroppedTotal);
+        summaryBlockTokens = Math.max(0, summaryBlockTokens);
     }
 
     public JsonObject toJson() {
@@ -38,6 +46,11 @@ public record AXMemoryStatsSnapshot(
         json.addProperty("stmTokenCount", stmTokenCount);
         json.addProperty("earliestEventMillis", earliestEventMillis);
         json.addProperty("latestEventMillis", latestEventMillis);
+        // 摘要块观测（记忆设计 §7）：块里几份、挤掉几份、占多少 token、当前第几代。
+        json.addProperty("generation", generation);
+        json.addProperty("summariesInBlock", summariesInBlock);
+        json.addProperty("summariesDroppedTotal", summariesDroppedTotal);
+        json.addProperty("summaryBlockTokens", summaryBlockTokens);
         return json;
     }
 
@@ -54,12 +67,16 @@ public record AXMemoryStatsSnapshot(
                 readInt(json, "vectorCount", 0),
                 readInt(json, "stmTokenCount", 0),
                 readLong(json, "earliestEventMillis", 0L),
-                readLong(json, "latestEventMillis", 0L)
+                readLong(json, "latestEventMillis", 0L),
+                readInt(json, "generation", 0),
+                readInt(json, "summariesInBlock", 0),
+                readInt(json, "summariesDroppedTotal", 0),
+                readInt(json, "summaryBlockTokens", 0)
         );
     }
 
     public static AXMemoryStatsSnapshot empty(String worldId) {
-        return new AXMemoryStatsSnapshot(SCHEMA_VERSION, worldId, System.currentTimeMillis(), 0, 0, 0, 0, 0L, 0L);
+        return new AXMemoryStatsSnapshot(SCHEMA_VERSION, worldId, System.currentTimeMillis(), 0, 0, 0, 0, 0L, 0L, 0, 0, 0, 0);
     }
 
     private static String readString(JsonObject json, String key) {

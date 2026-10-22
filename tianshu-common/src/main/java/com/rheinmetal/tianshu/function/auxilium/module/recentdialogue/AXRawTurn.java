@@ -84,6 +84,27 @@ public record AXRawTurn(
         );
     }
 
+    /**
+     * 事件流条目。{@code <event>} 是追加进历史的一次性事实，不是每轮重建的尾部块：
+     * {@code content} 形如 {@code <kind> <短句>}，由事件层渲染成一行，此后随历史一起参与压缩与检索。
+     */
+    public static AXRawTurn worldEvent(AXScope scope, String content, long createdAtMillis) {
+        AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
+        return new AXRawTurn(
+                "",
+                "world_event",
+                content,
+                createdAtMillis,
+                effectiveScope.worldId(),
+                "",
+                "",
+                0,
+                0,
+                "",
+                ""
+        );
+    }
+
     public boolean isEmpty() {
         return content.isBlank();
     }
@@ -98,6 +119,10 @@ public record AXRawTurn(
 
     public boolean gameChatRole() {
         return "game_chat".equals(role);
+    }
+
+    public boolean worldEventRole() {
+        return "world_event".equals(role);
     }
 
     public AXRawTurn withTokenCount(int value) {

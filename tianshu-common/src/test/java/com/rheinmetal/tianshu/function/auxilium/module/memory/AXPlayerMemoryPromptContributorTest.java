@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPlayerMemoryProm
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlock;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptProfile;
@@ -28,7 +29,7 @@ class AXPlayerMemoryPromptContributorTest {
         AXMemorySnapshot memory = new AXMemorySnapshot(
                 "persona",
                 List.of(new AXMemoryBlockView(stm, List.of("玩家解锁成就：Stone Age", "玩家死亡一次。"))),
-                List.of()
+                AXMemorySummaryBlock.empty()
         );
         AXPromptAssemblyBuilder builder = new AXPromptAssemblyBuilder();
 

@@ -55,8 +55,9 @@ public record AXPromptTexts(
     public static final String DYNAMIC_KNOWLEDGE_WEATHER_RAIN = "dynamic_knowledge.weather.rain";
     public static final String DYNAMIC_KNOWLEDGE_WEATHER_THUNDER = "dynamic_knowledge.weather.thunder";
     public static final String SECTION_PLAYER_MEMORY = "section.player_memory";
+    public static final String MEMORY_SUMMARY_BLOCK = "memory_summary.block";
+    public static final String MEMORY_SUMMARY_UNIT_LINE = "memory_summary.unit_line";
     public static final String PLAYER_MEMORY_REMEMBERED_HISTORY_GROUP = "player_memory.remembered_history_group";
-    public static final String PLAYER_MEMORY_RECENT_HISTORY_GROUP = "player_memory.recent_history_group";
     public static final String PLAYER_MEMORY_SUMMARY_LINE = "player_memory.summary_line";
     public static final String PLAYER_MEMORY_CONCURRENT_EVENTS_GROUP = "player_memory.concurrent_events_group";
     public static final String PLAYER_MEMORY_CONCURRENT_EVENT_LINE = "player_memory.concurrent_event_line";

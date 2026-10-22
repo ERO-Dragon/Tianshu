@@ -4,14 +4,21 @@ import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptAssemblyBuil
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptBuildContext;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptSectionRenderer;
-import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptTexts;
 
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 检索命中记忆的尾部段（section id {@code player_memory}）。
+ *
+ * <p>只负责<b>检索召回</b>的那部分：RAG 命中的事件摘要连同当时的世界事件，作为尾部动态资料渲染。
+ * 窗口边界的累积摘要不在这里——它属于可缓存前缀，由
+ * {@link com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryPromptContributor}
+ * 渲染在 system 之后。旧的"最近 N 个 STM 块"槽位已删除，不允许两套并存。</p>
+ */
 public final class AXPlayerMemoryPromptContributor implements AXPromptContributor {
     public static final String SECTION_ID = "player_memory";
 
@@ -25,31 +32,14 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
         if (context.context() == null || context.context().memory() == null) {
             return;
         }
-        List<AXMemoryBlockView> retrieved = context.context().memory().retrievedPlayerMemoryBlocks();
-        List<AXMemoryBlockView> recent = context.context().memory().recentPlayerMemoryBlocks();
-        List<AXMemoryBlockView> selectedRetrieved = selectBlocks(
-                retrieved,
-                context.budget().maxRetrievedMemoryItems(),
-                new LinkedHashSet<>()
+        List<AXMemoryBlockView> selected = selectBlocks(
+                context.context().memory().retrievedPlayerMemoryBlocks(),
+                context.budget().maxRetrievedMemoryItems()
         );
-        List<AXMemoryBlockView> selectedRecent = selectBlocks(
-                recent,
-                context.budget().maxRecentMemoryItems(),
-                seenKeys(selectedRetrieved)
-        );
-        if (selectedRetrieved.isEmpty() && selectedRecent.isEmpty()) {
+        if (selected.isEmpty()) {
             return;
         }
-        List<String> sections = new java.util.ArrayList<>();
-        String retrievedSection = renderHistoryGroup(context, AXPromptTexts.PLAYER_MEMORY_REMEMBERED_HISTORY_GROUP, selectedRetrieved);
-        if (!retrievedSection.isBlank()) {
-            sections.add(retrievedSection);
-        }
-        String recentSection = renderHistoryGroup(context, AXPromptTexts.PLAYER_MEMORY_RECENT_HISTORY_GROUP, selectedRecent);
-        if (!recentSection.isBlank()) {
-            sections.add(recentSection);
-        }
-        String content = sections.stream().filter(text -> text != null && !text.isBlank()).collect(Collectors.joining("\n\n"));
+        String content = renderHistoryGroup(context, AXPromptTexts.PLAYER_MEMORY_REMEMBERED_HISTORY_GROUP, selected);
         if (content.isBlank()) {
             return;
         }
@@ -57,9 +47,6 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
     }
 
     private String renderHistoryGroup(AXPromptBuildContext context, String groupTemplateKey, List<AXMemoryBlockView> blocks) {
-        if (blocks == null || blocks.isEmpty()) {
-            return "";
-        }
         String summaries = blocks.stream()
                 .map(view -> renderMemorySummary(context, view))
                 .filter(text -> text != null && !text.isBlank())
@@ -71,17 +58,13 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
         return AXPromptSectionRenderer.render(context, groupTemplateKey, Map.of("summaries", summaries));
     }
 
-    private List<AXMemoryBlockView> selectBlocks(List<AXMemoryBlockView> blocks, int limit, LinkedHashSet<String> seen) {
+    private List<AXMemoryBlockView> selectBlocks(List<AXMemoryBlockView> blocks, int limit) {
         if (blocks == null || blocks.isEmpty() || limit <= 0) {
             return List.of();
         }
-        List<AXMemoryBlockView> selected = new java.util.ArrayList<>();
+        List<AXMemoryBlockView> selected = new ArrayList<>();
         for (AXMemoryBlockView view : blocks) {
             if (view == null || view.isEmpty()) {
-                continue;
-            }
-            String key = blockKey(view);
-            if (!seen.add(key)) {
                 continue;
             }
             selected.add(view);
@@ -90,30 +73,6 @@ public final class AXPlayerMemoryPromptContributor implements AXPromptContributo
             }
         }
         return List.copyOf(selected);
-    }
-
-    private LinkedHashSet<String> seenKeys(List<AXMemoryBlockView> blocks) {
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        if (blocks == null) {
-            return seen;
-        }
-        for (AXMemoryBlockView block : blocks) {
-            if (block != null && !block.isEmpty()) {
-                seen.add(blockKey(block));
-            }
-        }
-        return seen;
-    }
-
-    private String blockKey(AXMemoryBlockView view) {
-        if (view == null || view.block() == null) {
-            return "";
-        }
-        String id = view.block().id();
-        if (id != null && !id.isBlank()) {
-            return id.trim();
-        }
-        return view.block().contentHash();
     }
 
     private String renderMemorySummary(AXPromptBuildContext context, AXMemoryBlockView view) {

@@ -26,6 +26,38 @@ import java.util.stream.Collectors;
 public final class AXMemoryRetriever {
     private static final float RAG_SEARCH_FLOOR = 0.01F;
 
+    /**
+     * L1/L2 命中条目的确定性排序：分数降序，同分按 entryId 升序。
+     *
+     * <p>只按分数排序时，同分条目的先后取决于提供方返回的顺序（索引遍历顺序），同一份历史在两台
+     * 机器上可能给出不同的 STM 集合——前缀稳定性（03 §9）要求这里必须有确定性的第二级键。</p>
+     */
+    private static final Comparator<LLMCacheManageResultPayload.HitEntryPayload> HIT_ENTRY_ORDER =
+            Comparator.comparingDouble(LLMCacheManageResultPayload.HitEntryPayload::score).reversed()
+                    .thenComparing(LLMCacheManageResultPayload.HitEntryPayload::entryId);
+
+    /**
+     * STM 候选的确定性五级排序：总分 → 重要性 → 时间新鲜度 → 相关性 → STM id。
+     *
+     * <p>前四级取分越高越前，最后一级用 id 升序兜底——id 在同一个世界内唯一且稳定，于是"同输入两次
+     * 排序结果一致"成为可断言的属性，而不是依赖 {@code HashMap} 遍历顺序的偶然事件。</p>
+     */
+    private static final Comparator<StmContribution> STM_ORDER =
+            Comparator.comparingDouble(StmContribution::score).reversed()
+                    .thenComparing(Comparator.comparingInt(StmContribution::maxImportance).reversed())
+                    .thenComparing(Comparator.comparingDouble(StmContribution::maxRecency).reversed())
+                    .thenComparing(Comparator.comparingDouble(StmContribution::maxRelevance).reversed())
+                    .thenComparing(StmContribution::stmId);
+
+    /**
+     * 多命中加权：同一 STM 里被命中多次略加分，但它<b>不能</b>推翻"最强者优先"。
+     *
+     * <p>{@code score = max × (1 + WEIGHT × log1p(hits − 1))}：两次命中 +6.9%、五次 +16%，永远小于
+     * 两级之间真实的分数差（分档线是 {@code 0.72 × top}）。这样既保留"多条证据更可信"，又不会让
+     * 一堆弱命中把单条强命中挤下去。</p>
+     */
+    private static final double CORROBORATION_WEIGHT = 0.10D;
+
     private final AXMemorySystem memorySystem;
     private final AXLlmRagClient ragClient;
     private final AXMemoryRetrievalPolicy retrievalPolicy;
@@ -143,15 +175,17 @@ public final class AXMemoryRetriever {
                     if (event == null || event.stmId().isBlank()) {
                         continue;
                     }
-                    double relevance = timeWeight(event, nowMillis, hit.score());
-                    if (relevance < policy.coldScoreCutoff()) {
-                        if (relevance > 0.0D) {
+                    // score = relevance × recency × importance（§6.1）。三个因子都有地板，所以
+                    // "极旧但重要"或"很新但弱相关"的事件都不会被乘成 0 而消失候选。
+                    double score = AXMemoryScoring.score(hit.score(), event, nowMillis);
+                    if (score < policy.coldScoreCutoff()) {
+                        if (score > 0.0D) {
                             subColdStmIds.add(event.stmId());
                         }
                         continue;
                     }
                     contributions.computeIfAbsent(event.stmId(), StmContribution::new)
-                            .add(event, effectiveMappingId, relevance);
+                            .add(event, effectiveMappingId, score, nowMillis);
                 }
             }
         }
@@ -190,23 +224,13 @@ public final class AXMemoryRetriever {
                 .filter(Objects::nonNull)
                 .flatMap(group -> group.entries().stream())
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparingDouble(LLMCacheManageResultPayload.HitEntryPayload::score).reversed())
+                .sorted(HIT_ENTRY_ORDER)
                 .map(LLMCacheManageResultPayload.HitEntryPayload::entryId)
                 .filter(value -> value != null && !value.isBlank())
                 .distinct()
                 .toList();
     }
 
-    private double timeWeight(AXMemoryEvent event, long nowMillis, double baseScore) {
-        if (event == null || nowMillis <= 0L || event.happenedAtMillis() <= 0L) {
-            return baseScore;
-        }
-        long ageMillis = Math.max(0L, nowMillis - event.happenedAtMillis());
-        double ageDays = ageMillis / 86_400_000.0D;
-        double factor = Math.max(1.0D - retrievalPolicy.maxTimeDecay(),
-                1.0D - Math.min(retrievalPolicy.maxTimeDecay(), ageDays / retrievalPolicy.timeDecayDaysToMax()));
-        return baseScore * factor;
-    }
 
     private List<SelectedBlock> selectBlocks(
             AXMemoryRetrievalRequest request,
@@ -218,13 +242,15 @@ public final class AXMemoryRetriever {
             List<AXStmBlock> allBlocks
     ) {
         List<StmContribution> ordered = contributions.values().stream()
-                .sorted(Comparator.comparingDouble(StmContribution::score).reversed())
+                .sorted(STM_ORDER)
                 .toList();
         if (ordered.isEmpty()) {
             return List.of();
         }
+        // 分档的基准是乘积分（relevance × recency × importance），所以 topScore 也必须是乘积分；
+        // 用 relevance 当基准会让"很新但弱相关"的候选拿到它不该有的相对线。
         double topScore = ordered.stream()
-                .mapToDouble(StmContribution::maxRelevance)
+                .mapToDouble(StmContribution::maxScore)
                 .max()
                 .orElse(0.0D);
         // Tiering is relative: the cutoffs are derived from this request's own top score, so a weak and a
@@ -237,13 +263,18 @@ public final class AXMemoryRetriever {
         List<StmContribution> warmCandidates = new ArrayList<>();
         List<StmContribution> coldCandidates = new ArrayList<>();
         for (StmContribution contribution : ordered) {
-            double relevance = contribution.maxRelevance();
-            if (relevance >= hotCutoff) {
+            double score = contribution.maxScore();
+            if (contribution.isForcedHot() || score >= hotCutoff) {
+                // 强制 Hot 线（§6.3.4）：重要性 ≥ 8 且相关性 ≥ 0.60 的位置/偏好类事实直接进 Hot，
+                // 不受 0.72 × top 相对线约束——否则"本轮恰好有一条更热的闲聊"就会把它挤到 Warm。
                 hotCandidates.add(contribution);
-            } else if (relevance >= warmCutoff) {
+            } else if (score >= warmCutoff) {
                 warmCandidates.add(contribution);
-            } else if (relevance >= coldCutoff) {
-                coldCandidates.add(contribution);
+            } else if (score >= coldCutoff) {
+                // Cold 可容线（§6.3.4）：重要性 < 4 的弱事实不进 Cold，避免"问过一句话"占住长期配额。
+                if (contribution.isColdEligible()) {
+                    coldCandidates.add(contribution);
+                }
             }
         }
         List<StmContribution> eligible = new ArrayList<>();
@@ -482,29 +513,60 @@ public final class AXMemoryRetriever {
     private record SelectedBlock(AXStmBlock block, int order) {
     }
 
+    /**
+     * 一个 STM 块的命中聚合。
+     *
+     * <p>块的分档分 = <b>块内最强事件的乘积分</b> × 多命中加权（{@link #CORROBORATION_WEIGHT}）。
+     * 用 max 而不是求和：分档线是相对于 {@code topScore} 的百分比，求和会让"命中次数多"压过"命中更
+     * 强"，让一条弱相关事件堆出来的块挤掉真正相关的那块。同时把用于五级 tie-break 的三个因子
+     * （重要性 / 新鲜度 / 相关性）各自记下最大值，排序键全部来自已持久化字段，可重算、可断言。</p>
+     */
     private static final class StmContribution {
         private final String stmId;
-        private double max;
-        private double sum;
-        private final Set<String> effectiveMappings = new HashSet<>();
+        private double maxScore;
+        private double maxRelevance;
+        private double maxRecency;
+        private int maxImportance;
+        private int hitCount;
+        private boolean forcedHot;
+        private boolean coldEligible;
         private final List<AXMemoryRetrievalTrace.EventHit> hits = new ArrayList<>();
 
         private StmContribution(String stmId) {
             this.stmId = stmId;
         }
 
-        private void add(AXMemoryEvent event, String effectiveMappingId, double relevance) {
+        private void add(AXMemoryEvent event, String effectiveMappingId, double score, long nowMillis) {
             String mapping = effectiveMappingId == null || effectiveMappingId.isBlank()
                     ? "unmapped"
                     : effectiveMappingId;
-            if (!effectiveMappings.add(mapping)) {
-                max = Math.max(max, relevance);
-                hits.add(hit(event, mapping, relevance));
-                return;
+            double recency = event == null ? 0.0D : AXMemoryScoring.recency(event, nowMillis);
+            double relevance = relevanceOf(event, score, recency);
+            maxScore = Math.max(maxScore, score);
+            maxRelevance = Math.max(maxRelevance, relevance);
+            maxRecency = Math.max(maxRecency, recency);
+            if (event != null) {
+                maxImportance = Math.max(maxImportance, event.importance());
+                forcedHot = forcedHot || AXMemoryScoring.isForcedHot(event, relevance);
+                coldEligible = coldEligible || AXMemoryScoring.isColdEligible(event);
             }
-            max = Math.max(max, relevance);
-            sum += Math.max(0.0D, relevance);
+            hitCount++;
             hits.add(hit(event, mapping, relevance));
+        }
+
+        /**
+         * 反推相关性：{@code score = relevance × recency × importanceFactor}，另两个因子都能从事件重算，
+         * 于是不需要把相关性单独穿进来——打分只有 {@link AXMemoryScoring} 一个入口。
+         *
+         * <p>反推是为了让 tie-break 的第 3/4 级（新鲜度、相关性）与第 1 级（乘积分）永远自洽：它们来自
+         * 同一次计算，不存在"排序键与显示分不同源"的可能。</p>
+         */
+        private static double relevanceOf(AXMemoryEvent event, double score, double recency) {
+            if (event == null) {
+                return score;
+            }
+            double divisor = recency * AXMemoryScoring.importanceFactor(event);
+            return divisor <= 0.0D ? score : Math.min(1.0D, score / divisor);
         }
 
         private String stmId() {
@@ -512,11 +574,34 @@ public final class AXMemoryRetriever {
         }
 
         private double score() {
-            return max + Math.log1p(sum);
+            if (hitCount <= 1) {
+                return maxScore;
+            }
+            return maxScore * (1.0D + CORROBORATION_WEIGHT * Math.log1p(hitCount - 1));
+        }
+
+        private double maxScore() {
+            return maxScore;
         }
 
         private double maxRelevance() {
-            return max;
+            return maxRelevance;
+        }
+
+        private double maxRecency() {
+            return maxRecency;
+        }
+
+        private int maxImportance() {
+            return maxImportance;
+        }
+
+        private boolean isForcedHot() {
+            return forcedHot;
+        }
+
+        private boolean isColdEligible() {
+            return coldEligible;
         }
 
         private AXMemoryRetrievalTrace toTrace() {
@@ -524,7 +609,8 @@ public final class AXMemoryRetriever {
                     stmId,
                     score(),
                     hits.stream()
-                            .sorted(Comparator.comparingDouble(AXMemoryRetrievalTrace.EventHit::relevance).reversed())
+                            .sorted(Comparator.comparingDouble(AXMemoryRetrievalTrace.EventHit::relevance).reversed()
+                                    .thenComparing(AXMemoryRetrievalTrace.EventHit::eventId))
                             .toList()
             );
         }

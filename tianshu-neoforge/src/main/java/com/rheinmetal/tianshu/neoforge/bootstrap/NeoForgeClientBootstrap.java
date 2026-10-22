@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.client.runtime.module.ClientTianshuModuleAssembler
 import com.rheinmetal.tianshu.neoforge.TianshuNeoForge;
 import com.rheinmetal.tianshu.client.settings.module.asr.AsrSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.ax.AXSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
 import com.rheinmetal.tianshu.client.settings.module.llm.LlmSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.presence.PresenceSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.module.presence.PresenceHudPositionEditorOpener;
@@ -27,6 +28,7 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySo
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.client.runtime.module.ClientFunctionConfigurations;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.event.AXGameEventService;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
 import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
 import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
@@ -47,14 +49,18 @@ import com.rheinmetal.tianshu.neoforge.event.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientEvents;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientLifecycleAdapter;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeEventRegistration;
+import com.rheinmetal.tianshu.neoforge.event.NeoForgeGameEventHooks;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgePresenceHooks;
 import com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudShaderRegistry;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudPositionEditorScreen;
+import com.rheinmetal.tianshu.neoforge.ui.settings.SettingsLayerScreen;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
+import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsScreen;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.neoforged.neoforge.client.ClientHooks;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -185,6 +191,14 @@ public final class NeoForgeClientBootstrap {
 
             NeoForgePresenceHooks.bind(currentPresenceRuntime, diagnosticRouter);
             startingSession.own(() -> NeoForgePresenceHooks.clear(currentPresenceRuntime));
+            // The AX module owns the event service; the lookup stays empty until a world session
+            // prepares the module and empties again when the module stops.
+            NeoForgeGameEventHooks.bind(
+                    () -> assembledCoreManager.findService(AXGameEventService.class).orElse(null),
+                    languageSnapshot::languageCode,
+                    diagnosticRouter
+            );
+            startingSession.own(NeoForgeGameEventHooks::clear);
 
             externalSettingsContributors = new TianshuSettingsContributorRegistry();
             integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
@@ -319,7 +333,21 @@ public final class NeoForgeClientBootstrap {
         TianshuSettingsRegistrySource ttsSource = new TtsSettingsRegistrySource(
                 coreManager, config, scheduler, uiHost, filePicker, textProvider
         );
-        TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(coreManager, config, scheduler, uiHost);
+        // A layer is shown on NeoForge's GUI layer stack, which keeps the settings page below it alive:
+        // that page keeps its widgets and its unsaved state, and the stack draws it under the new layer.
+        // Without a settings page underneath there is nothing to layer onto, so the layer closes at once
+        // through its own close hook.
+        SettingsLayerHost settingsLayerHost = layer -> {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.screen instanceof TianshuSettingsScreen settingsScreen) {
+                ClientHooks.pushGuiLayer(minecraft, new SettingsLayerScreen(settingsScreen, layer));
+            } else {
+                layer.onClosed().run();
+            }
+        };
+        TianshuSettingsRegistrySource llmSource = new LlmSettingsRegistrySource(
+                coreManager, config, scheduler, uiHost, settingsLayerHost
+        );
         TianshuSettingsRegistrySource axSource = new AXSettingsRegistrySource(coreManager, config);
         PresenceHudPositionEditorOpener positionEditorOpener = (positionX, positionY, apply) -> {
             Minecraft minecraft = Minecraft.getInstance();

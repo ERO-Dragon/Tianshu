@@ -25,6 +25,17 @@ public final class LlmContextTiers {
         return TIERS.clone();
     }
 
+    /**
+     * The smallest selectable tier.
+     *
+     * <p>A declared window below this fits no tier at all, so a model entry that declares it would be
+     * forced through {@link #downgradeToLargestAvailable(int, int)}'s fallback and overshoot its own
+     * window. Callers that validate a configured window check it against this value.
+     */
+    public static int minimumTier() {
+        return TIERS[0];
+    }
+
     /** Whether {@code tier} fits inside the declared model window. */
     public static boolean supportsTier(int tier, int contextWindowTokens) {
         return tier > 0 && contextWindowTokens > 0 && tier <= contextWindowTokens;

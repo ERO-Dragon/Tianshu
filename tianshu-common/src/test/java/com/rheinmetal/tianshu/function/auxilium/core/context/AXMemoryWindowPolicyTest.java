@@ -204,21 +204,19 @@ class AXMemoryWindowPolicyTest {
         AXContextBudget large = AXContextBudget.fromPolicy(
                 AXMemoryWindowPolicy.fromBudget(W_500K, 3, 60000L));
 
-        assertEquals(8, AXContextBudget.DEFAULT.maxRetrievedMemoryItems());
-        assertEquals(2, AXContextBudget.DEFAULT.maxRecentMemoryItems());
+        assertEquals(10, AXContextBudget.DEFAULT.maxRetrievedMemoryItems());
         assertEquals(3, AXContextBudget.DEFAULT.maxKnowledgeRagItems());
         assertEquals(1_000, AXContextBudget.DEFAULT.maxCurrentInputChars());
         assertEquals(435, AXContextBudget.DEFAULT.memoryRetrievalTokenBudget());
 
         for (AXContextBudget budget : new AXContextBudget[]{compact, large}) {
-            assertEquals(8, budget.maxRetrievedMemoryItems());
-            assertEquals(2, budget.maxRecentMemoryItems());
+            assertEquals(10, budget.maxRetrievedMemoryItems());
             assertEquals(3, budget.maxKnowledgeRagItems());
             assertEquals(1_000, budget.maxCurrentInputChars());
             assertEquals(435, budget.memoryRetrievalTokenBudget());
-            assertTrue(budget.maxRetrievedMemoryItems() + budget.maxRecentMemoryItems()
-                            + budget.maxKnowledgeRagItems() <= AXContextBudget.MAX_RETRIEVAL_ITEMS,
-                    "retrieved + recent + knowledge must fit the joint cap");
+            assertTrue(budget.maxRetrievedMemoryItems() + budget.maxKnowledgeRagItems()
+                            <= AXContextBudget.MAX_RETRIEVAL_ITEMS,
+                    "retrieved + knowledge must fit the joint cap");
         }
     }
 

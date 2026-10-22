@@ -65,7 +65,7 @@ class AXMemoryRetrievalIndexTest {
     }
 
     private static AXMemoryEvent event(AXScope scope, String stmId, String fact, List<String> tags) {
-        return new AXMemoryEvent("", fact, "", stmId, "stm_fact", scope.worldId(), "", "", false, 1_000L, 1_000L, tags);
+        return new AXMemoryEvent("", fact, "", stmId, "stm_fact", scope.worldId(), "", "", false, 1_000L, 1_000L, tags, List.of(), AXMemoryEvent.DEFAULT_IMPORTANCE);
     }
 
     private static AXEventVector vector(AXMemoryEvent event, float[] vector) {

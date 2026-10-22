@@ -59,7 +59,16 @@ final class AXTurnExecution {
         return presenceActivity.getAndSet(next);
     }
 
-    boolean cancel(AXTurnCancellation reason) {
+    /**
+     * Marks this turn cancelled and records the reason.
+     *
+     * <p>Synchronized with {@link #cancellationIfCancelled()}: the flag is published before the
+     * reason is written, so without a common monitor a thread could observe {@code cancelled == true}
+     * while {@code cancellation} is still {@code null}. The run outcome requires every
+     * {@code CANCELLED} terminal to carry its reason (design §12.3), which is exactly the case that
+     * race used to produce.</p>
+     */
+    synchronized boolean cancel(AXTurnCancellation reason) {
         boolean changed = cancelled.compareAndSet(false, true);
         if (changed) {
             cancellation = reason;
@@ -71,8 +80,15 @@ final class AXTurnExecution {
         return cancelled.get();
     }
 
-    AXTurnCancellation cancellation() {
-        return cancellation;
+    /**
+     * Reads {@code (cancelled, reason)} as one consistent pair — {@code null} when the turn is not
+     * cancelled.
+     *
+     * <p>The run cancellation probe takes both its predicate and its reason from this single call
+     * (design §12.3), so "cancelled with no reason" cannot be observed.</p>
+     */
+    synchronized AXTurnCancellation cancellationIfCancelled() {
+        return cancelled.get() ? cancellation : null;
     }
 
     void latencyTracker(AXTurnLatencyTracker tracker) {

@@ -5,6 +5,7 @@
   },
   "sectionOrder": [
     "ax_system",
+    "memory_summary",
     "game_context",
     "player_memory",
     "recent_dialogue",

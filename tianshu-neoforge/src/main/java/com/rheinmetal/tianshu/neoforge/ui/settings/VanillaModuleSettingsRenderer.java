@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.ui.settings;
 
 import com.rheinmetal.tianshu.client.api.settings.SettingsListCard;
-import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
 import com.rheinmetal.tianshu.neoforge.ui.settings.NeoForgeUiText;
 import com.rheinmetal.tianshu.client.settings.layout.SettingsLayout;
 import com.rheinmetal.tianshu.client.settings.layout.SettingsLayoutItem;
@@ -29,6 +28,14 @@ import java.util.function.Supplier;
 
 final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private static final int ITEM_ACTION_WIDTH = 54;
+    /**
+     * Longest text a single-line entry may hold.
+     *
+     * <p>Minecraft's {@code EditBox} defaults to 32 characters, which silently truncates anything
+     * longer — an API key is longer than that, so leaving the default in place turns a correctly
+     * pasted credential into a rejected one with no visible cause.
+     */
+    private static final int TEXT_ENTRY_MAX_LENGTH = 512;
     private static final int ROW_LABEL_MIN_WIDTH = 88;
     private static final ControlSizing SWITCH_CONTROL = new ControlSizing(48, 56, 60);
     private static final ControlSizing SELECT_CONTROL = new ControlSizing(72, 96, 112);
@@ -257,6 +264,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         addIfVisible(new SettingsTextWidget(contentX(), label.screenY(), contentWidth(), SettingsLayoutMetrics.LABEL_HEIGHT, labelComponent, active ? 0xA0A0A0 : 0x606060), label, active);
         SettingsLayoutItem item = layout.row();
         EditBox box = new EditBox(font, contentX(), item.screenY(), Math.min(360, contentWidth()), SettingsLayoutMetrics.CONTROL_HEIGHT, labelComponent);
+        box.setMaxLength(TEXT_ENTRY_MAX_LENGTH);
         box.setValue(safeGet(text.getter(), ""));
         box.setResponder(value -> text.setter().accept(value));
         addIfVisible(box, item, active);
@@ -266,6 +274,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private void renderCompactTextEntry(SettingsTemplateModel.TextEntry text, boolean active, SettingsLayoutItem item, int buttonX, int buttonWidth) {
         Component labelComponent = safeComponent(text.label(), Component.empty());
         EditBox box = new EditBox(font, buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT, labelComponent);
+        box.setMaxLength(TEXT_ENTRY_MAX_LENGTH);
         box.setValue(safeGet(text.getter(), ""));
         box.setResponder(value -> text.setter().accept(value));
         addIfVisible(box, item, active);
@@ -322,7 +331,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 item = layout.row();
                 buttonX = contentX();
             }
-            Button button = Button.builder(styledButtonLabel(entry), clicked -> runActionAndRefresh(entry.action()))
+            Button button = Button.builder(safeComponent(entry.label(), Component.empty()), clicked -> runActionAndRefresh(entry.action()))
                     .pos(buttonX, item.screenY())
                     .size(buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT)
                     .build();
@@ -441,7 +450,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             int buttonX = rowX + bodyWidth + SettingsLayoutMetrics.GAP;
             int buttonY = item.screenY() + Math.max(0, (item.height() - SettingsLayoutMetrics.CONTROL_HEIGHT) / 2);
             for (SettingsTemplateModel.ItemActionEntry<T> action : actions) {
-                Button button = Button.builder(styledItemButtonLabel(action), clicked -> runActionAndRefresh(() -> safeAccept(action.action(), value)))
+                Button button = Button.builder(safeComponent(action.label(), Component.empty()), clicked -> runActionAndRefresh(() -> safeAccept(action.action(), value)))
                         .pos(buttonX, buttonY)
                         .size(ITEM_ACTION_WIDTH, SettingsLayoutMetrics.CONTROL_HEIGHT)
                         .build();
@@ -663,26 +672,6 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     }
 
     private record RendererState(SettingsLayout layout, SettingsViewport viewport, int x, int width, int gridColumn, int columnBottomTargetY) {}
-
-    private Component styledButtonLabel(SettingsTemplateModel.ActionEntry entry) {
-        Component label = safeComponent(entry.label(), Component.empty());
-        SettingsButtonStyle style = entry.style() == null ? SettingsButtonStyle.NORMAL : entry.style();
-        return styledLabel(label, style);
-    }
-
-    private <T> Component styledItemButtonLabel(SettingsTemplateModel.ItemActionEntry<T> entry) {
-        Component label = safeComponent(entry.label(), Component.empty());
-        SettingsButtonStyle style = entry.style() == null ? SettingsButtonStyle.NORMAL : entry.style();
-        return styledLabel(label, style);
-    }
-
-    private Component styledLabel(Component label, SettingsButtonStyle style) {
-        return switch (style) {
-            case NORMAL -> label;
-            case PRIMARY -> Component.translatable("tianshu.gui.settings.button.primary", label);
-            case DANGER -> Component.translatable("tianshu.gui.settings.button.danger", label);
-        };
-    }
 
     private <T> List<SettingsTemplateModel.ItemActionEntry<T>> visibleItemActions(SettingsTemplateModel.ListGroup<T> group, T item) {
         List<SettingsTemplateModel.ItemActionEntry<T>> entries = safeList(safeApply(group.itemActions(), item, List.of()));

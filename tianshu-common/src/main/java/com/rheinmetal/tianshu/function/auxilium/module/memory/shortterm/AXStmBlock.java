@@ -20,7 +20,9 @@ public record AXStmBlock(
         int sourceTurnCount,
         int tokenCount,
         String content,
-        List<String> attachedEventIds
+        List<String> attachedEventIds,
+        String sourceFromTurnId,
+        String sourceToTurnId
 ) {
     public static final int SCHEMA_VERSION = 1;
 
@@ -43,6 +45,31 @@ public record AXStmBlock(
                 .map(String::trim)
                 .distinct()
                 .toList();
+        sourceFromTurnId = sourceFromTurnId == null ? "" : sourceFromTurnId.trim();
+        sourceToTurnId = sourceToTurnId == null ? "" : sourceToTurnId.trim();
+    }
+
+    /**
+     * 没有轮级溯源的形态（世界事件、测试夹具等）：两个 turn id 留空。
+     *
+     * <p>压缩单元必须走全参构造，`sourceToTurnId` 是换代时精确裁剪 raw 的依据。</p>
+     */
+    public AXStmBlock(
+            String id,
+            String contentHash,
+            String worldId,
+            long createdAtMillis,
+            long sourceFromMillis,
+            long sourceToMillis,
+            String previousStmId,
+            String nextStmId,
+            int sourceTurnCount,
+            int tokenCount,
+            String content,
+            List<String> attachedEventIds
+    ) {
+        this(id, contentHash, worldId, createdAtMillis, sourceFromMillis, sourceToMillis, previousStmId, nextStmId,
+                sourceTurnCount, tokenCount, content, attachedEventIds, "", "");
     }
 
     public boolean isEmpty() {
@@ -62,7 +89,9 @@ public record AXStmBlock(
                 sourceTurnCount,
                 value,
                 content,
-                attachedEventIds
+                attachedEventIds,
+                sourceFromTurnId,
+                sourceToTurnId
         );
     }
 
@@ -83,12 +112,14 @@ public record AXStmBlock(
         JsonArray eventIds = new JsonArray();
         attachedEventIds.forEach(eventIds::add);
         json.add("attachedEventIds", eventIds);
+        json.addProperty("sourceFromTurnId", sourceFromTurnId);
+        json.addProperty("sourceToTurnId", sourceToTurnId);
         return json;
     }
 
     public static AXStmBlock fromJson(JsonObject json) {
         if (json == null) {
-            return new AXStmBlock("", "", "", 0L, 0L, 0L, "", "", 0, 0, "", List.of());
+            return new AXStmBlock("", "", "", 0L, 0L, 0L, "", "", 0, 0, "", List.of(), "", "");
         }
         return new AXStmBlock(
                 readString(json, "id"),
@@ -102,7 +133,9 @@ public record AXStmBlock(
                 readInt(json, "sourceTurnCount", 0),
                 readInt(json, "tokenCount", 0),
                 readString(json, "content"),
-                readStringArray(json, "attachedEventIds")
+                readStringArray(json, "attachedEventIds"),
+                readString(json, "sourceFromTurnId"),
+                readString(json, "sourceToTurnId")
         );
     }
 

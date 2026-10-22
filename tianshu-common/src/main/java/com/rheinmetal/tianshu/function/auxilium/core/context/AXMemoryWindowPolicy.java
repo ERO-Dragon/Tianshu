@@ -189,6 +189,21 @@ public record AXMemoryWindowPolicy(
         conversationPauseMillis = Math.max(0L, conversationPauseMillis);
     }
 
+    /**
+     * 把字符数折算成近似的 token 数，用的是本策略里同一份文本密度。
+     *
+     * <p>只在 tokenizer 不可用、只能按字符估容量时使用——压缩窗口的累计与换代判据必须有一个不依赖
+     * tokenizer 的量纲，否则云端 TOKEN_COUNT 恒不可用时水位永远到不了。</p>
+     */
+    public int tokensForCharacters(int characters) {
+        return Math.max(0, characters) / CHARS_PER_TOKEN;
+    }
+
+    /** 同一份文本密度反过来用：token 容量折算成字符容量（tokenizer 不可用时的判据）。 */
+    public int charactersForTokens(int tokens) {
+        return Math.max(0, tokens) * CHARS_PER_TOKEN;
+    }
+
     /** Context tier of this budget. Breadth-sensitive consumers resolve their mapping through it. */
     public AXContextTier tier() {
         return AXContextTier.of(totalContextTokenBudget);

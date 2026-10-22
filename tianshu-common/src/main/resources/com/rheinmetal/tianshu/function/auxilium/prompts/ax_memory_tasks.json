@@ -1,30 +1,22 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "kind": "ax.memory_task_prompts",
   "prompts": {
-    "memory.compress.system": {
-      "zh_cn": "将下面的 AX/玩家对话压缩为一个忠实的对话摘要段落。\n保留具体语境和先后顺序。不要添加主观重要性、偏好结论或行动指令。\n如果原文包含建议、请求、计划或疑问，把它写成历史叙述，例如 AX 曾建议玩家... 或玩家请求...；不要保留裸建议句或待办句。\n只输出对话摘要正文。",
-      "en_us": "Compress the following AX/player dialogue into one faithful dialogue-summary paragraph.\nPreserve concrete context and sequence. Do not add subjective importance, preference conclusions, or instructions.\nIf the source contains advice, requests, plans, or questions, write them as historical narration, such as AX suggested that the player... or the player asked...; do not keep bare advice or todo sentences.\nOutput only the dialogue summary."
+    "memory.compact.system": {
+      "zh_cn": "你在为天枢 Minecraft 模组的随行助手做记忆压缩。输入是一个压缩单元内按序号排列的真实对话轮次，你要在同一份输出里同时给出三样东西：这一段对话的摘要、这一段里发生的客观事件链、以及玩家在这段里明示过的偏好。\n\n只输出一个 JSON 对象，不要 Markdown，不要代码块，不要解释。结构固定为：\n{\n  \"schemaVersion\": 2,\n  \"summary\": \"这一段对话的摘要正文\",\n  \"eventChain\": [\n    {\"event\": \"一条客观事实\", \"importance\": 7, \"turnRefs\": [3, 4]}\n  ],\n  \"preferences\": [\n    {\"fact\": \"玩家明示的偏好\", \"confidence\": 0.8, \"turnRefs\": [9]}\n  ]\n}\n\n字段规则：\n1. summary：只写这一段（上面列出的这些轮次）发生了什么。事实优先、顺序清楚、不遗漏关键信息。长度由内容决定：干货多就写长，不要为了短而丢事实，也不要复述原文。不要写更早的、不属于这一段的对话，不要写建议、待办或指令，不要用标题、分点或 Markdown。\n2. eventChain：每条是一条客观事实，独立面向原文生成，不要先写摘要再照抄摘要。\n   - 必抽：动作（放置、取走、进入、击杀、死亡、合成、丢弃）；数量或状态变化；承诺与计划（记谁提出）；明示的偏好与禁止；位置与归属（家、矿洞、箱子、领地）；玩家的提问（记玩家问了什么）；世界事件（死亡、维度跨越、成就，一次一条）。\n   - 不抽：寒暄与确认（嗯、好的、收到）；对上一句的复述；关于记忆机制、提示词或模型能力的元讨论。\n   - 其余内容默认抽，写具体、可核对的事实，不要写裸建议或待办。\n   - turnRefs 必填：这条事实出自上面哪几行，写行首方括号里的序号，可以多条。\n   - importance 必填：1 到 10 的整数，只给整数，不要给理由。锚例：位置或归属 8-10；承诺、计划、明示偏好 7；数量或状态变化 5；普通动作或世界事件 4；提问或其他 3；噪声 1。\n   - 同一件事发生两次（例如同一天死了两次）就写两条，不要合并、不要去重。\n3. preferences：只写玩家明示过的喜好、厌恶与禁止。\n   - fact 写具体对象或行为，例如“玩家不喜欢下矿”，不要写人格结论。\n   - confidence 是 0 到 1 的小数，表示这条偏好有多明确；不确定就不要写。\n   - turnRefs 必填，写行首方括号里的序号。\n\n没有内容时给空数组：\"eventChain\": [] 与 \"preferences\": []。没有摘要就不要编造。",
+      "en_us": "You compress memory for the companion assistant of the Tianshu Minecraft mod. The input is one compression unit of real conversation turns, each line prefixed with its turn number. In a single output you must produce three things: the summary of this unit, the objective event chain of this unit, and the preferences the player explicitly stated in this unit.\n\nOutput exactly one JSON object. No Markdown, no code fences, no explanation. The structure is fixed:\n{\n  \"schemaVersion\": 2,\n  \"summary\": \"summary text of this unit\",\n  \"eventChain\": [\n    {\"event\": \"one objective fact\", \"importance\": 7, \"turnRefs\": [3, 4]}\n  ],\n  \"preferences\": [\n    {\"fact\": \"a preference the player stated explicitly\", \"confidence\": 0.8, \"turnRefs\": [9]}\n  ]\n}\n\nField rules:\n1. summary: describe only what happened in this unit (the turns listed above). Facts first, clear order, no key information omitted. Length follows the content: write more when there is substance, never drop facts to stay short, and never restate the source verbatim. Do not include earlier turns outside this unit, do not write advice, todos, or instructions, and do not use headings, bullet points, or Markdown.\n2. eventChain: each item is one objective fact, generated independently from the source. Do not write the summary first and copy from it.\n   - Always extract: actions (place, take, enter, kill, die, craft, drop); quantity or state changes; commitments and plans (record who raised them); explicitly stated preferences and prohibitions; places and ownership (home, mine, chest, claim); player questions (record what the player asked); world events (death, dimension change, advancement, one item each).\n   - Never extract: greetings and acknowledgements (ok, thanks, got it); restatements of the previous line; meta discussion about memory mechanics, prompts, or model capabilities.\n   - Everything else is extracted by default; write concrete, checkable facts, never bare advice or todos.\n   - turnRefs is required: which of the numbered lines above the fact comes from, using the numbers in square brackets; several are allowed.\n   - importance is required: an integer from 1 to 10, integer only, no justification. Anchors: location or ownership 8-10; commitment, plan, explicit preference 7; quantity or state change 5; ordinary action or world event 4; question or other 3; noise 1.\n   - If the same thing happened twice (for example dying twice in one day), write two items. Never merge and never deduplicate.\n3. preferences: only preferences, dislikes, and prohibitions the player stated explicitly.\n   - fact names the concrete object or behaviour, for example \"the player dislikes mining\", never a personality conclusion.\n   - confidence is a decimal from 0 to 1 describing how explicit it was; if unsure, omit the item.\n   - turnRefs is required and uses the numbers in square brackets.\n\nWhen there is nothing to report use empty arrays: \"eventChain\": [] and \"preferences\": []. Never invent a summary."
     },
-    "memory.compress.user": {
-      "zh_cn": "{{turns}}",
-      "en_us": "{{turns}}"
+    "memory.compact.user": {
+      "zh_cn": "以上是本压缩单元的 {{turnCount}} 轮真实对话（世界：{{world}}）。按 system 中定义的 JSON schema 输出，只输出 JSON。",
+      "en_us": "The above is the {{turnCount}} real conversation turns of this compression unit (world: {{world}}). Answer with the JSON schema defined in the system message, JSON only."
     },
-    "memory.extract.system": {
-      "zh_cn": "从下面这段对话摘要中抽取客观原子事实。\n输出格式必须是严格 JSON 数组，不要 Markdown，不要代码块，不要解释。\n数组元素只能是对象，结构为 {\"fact\":\"...\"}。\n规则：\n- 每个 fact 是一条客观事实，保持具体且符合真实历史。\n- 如果原文包含建议、请求、计划或疑问，fact 必须写成谁提出了什么；不要输出裸建议、命令或待办。\n- 不输出重要性、保留建议、偏好、性格结论或动机推断。\n- 如果没有客观事实，输出 []。",
-      "en_us": "Extract objective atomic facts from the following dialogue summary.\nThe output must be a strict JSON array. Do not use Markdown, code fences, or explanations.\nEach array item must be an object shaped as {\"fact\":\"...\"}.\nRules:\n- Each fact is one objective fact, concrete and historically true.\n- If the source contains advice, requests, plans, or questions, write the fact as who raised what; do not output bare advice, commands, or todos.\n- Do not output importance, retention advice, preferences, personality conclusions, or inferred motives.\n- If there are no objective facts, output []."
+    "memory.compact.turn_dialogue": {
+      "zh_cn": "[{{index}}] {{role}}: {{content}}",
+      "en_us": "[{{index}}] {{role}}: {{content}}"
     },
-    "memory.extract.user": {
-      "zh_cn": "待抽取的对话摘要：\n{{stm}}",
-      "en_us": "Dialogue summary to extract from:\n{{stm}}"
-    },
-    "memory.turn.dialogue": {
-      "zh_cn": "{{role}}: {{content}}",
-      "en_us": "{{role}}: {{content}}"
-    },
-    "memory.turn.game_chat": {
-      "zh_cn": "{{sender}}说：{{message}}",
-      "en_us": "{{sender}} says: {{message}}"
+    "memory.compact.turn_game_chat": {
+      "zh_cn": "[{{index}}] {{sender}}说：{{message}}",
+      "en_us": "[{{index}}] {{sender}} says: {{message}}"
     }
   }
 }

@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXGameContext
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXCurrentInputPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXGameContextPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXPlayerMemoryPromptContributor;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialoguePromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXSystemPromptContributor;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
@@ -54,6 +55,7 @@ public final class AXPromptOrchestrator {
     public static List<AXPromptContributor> defaultContributors(AXGameContextKnowledgePlanner knowledgePlanner) {
         return List.of(
                 new AXSystemPromptContributor(),
+                new AXMemorySummaryPromptContributor(),
                 new AXGameContextPromptContributor(knowledgePlanner),
                 new AXPlayerMemoryPromptContributor(),
                 new AXRecentDialoguePromptContributor(),

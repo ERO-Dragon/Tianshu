@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
@@ -23,8 +24,16 @@ import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXAccessController;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXDialogueGateway;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXSessionController;
-import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;
-import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateBroadcastGate;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDelivery;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateEventLedger;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegatePromptRepository;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateRegistry;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventDispatcher;
+import com.rheinmetal.tianshu.function.auxilium.event.AXGameEventService;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
@@ -87,7 +96,10 @@ public final class AXModule implements TianshuManagedModule {
     private AXRecentDialogueSystem recentDialogueSystem;
     private AXDialogueGateway dialogueGateway;
     private AXTurnOrchestrator turnOrchestrator;
+    private AXDelegateService delegateService;
     private AXTurnStatusPublisher turnStatusPublisher;
+    private AXGameEventService gameEventService;
+    private ModuleServiceRegistry moduleServices;
     private long lifecycleStatusGeneration;
     private boolean lifecycleActive;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
@@ -212,6 +224,19 @@ public final class AXModule implements TianshuManagedModule {
         dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), runtimePolicy.dynamicFactTimeoutMillis());
         AXSessionController sessionController = new AXSessionController(adapter);
         AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
+        delegateService = new AXDelegateService(
+                llmClient::submitDetached,
+                new AXDelegateRegistry(),
+                new AXDelegatePromptRepository(promptLanguageProvider),
+                null,
+                new AXDelegateEventLedger(),
+                this::appendHistoryEvent,
+                adapter::submitDelegateRun,
+                this::publishDelegateDelivery,
+                env.logs(),
+                this::broadcastContext,
+                System::currentTimeMillis
+        );
         turnOrchestrator = new AXTurnOrchestrator(
                 scopeProvider,
                 new AXDialogueInputMapper(),
@@ -230,12 +255,90 @@ public final class AXModule implements TianshuManagedModule {
                 memoryRetriever,
                 turnStatusPublisher,
                 assistantSettings.allowInterruption(),
-                context.diagnostics()
+                context.diagnostics(),
+                adapter::submitAgentTurn,
+                delegateService
         );
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
         participantRegistrar.register();
+        publishGameEventService(context);
+        if (moduleServices != null) {
+            moduleServices.register(AXDelegateService.class, delegateService);
+        }
         adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.ax.ready", lifecycleStatusGeneration));
+    }
+
+    /**
+     * Exposes the delegation pipeline so later slices (voice, memory write-back) can reach it.
+     *
+     * <p>The delivery handle is reported through the log only: TTS is not wired in this slice, and this
+     * layer never renders player wording — the resource key is the contract (design §6.2).</p>
+     */
+    private void publishDelegateDelivery(AXDelegateDelivery delivery) {
+        if (delivery == null) {
+            return;
+        }
+        env.logs().info("ax.delegate.speech_pending task=" + delivery.taskId()
+                + " mode=" + delivery.mode().name()
+                + (delivery.utteranceKey() == null ? "" : " key=" + delivery.utteranceKey())
+                + (delivery.isAck() ? " ack=true" : " kind=" + delivery.kind().code()));
+    }
+
+    /**
+     * Broadcast gate input (design §6.2).
+     *
+     * <p>Only "is a CHAT turn running" has a source today. {@code broadcasting} belongs to the voice slice
+     * and {@code inCombat} to the game-state slice; until those land they report {@code false}, which makes
+     * the gate degrade to "speak immediately" rather than silently dropping anything.</p>
+     */
+    private AXDelegateBroadcastGate.Context broadcastContext() {
+        AXTurnOrchestrator current = turnOrchestrator;
+        return new AXDelegateBroadcastGate.Context(current != null && current.hasActiveTurn(), false, false);
+    }
+
+    /**
+     * Exposes the event pipeline so a platform hook can submit game events.
+     *
+     * <p>The service owns the only decision path (tiers, blacklist, speech gate, aggregation) and its
+     * history sink appends to the recent-dialogue window as a {@code world_event} turn, which is the
+     * same channel third-party utterances already use.
+     */
+    private void publishGameEventService(ModuleRuntimeContext context) {
+        gameEventService = new AXGameEventService(
+                new AXEventDispatcher(),
+                this::appendHistoryEvent,
+                env.logs()
+        );
+        moduleServices = context.services();
+        moduleServices.register(AXGameEventService.class, gameEventService);
+    }
+
+    private void appendHistoryEvent(AXEventAppend append) {
+        AXScope scope = currentWritableScope();
+        AXRecentDialogueSystem currentDialogue = recentDialogueSystem;
+        if (scope == null || currentDialogue == null || append == null) {
+            return;
+        }
+        String content = append.historyText();
+        if (content.isBlank()) {
+            return;
+        }
+        currentDialogue.append(scope, AXRawTurn.worldEvent(scope, content, System.currentTimeMillis()));
+    }
+
+    private void withdrawGameEventService() {
+        AXGameEventService current = gameEventService;
+        ModuleServiceRegistry services = moduleServices;
+        gameEventService = null;
+        moduleServices = null;
+        if (current == null) {
+            return;
+        }
+        current.stop(System.currentTimeMillis());
+        if (services != null) {
+            services.unregister(AXGameEventService.class, current);
+        }
     }
 
     @Override
@@ -256,6 +359,8 @@ public final class AXModule implements TianshuManagedModule {
 
     @Override
     public void stop() {
+        // Events close first so a pending aggregate still lands in the window before the checkpoint.
+        withdrawGameEventService();
         if (turnOrchestrator != null) {
             turnOrchestrator.stop();
         }
@@ -285,6 +390,7 @@ public final class AXModule implements TianshuManagedModule {
         }
         dialogueGateway = null;
         turnOrchestrator = null;
+        delegateService = null;
         if (lifecycleActive) {
             lifecycleActive = false;
             adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.ax.stopped", lifecycleStatusGeneration));

@@ -17,6 +17,13 @@ import java.math.RoundingMode;
  * <p>Money is held as an integer count of "micro units" (1e-6 of one currency unit) so that
  * accumulating many requests never drifts. The {@code double} accepted by {@link #microsFromPrice}
  * is quantised exactly once, there.
+ *
+ * <p><strong>These prices never produce an authoritative amount.</strong> The provider answers
+ * balance and cost questions itself (see {@code function.llm.account}), and those answers are what
+ * the HUD shows as accurate. Anything derived from this record is a local estimate kept next to
+ * them for reconciliation only: it must be labelled as an estimate wherever it is displayed, must
+ * not be added to, compared for equality with, or used to correct a provider figure, and must never
+ * be described as a bill.
  */
 public record LlmPricing(
         long inputMissMicrosPerMillion,

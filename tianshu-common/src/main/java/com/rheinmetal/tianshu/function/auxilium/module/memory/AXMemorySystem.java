@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXAttachedWorldEvent;
@@ -23,15 +24,25 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVecto
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVectorStore;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEventStore;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.preference.AXPlayerPreferenceStore;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlockStore;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlock;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlockStore;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryGeneration;
 
 public final class AXMemorySystem {
     private final AXStorageLayout layout;
     private final AXJsonStore jsonStore;
-    private final AXMemoryWindowPolicy windowPolicy;
+    /**
+     * 当前生效的窗口策略：构造期是兜底值，每个解析成功的轮次由 {@link #applyWindowPolicy} 换成真实预算。
+     * 摘要块容量（{@code summaryBlockTokenBudget}）也在其中，所以它必须逐轮可换。
+     */
+    private volatile AXMemoryWindowPolicy windowPolicy;
     private final AXStmBlockStore stmBlockStore;
+    private final AXMemorySummaryBlockStore summaryBlockStore;
     private final AXMemoryEventStore eventStore;
+    private final AXPlayerPreferenceStore preferenceStore;
     private final AXAttachedWorldEventBuffer attachedWorldEventBuffer;
     private final AXEventVectorStore vectorStore;
     private final AXMemoryStatsStore statsStore;
@@ -59,7 +70,9 @@ public final class AXMemorySystem {
         this.jsonStore = jsonStore;
         this.windowPolicy = policy == null ? AXMemoryWindowPolicy.DEFAULT : policy;
         this.stmBlockStore = new AXStmBlockStore(layout, jsonStore);
+        this.summaryBlockStore = new AXMemorySummaryBlockStore(layout, jsonStore);
         this.eventStore = new AXMemoryEventStore(layout, jsonStore);
+        this.preferenceStore = new AXPlayerPreferenceStore(layout, jsonStore);
         this.attachedWorldEventBuffer = new AXAttachedWorldEventBuffer();
         this.vectorStore = new AXEventVectorStore(layout, jsonStore);
         this.statsStore = new AXMemoryStatsStore(layout, jsonStore);
@@ -69,16 +82,117 @@ public final class AXMemorySystem {
         this.retrievalPolicy = retrievalPolicy == null ? AXMemoryRetrievalPolicy.DEFAULT : retrievalPolicy;
     }
 
+    /** 逐轮套用真实预算：摘要块容量跟着 {@code W} 走，不能停在构造期兜底值。 */
+    public void applyWindowPolicy(AXMemoryWindowPolicy policy) {
+        if (policy != null) {
+            this.windowPolicy = policy;
+        }
+    }
+
     public AXMemorySnapshot load(AXScope scope) {
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
         if (!effectiveScope.writable()) {
             return AXMemorySnapshot.empty(effectiveScope);
         }
-        return new AXMemorySnapshot(
-                loadPersona(),
-                List.of(),
-                memoryBlockViews(effectiveScope, stmBlockStore.loadRecent(effectiveScope, windowPolicy.shortTermChatBlockLimit()))
-        );
+        return new AXMemorySnapshot(loadPersona(), List.of(), summaryBlock(effectiveScope));
+    }
+
+    /** 摘要块账本（换代记录）。 */
+    public AXMemorySummaryBlockStore summaries() {
+        return summaryBlockStore;
+    }
+
+    /**
+     * 构建当前摘要块：账本里的晋升顺序（新→旧）取前缀，直到 {@code summaryBlockTokenBudget} 用完。
+     *
+     * <p>预算是"块的总容量"；装不下的旧单元只从渲染里消失，账本与摘要库都不动，其事件照常可检索。
+     * 最新的一份永远保留——否则换代之后边界接续会变成空，断层就没有"接续"可言了。</p>
+     */
+    public AXMemorySummaryBlock summaryBlock(AXScope scope) {
+        AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
+        if (!effectiveScope.writable()) {
+            return AXMemorySummaryBlock.empty();
+        }
+        List<AXMemorySummaryGeneration> generations = summaryBlockStore.loadGenerations(effectiveScope);
+        if (generations.isEmpty()) {
+            return AXMemorySummaryBlock.empty();
+        }
+        int generation = generations.get(generations.size() - 1).generation();
+        Map<String, AXStmBlock> blocksById = new java.util.LinkedHashMap<>();
+        for (AXStmBlock block : stmBlockStore.loadAll(effectiveScope)) {
+            if (block != null && !block.isEmpty()) {
+                blocksById.putIfAbsent(block.id(), block);
+            }
+        }
+        List<AXStmBlock> promoted = new java.util.ArrayList<>();
+        int dropped = 0;
+        int tokens = 0;
+        int budget = windowPolicy.summaryBlockTokenBudget();
+        for (int index = generations.size() - 1; index >= 0; index--) {
+            for (String stmId : generations.get(index).stmIds()) {
+                AXStmBlock block = blocksById.get(stmId);
+                if (block == null || block.isEmpty()) {
+                    continue;
+                }
+                if (!promoted.isEmpty() && budget > 0 && tokens + block.tokenCount() > budget) {
+                    dropped++;
+                    continue;
+                }
+                promoted.add(block);
+                tokens += Math.max(0, block.tokenCount());
+            }
+        }
+        if (promoted.isEmpty()) {
+            return new AXMemorySummaryBlock(generation, List.of(), 0, dropped);
+        }
+        return new AXMemorySummaryBlock(generation, memoryBlockViews(effectiveScope, promoted), tokens, dropped);
+    }
+
+    /**
+     * 换代时把"还没晋升的单元摘要"写进账本（append-only），返回新代次；没有可晋升的就返回 0。
+     *
+     * <p>晋升顺序 = 新→旧（{@code sourceToMillis} 降序）：块里越靠前的越靠近 system，也越靠近当下。</p>
+     */
+    public int promoteSummaryGeneration(AXScope scope) {
+        if (!storageReadyForWrite(scope)) {
+            return 0;
+        }
+        Set<String> promoted = new java.util.LinkedHashSet<>();
+        for (AXMemorySummaryGeneration generation : summaryBlockStore.loadGenerations(scope)) {
+            promoted.addAll(generation.stmIds());
+        }
+        List<String> pending = stmBlockStore.loadAll(scope).stream()
+                .filter(block -> block != null && !block.isEmpty() && !promoted.contains(block.id()))
+                .sorted(java.util.Comparator
+                        .comparingLong(AXStmBlock::sourceToMillis)
+                        .thenComparingLong(AXStmBlock::createdAtMillis)
+                        .reversed())
+                .map(AXStmBlock::id)
+                .toList();
+        if (pending.isEmpty()) {
+            return 0;
+        }
+        int nextGeneration = summaryBlockStore.generation(scope) + 1;
+        return summaryBlockStore.append(scope, nextGeneration, pending) ? nextGeneration : 0;
+    }
+
+    /**
+     * 已有单元摘要覆盖到的最后一轮 id（{@code sourceToTurnId}，取时间上最新的那个单元）。
+     *
+     * <p>两个消费者共用它：压缩选批时跳过已覆盖的轮次（避免重复压缩同一段原文），换代时用它精确
+     * 界定"哪些 raw 可以被移出窗口"。所以它算的是<b>摘要库</b>而不是账本——未晋升的单元也覆盖过
+     * 原文。用轮 id 而不是时间戳：同一毫秒可以有多轮，时间边界会误伤边界后的原文。</p>
+     */
+    public String stmCoveredThroughTurnId(AXScope scope) {
+        AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
+        if (!effectiveScope.writable()) {
+            return "";
+        }
+        return stmBlockStore.loadAll(effectiveScope).stream()
+                .filter(block -> block != null && !block.isEmpty())
+                .max(java.util.Comparator.comparingLong(AXStmBlock::sourceToMillis))
+                .map(AXStmBlock::sourceToTurnId)
+                .orElse("");
     }
 
     public boolean appendStmBlock(AXScope scope, AXStmBlock block) {
@@ -155,6 +269,11 @@ public final class AXMemorySystem {
 
     public AXMemoryEventStore events() {
         return eventStore;
+    }
+
+    /** 玩家级偏好存储：键是玩家 UUID，不随世界隔离（记忆设计 §4.5）。 */
+    public AXPlayerPreferenceStore preferences() {
+        return preferenceStore;
     }
 
     public AXAttachedWorldEventBuffer attachedWorldEventBuffer() {

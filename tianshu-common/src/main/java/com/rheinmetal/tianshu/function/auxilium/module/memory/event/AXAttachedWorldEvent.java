@@ -47,6 +47,10 @@ public record AXAttachedWorldEvent(
         return id.isBlank() || eventType.isBlank();
     }
 
+    /**
+     * 直通世界事件（非压缩来源）：没有轮级溯源，importance 走中性兜底分。
+     * 世界事件的打分规则（§6.3 的 {@code world_event} 锚值）留到打分接线的那一片，本片只保证字段存在。
+     */
     public AXMemoryEvent toMemoryEvent(String stmId, String sourceKind) {
         String fact = text.isBlank() ? eventType : text;
         return new AXMemoryEvent(
@@ -61,7 +65,9 @@ public record AXAttachedWorldEvent(
                 !position.isBlank(),
                 System.currentTimeMillis(),
                 happenedAtMillis,
-                tags
+                tags,
+                List.of(),
+                AXMemoryEvent.DEFAULT_IMPORTANCE
         );
     }
 

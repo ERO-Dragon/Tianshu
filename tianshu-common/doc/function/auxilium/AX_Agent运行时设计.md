@@ -4,7 +4,7 @@
 > 本文只给设计与伪代码，不含工程实现，**不改任何工程代码**。
 > 基线：`03-AX-上下文编排设计.md`（**v10**，下称「03」）、`AX_事件系统设计.md`（**v2**，下称「事件」）、`AX_记忆策略设计.md`（v7，下称「记忆」）。三份文档与本文同目录。
 > 引用约定：`03 §x` / `事件 §y` / `记忆 §z` = 该文档章节号；**`A1–A10` = 本文的不变量编号**，与 03 的 `I1–I13`、事件的 `EV1–EV9` 与 `OP1–OP8`、记忆的 `G1–G8`（及 05 的 `S*/R*/H*`）**不共用编号空间**，检索时不要混。
-> 版本：**v4**（v1 = 首版；v2 = 落定 D1–D6 并清掉两处跨文档冲突；v3 = 收掉最后两处跨文档分叉 —— 03 §8.3 的子代理回传量已改为引用本文 §5.6，03 §2.1 的尾部块清单已改为引用本文 §8.1；**v4 = 按用户裁决对齐三处 `<event>` 口径冲突 —— ① `<event>` 改为**追加进历史**（不再是尾部 `T3` 块、不再每轮重建）② 游戏内事件是"事件"不是"状态"（分界判据写死）③ 主动播报边界收窄为"禁止没事找话、允许有事报事"；并新增 **§8.7 四级白名单与压缩输入边界**；03 同步升 v10、事件文档同步升 v2**）。本文把 03 §8 的"预留"落成设计，并**覆盖其中的数值**（§9.3 逐条登记，覆盖处以此文为准）。**v2 起 03 §8.1 的轮次/挂钟预留值不再由本文"覆盖"，而是 03 直接指向本文 §3.2**（D6）；**v3 起 03 §8.3 的回传体量与 §2.1 的尾部块清单同理，只留指向本文的指针**。
+> 版本：**v5**（**v5 = 新增 §12 生产接线方案：把 `AXAgentLoop` 接进 `AXTurnOrchestrator` 主对话路径的接法、线程归属、三层超时叠加、失败映射与改造范围；§1–§11 与附录 A 未改，`<event>` 等 v4 裁决全部保留**；v1 = 首版；v2 = 落定 D1–D6 并清掉两处跨文档冲突；v3 = 收掉最后两处跨文档分叉 —— 03 §8.3 的子代理回传量已改为引用本文 §5.6，03 §2.1 的尾部块清单已改为引用本文 §8.1；**v4 = 按用户裁决对齐三处 `<event>` 口径冲突 —— ① `<event>` 改为**追加进历史**（不再是尾部 `T3` 块、不再每轮重建）② 游戏内事件是"事件"不是"状态"（分界判据写死）③ 主动播报边界收窄为"禁止没事找话、允许有事报事"；并新增 **§8.7 四级白名单与压缩输入边界**；03 同步升 v10、事件文档同步升 v2**）。本文把 03 §8 的"预留"落成设计，并**覆盖其中的数值**（§9.3 逐条登记，覆盖处以此文为准）。**v2 起 03 §8.1 的轮次/挂钟预留值不再由本文"覆盖"，而是 03 直接指向本文 §3.2**（D6）；**v3 起 03 §8.3 的回传体量与 §2.1 的尾部块清单同理，只留指向本文的指针**。
 
 **一句话定位**：03 定"发出去的消息长什么样"，记忆定"记住什么、怎么取回"，**本文定"一轮对话期间谁在跑、跑多久、跑出来的东西怎么回到对话里"**。
 
@@ -1056,6 +1056,226 @@ assembleTurn(session, playerInput):
 | **8** | **主对话空置的 `S2`（1024）是否在将来回收** | 本文不动（§4.3）。要回收须由 03 再版统一重算 `C_low`/`K`/`k`/摊销/成本四张表 | 跨文档；单方面改会让四张表全部失准 |
 | **9** | ~~`<memory_summary>` 简称是否统一为规范名~~ **✅ 已决策（D5）** | **统一为 `<memory_summary>`**；旧名 `<memory_window_summary>` 作废，本文与 03（v9）已逐字一致（§9.4） | 命名分叉已消除。**⚑ v3：`AX_记忆策略设计.md`（v7）与 `04-P0-实施计划.md`（v4）本轮已同步改名，四份文档正文旧名清零**（v2 时曾登记"仍在使用旧名"） |
 | **10** | ~~本期是否做主动开口（主动交互）~~ **✅ 已决策（D3）；⚑ v4/F3 收窄措辞** | **禁止"没事找话"**（定时闲聊、内容主动发起的话题、主动提醒/推荐、无触发源的开口）；**允许"有事报事"**（事件驱动的高/中档播报 + 委派回执/终态播报），且**每条必须能指到一条触发源、播报不调模型、门槛一条都不许放宽**。仍无第四种触发源（§1.4） | 产品范围。**v4 起 D3 的"不做主动开口"字面口径作废**；再放宽（如允许模型主动发起话题）须单独立项，前置问题仍是"如何退出打断""误报怎么止损" |
+| **11** | **是否给"循环路径"留灰度开关**（**v5 新增**，随 §12） | **不留**（理由见 §12.0 / E） | 两条路径必然分叉，开关只是把"证明等价"往后推。若必须灰度：唯一可接受形式是**启动时读一次**的配置项（默认 **true**、不支持热更），且**下一个小版本删除**；删除前必须先补齐 §12.8 的三条等价性测试。**不做按会话/按玩家灰度**（那会让同一份日志出现两种行为，排查成本翻倍） |
+
+---
+
+## 12. 生产接线：把 `AXAgentLoop` 接进主对话路径（**v5 新增**）
+
+> 本节回答一个问题：**第一片的 `AXAgentLoop` 怎么进 `AXTurnOrchestrator` 的生产链路，而行为与现在等价。**
+> 方案与被否理由都写在这里；确认后按 §12.7 的清单动代码。
+> 所有"现状"都以当前工作区代码为准（`AXTurnOrchestrator` 707 行、`AXLlmClient` 282 行、`AXProtocolAdapter` 364 行、`AXTurnExecution` 132 行）。
+
+### 12.0 结论：方案 A（循环跑在后台车道，回调保持原位）
+
+一句话：**循环只拥有"步数 / 截止时间 / 终态兜底"；一步 = 提交 + 在循环线程上有界等待；流式输出、TTS、落盘、会话释放全部留在现有回调线程原位不动。**
+
+| # | 方案 | 判定 | 理由 |
+|---|---|---|---|
+| **A** | 循环跑在协议 `ExecutionLane.LONG` 的独立并发键上；一步 = 提交 + 有界等待；回调线程保持现状 | **采用** | 唯一同时满足"真正用上循环"与"行为等价"的方案：等待只占一条长任务线程，输出与收尾的线程归属零变化 |
+| B | 在 `startTurn` 调用线程里原地跑循环 | 否 | delivery 与响应订阅都走 `AdapterDefaults.standard()`（`ASYNC_WORKER` → `ExecutionLane.CPU`，默认 `processors/2` 线程、队列 64）。原地阻塞最长 10s 会挤掉响应分发与其它模块的 CPU 任务；一旦将来把 delivery 订阅换成 `mainThreadUi()`（`MUST_MAIN` → `MAIN` 车道），原地阻塞就会卡渲染线程。**"不在调用线程阻塞"要写成硬规则，不能依赖当下的线程策略** |
+| C | 不阻塞：`submit` 后立即返回 `Finished`，收尾继续靠回调 | 否 | 循环会在结果还不存在时报 `COMPLETED` —— outcome 谎报；10s 截止与取消判定随之退化成假实现（正是"永远走不到的分支"） |
+| D | 把 `AXAgentLoop` 改成续体/状态机，由回调驱动推进 | 否 | 要重写 §3 原语，单步阶段收益为零；多步阶段再评估 |
+| E | 留灰度双路径开关（循环 / 直连） | 否 | 两条路径必然分叉，等价性改用测试保证（§12.8）。若坚持灰度，唯一可接受形式见 §11 第 11 项 |
+
+### 12.1 （Q1）在哪一层阻塞等待？会不会卡主线程 / 渲染线程
+
+**结论：在一条专职长任务线程上阻塞；主线程与渲染线程永不参与；协议 CPU 车道不被占用。**
+
+现状线程归属（读码确认，不是推测）：
+
+| 位置 | 线程 | 依据 |
+|---|---|---|
+| `AXDialogueGateway.handleDelivery` → `orchestrator.startTurn` | 协议 **`CPU` 车道** | AX 模块构造器用 `AdapterDefaults.standard().withSupportsStreaming(true)`（`AXProtocolAdapter` 第 52 行）；`ASYNC_WORKER` 由 `ProtocolExecutionPolicy` 解析为 `CPU` |
+| 输入规范化 / 上下文 / prompt 装配 / `outputProcessor.startTurn` | 同上（`startTurn` 内同步完成） | `AXTurnOrchestrator.startTurn` … `submitLlmTurn` |
+| 动态事实、预算、记忆检索的回调 | 各自被调方车道（现状即异步） | `dynamicFactClient.request` / `budgetResolver.resolveContextBudget` / `memoryRetriever.retrieve` |
+| `PendingTurn.onStreamChunk` / `onResult` / `onCancelled` | 响应分发的 **`CPU` 车道** | `registerResponseHandler(... defaults())` → `AXLlmClient.handleResult` 的回调 |
+
+因此：**若在 `startTurn` 调用线程原地等待，就是阻塞协议 CPU 车道** —— 这就是 B 方案被否的直接原因。
+
+采用的落点：
+
+```text
+AXProtocolAdapter.submitAgentTurn(String taskId, Runnable task)     ← 新增（~8 行）
+    taskSpec(ExecutionLane.LONG)
+      .taskId(taskId)
+      .concurrencyKey(MODULE_ID + ":agent")     # 与 :memory 分开：压缩任务不得挡住对话
+      .maxConcurrency(1)                        # 同一时刻只跑一个主对话 run
+      .queueCapacity(4)
+```
+
+- `LONG` 车道默认 2 线程 / 队列 8（`ProtocolExecutorPolicy`）。压缩与上下文维护已占用 `:memory` 并发键，所以**必须**另开 `:agent`，否则一次 120s 的压缩会把玩家那一句话堵在后面。这是本方案唯一新增的线程占用，也是它的上限。
+- 等待期间不持锁、不占 CPU 车道；`startTurn` 返回前只做"装配 + 提交循环任务"，**不等待**，因此 `AXDialogueGateway` 的"`startTurn` 返回即 `context.complete`"语义不变。
+- 车道枚举与 `payload.lane()` 是两件事：**信封仍是 `CHAT` 车道**（§3.2 的"执行位置 = CHAT"不变），`LONG` 只表示"我们自己的等待线程落在哪条执行队列"。写进实现注释，避免以后有人以为主对话被挪到了 `TASK`。
+
+### 12.2 一步的形状（伪代码）
+
+```text
+submitLlmTurn(...)：                                        # 仍在原线程（CPU 车道）
+    ... 现有全部前置工作（context / prompt / appendTurn(user) / outputProcessor.startTurn / 状态发布）
+    step    = new AXTurnStep()                              # 一次性信号槽（包内类型）
+    pending = new PendingTurn(..., step)                     # 回调里做现有全部工作，末尾 signal
+    execution.llmRequestId("")                               # 先清空，防止旧 id 被误取消
+    submitAgentTurn(activityId, () -> {                      # 切到 LONG 车道
+        outcome = loop.run(context -> {
+            if (context.cancelled()) throw new InterruptedException();     # 取消早于提交
+            envelope = llmClient.submit(deliveryEnvelope, payload, pending)
+            execution.llmRequestId(envelope.envelopeId())
+            if (execution.isCancelled())                                  # 取消晚于提交
+                llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), execution.cancellationIfCancelled())
+            return step.await(context.remainingMillis())                   # 有界等待
+        }, AXRunCancellation.of(
+                () -> execution.cancellationIfCancelled() != null,
+                execution::cancellationIfCancelled))
+        if (outcome.termination() != COMPLETED && isCurrent(execution))
+            cancelExecution(execution, reasonOf(outcome))     # 兜底：唯一取消入口
+    })
+```
+
+`AXTurnStep.await(remainingMillis)`：
+
+```text
+while (signal 为空):
+    if (已取消)        throw InterruptedException
+    if (remaining ≤ 0) throw TimeoutException
+    latch.await(min(50ms, remaining))        # 50ms 只是"取消"的唤醒粒度
+返回 signal                                   # Finished / Failed
+complete(signal) 幂等 + countDown()           # 终态回调立即唤醒，不等 50ms
+```
+
+**两条顺序纪律（等价性的基石，必须写进实现注释）**：
+
+1. **回调先做完现有工作，再 `complete`**。`onResult` / `onCancelled` / `onCancellationResult` 的现有职责（`appendOutput` / `completeOutput` / `failOutput`、`appendAssistantVisibleText`、`finish(...)`）全部前置，`complete` 放在最后一行。于是"循环返回 `COMPLETED`"⇒"turn 已经收尾"，循环线程**永不**碰输出与会话。
+2. **`complete` 先于 `await` 到达也安全**。信号槽是"`AtomicReference` + `CountDownLatch`"：若 provider 在 `submit` 内同步回灌（本地缓存 / 同步派发），`await` 立即返回。这是测试最容易踩的一条，必须有专门用例。
+
+### 12.3 （Q2）`cancelRequestAwaitTerminal` 怎么接；`CancellationScope` 在两种策略下的表现
+
+**现状（读码确认，可原样复用）**：`AXLlmClient.cancelRequestAwaitTerminal` 只做三件事 —— `markCancelling()`（CAS）、`notifyCancelled(...)`（回调 `onCancelled`）、`adapter.cancelLlmRequest(...)`。**它自己不等任何东西**；"await terminal"指的是"保留 handler，等 provider 回终态 `cancelled` 时再走 `onCancellationResult`"。所以取消不会阻塞任何人。
+
+| 场景 | 谁来唤醒等待中的循环 | 结果 |
+|---|---|---|
+| 抢占 / 玩家再说话 / 模块卸载（走 `cancelExecution`） | `cancelRequestAwaitTerminal` → `onCancelled` → `complete(cancelled)` | 立刻醒，返回 `CANCELLED`（reason 由探针给出） |
+| 取消发生在 `submit` 之前 | step 入口的 `context.cancelled()` 检查 | 抛 `InterruptedException` → `CANCELLED`，且**不发出请求** |
+| 取消发生在 `submit` 返回之后、`llmRequestId` 赋值之前 | `submit` 后的 `execution.isCancelled()` 复查（现有逻辑搬进 step） | 立即取消该 envelope |
+| 取消只到达 `execution`，回调从未被调（例如 envelope 已被 `sweepExpired` 清掉） | `await` 的 50ms 粒度轮询 | 最坏 50ms 后返回 `CANCELLED`（兜底，不依赖回调） |
+
+**取消传播按策略值**（`AXRunPolicy.cancellationScope`，第一片已定义）：
+
+| 策略 | 取值 | 语义与本片状态 |
+|---|---|---|
+| **`SIMPLE`** | `SELF_ONLY` | 只取消本 turn 自己那一个 LLM envelope。**本片生效**，与现状完全一致 |
+| `COMPLEX` | `CHILDREN` | run 派生的全部子请求一起取消。**委派片才接**，本片不产生该路径 |
+
+> "只取消 LLM envelope"不等于"其它两个请求不管"：`dynamicFactClient` / `memoryRetriever` / `budgetResolver` 的取消仍由现有 `cancelExecution` 承担（它本来就挨个取消）。**循环不得绕开 `cancelExecution` 自行取消**，否则会出现"能力请求还活着、turn 已经结束"。
+
+**必须一并修的一处竞态（否则 `CANCELLED` 可能带 null 原因）**：`AXTurnExecution.cancel` 是"先 CAS `cancelled`、后写 `cancellation`"：
+
+```java
+boolean cancel(AXTurnCancellation reason) {
+    boolean changed = cancelled.compareAndSet(false, true);
+    if (changed) cancellation = reason;      // ← 读到 cancelled=true 的线程此刻可能读到 null
+    return changed;
+}
+```
+
+而 `AXRunOutcome` 的不变量要求"`CANCELLED` 必带原因"。改法（最小）：`cancel` 加 `synchronized`，并新增
+
+```java
+synchronized AXTurnCancellation cancellationIfCancelled()   // 一次读到一致的 (cancelled, reason)
+```
+
+探针的谓词与原因读取**都**走这一个方法，竞态消失，且不必编造兜底文案（工程规约：不硬编码语言内容）。
+
+### 12.4 （Q3）三层超时怎么叠加，谁先赢
+
+| 层 | 取值 | 怎么触发 | 谁先赢 |
+|---|---|---|---|
+| **① `AXRunPolicy`（本片新增）** | `SIMPLE` **10s** | 循环线程 `await(remainingMillis)` 到期 → `ABORT_TIMEOUT` | **常态下第一个到**（10s < 30s < 60s） |
+| ② LLM 请求 envelope | `deadline 30s` / `expire 60s`（`AdapterDefaults.standard()`，`AXProtocolAdapter` 第 52 行） | `AXLlmClient.handleResult` 的过期检查 + `sweepExpired()`（只在 submit / stream / result 时扫） | 只可能在①失效时先到（循环线程卡死、或将来放宽 policy） |
+| ③ IA 交付租约 | `delivery.expireAtMillis()`；`extendSessionIfNeeded` 在剩余 <3s 时再要 10s | IA 判定 `EXPIRED` 并释放会话 → AX 收到取消 | **只在租约短于 10s 时先到**（此时循环返回 `CANCELLED`，原因由 IA 侧给出） |
+
+**叠加规则（写死）**：
+
+1. **①到期必须主动取消②**：`ABORT_TIMEOUT` → `cancelExecution(expired)` → 现有链路 `cancelRequestAwaitTerminal` + `onCancelled` + `finish(EXPIRED)`。不这样做就会出现"信封 60s 后才回结果"——`isCurrent` 会拦住它，但 pending 表被白占 50s。
+2. **不改②的任何时间参数**（`AdapterDefaults` / `EnvelopeHeader` / 协议层零改动）。调整 envelope 时序是协议层议题，不混进本片。
+3. **②的过期检查对 `TASK` 车道恒为 false**（`AXLlmClient.PendingRequest.expired`），所以③只覆盖 `CHAT`；`COMPLEX`（委派片）在 `TASK` 车道必须靠①的 120s 自己兜底 —— 这条留给委派片验证。
+4. 三层同时到期时按 §3.3 优先级记终态：②/③ 若已触发 `onCancelled`，循环只能得到 `CANCELLED`；只有①先到才记 `ABORT_TIMEOUT`。两者不会同时写入（`complete` 一次性）。
+
+### 12.5 （Q4）失败与异常如何转成 `AXStepOutcome` / `AXRunOutcome`（不吞异常）
+
+| 来源 | step 的返回 / 抛出 | 循环终态 | orchestrator 动作 | 与现状对照 |
+|---|---|---|---|---|
+| `onResult` 且 `isCompleted()` | `complete(Finished(payload))` | `COMPLETED` | **无额外动作**（回调已 `finish(OWNER_COMPLETED)`） | 完全一致 |
+| `onResult` 且非 completed | `complete(Failed(payload))` → step 抛 `AXTurnStepException(payload)` | `FAILED`（`failure()` 保留） | `isCurrent` 已为 false（回调已 finish）→ **不重复动作** | 一致（失败提示仍由回调的 `failOutput` 发出） |
+| provider 回 `cancelled`（`onCancellationResult`） | `complete(Cancelled)` → step 抛 `InterruptedException` | `CANCELLED` | `isCurrent` 已为 false → 不重复 | 一致（部分文本落盘仍在 `onCancellationResult`） |
+| `submit` 抛异常（无 provider / 参数非法） | 原异常上抛 | `FAILED`，`failure()` = 原异常 | `cancelExecution(OWNER_FAILED)` → `onCancelled` → 失败提示 + `release(OWNER_FAILED)` | **行为变好**：今天该异常会从回调线程逃出去、turn 卡住不释放 |
+| `await` 超时 | 抛 `TimeoutException` | `ABORT_TIMEOUT` | `cancelExecution(expired)` → `onCancelled` → `release(EXPIRED)` | **新行为**：今天要等 60s 的 envelope 过期 |
+| 外部取消 | 抛 `InterruptedException`（探针已 cancelled） | `CANCELLED` | 无额外动作 | 一致 |
+
+**不吞异常的三条落点**：
+
+1. `AXRunOutcome.failure()` 保存原始 `Throwable`（第一片已有字段），**测试断言非空且是同一个实例**。
+2. `FAILED` 时把 `failure().getMessage()`（非空时）作为 `AXTurnCancellation.message`，走现有 `failOutput(reason)` 通道 —— **不新建通道、不新造文案**。
+3. 循环线程上不许 `catch (Exception ignore)`；`InterruptedException` 必须 `Thread.currentThread().interrupt()` 后再返回终态（第一片已做，本片只补"探针已取消时记 `CANCELLED`"）。
+
+> ⚠ **必须加 `isCurrent(execution)` 这道门**：`cancelExecution` 开头只检查 `execution.cancel(...)` 是否成功，**不检查 turn 是否已结束**。对已 `finish` 的 turn 再走一次 `cancelExecution`，会重复 `outputProcessor.interrupt(...)` 与 `statusPublisher.interrupted()/failed()`。`finish` 已把 `activeExecution` 置空，所以 `isCurrent` 恰好就是"还没收尾"的判据。
+
+### 12.6 （Q5）现有 turn 生命周期会不会被改变
+
+| 项 | 结论 |
+|---|---|
+| `sessionController.release` / `extend` | **调用点、参数、频率不变**。唯一变化：`ABORT_TIMEOUT` 让 `release(EXPIRED)` 从"60s 级"提前到 10s（这正是本片要的收益） |
+| `PresenceActivity` 发布（`accepted` / `active(THINKING)` / `active(RESPONDING)` / `terminal`） | **全部不变**。新增的 `ABORT_TIMEOUT` 走 `onCancelled → statusPublisher.failed("cancelled.EXPIRED")`，与今天的过期路径同形 |
+| `outputProcessor.startTurn` / `append` / `complete` / `fail`、TTS 首句时机 | **线程与调用点都不变**（仍在 `startTurn` 与回调线程上）—— 这是本方案最重要的等价性保证 |
+| `appendTurn(user)` / `appendAssistantVisibleText` 落盘 | 不变（`markAssistantPersisted` 的一次性语义不变，测试断言"恰好一次"） |
+| `activeExecution` / `generation` / `isCurrent` | 语义不变；新增的只有"循环线程也读 `isCurrent`" |
+| **确实改变的**：`llmClient.submit` 的执行线程 | 从 CPU 车道 → `LONG` 车道（同一 turn 内、任何回调之前；`llmRequestId` 的赋值时机随之后移几十微秒） |
+
+### 12.7 （Q6）改造范围
+
+| # | 文件 | 改动 | 量级 |
+|---|---|---|---|
+| 1 | `core/agent/AXAgentLoop` | `InterruptedException`：探针已取消 → `CANCELLED`（带原因）；未取消 → `FAILED` | ~6 行 |
+| 2 | `core/turn/AXTurnStep`（**新增**，包内可见） | 一次性信号槽：`complete` 幂等、`await(remaining)` 有界等待 | ~70 行 |
+| 3 | `core/turn/AXTurnOrchestrator` | `submitLlmTurn` 尾部改为"提交循环任务"；新增 `runAgentTurn(...)` / `reasonOf(outcome)`；`PendingTurn` 三个回调末尾各加一行 `complete(...)`；构造器注入提交器 | ~50 行 |
+| 4 | `core/turn/AXTurnExecution` | `cancel` 加 `synchronized`；新增 `cancellationIfCancelled()` | ~6 行 |
+| 5 | `AXProtocolAdapter` | 新增 `submitAgentTurn(taskId, task)`（`LONG` + `:agent` + 并发 1 + 队列 4） | ~8 行 |
+| 6 | `AXModule` | 注入提交器（`this::submitAgentTurn`），无静态单例 | ~2 行 |
+| 7 | 测试 | 等价性 3 条 + 取消 / 超时 / 提交异常 3 条（§12.8） | ~180 行 |
+
+**协议层零改动**：不新增 payload、不动 `EnvelopeHeader`、不动 `AdapterDefaults`、不动 `CancellationScope`、不动 `AXLlmClient`。这也是本方案能"先出方案再动手"的前提。
+
+### 12.8 测试策略与等价性判据
+
+**注入代替线程池**：`AXTurnOrchestrator` 构造器注入一个"跑 run"的函数式接口（生产 = `submitAgentTurn`；测试 = 单线程 executor + 关停）。
+
+> ⚠ **测试里不能用 `Runnable::run` 内联跑循环**：现有 `AXTurnOrchestratorTest`（954 行）的驱动方式是"测试线程调 `startTurn` → 轮询等 `llmRequest` 出现 → **测试线程**调 `llmClient.handleResult(...)` 回灌结果"。内联跑循环会让测试线程卡在等待上、永远走不到回灌那一步 → **死锁**。这既是测试约束，也反证了"生产必须切线程"。
+
+**等价性三条硬断言**（新测试类）：
+
+1. **请求等价**：提交的 `LLMPromptRequestPayload` 与"同输入下 `llmRequestBuilder.buildChatRequest(...)` 的产出"逐字段相等，且 `toolsJson` 仍为 `null`（A3）。
+2. **结果等价**：完成路径产出 `COMPLETED` + `release(OWNER_COMPLETED)` + assistant **恰好落盘一次** + 播报句子数与现状一致。
+3. **终端唯一**：`sessionController.release` 每 turn **恰好一次**（`requestRelease` 的 CAS 保证；测试断言调用次数，而不是"是否调用过"）。
+
+**新增三条**：取消（`CANCELLED` + reason 原样透传 + 取消前不发请求）、超时（10s 到 → `ABORT_TIMEOUT` + `release(EXPIRED)` + envelope 被取消）、提交异常（`FAILED` + `failure()` 非空 + `release(OWNER_FAILED)`）。
+
+**现有 223 条 auxilium 测试**：预计**零断言变更** —— 它们全部用 `await(...)` 轮询。唯一要留意的形态是"`startTurn` 返回后立刻断言提交已发生"（若有，补一行 `await` 即可，属脚手架调整而非行为变更）。跑完后若真出现断言变化，逐条列在交付里说明原因。
+
+### 12.9 风险与回滚
+
+| 风险 | 级别 | 护栏 |
+|---|---|---|
+| 回调忘了"先干活后 signal"，导致循环报 `COMPLETED` 但 turn 未收尾 | **最高** | `AXTurnStep` 包内可见且只由 `PendingTurn` 持有；`complete` 一次性；专门用例断言"`release` 先于 `outcome` 可见" |
+| `LONG` 车道被占满（压缩也在用它） | 中 | `:agent` 独立并发键 + `maxConcurrency 1` + 队列 4；压缩走 `:memory`，互不排队 |
+| 取消竞态导致 `CANCELLED` 无原因 | 中 | §12.3 的 `cancellationIfCancelled()` 同步读 |
+| 超时兜底误伤已收尾的 turn | 中 | §12.5 的 `isCurrent` 门 + "超时与完成同时发生"用例 |
+| 灰度期两条路径分叉 | 低 | 不设开关（§12.0 / E）；回滚 = revert 一次提交，净增约 70 行，不涉及存储与协议 |
+
+### 12.10 本节需要确认的三点
+
+1. **方案 A 是否照此执行** —— 尤其"循环跑在 `LONG` 车道 + 独立并发键 `:agent`"这一条（本片唯一新增的线程占用）。
+2. **是否同意改 `AXTurnExecution.cancel`（加 `synchronized` + 新访问器）** —— 本节唯一触碰既有并发语义的地方。
+3. **是否接受"`submit` 失败从'卡住'变成 `OWNER_FAILED` 释放"**（§12.5 第 4 行）—— 这是行为改进，但确实是行为变化，需要有意识地接受。
 
 ---
 

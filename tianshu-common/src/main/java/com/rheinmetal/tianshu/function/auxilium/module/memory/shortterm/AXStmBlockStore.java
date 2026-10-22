@@ -57,7 +57,9 @@ public final class AXStmBlockStore {
                     normalized.sourceTurnCount(),
                     normalized.tokenCount(),
                     normalized.content(),
-                    normalized.attachedEventIds()
+                    normalized.attachedEventIds(),
+                    normalized.sourceFromTurnId(),
+                    normalized.sourceToTurnId()
             );
         }
         return jsonStore.tryAppendJsonLine(layout.stmBlocksFile(scope), normalized.toJson());

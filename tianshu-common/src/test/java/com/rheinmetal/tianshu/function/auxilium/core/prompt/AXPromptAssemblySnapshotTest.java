@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlock;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptResourceRepository;
@@ -46,10 +47,15 @@ class AXPromptAssemblySnapshotTest {
                         stm(scope, "retrieved", "玩家之前问过铁砧。", 1000L),
                         List.of("玩家死亡一次。")
                 )),
-                List.of(new AXMemoryBlockView(
-                        stm(scope, "recent", "玩家正在整理装备。", 2000L),
-                        List.of("玩家解锁成就：Stone Age")
-                ))
+                new AXMemorySummaryBlock(
+                        3,
+                        List.of(new AXMemoryBlockView(
+                                stm(scope, "recent", "玩家正在整理装备。", 2000L),
+                                List.of("玩家解锁成就：Stone Age")
+                        )),
+                        0,
+                        0
+                )
         );
         AXContextSnapshot context = new AXContextSnapshot(
                 scope,
@@ -95,15 +101,18 @@ class AXPromptAssemblySnapshotTest {
 
         String joined = messages.stream().map(LLMPromptRequestPayload.MessageItemPayload::content).collect(java.util.stream.Collectors.joining("\n\n"));
         // system 段内顺序：ax_system → game_context → player_memory（recent_dialogue 已展开为对话流）
-        assertOrdered(joined, "<ax_system>", "<game_context>", "<player_memory>", "当前输入：这个怎么修？");
+        assertOrdered(joined, "<ax_system>", "<memory_summary>", "<game_context>", "<player_memory>", "当前输入：这个怎么修？");
         assertTrue(joined.contains("一到三句"));
         assertTrue(joined.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(joined.contains("minecraft:anvil | 铁砧可以修复工具。"));
         assertTrue(joined.contains("你记得此前与玩家发生过这些事情"));
-        assertTrue(joined.contains("最近与玩家发生了这些事情"));
+        assertTrue(joined.contains("<memory_summary>"), "累积摘要块必须出现在 prompt 里");
+        assertTrue(joined.contains("玩家正在整理装备。"));
         assertTrue(!joined.contains("STM"));
+        // 检索命中的摘要带着它当时的世界事件进尾部（player_memory）。
         assertTrue(joined.contains("玩家死亡一次。"));
-        assertTrue(joined.contains("玩家解锁成就：Stone Age"));
+        // 摘要块只渲染单元摘要正文：挂在块上的世界事件不重复进前缀，它们随检索进入尾部。
+        assertTrue(!joined.contains("Stone Age"), "摘要块不得夹带附件事件");
         assertTrue(!joined.contains("IA delivery 附带上下文"));
     }
 

@@ -11,12 +11,24 @@ public interface LlmConfiguration {
      */
     String DEFAULT_LLM_REMOTE_MODEL = "deepseek-flash";
 
+    /** Provider of the entry synthesised from the legacy single-model keys. */
+    String DEFAULT_LLM_PROVIDER_ID = "deepseek";
+
     /**
      * Declared context window of the cloud model, in tokens. The cloud endpoint does not report its
      * window, so it has to be configured; every AX budget value is derived from this single number.
      * Defaults to the 100K tier.
      */
     int DEFAULT_LLM_CONTEXT_WINDOW_TOKENS = 102_400;
+
+    /**
+     * Upper bound of a declared context window; the storage layer clamps to it.
+     *
+     * <p>There is no lower bound here on purpose: the smallest accepted window is the smallest budget
+     * tier, and {@link LlmContextTiers#minimumTier()} is the only definition of it. A second constant
+     * would be a second answer, and the two would drift apart the moment a tier is added.
+     */
+    int MAX_LLM_CONTEXT_WINDOW_TOKENS = 2_097_152;
 
     /*
      * Token prices in CNY, per million tokens, as published by the provider for the mainland-China
@@ -32,6 +44,12 @@ public interface LlmConfiguration {
      * These are defaults only. The provider may change list prices; the amount shown to the player is
      * whatever the configured numbers are denominated in, so changing the denomination is a config
      * edit, not a code edit.
+     *
+     * These prices feed the local estimate only. Balance and cost displayed as authoritative come
+     * from the provider's own account answer (see {@code function.llm.account}); this arithmetic
+     * exists for reconciliation and is labelled as an estimate in the HUD. It must never be
+     * presented as a bill, and a provider figure must never be corrected with it, because a balance
+     * difference also carries grants and refunds that token pricing cannot see.
      */
     double DEFAULT_LLM_USAGE_CACHE_MISS_INPUT_PRICE_PER_MILLION = 2.00D;
     double DEFAULT_LLM_USAGE_CACHE_HIT_INPUT_PRICE_PER_MILLION = 0.04D;
@@ -51,22 +69,77 @@ public interface LlmConfiguration {
      * provides embeddings for vector RAG. There is deliberately no switch back to local chat.
      */
 
+    /**
+     * Base URL of the <em>active</em> model. This is the legacy single-model accessor: the chat path,
+     * the settings page and the account key all keep reading it, so an implementation that stores a
+     * model list has to report the active entry's value here. The default reports the single model
+     * this profile knows, which is by definition the active one.
+     */
     default String getLlmRemoteBaseUrl() {
         return DEFAULT_LLM_REMOTE_BASE_URL;
     }
 
-    /** Bearer credential of the cloud endpoint. Never log, echo or serialise this value. */
+    /** Bearer credential of the active model. Never log, echo or serialise this value. */
     default String getLlmRemoteApiKey() {
         return "";
     }
 
+    /** Provider model id of the active model. Same contract as {@link #getLlmRemoteBaseUrl()}. */
     default String getLlmRemoteModel() {
         return DEFAULT_LLM_REMOTE_MODEL;
     }
 
-    /** Usable context window of the active cloud model; see {@link #DEFAULT_LLM_CONTEXT_WINDOW_TOKENS}. */
+    /**
+     * Usable context window of the active model; see {@link #DEFAULT_LLM_CONTEXT_WINDOW_TOKENS}.
+     * Same contract as {@link #getLlmRemoteBaseUrl()}.
+     */
     default int getLlmContextWindowTokens() {
         return DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
+    }
+
+    /*
+     * Multi-model storage.
+     *
+     * The four getters above stay authoritative for the *active* model and every runtime caller
+     * keeps using them, so nothing on the chat path has to change. Implementations that grow a real
+     * model list must keep that invariant: whenever the active entry changes, getLlmRemoteBaseUrl /
+     * getLlmRemoteApiKey / getLlmRemoteModel / getLlmContextWindowTokens must report that entry.
+     *
+     * This direction of the dependency is deliberate. The list below is the thing an old config file
+     * does not have, so its default has to be synthesised from the single-model getters; making those
+     * getters resolve through the list instead would close the loop and never terminate.
+     */
+
+    /**
+     * Every configured model, in configuration order and never empty.
+     *
+     * <p>The default is the single legacy model, synthesised from the getters above, which is exactly
+     * what an old config file holds — so the migration is a read, and reading it twice yields the
+     * same answer.
+     */
+    default java.util.List<LlmModelEntry> getLlmModels() {
+        return java.util.List.of(LlmModelEntry.legacy(
+                getLlmRemoteBaseUrl(),
+                getLlmRemoteModel(),
+                getLlmContextWindowTokens()
+        ));
+    }
+
+    /** Id of the entry the runtime currently uses; always the id of one of {@link #getLlmModels()}. */
+    default String getLlmActiveModelId() {
+        return LlmModelEntry.LEGACY_ID;
+    }
+
+    /**
+     * Bearer credential of one entry. Kept out of {@link LlmModelEntry} so that serialising or
+     * logging an entry can never leak it; the storage layer keys it by entry id instead.
+     *
+     * <p>The default answers the active entry with the single legacy credential and every other id
+     * with nothing, because a profile without a model list only has that one credential.
+     */
+    default String getLlmApiKey(String modelId) {
+        String activeModelId = getLlmActiveModelId();
+        return activeModelId != null && activeModelId.equals(modelId) ? getLlmRemoteApiKey() : "";
     }
 
     /**

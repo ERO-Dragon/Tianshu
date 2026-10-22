@@ -425,6 +425,23 @@ E 是原子事件，来自 EventChain 落库或硬事件直通。E 是检索探�
 
 用 `user` 而不新增第二条 `system` 的三条理由见 03 §5.8.4，本文不重复。**v4 补充**：`index` 与记忆库 `unitIndex` **必须一致**（F5），这是 `Event → 具体单元摘要` 的唯一定位依据。
 
+> **⚑ v8 实现口径（本片已落地，与上面规则 5/7 的"同代并列"表述不同，以此为准）**
+>
+> 落地形态是**累积式摘要块**：块里放的是**已晋升摘要按新→旧的前缀**，不区分代次；容量上限就是 `SB(tier)`。
+>
+> | 项 | 实现 |
+> |---|---|
+> | 晋升时机 | **只在换代**：压缩窗口装满（raw ≥ `MAX_RAW_TOKENS`）→ 把"库里还没晋升的单元摘要"整体写进账本，块随之变长；单元压缩本身（静默）不动块 |
+> | 顺序 | 新→旧：代次大的在前，同一代内 `sourceToMillis` 大的在前；每条渲染成 `<unit_summary>`，外层 `<memory_summary>` |
+> | 容量 | `SB = clamp(0.05 × W, 2048, 24576)`；装不下时**从最旧（末尾）淘汰** |
+> | 淘汰代价 | 只影响**渲染**：被淘汰的摘要仍在记忆库、账本照旧保留、其事件照常可检索 |
+> | 兜底 | 最新一份**永远保留**（即使单份就超 `SB`）——否则换代后边界接续会变成空，断层就没有"接续"可言 |
+> | 状态 | 块是**派生量**（账本 + 摘要库 + SB），不落盘；两次渲染在同一代次内逐字节相同 |
+> | 观测 | `generation` / `summariesInBlock` / `summariesDroppedTotal` / `summaryBlockTokens` 写进 `memory_stats.json` |
+>
+> 与 v4–v6 的差别只在此一处：v4 的"块 = 当前这一代"被替换为"块 = 最近若干代的一个前缀"；
+> 淘汰规则（新→旧装、装不下就停）与"淘汰不等于删除"两条不变。
+
 ### 4.5 preferences（第三要素）
 
 | 字段 | 取值 | 校验 |
@@ -804,6 +821,26 @@ splitIntoUnits(compressionWindow):                 // v4：切的是「压缩窗
 
 ### 5.6 时序：两级——静默单元压缩 / 换代（v4 重写）
 
+> **⚑ v8 实现口径（与代码逐条对齐，优先于本节旧表述）**
+>
+> 两级动作的边界只有一条：**单元压缩不碰 prompt，换代才碰**。
+>
+> ```text
+> 【单元压缩】攒够一个压缩单元（compressionUnitTokenBudget）
+>            → 产出 摘要 / 事件 / 偏好 入库，并在单元摘要上记下 sourceToTurnId（"已覆盖到哪一轮"）
+>            ← raw 原文【不移出】、摘要块【不变】、prompt 逐字节不变
+> 【换代】   压缩窗口装满 → 摘要晋升进摘要块（新→旧）+ 压缩窗口内已被覆盖的 raw【此时才移出】
+>            保持窗口（KEEP_MAX 那几轮）任何情况下都不移出
+> ```
+>
+> | 判据 | 实现取值 | 说明 |
+> |---|---|---|
+> | A1 单元压缩 | 未覆盖且不属于保持窗口的 raw ≥ `compressionUnitTokenBudget`（= `min(8192, COMPRESS_MAX)`） | 攒不够一个完整单元不压，避免半步单元 |
+> | A2 换代 | raw 窗口已装满：`maxRawTokenCount = KEEP_MAX + COMPRESS_MAX`（实现里"装满"取"总量顶到上限"或"一次 append 触发了容量硬裁剪"） | **不是** `compressionWatermarkTokenBudget` |
+>
+> 两把尺子不要混用：`WATERMARK = 0.70 × W` 描述的是**整份提示词**（system + 摘要块 + raw + 尾部）允许涨到哪，
+> 它天然大于 raw 自己的容量（`MAX_RAW = KEEP + COMPRESS = WATERMARK − SB − TAIL`），**不能**拿来当 raw 的阈值。
+
 ```text
 ① 触发（同一挂载点，两件事分开判，沿用现有维护协调器）
    点 A：回答落盘后        afterAssistantAnswer(scope)   —— 主判定（判 A1 与 A2）
@@ -895,6 +932,24 @@ score = relevance × recency × importance          // ∈ (0, 1]
 | **recency** | `0.05 + 0.95 × 2^(−ageHours / (168 × S))` | 只读 `happenedAtMillis` | 否 |
 | **importance** | `event.importance / 10`，`event.importance ∈ [1,10]` | **E 的字段本身**：抽取阶段由模型打分（D4）；缺失/越界时由 §6.3 规则表兜底 | **是**（随 E 落库，写入后永不改写） |
 
+> **⚑ v8 实现口径（本片已落地）**：打分实现集中在 `AXMemoryScoring`（纯函数、无状态），检索器只调用
+> 它一次，**没有第二套打分实现**。三个因子的取值就是上表，三个地板分别是
+> `RECENCY_FLOOR=0.05` / `PINNED_RECENCY_FLOOR=0.50` / `IMPORTANCE_FLOOR=0.1`；
+> 旧的线性 `timeWeight`（`maxTimeDecay=0.10`、`timeDecayDaysToMax=3650`，等价于"十年才衰 10%"）
+> 连同 `AXMemoryRetrievalPolicy` 里的这两个字段**一并删除**——时间维度现在真正参与排序。
+>
+> **importance 为什么是 `raw/10`（0.1–1.0）而不是更窄的 0.4–1.0**：分档线 `0.72 × top` 与"同簇内
+> importance 差 2 分"的推导（§6.4）就是按 0.1–1.0 的 10 倍动态范围算出来的；压到 2.5 倍会让
+> `importance_drift`（模型虚高一档）几乎不影响排序，等于放弃 §6.3.6 那道校验防线的前置条件。
+> 真正防"重要性压过相关性"的是**乘法本身**（relevance 仍是一级因子）、`0.72 × top` 相对线，以及
+> §6.3.4 的强制 Hot 线要求 `relevance ≥ 0.60`——不是靠压缩 importance 的区间。
+>
+> **召回计数不落盘（§6.2 已论证，本片复核后维持）**：`S` 由 `turnRefs.size()` 推导，而不是累计
+> "被召回了几次"。理由有三条，且都是硬约束：① 读路径回写违反 §6.1 的三条禁令（`hitCount` /
+> `lastHit` / `recallCount` 一律禁止）；② 同一份历史在不同回放里会给出不同分数，与 03 的确定性
+> 纪律冲突；③ `turnRefs` 本来就随 E 落库（append-only、重启可恢复），不需要新增计数文件，也就不存在
+> "计数写入破坏 append-only"这个问题。
+
 **为什么乘法而不是加法**（这是与 03 §4.2 的口径差异，§11.2 已登记）：
 
 - 加法（`αr·recency + αi·importance + αv·relevance`，03 §4.2）会让"任意一项很高"就进候选：一条 relevance 0.9 但 importance 0.1、recency 0.05 的噪声事件得 `(0.05+0.1+0.9)/3 ≈ 0.35`，比一条三项均衡（0.5/0.5/0.5 = 0.5）的实质事件更容易被描述成"差不多"。用户决策要求乘法，语义上更贴合"三个条件都必须成立"。
@@ -930,6 +985,18 @@ S        = clamp(supportStrength, 1.0, 8.0)
 HALF_LIFE_HOURS(S) = 168 × S          // S=1 → 7 天；S=8 → 56 天
 recency  = 0.05 + 0.95 × 2^(−ageHours / HALF_LIFE_HOURS(S))
 ```
+
+> **⚑ v8 实现口径（本片已落地）**：常量在 `AXMemoryScoring`：`HALF_LIFE_HOURS_BASE=168`、
+> `SUPPORT_BASE=1.0`、`SUPPORT_PER_TURN_REF=0.5`、`SUPPORT_BONUS_CAP=7.0`、`SUPPORT_MAX=8.0`、
+> `RECENCY_FLOOR=0.05`。形态就是上面的 `0.05 + 0.95 × 2^(−ageHours / (168 × S))`，指数底数为 2，
+> `S = clamp(1 + min(7, 0.5 × (turnRefs−1)), 1, 8)`；单测逐行校验了 7 天 = 0.525、1000 天贴地板 0.05。
+>
+> **本片新增：重要性钉子**（`PINNED_IMPORTANCE = 7`，`PINNED_RECENCY_FLOOR = 0.50`）。
+> `importance ≥ 7` 的记忆属于位置 / 明示偏好 / 未完成承诺这类**不可重建**的信息，不能因为"这段时间
+> 没人问它"就被时间衰减推进遗忘区，所以它们的 `recency` 地板被单独抬到 0.50：仍然随时间衰减，但
+> 永不低于该线。为什么是 0.50：强制 Hot 线要求 `relevance ≥ 0.60`，于是钉子事件的最坏得分
+> `0.60 × 0.50 × 0.7 = 0.21`，刚好贴着 Hot 绝对地板 `0.22`、远高于 Warm 地板 `0.08`——"重要的旧事"
+> 不会被时间打进 Cold，但也不会盖过本轮真正高相关的新事件。
 
 **为什么用 `happenedAtMillis` 而不是 `lastRecalledAt`**：后者需要召回计数（§6.1 已禁止）。用"事件发生时间"意味着衰减只随客观时间流逝，可回放、可重算、与 03 §2.4「确定性」兼容。
 
@@ -1140,6 +1207,12 @@ memInjectItemTokenMax  = 40         // 单条上限：importance 前缀 + 事件
 上限体积：12 × 40 = 480 token ≤ 512  ✓   ← 所以不需要任何"按 token 截断"的逻辑
 ```
 
+> **⚑ v8 实现口径（本片已落地）**：分档用的分数是**块级聚合分**，不是单事件分：
+> `blockScore = maxEventScore × (1 + 0.10 × log1p(命中事件数 − 1))`（`CORROBORATION_WEIGHT=0.10`）。
+> 用 max 而不是求和，是因为求和会让"命中次数多"压过"命中更强"，把一条弱相关事件堆出来的块顶上
+> Hot；多命中加权被限制在 +6.9%（2 条）到 +16%（5 条），永远小于分档线本身的间距（`0.72 × top`）。
+> `topScore`、Hot/Warm 相对线也都基于这个块级分。
+
 **层预算按条数（比例沿用 0.50 / 0.35 / 0.15）**：
 
 | 层 | 比例 | 条数预算（n = 12） |
@@ -1230,6 +1303,35 @@ T2 填充顺序：
 2. 整条放不下就跳过（同 1），不降级成"摘要行"。
 3. 同一次 prompt 不重复注入同一个 E。
 4. 预算常量集中在 §6.4，**不硬编码在检索器里**（§2.1）。
+
+---
+
+### 6.7 确定性排序（v8 新增，前缀稳定的前提）
+
+检索结果的顺序会影响注入条目的选择，而注入内容又决定提示词尾部字节。若同分候选的先后取决于
+`HashMap` 遍历顺序或提供方返回顺序，那么"同一份历史、同一轮上下文"在两台机器上可能给出不同的
+`T2`，前缀复用随之失效。因此**排序必须是全序**，不能只比分数。
+
+**块级（STM 候选）五级排序**（`AXMemoryRetriever.STM_ORDER`）：
+
+| 级别 | 键 | 方向 | 理由 |
+|---|---|---|---|
+| 1 | `score`（块级聚合分） | 降序 | 主排序 |
+| 2 | 块内最大 `importance` | 降序 | 同分时"更重要"优先（§6.3 的打分本来就该被看到） |
+| 3 | 块内最大 `recency` | 降序 | 同分时"更新"优先 |
+| 4 | 块内最大 `relevance` | 降序 | 同分时"更相关"优先 |
+| 5 | `stmId` | **升序** | 唯一且稳定的兜底键，保证全序成立 |
+
+第 3/4 级的新鲜度与相关性由 `score` 反推（`relevance = score / (recency × importanceFactor)`），
+与第 1 级同源，不会出现"排序键与显示分不一致"。
+
+**命中条目（L1/L2 RAG 结果）排序**：`score` 降序 → `entryId` 升序（`HIT_ENTRY_ORDER`）。
+L1/L2 的路由集合直接决定候选池，同样必须确定性。
+
+**追踪（trace）内部**：`EventHit` 按 `relevance` 降序 → `eventId` 升序。
+
+> 验收：`sameInputTwiceProducesTheSameOrdering`（`AXMemoryRetrieverTest`）用三条完全同分（同向量、同发生时间、同重要性）
+> 的事件断言"两次检索结果一致且落在 id 最小的那一块"，这只有在五级全序成立时才可能通过。
 
 ---
 
@@ -1403,15 +1505,20 @@ AX 对 LLM 的所有访问必须经过协议中心。
 
 ```
 parsed = parse(rawOutput)                     // §5.2
-if parsed.summary  ok      → 提交 M（追加 STM 代次）
-if parsed.eventChain ok    → 提交事件（不去重，按幂等键）；importance 缺失则规则兜底
-if parsed.preferences ok   → 展开为 kind=preference 的事件提交
-if summary 坏              → 该单元不提交；raw 保持"在窗口"；不消费窗口
-if eventChain 坏 && summary ok
-   → 提交 M；标记 batch = pending_extraction
-   → 下次维护用 raw 走"纯抽取小请求"补抽（不重跑压缩，不碰 M，不破坏前缀）
+if parsed.summary  ok      → 提交 M（单元摘要块）
+if parsed.eventChain ok    → 提交事件（不去重、不合并）；importance 缺失则规则兜底
+if parsed.preferences ok   → 按玩家 UUID 写入偏好库
+if summary 坏 && events 好 → **照常提交事件 + 消费该压缩单元**，不写 M；记 summary_parse_failed
+if 整份输出不可解析/为空   → 什么都不提交；raw 保持"在窗口"、不消费窗口（按失败重试）
+if eventChain 坏 && summary ok → 提交 M；事件为空（本片不补抽，留待后续切片）
 if error 出现在队列中间单元 → 只影响该单元，队列继续（§5.4 规则 4）
 ```
+
+> **⚑ v8 实现口径（与代码一致，覆盖上方旧口径）**：**摘要解析失败不再阻塞事件落库**。
+> 理由是事件的不可再生性：事件来自原文的一次性取舍，重试既会增加无界成本，也无法保证下次
+> 解析得更好；而断层由事件检索兜底（§5.3.3 第 1 条），摘要写差了只影响边界接续。
+> 因此"summary 坏 → 事件照落、单元照消费、不写 M"，并计 `summary_parse_failed` 诊断以量化失败率。
+> 只有"整份输出不可解析 / 空响应"才按调用失败处理（不消费窗口，下次重试）。
 
 ### G6 覆盖自检与低产出诊断
 
@@ -1424,11 +1531,26 @@ if coverage 缺失或不等 → 记 coverage_mismatch（不阻塞提交，但进
 
 **为什么不自动重试**：重试会放大成本且掩盖提示词问题；正确的处置是"记下来 + 人工看规则表"。这条对齐 03 §5.10 的退避思路（失败后降级而不是立刻重发）。
 
-### G7 幂等键（**是幂等键，不是去重键**）
+### G7 幂等键（**本片不实现**；以"事件 id 含轮级溯源"替代）
 
 ```
-idempotencyKey = sha256(batchId + "|" + turnRef + "|" + factHash)
+eventId = "evt_" + base36(happenedAtMillis) + "_" + sha256(worldId + "|" + stmId + "|" + turnRefs + "|" + fact)
 ```
+
+> **⚑ v8 决定（已与代码对齐，作废上方 `idempotencyKey`）**：**不实现独立的幂等键**。
+> 结论是"同 `fact` + 同 `turnRefs` 本就是同一条事件"——两者都相同意味着同一轮里同一句话，
+> 它只可能是一次真实发生被模型复述，或者是同一批次的重放。因此把 **`turnRefs` 直接算进事件 id**
+> 就同时拿到了幂等与"不去重"：
+>
+> | 场景 | `turnRefs` | id | 结果 |
+> |---|---|---|---|
+> | 同批重放同一单元 | 相同 | 相同 | 幂等（不会出现两份） |
+> | 同一轮把同一句抽了两遍 | 相同 | 相同 | 视作同一条（解析噪声） |
+> | 同一件事真实发生两次（同日死两次） | 不同 | **不同** | **两条都留** |
+> | 不同批次抽到相同文本 | 不同（单元 id 不同） | 不同 | 两条都留 |
+>
+> 写入侧（`AXMemoryEventStore.appendAll`）**仍然不做任何去重**：它是 append-only 的客观事实记录，
+> id 相同只说明"这是同一条事件"，不代表写入可以跳过。
 
 | 场景 | 键是否相同 | 结果 | 是否符合预期 |
 |---|---|---|---|

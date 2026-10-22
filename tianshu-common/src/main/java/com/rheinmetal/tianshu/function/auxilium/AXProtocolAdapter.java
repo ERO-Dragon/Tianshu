@@ -35,6 +35,7 @@ import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
@@ -47,6 +48,8 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String CONTEXT_INPUT_CAPABILITY = ProtocolCapabilities.AX_CONTEXT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
     private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
+    /** Delegation backlog limit (design appendix A.2: broadcast queue limit 3, same order of magnitude). */
+    private static final int DELEGATE_RUN_QUEUE_CAPACITY = 3;
 
     public AXProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withSupportsStreaming(true));
@@ -134,6 +137,65 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 .maxConcurrency(1)
                 .queueCapacity(16)
                 .build(), task);
+    }
+
+    /**
+     * Submits one main-dialogue agent run to the {@code LONG} lane (design §12.1).
+     *
+     * <p>This is the only place a turn is allowed to block waiting for its LLM envelope: it occupies a
+     * dedicated long-running thread, never the protocol {@code CPU} lane the delivery callback runs on,
+     * and never the main/render thread.</p>
+     *
+     * <p>The concurrency key is {@code :agent}, deliberately distinct from the {@code :memory} key used
+     * by compression and context maintenance — otherwise one 120s compression would queue the player's
+     * sentence behind it. {@code maxConcurrency 1} keeps at most one main-dialogue run alive at a time.</p>
+     *
+     * <p>Lane is not payload: the LLM envelope itself stays on the {@code CHAT} lane. {@code LONG} only
+     * says where <em>our own</em> waiting thread lives, so the main dialogue is not moved to {@code TASK}.</p>
+     *
+     * @throws java.util.concurrent.RejectedExecutionException when the lane refuses the task, so the
+     *         caller retires the turn instead of letting it wait for an envelope that was never sent
+     */
+    public ProtocolTaskHandle submitAgentTurn(String taskId, Runnable task) {
+        ProtocolTaskHandle handle = submitTask(taskSpec(ExecutionLane.LONG)
+                .taskId(taskId)
+                .concurrencyKey(MODULE_ID + ":agent")
+                .maxConcurrency(1)
+                .queueCapacity(4)
+                .build(), task);
+        if (handle != null && handle.state() == ProtocolTaskState.REJECTED) {
+            String cause = handle.failureCause().map(Throwable::getMessage).orElse("");
+            throw new java.util.concurrent.RejectedExecutionException(cause);
+        }
+        return handle;
+    }
+
+    /**
+     * Submits one async delegation run to the {@code LONG} lane (design §5.1 step ④).
+     *
+     * <p>Four separate queue dimensions from the main dialogue: its own concurrency key
+     * {@code :agent_delegate}, {@code maxConcurrency 1} and a small backlog — so a 120s retrieval can never
+     * queue the player's next sentence behind it, and two delegations cannot interleave. The backlog is
+     * capped at {@link #DELEGATE_RUN_QUEUE_CAPACITY} (design appendix A.2: queue limit 3).</p>
+     *
+     * <p>The payload lane of the Complex envelope is {@code TASK} (design §3.2). {@code LONG} only says
+     * where <em>our own</em> waiting thread lives.</p>
+     *
+     * @throws java.util.concurrent.RejectedExecutionException when the lane refuses the task, so the caller
+     *         can write the {@code FAILED(rejected)} terminal instead of leaving the ticket pending
+     */
+    public ProtocolTaskHandle submitDelegateRun(String taskId, Runnable task) {
+        ProtocolTaskHandle handle = submitTask(taskSpec(ExecutionLane.LONG)
+                .taskId(taskId)
+                .concurrencyKey(MODULE_ID + ":agent_delegate")
+                .maxConcurrency(1)
+                .queueCapacity(DELEGATE_RUN_QUEUE_CAPACITY)
+                .build(), task);
+        if (handle != null && handle.state() == ProtocolTaskState.REJECTED) {
+            String cause = handle.failureCause().map(Throwable::getMessage).orElse("");
+            throw new java.util.concurrent.RejectedExecutionException(cause);
+        }
+        return handle;
     }
 
     public ProtocolTaskHandle scheduleTimeout(String taskId, Runnable task, Duration delay) {

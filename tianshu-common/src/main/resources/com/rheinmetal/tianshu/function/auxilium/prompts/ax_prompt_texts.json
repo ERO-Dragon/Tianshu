@@ -181,9 +181,13 @@
       "zh_cn": "你记得此前与玩家发生过这些事情：\n{{summaries}}",
       "en_us": "You remember these earlier interactions and events involving the player:\n{{summaries}}"
     },
-    "player_memory.recent_history_group": {
-      "zh_cn": "最近与玩家发生了这些事情：\n{{summaries}}",
-      "en_us": "These things happened recently with the player:\n{{summaries}}"
+    "memory_summary.block": {
+      "zh_cn": "<memory_summary>\n{{units}}\n</memory_summary>",
+      "en_us": "<memory_summary>\n{{units}}\n</memory_summary>"
+    },
+    "memory_summary.unit_line": {
+      "zh_cn": "<unit_summary>\n{{summary}}\n</unit_summary>",
+      "en_us": "<unit_summary>\n{{summary}}\n</unit_summary>"
     },
     "player_memory.summary_line": {
       "zh_cn": "- {{summary}}",

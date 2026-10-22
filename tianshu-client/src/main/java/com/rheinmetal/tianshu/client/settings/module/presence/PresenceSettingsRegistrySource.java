@@ -33,20 +33,9 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
     private final BooleanSupplier debugEnabled;
     private final PresenceHudPositionEditorOpener positionEditorOpener;
 
-    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, PresenceTextProvider textProvider) {
-        this(config, null, textProvider, () -> false, PresenceHudPositionEditorOpener.NOOP);
-    }
-
-    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider) {
-        this(config, coreManager, textProvider, () -> false, PresenceHudPositionEditorOpener.NOOP);
-    }
-
-    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider, BooleanSupplier debugEnabled) {
-        this(config, coreManager, textProvider, debugEnabled, PresenceHudPositionEditorOpener.NOOP);
-    }
-
-    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager, PresenceTextProvider textProvider,
-                                          BooleanSupplier debugEnabled, PresenceHudPositionEditorOpener positionEditorOpener) {
+    public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager,
+                                          PresenceTextProvider textProvider, BooleanSupplier debugEnabled,
+                                          PresenceHudPositionEditorOpener positionEditorOpener) {
         this.config = config;
         this.debugPipelineSnapshot = new PresenceDebugPipelineSnapshot(coreManager);
         this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;

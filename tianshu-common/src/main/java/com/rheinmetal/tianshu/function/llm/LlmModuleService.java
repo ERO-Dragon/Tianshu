@@ -1,5 +1,13 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.function.llm.account.LlmAccountKey;
+import com.rheinmetal.tianshu.function.llm.account.LlmAccountProbe;
+import com.rheinmetal.tianshu.function.llm.account.LlmAccountQuery;
+import com.rheinmetal.tianshu.function.llm.account.LlmAccountSnapshot;
+import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogClient;
+import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogKeySource;
+import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogResult;
+import com.rheinmetal.tianshu.function.llm.catalog.LlmModelCatalogState;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.llm.runtime.LlmRuntimeSnapshot;
@@ -9,7 +17,9 @@ import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.function.llm.usage.LlmUsageSnapshot;
 
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public final class LlmModuleService {
     public interface RuntimeController {
@@ -19,6 +29,9 @@ public final class LlmModuleService {
 
     private final LlmConfiguration config;
     private final LlmUsageLedger usageLedger;
+    private final LlmAccountQuery accountQuery = new LlmAccountQuery();
+    private final AtomicReference<LlmModelCatalogClient> modelCatalogClient =
+            new AtomicReference<>(LlmModelCatalogClient.NOT_WIRED);
     private final AtomicReference<LlmRuntimeState> state = new AtomicReference<>(LlmRuntimeState.STOPPED);
     private final AtomicReference<String> failureMessage = new AtomicReference<>("");
     private final AtomicReference<RuntimeController> runtimeController = new AtomicReference<>();
@@ -138,5 +151,96 @@ public final class LlmModuleService {
                 LlmPricing.microsFromPrice(config.getLlmUsageCacheHitInputPricePerMillion()),
                 LlmPricing.microsFromPrice(config.getLlmUsageOutputPricePerMillion())
         );
+    }
+
+    /**
+     * Identity of the account the configured endpoint is billed to. The credential is reduced to a
+     * fingerprint here, so neither the key nor a value derived from it can be read back out.
+     */
+    public LlmAccountKey accountKey() {
+        return LlmAccountKey.of(config.getLlmRemoteBaseUrl(), config.getLlmRemoteApiKey());
+    }
+
+    /**
+     * Binds the provider-side account probe that answers balance and cost queries. Until one is
+     * bound every read reports "not wired", which the HUD renders as a placeholder.
+     */
+    public void bindAccountProbe(LlmAccountProbe probe) {
+        accountQuery.bindProbe(probe);
+    }
+
+    /**
+     * Newest provider answer for the configured account. The amounts are authoritative provider
+     * figures; local price conversion never flows into this snapshot.
+     */
+    public LlmAccountSnapshot accountSnapshot() {
+        return accountQuery.snapshot(accountKey());
+    }
+
+    /**
+     * Requests fresh provider figures. Non-blocking and rate limited, so it is safe to call from a
+     * UI refresh tick: the probe owns the threading and a failure can only change the snapshot's
+     * state, never the rendered amounts of another row.
+     */
+    public void refreshAccount() {
+        accountQuery.refresh(accountKey());
+    }
+
+    /**
+     * Same, and runs {@code onAnswer} once the figures are stored.
+     *
+     * <p>That is what lets a page repaint when the answer arrives instead of polling the snapshot: the
+     * callback runs on the probe's thread, so a display marshals it to its own.
+     */
+    public void refreshAccount(Runnable onAnswer) {
+        accountQuery.refresh(accountKey(), onAnswer);
+    }
+
+    /**
+     * Binds the source of provider model lists. Until one is bound, asking for a catalog reports
+     * "not wired" instead of an empty list, so the page cannot mistake a missing client for a provider
+     * that serves no model.
+     */
+    public void bindModelCatalogClient(LlmModelCatalogClient client) {
+        modelCatalogClient.set(client == null ? LlmModelCatalogClient.NOT_WIRED : client);
+    }
+
+    /**
+     * Asks the given endpoint which models it serves.
+     *
+     * <p>The endpoint and the credential are passed per call, not read from configuration, because the
+     * settings page asks about the provider the player is <em>editing</em> — which may not be saved yet.
+     * The credential may therefore be blank: the request is still sent, and the provider's answer is
+     * what tells "no key was sent" from "the key was refused".
+     *
+     * <p>Non-blocking: the bound client owns the threading, and the sink is invoked exactly once, from
+     * a worker thread. A failure is a state with its language key, never a silent empty answer.
+     *
+     * @param keySource where the credential came from; diagnostic metadata, never a credential
+     * @param sink      answer sink; may be {@code null}
+     */
+    public void requestModelCatalog(String baseUrl, String apiKey, LlmModelCatalogKeySource keySource,
+                                    Consumer<LlmModelCatalogResult> sink) {
+        Consumer<LlmModelCatalogResult> target = sink == null ? result -> { } : sink;
+        LlmModelCatalogClient client = modelCatalogClient.get();
+        if (client == null || !client.wired()) {
+            target.accept(LlmModelCatalogResult.notWired());
+            return;
+        }
+        // One answer per call, even if a misbehaving client reports twice or throws after reporting.
+        AtomicBoolean delivered = new AtomicBoolean();
+        Consumer<LlmModelCatalogResult> once = result -> {
+            if (delivered.compareAndSet(false, true)) {
+                target.accept(result == null ? LlmModelCatalogResult.notWired() : result);
+            }
+        };
+        try {
+            client.listModels(baseUrl, apiKey,
+                    keySource == null ? LlmModelCatalogKeySource.NONE : keySource, once);
+        } catch (RuntimeException brokenClient) {
+            once.accept(LlmModelCatalogResult.failure(
+                    LlmModelCatalogState.NETWORK_ERROR,
+                    brokenClient.getClass().getSimpleName()));
+        }
     }
 }

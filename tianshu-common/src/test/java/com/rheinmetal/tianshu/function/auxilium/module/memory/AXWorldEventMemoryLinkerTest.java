@@ -28,7 +28,7 @@ class AXWorldEventMemoryLinkerTest {
         );
         AXWorldEventMemoryLinker linker = new AXWorldEventMemoryLinker(null);
 
-        List<AXMemoryEvent> events = linker.directEventsFor(stm, List.of(advancement));
+        List<AXMemoryEvent> events = linker.directEventsFor(stm.id(), List.of(advancement));
 
         assertEquals(1, events.size());
         assertEquals(stm.id(), events.get(0).stmId());
@@ -53,6 +53,6 @@ class AXWorldEventMemoryLinkerTest {
         AXWorldEventMemoryLinker linker = new AXWorldEventMemoryLinker(null);
 
         assertEquals(List.of(death.id()), linker.attachedEventIds(List.of(death)));
-        assertEquals(0, linker.directEventsFor(stm, List.of(death)).size());
+        assertEquals(0, linker.directEventsFor(stm.id(), List.of(death)).size());
     }
 }

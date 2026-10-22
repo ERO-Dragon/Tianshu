@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryStatsSnaps
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
+import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlock;
 
 public final class AXMemoryDerivedMaintenanceService {
     private final AXMemorySystem memorySystem;
@@ -58,7 +59,9 @@ public final class AXMemoryDerivedMaintenanceService {
                         block.sourceTurnCount(),
                         block.tokenCount(),
                         block.content(),
-                        block.attachedEventIds()
+                        block.attachedEventIds(),
+                        block.sourceFromTurnId(),
+                        block.sourceToTurnId()
                 ));
             } else {
                 normalized.add(block);
@@ -77,6 +80,7 @@ public final class AXMemoryDerivedMaintenanceService {
         long earliest = events.stream().mapToLong(AXMemoryEvent::happenedAtMillis).filter(value -> value > 0L).min().orElse(0L);
         long latest = events.stream().mapToLong(AXMemoryEvent::happenedAtMillis).filter(value -> value > 0L).max().orElse(earliest);
         int vectorCount = memorySystem.vectors().loadAllNamespaces(scope).size();
+        AXMemorySummaryBlock summaryBlock = memorySystem.summaryBlock(scope);
         return new AXMemoryStatsSnapshot(
                 AXMemoryStatsSnapshot.SCHEMA_VERSION,
                 scope.worldId(),
@@ -86,7 +90,11 @@ public final class AXMemoryDerivedMaintenanceService {
                 vectorCount,
                 stmTokens,
                 earliest,
-                latest
+                latest,
+                summaryBlock.generation(),
+                summaryBlock.summariesInBlock(),
+                summaryBlock.droppedTotal(),
+                summaryBlock.summaryBlockTokens()
         );
     }
 }

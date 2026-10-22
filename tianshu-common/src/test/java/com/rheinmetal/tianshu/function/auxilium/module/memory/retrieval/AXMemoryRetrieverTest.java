@@ -18,10 +18,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVector;
@@ -194,6 +196,118 @@ class AXMemoryRetrieverTest {
         assertEquals(0, result.get().blocks().size());
     }
 
+    @Test
+    void ranksByTheThreeFactorProductNotByRelevanceAlone() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
+        AXMemorySystem memorySystem = memorySystem();
+        AXScope scope = scope();
+        AXStmBlock stale = block(scope, "stale", "玩家很久以前随口说过一句关于钻石的话。");
+        AXStmBlock important = block(scope, "important", "玩家在 128, 64, -302 建造了传送门。");
+        memorySystem.appendStmBlock(scope, stale);
+        memorySystem.appendStmBlock(scope, important);
+        long now = System.currentTimeMillis();
+        // 相关性：stale 更高；其余两因子：important 全胜（新鲜 + 重要）。
+        AXMemoryEvent staleEvent = event(scope, stale, "玩家随口说过一句关于钻石的话。", 3, now - 40L * 86_400_000L, List.of("1"));
+        AXMemoryEvent importantEvent = event(scope, important, "玩家建造了传送门。", 10, now, List.of("1"));
+        memorySystem.events().appendAll(scope, List.of(staleEvent, importantEvent));
+        memorySystem.vectors().appendAll(scope, List.of(
+                vector(staleEvent, new float[]{1.0F, 0.0F}),
+                vector(importantEvent, new float[]{0.90F, 0.10F})
+        ));
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
+        AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
+
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "传送门在哪？", ""), 1, 1000, AXContextTier.COMPACT), result::set);
+
+        await(() -> result.get() != null);
+        assertEquals(important.id(), result.get().blocks().get(0).block().id(),
+                "相关性 0.90 的新事件必须压过相关性 1.0 但四十天前的弱事件");
+    }
+
+    @Test
+    void pinnedImportanceStaysRetrievableWhenAnEquallyOldOrdinaryEventFallsAway() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
+        AXMemorySystem memorySystem = memorySystem();
+        AXScope scope = scope();
+        AXStmBlock pinned = block(scope, "pinned", "玩家的家在平原村庄东侧。");
+        AXStmBlock ordinary = block(scope, "ordinary", "玩家整理了一下箱子。");
+        memorySystem.appendStmBlock(scope, pinned);
+        memorySystem.appendStmBlock(scope, ordinary);
+        long old = System.currentTimeMillis() - 400L * 86_400_000L;
+        AXMemoryEvent pinnedEvent = event(scope, pinned, "玩家的家在平原村庄东侧。", AXMemoryScoring.PINNED_IMPORTANCE, old, List.of("1"));
+        AXMemoryEvent ordinaryEvent = event(scope, ordinary, "玩家整理了一下箱子。", 5, old, List.of("1"));
+        memorySystem.events().appendAll(scope, List.of(pinnedEvent, ordinaryEvent));
+        memorySystem.vectors().appendAll(scope, List.of(
+                vector(pinnedEvent, new float[]{0.6F, 0.8F}),
+                vector(ordinaryEvent, new float[]{0.8F, 0.2F})
+        ));
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
+        AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
+
+        // 只给一个名额：谁的分更高谁上。钉子事件的 recency 地板被抬到 0.50，普通事件落到 0.05。
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "我家在哪？", ""), 1, 1000, AXContextTier.COMPACT), result::set);
+
+        await(() -> result.get() != null);
+        List<String> ids = result.get().blocks().stream().map(view -> view.block().id()).toList();
+        assertEquals(List.of(pinned.id()), ids, "同样四百天前，重要性 7 以上的记忆必须压过普通记忆");
+    }
+
+    @Test
+    void sameInputTwiceProducesTheSameOrdering() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AXMemoryRagTestProvider.register(runtime);
+        AXLlmRagClient ragClient = new AXLlmRagClient(new AXProtocolAdapter(runtime), 2_000L);
+        AXMemorySystem memorySystem = memorySystem();
+        AXScope scope = scope();
+        long now = System.currentTimeMillis();
+        List<AXStmBlock> blocks = new ArrayList<>();
+        List<AXMemoryEvent> events = new ArrayList<>();
+        List<AXEventVector> vectors = new ArrayList<>();
+        // 三条完全同分（同向量、同发生时间、同重要性）的事件：能区分它们的只有 stmId。
+        // 插入顺序是 b → a → c，正确的并列胜者是 id 最小的 stm_tie-a。
+        for (String seed : List.of("tie-b", "tie-a", "tie-c")) {
+            AXStmBlock block = block(scope, seed, seed + " 的并列事实。");
+            blocks.add(block);
+            AXMemoryEvent event = event(scope, block, seed + " 的并列事实。", 6, now, List.of("1"));
+            events.add(event);
+            vectors.add(vector(event, new float[]{0.8F, 0.2F}));
+        }
+        for (AXStmBlock block : blocks) {
+            memorySystem.appendStmBlock(scope, block);
+        }
+        memorySystem.events().appendAll(scope, events);
+        memorySystem.vectors().appendAll(scope, vectors);
+        new AXMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        AXMemoryRetriever retriever = new AXMemoryRetriever(memorySystem, ragClient);
+
+        List<String> first = retrieveSelectedIds(retriever, scope);
+        List<String> second = retrieveSelectedIds(retriever, scope);
+
+        assertEquals(first, second, "同输入两次检索的结果必须一致");
+        assertEquals(List.of(blocks.get(1).id()), first,
+                "同分时以 stmId 升序决胜：id 最小的 stm_tie-a 拿到唯一名额");
+    }
+
+    private List<String> retrieveSelectedIds(AXMemoryRetriever retriever, AXScope scope) {
+        AtomicReference<AXMemoryRetrievalResult> result = new AtomicReference<>();
+        retriever.retrieve(new AXMemoryRetrievalRequest(scope, new AXRequest("query", "并列事实是什么？", ""), 1, 1000, AXContextTier.COMPACT), result::set);
+        await(() -> result.get() != null);
+        return result.get().blocks().stream().map(view -> view.block().id()).toList();
+    }
+
+    private AXMemorySystem memorySystem() {
+        return new AXMemorySystem(
+                new AXStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new AXJsonStore(new TestLlmSupport.FakeGameEnvironment())
+        );
+    }
+
     private static AXStmBlock block(AXScope scope, String seed, String content) {
         return new AXStmBlock(
                 "stm_" + seed,
@@ -228,12 +342,28 @@ class AXMemoryRetrieverTest {
         );
     }
 
+    /**
+     * 夹具事件：发生时间取"刚刚"，因为 recency 现在是指数衰减——用纪元时间（10L）会让任何事件都贴住
+     * 0.05 地板，测出来的只是地板而不是打分。
+     */
     private static AXMemoryEvent event(AXScope scope, AXStmBlock stm, String fact) {
-        return new AXMemoryEvent("", fact, "", stm.id(), "stm_fact", scope.worldId(), "", "", false, 10L, 10L, List.of());
+        return event(scope, stm, fact, AXMemoryEvent.DEFAULT_IMPORTANCE, System.currentTimeMillis(), List.of());
+    }
+
+    private static AXMemoryEvent event(
+            AXScope scope,
+            AXStmBlock stm,
+            String fact,
+            int importance,
+            long happenedAtMillis,
+            List<String> turnRefs
+    ) {
+        return new AXMemoryEvent("", fact, "", stm.id(), "stm_fact", scope.worldId(), "", "", false,
+                System.currentTimeMillis(), happenedAtMillis, List.of(), turnRefs, importance);
     }
 
     private static AXEventVector vector(AXMemoryEvent event, float[] vector) {
-        return new AXEventVector(event.id(), event.factHash(), "test-embed", "test-embed:v1", vector.length, vector, 10L);
+        return new AXEventVector(event.id(), event.factHash(), "test-embed", "test-embed:v1", vector.length, vector, System.currentTimeMillis());
     }
 
     private AXScope scope() {

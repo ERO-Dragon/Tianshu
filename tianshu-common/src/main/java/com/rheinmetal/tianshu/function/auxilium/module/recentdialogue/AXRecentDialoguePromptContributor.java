@@ -16,7 +16,9 @@ import java.util.List;
  *   <li>assistant → assistant 消息</li>
  *   <li>game_chat（其他玩家聊天）→ user 消息，内容用 {@code <chat speaker="...">} 包裹，
  *       帮助模型区分"环境聊天事件"与"当前玩家指令"，避免小模型对历史 user 消息一并作答</li>
- *   <li>user/world_event → user 消息（当前玩家与 AX 的直接对话）</li>
+ *   <li>world_event（游戏事件）→ user 消息，内容用 {@code <event>} 包裹，
+ *       让模型把它读成"刚刚发生的事实"，而不是玩家说的话</li>
+ *   <li>user → user 消息（当前玩家与 AX 的直接对话）</li>
  * </ul>
  */
 public final class AXRecentDialoguePromptContributor implements AXPromptContributor {
@@ -61,6 +63,9 @@ public final class AXRecentDialoguePromptContributor implements AXPromptContribu
         String message = turn.content();
         if (message == null || message.isBlank()) {
             return "";
+        }
+        if (turn.worldEventRole()) {
+            return "<event>" + message.trim() + "</event>";
         }
         if (turn.gameChatRole()) {
             String speaker = turn.speakerName();

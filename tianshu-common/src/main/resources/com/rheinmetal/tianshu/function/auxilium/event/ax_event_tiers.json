@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "kinds": {
+    "tianshu:death": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:respawn": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:health_critical": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:health_change": {
+      "tier": "low",
+      "blacklist": false,
+      "aggregate": "range"
+    },
+    "tianshu:hunger_critical": {
+      "tier": "low",
+      "blacklist": false,
+      "aggregate": "range"
+    },
+    "tianshu:hunger_change": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:damage_taken": {
+      "tier": "mid",
+      "blacklist": false,
+      "aggregate": "range"
+    },
+    "tianshu:effect_gained": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:effect_expired": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:exp_level": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:on_fire": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:drowning": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:fall_damage": {
+      "tier": "mid",
+      "blacklist": false,
+      "aggregate": "range"
+    },
+
+    "tianshu:dimension_enter": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:biome_change": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:structure_discovery": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:structure_enter": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:altitude_shift": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:underwater": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:weather_change": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:time_of_day": {
+      "tier": "low",
+      "blacklist": true
+    },
+
+    "tianshu:rare_item": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:pickup": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:item_crafted": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:durability_low": {
+      "tier": "low",
+      "blacklist": false,
+      "aggregate": "range"
+    },
+    "tianshu:inventory_full": {
+      "tier": "low",
+      "blacklist": false
+    },
+    "tianshu:container_open": {
+      "tier": "low",
+      "blacklist": true
+    },
+
+    "tianshu:mob_killed": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:boss_engage": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:tamed": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:trade": {
+      "tier": "mid",
+      "blacklist": false
+    },
+
+    "tianshu:friend_join": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:friend_leave": {
+      "tier": "low",
+      "blacklist": false
+    },
+    "tianshu:chat_message": {
+      "tier": "low",
+      "blacklist": false
+    },
+    "tianshu:chat_mentioned": {
+      "tier": "high",
+      "blacklist": false
+    },
+    "tianshu:player_nearby_first": {
+      "tier": "mid",
+      "blacklist": false
+    },
+
+    "tianshu:advancement": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:recipe_unlock": {
+      "tier": "low",
+      "blacklist": false
+    },
+    "tianshu:sleep": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:mount": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:dismount": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:fishing_catch": {
+      "tier": "mid",
+      "blacklist": false
+    },
+    "tianshu:block_place": {
+      "tier": "low",
+      "blacklist": true
+    },
+    "tianshu:block_break": {
+      "tier": "low",
+      "blacklist": true
+    }
+  }
+}

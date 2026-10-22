@@ -85,7 +85,6 @@ class AXMemoryRetrievalPolicyTest {
     void scoreThresholdsAndBudgetRatiosAreClampedIndependently() {
         AXMemoryRetrievalPolicy policy = new AXMemoryRetrievalPolicy(
                 0.56D, 0.92D, 256, 48, 4,
-                0.10D, 3650.0D,
                 0.82D, 0.35D, 1, 2,
                 0.20D, 0.90D,
                 0.05D, 0.50D, 0.60D,
