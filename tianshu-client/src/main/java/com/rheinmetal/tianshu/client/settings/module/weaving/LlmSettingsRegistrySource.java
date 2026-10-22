@@ -96,6 +96,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null) {
             return;
         }
+        // The inference module owns this page; without it the page must disappear rather than throw.
+        if (coreManager.findService(LlmModuleService.class).isEmpty()) {
+            return;
+        }
         register(registry, context,
                 coreManager.requireService(LlmModuleService.class),
                 coreManager.requireService(LlmModelService.class));

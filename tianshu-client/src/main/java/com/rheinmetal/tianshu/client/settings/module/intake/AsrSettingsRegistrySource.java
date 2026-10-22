@@ -113,6 +113,11 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null || audioBridge == null) {
             return;
         }
+        // The speech module owns this page: without it there is nothing to configure, so the page
+        // disappears instead of failing when the player opens settings.
+        if (coreManager.findService(AsrModelService.class).isEmpty()) {
+            return;
+        }
         AsrSettingsDraft draft = new AsrSettingsDraft(
                 config, audioBridge, coreManager, context, scheduler, uiHost, textProvider, audioDeviceCatalog,
                 voiceKeyDisplay

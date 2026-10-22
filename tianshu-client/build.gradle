@@ -21,6 +21,7 @@ dependencies {
     testImplementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
     testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation project(':tianshu-testkit')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

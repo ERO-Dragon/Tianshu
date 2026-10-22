@@ -84,6 +84,10 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
         if (registry == null || context == null || coreManager == null || config == null) {
             return;
         }
+        // The synthesis module owns this page; without it the page must disappear rather than throw.
+        if (coreManager.findService(TtsModelService.class).isEmpty()) {
+            return;
+        }
         TtsSettingsDraft draft = new TtsSettingsDraft(config, coreManager, context, scheduler, uiHost, filePicker, textProvider);
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)

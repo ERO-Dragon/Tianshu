@@ -1,5 +1,20 @@
 package com.rheinmetal.tianshu.neoforge.bootstrap;
 
+import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
+import com.rheinmetal.tianshu.protocol.voice.VoiceNotificationService;
+import com.rheinmetal.tianshu.function.auxilium.speech.AXProtocolSpeechOutlet;
+import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechBridge;
+import com.rheinmetal.tianshu.function.intake.index.ClientIrNamedObjectEnhancer;
+import com.rheinmetal.tianshu.function.intake.AsrModuleInstaller;
+import com.rheinmetal.tianshu.function.echo.TtsModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
+import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
+import com.rheinmetal.tianshu.function.weaving.LlmModuleInstaller;
+import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
+import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
+import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.client.audio.AudioManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
@@ -153,24 +168,13 @@ public final class NeoForgeClientBootstrap {
                 audioManager.selectMic(selectedMicName);
             }
 
-            coreManager = new TianshuCoreManager(environment, config, audioManager, context -> new ClientTianshuModuleAssembler(
-                    context.env(),
-                    new ClientFunctionConfigurations(config, config, config, config),
-                    context.audioBridge(),
-                    context.moduleRuntime(),
-                    namedObjectIndexManager,
-                    languageSnapshot::promptLanguage,
-                    context.voiceInputGate(),
-                    context.interruptionSignal(),
-                    worldIdentityProvider,
-                    config,
-                    AXChatOutputSink.NOOP,
-                    List.of(
-                            new ClientOnnxRuntimeModuleInstaller(),
-                            presenceRuntime.moduleInstaller(context.moduleRuntime())
-                    ),
-                    new NeoForgeGameEventTextProvider()
-            ));
+            coreManager = new TianshuCoreManager(environment, config, audioManager, context -> {
+                // One gate for every native model load in the process: retrieval claims it as the primary
+                // lane and the speech modules queue behind it, so their native peaks never add up.
+                NativeModelLoadQueue loadQueue = new NativeModelLoadQueue();
+                return new ClientTianshuModuleAssembler(
+                        createModuleProviders(context, loadQueue, worldIdentityProvider));
+            });
             TianshuCoreManager assembledCoreManager = coreManager;
             NeoForgeClientSession.Ownership coreOwnership = startingSession.own(
                     () -> assembledCoreManager.destroy().join()
@@ -316,6 +320,61 @@ public final class NeoForgeClientBootstrap {
         namedObjectIndexManager = null;
         settingsModule = null;
         externalSettingsContributors = null;
+    }
+
+    /**
+     * The composition root decides which modules a session runs.
+     *
+     * <p>Removing a line here removes the module: the core keeps no list of its own, so an absent
+     * provider means the installer is never created and nothing refers to it at runtime.</p>
+     */
+    private List<TianshuModuleProvider> createModuleProviders(
+            TianshuModuleAssemblyContext context,
+            NativeModelLoadQueue loadQueue,
+            AXWorldIdentityProvider worldIdentityProvider) {
+        return List.of(
+                registrar -> registrar.addModule(new ClientOnnxRuntimeModuleInstaller()),
+                registrar -> registrar.addModule(presenceRuntime.moduleInstaller(context.moduleRuntime())),
+                registrar -> registrar.addModule(new IaModuleInstaller(context.moduleRuntime())),
+                registrar -> registrar.addModule(new LlmModuleInstaller(context.env(), config, context.moduleRuntime(), loadQueue)),
+                registrar -> registrar.addModule(createAxInstaller(context, worldIdentityProvider)),
+                registrar -> registrar.addModule(new TtsModuleInstaller(
+                        context.audioBridge(), context.moduleRuntime(), context.env(), config, loadQueue)),
+                registrar -> registrar.addModule(new AsrModuleInstaller(
+                        context.audioBridge(),
+                        context.moduleRuntime(),
+                        context.env(),
+                        config,
+                        context.voiceInputGate(),
+                        context.interruptionSignal(),
+                        loadQueue,
+                        new ClientIrNamedObjectEnhancer(namedObjectIndexManager)
+                ))
+        );
+    }
+
+    private TianshuModuleInstaller createAxInstaller(
+            TianshuModuleAssemblyContext context,
+            AXWorldIdentityProvider worldIdentityProvider) {
+        AXSpeechBridge speechBridge = new AXSpeechBridge(
+                new AXProtocolSpeechOutlet(
+                        new VoiceNotificationService(context.moduleRuntime()),
+                        new NeoForgeGameEventTextProvider(),
+                        config,
+                        context.env().logs()),
+                context.env().logs());
+        return new AXModuleInstaller(
+                context.env(),
+                config,
+                context.moduleRuntime(),
+                worldIdentityProvider,
+                languageSnapshot::promptLanguage,
+                config instanceof AXAssistantSettings assistantSettings ? assistantSettings : AXAssistantSettings.DEFAULT,
+                config,
+                AXChatOutputSink.NOOP,
+                speechBridge,
+                speechBridge
+        );
     }
 
     private TianshuSettingsRegistrySource createSettingsRegistrySource(NeoForgeClientFilePicker filePicker) {
