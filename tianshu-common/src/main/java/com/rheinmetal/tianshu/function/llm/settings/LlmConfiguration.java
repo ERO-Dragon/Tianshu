@@ -156,20 +156,21 @@ public interface LlmConfiguration {
 
     /** GPU layers for the embedding model: 999 offloads every layer, 0 keeps the lane on the CPU. */
     int EMBEDDING_GPU_LAYERS_ALL = 999;
-    /** CPU position: no layer offloaded. The default, because it is the position that always works. */
+    /** CPU position: no layer offloaded. The position a GPU load falls back to, not the default. */
     int EMBEDDING_GPU_LAYERS_CPU = 0;
 
     /**
      * Where the embedding model runs; this single number is the whole CPU/GPU choice.
      *
-     * <p>The default is the CPU. The embedding backend creates a Vulkan device inside the game process,
-     * next to Minecraft's OpenGL context, and that coexistence has failed on some NVIDIA drivers:
-     * observed as {@code vk::Device::createComputePipeline: ErrorUnknown} while the device was created,
-     * and as {@code GL_OUT_OF_MEMORY} moments after world entry — which is exactly when the embedding
-     * load runs. Such a driver fails while plenty of memory is still free, so the load position cannot
-     * be inferred from hardware headroom: it has to be an explicit choice, and the CPU is the position
-     * that works everywhere. A player whose card is known good can switch the GPU on by hand, and a GPU
-     * that fails to load still falls back to the CPU for that session.
+     * <p>The default is the whole model on the card. The embedding backend creates a Vulkan device
+     * inside the game process, next to Minecraft's OpenGL context, and that coexistence has failed on
+     * some NVIDIA drivers: observed as {@code vk::Device::createComputePipeline: ErrorUnknown} while the
+     * device was created, and as {@code GL_OUT_OF_MEMORY} moments after world entry — which is exactly
+     * when the embedding load runs. Such a driver fails while plenty of memory is still free, so the
+     * position cannot be inferred from hardware headroom and has to be an explicit choice — but it is
+     * also exactly why the automatic fallback matters: a GPU load that fails hands the lane to the CPU
+     * for that session instead of failing it, so the default position can be the faster one without
+     * leaving such a driver with no retrieval at all.
      *
      * <p>Read-only like every other member of this port: the settings page writes the position through
      * the settings-access port, which is the only place a write belongs.

@@ -137,11 +137,12 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
                 LlmContextTiers.DEFAULT_TIER,
                 LlmContextTiers.TIER_50K,
                 LlmContextTiers.TIER_500K);
-        LLM_EMBEDDING_GPU_LAYERS = builder.comment("向量模型载入位置：999 表示全部层放到 GPU，0 表示只用 CPU（默认）。",
-                        "默认 CPU：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定"
+        LLM_EMBEDDING_GPU_LAYERS = builder.comment("向量模型载入位置：999 表示全部层放到 GPU（默认），0 表示只用 CPU。",
+                        "默认 GPU：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定"
                                 + "（曾观察到 vk::Device::createComputePipeline: ErrorUnknown 与进世界后的 GL_OUT_OF_MEMORY）。",
-                        "这与显存余量无关：崩溃时显存仍有富余。确认稳定的显卡可以手动切到 GPU。",
-                        "GPU 载入失败时运行时会自动回落到 CPU，本键的值不变（改回 GPU 需要重新加载一次）。")
+                        "这与显存余量无关：崩溃时显存仍有富余，所以位置不能从硬件余量推断。",
+                        "GPU 载入失败时运行时会自动回落到 CPU（降级为 DEGRADED），本键的值不变（改回 GPU 需要重新加载一次）；"
+                                + "只有 GPU 与 CPU 都失败才会关闭向量检索。确认驱动有问题时可手动改为 0 固定走 CPU。")
                 .defineInRange("embeddingGpuLayers",
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL,
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,

@@ -121,12 +121,12 @@ LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoF
 
 | 键（`config/tianshu-client.toml` 的 `[llm]` 段） | 默认 | 含义 |
 |----|----|----|
-| `embeddingGpuLayers` | `0`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU`） | 向量模型的载入位置：`0` = 纯 CPU（默认）；`999`（`EMBEDDING_GPU_LAYERS_ALL`）= 全部层放到 GPU。取值域 `0..999`，写入时钳位。 |
+| `embeddingGpuLayers` | `999`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL`） | 向量模型的载入位置：`999` = 全部层放到 GPU（默认）；`0`（`EMBEDDING_GPU_LAYERS_CPU`）= 纯 CPU。取值域 `0..999`，写入时钳位。 |
 | `embeddingContextSize` | `512`（`LlmConfiguration.DEFAULT_EMBEDDING_CONTEXT_SIZE`） | 向量模型的运行时上下文窗口（token）。取值域 `256..8192`，读端钳位后由 `LlmEngineProvider` 再与 catalog 上限取小。 |
 
 - **KV 内存与上下文长度成正比**：llama.cpp 按整个窗口分配 KV cache，而 KV 在原生内存里、GC 管不到。因此调小 `embeddingContextSize` 是低内存机器最直接的缓解手段，代价是**超长摘要会被截断**——截断不报错，只会悄悄降低检索质量。默认 `512` 是在"页文件将尽的机器仍能付出"与"覆盖本构建实际存储的事件句 + 摘要"之间的取值；再往下到 `256` 属于显式取舍，由玩家自己承担截断。
 
-- 默认 CPU 的理由：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定——曾观察到 `vk::Device::createComputePipeline: ErrorUnknown`（建 device 时）和进世界后的 `GL_OUT_OF_MEMORY`；两次崩溃时显存都还有富余，所以这不是显存耗尽。载入位置因此不能从硬件余量推断，只能是玩家的显式选择，而 CPU 是各处都能用的那一个。手动切到 GPU 仍然保留，GPU 载入失败时自动回落到 CPU（`DEGRADED`）。
+- **默认 GPU，CPU 是自动回落的落点**：默认把全部层放到显卡上（`999`）。已知风险是真的：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定——曾观察到 `vk::Device::createComputePipeline: ErrorUnknown`（建 device 时）和进世界后的 `GL_OUT_OF_MEMORY`；两次崩溃时显存都还有富余，所以这不是显存耗尽，载入位置不能从硬件余量推断。正因为这类失败与显存无关、无法事先判定，运行时才必须自己兜底：**GPU 载入失败时自动回落到 CPU（`DEGRADED`，向量检索照常、只是更慢），本键的值不变**；只有 GPU 与 CPU 都失败才判定 `UNAVAILABLE`。也正因有这条自动回落，默认值才敢取更快的 GPU 位置。玩家可显式改为 `0` 固定走 CPU。
 - 读端只有 `LlmConfiguration.getLlmEmbeddingGpuLayers()`；写端只有 `LlmSettingsAccess.setLlmEmbeddingGpuLayers(int)`，common 不出现 setter。
 - 载入位置在页面上是**草稿值**：点击 `toggleEmbeddingPosition()` 只改草稿并提示"保存后生效"，不写配置、不重启运行时；面板级保存把它并进同一个事务，保存成功后按既有机制重启运行时（换后端＝整份 GGUF 重新载入，不在点击瞬间做）。
 - 载入跑在 model-load 线程：`LlmEngineProvider.startEmbeddingOnly()` 只把引擎排进队列并立即返回；位置判定在 `LocalEmbeddingEngine.warmUp()` 里做，结论经 `EmbeddingLoadReport` 回报一次。该队列还从进世界起延后 6 秒（`LlmModule.EMBEDDING_LOAD_DELAY_AFTER_WORLD_ENTRY`，经 `LlmExecutor.delayedModelLoadExecutor()`），让原生载入避开区块加载与开场帧；这只是推迟主动载入，延后窗口内若有 RAG 写入，`ensureServer()` 仍会按需在写入所在 lane 上载入。真正的加载本身还要过一道进程级串行闸门（`com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue`）：embedding 是它的 primary 请求，语音模型（TTS）是 deferred 请求，必须等本次判定结束后才获准——原生模型的峰值因此不再相加，而是取最大值。

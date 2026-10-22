@@ -5,7 +5,7 @@
     "repoId": "gpustack/bge-m3-GGUF",
     "hfFilePath": "bge-m3-Q8_0.gguf",
     "modelFile": "bge-m3-Q8_0.gguf",
-    "contextSize": 2048,
+    "contextSize": 8192,
     "lang": ["zh", "en"]
   }
 ]
