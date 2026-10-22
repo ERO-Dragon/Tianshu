@@ -1,15 +1,15 @@
 package com.rheinmetal.tianshu.neoforge.config;
 
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
-import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
-import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.function.llm.settings.LlmContextTiers;
-import com.rheinmetal.tianshu.function.llm.settings.LlmModelEntry;
-import com.rheinmetal.tianshu.function.llm.settings.LlmModelSettings;
-import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmContextTiers;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmModelEntry;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmModelSettings;
+import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualPreset;
@@ -26,11 +26,11 @@ import java.util.function.UnaryOperator;
 
 public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConfiguration,
         AXStorageConfiguration, VoiceResourceConfiguration, AXAssistantSettings, AXOutputSettings,
-        com.rheinmetal.tianshu.client.settings.module.ax.AxSettingsAccess,
+        com.rheinmetal.tianshu.function.auxilium.settings.AxSettingsAccess,
         com.rheinmetal.tianshu.client.settings.module.presence.PresenceSettingsAccess,
-        com.rheinmetal.tianshu.client.settings.module.asr.AsrSettingsAccess,
-        com.rheinmetal.tianshu.client.settings.module.llm.LlmSettingsAccess,
-        com.rheinmetal.tianshu.client.settings.module.tts.TtsSettingsAccess,
+        com.rheinmetal.tianshu.function.intake.settings.AsrSettingsAccess,
+        com.rheinmetal.tianshu.function.weaving.settings.LlmSettingsAccess,
+        com.rheinmetal.tianshu.function.echo.settings.TtsSettingsAccess,
         com.rheinmetal.tianshu.client.settings.global.GlobalDebugSettingsAccess {
 
     private final Path gameConfigDirectory;

@@ -1,0 +1,50 @@
+plugins {
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api project(':tianshu-core')
+    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    compileOnly 'org.apache.commons:commons-compress:1.26.0'
+    testImplementation project(':tianshu-testkit')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'org.apache.commons:commons-compress:1.26.0'
+    testImplementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// jjml arrives as a jarJar nested jar inside tianshu_libs; tests need it unpacked on the classpath.
+def extractTianshuLibsJarJar = tasks.register('extractTianshuLibsJarJar', Sync) {
+    def libsJars = fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    from(libsJars.collect { zipTree(it) }) {
+        include 'META-INF/jarjar/*.jar'
+        eachFile { details -> details.path = details.name }
+        includeEmptyDirs = false
+    }
+    into layout.buildDirectory.dir('extracted/tianshu-libs-jarjar')
+}
+
+test {
+    dependsOn extractTianshuLibsJarJar
+    classpath = files(fileTree(layout.buildDirectory.dir('extracted/tianshu-libs-jarjar')) { include '*.jar' }) + classpath
+}

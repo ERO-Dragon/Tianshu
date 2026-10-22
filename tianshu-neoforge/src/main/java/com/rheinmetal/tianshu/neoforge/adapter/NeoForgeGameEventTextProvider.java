@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.client.event.AXGameEventTextProvider;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import net.minecraft.client.resources.language.I18n;
 
 /**

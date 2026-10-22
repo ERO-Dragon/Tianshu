@@ -25,8 +25,8 @@ class ModuleStatusBoundaryTest {
     void moduleStatusDoesNotCarryProductHudTags() throws Exception {
         for (String relative : new String[]{
                 "tianshu-api/src/main/java/com/rheinmetal/tianshu/protocol/status/ModuleStatuses.java",
-                "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/turn/AXTurnStatusPublisher.java",
-                "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/auxilium/module/memory/maintenance/AXMemoryMaintenanceService.java"
+                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/turn/AXTurnStatusPublisher.java",
+                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/module/memory/maintenance/AXMemoryMaintenanceService.java"
         }) {
             Path source = resolveFromWorkspace(Path.of(relative));
             String text = Files.readString(source, StandardCharsets.UTF_8);

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
+import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

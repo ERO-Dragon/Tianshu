@@ -23,7 +23,7 @@ class DialogueContractBoundaryTest {
     private static final List<String> CONSUMER_MODULES = List.of(
             "function/auxilium",
             "function/ir",
-            "function/llm"
+            "function/weaving"
     );
 
     @Test

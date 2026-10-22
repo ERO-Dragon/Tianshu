@@ -12,7 +12,11 @@ repositories {
 }
 
 dependencies {
-    api project(':tianshu-common')
+    api project(':tianshu-core')
+    api project(':tianshu-intake')
+    api project(':tianshu-echo')
+    api project(':tianshu-weaving')
+    api project(':tianshu-auxilium')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
     testImplementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'

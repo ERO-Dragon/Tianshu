@@ -34,9 +34,9 @@ class ModelDownloadProgressBoundaryTest {
     void commonProductionDoesNotExposeLocalizedProgressLabels() throws Exception {
         List<Path> roots = List.of(
                 Path.of("tianshu-core/src/main/java/com/rheinmetal/tianshu/model"),
-                Path.of("tianshu-common/src/main/java/com/rheinmetal/tianshu/function/asr"),
-                Path.of("tianshu-common/src/main/java/com/rheinmetal/tianshu/function/llm"),
-                Path.of("tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts")
+                Path.of("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake"),
+                Path.of("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving"),
+                Path.of("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo")
         );
         for (Path relativeRoot : roots) {
             Path root = resolveFromWorkspace(relativeRoot);

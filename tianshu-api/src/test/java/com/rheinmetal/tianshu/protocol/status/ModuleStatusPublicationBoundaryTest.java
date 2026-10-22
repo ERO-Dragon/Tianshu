@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModuleStatusPublicationBoundaryTest {
     @Test
     void downloadCompletionDoesNotClaimRuntimeReady() throws Exception {
-        assertDownloadCompletionUsesWaiting("tianshu-common/src/main/java/com/rheinmetal/tianshu/function/asr/AsrModelService.java", "module.asr");
-        assertDownloadCompletionUsesWaiting("tianshu-common/src/main/java/com/rheinmetal/tianshu/function/llm/LlmModelService.java", "module.llm");
-        assertDownloadCompletionUsesWaiting("tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsModelService.java", "module.tts");
+        assertDownloadCompletionUsesWaiting("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/AsrModelService.java", "module.asr");
+        assertDownloadCompletionUsesWaiting("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmModelService.java", "module.llm");
+        assertDownloadCompletionUsesWaiting("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/TtsModelService.java", "module.tts");
     }
 
     private static void assertDownloadCompletionUsesWaiting(String relativePath, String moduleId) throws Exception {

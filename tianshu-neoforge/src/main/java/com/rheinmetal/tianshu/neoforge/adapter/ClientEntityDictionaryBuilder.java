@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.function.ir.core.IRObjectId;
+import com.rheinmetal.tianshu.function.intake.repair.core.IRObjectId;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;

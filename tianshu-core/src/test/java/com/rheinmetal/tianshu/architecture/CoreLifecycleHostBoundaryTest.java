@@ -117,7 +117,7 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String manager = Files.readString(
-                platformClientRoot.resolve("ir/ClientNamedObjectIndexManager.java"),
+                Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/index/ClientNamedObjectIndexManager.java"),
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(

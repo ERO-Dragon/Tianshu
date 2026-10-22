@@ -22,10 +22,10 @@ final class ModuleSettingsOwnershipTest {
     @Test
     void productModuleSettingsDoNotContainDiagnosticsControls() throws Exception {
         for (String relativePath : List.of(
-                "asr/AsrSettingsRegistrySource.java",
-                "ax/AXSettingsRegistrySource.java",
-                "llm/LlmSettingsRegistrySource.java",
-                "tts/TtsSettingsRegistrySource.java",
+                "intake/AsrSettingsRegistrySource.java",
+                "auxilium/AXSettingsRegistrySource.java",
+                "weaving/LlmSettingsRegistrySource.java",
+                "echo/TtsSettingsRegistrySource.java",
                 "presence/PresenceSettingsRegistrySource.java"
         )) {
             String source = Files.readString(
@@ -41,7 +41,7 @@ final class ModuleSettingsOwnershipTest {
     @Test
     void asrSettingsDoNotExposeAnInternalVadSwitch() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/asr/AsrSettingsRegistrySource.java"),
+                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/intake/AsrSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 

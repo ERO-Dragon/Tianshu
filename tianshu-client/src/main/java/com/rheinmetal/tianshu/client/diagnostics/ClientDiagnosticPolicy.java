@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.client.diagnostics;
 
 import com.rheinmetal.tianshu.client.config.ClientDiagnosticsConfiguration;
-import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.llm.LlmProtocolAdapter;
-import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
 
 import java.util.Objects;
 import java.util.Set;

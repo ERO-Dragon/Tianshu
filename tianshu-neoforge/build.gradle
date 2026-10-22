@@ -66,7 +66,12 @@ neoForge {
         "${mod_id}" {
             sourceSet(sourceSets.main)
             sourceSet(project(':tianshu-client').sourceSets.main)
-            sourceSet(project(':tianshu-common').sourceSets.main)
+            sourceSet(project(':tianshu-core').sourceSets.main)
+            sourceSet(project(':tianshu-api').sourceSets.main)
+            sourceSet(project(':tianshu-intake').sourceSets.main)
+            sourceSet(project(':tianshu-echo').sourceSets.main)
+            sourceSet(project(':tianshu-weaving').sourceSets.main)
+            sourceSet(project(':tianshu-auxilium').sourceSets.main)
         }
     }
 }
@@ -95,8 +100,13 @@ sourceSets.main.resources {
 }
 jar {
     from project(':tianshu-client').sourceSets.main.output
-    from project(':tianshu-common').sourceSets.main.output
-    // Avoid signature metadata conflicts when aggregating common/client output.
+    from project(':tianshu-core').sourceSets.main.output
+    from project(':tianshu-api').sourceSets.main.output
+    from project(':tianshu-intake').sourceSets.main.output
+    from project(':tianshu-echo').sourceSets.main.output
+    from project(':tianshu-weaving').sourceSets.main.output
+    from project(':tianshu-auxilium').sourceSets.main.output
+    // Avoid signature metadata conflicts when aggregating module output.
     exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
 }
 

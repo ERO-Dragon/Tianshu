@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Collections;
 
-public final class NeoForgeNamedObjectDictionaryProvider implements com.rheinmetal.tianshu.client.ir.NamedObjectDictionaryProvider {
+public final class NeoForgeNamedObjectDictionaryProvider implements com.rheinmetal.tianshu.function.intake.index.NamedObjectDictionaryProvider {
     private final ClientItemDictionaryBuilder itemBuilder;
     private final ClientEntityDictionaryBuilder entityBuilder;
     private volatile Map<String, List<String>> dictionarySnapshot = Map.of();

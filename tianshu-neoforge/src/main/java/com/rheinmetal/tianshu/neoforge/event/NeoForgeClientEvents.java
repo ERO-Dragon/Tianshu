@@ -4,7 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.function.asr.input.AsrInputService;
+import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;

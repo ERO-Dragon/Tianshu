@@ -11,9 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsRefreshCoalescingTest {
     @Test
     void modelDownloadPagesCoalesceRefreshRequests() throws Exception {
-        assertCoalesced("asr/AsrSettingsRegistrySource.java");
-        assertCoalesced("llm/LlmSettingsRegistrySource.java");
-        assertCoalesced("tts/TtsSettingsRegistrySource.java");
+        assertCoalesced("intake/AsrSettingsRegistrySource.java");
+        assertCoalesced("weaving/LlmSettingsRegistrySource.java");
+        assertCoalesced("echo/TtsSettingsRegistrySource.java");
     }
 
     private static void assertCoalesced(String relativePath) throws Exception {

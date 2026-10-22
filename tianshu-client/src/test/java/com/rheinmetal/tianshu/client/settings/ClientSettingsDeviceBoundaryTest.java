@@ -13,7 +13,7 @@ final class ClientSettingsDeviceBoundaryTest {
     @Test
     void asrSettingsReadsCachedMicrophonesAndRequestsAsyncRefresh() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/asr/AsrSettingsRegistrySource.java"),
+                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/intake/AsrSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -25,9 +25,9 @@ final class ClientSettingsDeviceBoundaryTest {
 
     @Test
     void modelPagesReadAvailabilitySnapshotsInsteadOfScanningModelFiles() throws Exception {
-        assertSnapshotBoundary("asr/AsrSettingsRegistrySource.java");
-        assertSnapshotBoundary("llm/LlmSettingsRegistrySource.java");
-        assertSnapshotBoundary("tts/TtsSettingsRegistrySource.java");
+        assertSnapshotBoundary("intake/AsrSettingsRegistrySource.java");
+        assertSnapshotBoundary("weaving/LlmSettingsRegistrySource.java");
+        assertSnapshotBoundary("echo/TtsSettingsRegistrySource.java");
     }
 
     private static void assertSnapshotBoundary(String relativePath) throws Exception {
@@ -45,7 +45,7 @@ final class ClientSettingsDeviceBoundaryTest {
     @Test
     void ttsVoiceLibraryWorkUsesTheModuleIoBoundary() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/tts/TtsSettingsRegistrySource.java"),
+                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/echo/TtsSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 

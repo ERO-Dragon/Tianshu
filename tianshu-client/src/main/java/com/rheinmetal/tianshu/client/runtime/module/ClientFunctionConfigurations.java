@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.client.runtime.module;
 
-import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
-import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
 
 import java.util.Objects;
 

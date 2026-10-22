@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.client.event.AXGameEventProbe;
-import com.rheinmetal.tianshu.client.event.AXGameEventSample;
-import com.rheinmetal.tianshu.client.event.AXGameEventSentences;
-import com.rheinmetal.tianshu.client.event.AXGameEventSignal;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventProbe;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventSample;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventSentences;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventSignal;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
-import com.rheinmetal.tianshu.function.auxilium.event.AXGameEventService;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameEventTextProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;

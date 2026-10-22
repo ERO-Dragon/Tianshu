@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.client.runtime;
 
 import com.rheinmetal.tianshu.client.audio.AudioManager;
-import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
+import com.rheinmetal.tianshu.function.intake.index.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;

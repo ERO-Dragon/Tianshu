@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.function.ir.core.IntentKeywordLoader;
-import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
+import com.rheinmetal.tianshu.function.intake.repair.core.IntentKeywordLoader;
+import com.rheinmetal.tianshu.function.intake.index.ClientNamedObjectIndexManager;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.Resource;

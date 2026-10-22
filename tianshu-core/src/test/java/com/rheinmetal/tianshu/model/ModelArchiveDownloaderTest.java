@@ -29,8 +29,8 @@ class ModelArchiveDownloaderTest {
         assertTrue(Files.isRegularFile(FACADE_SOURCE), "model domain must own a narrow archive downloader facade");
 
         String modelInfo = source("src/main/java/com/rheinmetal/tianshu/model/TtsModelInfo.java");
-        String coordinator = source("../tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/download/TtsModelDownloadCoordinator.java");
-        String service = source("../tianshu-common/src/main/java/com/rheinmetal/tianshu/function/tts/TtsModelService.java");
+        String coordinator = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/download/TtsModelDownloadCoordinator.java");
+        String service = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/TtsModelService.java");
         String catalog = source("src/main/resources/com/rheinmetal/tianshu/constant/tts-model.json");
 
         assertTrue(modelInfo.contains("downloadUri"));

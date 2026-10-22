@@ -2,11 +2,11 @@ package com.rheinmetal.tianshu.client.presence.diagnostics;
 
 import com.rheinmetal.tianshu.client.presence.PresenceProtocolAdapter;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.llm.LlmProtocolAdapter;
-import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.List;

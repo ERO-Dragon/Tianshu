@@ -1,0 +1,18 @@
+package com.rheinmetal.tianshu.function.echo.runtime;
+
+public enum TtsFailureCode {
+    RUNTIME_NOT_RUNNING,
+    EMPTY_TEXT,
+    SYNTHESIS_ENGINE_UNAVAILABLE,
+    SYNTHESIS_FAILED,
+    GENERATION_LIMIT_REACHED,
+    GENERATION_REPEATED,
+    PLAYBACK_FAILED,
+    REQUEST_NOT_FOUND,
+    INVALID_REQUEST,
+    QUEUE_FULL,
+    EXPIRED,
+    VOICE_CLONE_UNAVAILABLE,
+    CANCELLED,
+    UNKNOWN
+}

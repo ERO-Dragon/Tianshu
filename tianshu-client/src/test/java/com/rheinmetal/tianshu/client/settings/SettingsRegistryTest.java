@@ -36,7 +36,7 @@ final class SettingsRegistryTest {
     @Test
     void asrSettingsExposeTheVoiceSwitchAsReadOnlyState() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/asr/AsrSettingsRegistrySource.java"),
+                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/intake/AsrSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 

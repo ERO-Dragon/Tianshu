@@ -10,3 +10,58 @@ java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_vers
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
+
+// ---------------------------------------------------------------- boundary gates
+// These rules span modules, so they live at the root instead of inside one of them.
+
+def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium']
+def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
+
+tasks.register('verifyFeatureIsolation') {
+    group = 'verification'
+    description = 'Rejects imports between the four feature modules.'
+    inputs.files(files(featureModules.collect { "${it}/src/main/java" }))
+    doLast { task ->
+        def names = featureModules.collect { it - 'tianshu-' } as Set
+        def violations = []
+        task.inputs.files.files.each { source ->
+            if (!source.path.endsWith('.java')) return
+            def path = source.path.replace('\\', '/')
+            def ownerMatch = path =~ /tianshu-([a-z]+)\/src\/main\/java/
+            if (!ownerMatch.find()) return
+            def owner = ownerMatch.group(1)
+            if (!(owner in names)) return
+            source.eachLine('UTF-8') { line ->
+                def m = line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium)\./
+                if (m.find() && m.group(1) != owner) {
+                    violations << "${source.name}: ${owner} -> ${m.group(1)}: ${line.trim()}"
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Cross-feature imports found:\n" + violations.join('\n'))
+        }
+    }
+}
+
+tasks.register('verifyNoPlatformImport') {
+    group = 'verification'
+    description = 'Rejects Minecraft/NeoForge imports outside the platform adapter.'
+    inputs.files(files(neutralModules.collect { "${it}/src/main/java" }))
+    doLast { task ->
+        def forbidden = ['net.minecraft.', 'net.neoforged.', 'org.lwjgl.', 'com.mojang.blaze3d.']
+        task.inputs.files.files.each { source ->
+            if (!source.path.endsWith('.java')) return
+            source.eachLine('UTF-8') { line ->
+                if (forbidden.any { prefix -> line.trim().startsWith("import ${prefix}") }) {
+                    throw new GradleException("${source} imports a forbidden platform package: ${line.trim()}")
+                }
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyFeatureIsolation')
+    dependsOn tasks.named('verifyNoPlatformImport')
+}
