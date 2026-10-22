@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tianshu_weaving",
   "version": "${mod_version}",
-  "name": "Tianshu - Weaving",
+  "name": "${mod_name} - Weaving",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

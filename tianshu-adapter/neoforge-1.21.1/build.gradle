@@ -57,6 +57,12 @@ neoForge {
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            // Optional headless verification: jump straight into a world so the module lifecycle
+            // actually runs. Pass -PquickPlayWorld=<save name>; absent by default.
+            def quickPlayWorld = providers.gradleProperty('quickPlayWorld').getOrNull()
+            if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
+                programArguments.addAll '--quickPlaySingleplayer', quickPlayWorld
+            }
         }
 
         data {

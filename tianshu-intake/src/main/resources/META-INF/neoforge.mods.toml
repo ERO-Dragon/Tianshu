@@ -5,7 +5,7 @@ license="MIT"
 [[mods]]
 modId="tianshu_intake"
 version="${mod_version}"
-displayName="Tianshu - Intake"
+displayName="${mod_name} - Intake"
 description='''
 Speech intake for Tianshu: recognition, then repair of misheard words.
 '''

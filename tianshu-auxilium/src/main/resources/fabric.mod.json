@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tianshu_auxilium",
   "version": "${mod_version}",
-  "name": "Tianshu - Auxilium",
+  "name": "${mod_name} - Auxilium",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

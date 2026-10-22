@@ -39,17 +39,19 @@ test {
 def tianshuModVersion = providers.gradleProperty('mod_version').get()
 def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
 def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+def tianshuModName = providers.gradleProperty('mod_name').get()
 
 processResources {
     filesMatching('META-INF/neoforge.mods.toml') {
         expand(
                 mod_version               : tianshuModVersion,
                 minecraft_version_range   : tianshuMcRange,
-                tianshu_libs_version_range: tianshuLibsRange
+                tianshu_libs_version_range: tianshuLibsRange,
+                mod_name                  : tianshuModName
         )
     }
     filesMatching('fabric.mod.json') {
-        expand(mod_version: tianshuModVersion)
+        expand(mod_version: tianshuModVersion, mod_name: tianshuModName)
     }
 }
 

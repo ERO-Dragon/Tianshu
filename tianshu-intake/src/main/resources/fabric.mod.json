@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tianshu_intake",
   "version": "${mod_version}",
-  "name": "Tianshu - Intake",
+  "name": "${mod_name} - Intake",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tianshu_echo",
   "version": "${mod_version}",
-  "name": "Tianshu - Echo",
+  "name": "${mod_name} - Echo",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
