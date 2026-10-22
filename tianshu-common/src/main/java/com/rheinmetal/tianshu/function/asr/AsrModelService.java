@@ -1,15 +1,18 @@
 package com.rheinmetal.tianshu.function.asr;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
 import com.rheinmetal.tianshu.function.asr.download.AsrModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.asr.engine.AsrEngine;
-import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDeleteCallback;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDeletionRunner;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -25,7 +28,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -33,19 +35,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class AsrModelService {
-
-    public interface DownloadProgressCallback {
-        void onProgress(ModelDownloadProgress progress);
-        void onComplete();
-        void onError(String message);
-
-        default void onCancelled() {
-        }
-    }
-
-    public interface ModelDeleteCallback {
-        void onComplete(boolean deleted);
-    }
 
     public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelKey, ModelDownloadProgress progress) {
         public static DownloadStatus idle() {
@@ -68,7 +57,7 @@ public class AsrModelService {
     private final Supplier<AsrEngine> engineSupplier;
     private final BooleanSupplier readySupplier;
     private final Consumer<ModuleStatus> moduleStatusSink;
-    private final AtomicBoolean deletingModel = new AtomicBoolean(false);
+    private final ModelDeletionRunner deletionRunner;
     private final ModelAvailabilityRefresher availabilityRefresher;
     private final AtomicLong downloadSessionSequence = new AtomicLong(0L);
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
@@ -95,7 +84,8 @@ public class AsrModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                "module.asr", executorManager, env, this::buildAvailabilitySnapshot);
+                ProtocolModuleIds.ASR, executorManager, env, this::buildAvailabilitySnapshot);
+        this.deletionRunner = new ModelDeletionRunner(ProtocolModuleIds.ASR, executorManager, availabilityRefresher);
         this.previewCoordinator = new AsrPreviewCoordinator(
                 env,
                 audioBridge,
@@ -125,7 +115,7 @@ public class AsrModelService {
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId("module.asr")
+                        .moduleId(ProtocolModuleIds.ASR)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.asr:model.cleanup")
                         .maxConcurrency(1)
@@ -202,40 +192,14 @@ public class AsrModelService {
             if (callback != null) callback.onComplete(false);
             return;
         }
-        if (!deletingModel.compareAndSet(false, true)) {
-            if (callback != null) callback.onComplete(false);
-            return;
-        }
-        ProtocolTaskHandle handle = executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId("module.asr")
-                        .lane(ExecutionLane.IO)
-                        .concurrencyKey("module.asr:model.delete")
-                        .maxConcurrency(1)
-                        .queueCapacity(2)
-                        .build(),
-                () -> {
-                    boolean deleted;
-                    try {
-                        deleted = deleteModel(info);
-                        availabilityRefresher.refreshNow();
-                    } finally {
-                        deletingModel.set(false);
-                    }
-                    if (callback != null) callback.onComplete(deleted);
-                }
-        );
-        if (handle.state() == ProtocolTaskState.REJECTED) {
-            deletingModel.set(false);
-            if (callback != null) callback.onComplete(false);
-        }
+        deletionRunner.deleteAsync(() -> deleteModel(info), callback);
     }
 
     public boolean isDeleting() {
-        return deletingModel.get();
+        return deletionRunner.isDeleting();
     }
 
-    public void downloadModel(String modelKey, String githubProxyUrl, DownloadProgressCallback callback) {
+    public void downloadModel(String modelKey, String githubProxyUrl, ModelDownloadCallback callback) {
         AsrModelInfo info = AsrModelManager.getModelByLocalKey(modelKey);
         if (info == null) {
             notifyDownloadError(callback, "ASR model info is empty");
@@ -244,7 +208,7 @@ public class AsrModelService {
         downloadModel(info, githubProxyUrl, callback);
     }
 
-    public synchronized void downloadModel(AsrModelInfo info, String githubProxyUrl, DownloadProgressCallback callback) {
+    public synchronized void downloadModel(AsrModelInfo info, String githubProxyUrl, ModelDownloadCallback callback) {
         if (info == null) {
             notifyDownloadError(callback, "ASR model info is empty");
             return;
@@ -263,7 +227,7 @@ public class AsrModelService {
         publishWaiting("tianshu.presence.module.asr.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId("module.asr")
+                        .moduleId(ProtocolModuleIds.ASR)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.asr:model.download")
                         .maxConcurrency(1)
@@ -271,7 +235,7 @@ public class AsrModelService {
                         .build(),
                 () -> {
                     try {
-                        task.session().download(info, resolveModelDir(info), githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
+                        task.session().download(info, resolveModelDir(info), githubProxyUrl, new ModelDownloadCallback() {
                             @Override
                             public void onProgress(ModelDownloadProgress progress) {
                                 if (!isCurrentTask(task)) {
@@ -351,8 +315,8 @@ public class AsrModelService {
         return task == null ? DownloadStatus.idle() : task.status();
     }
 
-    public void downloadModelSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
-        downloadCoordinator.newSession().download(info, targetDir, githubProxyUrl, new AsrModelDownloader.DownloadProgressCallback() {
+    public void downloadModelSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) throws Exception {
+        downloadCoordinator.newSession().download(info, targetDir, githubProxyUrl, new ModelDownloadCallback() {
             @Override
             public void onProgress(ModelDownloadProgress progress) {
                 callback.onProgress(progress);
@@ -610,11 +574,11 @@ public class AsrModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(ProtocolModuleIds.ASR, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.asr", messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(ProtocolModuleIds.ASR, messageKey));
     }
 
     private boolean isActiveModel(String modelKey) {
@@ -622,7 +586,7 @@ public class AsrModelService {
         return task != null && AsrModelManager.localKeysEqual(modelKey, task.modelKey());
     }
 
-    private void notifyDownloadError(DownloadProgressCallback callback, String message) {
+    private void notifyDownloadError(ModelDownloadCallback callback, String message) {
         if (callback != null) {
             callback.onError(message);
         }

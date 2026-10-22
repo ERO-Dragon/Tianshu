@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.asr;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -18,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 final class AsrPreviewCoordinator implements AutoCloseable {
     static final Duration DEFAULT_RECORDING_WINDOW = Duration.ofSeconds(5);
 
-    private static final String MODULE_ID = "module.asr";
+    private static final String MODULE_ID = ProtocolModuleIds.ASR;
     private static final String CONCURRENCY_KEY = "module.asr:preview";
 
     private final IGameEnvironment environment;

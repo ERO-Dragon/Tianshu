@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsCodecExecution;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 public final class TtsProtocolCodecExecution implements TtsCodecExecution {
-    private static final String MODULE_ID = "module.tts";
+    private static final String MODULE_ID = ProtocolModuleIds.TTS;
     private static final String CONCURRENCY_KEY = MODULE_ID + ":moss-codec";
     private static final long AWAIT_POLL_MILLIS = 25L;
 

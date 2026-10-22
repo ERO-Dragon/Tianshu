@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
@@ -43,7 +43,7 @@ import java.time.Duration;
 
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
-    public static final String SOURCE_ID = ProtocolSourceIds.AX;
+    public static final String SOURCE_ID = ProtocolModuleIds.AX;
     public static final String DIALOGUE_INPUT_CAPABILITY = ProtocolCapabilities.AX_DIALOGUE_INPUT;
     public static final String CONTEXT_INPUT_CAPABILITY = ProtocolCapabilities.AX_CONTEXT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;

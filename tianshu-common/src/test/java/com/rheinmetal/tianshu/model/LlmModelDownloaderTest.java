@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -61,7 +62,7 @@ class LlmModelDownloaderTest {
         }
     }
 
-    private static final class RecordingCallback implements LlmModelDownloader.DownloadProgressCallback {
+    private static final class RecordingCallback implements ModelDownloadCallback {
         private final List<ModelDownloadProgress> progress;
 
         private RecordingCallback(List<ModelDownloadProgress> progress) {

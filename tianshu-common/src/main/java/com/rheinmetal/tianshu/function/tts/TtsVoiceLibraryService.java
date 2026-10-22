@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -101,7 +102,7 @@ public class TtsVoiceLibraryService {
 
     private ProtocolTaskSpec taskSpec(String operation, int queueCapacity) {
         return ProtocolTaskSpec.builder()
-                .moduleId("module.tts")
+                .moduleId(ProtocolModuleIds.TTS)
                 .lane(ExecutionLane.IO)
                 .concurrencyKey("module.tts:voice-library:" + operation)
                 .maxConcurrency(1)

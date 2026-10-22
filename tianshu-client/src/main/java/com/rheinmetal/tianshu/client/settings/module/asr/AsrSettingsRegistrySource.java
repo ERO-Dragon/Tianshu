@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.settings.module.asr;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.client.api.settings.SettingsListCard;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
@@ -27,6 +28,7 @@ import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.AsrModelManager;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
@@ -41,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public final class AsrSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = "module.asr";
+    private static final String MODULE_ID = ProtocolModuleIds.ASR;
     private static final UiText TITLE = asr("title");
     private static final UiText DESCRIPTION = asr("description");
 
@@ -461,7 +463,7 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
                 return;
             }
             String modelKey = info.localKey();
-            asrModelService().downloadModel(modelKey, githubProxyUrl.get(), new AsrModelService.DownloadProgressCallback() {
+            asrModelService().downloadModel(modelKey, githubProxyUrl.get(), new ModelDownloadCallback() {
                 @Override
                 public void onProgress(ModelDownloadProgress progress) {
                     queueDownloadRefresh();

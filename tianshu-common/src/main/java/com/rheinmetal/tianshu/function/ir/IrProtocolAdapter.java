@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.ir;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -25,8 +26,8 @@ import java.time.Duration;
 import java.util.EnumSet;
 
 public final class IrProtocolAdapter extends AbstractProtocolAdapter {
-    public static final String MODULE_ID = "module.ir";
-    public static final String SOURCE_ID = "module.ir";
+    public static final String MODULE_ID = ProtocolModuleIds.IR;
+    public static final String SOURCE_ID = ProtocolModuleIds.IR;
 
     public IrProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());

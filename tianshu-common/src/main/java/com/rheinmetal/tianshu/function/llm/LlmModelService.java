@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import com.rheinmetal.tianshu.function.llm.download.LlmModelDownloadCoordinator;
@@ -8,6 +9,7 @@ import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.LlmModelManager;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -41,15 +43,6 @@ public final class LlmModelService {
     private static final String ERROR_DOWNLOAD_BUSY_KEY = "tianshu.gui.llm.error.download_busy";
     private static final String ERROR_DOWNLOAD_QUEUE_FULL_KEY = "tianshu.gui.llm.error.download_queue_full";
     private static final String ERROR_DOWNLOAD_FAILED_KEY = "tianshu.gui.llm.error.download_failed";
-
-    public interface DownloadProgressCallback {
-        void onProgress(ModelDownloadProgress progress);
-        void onComplete();
-        void onError(String message);
-
-        default void onCancelled() {
-        }
-    }
 
     public record DownloadSnapshot(boolean running, boolean paused, boolean cancelling, String modelName, ModelDownloadProgress progress, String errorMessage, long updatedAtMillis) {
         public DownloadSnapshot {
@@ -85,7 +78,7 @@ public final class LlmModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new LlmModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                "module.llm", executorManager, env, this::buildAvailabilitySnapshot);
+                ProtocolModuleIds.LLM, executorManager, env, this::buildAvailabilitySnapshot);
         scheduleStartupCleanup();
     }
 
@@ -125,7 +118,7 @@ public final class LlmModelService {
         return modelBasePath().resolve(info.name);
     }
 
-    public void downloadModel(LlmModelInfo info, DownloadProgressCallback callback) {
+    public void downloadModel(LlmModelInfo info, ModelDownloadCallback callback) {
         if (info == null) {
             if (callback != null) callback.onError(ERROR_MODEL_INFO_MISSING_KEY);
             return;
@@ -145,7 +138,7 @@ public final class LlmModelService {
         publishWaiting("tianshu.presence.module.llm.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId("module.llm")
+                        .moduleId(ProtocolModuleIds.LLM)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.llm:model.download")
                         .maxConcurrency(1)
@@ -186,10 +179,10 @@ public final class LlmModelService {
         return downloadSnapshot.get();
     }
 
-    private void runDownload(DownloadTask task, LlmModelInfo info, DownloadProgressCallback callback) {
+    private void runDownload(DownloadTask task, LlmModelInfo info, ModelDownloadCallback callback) {
         DownloadProgressEmitter progressEmitter = new DownloadProgressEmitter(task, callback);
         try {
-            task.session().download(info, task.modelDir(), new LlmModelDownloader.DownloadProgressCallback() {
+            task.session().download(info, task.modelDir(), new ModelDownloadCallback() {
                 @Override
                 public void onProgress(ModelDownloadProgress progress) {
                     progressEmitter.accept(progress);
@@ -221,7 +214,7 @@ public final class LlmModelService {
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId("module.llm")
+                        .moduleId(ProtocolModuleIds.LLM)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.llm:model.cleanup")
                         .maxConcurrency(1)
@@ -345,7 +338,7 @@ public final class LlmModelService {
         return finished;
     }
 
-    private void finishDownloadComplete(DownloadTask task, DownloadProgressCallback callback) {
+    private void finishDownloadComplete(DownloadTask task, ModelDownloadCallback callback) {
         if (!finishTask(task)) {
             return;
         }
@@ -355,7 +348,7 @@ public final class LlmModelService {
         if (callback != null) callback.onComplete();
     }
 
-    private void finishDownloadCancelled(DownloadTask task, DownloadProgressCallback callback) {
+    private void finishDownloadCancelled(DownloadTask task, ModelDownloadCallback callback) {
         if (!finishTask(task)) {
             return;
         }
@@ -368,7 +361,7 @@ public final class LlmModelService {
         if (callback != null) callback.onCancelled();
     }
 
-    private void finishDownloadError(DownloadTask task, DownloadProgressCallback callback, String message) {
+    private void finishDownloadError(DownloadTask task, ModelDownloadCallback callback, String message) {
         if (!finishTask(task)) {
             return;
         }
@@ -382,11 +375,11 @@ public final class LlmModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.llm", messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(ProtocolModuleIds.LLM, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.llm", messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(ProtocolModuleIds.LLM, messageKey));
     }
 
     private void cleanupCancelledDownload(DownloadTask task) {
@@ -452,12 +445,12 @@ public final class LlmModelService {
 
     private final class DownloadProgressEmitter {
         private final DownloadTask task;
-        private final DownloadProgressCallback callback;
+        private final ModelDownloadCallback callback;
         private ModelDownloadProgress lastProgress;
         private int lastPercent = -1;
         private long lastEmittedAtMillis;
 
-        private DownloadProgressEmitter(DownloadTask task, DownloadProgressCallback callback) {
+        private DownloadProgressEmitter(DownloadTask task, ModelDownloadCallback callback) {
             this.task = task;
             this.callback = callback;
         }

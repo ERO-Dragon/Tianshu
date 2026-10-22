@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.synthesis;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
@@ -155,7 +156,7 @@ public final class MossTtsBackend implements TtsBackend {
                     sink.accept(pcm);
                 }
                 env.diagnostics().publish(DiagnosticEvent.now(
-                        "module.tts",
+                        ProtocolModuleIds.TTS,
                         "MOSS_TTS_STREAM_CHUNK",
                         DiagnosticSeverity.DEBUG,
                         DiagnosticPrivacy.REDACTED,

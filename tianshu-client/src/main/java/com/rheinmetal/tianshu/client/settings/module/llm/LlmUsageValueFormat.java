@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.settings.module.llm;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.function.llm.account.LlmAccountQueryState;
 import com.rheinmetal.tianshu.function.llm.account.LlmAccountSnapshot;
@@ -169,12 +170,12 @@ final class LlmUsageValueFormat {
     static UiText sourceLabel(String sourceId) {
         String id = sourceId == null ? "" : sourceId.trim().toLowerCase(Locale.ROOT);
         return switch (id) {
-            case "module.asr" -> key("source.module_asr");
-            case "module.ax" -> key("source.module_ax");
-            case "module.ia" -> key("source.module_ia");
-            case "module.ir" -> key("source.module_ir");
-            case "module.llm" -> key("source.module_llm");
-            case "module.tts" -> key("source.module_tts");
+            case ProtocolModuleIds.ASR -> key("source.module_asr");
+            case ProtocolModuleIds.AX -> key("source.module_ax");
+            case ProtocolModuleIds.IA -> key("source.module_ia");
+            case ProtocolModuleIds.IR -> key("source.module_ir");
+            case ProtocolModuleIds.LLM -> key("source.module_llm");
+            case ProtocolModuleIds.TTS -> key("source.module_tts");
             case "core.runtime" -> key("source.core_runtime");
             case "" -> key("source.unknown");
             default -> UiText.literal(sourceId);

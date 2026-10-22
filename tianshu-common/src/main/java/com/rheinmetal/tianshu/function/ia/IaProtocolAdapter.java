@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationResultPayload;
@@ -39,8 +40,8 @@ import java.time.Duration;
 import java.util.EnumSet;
 
 public final class IaProtocolAdapter extends AbstractProtocolAdapter implements DialogueProtocolPort {
-    public static final String MODULE_ID = "module.ia";
-    public static final String SOURCE_ID = "module.ia";
+    public static final String MODULE_ID = ProtocolModuleIds.IA;
+    public static final String SOURCE_ID = ProtocolModuleIds.IA;
 
     public IaProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withConcurrency(1, 64));

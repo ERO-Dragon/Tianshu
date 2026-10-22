@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.audio;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
@@ -400,7 +401,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         }
         long endedAtNanos = System.nanoTime();
         diagnostics.publish(DiagnosticEvent.now(
-                "module.tts",
+                ProtocolModuleIds.TTS,
                 "TTS_AUDIO_LINE_METRICS",
                 DiagnosticSeverity.DEBUG,
                 DiagnosticPrivacy.REDACTED,

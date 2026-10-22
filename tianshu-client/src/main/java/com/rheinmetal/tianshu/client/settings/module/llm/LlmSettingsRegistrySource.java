@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.settings.module.llm;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.client.api.settings.ActionTemplate;
 import com.rheinmetal.tianshu.client.api.settings.ItemActionTemplate;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
@@ -35,6 +36,7 @@ import com.rheinmetal.tianshu.function.llm.usage.LlmUsageSnapshot;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
@@ -49,7 +51,7 @@ import java.util.function.BooleanSupplier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class LlmSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = "module.llm";
+    private static final String MODULE_ID = ProtocolModuleIds.LLM;
     private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     /** How long an editor verdict stays on screen; long enough to read a rejection. */
     private static final long EDITOR_STATUS_MILLIS = 4_000L;
@@ -1293,7 +1295,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             if (!canDownloadEmbeddingModel()) {
                 return;
             }
-            modelService.downloadModel(info, new LlmModelService.DownloadProgressCallback() {
+            modelService.downloadModel(info, new ModelDownloadCallback() {
                 @Override
                 public void onProgress(ModelDownloadProgress progress) {
                     requestDownloadRefresh();

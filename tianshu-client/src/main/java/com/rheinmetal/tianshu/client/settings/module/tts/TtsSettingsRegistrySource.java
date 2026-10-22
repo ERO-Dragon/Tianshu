@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.settings.module.tts;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
@@ -27,6 +28,7 @@ import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsApplier;
 import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.tts.settings.TtsSettingsSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
@@ -45,7 +47,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class TtsSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = "module.tts";
+    private static final String MODULE_ID = ProtocolModuleIds.TTS;
     private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     private static final UiText TITLE = tts("title");
     private static final UiText DESCRIPTION = tts("description");
@@ -526,7 +528,7 @@ public final class TtsSettingsRegistrySource implements TianshuSettingsRegistryS
             if (info == null || !cardState(info).canStartDownload()) {
                 return;
             }
-            ttsModelService().downloadModel(info, githubProxyUrl.get(), new TtsModelService.DownloadProgressCallback() {
+            ttsModelService().downloadModel(info, githubProxyUrl.get(), new ModelDownloadCallback() {
                 @Override
                 public void onProgress(ModelDownloadProgress progress) {
                     requestDownloadRefresh();

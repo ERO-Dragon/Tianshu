@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,12 +13,6 @@ import java.util.List;
 import java.util.Objects;
 
 public class LlmModelDownloader {
-
-    public interface DownloadProgressCallback {
-        void onProgress(ModelDownloadProgress progress);
-        void onComplete();
-        void onError(String message);
-    }
 
     public interface DownloadControl {
         void awaitReady() throws IOException;
@@ -73,7 +68,7 @@ public class LlmModelDownloader {
         return paused;
     }
 
-    public void download(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback) {
+    public void download(LlmModelInfo info, Path targetDir, ModelDownloadCallback callback) {
         Objects.requireNonNull(callback, "callback");
         cancelled = false;
         paused = false;
@@ -172,14 +167,14 @@ public class LlmModelDownloader {
         return "failed";
     }
 
-    public void downloadSync(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+    public void downloadSync(LlmModelInfo info, Path targetDir, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         Objects.requireNonNull(info, "info");
         Objects.requireNonNull(targetDir, "targetDir");
         Objects.requireNonNull(callback, "callback");
         doDownload(info, targetDir, callback, control == null ? () -> {} : control);
     }
 
-    private void doDownload(LlmModelInfo info, Path targetDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+    private void doDownload(LlmModelInfo info, Path targetDir, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         Path targetFile = targetDir.resolve(info.getModelFile());
         control.awaitReady();
 

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.tts.settings.TtsConfiguration;
 import com.rheinmetal.tianshu.function.tts.download.TtsModelDownloadCoordinator;
@@ -7,6 +8,9 @@ import com.rheinmetal.tianshu.function.tts.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.model.ModelSettings;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDeleteCallback;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDeletionRunner;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
@@ -34,24 +38,10 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 public class TtsModelService {
-
-    public interface DownloadProgressCallback {
-        void onProgress(ModelDownloadProgress progress);
-        void onComplete();
-        void onError(String message);
-
-        default void onCancelled() {
-        }
-    }
-
-    public interface ModelDeleteCallback {
-        void onComplete(boolean deleted);
-    }
 
     public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, ModelDownloadProgress progress) {
         public static DownloadStatus idle() {
@@ -68,7 +58,7 @@ public class TtsModelService {
     private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
     private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
     private final ModelAvailabilityRefresher availabilityRefresher;
-    private final AtomicBoolean deletingModel = new AtomicBoolean(false);
+    private final ModelDeletionRunner deletionRunner;
 
     public TtsModelService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
@@ -81,7 +71,8 @@ public class TtsModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new TtsModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                "module.tts", executorManager, env, this::buildAvailabilitySnapshot);
+                ProtocolModuleIds.TTS, executorManager, env, this::buildAvailabilitySnapshot);
+        this.deletionRunner = new ModelDeletionRunner(ProtocolModuleIds.TTS, executorManager, availabilityRefresher);
         scheduleStartupCleanup();
     }
 
@@ -226,7 +217,7 @@ public class TtsModelService {
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId("module.tts")
+                        .moduleId(ProtocolModuleIds.TTS)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.tts:model.cleanup")
                         .maxConcurrency(1)
@@ -364,46 +355,14 @@ public class TtsModelService {
             }
             return;
         }
-        if (!deletingModel.compareAndSet(false, true)) {
-            if (callback != null) {
-                callback.onComplete(false);
-            }
-            return;
-        }
-        ProtocolTaskHandle handle = executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId("module.tts")
-                        .lane(ExecutionLane.IO)
-                        .concurrencyKey("module.tts:model.delete")
-                        .maxConcurrency(1)
-                        .queueCapacity(2)
-                        .build(),
-                () -> {
-                    boolean deleted = false;
-                    try {
-                        deleted = deleteModel(info);
-                        availabilityRefresher.refreshNow();
-                    } finally {
-                        deletingModel.set(false);
-                    }
-                    if (callback != null) {
-                        callback.onComplete(deleted);
-                    }
-                }
-        );
-        if (handle.state() == ProtocolTaskState.REJECTED) {
-            deletingModel.set(false);
-            if (callback != null) {
-                callback.onComplete(false);
-            }
-        }
+        deletionRunner.deleteAsync(() -> deleteModel(info), callback);
     }
 
     public boolean isDeleting() {
-        return deletingModel.get();
+        return deletionRunner.isDeleting();
     }
 
-    public void downloadModel(TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
+    public void downloadModel(TtsModelInfo info, String proxyUrl, ModelDownloadCallback callback) {
         if (info == null) {
             if (callback != null) {
                 callback.onError("tianshu.gui.tts.failure.invalid_request");
@@ -429,7 +388,7 @@ public class TtsModelService {
         publishWaiting("tianshu.presence.module.tts.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId("module.tts")
+                        .moduleId(ProtocolModuleIds.TTS)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.tts:model.download")
                         .maxConcurrency(1)
@@ -509,7 +468,7 @@ public class TtsModelService {
         }
     }
 
-    private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, DownloadProgressCallback callback) {
+    private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, ModelDownloadCallback callback) {
         try {
             if (task.hadModelContent()) {
                 finishDownloadComplete(task, callback);
@@ -542,7 +501,7 @@ public class TtsModelService {
         }
     }
 
-    private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
+    private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, ModelDownloadCallback callback) throws Exception {
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.RESOLVING_FILES, 0, "files.resolve");
         ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
@@ -557,7 +516,7 @@ public class TtsModelService {
         emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
     }
 
-    private void downloadMossModel(DownloadTask task, TtsModelInfo info, Path modelDir, DownloadProgressCallback callback) throws Exception {
+    private void downloadMossModel(DownloadTask task, TtsModelInfo info, Path modelDir, ModelDownloadCallback callback) throws Exception {
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 0, "model.files.download");
         ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
@@ -581,7 +540,7 @@ public class TtsModelService {
         emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
     }
 
-    private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, DownloadProgressCallback callback) throws Exception {
+    private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, ModelDownloadCallback callback) throws Exception {
         Files.createDirectories(modelDir);
         URI archiveUri = requireHttpUri(info.downloadUri, "tts.download.invalid_archive_uri");
         URI proxyBaseUri = optionalHttpUri(proxyUrl, "tts.download.invalid_proxy_uri");
@@ -632,7 +591,7 @@ public class TtsModelService {
         return extractedRoot;
     }
 
-    private void emitProgress(DownloadTask task, DownloadProgressCallback callback, ModelDownloadStage stage, int percent, String detailCode) {
+    private void emitProgress(DownloadTask task, ModelDownloadCallback callback, ModelDownloadStage stage, int percent, String detailCode) {
         if (!isCurrentTask(task) || task.session().isCancelled()) {
             return;
         }
@@ -645,7 +604,7 @@ public class TtsModelService {
 
     private void emitByteProgress(
             DownloadTask task,
-            DownloadProgressCallback callback,
+            ModelDownloadCallback callback,
             long downloadedBytes,
             long totalBytes,
             int startPercent,
@@ -661,7 +620,7 @@ public class TtsModelService {
 
     private void emitProgressBytes(
             DownloadTask task,
-            DownloadProgressCallback callback,
+            ModelDownloadCallback callback,
             ModelDownloadStage stage,
             int percent,
             long downloadedBytes,
@@ -796,7 +755,7 @@ public class TtsModelService {
         return finished;
     }
 
-    private void finishDownloadComplete(DownloadTask task, DownloadProgressCallback callback) {
+    private void finishDownloadComplete(DownloadTask task, ModelDownloadCallback callback) {
         if (!finishTask(task)) {
             return;
         }
@@ -808,7 +767,7 @@ public class TtsModelService {
         }
     }
 
-    private void finishDownloadCancelled(DownloadTask task, DownloadProgressCallback callback) {
+    private void finishDownloadCancelled(DownloadTask task, ModelDownloadCallback callback) {
         if (!finishTask(task)) {
             return;
         }
@@ -824,7 +783,7 @@ public class TtsModelService {
         }
     }
 
-    private void finishDownloadError(DownloadTask task, DownloadProgressCallback callback, String message) {
+    private void finishDownloadError(DownloadTask task, ModelDownloadCallback callback, String message) {
         if (!finishTask(task)) {
             return;
         }
@@ -838,11 +797,11 @@ public class TtsModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.tts", messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(ProtocolModuleIds.TTS, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed("module.tts", messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(ProtocolModuleIds.TTS, messageKey));
     }
 
     private void cleanupIncompleteDownload(DownloadTask task) {

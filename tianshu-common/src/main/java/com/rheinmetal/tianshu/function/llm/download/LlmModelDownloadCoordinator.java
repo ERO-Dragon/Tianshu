@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.download.DownloadGate;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -61,7 +62,7 @@ public final class LlmModelDownloadCoordinator {
             gate.cancelActiveTransfers();
         }
 
-        public void download(LlmModelInfo info, Path targetDir, LlmModelDownloader.DownloadProgressCallback callback) throws Exception {
+        public void download(LlmModelInfo info, Path targetDir, ModelDownloadCallback callback) throws Exception {
             downloader.downloadSync(info, targetDir, callback, this::awaitReady);
         }
 

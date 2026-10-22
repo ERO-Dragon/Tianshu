@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -11,7 +12,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 public final class TtsSynthesisScheduler {
-    private static final String MODULE_ID = "module.tts";
+    private static final String MODULE_ID = ProtocolModuleIds.TTS;
     static final String BACKEND_CONCURRENCY_KEY = MODULE_ID + ":backend";
 
     private final ModuleExecutionAccess executorManager;

@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
@@ -25,8 +25,8 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.EnumSet;
 
 public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
-    public static final String MODULE_ID = ProtocolSourceIds.ASR;
-    public static final String SOURCE_ID = ProtocolSourceIds.ASR;
+    public static final String MODULE_ID = ProtocolModuleIds.ASR;
+    public static final String SOURCE_ID = ProtocolModuleIds.ASR;
     private static final long LISTENING_TTL_MILLIS = 8_000L;
     private static final long RECOGNITION_TTL_MILLIS = 30_000L;
     private static final long MODEL_LOADING_TTL_MILLIS = 120_000L;

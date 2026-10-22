@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.llm.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.llm.catalog.OpenAiCompatibleModelCatalogClient;
@@ -128,7 +129,7 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public String moduleId() {
-        return "module.llm";
+        return ProtocolModuleIds.LLM;
     }
 
     @Override

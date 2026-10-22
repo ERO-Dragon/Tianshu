@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.download.DownloadGate;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -49,7 +50,7 @@ public final class AsrModelDownloadCoordinator {
             gate.cancel();
         }
 
-        public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, AsrModelDownloader.DownloadProgressCallback callback) throws Exception {
+        public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) throws Exception {
             downloader.downloadSync(info, targetDir, githubProxyUrl, callback, this::awaitReady);
         }
 

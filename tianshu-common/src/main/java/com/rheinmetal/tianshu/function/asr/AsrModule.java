@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.asr;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
@@ -117,7 +118,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public String moduleId() {
-        return "module.asr";
+        return ProtocolModuleIds.ASR;
     }
 
     @Override

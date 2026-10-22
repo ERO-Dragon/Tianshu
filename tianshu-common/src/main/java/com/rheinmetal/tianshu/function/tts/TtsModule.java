@@ -25,7 +25,7 @@ import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceRequestValidator;
 import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
@@ -624,7 +624,7 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         adapter.publishRequestStatus(status);
-        if (ProtocolSourceIds.AX.equals(status.sourceId()) || status.requestId().isBlank()) {
+        if (ProtocolModuleIds.AX.equals(status.sourceId()) || status.requestId().isBlank()) {
             return;
         }
         if (status.status() == com.rheinmetal.tianshu.protocol.payload.TtsRequestStatus.QUEUED
@@ -636,7 +636,7 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private void beginRequestActivity(String sourceId, String requestId) {
-        if (ProtocolSourceIds.AX.equals(sourceId) || requestId == null || requestId.isBlank()) {
+        if (ProtocolModuleIds.AX.equals(sourceId) || requestId == null || requestId.isBlank()) {
             return;
         }
         String normalizedRequestId = requestId.trim();

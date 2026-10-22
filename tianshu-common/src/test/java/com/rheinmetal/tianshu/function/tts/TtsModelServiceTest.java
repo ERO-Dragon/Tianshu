@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.tts;
 
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.sun.net.httpserver.HttpServer;
@@ -56,7 +57,7 @@ class TtsModelServiceTest {
 
             try (ProtocolExecutorManager executors = new ProtocolExecutorManager(Runnable::run)) {
                 TtsModelService service = new TtsModelService(new TestLlmSupport.FakeGameEnvironment(), config, executors);
-                service.downloadModel(info, null, new TtsModelService.DownloadProgressCallback() {
+                service.downloadModel(info, null, new ModelDownloadCallback() {
                     @Override
                     public void onProgress(ModelDownloadProgress progress) {
                     }

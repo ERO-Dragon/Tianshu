@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -73,7 +74,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import java.util.Map;
 
 public final class AXModule implements TianshuManagedModule {
-    public static final String MODULE_ID = "module.ax";
+    public static final String MODULE_ID = ProtocolModuleIds.AX;
 
     private final IGameEnvironment env;
     private final AXStorageConfiguration storageConfiguration;

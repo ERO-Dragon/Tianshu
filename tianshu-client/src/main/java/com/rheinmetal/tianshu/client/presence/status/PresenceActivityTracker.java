@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
-import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -125,9 +125,9 @@ public final class PresenceActivityTracker {
 
     private boolean sourceAllowed(String sourceId, PresenceActivityType type) {
         return switch (type) {
-            case THINKING, RESPONDING -> ProtocolSourceIds.AX.equals(sourceId);
-            case LISTENING -> ProtocolSourceIds.ASR.equals(sourceId);
-            case RECONNECTING, ERROR, DEGRADED -> ProtocolSourceIds.LLM.equals(sourceId);
+            case THINKING, RESPONDING -> ProtocolModuleIds.AX.equals(sourceId);
+            case LISTENING -> ProtocolModuleIds.ASR.equals(sourceId);
+            case RECONNECTING, ERROR, DEGRADED -> ProtocolModuleIds.LLM.equals(sourceId);
             case LOADING, PROCESSING_TASK -> true;
         };
     }

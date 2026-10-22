@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.llm;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.llm.service.RagCacheManager;
@@ -40,8 +41,8 @@ import java.util.function.Supplier;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private static final long TASK_ACTIVITY_TTL_MILLIS = 900_000L;
-    public static final String MODULE_ID = "module.llm";
-    public static final String SOURCE_ID = "module.llm";
+    public static final String MODULE_ID = ProtocolModuleIds.LLM;
+    public static final String SOURCE_ID = ProtocolModuleIds.LLM;
 
     private volatile LLMService llmService;
     private volatile LlmRagStorageService ragStorageService;

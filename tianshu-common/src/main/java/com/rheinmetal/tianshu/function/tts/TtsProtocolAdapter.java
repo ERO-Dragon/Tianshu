@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -28,8 +29,8 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.EnumSet;
 
 public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
-    public static final String MODULE_ID = "module.tts";
-    public static final String SOURCE_ID = "module.tts";
+    public static final String MODULE_ID = ProtocolModuleIds.TTS;
+    public static final String SOURCE_ID = ProtocolModuleIds.TTS;
     private static final long MODEL_LOADING_TTL_MILLIS = 300_000L;
     private static final long REQUEST_ACTIVITY_TTL_MILLIS = 900_000L;
 

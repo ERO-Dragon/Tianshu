@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
@@ -49,12 +50,6 @@ public class AsrModelDownloader {
     private final Supplier<String> preferredHfBaseSupplier;
     private final BooleanSupplier githubReachable;
 
-    public interface DownloadProgressCallback {
-        void onProgress(ModelDownloadProgress progress);
-        void onComplete();
-        void onError(String message);
-    }
-
     @FunctionalInterface
     public interface DownloadControl {
         void awaitReady() throws IOException;
@@ -90,7 +85,7 @@ public class AsrModelDownloader {
         this.githubReachable = Objects.requireNonNull(githubReachable, "githubReachable");
     }
 
-    public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) {
+    public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) {
         try {
             downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
         } catch (Exception e) {
@@ -98,11 +93,11 @@ public class AsrModelDownloader {
         }
     }
 
-    public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback) throws Exception {
+    public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) throws Exception {
         downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
     }
 
-    public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+    public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         doDownload(info, targetDir, githubProxyUrl, callback, control == null ? () -> {} : control);
     }
 
@@ -110,7 +105,7 @@ public class AsrModelDownloader {
         http.cancelActiveTransfers();
     }
 
-    private void doDownload(AsrModelInfo info, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+    private void doDownload(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         Objects.requireNonNull(info, "info");
         Objects.requireNonNull(targetDir, "targetDir");
         List<String> requiredFiles = validateRequiredFiles(info);
@@ -153,7 +148,7 @@ public class AsrModelDownloader {
         return files;
     }
 
-    private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+    private void downloadFromHuggingFace(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "network.check"));
         String preferredBase = preferredHfBaseSupplier.get();
         String repoId = info.remoteRepoId();
@@ -211,7 +206,7 @@ public class AsrModelDownloader {
         }
     }
 
-    private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, DownloadProgressCallback callback, DownloadControl control) throws Exception {
+    private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "network.check"));
         boolean proxyFirst = shouldUseGithubProxy(githubProxyUrl);
         List<URI> candidates = ModelDownloadSourcePolicy.githubArchiveCandidates(

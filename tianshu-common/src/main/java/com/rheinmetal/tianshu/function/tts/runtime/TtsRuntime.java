@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
@@ -665,7 +666,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             publishPlaybackState();
             synthesisEngine.synthesize(session.request(), new RuntimeAudioSink(session, mode));
             env.diagnostics().publish(DiagnosticEvent.now(
-                    "module.tts",
+                    ProtocolModuleIds.TTS,
                     "SYNTHESIS_COMPLETED",
                     DiagnosticSeverity.INFO,
                     DiagnosticPrivacy.REDACTED,
@@ -679,7 +680,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             TtsFailure failure = TtsRuntimeFailurePolicy.classify(TtsFailureCode.SYNTHESIS_FAILED, t);
             failSpeechSession(session, work, context, failure);
             env.diagnostics().publish(DiagnosticEvent.now(
-                    "module.tts",
+                    ProtocolModuleIds.TTS,
                     "SYNTHESIS_FAILED",
                     DiagnosticSeverity.ERROR,
                     DiagnosticPrivacy.REDACTED,

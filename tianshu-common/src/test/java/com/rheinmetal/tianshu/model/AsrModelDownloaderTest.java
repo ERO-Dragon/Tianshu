@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.function.llm.TestLlmSupport;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -228,7 +229,7 @@ class AsrModelDownloaderTest {
         return bytes.toByteArray();
     }
 
-    private static final class RecordingCallback implements AsrModelDownloader.DownloadProgressCallback {
+    private static final class RecordingCallback implements ModelDownloadCallback {
         private final AtomicInteger completed = new AtomicInteger();
         private final List<ModelDownloadProgress> progress;
 
