@@ -3,7 +3,6 @@
   "id": "tianshu_echo",
   "version": "${mod_version}",
   "name": "Tianshu - Echo",
-  "description": "Speech synthesis and playback for Tianshu.",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

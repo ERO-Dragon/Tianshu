@@ -71,14 +71,24 @@ neoForge {
     }
 
     mods {
+        // One entry per mod id. The kernel mod owns the adapter plus every platform-neutral module
+        // that carries no metadata of its own; each feature is a separate mod with its own manifest.
         "${mod_id}" {
             sourceSet(sourceSets.main)
             sourceSet(project(':tianshu-client').sourceSets.main)
             sourceSet(project(':tianshu-core').sourceSets.main)
             sourceSet(project(':tianshu-api').sourceSets.main)
+        }
+        tianshu_intake {
             sourceSet(project(':tianshu-intake').sourceSets.main)
+        }
+        tianshu_echo {
             sourceSet(project(':tianshu-echo').sourceSets.main)
+        }
+        tianshu_weaving {
             sourceSet(project(':tianshu-weaving').sourceSets.main)
+        }
+        tianshu_auxilium {
             sourceSet(project(':tianshu-auxilium').sourceSets.main)
         }
     }

@@ -75,11 +75,13 @@ jar {
 }
 
 // ---------------------------------------------------------------- loader entrypoints
-// One empty class per loader, kept outside src/main so the platform-free gate still covers only
-// business code. The jar carries both, which is what makes it universal.
+// Two empty classes, one per loader, outside src/main so the platform-free gate still covers only
+// business code. The jar carries both manifests, which is what makes it universal.
+// fabricmc has to come first: the neoforged mirror resets connections here and Gradle stops at the
+// first repository that throws instead of trying the next one.
 repositories {
-    maven { url = 'https://maven.neoforged.net/releases' }
     maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.neoforged.net/releases' }
 }
 
 sourceSets {

@@ -3,7 +3,6 @@
   "id": "tianshu_auxilium",
   "version": "${mod_version}",
   "name": "Tianshu - Auxilium",
-  "description": "Dialogue brain for Tianshu: turn orchestration, memory, and game-event context.",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

@@ -3,7 +3,6 @@
   "id": "tianshu_weaving",
   "version": "${mod_version}",
   "name": "Tianshu - Weaving",
-  "description": "Dialogue inference for Tianshu: cloud chat plus the local embedding lane for retrieval.",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
