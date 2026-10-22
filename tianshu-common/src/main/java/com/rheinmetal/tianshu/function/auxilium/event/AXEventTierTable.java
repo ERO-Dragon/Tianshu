@@ -18,9 +18,13 @@ import java.util.Optional;
  * Built-in tier and blacklist table for event kinds.
  *
  * <p>The table is data, not code: it ships as {@code ax_event_tiers.json} next to this package so the
- * 44 built-in kinds can be audited against the design document without reading Java. Lookups stay
+ * built-in kinds can be audited against the design document without reading Java. Lookups stay
  * permissive on purpose - an unknown kind resolves to an empty tier and a {@code false} blacklist, and
  * the dispatcher turns that into the {@code low} fallback.
+ *
+ * <p>The table says nothing about wording. How a folded window reads is declared by the producer
+ * through {@link AXEventAggregateRenderer}, so a kind unknown to this table can still fold if its
+ * producer supplies a renderer.
  */
 public final class AXEventTierTable {
     private static final String BUILTIN_RESOURCE =
@@ -37,8 +41,8 @@ public final class AXEventTierTable {
         this.entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
     }
 
-    /** One table row: the tier of a kind, whether it is blacklisted, and its aggregate sentence form. */
-    public record Entry(String kind, AXEventTier tier, boolean blacklist, AXEventAggregateForm aggregateForm) {
+    /** One table row: the tier of a kind and whether it is blacklisted. */
+    public record Entry(String kind, AXEventTier tier, boolean blacklist) {
     }
 
     /** Table shipped with the mod. */
@@ -54,12 +58,6 @@ public final class AXEventTierTable {
     public boolean blacklisted(String kind) {
         Entry entry = entry(kind);
         return entry != null && entry.blacklist();
-    }
-
-    /** Aggregate sentence form of a kind; {@link AXEventAggregateForm#COUNT} when unknown. */
-    public AXEventAggregateForm aggregateFormOf(String kind) {
-        Entry entry = entry(kind);
-        return entry == null ? AXEventAggregateForm.COUNT : entry.aggregateForm();
     }
 
     public Collection<Entry> entries() {
@@ -104,11 +102,7 @@ public final class AXEventTierTable {
                 throw new IllegalStateException("event tier entry has no valid tier: " + kind);
             }
             boolean blacklist = readBoolean(row, "blacklist");
-            AXEventAggregateForm form = AXEventAggregateForm.fromId(readString(row, "aggregate"));
-            if (tier == AXEventTier.HIGH && form != AXEventAggregateForm.COUNT) {
-                throw new IllegalStateException("high tier events are never aggregated: " + kind);
-            }
-            parsed.put(kind.trim(), new Entry(kind.trim(), tier, blacklist, form));
+            parsed.put(kind.trim(), new Entry(kind.trim(), tier, blacklist));
         }
         if (parsed.isEmpty()) {
             throw new IllegalStateException("event tier table is empty");

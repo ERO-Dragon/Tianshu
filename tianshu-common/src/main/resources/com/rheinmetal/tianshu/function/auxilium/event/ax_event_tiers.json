@@ -15,13 +15,11 @@
     },
     "tianshu:health_change": {
       "tier": "low",
-      "blacklist": false,
-      "aggregate": "range"
+      "blacklist": false
     },
     "tianshu:hunger_critical": {
       "tier": "low",
-      "blacklist": false,
-      "aggregate": "range"
+      "blacklist": false
     },
     "tianshu:hunger_change": {
       "tier": "low",
@@ -29,8 +27,7 @@
     },
     "tianshu:damage_taken": {
       "tier": "mid",
-      "blacklist": false,
-      "aggregate": "range"
+      "blacklist": false
     },
     "tianshu:effect_gained": {
       "tier": "mid",
@@ -54,8 +51,7 @@
     },
     "tianshu:fall_damage": {
       "tier": "mid",
-      "blacklist": false,
-      "aggregate": "range"
+      "blacklist": false
     },
 
     "tianshu:dimension_enter": {
@@ -105,8 +101,7 @@
     },
     "tianshu:durability_low": {
       "tier": "low",
-      "blacklist": false,
-      "aggregate": "range"
+      "blacklist": false
     },
     "tianshu:inventory_full": {
       "tier": "low",

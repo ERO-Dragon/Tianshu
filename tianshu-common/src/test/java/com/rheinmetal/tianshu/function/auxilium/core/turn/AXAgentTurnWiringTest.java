@@ -12,7 +12,6 @@ import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunCancellation;
 import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunOutcome;
 import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunPolicy;
 import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunTermination;
-import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateBroadcastGate;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDelivery;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateEventLedger;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateRegistry;
@@ -301,7 +300,6 @@ class AXAgentTurnWiringTest {
                 (taskId, task) -> delegateRuns.add(task),
                 deliveries::add,
                 LogSink.NOOP,
-                AXDelegateBroadcastGate.Context::idle,
                 System::currentTimeMillis);
         PointOfDeliverySink sink = new PointOfDeliverySink();
         AXTurnOrchestrator orchestrator = orchestrator(

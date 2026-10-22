@@ -1,28 +1,32 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.client.event.AXGameEventKinds;
 import com.rheinmetal.tianshu.client.event.AXGameEventProbe;
 import com.rheinmetal.tianshu.client.event.AXGameEventSample;
+import com.rheinmetal.tianshu.client.event.AXGameEventSentences;
 import com.rheinmetal.tianshu.client.event.AXGameEventSignal;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
-import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.event.AXGameEventService;
-import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
-import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
+import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameEventTextProvider;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
- * Client side capture hook: reads the local player, asks the probe for threshold crossings, resolves
- * the player facing wording and hands an event to the AX event service.
+ * Client side capture hook: reads the local player, asks the probe for threshold crossings, lets the
+ * producer render its sentences and submits the descriptor to the AX event service.
+ *
+ * <p>This hook is an ordinary producer. It builds the same {@link AXEventDescriptor} any other module
+ * would build - a kind, a payload, the sentence {@link AXGameEventSentences} rendered from the client
+ * language table and an optional fold renderer - and it calls the same
+ * {@link AXGameEventService#submit(AXEventDescriptor)} that is reachable from the module service
+ * registry. Nothing here is privileged: the service never inspects the source it was handed, so this
+ * producer cannot take a shortcut and no wording is assembled on the AX side.
  *
  * <p>Everything above the probe is deliberately thin: the state machine lives in the platform neutral
  * probe so it can be unit tested, and the wording lives in language keys so no sentence is hardcoded
@@ -38,28 +42,21 @@ public final class NeoForgeGameEventHooks {
      */
     private static final long SAMPLE_INTERVAL_MILLIS = 250L;
 
-    private static final String DETAIL_KEY_PREFIX = "tianshu.ax.event.detail.";
-    private static final String DETAIL_HEALTH_CRITICAL = DETAIL_KEY_PREFIX + "health_critical";
-    private static final String DETAIL_HEALTH_CHANGE = DETAIL_KEY_PREFIX + "health_change";
-    private static final String DETAIL_HUNGER_CRITICAL = DETAIL_KEY_PREFIX + "hunger_critical";
-    private static final String DETAIL_HUNGER_CHANGE = DETAIL_KEY_PREFIX + "hunger_change";
-    private static final String DETAIL_DIMENSION_PREFIX = DETAIL_KEY_PREFIX + "dimension.";
-
     private static final AtomicReference<Binding> BINDING = new AtomicReference<>();
 
     private NeoForgeGameEventHooks() {
     }
 
-    public static void bind(Supplier<AXGameEventService> serviceLookup, Supplier<String> languageCode, LogSink logSink) {
+    public static void bind(Supplier<AXGameEventService> serviceLookup, LogSink logSink) {
         if (serviceLookup == null) {
             BINDING.set(null);
             return;
         }
         BINDING.set(new Binding(
                 serviceLookup,
-                languageCode == null ? () -> AXPromptLanguage.EN_US.code() : languageCode,
                 logSink == null ? LogSink.NOOP : logSink,
-                new AXGameEventProbe()
+                new AXGameEventProbe(),
+                new AXGameEventSentences(new NeoForgeGameEventTextProvider())
         ));
     }
 
@@ -84,7 +81,7 @@ public final class NeoForgeGameEventHooks {
         }
         AXGameEventService service = binding.service();
         if (service != null) {
-            service.flush(System.currentTimeMillis());
+            service.flush();
         }
     }
 
@@ -108,91 +105,36 @@ public final class NeoForgeGameEventHooks {
         if (service == null || service.closed()) {
             return;
         }
-        String dimensionId = level.dimension().location().toString();
-        List<AXGameEventSignal> signals = binding.probe.sample(new AXGameEventSample(
+        AXGameEventSample sample = new AXGameEventSample(
                 Math.max(0, Math.round(player.getHealth())),
                 player.getFoodData().getFoodLevel(),
-                dimensionId,
+                level.dimension().location().toString(),
                 biomeId(level, player),
                 player.getHealth() <= 0.0F || player.deathTime > 0
-        ));
+        );
+        List<AXGameEventSignal> signals = binding.probe.sample(sample);
         if (signals.isEmpty()) {
             return;
         }
+        String deathMessage = deathMessage(player);
         for (AXGameEventSignal signal : signals) {
-            AXEventPayload payload = payloadFor(binding, signal, player, dimensionId);
-            if (payload == null) {
-                binding.logSink.warn("neoforge.ax.event.unmapped_kind kind=" + signal.kind());
+            Optional<AXEventDescriptor> descriptor = binding.sentences.describe(signal, sample, deathMessage);
+            if (descriptor.isEmpty()) {
+                binding.logSink.warn("neoforge.ax.event.unrenderable_signal kind=" + signal.kind());
                 continue;
             }
-            service.submit(AXEventDescriptor.of(signal.kind(), payload), nowMillis);
+            service.submit(descriptor.get());
         }
     }
 
-    private static AXEventPayload payloadFor(Binding binding, AXGameEventSignal signal, Player player, String dimensionId) {
-        return switch (signal.kind()) {
-            case AXGameEventKinds.HEALTH_CRITICAL -> AXEventPayload.of(
-                    text(binding, DETAIL_HEALTH_CRITICAL, signal.value()),
-                    1,
-                    signal.value());
-            case AXGameEventKinds.HEALTH_CHANGE -> AXEventPayload.of(
-                    text(binding, DETAIL_HEALTH_CHANGE, signal.value()),
-                    1,
-                    Math.max(0, Math.round(player.getHealth())));
-            case AXGameEventKinds.HUNGER_CRITICAL -> AXEventPayload.of(
-                    text(binding, DETAIL_HUNGER_CRITICAL, signal.value()),
-                    1,
-                    signal.value());
-            case AXGameEventKinds.HUNGER_CHANGE -> AXEventPayload.of(
-                    text(binding, DETAIL_HUNGER_CHANGE, signal.value()),
-                    1,
-                    signal.value());
-            case AXGameEventKinds.DIMENSION_ENTER -> AXEventPayload.of(dimensionName(dimensionId), 1, null);
-            case AXGameEventKinds.BIOME_CHANGE -> AXEventPayload.of(
-                    biomeName(binding, player), 1, null);
-            case AXGameEventKinds.DEATH -> AXEventPayload.of(deathDetail(player, dimensionId), 1, null);
-            case AXGameEventKinds.RESPAWN -> AXEventPayload.of(dimensionName(dimensionId), 1, null);
-            default -> null;
-        };
-    }
-
-    /** Resolves a language key, falling back to the raw number so history never holds an unresolved key. */
-    private static String text(Binding binding, String key, int value) {
+    /** The vanilla death message, empty when the combat tracker cannot name one. */
+    private static String deathMessage(Player player) {
         try {
-            return Component.translatable(key, value).getString();
-        } catch (RuntimeException failure) {
-            binding.logSink.warn("neoforge.ax.event.text_failed key=" + key);
-            return Integer.toString(value);
-        }
-    }
-
-    private static String dimensionName(String dimensionId) {
-        if (dimensionId == null || dimensionId.isBlank()) {
-            return "";
-        }
-        ResourceLocation id = ResourceLocation.tryParse(dimensionId);
-        if (id == null) {
-            return dimensionId;
-        }
-        String key = DETAIL_DIMENSION_PREFIX + id.getNamespace() + "." + id.getPath().replace('/', '.');
-        try {
-            String translated = Component.translatable(key).getString();
-            if (!translated.equals(key)) {
-                return translated;
-            }
+            String message = player.getCombatTracker().getDeathMessage().getString();
+            return message == null ? "" : message.trim();
         } catch (RuntimeException ignored) {
-            // Fall through to the readable identifier.
-        }
-        return ClientLanguagePolicy.englishName(id);
-    }
-
-    private static String biomeName(Binding binding, Player player) {
-        String biomeId = biomeId(player.level(), player);
-        if (biomeId.isBlank()) {
             return "";
         }
-        ResourceLocation id = ResourceLocation.tryParse(biomeId);
-        return id == null ? biomeId : ClientLanguagePolicy.registryDisplayName(id, "biome", binding.languageCode.get());
     }
 
     private static String biomeId(Level level, Player player) {
@@ -208,31 +150,19 @@ public final class NeoForgeGameEventHooks {
         }
     }
 
-    private static String deathDetail(Player player, String dimensionId) {
-        try {
-            String message = player.getCombatTracker().getDeathMessage().getString();
-            if (message != null && !message.isBlank()) {
-                return message.trim();
-            }
-        } catch (RuntimeException ignored) {
-            // Fall back to the dimension so the event still carries meaning.
-        }
-        return dimensionName(dimensionId);
-    }
-
     private static final class Binding {
         private final Supplier<AXGameEventService> serviceLookup;
-        private final Supplier<String> languageCode;
         private final LogSink logSink;
         private final AXGameEventProbe probe;
+        private final AXGameEventSentences sentences;
         private long lastSampleAtMillis;
 
-        private Binding(Supplier<AXGameEventService> serviceLookup, Supplier<String> languageCode, LogSink logSink,
-                        AXGameEventProbe probe) {
+        private Binding(Supplier<AXGameEventService> serviceLookup, LogSink logSink, AXGameEventProbe probe,
+                        AXGameEventSentences sentences) {
             this.serviceLookup = serviceLookup;
-            this.languageCode = languageCode;
             this.logSink = logSink;
             this.probe = probe;
+            this.sentences = sentences;
         }
 
         private AXGameEventService service() {

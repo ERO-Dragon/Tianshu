@@ -5,28 +5,21 @@ import java.util.Objects;
 /**
  * One entry ready to be appended to the event history.
  *
- * <p>Aggregation only changes the granularity of what is appended; it never drops a non blacklisted
- * event, so a folded window always ends as either one {@link Aggregated} entry or the original
- * {@link Single} entries.
+ * <p>Every entry carries the line exactly as the producer rendered it, and this layer never composes,
+ * prefixes, joins or formats that line: no kind tag, no occurrence count, no value range. Folding only
+ * changes the granularity of what is appended, and a folded entry holds the sentence the producer's
+ * {@link AXEventAggregateRenderer} returned.
+ *
+ * <p>{@link #kind()} is provenance metadata for the sink owner (logs, diagnostics, ledger); it is not
+ * part of the appended line.
  */
 public sealed interface AXEventAppend permits AXEventAppend.Single, AXEventAppend.Aggregated {
     String kind();
 
-    /**
-     * One history line for this entry.
-     *
-     * <p>The line is deliberately language neutral: it is model facing history, not player facing
-     * text. Player facing wording stays in the language keys behind the entry's sentence, and this
-     * layer never renders natural language itself.
-     */
-    default String historyText() {
-        return switch (this) {
-            case Single single -> single.kind() + " " + single.text();
-            case Aggregated aggregate -> aggregate.historyLine();
-        };
-    }
+    /** The line to append, already worded by whoever produced the entry. */
+    String text();
 
-    /** A single occurrence appended with its own payload text. */
+    /** One occurrence appended with the sentence its producer rendered. */
     record Single(String kind, String text) implements AXEventAppend {
         public Single {
             Objects.requireNonNull(kind, "event kind is required");
@@ -37,25 +30,16 @@ public sealed interface AXEventAppend permits AXEventAppend.Single, AXEventAppen
     /**
      * Several occurrences of one kind folded into one entry.
      *
-     * @param count folded occurrence count
-     * @param first numeric metric of the first occurrence, {@code null} when the kind carries none
-     * @param last  numeric metric of the last occurrence, {@code null} when the kind carries none
-     * @param min   lowest numeric metric in the window, {@code null} when the kind carries none
-     * @param max   highest numeric metric in the window, {@code null} when the kind carries none
+     * @param count folded occurrence count, at least two
+     * @param text  the folded sentence, rendered by the producer's aggregate renderer
      */
-    record Aggregated(String kind, int count, Integer first, Integer last, Integer min, Integer max,
-                      AXEventText sentence) implements AXEventAppend {
+    record Aggregated(String kind, int count, String text) implements AXEventAppend {
         public Aggregated {
             Objects.requireNonNull(kind, "event kind is required");
-            Objects.requireNonNull(sentence, "aggregate sentence is required");
+            Objects.requireNonNull(text, "aggregate text is required");
             if (count < 2) {
                 throw new IllegalArgumentException("an aggregate entry needs at least two occurrences");
             }
-        }
-
-        private String historyLine() {
-            String range = first == null || last == null ? "" : " (" + first + "->" + last + ")";
-            return kind + " x" + count + range;
         }
     }
 }

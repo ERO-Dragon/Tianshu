@@ -18,6 +18,11 @@ import java.util.Map;
  *   low      append only, never speak                  drop, not even a history line
  * </pre>
  *
+ * <p>The class never touches wording: it decides, and the sentence stays the one the producer put on
+ * {@link AXEventDescriptor#text()}. Nothing here inspects {@link AXEventDescriptor#sourceId()}; the
+ * source only selects a cooldown slot and an aggregation window, so a module AX has never heard of
+ * follows exactly the same path as the built-in producer.
+ *
  * <p>The class is not thread safe by design: events are submitted from the game loop. It owns the
  * speech gate state and the aggregation windows, so the caller only has to wire one object.
  */
@@ -25,7 +30,7 @@ public final class AXEventDispatcher {
     private final AXEventTierTable tierTable;
     private final AXEventSettings settings;
     private final AXEventAggregator aggregator;
-    private final Map<String, Long> lastSpeechAtByKind = new HashMap<>();
+    private final Map<String, Long> lastSpeechAtBySlot = new HashMap<>();
     private long lastSpeechAtMillis = Long.MIN_VALUE;
 
     public AXEventDispatcher() {
@@ -35,47 +40,42 @@ public final class AXEventDispatcher {
     public AXEventDispatcher(AXEventTierTable tierTable, AXEventSettings settings) {
         this.tierTable = tierTable == null ? AXEventTierTable.builtin() : tierTable;
         this.settings = settings == null ? AXEventSettings.DEFAULT : settings;
-        this.aggregator = new AXEventAggregator(this.tierTable, this.settings);
+        this.aggregator = new AXEventAggregator(this.settings);
     }
 
     /**
      * Resolves the tier, the blacklist flag and the matrix outcome of one event.
      *
      * <p>A declared tier always wins over the table; otherwise the table decides, and an unknown kind
-     * falls back to {@link AXEventTier#LOW} so a mod AX does not know can never interrupt the player.
+     * falls back to {@link AXEventTier#LOW} so a module AX does not know can never interrupt the
+     * player.
      *
      * @param nowMillis monotonic wall clock of the calling tick; only gaps and windows use it, and it
-     *                  never reaches the rendered history
+     *                  never reaches the appended line
      */
     public AXEventDecision decide(AXEventDescriptor descriptor, long nowMillis) {
-        String kind = descriptor.kind();
         AXEventTier tier = resolveTier(descriptor);
         boolean blacklisted = resolveBlacklisted(descriptor);
 
         if (tier == AXEventTier.LOW && blacklisted) {
-            return new AXEventDecision(AXEventAction.DROP, tier, true, null, null, false);
+            return new AXEventDecision(AXEventAction.DROP, tier, true, false);
         }
         if (tier == AXEventTier.HIGH && !blacklisted) {
             // High tier is appended immediately either way; the gate only moves the sentence from
             // "speak now" to "queue it", it never holds the history entry back.
-            AXEventText speech = AXEventText.speech(kind, descriptor.payload().text());
-            if (maySpeakNow(kind, nowMillis)) {
-                recordSpeech(kind, nowMillis);
-                return new AXEventDecision(AXEventAction.APPEND_AND_SPEAK, tier, false, speech,
-                        descriptor.payload().text(), false);
+            String slot = speechSlot(descriptor);
+            if (maySpeakNow(slot, nowMillis)) {
+                recordSpeech(slot, nowMillis);
+                return new AXEventDecision(AXEventAction.APPEND_AND_SPEAK, tier, false, false);
             }
-            return new AXEventDecision(AXEventAction.APPEND_AND_BUFFER, tier, false, speech,
-                    descriptor.payload().text(), false);
+            return new AXEventDecision(AXEventAction.APPEND_AND_BUFFER, tier, false, false);
         }
 
-        AXEventAction action = AXEventAction.APPEND_ONLY;
-        AXEventText speech = null;
-        if (tier == AXEventTier.MID && !blacklisted) {
-            action = AXEventAction.APPEND_AND_BUFFER;
-            speech = AXEventText.speech(kind, descriptor.payload().text());
-        }
+        AXEventAction action = tier == AXEventTier.MID && !blacklisted
+                ? AXEventAction.APPEND_AND_BUFFER
+                : AXEventAction.APPEND_ONLY;
         boolean folded = aggregator.offer(descriptor, tier, nowMillis);
-        return new AXEventDecision(action, tier, blacklisted, speech, folded ? null : descriptor.payload().text(), folded);
+        return new AXEventDecision(action, tier, blacklisted, folded);
     }
 
     /** Appends closed by an expired aggregation window; append them in order before the next turn. */
@@ -99,18 +99,28 @@ public final class AXEventDispatcher {
         return descriptor.suppress() || tierTable.blacklisted(descriptor.kind());
     }
 
-    private boolean maySpeakNow(String kind, long nowMillis) {
+    /**
+     * Cooldown slot of the same kind speech gap.
+     *
+     * <p>The slot is the only thing the source takes part in besides being recorded, so two producers
+     * sharing a kind do not silence each other while a single producer still cannot repeat itself.
+     */
+    private String speechSlot(AXEventDescriptor descriptor) {
+        return descriptor.sourceId() + ":" + descriptor.kind();
+    }
+
+    private boolean maySpeakNow(String slot, long nowMillis) {
         if (lastSpeechAtMillis != Long.MIN_VALUE
                 && nowMillis - lastSpeechAtMillis < settings.globalMinGapMillis()) {
             return false;
         }
-        Long lastSameKind = lastSpeechAtByKind.get(kind);
-        return lastSameKind == null
-                || nowMillis - lastSameKind >= settings.sameKindMinGapMillis();
+        Long lastSameSlot = lastSpeechAtBySlot.get(slot);
+        return lastSameSlot == null
+                || nowMillis - lastSameSlot >= settings.sameKindMinGapMillis();
     }
 
-    private void recordSpeech(String kind, long nowMillis) {
+    private void recordSpeech(String slot, long nowMillis) {
         lastSpeechAtMillis = nowMillis;
-        lastSpeechAtByKind.put(kind, nowMillis);
+        lastSpeechAtBySlot.put(slot, nowMillis);
     }
 }

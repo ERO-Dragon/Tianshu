@@ -15,7 +15,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,7 +48,6 @@ class AXDelegateServiceTest {
         assertNotNull(ticket);
         assertEquals(1, fixture.pendingRuns.size(), "ticket 登记后立即返回，检索交给后台 run（§5.1 ⑤）");
         assertTrue(fixture.requests.isEmpty(), "返回时不得阻塞在任何检索 I/O 上");
-        assertEquals(AXDelegateBroadcastGate.Mode.IMMEDIATE, fixture.deliveries.get(0).mode());
         assertTrue(fixture.deliveries.get(0).isAck(), "先给回执（§6.2 两条不同资源键）");
         assertEquals(AXDelegateOutcomeKind.ACK_SPEECH_KEY, fixture.deliveries.get(0).utteranceKey());
 
@@ -84,10 +82,9 @@ class AXDelegateServiceTest {
         assertEquals("铁砧可以修复工具。", entry.text());
         assertEquals(List.of("wiki"), entry.sources());
         assertTrue(entry.appendedToHistory());
-        assertTrue(entry.spoken());
 
         assertEquals(1, fixture.appends.size(), "② <event> 追加必达");
-        assertEquals("delegate_ok 铁砧可以修复工具。", fixture.appends.get(0).historyText());
+        assertEquals("铁砧可以修复工具。", fixture.appends.get(0).text(), "历史条目就是生产者渲染的那句话，AX 不再加前缀");
 
         AXDelegateDelivery last = fixture.lastDelivery();
         assertEquals(AXDelegateOutcomeKind.OK, last.kind());
@@ -109,7 +106,7 @@ class AXDelegateServiceTest {
         assertEquals(1, fixture.ledger.size(), "失败也必须登记一条（A4）");
         assertEquals(AXDelegateOutcomeKind.FAILED, fixture.ledger.find(ticket.taskId()).kind());
         assertEquals(1, fixture.appends.size(), "失败也必须写 <event>，否则玩家永远等不到回应");
-        assertTrue(fixture.appends.get(0).historyText().startsWith("delegate_failed"));
+        assertEquals("delegate_failed", fixture.appends.get(0).text(), "正文为空的终态回落 kind 代码，历史不留空行");
 
         AXDelegateDelivery last = fixture.lastDelivery();
         assertEquals("ax.runtime.delegate.failed", last.utteranceKey());
@@ -160,39 +157,6 @@ class AXDelegateServiceTest {
     }
 
     @Test
-    void combatSuppressesTheConclusionSpeechButKeepsAppending() {
-        Fixture fixture = new Fixture();
-        // 战斗中态必须显式注入：产品的 broadcastContext() 目前没有这个来源（恒 false）。
-        fixture.broadcast.set(new AXDelegateBroadcastGate.Context(false, false, true));
-        AXDelegateTicket ticket = fixture.service.delegate(AXScope.unknown(), "session", "铁砧怎么修复工具");
-        fixture.driveRun();
-        fixture.awaitRequest();
-
-        fixture.answer("{\"conclusion\":\"铁砧可以修复工具。\"}");
-        fixture.awaitTerminalDelivery(ticket);
-
-        assertEquals(1, fixture.appends.size(), "① 登记与 ② 追加永远发生（§6.1）");
-        assertEquals(AXDelegateBroadcastGate.Mode.SUPPRESSED, fixture.lastDelivery().mode(),
-                "战斗中只追加不播报");
-        assertTrue(!fixture.ledger.find(ticket.taskId()).spoken(), "只追加不播报");
-    }
-
-    @Test
-    void combatNeverSilencesAFailureDelivery() {
-        Fixture fixture = new Fixture();
-        fixture.broadcast.set(new AXDelegateBroadcastGate.Context(false, false, true));
-        AXDelegateTicket ticket = fixture.service.delegate(AXScope.unknown(), "session", "铁砧怎么修复工具");
-        fixture.driveRun();
-        fixture.awaitRequest();
-
-        fixture.failResult("LLM_TIMEOUT", "boom");
-        fixture.awaitTerminalDelivery(ticket);
-
-        assertEquals(AXDelegateBroadcastGate.Mode.QUEUED, fixture.lastDelivery().mode(),
-                "失败必须出声一句：战斗中只降级为排队，不静默丢（§6.2）");
-    }
-
-    @Test
     void rejectedLaneWritesTheFailedTerminalInsteadOfLeavingTheTicketPending() {
         Fixture fixture = new Fixture();
         fixture.rejectRuns = true;
@@ -217,8 +181,6 @@ class AXDelegateServiceTest {
         private final List<AXDelegateDelivery> deliveries = new CopyOnWriteArrayList<>();
         private final AXDelegateEventLedger ledger = new AXDelegateEventLedger();
         private final AtomicLong clock = new AtomicLong(1_000L);
-        private final AtomicReference<AXDelegateBroadcastGate.Context> broadcast =
-                new AtomicReference<>(AXDelegateBroadcastGate.Context.idle());
         private volatile boolean rejectRuns;
         private final AXDelegateService service;
 
@@ -243,7 +205,6 @@ class AXDelegateServiceTest {
                     },
                     deliveries::add,
                     LogSink.NOOP,
-                    broadcast::get,
                     clock::get
             );
         }
@@ -268,7 +229,7 @@ class AXDelegateServiceTest {
          * 等到终态那一句真的交到播报出口。
          *
          * <p>{@code deliver} 的顺序是「写终态 → ① 登记 → ② 追加 → ③ 交句柄」，所以只等 {@code ticket.isTerminal()}
-         * 会在 ③ 之前抢跑：那时 {@code lastDelivery()} 还是先前的回执（战斗中为 SUPPRESSED），断言就会误判成
+         * 会在 ③ 之前抢跑：那时 {@code lastDelivery()} 还是先前的回执，断言就会误判成
          * "失败没出声"。登记与追加都发生在 publish 之前，因此等句柄到达即可覆盖它们。</p>
          */
         private AXDelegateDelivery awaitTerminalDelivery(AXDelegateTicket ticket) {

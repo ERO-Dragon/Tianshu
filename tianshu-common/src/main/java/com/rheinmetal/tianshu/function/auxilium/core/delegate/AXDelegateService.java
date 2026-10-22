@@ -33,7 +33,7 @@ import java.util.function.Supplier;
  *
  * <p>三个通道分开（§6.1）：① 事件线登记（{@link AXDelegateEventLedger}，每个 {@code taskId} 恰好一条）
  * 与 ② {@code <event>} 追加（{@link AXEventHistorySink}）<b>永远发生</b>；③ 出声只产出句柄
- * （{@link AXDelegateDeliverySink}），门槛由 {@link AXDelegateBroadcastGate} 判定。</p>
+ * （{@link AXDelegateDeliverySink}），按到达顺序 FIFO 交出——正在播报时是否排队归 TTS 层。</p>
  *
  * <p>实测顺序：终态 → ① 登记 → ② 追加为 {@code <event>}（失败也追加）→ ③ 产出播报句柄。
  * 后两步失败也不影响前一步（A4 不因播报失败而破）。</p>
@@ -65,8 +65,6 @@ public final class AXDelegateService {
     private final AXDelegateRunSubmitter runSubmitter;
     private final AXDelegateDeliverySink deliverySink;
     private final LogSink logSink;
-    private final Supplier<AXDelegateBroadcastGate.Context> broadcastContext;
-    private final AXDelegateBroadcastGate gate = new AXDelegateBroadcastGate();
     private final Supplier<Long> nowMillis;
 
     public AXDelegateService(
@@ -79,7 +77,6 @@ public final class AXDelegateService {
             AXDelegateRunSubmitter runSubmitter,
             AXDelegateDeliverySink deliverySink,
             LogSink logSink,
-            Supplier<AXDelegateBroadcastGate.Context> broadcastContext,
             Supplier<Long> nowMillis
     ) {
         this.requestSender = requestSender;
@@ -91,7 +88,6 @@ public final class AXDelegateService {
         this.runSubmitter = runSubmitter;
         this.deliverySink = deliverySink == null ? AXDelegateDeliverySink.NOOP : deliverySink;
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
-        this.broadcastContext = broadcastContext == null ? AXDelegateBroadcastGate.Context::idle : broadcastContext;
         this.nowMillis = nowMillis == null ? System::currentTimeMillis : nowMillis;
     }
 
@@ -203,7 +199,6 @@ public final class AXDelegateService {
         if (!ticket.terminate(outcome.termination(), text, sources)) {
             return;
         }
-        AXDelegateBroadcastGate.Mode mode = gate.decide(broadcastContext.get(), kind.mustSpeakFallback());
         boolean appended = appendHistory(kind, text);
         boolean registered = eventLedger.register(new AXDelegateEventLedger.Entry(
                 ticket.taskId(),
@@ -212,8 +207,7 @@ public final class AXDelegateService {
                 text,
                 sources,
                 nowMillis.get(),
-                appended,
-                mode == AXDelegateBroadcastGate.Mode.IMMEDIATE
+                appended
         ));
         if (!registered) {
             return;
@@ -221,10 +215,9 @@ public final class AXDelegateService {
         logSink.info("ax.delegate.terminal task=" + ticket.taskId()
                 + " kind=" + kind.code()
                 + " status=" + outcome.termination().name()
-                + " mode=" + mode.name()
                 + " appended=" + appended);
         deliverySink.publish(new AXDelegateDelivery(
-                ticket.taskId(), kind, outcome.termination(), text, sources, mode, kind.speechKey()));
+                ticket.taskId(), kind, outcome.termination(), text, sources, kind.speechKey()));
     }
 
     /** ② 进 prompt：结论（或失败标记）作为一条 {@code <event>} 历史条目追加（A4 必达）。 */
@@ -232,15 +225,17 @@ public final class AXDelegateService {
         if (historySink == null) {
             return false;
         }
-        historySink.append(new AXEventAppend.Single(kind.code(), text));
+        // 失败/超时等终态的正文为空（语义由 kind 承载）。历史条目不能因此变成空行，否则模型看不到任何东西；
+        // 回落用 kind 代码——它是稳定标识符，不是自然语言，拼句仍然只在生产者侧发生。
+        String historyText = text == null || text.isBlank() ? kind.code() : text;
+        historySink.append(new AXEventAppend.Single(kind.code(), historyText));
         return true;
     }
 
     /** ③ 回执句柄（§6.2 "我查一下"），立即返回路径上唯一该出声的东西。 */
     private void publishAck(AXDelegateTicket ticket) {
-        AXDelegateBroadcastGate.Mode mode = gate.decide(broadcastContext.get(), false);
-        deliverySink.publish(AXDelegateDelivery.ack(ticket.taskId(), mode));
-        logSink.info("ax.delegate.ack task=" + ticket.taskId() + " mode=" + mode.name()
+        deliverySink.publish(AXDelegateDelivery.ack(ticket.taskId()));
+        logSink.info("ax.delegate.ack task=" + ticket.taskId()
                 + " key=" + AXDelegateOutcomeKind.ACK_SPEECH_KEY);
     }
 
@@ -251,10 +246,9 @@ public final class AXDelegateService {
             publishAck(ticket);
             return;
         }
-        AXDelegateBroadcastGate.Mode mode = gate.decide(broadcastContext.get(), kind.mustSpeakFallback());
         deliverySink.publish(new AXDelegateDelivery(
                 ticket.taskId(), kind, ticket.termination(), ticket.conclusionText(),
-                ticket.conclusionSources(), mode, kind.speechKey()));
+                ticket.conclusionSources(), kind.speechKey()));
     }
 
     private static String messageOf(Throwable failure) {

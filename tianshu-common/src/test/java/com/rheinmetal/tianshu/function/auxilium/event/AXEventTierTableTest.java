@@ -49,16 +49,6 @@ class AXEventTierTableTest {
     }
 
     @Test
-    void aggregateFormIsDeclaredOnlyForMetricBearingKinds() {
-        AXEventTierTable table = AXEventTierTable.builtin();
-
-        assertEquals(AXEventAggregateForm.RANGE, table.aggregateFormOf("tianshu:health_change"));
-        assertEquals(AXEventAggregateForm.RANGE, table.aggregateFormOf("tianshu:damage_taken"));
-        assertEquals(AXEventAggregateForm.COUNT, table.aggregateFormOf("tianshu:mob_killed"));
-        assertEquals(AXEventAggregateForm.COUNT, table.aggregateFormOf("mymod:unknown"));
-    }
-
-    @Test
     void unknownKindHasNoTierAndIsNotBlacklisted() {
         AXEventTierTable table = AXEventTierTable.builtin();
 
@@ -85,12 +75,19 @@ class AXEventTierTableTest {
         assertThrows(IllegalStateException.class, () -> AXEventTierTable.fromJson(json));
     }
 
+    /**
+     * Wording is not table data any more: how a folded window reads is declared by the producer's own
+     * {@link AXEventAggregateRenderer}, so a table row carries a tier and a blacklist flag only.
+     */
     @Test
-    void highTierEntryCannotDeclareARangeAggregate() {
+    void tableRowsCarryNoWordingMetadata() {
         JsonObject json = JsonParser.parseString("""
                 { "kinds": { "mymod:thing": { "tier": "high", "blacklist": false, "aggregate": "range" } } }
                 """).getAsJsonObject();
 
-        assertThrows(IllegalStateException.class, () -> AXEventTierTable.fromJson(json));
+        AXEventTierTable table = AXEventTierTable.fromJson(json);
+
+        assertEquals(AXEventTier.HIGH, table.tierOf("mymod:thing").orElseThrow());
+        assertEquals(1, table.size());
     }
 }

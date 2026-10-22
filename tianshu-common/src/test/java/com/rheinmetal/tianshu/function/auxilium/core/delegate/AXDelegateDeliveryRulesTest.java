@@ -4,16 +4,12 @@ import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunTermination;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 终态分类与播报门槛（设计 §6.2 / §6.3）：判定只决定"能不能现在开口"，绝不决定"是否登记"。
+ * 终态分类与播报资源键（设计 §6.2 / §6.3）：判定只决定"念哪一句"，绝不决定"是否登记"。
  */
 class AXDelegateDeliveryRulesTest {
-
-    private final AXDelegateBroadcastGate gate = new AXDelegateBroadcastGate();
 
     @Test
     void everyTerminationMapsToExactlyOneKind() {
@@ -40,41 +36,5 @@ class AXDelegateDeliveryRulesTest {
         assertEquals("ax.runtime.delegate.timeout", AXDelegateOutcomeKind.TIMEOUT.speechKey());
         assertEquals("ax.runtime.delegate.cancelled", AXDelegateOutcomeKind.CANCELLED.speechKey());
         assertEquals("ax.runtime.delegate.ack", AXDelegateOutcomeKind.ACK_SPEECH_KEY);
-        assertFalse(AXDelegateOutcomeKind.OK.mustSpeakFallback());
-        assertTrue(AXDelegateOutcomeKind.TIMEOUT.mustSpeakFallback());
-    }
-
-    @Test
-    void idlePlayerSpeaksImmediately() {
-        assertEquals(AXDelegateBroadcastGate.Mode.IMMEDIATE,
-                gate.decide(AXDelegateBroadcastGate.Context.idle(), false));
-        assertEquals(AXDelegateBroadcastGate.Mode.IMMEDIATE,
-                gate.decide(AXDelegateBroadcastGate.Context.idle(), true));
-    }
-
-    @Test
-    void runningChatTurnOrOngoingBroadcastQueues() {
-        assertEquals(AXDelegateBroadcastGate.Mode.QUEUED,
-                gate.decide(new AXDelegateBroadcastGate.Context(true, false, false), false));
-        assertEquals(AXDelegateBroadcastGate.Mode.QUEUED,
-                gate.decide(new AXDelegateBroadcastGate.Context(false, true, false), false));
-    }
-
-    @Test
-    void combatOnlyAppendsForConclusions() {
-        assertEquals(AXDelegateBroadcastGate.Mode.SUPPRESSED,
-                gate.decide(new AXDelegateBroadcastGate.Context(false, false, true), false));
-    }
-
-    @Test
-    void combatNeverSilencesAFailureLine() {
-        assertEquals(AXDelegateBroadcastGate.Mode.QUEUED,
-                gate.decide(new AXDelegateBroadcastGate.Context(false, false, true), true),
-                "失败 / 超时 / 取消必须出声一句，战斗中只降级为排队（§6.2）");
-    }
-
-    @Test
-    void nullContextIsTreatedAsIdle() {
-        assertEquals(AXDelegateBroadcastGate.Mode.IMMEDIATE, gate.decide(null, false));
     }
 }

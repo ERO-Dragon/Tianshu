@@ -20,4 +20,9 @@ public enum AXEventAction {
     public boolean appends() {
         return this != DROP;
     }
+
+    /** True when this outcome hands a sentence to the speech channel. */
+    public boolean speaks() {
+        return this == APPEND_AND_SPEAK || this == APPEND_AND_BUFFER;
+    }
 }

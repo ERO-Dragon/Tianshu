@@ -17,7 +17,7 @@ import java.util.Map;
  */
 public final class AXDelegateEventLedger {
 
-    /** 一条已投递的委派终态（§6.3 的字段，去掉本片不产生的 {@code replayKeyHit}）。 */
+    /** 一条已投递的委派终态（§6.3 的字段，去掉本片不产生的 {@code replayKeyHit} / {@code spoken}）。 */
     public record Entry(
             String taskId,
             AXDelegateOutcomeKind kind,
@@ -25,8 +25,7 @@ public final class AXDelegateEventLedger {
             String text,
             List<String> sources,
             long createdAtMillis,
-            boolean appendedToHistory,
-            boolean spoken
+            boolean appendedToHistory
     ) {
         public Entry {
             sources = sources == null ? List.of() : List.copyOf(sources);

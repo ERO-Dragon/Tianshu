@@ -3,15 +3,32 @@ package com.rheinmetal.tianshu.function.auxilium.event;
 import com.rheinmetal.tianshu.api.LogSink;
 
 /**
- * Runtime entry point for game events: decides, then pushes the entry to the history.
+ * Public event entry point: decides one submitted event, then pushes the entry to the history.
  *
- * <p>This is the only object a producer needs. It owns the dispatcher (tiers, blacklist, speech gate,
- * aggregation windows) so a caller cannot accidentally build a second decision path, and it is closed
- * for the rest of a session once {@link #stop(long)} runs, which is what makes a world logout stop all
- * production even if a platform hook keeps ticking.
+ * <p>This is the only object a producer needs, and it is module agnostic on purpose: any module may
+ * submit any namespaced kind. The AX module owns one instance per session, so the service is the
+ * single decision path - tiers, blacklist, speech gate and aggregation windows - and a caller cannot
+ * accidentally build a second one.
  *
- * <p>Speech is not delivered yet: the layer only reports the pending sentence key through the log so
- * the voice wiring can pick it up later without this layer knowing anything about TTS.
+ * <p>Discovery uses the existing service registry in both directions:
+ *
+ * <ul>
+ *   <li>a managed module reads it from its own runtime context,
+ *       {@code context.services().find(AXGameEventService.class)};</li>
+ *   <li>a platform layer reads it from the core manager,
+ *       {@code coreManager.findService(AXGameEventService.class)}.</li>
+ * </ul>
+ *
+ * <p>No caller is privileged and no source is special cased: {@link #submit(AXEventDescriptor)} takes
+ * the same descriptor from a third-party module and from the built-in game event producer, and
+ * {@link AXEventDescriptor#sourceId()} is recorded, never branched on.
+ *
+ * <p>The service is closed for the rest of a session once {@link #stop(long)} runs, which is what makes
+ * a world logout stop all production even if a platform hook keeps ticking.
+ *
+ * <p>Speech is not delivered yet: the layer only reports the pending sentence through the log so the
+ * voice wiring can pick it up later without this layer knowing anything about TTS. The reported
+ * sentence is the producer's own text passed straight through.
  */
 public final class AXGameEventService {
     private final AXEventDispatcher dispatcher;
@@ -25,8 +42,13 @@ public final class AXGameEventService {
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
     }
 
+    /** Submits one event stamped with the wall clock; the call any module makes. */
+    public void submit(AXEventDescriptor descriptor) {
+        submit(descriptor, System.currentTimeMillis());
+    }
+
     /**
-     * Decides one event and performs its history side effect.
+     * Submits one event decided at an explicit clock reading.
      *
      * @param nowMillis monotonic wall clock of the calling tick
      */
@@ -35,19 +57,25 @@ public final class AXGameEventService {
             return;
         }
         AXEventDecision decision = dispatcher.decide(descriptor, nowMillis);
-        AXEventText speech = decision.speech();
-        if (speech != null) {
-            // Player facing wording is a language key plus arguments; this layer never renders it.
+        if (decision.action().speaks()) {
+            // The pending utterance is the producer's sentence, passed through unchanged: this layer
+            // never renders wording of its own.
             logSink.info("ax.event.speech_pending kind=" + descriptor.kind()
+                    + " source=" + descriptor.sourceId()
                     + " action=" + decision.action().name()
-                    + " key=" + speech.key());
+                    + " text=" + descriptor.text());
         }
-        append(decision.appendText() == null
-                ? null
-                : new AXEventAppend.Single(descriptor.kind(), decision.appendText()));
+        if (decision.appends() && !decision.folded()) {
+            append(new AXEventAppend.Single(descriptor.kind(), descriptor.text()));
+        }
         for (AXEventAppend due : dispatcher.drainDueAppends(nowMillis)) {
             append(due);
         }
+    }
+
+    /** Closes every open aggregation window as of now; used outside a tick that carries a clock. */
+    public void flush() {
+        flush(System.currentTimeMillis());
     }
 
     /** Closes every open aggregation window; call before the turn is assembled or the world unloads. */

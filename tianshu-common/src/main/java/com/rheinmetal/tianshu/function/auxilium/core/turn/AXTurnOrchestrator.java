@@ -591,16 +591,6 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         return scope == null ? AXScope.unknown() : scope;
     }
 
-    /**
-     * True while a main-dialogue turn is being processed.
-     *
-     * <p>This is one of the three inputs of the broadcast gate (design §6.2): a delegation that finishes
-     * while the player's turn is still running must queue instead of talking over it.</p>
-     */
-    public boolean hasActiveTurn() {
-        return activeExecution.get() != null;
-    }
-
     public void interruptActiveTurn(AXTurnCancellation cancellation) {        AXTurnExecution execution = activeExecution.get();
         if (execution != null) {
             cancelExecution(execution, cancellation == null

@@ -41,11 +41,6 @@ public enum AXDelegateOutcomeKind {
         return speechKey;
     }
 
-    /** 只有拿到结论的一类不需要兜底句。 */
-    public boolean mustSpeakFallback() {
-        return speechKey != null;
-    }
-
     /** 终态到分类的唯一映射处（不要在调用方各写一份 switch）。 */
     public static AXDelegateOutcomeKind of(AXRunTermination termination) {
         if (termination == null) {

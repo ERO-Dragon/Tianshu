@@ -24,7 +24,6 @@ import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXAccessController;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXDialogueGateway;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXSessionController;
-import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateBroadcastGate;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDelivery;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateEventLedger;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegatePromptRepository;
@@ -234,7 +233,6 @@ public final class AXModule implements TianshuManagedModule {
                 adapter::submitDelegateRun,
                 this::publishDelegateDelivery,
                 env.logs(),
-                this::broadcastContext,
                 System::currentTimeMillis
         );
         turnOrchestrator = new AXTurnOrchestrator(
@@ -280,29 +278,20 @@ public final class AXModule implements TianshuManagedModule {
             return;
         }
         env.logs().info("ax.delegate.speech_pending task=" + delivery.taskId()
-                + " mode=" + delivery.mode().name()
                 + (delivery.utteranceKey() == null ? "" : " key=" + delivery.utteranceKey())
                 + (delivery.isAck() ? " ack=true" : " kind=" + delivery.kind().code()));
     }
 
     /**
-     * Broadcast gate input (design §6.2).
+     * Publishes the event pipeline as a module service so any module can submit events.
      *
-     * <p>Only "is a CHAT turn running" has a source today. {@code broadcasting} belongs to the voice slice
-     * and {@code inCombat} to the game-state slice; until those land they report {@code false}, which makes
-     * the gate degrade to "speak immediately" rather than silently dropping anything.</p>
-     */
-    private AXDelegateBroadcastGate.Context broadcastContext() {
-        AXTurnOrchestrator current = turnOrchestrator;
-        return new AXDelegateBroadcastGate.Context(current != null && current.hasActiveTurn(), false, false);
-    }
-
-    /**
-     * Exposes the event pipeline so a platform hook can submit game events.
-     *
-     * <p>The service owns the only decision path (tiers, blacklist, speech gate, aggregation) and its
-     * history sink appends to the recent-dialogue window as a {@code world_event} turn, which is the
-     * same channel third-party utterances already use.
+     * <p>The service is registered under {@link AXGameEventService} for the whole session, so a managed
+     * module reaches it through {@code context.services().find(AXGameEventService.class)} and a
+     * platform layer through {@code coreManager.findService(AXGameEventService.class)}. It owns the
+     * only decision path (tiers, blacklist, speech gate, aggregation) and its history sink appends to
+     * the recent-dialogue window as a {@code world_event} turn, which is the same channel third-party
+     * utterances already use. The entry carries the sentence the producer rendered; this module never
+     * words one of its own.
      */
     private void publishGameEventService(ModuleRuntimeContext context) {
         gameEventService = new AXGameEventService(
@@ -320,7 +309,7 @@ public final class AXModule implements TianshuManagedModule {
         if (scope == null || currentDialogue == null || append == null) {
             return;
         }
-        String content = append.historyText();
+        String content = append.text();
         if (content.isBlank()) {
             return;
         }

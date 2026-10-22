@@ -192,10 +192,10 @@ public final class NeoForgeClientBootstrap {
             NeoForgePresenceHooks.bind(currentPresenceRuntime, diagnosticRouter);
             startingSession.own(() -> NeoForgePresenceHooks.clear(currentPresenceRuntime));
             // The AX module owns the event service; the lookup stays empty until a world session
-            // prepares the module and empties again when the module stops.
+            // prepares the module and empties again when the module stops. The game event producer is
+            // an ordinary submitter of that service and takes no privileged path.
             NeoForgeGameEventHooks.bind(
                     () -> assembledCoreManager.findService(AXGameEventService.class).orElse(null),
-                    languageSnapshot::languageCode,
                     diagnosticRouter
             );
             startingSession.own(NeoForgeGameEventHooks::clear);

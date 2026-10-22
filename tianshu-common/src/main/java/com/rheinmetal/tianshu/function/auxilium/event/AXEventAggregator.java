@@ -11,20 +11,23 @@ import java.util.Map;
  *
  * <p>Frequency never changes a tier; it only changes granularity. The aggregator therefore holds
  * mid and low entries back until their window closes, then emits either one {@link
- * AXEventAppend.Aggregated} entry (when the window reached the threshold) or the retained {@link
- * AXEventAppend.Single} entries, so a non blacklisted event always ends up in the history.
+ * AXEventAppend.Aggregated} entry (when the window reached the threshold and the producer's renderer
+ * returned a sentence) or the retained {@link AXEventAppend.Single} entries, so a non blacklisted
+ * event always ends up in the history.
+ *
+ * <p>A window is opened per source and kind. Two producers that happen to use the same kind keep
+ * their own window, which is what lets a producer's own renderer describe only its own occurrences;
+ * the slot never influences a tier, a blacklist flag or a decision.
  *
  * <p>High tier events are never aggregated: a folded "died 5 times" loses which death was which, and
  * high tier already has the global and per kind speech gaps as its throttle.
  */
 final class AXEventAggregator {
-    private final AXEventTierTable tierTable;
     private final AXEventSettings settings;
-    private final Map<String, Window> windows = new LinkedHashMap<>();
+    private final Map<WindowKey, Window> windows = new LinkedHashMap<>();
     private final List<AXEventAppend> closed = new ArrayList<>();
 
-    AXEventAggregator(AXEventTierTable tierTable, AXEventSettings settings) {
-        this.tierTable = tierTable;
+    AXEventAggregator(AXEventSettings settings) {
         this.settings = settings;
     }
 
@@ -38,26 +41,25 @@ final class AXEventAggregator {
         if (tier == AXEventTier.HIGH) {
             return false;
         }
-        String kind = descriptor.kind();
-        Integer magnitude = descriptor.payload().magnitude();
-        if (tierTable.aggregateFormOf(kind) == AXEventAggregateForm.RANGE && magnitude == null) {
-            // A range sentence needs numbers; without one the entry is appended as a plain line
-            // instead of rendering an empty range to the player.
+        AXEventAggregateRenderer renderer = descriptor.aggregateRenderer();
+        if (renderer == null) {
+            // No renderer means no folded sentence exists, and this layer never writes one itself.
             return false;
         }
-        Window window = windows.get(kind);
+        WindowKey key = new WindowKey(descriptor.sourceId(), descriptor.kind());
+        Window window = windows.get(key);
         if (window != null && isDue(window, nowMillis)) {
             // The window went idle before this occurrence arrived. Close it into the pending queue
             // instead of dropping it, so no retained occurrence is lost.
-            windows.remove(kind);
+            windows.remove(key);
             closed.addAll(close(window));
             window = null;
         }
         if (window == null) {
-            window = new Window(kind);
-            windows.put(kind, window);
+            window = new Window(key, renderer);
+            windows.put(key, window);
         }
-        window.items.add(new Item(descriptor.payload().text(), magnitude));
+        window.items.add(new Item(descriptor.text(), descriptor.payload().magnitude()));
         window.lastAtMillis = nowMillis;
         return true;
     }
@@ -66,7 +68,7 @@ final class AXEventAggregator {
     List<AXEventAppend> drainDue(long nowMillis) {
         List<AXEventAppend> drained = new ArrayList<>(closed);
         closed.clear();
-        Iterator<Map.Entry<String, Window>> iterator = windows.entrySet().iterator();
+        Iterator<Map.Entry<WindowKey, Window>> iterator = windows.entrySet().iterator();
         while (iterator.hasNext()) {
             Window window = iterator.next().getValue();
             if (!isDue(window, nowMillis)) {
@@ -99,49 +101,51 @@ final class AXEventAggregator {
 
     private List<AXEventAppend> close(Window window) {
         if (window.items.size() < Math.max(2, settings.aggregateThreshold())) {
-            List<AXEventAppend> singles = new ArrayList<>(window.items.size());
-            for (Item item : window.items) {
-                singles.add(new AXEventAppend.Single(window.kind, item.text()));
-            }
-            return singles;
+            return singles(window);
         }
-        return List.of(aggregate(window));
+        int count = window.items.size();
+        String sentence = render(window, count);
+        if (sentence == null || sentence.isBlank()) {
+            // The producer could not fold this window; the occurrences survive as single entries.
+            return singles(window);
+        }
+        return List.of(new AXEventAppend.Aggregated(window.key.kind(), count, sentence.trim()));
     }
 
-    private AXEventAppend.Aggregated aggregate(Window window) {
-        int count = window.items.size();
+    /** Calls back into the producer; a renderer that throws degrades to single entries. */
+    private String render(Window window, int count) {
         Integer first = window.items.get(0).magnitude();
         Integer last = window.items.get(count - 1).magnitude();
-        Integer min = null;
-        Integer max = null;
+        try {
+            return window.renderer.render(count, first, last);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private List<AXEventAppend> singles(Window window) {
+        List<AXEventAppend> singles = new ArrayList<>(window.items.size());
         for (Item item : window.items) {
-            Integer magnitude = item.magnitude();
-            if (magnitude == null) {
-                continue;
-            }
-            min = min == null ? magnitude : Math.min(min, magnitude);
-            max = max == null ? magnitude : Math.max(max, magnitude);
+            singles.add(new AXEventAppend.Single(window.key.kind(), item.text()));
         }
-        List<String> args = new ArrayList<>();
-        args.add(Integer.toString(count));
-        if (tierTable.aggregateFormOf(window.kind) == AXEventAggregateForm.RANGE) {
-            args.add(first == null ? "" : first.toString());
-            args.add(last == null ? "" : last.toString());
-        }
-        return new AXEventAppend.Aggregated(window.kind, count, first, last, min, max,
-                AXEventText.aggregate(window.kind, args));
+        return singles;
+    }
+
+    private record WindowKey(String sourceId, String kind) {
     }
 
     private record Item(String text, Integer magnitude) {
     }
 
     private static final class Window {
-        private final String kind;
+        private final WindowKey key;
+        private final AXEventAggregateRenderer renderer;
         private final List<Item> items = new ArrayList<>();
         private long lastAtMillis;
 
-        private Window(String kind) {
-            this.kind = kind;
+        private Window(WindowKey key, AXEventAggregateRenderer renderer) {
+            this.key = key;
+            this.renderer = renderer;
         }
     }
 }
