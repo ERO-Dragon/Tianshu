@@ -3,11 +3,11 @@ package com.rheinmetal.tianshu.function.asr.download;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.AsrModelDownloader;
 import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.model.download.DownloadGate;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class AsrModelDownloadCoordinator {
     private final IGameEnvironment env;
@@ -22,52 +22,31 @@ public final class AsrModelDownloadCoordinator {
 
     public static final class DownloadSession {
         private final AsrModelDownloader downloader;
-        private final Object pauseMonitor = new Object();
-        private final AtomicBoolean paused = new AtomicBoolean(false);
-        private final AtomicBoolean cancelled = new AtomicBoolean(false);
-        private boolean cancelNotified;
+        private final DownloadGate gate;
 
         private DownloadSession(AsrModelDownloader downloader) {
             this.downloader = downloader;
+            this.gate = new DownloadGate(downloader::cancelActiveTransfers);
         }
 
         public boolean isPaused() {
-            return paused.get();
+            return gate.isPaused();
         }
 
         public boolean isCancelled() {
-            return cancelled.get();
+            return gate.isCancelled();
         }
 
         public void pause() {
-            synchronized (pauseMonitor) {
-                if (!cancelled.get()) {
-                    paused.set(true);
-                }
-            }
+            gate.pause();
         }
 
         public void resume() {
-            synchronized (pauseMonitor) {
-                if (!cancelled.get()) {
-                    paused.set(false);
-                }
-                pauseMonitor.notifyAll();
-            }
+            gate.resume();
         }
 
         public void cancel() {
-            boolean notifyDownloader;
-            synchronized (pauseMonitor) {
-                cancelled.set(true);
-                paused.set(false);
-                notifyDownloader = !cancelNotified;
-                cancelNotified = true;
-                pauseMonitor.notifyAll();
-            }
-            if (notifyDownloader) {
-                downloader.cancelActiveTransfers();
-            }
+            gate.cancel();
         }
 
         public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, AsrModelDownloader.DownloadProgressCallback callback) throws Exception {
@@ -75,20 +54,9 @@ public final class AsrModelDownloadCoordinator {
         }
 
         void awaitReady() throws IOException {
-            if (cancelled.get()) {
-                throw new AsrModelDownloader.DownloadCancelledException();
-            }
-            synchronized (pauseMonitor) {
-                while (paused.get() && !cancelled.get()) {
-                    try {
-                        pauseMonitor.wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Download thread was interrupted", e);
-                    }
-                }
-            }
-            if (cancelled.get()) {
+            try {
+                gate.awaitReady();
+            } catch (DownloadGate.CancelledException cancelled) {
                 throw new AsrModelDownloader.DownloadCancelledException();
             }
         }

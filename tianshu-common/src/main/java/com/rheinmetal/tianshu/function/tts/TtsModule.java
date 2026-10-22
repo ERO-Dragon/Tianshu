@@ -22,6 +22,7 @@ import com.rheinmetal.tianshu.function.tts.synthesis.DefaultTtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceCloneProfile;
 import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceCloneRegistry;
 import com.rheinmetal.tianshu.function.tts.voice.TtsVoiceRequestValidator;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolSourceIds;
@@ -66,13 +67,41 @@ public final class TtsModule implements TianshuManagedModule {
     private volatile boolean lifecycleActive;
     private volatile boolean destroyed;
     private final Set<String> activeRequestActivities = ConcurrentHashMap.newKeySet();
+    /** Process-wide serial gate for native model loads; null keeps this module self-contained. */
+    private final NativeModelLoadQueue loadQueue;
+    /** Tells the player the speech model is queued behind retrieval instead of stalled. */
+    private final NativeModelLoadQueue.Observer loadQueueObserver;
 
     public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config) {
+        this(audioBridge, runtime, env, config, null);
+    }
+
+    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config,
+                     NativeModelLoadQueue loadQueue) {
         this.audioBridge = audioBridge;
         this.runtime = runtime;
         this.env = env;
         this.config = config;
         this.adapter = new TtsProtocolAdapter(runtime);
+        this.loadQueue = loadQueue;
+        this.loadQueueObserver = new NativeModelLoadQueue.Observer() {
+            @Override
+            public void onParked(String moduleId, String action, int ahead) {
+                if (!TtsProtocolAdapter.MODULE_ID.equals(moduleId)) {
+                    return;
+                }
+                publishModuleStatus(ModuleStatuses.waitingKeyed(
+                        TtsProtocolAdapter.MODULE_ID, "tianshu.presence.module.tts.loading"));
+            }
+
+            @Override
+            public void onGranted(String moduleId, String action) {
+                // The load publishes its own progress once it runs; nothing to add here.
+            }
+        };
+        if (this.loadQueue != null) {
+            this.loadQueue.addObserver(this.loadQueueObserver);
+        }
     }
 
     @Override
@@ -127,7 +156,8 @@ public final class TtsModule implements TianshuManagedModule {
                 this::publishPlaybackStatus,
                 this::publishRequestStatus,
                 adapter::publishLoadingActivity,
-                config::isTtsStreamingSynthesisEnabled
+                config::isTtsStreamingSynthesisEnabled,
+                loadQueue
         );
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
@@ -227,6 +257,9 @@ public final class TtsModule implements TianshuManagedModule {
     @Override
     public void destroy() {
         destroyed = true;
+        if (loadQueue != null) {
+            loadQueue.removeObserver(loadQueueObserver);
+        }
         if (modelService != null) {
             modelService.stop();
         }

@@ -3,12 +3,12 @@ package com.rheinmetal.tianshu.function.tts.download;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.rheinmetal.tianshu.model.ModelArchiveDownloader;
+import com.rheinmetal.tianshu.model.download.DownloadGate;
 
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class TtsModelDownloadCoordinator {
     private final IGameEnvironment env;
@@ -34,66 +34,47 @@ public final class TtsModelDownloadCoordinator {
     public static final class DownloadSession {
         private final HuggingFaceDownloader hfDownloader;
         private final ModelArchiveDownloader archiveDownloader;
-        private final Object pauseMonitor = new Object();
-        private final AtomicBoolean paused = new AtomicBoolean(false);
-        private final AtomicBoolean cancelled = new AtomicBoolean(false);
-        private final AtomicBoolean keepPartialDownload = new AtomicBoolean(false);
+        private final DownloadGate gate;
 
         private DownloadSession(HuggingFaceDownloader hfDownloader, ModelArchiveDownloader archiveDownloader) {
             this.hfDownloader = hfDownloader;
             this.archiveDownloader = archiveDownloader;
+            this.gate = new DownloadGate(() -> {
+                hfDownloader.cancelActiveTransfers();
+                archiveDownloader.cancelActiveTransfers();
+            });
         }
 
         public boolean isPaused() {
-            return paused.get();
+            return gate.isPaused();
         }
 
         public boolean isCancelled() {
-            return cancelled.get();
+            return gate.isCancelled();
         }
 
         public boolean shouldKeepPartialDownload() {
-            return keepPartialDownload.get();
+            return gate.shouldKeepPartialDownload();
         }
 
         public void pause() {
-            synchronized (pauseMonitor) {
-                if (!cancelled.get()) {
-                    paused.set(true);
-                }
-            }
+            gate.pause();
         }
 
         public void resume() {
-            synchronized (pauseMonitor) {
-                if (!cancelled.get()) {
-                    paused.set(false);
-                }
-                pauseMonitor.notifyAll();
-            }
+            gate.resume();
         }
 
         public void cancel() {
-            cancel(false);
+            gate.cancel();
         }
 
         public void cancelKeepingPartial() {
-            cancel(true);
-        }
-
-        private void cancel(boolean keepPartial) {
-            synchronized (pauseMonitor) {
-                cancelled.set(true);
-                keepPartialDownload.set(keepPartial);
-                paused.set(false);
-                pauseMonitor.notifyAll();
-            }
-            cancelActiveTransfers();
+            gate.cancelKeepingPartial();
         }
 
         public void cancelActiveTransfers() {
-            hfDownloader.cancelActiveTransfers();
-            archiveDownloader.cancelActiveTransfers();
+            gate.cancelActiveTransfers();
         }
 
         public void downloadModelFiles(String repoId, Path targetDir, String revision, boolean skipExisting, int maxRetries, HuggingFaceDownloader.DownloadProgressListener progress) throws Exception {
@@ -121,20 +102,9 @@ public final class TtsModelDownloadCoordinator {
         }
 
         public void awaitReady() throws IOException {
-            if (cancelled.get() || Thread.currentThread().isInterrupted()) {
-                throw new DownloadCancelledException();
-            }
-            synchronized (pauseMonitor) {
-                while (paused.get() && !cancelled.get()) {
-                    try {
-                        pauseMonitor.wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Download thread was interrupted", e);
-                    }
-                }
-            }
-            if (cancelled.get() || Thread.currentThread().isInterrupted()) {
+            try {
+                gate.awaitReady();
+            } catch (DownloadGate.CancelledException cancelled) {
                 throw new DownloadCancelledException();
             }
         }

@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
 import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
 import com.rheinmetal.tianshu.function.tts.text.TtsTextNormalizer;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
@@ -92,13 +93,34 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<Boolean> modelLoadingPublisher,
             BooleanSupplier streamingSynthesisEnabled
     ) {
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher,
+                playbackStatePublisher, requestStatusPublisher, modelLoadingPublisher,
+                streamingSynthesisEnabled, null);
+    }
+
+    /**
+     * @param loadQueue the process-wide serial gate every native model load goes through; the speech
+     *                  model is a deferred request there, because retrieval is the dialogue precondition
+     */
+    public TtsRuntime(
+            IGameEnvironment env,
+            ModuleExecutionAccess executorManager,
+            TtsSynthesisEngine synthesisEngine,
+            IAudioBridge audioBridge,
+            Consumer<TtsSession> sessionStatusPublisher,
+            Consumer<TtsPlaybackState> playbackStatePublisher,
+            Consumer<TtsRequestStatusPayload> requestStatusPublisher,
+            Consumer<Boolean> modelLoadingPublisher,
+            BooleanSupplier streamingSynthesisEnabled,
+            NativeModelLoadQueue loadQueue
+    ) {
         this.env = env;
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;
         this.synthesisScheduler = new TtsSynthesisScheduler(executorManager, synthesisEngine);
         this.synthesisPolicy = new TtsAdaptiveSynthesisPolicy(streamingSynthesisEnabled);
         this.synthesisTaskCoordinator = new TtsSynthesisTaskCoordinator(synthesisEngine, synthesisScheduler, synthesisPolicy, lastFailure::set);
-        this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher);
+        this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher, loadQueue);
         this.playbackController = new TtsPlaybackController(audioBridge, env, this, executorManager);
         this.sessionStatusPublisher = sessionStatusPublisher == null ? ignored -> {} : sessionStatusPublisher;
         this.playbackStatePublisher = playbackStatePublisher == null ? ignored -> {} : playbackStatePublisher;

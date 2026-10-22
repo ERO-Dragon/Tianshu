@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.tts.runtime;
 
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
@@ -16,11 +17,15 @@ import java.util.List;
 final class TtsModelLifecycleCoordinator {
     private static final String MODULE_ID = "module.tts";
     private static final String CONCURRENCY_KEY = TtsSynthesisScheduler.BACKEND_CONCURRENCY_KEY;
+    /** Queue action name; also what the gate reports to its observers while this load is parked. */
+    private static final String LOAD_ACTION = "tts-model";
 
     private final ModuleExecutionAccess executorManager;
     private final TtsSynthesisEngine synthesisEngine;
     private final Consumer<TtsFailure> failureObserver;
     private final Consumer<Boolean> loadingObserver;
+    /** Serial gate shared with the retrieval lane, or null when this module loads on its own. */
+    private final NativeModelLoadQueue loadQueue;
     private LifecycleState state = LifecycleState.IDLE;
     private String previewRequestId = "";
     private String previewRestoreModel = "";
@@ -36,10 +41,17 @@ final class TtsModelLifecycleCoordinator {
 
     TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
                                  Consumer<TtsFailure> failureObserver, Consumer<Boolean> loadingObserver) {
+        this(executorManager, synthesisEngine, failureObserver, loadingObserver, null);
+    }
+
+    TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
+                                 Consumer<TtsFailure> failureObserver, Consumer<Boolean> loadingObserver,
+                                 NativeModelLoadQueue loadQueue) {
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;
         this.failureObserver = failureObserver == null ? ignored -> { } : failureObserver;
         this.loadingObserver = loadingObserver == null ? ignored -> { } : loadingObserver;
+        this.loadQueue = loadQueue;
     }
 
     TtsOperationResult prepare(Consumer<Boolean> completion) {
@@ -199,6 +211,10 @@ final class TtsModelLifecycleCoordinator {
         previewRequestId = "";
         previewRestoreModel = "";
         previewRestoreScheduled = false;
+        // A prepare that is still parked in the native-load gate never reaches its own release, so the
+        // "loading" signal has to be dropped here or the HUD would wait for a load that will not happen.
+        publishLoading(false);
+        drainPrepareCompletions();
         ProtocolTaskState taskState = executorManager.submit(taskSpec("shutdown"), synthesisEngine::shutdown).state();
         if (taskState == ProtocolTaskState.REJECTED) {
             failureObserver.accept(TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
@@ -206,15 +222,87 @@ final class TtsModelLifecycleCoordinator {
         }
     }
 
+    /**
+     * First hop: ask the native-load gate for the permit.
+     *
+     * <p>The gate decides when this load may run, because the GGUF embedding lane and this ONNX backend
+     * each hold their whole weight set in native memory and their peaks must not add up. While the
+     * request is parked the loading signal stays on: from the player's side the model is still coming,
+     * it is just queued behind retrieval.
+     */
     private void runPrepare() {
+        if (loadQueue == null) {
+            prepareNow();
+            return;
+        }
+        if (loadQueue.request(MODULE_ID, LOAD_ACTION, this::submitPrepareLoad, false)
+                == NativeModelLoadQueue.Outcome.REFUSED) {
+            failPrepareQueueFull();
+            return;
+        }
         publishLoading(true);
-        PrepareOutcome outcome;
+    }
+
+    /** Second hop: a released request re-enters its own lane instead of loading on the releasing thread. */
+    private void submitPrepareLoad() {
+        ProtocolTaskHandle handle = executorManager.submit(taskSpec("prepare-load"), this::prepareNow);
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            if (loadQueue != null) {
+                loadQueue.release();
+            }
+            failPrepareQueueFull();
+        }
+    }
+
+    private void prepareNow() {
+        PrepareOutcome outcome = null;
+        publishLoading(true);
         try {
+            if (!isPrepareWanted()) {
+                // Stopped, superseded or shut down while the request was parked in the gate: the model
+                // must not be read after the module that owns it is gone.
+                notifyPrepareCompletions(drainPrepareCompletionsLocked(), false);
+                return;
+            }
             outcome = runPrepareWork();
+        } catch (RuntimeException unexpected) {
+            failureObserver.accept(TtsRuntimeFailurePolicy.classify(
+                    TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
+                    unexpected
+            ));
+            outcome = completePrepare(false);
         } finally {
             publishLoading(false);
+            // Handed back on every path: a permit that outlived a failed load would park retrieval for
+            // the rest of the session.
+            if (loadQueue != null) {
+                loadQueue.release();
+            }
         }
         notifyPrepareCompletions(outcome.completions(), outcome.initialized());
+    }
+
+    private synchronized boolean isPrepareWanted() {
+        return state == LifecycleState.PREPARING;
+    }
+
+    private synchronized List<Consumer<Boolean>> drainPrepareCompletionsLocked() {
+        return drainPrepareCompletions();
+    }
+
+    private void failPrepareQueueFull() {
+        List<Consumer<Boolean>> completions;
+        synchronized (this) {
+            if (state == LifecycleState.PREPARING) {
+                state = LifecycleState.IDLE;
+            }
+            completions = drainPrepareCompletions();
+        }
+        TtsFailure failure = TtsFailure.of(TtsFailureCode.QUEUE_FULL,
+                "TTS model load queue is full");
+        failureObserver.accept(failure);
+        publishLoading(false);
+        notifyPrepareCompletions(completions, false);
     }
 
     private PrepareOutcome runPrepareWork() {
