@@ -12,10 +12,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-final class ClientIrNamedObjectEnhancer implements IrNamedObjectEnhancer {
+public final class ClientIrNamedObjectEnhancer implements IrNamedObjectEnhancer {
     private final ClientNamedObjectIndexManager indexManager;
 
-    ClientIrNamedObjectEnhancer(ClientNamedObjectIndexManager indexManager) {
+    public ClientIrNamedObjectEnhancer(ClientNamedObjectIndexManager indexManager) {
         this.indexManager = java.util.Objects.requireNonNull(indexManager, "indexManager");
     }
     @Override

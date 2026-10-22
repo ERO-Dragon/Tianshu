@@ -1,10 +1,9 @@
 package com.rheinmetal.tianshu.function.ir;
 
-import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
-import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
+import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
-import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
@@ -20,21 +19,30 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
+import com.rheinmetal.tianshu.protocol.voice.VoiceResourceSnapshot;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class IrModuleProtocolFlowTest {
+/**
+ * The repair lane used to be a module that subscribed to the raw speech topic; it is now called
+ * directly by the speech module. These tests exercise it the way the speech module does — publish the
+ * raw text, hand the same payload to the repairer — and assert the public result topic is unchanged.
+ */
+class AsrTextRepairerTest {
     private ProtocolRuntime runtime;
 
     @AfterEach
@@ -45,11 +53,12 @@ class IrModuleProtocolFlowTest {
     }
 
     @Test
-    void asrFinalTextPublishesCompleteIrAnalysisWithoutCallingIaCapability() {
+    void repairsMisheardWordsAndPublishesCompleteAnalysisWithoutCallingIaCapability() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        IrModule ir = new IrModule(runtime);
-        ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
+        AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
         runtime.voiceTriggers().register(new VoiceTriggerRegistration("module.maid", List.of("酒狐"), List.of("种地")));
+        repairer.initialize(voiceAccess(), DiagnosticSink.NOOP);
         RecordingHandler arbitration = new RecordingHandler();
         registerCapability(
                 "test.ia",
@@ -62,12 +71,7 @@ class IrModuleProtocolFlowTest {
         RecordingHandler irResults = new RecordingHandler();
         subscribeIrResult(irResults);
 
-        runtime.submit(EnvelopeBuilder.eventTopic(
-                "module.asr",
-                ProtocolTopics.INPUT_ASR_FINAL_TEXT,
-                PayloadType.ASR_TEXT,
-                new AsrTextPayload("九狐帮我种地", "九狐帮我种地", 42, 77L, "asr", 100L)
-        ).build());
+        publishAndRepair(adapter, repairer, new AsrTextPayload("九狐帮我种地", "九狐帮我种地", 42, 77L, "asr", 100L));
 
         IrResultPayload result = irResults.awaitPayload(IrResultPayload.class);
         assertEquals("酒狐帮我种地", result.repairedText());
@@ -86,56 +90,67 @@ class IrModuleProtocolFlowTest {
     }
 
     @Test
-    void stopDiscardsInputWaitingForPresenceInsteadOfPublishingStaleResult() throws Exception {
+    void stoppedRepairerPublishesNothing() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        IrModule ir = new IrModule(runtime);
-        ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
-        BlockingPresenceHandler presence = new BlockingPresenceHandler();
-        registerCapability(
-                "test.presence",
-                ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
-                PayloadType.PRESENCE_CONTEXT_QUERY,
-                com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload.class,
-                EnumSet.of(PacketType.REQUEST),
-                presence
-        );
+        AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
+        AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
+        repairer.initialize(voiceAccess(), DiagnosticSink.NOOP);
         RecordingHandler irResults = new RecordingHandler();
         subscribeIrResult(irResults);
 
-        runtime.submit(EnvelopeBuilder.eventTopic(
-                "module.asr",
-                ProtocolTopics.INPUT_ASR_FINAL_TEXT,
-                PayloadType.ASR_TEXT,
-                new AsrTextPayload("退出世界前的输入", "退出世界前的输入", 7, 88L, "continuous", 100L)
-        ).build());
-        presence.awaitRequest();
-
-        ir.stop();
-        Thread.sleep(350L);
+        repairer.stop();
+        publishAndRepair(adapter, repairer, new AsrTextPayload("退出世界前的输入", "退出世界前的输入", 7, 88L, "continuous", 100L));
 
         assertTrue(irResults.envelopes().isEmpty());
     }
 
     @Test
-    void prepareAfterStopAcceptsNewWorldInput() {
+    void initializeAfterStopAcceptsNewWorldInput() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        IrModule ir = new IrModule(runtime);
-        ir.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
+        AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
         RecordingHandler irResults = new RecordingHandler();
         subscribeIrResult(irResults);
 
-        ir.stop();
-        ir.prepare(null);
-        runtime.submit(EnvelopeBuilder.eventTopic(
-                "module.asr",
-                ProtocolTopics.INPUT_ASR_FINAL_TEXT,
-                PayloadType.ASR_TEXT,
-                new AsrTextPayload("重新进入世界", "重新进入世界", 8, 89L, "continuous", 200L)
-        ).build());
+        repairer.stop();
+        repairer.initialize(voiceAccess(), DiagnosticSink.NOOP);
+        publishAndRepair(adapter, repairer, new AsrTextPayload("重新进入世界", "重新进入世界", 8, 89L, "continuous", 200L));
 
         IrResultPayload result = irResults.awaitPayload(IrResultPayload.class);
         assertEquals("重新进入世界", result.repairedText());
         assertEquals(89L, result.sessionId());
+    }
+
+    private void publishAndRepair(AsrProtocolAdapter adapter, AsrTextRepairer repairer, AsrTextPayload payload) {
+        TianshuEnvelope published = adapter.publishFinalText(payload);
+        repairer.process(payload, published);
+    }
+
+    private VoiceResourceAccess voiceAccess() {
+        return new VoiceResourceAccess() {
+            @Override
+            public VoiceTriggerRegistry voiceTriggers() {
+                return runtime.voiceTriggers();
+            }
+
+            @Override
+            public VoiceResourceSnapshot snapshot() {
+                return null;
+            }
+
+            @Override
+            public Path resolveHotwordsFile(String language) {
+                return null;
+            }
+
+            @Override
+            public void addChangeListener(Consumer<VoiceResourceSnapshot> listener) {
+            }
+
+            @Override
+            public void removeChangeListener(Consumer<VoiceResourceSnapshot> listener) {
+            }
+        };
     }
 
     private void registerCapability(String moduleId, String capabilityId, PayloadType payloadType, Class<?> payloadClass, EnumSet<PacketType> packets, EnvelopeHandler handler) {
@@ -217,31 +232,6 @@ class IrModuleProtocolFlowTest {
                 }
             }
             throw new AssertionError("Timed out waiting for payload " + type.getSimpleName() + ", received " + envelopes.size() + " envelope(s)");
-        }
-    }
-
-    private static final class BlockingPresenceHandler implements EnvelopeHandler {
-        private final AtomicInteger requests = new AtomicInteger();
-
-        @Override
-        public void handle(TianshuEnvelope envelope, ProtocolContext context) {
-            requests.incrementAndGet();
-        }
-
-        private void awaitRequest() {
-            long deadline = System.currentTimeMillis() + 3_000L;
-            while (System.currentTimeMillis() < deadline) {
-                if (requests.get() > 0) {
-                    return;
-                }
-                try {
-                    Thread.sleep(10L);
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-            throw new AssertionError("Timed out waiting for Presence request");
         }
     }
 }

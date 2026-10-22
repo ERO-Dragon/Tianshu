@@ -100,7 +100,7 @@ tasks.register('verifyFeatureIsolation') {
     description = 'Rejects imports between the feature sub-packages of tianshu-common.'
     inputs.files(fileTree('src/main/java/com/rheinmetal/tianshu/function') { include '**/*.java' })
     doLast { task ->
-        def features = ['asr', 'ir', 'llm', 'tts', 'auxilium'] as Set
+        def features = ['asr', 'llm', 'tts', 'auxilium'] as Set
         def violations = []
         task.inputs.files.files.each { source ->
             def path = source.path.replace('\\', '/')

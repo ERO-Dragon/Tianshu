@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
@@ -97,6 +98,18 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
                         .build(),
                 task
         );
+    }
+
+    // ---------------------------------------------------------------- speech-text repair (IR lane)
+
+    /**
+     * Publishes the repaired analysis of one speech turn.
+     *
+     * <p>The repair lane lives inside the speech module, but its output stays a public topic: a
+     * consumer that only wants the corrected text does not have to know which module produced it.</p>
+     */
+    public TianshuEnvelope publishIrResult(TianshuEnvelope parent, IrResultPayload payload) {
+        return publishTopic(parent, ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
     }
 }
 

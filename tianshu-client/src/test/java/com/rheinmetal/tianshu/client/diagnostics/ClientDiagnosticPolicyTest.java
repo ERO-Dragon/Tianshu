@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.client.config.ClientDiagnosticsConfiguration;
 import com.rheinmetal.tianshu.function.asr.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.ir.IrProtocolAdapter;
 import com.rheinmetal.tianshu.function.llm.LlmProtocolAdapter;
 import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
 import org.junit.jupiter.api.Test;
@@ -17,7 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class ClientDiagnosticPolicyTest {
     private static final List<String> KNOWN_MODULES = List.of(
             AsrProtocolAdapter.MODULE_ID,
-            IrProtocolAdapter.MODULE_ID,
             IaProtocolAdapter.MODULE_ID,
             AXModule.MODULE_ID,
             LlmProtocolAdapter.MODULE_ID,

@@ -13,7 +13,7 @@ class CommonDelayedWorkBoundaryTest {
     @Test
     void functionModulesDoNotOwnIndependentDelayedExecutors() throws Exception {
         List<String> relativeSources = List.of(
-                "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/IrModule.java",
+                "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/ir/AsrTextRepairer.java",
                 "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/llm/AXLlmRagClient.java",
                 "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/llm/AXLlmPrimitiveClient.java",
                 "tianshu-common/src/main/java/com/rheinmetal/tianshu/function/auxilium/module/gamecontext/AXDynamicFactClient.java"

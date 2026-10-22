@@ -136,6 +136,16 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         }
         List<HandlerRegistration> registrations = resolveHandlers(envelope);
         if (registrations.isEmpty()) {
+            // A topic nobody listens to is a normal state, not a delivery failure: the raw speech text
+            // and the activity feed are broadcasts, and demanding a subscriber would turn "nobody cares
+            // right now" into dead-letter noise on every turn. An *unregistered* topic is still a bug
+            // and keeps its dead letter.
+            if (envelope.header().targetMode() == TargetMode.TOPIC
+                    && topicRegistry.find(envelope.header().target()).isPresent()) {
+                lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "NO_SUBSCRIBER",
+                        "Topic had no subscribers");
+                return;
+            }
             deadLetterQueue.add(envelope, "TARGET_NOT_FOUND", "No registered handler for target", DeadLetterPolicy.LOG_ONLY);
             return;
         }

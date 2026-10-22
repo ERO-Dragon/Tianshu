@@ -4,6 +4,8 @@ import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.asr.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.ir.AsrTextRepairer;
+import com.rheinmetal.tianshu.function.ir.enhance.IrNamedObjectEnhancer;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -69,6 +71,8 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     /** Process-wide serial gate for native model loads; null keeps this module self-contained. */
     private final NativeModelLoadQueue loadQueue;
     private final AsrProtocolAdapter adapter;
+    /** Repairs misheard text and reports what it matched; the former standalone IR module. */
+    private final AsrTextRepairer textRepairer;
     private AsrController controller;
     private AsrInputGateway inputGateway;
     private ModuleRuntimeState runtimeState;
@@ -95,7 +99,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private volatile boolean lifecycleActive;
 
     public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
-        this(audioBridge, moduleRuntime, env, config, voiceInputAcceptance, interruptProcessing, null);
+        this(audioBridge, moduleRuntime, env, config, voiceInputAcceptance, interruptProcessing, null, null);
     }
 
     /**
@@ -106,6 +110,17 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env,
                      AsrConfiguration config, BooleanSupplier voiceInputAcceptance,
                      LongSupplier interruptProcessing, NativeModelLoadQueue loadQueue) {
+        this(audioBridge, moduleRuntime, env, config, voiceInputAcceptance, interruptProcessing, loadQueue, null);
+    }
+
+    /**
+     * @param namedObjectEnhancer repairs game terms in the recognised text; null restricts the repair
+     *                            lane to the registered voice triggers
+     */
+    public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env,
+                     AsrConfiguration config, BooleanSupplier voiceInputAcceptance,
+                     LongSupplier interruptProcessing, NativeModelLoadQueue loadQueue,
+                     IrNamedObjectEnhancer namedObjectEnhancer) {
         this.audioBridge = audioBridge;
         this.moduleRuntime = moduleRuntime;
         this.env = env;
@@ -114,6 +129,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         this.interruptProcessing = interruptProcessing;
         this.loadQueue = loadQueue;
         this.adapter = new AsrProtocolAdapter(moduleRuntime);
+        this.textRepairer = new AsrTextRepairer(adapter, namedObjectEnhancer);
     }
 
     @Override
@@ -142,12 +158,16 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             runtimeState = context.runtimeState();
             engineStatus = null;
             bindVoiceResources(context.voiceResources());
+            textRepairer.initialize(context.voiceResources(), context.diagnostics());
             AsrStateMachine stateMachine = new AsrStateMachine();
             AsrSessionManager sessionManager = new AsrSessionManager();
             audioCapture = new AudioCaptureService(audioBridge, env);
             reconfigureAudioPipeline();
             AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
             controller = new AsrController(env, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus, this::notReadyStatus);
+            // Same call stack as recognition: the repaired analysis is published right after the raw text,
+            // instead of being routed through a subscription into a module that had to ask for context first.
+            controller.bindTextRepair(textRepairer::process);
             if (inputGateway == null) {
                 inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
             }
@@ -174,6 +194,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         // First, so no native read starts or continues into a session that is going away, and so a permit
         // held for a load that will never run is handed back.
         cancelEngineLoad();
+        textRepairer.stop();
         if (modelService != null) {
             modelService.stopPreview();
         }
@@ -189,6 +210,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     @Override
     public void destroy() {
         destroyed = true;
+        textRepairer.destroy();
         // Covers the initial read and a hotword refresh alike: they share one latch and one lane task.
         cancelEngineLoad();
         unbindVoiceResources();

@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.client.runtime.module;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
+import com.rheinmetal.tianshu.client.ir.ClientIrNamedObjectEnhancer;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
 import com.rheinmetal.tianshu.client.event.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.client.speech.AXProtocolSpeechOutlet;
@@ -149,7 +149,6 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
         // native peaks together — which is what failed on a machine with an exhausted page file.
         NativeModelLoadQueue nativeModelLoadQueue = new NativeModelLoadQueue();
         installers.add(new IaModuleInstaller(moduleRuntime));
-        installers.add(new ClientIrModuleInstaller(moduleRuntime, indexManager));
         installers.add(new LlmModuleInstaller(env, configurations.llm(), moduleRuntime, nativeModelLoadQueue));
         // One voice channel for the AX module: delegation lines and event sentences both leave through it.
         AXSpeechBridge speechBridge = new AXSpeechBridge(
@@ -172,6 +171,8 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 speechBridge
         ));
         installers.add(new TtsModuleInstaller(audioBridge, moduleRuntime, env, configurations.tts(), nativeModelLoadQueue));
+        // The repair lane travels with the speech module, but the game-term dictionary only the host can
+        // read, so the enhancer is supplied here instead of the module reaching for it.
         installers.add(new AsrModuleInstaller(
                 audioBridge,
                 moduleRuntime,
@@ -179,7 +180,8 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 configurations.asr(),
                 voiceInputGate,
                 interruptionSignal,
-                nativeModelLoadQueue
+                nativeModelLoadQueue,
+                new ClientIrNamedObjectEnhancer(indexManager)
         ));
         this.delegate = new CompositeTianshuModuleAssembler(installers);
     }

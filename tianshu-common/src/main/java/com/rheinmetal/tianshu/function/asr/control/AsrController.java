@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.function.asr.recognition.AsrRecognitionService;
 import com.rheinmetal.tianshu.function.asr.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.asr.state.AsrState;
 import com.rheinmetal.tianshu.function.asr.state.AsrStateMachine;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
@@ -30,6 +31,14 @@ public final class AsrController {
     private final Consumer<ModuleStatus> moduleStatusSink;
     /** Why capture cannot start; null keeps the generic message for callers that do not supply one. */
     private final Supplier<ModuleStatus> notReadyStatus;
+    /**
+     * Optional hook run right after the raw text is published, carrying the payload and its envelope.
+     *
+     * <p>Bound by the module rather than injected through the constructor: the controller already has
+     * three overloads, and this collaboration is optional — a controller without a repairer still
+     * publishes recognisable text.</p>
+     */
+    private java.util.function.BiConsumer<AsrTextPayload, TianshuEnvelope> textRepair;
 
     public AsrController(
             IGameEnvironment env,
@@ -190,8 +199,17 @@ public final class AsrController {
             return;
         }
         int turnId = sessionManager.nextTurnId();
-        adapter.publishFinalText(new AsrTextPayload(result.text(), result.rawText(), turnId, result.sessionId(), result.inputMode(), System.currentTimeMillis()));
+        AsrTextPayload payload = new AsrTextPayload(result.text(), result.rawText(), turnId, result.sessionId(), result.inputMode(), System.currentTimeMillis());
+        TianshuEnvelope published = adapter.publishFinalText(payload);
+        if (textRepair != null) {
+            textRepair.accept(payload, published);
+        }
         env.info("asr.result.completed turnId=" + turnId + " sessionId=" + result.sessionId());
+    }
+
+    /** Binds the speech-text repair lane; called by the module after both are constructed. */
+    public void bindTextRepair(java.util.function.BiConsumer<AsrTextPayload, TianshuEnvelope> textRepair) {
+        this.textRepair = textRepair;
     }
 
     private boolean canAcceptInput() {
