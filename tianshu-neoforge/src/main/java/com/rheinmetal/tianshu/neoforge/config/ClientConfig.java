@@ -62,7 +62,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<List<? extends String>> LLM_CREDENTIALS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_WINDOW_TOKENS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_TIER;
-    /** Embedding position: 999 puts every layer on the card, 0 keeps the lane on the CPU. */
+    /** Embedding position: 999 puts every layer on the card, 0 — the default — keeps the lane on the CPU. */
     public static final ModConfigSpec.IntValue LLM_EMBEDDING_GPU_LAYERS;
     /** Runtime window of the embedding context; the model's own ceiling is applied on top. */
     public static final ModConfigSpec.IntValue LLM_EMBEDDING_CONTEXT_SIZE;
@@ -137,11 +137,14 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
                 LlmContextTiers.DEFAULT_TIER,
                 LlmContextTiers.TIER_50K,
                 LlmContextTiers.TIER_500K);
-        LLM_EMBEDDING_GPU_LAYERS = builder.comment("向量模型载入位置：999 表示全部层放到 GPU，0 表示只用 CPU。",
+        LLM_EMBEDDING_GPU_LAYERS = builder.comment("向量模型载入位置：999 表示全部层放到 GPU，0 表示只用 CPU（默认）。",
+                        "默认 CPU：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定"
+                                + "（曾观察到 vk::Device::createComputePipeline: ErrorUnknown 与进世界后的 GL_OUT_OF_MEMORY）。",
+                        "这与显存余量无关：崩溃时显存仍有富余。确认稳定的显卡可以手动切到 GPU。",
                         "GPU 载入失败时运行时会自动回落到 CPU，本键的值不变（改回 GPU 需要重新加载一次）。")
                 .defineInRange("embeddingGpuLayers",
-                        LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL,
-                        0,
+                        LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
+                        LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL);
         LLM_EMBEDDING_CONTEXT_SIZE = builder.comment("向量模型的上下文长度（token），直接决定 KV cache 的原生内存占用。",
                         "RAG 的实际输入只有一句事件（一两百字）和几百字的摘要，该值只需覆盖最长的摘要；",

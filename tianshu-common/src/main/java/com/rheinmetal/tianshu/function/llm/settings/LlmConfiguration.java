@@ -156,15 +156,26 @@ public interface LlmConfiguration {
 
     /** GPU layers for the embedding model: 999 offloads every layer, 0 keeps the lane on the CPU. */
     int EMBEDDING_GPU_LAYERS_ALL = 999;
+    /** CPU position: no layer offloaded. The default, because it is the position that always works. */
+    int EMBEDDING_GPU_LAYERS_CPU = 0;
 
     /**
      * Where the embedding model runs; this single number is the whole CPU/GPU choice.
+     *
+     * <p>The default is the CPU. The embedding backend creates a Vulkan device inside the game process,
+     * next to Minecraft's OpenGL context, and that coexistence has failed on some NVIDIA drivers:
+     * observed as {@code vk::Device::createComputePipeline: ErrorUnknown} while the device was created,
+     * and as {@code GL_OUT_OF_MEMORY} moments after world entry — which is exactly when the embedding
+     * load runs. Such a driver fails while plenty of memory is still free, so the load position cannot
+     * be inferred from hardware headroom: it has to be an explicit choice, and the CPU is the position
+     * that works everywhere. A player whose card is known good can switch the GPU on by hand, and a GPU
+     * that fails to load still falls back to the CPU for that session.
      *
      * <p>Read-only like every other member of this port: the settings page writes the position through
      * the settings-access port, which is the only place a write belongs.
      */
     default int getLlmEmbeddingGpuLayers() {
-        return EMBEDDING_GPU_LAYERS_ALL;
+        return EMBEDDING_GPU_LAYERS_CPU;
     }
 
     /**
@@ -184,10 +195,13 @@ public interface LlmConfiguration {
     /**
      * Default runtime window of the embedding context.
      *
-     * <p>The retrieval inputs of this build are one event sentence (at most a couple of hundred
-     * characters) and a summary of a few hundred, so the 8K window the model was trained for costs
-     * eight times the KV cache for zero extra recall. 1024 tokens covers the longest summary this
-     * build produces.
+     * <p>The retrieval inputs of this build are one event sentence (sixty characters at most) and a
+     * summary of a few hundred, so the 8K window the model was trained for costs eight times the KV
+     * cache for zero extra recall. The window is not free: llama.cpp sizes the KV cache in proportion
+     * to it, and that cache is native memory no collector can reclaim. 512 tokens is what a machine
+     * whose page file is already nearly exhausted can still pay, and it covers the event sentence plus
+     * the summary this build stores. Going lower starts truncating summaries, which are the carrier of
+     * long-term memory — a truncation that costs retrieval quality silently instead of loudly.
      */
     int DEFAULT_EMBEDDING_CONTEXT_SIZE = 1024;
 

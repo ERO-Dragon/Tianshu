@@ -312,6 +312,8 @@
   "tianshu.gui.llm.section.embedding": "RAG Embedding Model",
   "tianshu.gui.llm.row.embedding_model": "Current Embedding Model",
   "tianshu.gui.llm.row.embedding_state": "Download State",
+  "tianshu.gui.llm.row.embedding_hint": "Load Note",
+  "tianshu.gui.llm.status.embedding_gpu_hint": "On some cards and drivers the GPU load can affect game stability; switch back to the CPU if the game misbehaves or crashes",
   "tianshu.gui.llm.action.download_embedding": "Download Embedding Model",
   "tianshu.gui.llm.action.retry": "Retry",
   "tianshu.gui.llm.action.embedding_position_cpu": "CPU",

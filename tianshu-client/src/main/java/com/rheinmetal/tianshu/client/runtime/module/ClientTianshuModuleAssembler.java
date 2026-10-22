@@ -23,6 +23,7 @@ import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.VoiceNotificationService;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.ArrayList;
@@ -143,9 +144,13 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
         if (neoForgeInstallers != null) {
             installers.addAll(neoForgeInstallers);
         }
+        // One gate for every native model load in the process. The LLM module claims it as the primary
+        // (retrieval) lane and the speech module loads as a deferred request, so the two never add their
+        // native peaks together — which is what failed on a machine with an exhausted page file.
+        NativeModelLoadQueue nativeModelLoadQueue = new NativeModelLoadQueue();
         installers.add(new IaModuleInstaller(moduleRuntime));
         installers.add(new ClientIrModuleInstaller(moduleRuntime, indexManager));
-        installers.add(new LlmModuleInstaller(env, configurations.llm(), moduleRuntime));
+        installers.add(new LlmModuleInstaller(env, configurations.llm(), moduleRuntime, nativeModelLoadQueue));
         // One voice channel for the AX module: delegation lines and event sentences both leave through it.
         AXSpeechBridge speechBridge = new AXSpeechBridge(
                 new AXProtocolSpeechOutlet(
@@ -166,7 +171,7 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 speechBridge,
                 speechBridge
         ));
-        installers.add(new TtsModuleInstaller(audioBridge, moduleRuntime, env, configurations.tts()));
+        installers.add(new TtsModuleInstaller(audioBridge, moduleRuntime, env, configurations.tts(), nativeModelLoadQueue));
         installers.add(new AsrModuleInstaller(
                 audioBridge,
                 moduleRuntime,

@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
 
+import java.lang.management.ManagementFactory;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,6 +51,19 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
     private static final String UNAVAILABLE_MESSAGE = "LLM_EMBEDDING_UNAVAILABLE";
     /** One short inference: what turns "the model loaded" into "the model can embed". */
     private static final String WARM_UP_TEXT = "tianshu embedding warm-up";
+    /** KV cache element width: llama.cpp's F16 default for both K and V. */
+    private static final int KV_CACHE_BYTES_PER_ELEMENT = 2;
+    /** This architecture keeps a full-width K tensor and a full-width V tensor per layer. */
+    private static final int KV_TENSORS_PER_LAYER = 2;
+    /**
+     * The batch the libs binding derives for an embedding context.
+     *
+     * <p>The binding takes its own {@code n_batch} default, raises it to the window when the window is
+     * larger, and mirrors the result into {@code n_ubatch}; it never lowers it. That behaviour belongs
+     * to libs and not to this build, so it is a named constant here rather than a number spelled out at
+     * each call site — the batch is what sizes the per-inference compute buffers.
+     */
+    private static final int BINDING_DEFAULT_EMBEDDING_BATCH = 2048;
 
     private final IGameEnvironment env;
     private final Path modelPath;
@@ -109,20 +124,29 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
     public void warmUp(Executor executor) {
         Executor target = executor == null ? Runnable::run : executor;
         try {
-            target.execute(() -> {
-                try {
-                    ensureServer();
-                } catch (Exception failure) {
-                    // A lane that was stopped on purpose is not a failure: the restart that stopped it
-                    // already queued its own engine on this lane.
-                    if (!closed) {
-                        // The failure is already published once; RAG writes degrade instead of failing the lane.
-                        env.warn("[LLM] Local embedding engine is unavailable: " + describe(failure));
-                    }
-                }
-            });
+            target.execute(this::loadNow);
         } catch (RuntimeException rejected) {
             env.warn("[LLM] Failed to queue the local embedding model load: " + rejected.getMessage());
+        }
+    }
+
+    /**
+     * Runs the load on the calling thread.
+     *
+     * <p>Split out of {@link #warmUp(Executor)} for the case where the lane decision is made outside
+     * this class: when the process-wide native-load gate grants the permit it submits a runnable onto
+     * the model-load lane, and that runnable has to be the load body itself.
+     */
+    public void loadNow() {
+        try {
+            ensureServer();
+        } catch (Exception failure) {
+            // A lane that was stopped on purpose is not a failure: the restart that stopped it
+            // already queued its own engine on this lane.
+            if (!closed) {
+                // The failure is already published once; RAG writes degrade instead of failing the lane.
+                env.warn("[LLM] Local embedding engine is unavailable: " + describe(failure));
+            }
         }
     }
 
@@ -227,8 +251,15 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
      */
     private JavaLlamaServer loadLocked() throws Exception {
         Exception failure;
+        boolean gpuRequested = requestedGpuLayers > 0;
         try {
+            if (gpuRequested) {
+                publishGpuAttempt(requestedGpuLayers);
+            }
             JavaLlamaServer loaded = startAtPosition(requestedGpuLayers);
+            if (gpuRequested) {
+                publishGpuOutcome(true, gpuLayers, "");
+            }
             report(EmbeddingLoadReport.ready());
             return loaded;
         } catch (Exception requestedFailure) {
@@ -236,6 +267,7 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
         }
         String reason = describe(failure);
         if (requestedGpuLayers > 0) {
+            publishGpuOutcome(false, 0, reason);
             env.warn("[LLM] The embedding model could not run on the card (" + reason
                     + "), retrying on the CPU");
             publish("LLM_EMBEDDING_DEGRADED", DiagnosticSeverity.WARN, positionAttributes(reason));
@@ -329,6 +361,64 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
                 + " threads=" + threads
                 + " context=" + contextSize);
         publish("LLM_EMBEDDING_READY", DiagnosticSeverity.INFO, attributes());
+        publishFootprint();
+    }
+
+    /**
+     * What the lane costs now that it is up: the window and batch it runs with, the weights it mapped,
+     * the KV cache this window buys, and the commit charge that was left when it settled.
+     *
+     * <p>Published once, right after the load is verified, because this is the only moment where all of
+     * it is known at the same time and the process is still alive. The failure this replaces was found
+     * from a crash dump — {@code malloc} failing on a 330 KB chunk with no record of which model had
+     * taken the memory. The next report needs to answer that from the log alone.
+     *
+     * <p>The KV figure is per layer on purpose: the libs API exposes no layer count for the embedding
+     * lane, so the only honest form is the exact cost of the window per layer — multiply by the model's
+     * own {@code block_count} for the total. Weights are the mapped GGUF file, which is the lane's whole
+     * resident weight footprint because the file is memory-mapped rather than copied.
+     */
+    private void publishFootprint() {
+        Map<String, String> attributes = attributes();
+        attributes.put("nCtx", Integer.toString(contextSize));
+        attributes.put("nBatch", Integer.toString(bindingBatchSize()));
+        attributes.put("embeddingDimension", Integer.toString(dimension));
+        attributes.put("weightsFileBytes", Long.toString(weightsFileBytes()));
+        long perTokenPerLayer = (long) dimension * KV_TENSORS_PER_LAYER * KV_CACHE_BYTES_PER_ELEMENT;
+        attributes.put("kvBytesPerTokenPerLayer", Long.toString(perTokenPerLayer));
+        attributes.put("kvWindowBytesPerLayer", Long.toString(perTokenPerLayer * contextSize));
+        putCommitCharge(attributes);
+        publish("LLM_EMBEDDING_FOOTPRINT", DiagnosticSeverity.INFO, attributes);
+    }
+
+    /** The window never raises the binding's batch, so the effective batch is the larger of the two. */
+    private int bindingBatchSize() {
+        return Math.max(BINDING_DEFAULT_EMBEDDING_BATCH, contextSize);
+    }
+
+    /** Mapped weight bytes; -1 when the file cannot be sized, rather than a made-up zero. */
+    private long weightsFileBytes() {
+        try {
+            return Files.size(modelPath);
+        } catch (Exception unreadable) {
+            return -1L;
+        }
+    }
+
+    /**
+     * This process's commit charge and the machine's remaining physical memory.
+     *
+     * <p>Commit charge is the number the crash was really about: the JVM dies on a native {@code malloc}
+     * when it is exhausted, so recording it next to the model footprint is what lets the next report say
+     * how close the process was. Left out entirely on a VM that does not expose it, because a zero would
+     * read as "plenty left".
+     */
+    private static void putCommitCharge(Map<String, String> attributes) {
+        if (!(ManagementFactory.getOperatingSystemMXBean() instanceof com.sun.management.OperatingSystemMXBean host)) {
+            return;
+        }
+        attributes.put("processCommitBytes", Long.toString(host.getCommittedVirtualMemorySize()));
+        attributes.put("freePhysicalBytes", Long.toString(host.getFreeMemorySize()));
     }
 
     private void publishLoadFailure(Throwable failure) {
@@ -354,6 +444,35 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
     private Map<String, String> positionAttributes(String reason) {
         Map<String, String> attributes = attributes();
         attributes.put("requestedGpuLayers", Integer.toString(requestedGpuLayers));
+        attributes.put("reason", reason == null ? "" : reason);
+        return attributes;
+    }
+
+    /**
+     * The first half of the GPU pair, published before the backend is created.
+     *
+     * <p>Both halves carry the requested layers, the layers actually in use and whether the attempt
+     * succeeded. A log that ends on an attempt without its outcome therefore says the game died while the
+     * Vulkan backend was being initialised — the one question a post-crash report has to answer, and one no
+     * status line can answer because the process is gone.</p>
+     */
+    private void publishGpuAttempt(int attemptedLayers) {
+        publish("LLM_EMBEDDING_GPU_ATTEMPT", DiagnosticSeverity.INFO, gpuAttributes("pending", attemptedLayers, ""));
+    }
+
+    /** The second half: the verdict, and the position the lane really ended up on. */
+    private void publishGpuOutcome(boolean succeeded, int effectiveLayers, String reason) {
+        publish("LLM_EMBEDDING_GPU_OUTCOME",
+                succeeded ? DiagnosticSeverity.INFO : DiagnosticSeverity.WARN,
+                gpuAttributes(Boolean.toString(succeeded), effectiveLayers, reason));
+    }
+
+    /** Requested position, effective position and the verdict — the three values the pair has to carry. */
+    private Map<String, String> gpuAttributes(String outcome, int effectiveLayers, String reason) {
+        Map<String, String> attributes = attributes();
+        attributes.put("requestedGpuLayers", Integer.toString(requestedGpuLayers));
+        attributes.put("effectiveGpuLayers", Integer.toString(effectiveLayers));
+        attributes.put("gpuLoadSucceeded", outcome);
         attributes.put("reason", reason == null ? "" : reason);
         return attributes;
     }

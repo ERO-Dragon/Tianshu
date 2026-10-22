@@ -19,6 +19,7 @@ import com.rheinmetal.tianshu.function.llm.service.LLMService;
 import com.rheinmetal.tianshu.function.llm.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.llm.service.OpenAiCompatibleInferenceClient;
 import com.rheinmetal.tianshu.function.llm.usage.LlmUsageLedger;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -51,6 +52,16 @@ public final class LlmModule implements TianshuManagedModule {
     private static final long RETRY_STATUS_TAIL_MILLIS = 2_000L;
     /** How long presence keeps the failure line, so a player who looks up still sees it. */
     private static final long RUNTIME_ERROR_TTL_MILLIS = 12_000L;
+    /**
+     * Quiet time between the world coming up and the proactive embedding load.
+     *
+     * <p>The module starts on every world session, so an immediate warm-up would run a native model load —
+     * a few hundred megabytes mapped plus a backend initialisation — on top of chunk loading and the first
+     * frames. Six seconds is long enough for the entry burst to pass on a laptop-class machine. This only
+     * postpones the proactive load: a RAG write that arrives sooner still loads the model on demand, on the
+     * lane it already runs on, and a module that stops inside the window simply cancels the queued load.</p>
+     */
+    private static final Duration EMBEDDING_LOAD_DELAY_AFTER_WORLD_ENTRY = Duration.ofSeconds(6);
 
     private final IGameEnvironment env;
     private final LlmConfiguration config;
@@ -74,6 +85,8 @@ public final class LlmModule implements TianshuManagedModule {
     private ModuleServiceRegistry serviceRegistry;
     private volatile OpenAiCompatibleInferenceClient remoteClient;
     private boolean destroyed;
+    /** Process-wide serial gate for native model loads; null keeps this module self-contained. */
+    private final NativeModelLoadQueue loadQueue;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile ProtocolTaskHandle delayedAutoLoad;
     /** Retries already scheduled for the current start failure; reset when the lane comes up. */
@@ -85,9 +98,15 @@ public final class LlmModule implements TianshuManagedModule {
     private volatile boolean lifecycleActive;
 
     public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime) {
+        this(env, config, runtime, null);
+    }
+
+    public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime,
+                     NativeModelLoadQueue loadQueue) {
         this.env = env;
         this.config = config;
         this.runtime = runtime;
+        this.loadQueue = loadQueue;
         this.ragCacheLayout = new LlmRagCacheLayout(config);
         this.llmExecutor = new LlmExecutor(runtime);
         this.ragStorageService = new LlmRagStorageService(
@@ -101,7 +120,10 @@ public final class LlmModule implements TianshuManagedModule {
         this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config), usageLedger);
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
-        this.engineProvider = new LlmEngineProvider(env, config, llmExecutor.modelLoadExecutor(), this::onEmbeddingLoadSettled);
+        this.engineProvider = new LlmEngineProvider(env, config,
+                llmExecutor.delayedModelLoadExecutor(EMBEDDING_LOAD_DELAY_AFTER_WORLD_ENTRY),
+                this::onEmbeddingLoadSettled,
+                loadQueue);
     }
 
     @Override
@@ -167,6 +189,11 @@ public final class LlmModule implements TianshuManagedModule {
         if (!config.isLlmEnabled()) {
             return;
         }
+        // Announced before the module schedules anything: the retrieval load owns the native-load gate
+        // from world entry on, so a speech model that is ready sooner still waits for retrieval.
+        if (loadQueue != null) {
+            loadQueue.claimPrimary();
+        }
         long generation = lifecycleGeneration.incrementAndGet();
         delayedAutoLoad = runtime.schedule(
                 ProtocolTaskSpec.builder()
@@ -193,6 +220,8 @@ public final class LlmModule implements TianshuManagedModule {
     @Override
     public void stop() {
         stopRuntime();
+        // A load that was queued but never reached its lane must not keep the gate into the next world.
+        engineProvider.abandonQueuedLoad();
     }
 
     @Override

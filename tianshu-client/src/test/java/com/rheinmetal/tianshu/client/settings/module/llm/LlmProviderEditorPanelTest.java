@@ -165,9 +165,10 @@ final class LlmProviderEditorPanelTest {
             assertNotNull(embedding, "the vector model has a section of its own");
             assertTrue(embedding.visible().getAsBoolean(), "and it is always on screen");
 
-            assertEquals(List.of("llm.embedding.model", "llm.embedding.state"),
+            assertEquals(List.of("llm.embedding.model", "llm.embedding.state", "llm.embedding.hint"),
                     embedding.statuses().stream().map(SettingsTemplateModel.StatusEntry::id).toList(),
-                    "the section states which vector model and what its download is doing");
+                    "the section states which vector model, what its download is doing, and why the load "
+                            + "position starts on the CPU");
 
             SettingsTemplateModel.ActionEntry download = embedding.actions().get(0);
             assertEquals("llm.embedding.download", download.id(),

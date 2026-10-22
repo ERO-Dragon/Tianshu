@@ -312,6 +312,8 @@
   "tianshu.gui.llm.section.embedding": "RAG 向量模型",
   "tianshu.gui.llm.row.embedding_model": "当前向量模型",
   "tianshu.gui.llm.row.embedding_state": "下载状态",
+  "tianshu.gui.llm.row.embedding_hint": "载入提示",
+  "tianshu.gui.llm.status.embedding_gpu_hint": "部分显卡/驱动下 GPU 载入可能影响游戏稳定性；如遇画面异常或闪退，请切回 CPU",
   "tianshu.gui.llm.action.download_embedding": "下载向量模型",
   "tianshu.gui.llm.action.retry": "重试",
   "tianshu.gui.llm.action.embedding_position_cpu": "CPU",

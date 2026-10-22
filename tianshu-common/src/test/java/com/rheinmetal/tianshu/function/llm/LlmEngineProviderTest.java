@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.llm;
 
 import com.rheinmetal.tianshu.function.llm.service.EmbeddingLoadReport;
+import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,7 +63,8 @@ class LlmEngineProviderTest {
         // A queue-only executor keeps the model read from ever touching the placeholder file.
         LlmEngineProvider provider = new LlmEngineProvider(
                 env,
-                new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf"),
+                new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf")
+                        .embeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL),
                 task -> { }
         );
 
@@ -89,7 +91,8 @@ class LlmEngineProviderTest {
         List<EmbeddingLoadReport> reports = new ArrayList<>();
         LlmEngineProvider provider = new LlmEngineProvider(
                 env,
-                new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf"),
+                new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf")
+                        .embeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL),
                 queued::add,
                 reports::add
         );

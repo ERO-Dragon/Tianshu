@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.function.llm.service.EmbeddingLoadReport;
 import com.rheinmetal.tianshu.function.llm.service.EmbeddingService;
 import com.rheinmetal.tianshu.function.llm.service.LocalEmbeddingEngine;
 import com.rheinmetal.tianshu.function.llm.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,6 +38,8 @@ public final class LlmEngineProvider {
     private final InferenceResourcePolicy resourcePolicy;
     private final Executor modelLoadExecutor;
     private final Consumer<EmbeddingLoadReport> loadListener;
+    /** Serial gate shared with the speech modules, or null when this provider owns its own loading. */
+    private final NativeModelLoadQueue loadQueue;
     private volatile LocalEmbeddingEngine embeddingEngine;
     /** How the bound engine's load ended; null while the model-load lane is still working on it. */
     private volatile EmbeddingLoadReport embeddingLoadReport;
@@ -49,17 +52,30 @@ public final class LlmEngineProvider {
         this(env, config, modelLoadExecutor, ignored -> {});
     }
 
-    /**
-     * @param modelLoadExecutor the lane the model read is queued on; the module passes its model-load
-     *                          executor, so starting the LLM module never waits on a GGUF read
-     * @param loadListener      told once how the load ended: on the card, on the CPU after a fallback,
-     *                          or not at all
-     */
     public LlmEngineProvider(
             IGameEnvironment env,
             LlmConfiguration config,
             Executor modelLoadExecutor,
             Consumer<EmbeddingLoadReport> loadListener
+    ) {
+        this(env, config, modelLoadExecutor, loadListener, null);
+    }
+
+    /**
+     * @param modelLoadExecutor the lane the model read is queued on; the module passes its model-load
+     *                          executor, so starting the LLM module never waits on a GGUF read
+     * @param loadListener      told once how the load ended: on the card, on the CPU after a fallback,
+     *                          or not at all
+     * @param loadQueue         the process-wide serial gate every native model load goes through, or
+     *                          null when this provider is used on its own; the embedding load is its
+     *                          primary request, because retrieval is a precondition for dialogue
+     */
+    public LlmEngineProvider(
+            IGameEnvironment env,
+            LlmConfiguration config,
+            Executor modelLoadExecutor,
+            Consumer<EmbeddingLoadReport> loadListener,
+            NativeModelLoadQueue loadQueue
     ) {
         this.env = env;
         this.config = config;
@@ -67,6 +83,7 @@ public final class LlmEngineProvider {
         this.resourcePolicy = InferenceResourcePolicy.systemDefault();
         this.modelLoadExecutor = modelLoadExecutor == null ? Runnable::run : modelLoadExecutor;
         this.loadListener = loadListener == null ? ignored -> {} : loadListener;
+        this.loadQueue = loadQueue;
     }
 
     /** Whether an engine is bound and its load is not known to have failed for good. */
@@ -95,6 +112,12 @@ public final class LlmEngineProvider {
         // native memory, so two live instances would mean two models resident at once. The release is
         // synchronous, so nothing is ever loaded on top of an engine that is still going away.
         stop();
+        // A restart re-enters here, so the claim is re-taken and any primary permit the previous
+        // attempt abandoned is cleared in the same step. Re-claiming keeps the speech lane waiting for
+        // this load, not for the one that never ran.
+        if (loadQueue != null) {
+            loadQueue.claimPrimary();
+        }
         String unavailableReason = "";
         LocalEmbeddingEngine prepared = null;
         if (embeddingPath == null) {
@@ -110,11 +133,43 @@ public final class LlmEngineProvider {
         }
         if (prepared == null) {
             publishEmbeddingUnavailable(unavailableReason);
+            // No retrieval load is coming, so the deferred speech load must not keep waiting for one.
+            if (loadQueue != null) {
+                loadQueue.settlePrimary();
+            }
             return false;
         }
         // Queued, never awaited: the position check and its CPU fallback run on the model-load lane.
-        prepared.warmUp(modelLoadExecutor);
+        // The permit is taken here rather than inside the lane task so the speech lane parks from world
+        // entry on: retrieval is a precondition for dialogue, and a speech model that starts first would
+        // hold the permit for the embedding load's whole window.
+        warmUpThroughQueue(prepared);
         return true;
+    }
+
+    /**
+     * Hands the load to the serial gate, which decides when it may run; the permit goes back when the
+     * load ends, whether it loaded or not.
+     */
+    private void warmUpThroughQueue(LocalEmbeddingEngine engine) {
+        if (loadQueue == null) {
+            engine.warmUp(modelLoadExecutor);
+            return;
+        }
+        loadQueue.request("module.llm", "embedding", () -> modelLoadExecutor.execute(() -> {
+            try {
+                engine.loadNow();
+            } finally {
+                loadQueue.release();
+            }
+        }), true);
+    }
+
+    /** Called on stop so a claimed but never-queued primary load cannot park the speech lane. */
+    void abandonQueuedLoad() {
+        if (loadQueue != null) {
+            loadQueue.abandonPrimary();
+        }
     }
 
     private LocalEmbeddingEngine createEmbeddingEngine(Path modelPath, String modelName) {
@@ -213,6 +268,9 @@ public final class LlmEngineProvider {
             embeddingEngine = null;
             embeddingLoadReport = null;
         }
+        // Not abandoned here: startEmbeddingOnly() calls stop() before it arms the gate, and resetting
+        // there would drop the primary claim it is about to take. Session teardown calls
+        // abandonQueuedLoad() instead.
         if (embedding != null) {
             embedding.shutdown();
         }

@@ -121,13 +121,18 @@ LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoF
 
 | 键（`config/tianshu-client.toml` 的 `[llm]` 段） | 默认 | 含义 |
 |----|----|----|
-| `embeddingGpuLayers` | `999`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL`） | 向量模型的载入位置：`999` = 全部层放到 GPU；`0` = 纯 CPU。取值域 `0..999`，写入时钳位。 |
-| `embeddingContextSize` | `1024`（`LlmConfiguration.DEFAULT_EMBEDDING_CONTEXT_SIZE`） | 向量模型的运行时上下文窗口（token）。取值域 `256..8192`，读端钳位后由 `LlmEngineProvider` 再与 catalog 上限取小。 |
+| `embeddingGpuLayers` | `0`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU`） | 向量模型的载入位置：`0` = 纯 CPU（默认）；`999`（`EMBEDDING_GPU_LAYERS_ALL`）= 全部层放到 GPU。取值域 `0..999`，写入时钳位。 |
+| `embeddingContextSize` | `512`（`LlmConfiguration.DEFAULT_EMBEDDING_CONTEXT_SIZE`） | 向量模型的运行时上下文窗口（token）。取值域 `256..8192`，读端钳位后由 `LlmEngineProvider` 再与 catalog 上限取小。 |
 
+- **KV 内存与上下文长度成正比**：llama.cpp 按整个窗口分配 KV cache，而 KV 在原生内存里、GC 管不到。因此调小 `embeddingContextSize` 是低内存机器最直接的缓解手段，代价是**超长摘要会被截断**——截断不报错，只会悄悄降低检索质量。默认 `512` 是在"页文件将尽的机器仍能付出"与"覆盖本构建实际存储的事件句 + 摘要"之间的取值；再往下到 `256` 属于显式取舍，由玩家自己承担截断。
+
+- 默认 CPU 的理由：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定——曾观察到 `vk::Device::createComputePipeline: ErrorUnknown`（建 device 时）和进世界后的 `GL_OUT_OF_MEMORY`；两次崩溃时显存都还有富余，所以这不是显存耗尽。载入位置因此不能从硬件余量推断，只能是玩家的显式选择，而 CPU 是各处都能用的那一个。手动切到 GPU 仍然保留，GPU 载入失败时自动回落到 CPU（`DEGRADED`）。
 - 读端只有 `LlmConfiguration.getLlmEmbeddingGpuLayers()`；写端只有 `LlmSettingsAccess.setLlmEmbeddingGpuLayers(int)`，common 不出现 setter。
 - 载入位置在页面上是**草稿值**：点击 `toggleEmbeddingPosition()` 只改草稿并提示"保存后生效"，不写配置、不重启运行时；面板级保存把它并进同一个事务，保存成功后按既有机制重启运行时（换后端＝整份 GGUF 重新载入，不在点击瞬间做）。
-- 载入跑在 model-load 线程：`LlmEngineProvider.startEmbeddingOnly()` 只把引擎排进队列并立即返回；位置判定在 `LocalEmbeddingEngine.warmUp()` 里做，结论经 `EmbeddingLoadReport` 回报一次。
+- 载入跑在 model-load 线程：`LlmEngineProvider.startEmbeddingOnly()` 只把引擎排进队列并立即返回；位置判定在 `LocalEmbeddingEngine.warmUp()` 里做，结论经 `EmbeddingLoadReport` 回报一次。该队列还从进世界起延后 6 秒（`LlmModule.EMBEDDING_LOAD_DELAY_AFTER_WORLD_ENTRY`，经 `LlmExecutor.delayedModelLoadExecutor()`），让原生载入避开区块加载与开场帧；这只是推迟主动载入，延后窗口内若有 RAG 写入，`ensureServer()` 仍会按需在写入所在 lane 上载入。真正的加载本身还要过一道进程级串行闸门（`com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue`）：embedding 是它的 primary 请求，语音模型（TTS）是 deferred 请求，必须等本次判定结束后才获准——原生模型的峰值因此不再相加，而是取最大值。
 - 判定以"真的能产出向量"为准（载入后跑一次 embedding 验证），三种结论：`READY`（请求位置可用，诊断 `LLM_EMBEDDING_READY`）、`DEGRADED`（GPU 失败、CPU 验证通过，向量检索照常但更慢；映迹一条 DEGRADED 提示，诊断 `LLM_EMBEDDING_DEGRADED`）、`UNAVAILABLE`（GPU 与 CPU 都失败，模型或文件损坏；向量 RAG 关闭并解绑，映迹一条 ERROR 提示，诊断 `LLM_EMBEDDING_LOAD_FAILED`）。
+- GPU 模式另有一对前后诊断，供崩溃后定位：`LLM_EMBEDDING_GPU_ATTEMPT`（建后端之前，带 `requestedGpuLayers` / `effectiveGpuLayers` / `gpuLoadSucceeded=pending`）与 `LLM_EMBEDDING_GPU_OUTCOME`（成功或失败、实际生效层数、失败原因）。日志若停在 attempt 而缺对应的 outcome，就说明进程死在 Vulkan 后端初始化里。
+- 载入成功后另有一条足迹诊断 `LLM_EMBEDDING_FOOTPRINT`，在"载入已验证、维度已知"这一刻发布一次，字段：`nCtx`（实际下发的窗口）、`nBatch`（binding 推导出的批大小，窗口大于它时抬到窗口，`n_ubatch` 同值）、`embeddingDimension`、`weightsFileBytes`（mmap 的 GGUF 文件大小＝常驻权重）、`kvBytesPerTokenPerLayer` / `kvWindowBytesPerLayer`（本窗口每层的 KV 精确成本，乘模型自身 `block_count` 得总量）、`processCommitBytes`（本进程提交量，取不到则省略而不写 0）、`freePhysicalBytes`。目的是把"崩了才知道内存不够"换成"日志里一眼看出是哪一项吃掉的"。KV 只给每层值是因为 libs 未暴露 embedding lane 的层数。
 - 已知覆盖缺口：`DEGRADED` 分支需要真实 GGUF 才能让 CPU 侧验证通过，单测只覆盖 `READY` 与 `UNAVAILABLE` 终态。这是有意记录的缺口，不要当成已覆盖。
 - 释放契约：模型权重与上下文都在原生内存里，GC 管不到。`LlmEngineProvider.startEmbeddingOnly()` 先 `stop()` 再建新引擎，任何时刻只有一个引擎实例；`LocalEmbeddingEngine.shutdown()` 用一把读写锁把推理与拆卸互斥（推理持读锁、拆卸持写锁），因此进入 libs 的 `EmbeddingEngine.shutdown()` 时它的工作线程必定空闲。这一点是必须的：libs 只在工作线程按期内停下的情况下 `model.close()`，超时就跳过释放并把 `running` 永久置 false——那是唯一一条真正漏掉原生内存的路径，而且无法重试。
 

@@ -736,7 +736,9 @@ class AXTurnOrchestratorTest {
 
         fixture.answer("铁砧可以修复工具。");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         assertEquals(List.of("铁砧可以修复工具。"), List.copyOf(fixture.spoken), "平时就是人话，零格式");
         assertEquals("铁砧可以修复工具。", fixture.chatSink.text.toString());
         assertEquals("铁砧可以修复工具。", fixture.recent.snapshot(fixture.scope).turns().get(1).content());
@@ -749,7 +751,9 @@ class AXTurnOrchestratorTest {
 
         fixture.answer("{我在想这句话}");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         assertEquals(List.of("{我在想这句话}"), List.copyOf(fixture.spoken), "带花括号的普通文本原样念");
         assertEquals("{我在想这句话}", fixture.recent.snapshot(fixture.scope).turns().get(1).content());
         assertTrue(fixture.emptyAnswerDiagnostics().isEmpty());
@@ -761,7 +765,9 @@ class AXTurnOrchestratorTest {
 
         fixture.answer("这个问题让我去查一下。<delegate>检索如何进入暮色森林</delegate>");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         assertEquals(List.of("这个问题让我去查一下。"), List.copyOf(fixture.spoken), "标签内容绝不念出来");
         assertEquals("这个问题让我去查一下。", fixture.chatSink.text.toString(), "标签也不进聊天 UI");
         assertEquals("这个问题让我去查一下。", fixture.recent.snapshot(fixture.scope).turns().get(1).content(),
@@ -785,7 +791,9 @@ class AXTurnOrchestratorTest {
 
         fixture.answer("这个问题让我去查一下。<delegate>检索如何进入暮色森林</delegate>");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         assertEquals("这个问题让我去查一下。", fixture.chatSink.text.toString(), "收尾不得重复输出");
         await(() -> "这个问题让我去查一下。".equals(String.join("", fixture.spoken)));
         assertEquals("这个问题让我去查一下。", String.join("", fixture.spoken), "收尾不得重复念");
@@ -797,7 +805,9 @@ class AXTurnOrchestratorTest {
 
         fixture.answer("让我想想。<delegate>   </delegate>");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         assertEquals(List.of("让我想想。"), List.copyOf(fixture.spoken), "空标签既不委派、也不留痕");
         assertEquals("让我想想。", fixture.chatSink.text.toString());
     }
@@ -810,7 +820,9 @@ class AXTurnOrchestratorTest {
         fixture.stream("egate>如何进入暮色森林", 1);
         fixture.answer("让我查一下。<delegate>如何进入暮色森林");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         await(() -> fixture.spoken.size() == 2);
         assertEquals(List.of("让我查一下。", "如何进入暮色森林"), List.copyOf(fixture.spoken),
                 "只有开标签：不委派，剩下的照样念");
@@ -825,7 +837,9 @@ class AXTurnOrchestratorTest {
 
         fixture.answer("   ");
 
-        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        // The history turn and the spoken line are published on different lanes, so waiting for one
+        // of them is not enough: the speech has to have arrived before it can be compared.
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2 && !fixture.spoken.isEmpty());
         assertEquals(List.of(fallback), List.copyOf(fixture.spoken), "空答句只能念兜底句");
         assertEquals(fallback, fixture.chatSink.text.toString());
         assertEquals(fallback, fixture.recent.snapshot(fixture.scope).turns().get(1).content());

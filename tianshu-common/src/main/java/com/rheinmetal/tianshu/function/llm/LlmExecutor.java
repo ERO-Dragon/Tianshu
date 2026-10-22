@@ -28,6 +28,27 @@ final class LlmExecutor {
         return task -> submitOrReject(spec(ExecutionLane.MODEL_LOAD, "llm.model_load", 1, 2), task);
     }
 
+    /**
+     * The model-load lane, entered only after {@code delay} has elapsed.
+     *
+     * <p>Used for the embedding warm-up so a native model load never starts inside the world-entry window:
+     * it maps a few hundred megabytes and initialises a backend, which on world entry would land on top of
+     * chunk loading and the first frames. Nothing waits on this — a RAG write that arrives earlier still
+     * loads the model on demand, on the lane that write already runs on.</p>
+     */
+    Executor delayedModelLoadExecutor(Duration delay) {
+        return task -> {
+            var handle = executorManager.schedule(
+                    spec(ExecutionLane.SCHEDULED, "llm.model_load.delay", 1, 2),
+                    () -> submitOrReject(spec(ExecutionLane.MODEL_LOAD, "llm.model_load", 1, 2), task),
+                    delay
+            );
+            if (handle.state() == ProtocolTaskState.REJECTED) {
+                throw new RejectedExecutionException("Protocol executor rejected the scheduled embedding model load");
+            }
+        };
+    }
+
     RagPersistenceScheduler ragPersistenceScheduler() {
         return new RagPersistenceScheduler() {
             @Override

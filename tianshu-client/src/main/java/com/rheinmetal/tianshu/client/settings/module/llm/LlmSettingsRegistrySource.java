@@ -1015,6 +1015,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         public boolean dirty() {
             return enabled.dirty()
                     || cloudSettingsDirty()
+                    // 载入位置是草稿态（保存后才重启引擎），所以它也算未保存改动，
+                    // 否则切换 CPU/GPU 后页面仍是"干净"的，保存按钮不会亮。
+                    || embeddingGpuLayers.dirty()
                     // An open form is unsaved state of this module. Counting it here is what makes the
                     // page-level 保存 reach this session at all: without it, a credential typed into the
                     // form would leave the session "clean" and the save would be skipped entirely.
@@ -1194,10 +1197,18 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             return name == null || name.isBlank() ? null : modelService.embeddingModelByName(name);
         }
 
-        /** The embedding section: name, installed state and, while it runs, its download progress. */
+        /**
+         * The embedding section: which model, what its download is doing, and why the load position starts
+         * on the CPU.
+         *
+         * <p>The note is a row of its own instead of a suffix on the position button: the button has to stay
+         * a button ("载入位置：CPU"), while the risk of switching it — the GPU backend can destabilise the
+         * game on some drivers — has to be readable before the player clicks it.</p>
+         */
         private void buildEmbeddingStatus(StatusTemplate status) {
             status.row("llm.embedding.model", llm("row.embedding_model"), this::embeddingModelNameStatus)
-                    .row("llm.embedding.state", llm("row.embedding_state"), this::embeddingModelStateStatus);
+                    .row("llm.embedding.state", llm("row.embedding_state"), this::embeddingModelStateStatus)
+                    .row("llm.embedding.hint", llm("row.embedding_hint"), () -> llm("status.embedding_gpu_hint"));
         }
 
         /**
@@ -1337,7 +1348,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
          */
         private void toggleEmbeddingPosition(ModuleSettingsContext context) {
             boolean gpu = !embeddingUsesGpu();
-            embeddingGpuLayers.set(gpu ? LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL : 0);
+            embeddingGpuLayers.set(gpu
+                    ? LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL
+                    : LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU);
             context.showStatus(llm("message.embedding_position_pending",
                     llm(gpu ? "action.embedding_position_gpu" : "action.embedding_position_cpu")), 2_500);
         }

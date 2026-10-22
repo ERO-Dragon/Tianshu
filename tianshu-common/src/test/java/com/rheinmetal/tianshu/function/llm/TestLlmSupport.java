@@ -39,6 +39,7 @@ public final class TestLlmSupport {
         private int taskAdmissionQueueSize = 0;
         private int taskAgingBoostPerRequest = 1;
         private String embeddingModelName = "";
+    private int embeddingGpuLayers = LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU;
         private long llmAutoLoadDelayMillis = 3_000L;
         private long ttsAutoLoadDelayMillis = 1_000L;
         private String remoteApiKey = "";
@@ -67,7 +68,17 @@ public final class TestLlmSupport {
             return this;
         }
 
-        public FakeConfig embeddingModelName(String name) {
+        public FakeConfig embeddingGpuLayers(int layers) {
+        this.embeddingGpuLayers = layers;
+        return this;
+    }
+
+    @Override
+    public int getLlmEmbeddingGpuLayers() {
+        return embeddingGpuLayers;
+    }
+
+    public FakeConfig embeddingModelName(String name) {
             this.embeddingModelName = name == null ? "" : name;
             return this;
         }
