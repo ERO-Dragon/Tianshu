@@ -248,7 +248,7 @@ final class TtsModelLifecycleCoordinator {
         ProtocolTaskHandle handle = executorManager.submit(taskSpec("prepare-load"), this::prepareNow);
         if (handle.state() == ProtocolTaskState.REJECTED) {
             if (loadQueue != null) {
-                loadQueue.release();
+                loadQueue.release(MODULE_ID);
             }
             failPrepareQueueFull();
         }
@@ -276,7 +276,7 @@ final class TtsModelLifecycleCoordinator {
             // Handed back on every path: a permit that outlived a failed load would park retrieval for
             // the rest of the session.
             if (loadQueue != null) {
-                loadQueue.release();
+                loadQueue.release(MODULE_ID);
             }
         }
         notifyPrepareCompletions(outcome.completions(), outcome.initialized());

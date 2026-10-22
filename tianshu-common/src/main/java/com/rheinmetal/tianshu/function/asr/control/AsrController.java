@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 public final class AsrController {
     private final IGameEnvironment env;
@@ -27,6 +28,8 @@ public final class AsrController {
     private final AudioCaptureService audioCapture;
     private final AsrRecognitionService recognition;
     private final Consumer<ModuleStatus> moduleStatusSink;
+    /** Why capture cannot start; null keeps the generic message for callers that do not supply one. */
+    private final Supplier<ModuleStatus> notReadyStatus;
 
     public AsrController(
             IGameEnvironment env,
@@ -39,7 +42,7 @@ public final class AsrController {
             AudioCaptureService audioCapture,
             AsrRecognitionService recognition
     ) {
-        this(env, voiceInputAcceptance, asrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, null);
+        this(env, voiceInputAcceptance, asrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, null, null);
     }
 
     public AsrController(
@@ -54,6 +57,30 @@ public final class AsrController {
             AsrRecognitionService recognition,
             Consumer<ModuleStatus> moduleStatusSink
     ) {
+        this(env, voiceInputAcceptance, asrReady, interruptProcessing, adapter, stateMachine,
+                sessionManager, audioCapture, recognition, moduleStatusSink, null);
+    }
+
+    /**
+     * @param notReadyStatus why capture cannot start, in the player's terms; supplied by the module
+     *                      because only it knows whether the lane is still preparing or has no usable
+     *                      model. Required for a usable message: a single generic "waking up" answer to a
+     *                      model that is simply not installed is what made a dead key look like a slow
+     *                      one.
+     */
+    public AsrController(
+            IGameEnvironment env,
+            BooleanSupplier voiceInputAcceptance,
+            BooleanSupplier asrReady,
+            LongSupplier interruptProcessing,
+            AsrProtocolAdapter adapter,
+            AsrStateMachine stateMachine,
+            AsrSessionManager sessionManager,
+            AudioCaptureService audioCapture,
+            AsrRecognitionService recognition,
+            Consumer<ModuleStatus> moduleStatusSink,
+            Supplier<ModuleStatus> notReadyStatus
+    ) {
         this.env = env;
         this.voiceInputAcceptance = voiceInputAcceptance;
         this.asrReady = asrReady;
@@ -64,6 +91,7 @@ public final class AsrController {
         this.audioCapture = audioCapture;
         this.recognition = recognition;
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
+        this.notReadyStatus = notReadyStatus;
     }
 
     public void handle(AsrInputIntent intent, long eventSessionId) {
@@ -103,7 +131,7 @@ public final class AsrController {
 
     private void beginInput() {
         if (!canAcceptInput()) {
-            notifyAsrWaking();
+            notifyNotReady();
             return;
         }
         beginPtt();
@@ -170,9 +198,17 @@ public final class AsrController {
         return voiceInputAcceptance.getAsBoolean() && asrReady.getAsBoolean();
     }
 
-    private void notifyAsrWaking() {
+    /**
+     * A key press that cannot record is still an event the player needs an answer to, so the reason is
+     * re-published here rather than logged only: a message that expires before the press is the same as
+     * no message at all.
+     */
+    private void notifyNotReady() {
         env.warn("asr.input.not_ready");
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed("module.asr", "tianshu.presence.module.asr.waking"));
+        ModuleStatus reason = notReadyStatus == null ? null : notReadyStatus.get();
+        moduleStatusSink.accept(reason != null
+                ? reason
+                : ModuleStatuses.waitingKeyed(AsrProtocolAdapter.MODULE_ID, "tianshu.presence.module.asr.waking"));
     }
 }
 

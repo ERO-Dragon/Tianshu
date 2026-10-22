@@ -341,6 +341,12 @@ public final class AsrSettingsRegistrySource implements TianshuSettingsRegistryS
             List<String> values = new ArrayList<>(downloaded.size() + 2);
             values.add("");
             String configured = config.getCustomAsrName();
+            if (configured != null && !configured.isBlank() && !downloaded.contains(configured)) {
+                // The effective selection can be a catalog model that is not on disk yet — the engine then
+                // reports "not installed" rather than "not configured". It still has to be listed, or the
+                // selector would show no matching option for the value the runtime is actually using.
+                values.add(configured);
+            }
             values.addAll(downloaded);
             return values;
         }

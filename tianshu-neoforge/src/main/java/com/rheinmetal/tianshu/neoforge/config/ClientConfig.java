@@ -19,6 +19,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -225,7 +226,81 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     @Override
     public String getCustomAsrName() {
         String configured = CUSTOM_ASR_NAME.get();
-        return normalizeAsrModelName(configured);
+        String normalized = normalizeAsrModelName(configured);
+        if (!normalized.isBlank()) {
+            return normalized;
+        }
+        // Nothing was ever selected. Reporting "not configured" forever is what made the module look
+        // unattached, so fall back the same way the embedding lane does and name a real catalog entry.
+        return defaultAsrModelName();
+    }
+
+    /**
+     * The model the speech lane uses when the player never picked one.
+     *
+     * <p>Preference order, and it matters: an already-downloaded model first (so a fallback never
+     * silently replaces a model the player actually installed), then the catalog entry for the current
+     * language, then the first catalog entry. The last two may still name a model that is not on disk on
+     * purpose — the engine then reports "not installed", which the player can act on, instead of the
+     * dead-end "not configured".
+     */
+    private String defaultAsrModelName() {
+        Path modelRoot = getAsrBasePath().resolve("model");
+        String language = languageCodeSupplier.get();
+        AsrModelInfo downloaded = firstDownloadedAsrModel(modelRoot, language);
+        if (downloaded == null) {
+            downloaded = firstDownloadedAsrModel(modelRoot, null);
+        }
+        if (downloaded != null) {
+            return downloaded.localKey();
+        }
+        AsrModelInfo named = firstAsrModelForLanguage(language);
+        return named == null ? "" : named.localKey();
+    }
+
+    private AsrModelInfo firstDownloadedAsrModel(Path modelRoot, String language) {
+        for (AsrModelInfo info : asrCatalogForLanguage(language)) {
+            if (AsrModelManager.isModelDownloaded(info, modelRoot)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private AsrModelInfo firstAsrModelForLanguage(String language) {
+        List<AsrModelInfo> candidates = asrCatalogForLanguage(language);
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    /** The catalog filtered by language, falling back to the whole catalog when nothing matches. */
+    private List<AsrModelInfo> asrCatalogForLanguage(String language) {
+        List<AsrModelInfo> all = AsrModelManager.getAllModels();
+        String prefix = languagePrefix(language);
+        if (prefix.isEmpty()) {
+            return all;
+        }
+        List<AsrModelInfo> matching = all.stream()
+                .filter(info -> modelListsLanguage(info, prefix))
+                .toList();
+        return matching.isEmpty() ? all : matching;
+    }
+
+    /** Catalog entries store bare codes ("zh"), while the game reports a locale ("zh_cn"). */
+    private static boolean modelListsLanguage(AsrModelInfo info, String prefix) {
+        for (String lang : info.getLang()) {
+            if (lang != null && lang.trim().toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String languagePrefix(String language) {
+        if (language == null || language.isBlank()) {
+            return "";
+        }
+        String normalized = language.trim().toLowerCase(Locale.ROOT);
+        return normalized.length() >= 2 ? normalized.substring(0, 2) : normalized;
     }
 
     public void setCustomAsrName(String name) {

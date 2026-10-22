@@ -518,6 +518,8 @@
   "tianshu.presence.module.asr.exception": "ASR engine initialization failed",
   "tianshu.presence.module.asr.unsupported_model": "ASR engine failed to initialize; this model type is not supported yet",
   "tianshu.presence.module.asr.waking": "Tianshu is waking up, please wait",
+  "tianshu.presence.module.asr.loading": "Speech model is loading",
+  "tianshu.presence.module.asr.load_rejected": "The speech model could not be queued; please try again shortly",
   "tianshu.presence.module.asr.download_started": "Downloading ASR model",
   "tianshu.presence.module.asr.download_paused": "ASR model download paused",
   "tianshu.presence.module.asr.download_resumed": "ASR model download resumed",

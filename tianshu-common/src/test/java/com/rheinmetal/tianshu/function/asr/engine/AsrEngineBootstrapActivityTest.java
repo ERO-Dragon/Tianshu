@@ -38,7 +38,9 @@ class AsrEngineBootstrapActivityTest {
         bootstrap.initialize(context(runtimeState), "module.asr");
 
         assertEquals(List.of(), loading);
-        assertEquals(RuntimeCapabilityState.DISABLED, runtimeState.capabilities().status(AsrRuntimeCapabilities.INPUT).state());
+        // The bootstrap owns the model dimension; the input channel belongs to the module, so a disabled
+        // engine must not speak for it.
+        assertEquals(RuntimeCapabilityState.DISABLED, runtimeState.capabilities().status(AsrRuntimeCapabilities.MODEL).state());
     }
 
     @Test

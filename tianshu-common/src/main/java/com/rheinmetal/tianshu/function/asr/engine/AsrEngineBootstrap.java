@@ -42,7 +42,7 @@ public final class AsrEngineBootstrap {
 
     public AsrEngine initialize(ModuleRuntimeContext context, String moduleId) {
         if (!config.isAsrEnabled()) {
-            context.runtimeState().capabilities().disable(AsrRuntimeCapabilities.INPUT, moduleId);
+            context.runtimeState().capabilities().disable(AsrRuntimeCapabilities.MODEL, moduleId);
             return null;
         }
         Path modelPath = config.getAsrModelPath();
@@ -61,7 +61,7 @@ public final class AsrEngineBootstrap {
         AsrEngine engine = new AsrEngine(env);
         try {
             if (initializeEngine(engine, context, modelPath)) {
-                context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId);
+                context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId);
                 env.info("asr.engine.initialized");
                 publishStatus(AsrEngineBootstrapStatus.ready("tianshu.presence.module.asr.ready"));
                 return engine;
@@ -142,7 +142,7 @@ public final class AsrEngineBootstrap {
     }
 
     private void markFailed(ModuleRuntimeContext context, String moduleId, String reason) {
-        context.runtimeState().capabilities().markFailed(AsrRuntimeCapabilities.INPUT, moduleId, reason);
+        context.runtimeState().capabilities().markFailed(AsrRuntimeCapabilities.MODEL, moduleId, reason);
     }
 
     private void publishStatus(AsrEngineBootstrapStatus status) {

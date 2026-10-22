@@ -32,6 +32,10 @@ import java.util.function.Consumer;
  * listener, which is what lets the caller bind the lane or leave vector RAG off.
  */
 public final class LlmEngineProvider {
+    /** The module id the native-load gate knows this lane by; also the permit's owner. */
+    private static final String MODULE_ID = "module.llm";
+    /** Queue action name for the retrieval load, which the gate treats as the primary request. */
+    private static final String LOAD_ACTION = "embedding";
     private final IGameEnvironment env;
     private final LlmConfiguration config;
     private final LlmModelPathResolver modelPaths;
@@ -156,11 +160,11 @@ public final class LlmEngineProvider {
             engine.warmUp(modelLoadExecutor);
             return;
         }
-        loadQueue.request("module.llm", "embedding", () -> modelLoadExecutor.execute(() -> {
+        loadQueue.request(MODULE_ID, LOAD_ACTION, () -> modelLoadExecutor.execute(() -> {
             try {
                 engine.loadNow();
             } finally {
-                loadQueue.release();
+                loadQueue.release(MODULE_ID);
             }
         }), true);
     }

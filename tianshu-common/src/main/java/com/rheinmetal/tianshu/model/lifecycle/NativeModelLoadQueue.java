@@ -166,17 +166,28 @@ public final class NativeModelLoadQueue {
     }
 
     /**
-     * Hands the permit back. Called by the lane task that ran a granted request, whether the load
-     * succeeded or not — a failure that never released the permit would park the speech lane for the
-     * rest of the session.
+     * Hands the permit back, but only if this module still holds it.
+     *
+     * <p>Called by the lane task that ran a granted request, whether the load succeeded or not — a
+     * failure that never released the permit would park every later model load for the rest of the
+     * session.
+     *
+     * <p>The owner check is what makes release idempotent and safe to call from a teardown path at the
+     * same time as the load task itself: a module that no longer holds the permit returns here without
+     * touching it, so a second release can never steal the permit from whichever module was granted in
+     * the meantime.
      *
      * <p>Releasing the primary request is also what settles it: the retrieval attempt is over, so the
-     * deferred speech load no longer has anything to wait for and is granted on this same call.
+     * deferred speech loads no longer have anything to wait for and one is granted on this same call.
      */
-    public void release() {
+    public void release(String moduleId) {
+        String owner = moduleId == null ? "" : moduleId;
         List<Request> granted;
         synchronized (lock) {
-            if (active != null && active.primary) {
+            if (active == null || !active.moduleId.equals(owner)) {
+                return;
+            }
+            if (active.primary) {
                 primarySettled = true;
             }
             active = null;
@@ -237,8 +248,10 @@ public final class NativeModelLoadQueue {
                 request.submit.run();
             } catch (RuntimeException rejected) {
                 // The module's lane refused the submission: the permit must not stay taken, or every
-                // later model load in the session would park behind a task that will never run.
-                release();
+                // later model load in the session would park behind a task that will never run. The
+                // owner check makes this a no-op if the submit runnable already handed it back itself
+                // before throwing.
+                release(request.moduleId);
             }
         }
     }

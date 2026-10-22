@@ -178,7 +178,8 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 env,
                 configurations.asr(),
                 voiceInputGate,
-                interruptionSignal
+                interruptionSignal,
+                nativeModelLoadQueue
         ));
         this.delegate = new CompositeTianshuModuleAssembler(installers);
     }
