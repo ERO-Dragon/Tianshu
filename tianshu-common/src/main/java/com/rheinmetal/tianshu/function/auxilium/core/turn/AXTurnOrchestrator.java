@@ -7,7 +7,6 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolic
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXRuntimeLlmBudgetResolver;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
-import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateSignal;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSnapshot;
@@ -42,7 +41,9 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -55,9 +56,19 @@ import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 
 public final class AXTurnOrchestrator implements AXTurnPipeline {
+    /**
+     * 空答句的诊断码：模型这一轮没有任何可念的正文（只输出空白，或只输出标签）。
+     *
+     * <p>标签契约下不再有"违约"，因此这里是退化路径的唯一观测点：只登记轮次身份，不登记模型正文（隐私）。</p>
+     */
+    public static final String DIAGNOSTIC_EMPTY_ANSWER = "AX_ASSISTANT_ANSWER_EMPTY";
+
     private final AXScopeProvider scopeProvider;
     private final AXDialogueInputMapper dialogueInputMapper;
     private final AXInputNormalizer inputNormalizer;
@@ -84,7 +95,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final AXAgentRunSubmitter agentRunSubmitter;
     /**
      * Async delegation entry point (design §5.1 step ③). {@code null} means "not wired" (tests, and hosts
-     * that run without delegation): a {@code delegate} shaped reply is then handled as an ordinary answer.
+     * that run without delegation): a {@code <delegate>} tag then degrades to a plain answer, so the player
+     * still hears the sentence the model said before the tag instead of silence.
      */
     private final AXDelegateService delegateService;
     /**
@@ -698,7 +710,16 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         private final AXOutputProcessor.AXOutputTurn outputTurn;
         private final AXStepSignal<LLMPromptResultPayload> step;
         private final StringBuilder streamed = new StringBuilder();
+        /**
+         * 分片闸：只放行"确定不是标签"的字符（设计 §4.1）。
+         *
+         * <p>压住与否由它逐片判定，而不是"首字符是不是某个符号"那种一次性判定——标签可以在任意位置、也可以
+         * 被切成任意两半。</p>
+         */
+        private final AXReplyStreamGate replyGate = new AXReplyStreamGate();
         private boolean respondingPublished;
+        /** 是否已经向输出层交出过内容：决定收尾时要不要补写 displayedText（中断后历史里要有已念出的话）。 */
+        private boolean outputStarted;
 
         private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn, AXStepSignal<LLMPromptResultPayload> step) {
             this.execution = execution;
@@ -709,6 +730,13 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             this.step = step;
         }
 
+        /**
+         * 流式增量：先过闸，再出声。
+         *
+         * <p>主对话请求带 {@code stream=true}，所以委派标签同样是分片到达的。若把分片直接送去 TTS，等
+         * {@link #onResult} 判出这是标签时，玩家已经听到半截 {@code <delegate>} 了。闸门
+         * （{@link AXReplyStreamGate}）负责"压住可疑前缀、判明后再放行"，这里只把它的产出交给输出层。</p>
+         */
         @Override
         public void onStreamChunk(LLMPromptStreamChunkPayload payload) {
             if (!isCurrent(execution) || payload == null || payload.finished() || payload.text().isEmpty()) {
@@ -717,7 +745,10 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             publishRespondingOnce();
             execution.latencyTracker().mark(AXTurnLatencyStage.LLM_FIRST_TOKEN);
             streamed.append(payload.text());
-            appendOutput(payload.text(), "output.stream_failed");
+            String speakable = replyGate.accept(payload.text());
+            if (!speakable.isEmpty()) {
+                appendOutput(speakable, "output.stream_failed");
+            }
         }
 
         @Override
@@ -727,34 +758,27 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 return;
             }
             if (payload != null && payload.isCompleted()) {
-                String text = finalText(payload);
-                AXDelegateSignal delegateSignal = AXDelegateSignal.parse(text);
-                if (delegateSignal instanceof AXDelegateSignal.Delegated delegated && delegateService != null) {
-                    // 委派不是答句：这个 JSON 是控制对象，绝不念给玩家（§4.1）。本轮只登记 ticket 并立即
-                    // 结束（§5.1 ⑤ ≤1s 出声），检索结果稍后走 §6 的投递通道回来。
-                    completeOutput("");
+                AXReplyContract reply = AXReplyContract.parse(finalText(payload));
+                // 先把闸里压住的部分放出去，再把终值里还没念的差额补上（流可能提前结束）。
+                releaseOutput(reply.spoken());
+                if (reply instanceof AXReplyContract.Delegated delegated && delegateService != null) {
+                    // 委派不是答句：标签内容绝不念给玩家（§4.1）。本轮只登记 ticket 并立即结束
+                    // （§5.1 ⑤ ≤1s 出声），检索结果稍后走 §6 的投递通道回来。
+                    // 收尾仍要把"标签前那句话"交出去：没有流式分片时（提供方不流式）它是唯一的出声机会。
+                    if (!completeOutput(delegated.spoken())) {
+                        finish(execution, DialogueReleaseReason.OWNER_FAILED);
+                        signal(new AXStepOutcome.Rejected<>(new AXStepFailure(resultFailureReason(payload))));
+                        return;
+                    }
+                    // 那句话已经念出去了，历史里必须有同一句（结论随后以 <event> 条目到达）。
+                    appendAssistantVisibleText(delegated.spoken(), payload);
                     delegateService.delegate(scope, delivery.sessionId(), delegated.query());
                     finish(execution, DialogueReleaseReason.OWNER_COMPLETED);
                     signal(new AXStepOutcome.Finished<>(payload));
                     return;
                 }
-                if (!text.isBlank()) {
-                    publishRespondingOnce();
-                }
-                appendFinalSuffix(text);
-                if (!completeOutput(text)) {
-                    finish(execution, DialogueReleaseReason.OWNER_FAILED);
-                    signal(new AXStepOutcome.Rejected<>(new AXStepFailure(resultFailureReason(payload))));
-                    return;
-                }
-                appendAssistantVisibleText(text, payload);
-                if (maintenanceCoordinator != null) {
-                    maintenanceCoordinator.afterAssistantAnswer(scope);
-                }
-                finish(execution, DialogueReleaseReason.OWNER_COMPLETED);
-                // Last line, after the turn is already finished (§12.2 discipline 1): a COMPLETED run
-                // therefore always means "the turn has been wrapped up".
-                signal(new AXStepOutcome.Finished<>(payload));
+                // 委派通道没接线：退化为普通答句——只说模型自己那句话，不静默、不念标签。
+                emitAnswer(spokenAnswer(reply.spoken()), payload);
                 return;
             }
             if (!execution.displayedText().isBlank()) {
@@ -854,6 +878,52 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return resultText == null || resultText.isBlank() ? streamed.toString() : resultText;
         }
 
+        /**
+         * 交付一句答句并结束本轮：播报 / UI / 历史只认这里收到的 {@code answerText}。
+         *
+         * <p>两种来源共用同一条收尾路径——剥掉委派标签后的正文、以及空答句时的资源键兜底句。把收尾收敛到一处，
+         * 才能保证"标签绝不进任何通道"不依赖于每个分支各写一遍。</p>
+         *
+         * @param answerText 要对玩家说出口的正文
+         */
+        private void emitAnswer(String answerText, LLMPromptResultPayload payload) {
+            String text = answerText == null ? "" : answerText;
+            if (!text.isBlank()) {
+                publishRespondingOnce();
+            }
+            if (!completeOutput(text)) {
+                finish(execution, DialogueReleaseReason.OWNER_FAILED);
+                signal(new AXStepOutcome.Rejected<>(new AXStepFailure(resultFailureReason(payload))));
+                return;
+            }
+            appendAssistantVisibleText(text, payload);
+            if (maintenanceCoordinator != null) {
+                maintenanceCoordinator.afterAssistantAnswer(scope);
+            }
+            finish(execution, DialogueReleaseReason.OWNER_COMPLETED);
+            // Last line, after the turn is already finished (§12.2 discipline 1): a COMPLETED run
+            // therefore always means "the turn has been wrapped up".
+            signal(new AXStepOutcome.Finished<>(payload));
+        }
+
+        /**
+         * 空答句的唯一登记点：只发轮次身份，模型原文不进诊断。
+         *
+         * <p>标签契约没有"违约"概念——退化路径只剩一种、且可观测：模型这一轮没有任何可念的正文。</p>
+         */
+        private void publishEmptyAnswer() {
+            Map<String, String> attributes = new LinkedHashMap<>();
+            attributes.put("sessionId", delivery.sessionId());
+            attributes.put("turnId", delivery.turnId());
+            diagnostics.publish(DiagnosticEvent.now(
+                    AXModule.MODULE_ID,
+                    DIAGNOSTIC_EMPTY_ANSWER,
+                    DiagnosticSeverity.WARN,
+                    DiagnosticPrivacy.REDACTED,
+                    attributes
+            ));
+        }
+
         private void appendAssistantVisibleText(String text, LLMPromptResultPayload payload) {
             if (text == null || text.isBlank() || !execution.markAssistantPersisted()) {
                 return;
@@ -868,17 +938,32 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return Math.max(0, payload.usage().completionTokens());
         }
 
-        private void appendFinalSuffix(String text) {
-            if (text == null || text.isBlank() || streamed.isEmpty()) {
-                return;
+        /**
+         * 把"已经该念、但还压在闸里"的文本放出去。
+         *
+         * <p>两个来源：闸门在流结束时仍压着的尾巴（普通文本，或未闭合标签的内容，见规则 4），以及终值比已发声
+         * 更长的那截差额（流可能提前结束）。只在终值以已发声内容为前缀时补差额，避免把对不上的文本重复念一遍。</p>
+         *
+         * @param target 这一轮最终要念的正文（已剥标签）
+         */
+        private void releaseOutput(String target) {
+            String tail = replyGate.flush();
+            if (!tail.isEmpty()) {
+                appendOutput(tail, "output.stream_failed");
             }
-            String current = streamed.toString();
-            if (!text.startsWith(current) || text.length() <= current.length()) {
-                return;
+            String spoken = replyGate.emitted();
+            if (target.startsWith(spoken) && target.length() > spoken.length()) {
+                appendOutput(target.substring(spoken.length()), "output.final_suffix_failed");
             }
-            String suffix = text.substring(current.length());
-            streamed.append(suffix);
-            appendOutput(suffix, "output.final_suffix_failed");
+        }
+
+        /** 要念的正文：模型说了话就念它；一个字都没有时用资源键兜底句顶上，并登记一条诊断。 */
+        private String spokenAnswer(String spoken) {
+            if (spoken != null && !spoken.isBlank()) {
+                return spoken;
+            }
+            publishEmptyAnswer();
+            return outputProcessor.emptyAnswerText();
         }
 
         private boolean appendOutput(String text, String reasonCode) {
@@ -889,6 +974,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 execution.latencyTracker().mark(AXTurnLatencyStage.AX_FIRST_SENTENCE);
                 outputTurn.append(text);
                 execution.appendDisplayedText(text);
+                outputStarted = true;
                 return true;
             } catch (RuntimeException exception) {
                 publishOutputFailed(reasonCode);
@@ -903,7 +989,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             }
             try {
                 outputTurn.complete(text);
-                if (streamed.isEmpty()) {
+                if (!outputStarted) {
+                    // 一个字符都还没出去：这句就是本轮显示的全部内容（整轮被闸压住的那一轮也走这里）。
                     execution.appendDisplayedText(text);
                 }
                 return true;

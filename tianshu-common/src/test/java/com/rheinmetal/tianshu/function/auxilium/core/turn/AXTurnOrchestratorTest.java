@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
@@ -19,6 +21,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXReplyTextRepository;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
@@ -77,6 +80,9 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuild
 class AXTurnOrchestratorTest {
     private static final AXRecentDialogueSystem RECENT_DIALOGUE_SYSTEM =
             new AXRecentDialogueSystem(AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L));
+    /** 兜底句读真实资源（zh_cn）：断言的就是玩家会听到的那一句，不是测试自己编的文案。 */
+    private static final AXReplyTextRepository REPLY_TEXTS =
+            new AXReplyTextRepository(AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN));
 
     @Test
     void streamsOnlyLlmReturnedTextAndAppendsFinalSuffix() {
@@ -101,7 +107,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), chatSink),
+                new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -162,7 +168,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -207,7 +213,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -258,7 +264,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), chatSink),
+                new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -305,7 +311,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 null,
                 null,
                 true,
@@ -349,7 +355,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 null,
                 statusPublisher,
                 agentRuns(),
@@ -430,7 +436,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 null,
                 null,
                 false,
@@ -575,7 +581,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -642,7 +648,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -686,7 +692,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 agentRuns(),
                 null
         );
@@ -718,6 +724,114 @@ class AXTurnOrchestratorTest {
         assertTrue(payload.chunks().stream()
                 .flatMap(chunk -> chunk.messageContent().stream())
                 .noneMatch(message -> message.content().contains("动态环境")));
+    }
+
+    // ------------------------------------------------------------ 输出契约（设计 §4.1）
+
+    @Test
+    void aReplyWithoutTagsIsSpokenExactlyAsWritten() {
+        ContractFixture fixture = new ContractFixture();
+
+        fixture.answer("铁砧可以修复工具。");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        assertEquals(List.of("铁砧可以修复工具。"), List.copyOf(fixture.spoken), "平时就是人话，零格式");
+        assertEquals("铁砧可以修复工具。", fixture.chatSink.text.toString());
+        assertEquals("铁砧可以修复工具。", fixture.recent.snapshot(fixture.scope).turns().get(1).content());
+        assertTrue(fixture.emptyAnswerDiagnostics().isEmpty(), "正常答句不是退化路径");
+    }
+
+    @Test
+    void bracedProseStaysAPlainAnswer() {
+        ContractFixture fixture = new ContractFixture();
+
+        fixture.answer("{我在想这句话}");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        assertEquals(List.of("{我在想这句话}"), List.copyOf(fixture.spoken), "带花括号的普通文本原样念");
+        assertEquals("{我在想这句话}", fixture.recent.snapshot(fixture.scope).turns().get(1).content());
+        assertTrue(fixture.emptyAnswerDiagnostics().isEmpty());
+    }
+
+    @Test
+    void delegateTagNeverReachesThePlayerAndOnlyTheSentenceBeforeItIsSpoken() {
+        ContractFixture fixture = new ContractFixture();
+
+        fixture.answer("这个问题让我去查一下。<delegate>检索如何进入暮色森林</delegate>");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        assertEquals(List.of("这个问题让我去查一下。"), List.copyOf(fixture.spoken), "标签内容绝不念出来");
+        assertEquals("这个问题让我去查一下。", fixture.chatSink.text.toString(), "标签也不进聊天 UI");
+        assertEquals("这个问题让我去查一下。", fixture.recent.snapshot(fixture.scope).turns().get(1).content(),
+                "历史里存的是玩家听到的那句话");
+        assertTrue(fixture.emptyAnswerDiagnostics().isEmpty(), "挂了标签不是退化路径");
+    }
+
+    @Test
+    void tagFragmentsAreHeldBackWhileStreamingAndNeverSpoken() {
+        ContractFixture fixture = new ContractFixture();
+
+        fixture.stream("这个问题让我去查一下。<del", 0);
+        fixture.stream("egate>检索如何进入暮色森林</del", 1);
+        fixture.stream("egate>", 2);
+
+        // 聊天 UI 是同步观测点：分片进没进输出层，这里立刻就能看出来。
+        assertEquals("这个问题让我去查一下。", fixture.chatSink.text.toString(),
+                "标签分片一个字都不能进输出层");
+        await(() -> !fixture.spoken.isEmpty());
+        assertEquals("这个问题让我去查一下。", String.join("", fixture.spoken), "标签分片也不能念出去");
+
+        fixture.answer("这个问题让我去查一下。<delegate>检索如何进入暮色森林</delegate>");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        assertEquals("这个问题让我去查一下。", fixture.chatSink.text.toString(), "收尾不得重复输出");
+        await(() -> "这个问题让我去查一下。".equals(String.join("", fixture.spoken)));
+        assertEquals("这个问题让我去查一下。", String.join("", fixture.spoken), "收尾不得重复念");
+    }
+
+    @Test
+    void aTagWithABlankBodyDoesNotSwallowTheSentence() {
+        ContractFixture fixture = new ContractFixture();
+
+        fixture.answer("让我想想。<delegate>   </delegate>");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        assertEquals(List.of("让我想想。"), List.copyOf(fixture.spoken), "空标签既不委派、也不留痕");
+        assertEquals("让我想想。", fixture.chatSink.text.toString());
+    }
+
+    @Test
+    void anUnclosedTagStillSpeaksTheRestOfTheText() {
+        ContractFixture fixture = new ContractFixture();
+
+        fixture.stream("让我查一下。<del", 0);
+        fixture.stream("egate>如何进入暮色森林", 1);
+        fixture.answer("让我查一下。<delegate>如何进入暮色森林");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        await(() -> fixture.spoken.size() == 2);
+        assertEquals(List.of("让我查一下。", "如何进入暮色森林"), List.copyOf(fixture.spoken),
+                "只有开标签：不委派，剩下的照样念");
+        assertEquals("让我查一下。如何进入暮色森林", fixture.recent.snapshot(fixture.scope).turns().get(1).content());
+    }
+
+    @Test
+    void anEmptyAnswerDegradesToTheResourceFallbackAndRecordsADiagnosticCode() {
+        ContractFixture fixture = new ContractFixture();
+        String fallback = REPLY_TEXTS.text(AXReplyTextRepository.KEY_EMPTY_ANSWER);
+        assertFalse(fallback.isBlank(), "兜底句必须来自资源（ax_reply_texts.json）");
+
+        fixture.answer("   ");
+
+        await(() -> fixture.recent.snapshot(fixture.scope).turns().size() == 2);
+        assertEquals(List.of(fallback), List.copyOf(fixture.spoken), "空答句只能念兜底句");
+        assertEquals(fallback, fixture.chatSink.text.toString());
+        assertEquals(fallback, fixture.recent.snapshot(fixture.scope).turns().get(1).content());
+        assertEquals(1, fixture.emptyAnswerDiagnostics().size(), "恰好一条诊断码");
+        DiagnosticEvent diagnostic = fixture.emptyAnswerDiagnostics().get(0);
+        assertEquals(AXTurnOrchestrator.DIAGNOSTIC_EMPTY_ANSWER, diagnostic.code());
+        assertEquals(DiagnosticSeverity.WARN, diagnostic.severity());
+        assertFalse(diagnostic.attributes().containsKey("reason"), "标签契约没有原因码");
     }
 
     private static AXOutputSettings outputSettings() {
@@ -801,7 +915,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink()),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
                 null,
                 statusPublisher,
                 agentRuns(),
@@ -983,6 +1097,82 @@ class AXTurnOrchestratorTest {
                 Thread.currentThread().interrupt();
                 return;
             }
+        }
+    }
+
+    /**
+     * 一轮主对话的最小夹具：TTS 播报、聊天 UI、历史与诊断四个观测点一次接好。
+     *
+     * <p>契约的判据恰好是"同一段输出在这几个通道里各是什么"，因此这些用例共用一个夹具；分开写会重复
+     * 四遍连线，四个通道的断言也很容易漂移。</p>
+     */
+    private static final class ContractFixture {
+        private final AXLlmClient llmClient;
+        private final AXRecentDialogueSystem recent;
+        private final AXScope scope;
+        private final RecordingChatSink chatSink;
+        private final List<String> spoken = new ArrayList<>();
+        private final List<DiagnosticEvent> diagnostics = new ArrayList<>();
+        private final TianshuEnvelope requestEnvelope;
+
+        private ContractFixture() {
+            ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+            AtomicReference<TianshuEnvelope> llmRequest = new AtomicReference<>();
+            registerLlmSink(runtime, llmRequest);
+            registerTtsSink(runtime, spoken);
+            this.chatSink = new RecordingChatSink();
+            AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+            this.llmClient = new AXLlmClient(adapter);
+            this.scope = writableScope();
+            this.recent = new AXRecentDialogueSystem(AXMemoryWindowPolicy.fromBudget(8000, 3, 60000L));
+            AXTurnOrchestrator orchestrator = new AXTurnOrchestrator(
+                    () -> scope,
+                    new AXDialogueInputMapper(),
+                    new AXInputNormalizer(),
+                    null,
+                    null,
+                    new AXContextCollector(null, recent),
+                    new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(null, null, null)),
+                    AXContextBudget.DEFAULT,
+                    null,
+                    llmClient,
+                    new AXSessionController(adapter),
+                    null,
+                    recent,
+                    new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS),
+                    null,
+                    null,
+                    true,
+                    diagnostics::add,
+                    agentRuns(),
+                    null
+            );
+            orchestrator.startTurn(deliveryEnvelope(), delivery());
+            await(() -> llmRequest.get() != null);
+            this.requestEnvelope = llmRequest.get();
+        }
+
+        /** 模型这一轮的最终输出（正文就是待判别的契约或纯文本）。 */
+        private void answer(String resultText) {
+            LLMPromptRequestPayload request = (LLMPromptRequestPayload) requestEnvelope.payload();
+            llmClient.handleResult(
+                    requestEnvelope.envelopeId(),
+                    LLMPromptResultPayload.completed(request.requestId(), resultText));
+        }
+
+        /** 一个流式增量，返回它是否被投递给了本轮。 */
+        private boolean stream(String text, int index) {
+            LLMPromptRequestPayload request = (LLMPromptRequestPayload) requestEnvelope.payload();
+            return llmClient.handleStreamChunk(
+                    requestEnvelope.envelopeId(),
+                    LLMPromptStreamChunkPayload.chunk(request.requestId(), text, index));
+        }
+
+        /** 只挑空答句退化路径：同一 sink 上还有时延埋点（DEBUG），它们不是退化。 */
+        private List<DiagnosticEvent> emptyAnswerDiagnostics() {
+            return diagnostics.stream()
+                    .filter(event -> AXTurnOrchestrator.DIAGNOSTIC_EMPTY_ANSWER.equals(event.code()))
+                    .toList();
         }
     }
 

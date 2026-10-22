@@ -4,6 +4,9 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.client.ir.ClientIrModuleInstaller;
 import com.rheinmetal.tianshu.client.ir.ClientNamedObjectIndexManager;
+import com.rheinmetal.tianshu.client.event.AXGameEventTextProvider;
+import com.rheinmetal.tianshu.client.speech.AXProtocolSpeechOutlet;
+import com.rheinmetal.tianshu.client.speech.AXSpeechBridge;
 import com.rheinmetal.tianshu.core.lifecycle.CompositeTianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
@@ -19,6 +22,7 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.function.llm.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.tts.TtsModuleInstaller;
+import com.rheinmetal.tianshu.function.tts.VoiceNotificationService;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.ArrayList;
@@ -100,6 +104,41 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             AXChatOutputSink axChatOutputSink,
             List<TianshuModuleInstaller> neoForgeInstallers
     ) {
+        this(
+                env,
+                configurations,
+                audioBridge,
+                moduleRuntime,
+                indexManager,
+                promptLanguageProvider,
+                voiceInputGate,
+                interruptionSignal,
+                axWorldIdentityProvider,
+                axOutputSettings,
+                axChatOutputSink,
+                neoForgeInstallers,
+                AXGameEventTextProvider.NONE
+        );
+    }
+
+    /**
+     * @param speechTexts language table door used to resolve out-of-band speech keys on the platform side
+     */
+    public ClientTianshuModuleAssembler(
+            IGameEnvironment env,
+            ClientFunctionConfigurations configurations,
+            IAudioBridge audioBridge,
+            ModuleRuntimeAccess moduleRuntime,
+            ClientNamedObjectIndexManager indexManager,
+            AXPromptLanguageProvider promptLanguageProvider,
+            BooleanSupplier voiceInputGate,
+            LongSupplier interruptionSignal,
+            AXWorldIdentityProvider axWorldIdentityProvider,
+            AXOutputSettings axOutputSettings,
+            AXChatOutputSink axChatOutputSink,
+            List<TianshuModuleInstaller> neoForgeInstallers,
+            AXGameEventTextProvider speechTexts
+    ) {
         List<TianshuModuleInstaller> installers = new ArrayList<>();
         if (neoForgeInstallers != null) {
             installers.addAll(neoForgeInstallers);
@@ -107,6 +146,14 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
         installers.add(new IaModuleInstaller(moduleRuntime));
         installers.add(new ClientIrModuleInstaller(moduleRuntime, indexManager));
         installers.add(new LlmModuleInstaller(env, configurations.llm(), moduleRuntime));
+        // One voice channel for the AX module: delegation lines and event sentences both leave through it.
+        AXSpeechBridge speechBridge = new AXSpeechBridge(
+                new AXProtocolSpeechOutlet(
+                        new VoiceNotificationService(moduleRuntime),
+                        speechTexts,
+                        axOutputSettings,
+                        env.logs()),
+                env.logs());
         installers.add(new AXModuleInstaller(
                 env,
                 configurations.ax(),
@@ -115,7 +162,9 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
                 Objects.requireNonNull(promptLanguageProvider, "promptLanguageProvider"),
                 assistantSettings(axOutputSettings),
                 axOutputSettings,
-                axChatOutputSink
+                axChatOutputSink,
+                speechBridge,
+                speechBridge
         ));
         installers.add(new TtsModuleInstaller(audioBridge, moduleRuntime, env, configurations.tts()));
         installers.add(new AsrModuleInstaller(

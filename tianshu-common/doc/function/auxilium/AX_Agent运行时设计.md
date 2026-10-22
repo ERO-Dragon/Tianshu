@@ -363,29 +363,33 @@ canonicalJson(args):
 
 ## 4. 主对话不带 `tools[]`：核心决策与理由
 
-### 4.1 主对话的输出契约（只有两种形态）
-
-```json
-{ "action": "answer",   "text": "……" }
-{ "action": "delegate", "query": "暮色森林的进入方式" }
-```
-
-| 字段 | 语义 | 约束 |
-|---|---|---|
-| `action` | 二值枚举 | **只有 `answer` / `delegate`**。没有第三种，没有 `tool`（A3） |
-| `text` | `answer` 时的回复正文 | 进 `H`（A5）；受 `maxTokens = 512`（03 附录 A.1）约束；**voice 友好**：短、可朗读、无 Markdown 标记 |
-| `query` | `delegate` 时的检索意图 | **要能脱离上下文读懂**（与 A10 同源：它会被送进一个独立上下文）；不带指代、不带"这个" |
-
-**形态外输出（含解析失败、`action` 缺失、多余字段）的处置**：
+### 4.1 主对话的输出契约（平时就是人话，需要查时才挂标签）
 
 ```text
-第 1 次违约 → 用 SIMPLE 的余量重问一次（原输出作为 assistant 消息一并带上，让模型看见自己的错）
-第 2 次仍违约 → 降级为 answer，正文取资源键 local.ax.degraded_reply（文案在资源里，不写死在代码）
-               记 main_contract_violated = true
+平时：正常说人话，零格式。
+需要查时：这个问题让我去查一下。<delegate>检索如何进入暮色森林</delegate>
 ```
 
-- 降级用的兜底句**必须是资源键**，不许硬编码中文/英文字符串（工程规约：文案一律资源化）。键名只是登记，措辞归资源文件。
-- **绝不把违约输出当答案直接发给玩家**。一个不合契约的 JSON 被当正文读出来，比"我没查清楚，你再说一次"严重得多。
+| 形态 | 判据 | 处置 |
+|---|---|---|
+| **无标签** | 整段文本 | 全文就是答句（`Plain`） |
+| **完整标签、内容非空** | `<delegate>…</delegate>` | 标签**之外**的文本是答句，标签内容 strip 后是检索问题（`Delegated(query)`） |
+| **标签内容为空/全空白** | 标签内 strip 后为空 | **不委派**，空标签连同标记一起剥掉，按普通文本念（`Plain`） |
+| **只有开标签** | `<delegate>xxx` 没有闭标签 | 剥掉开标签，**不委派**，剩余文本按普通文本念（`Plain`） |
+| **多个标签** | 取第一个完整标签 | **只认第一个**；其余标签连同其内容一并从文本中剥除 |
+| **标签在文本中间** | `前段<delegate>q</delegate>后段` | 前段与后段**直接拼接**为答句（只删标签字符、不额外插入空白），阅读顺序不变 |
+
+- **标签本身绝不进 TTS、不进历史**：所有出口只认剥标签后的正文。`query` 语义与 A10 同源——要能脱离上下文读懂，不带指代、不带"这个"。
+- **退化路径只剩一句兜底**：模型这一轮没有任何可念的正文（只输出空白，或只输出标签）时，念资源键 `reply.empty_answer`（文案在 `ax_reply_texts.json`，zh_cn/en_us）并记诊断码 `AX_ASSISTANT_ANSWER_EMPTY`；兜底句**必须是资源键**，不许硬编码中文/英文字符串（工程规约：文案一律资源化）。
+- 委派通道未接线（宿主没给 `AXDelegateService`）时，`Delegated` 退化为 `Plain(spoken)`：只说模型自己那句话，不静默、也不念标签。
+- **绝不把标签念出来**。半截 `<delegate>` 被读进语音，比"我没查清楚，你再说一次"严重得多。
+
+> **实现现状（v-标签契约）**：判别器是 `core/turn/AXReplyContract`（两态 `Plain` / `Delegated`，JSON 四态与
+> `reply_invalid_*` 原因码已全部删除）；流式闸是 `core/turn/AXReplyStreamGate`——分片里出现可能是标签前缀的
+> `<` 就压住不出声，判明是标签就吞到 `</delegate>` 为止，判明是普通文本就原样放行，流结束时把未闭合标签的
+> 内容按"只有开标签"规则交回。模型侧契约段落写在 S 的尾部（`general_ax.{zh_cn,en_us}.default.json`）；玩家
+> 输入进 prompt 前由 `AXInputNormalizer` 剥掉 `<delegate>` / `</delegate>` 标记，防止玩家把控制语法写进指令。
+> 退化路径只有一条：空答句（`AX_ASSISTANT_ANSWER_EMPTY` + `reply.empty_answer`）。
 
 ### 4.2 为什么主对话请求不带 `tools[]`
 
@@ -465,7 +469,7 @@ canonicalJson(args):
 
 | 阶段 | 动作 | 失败/异常 | 处置（都必须落终态记录，A4） |
 |---|---|---|---|
-| ③ 返回 ticket | 解析 `query` → 生成本轮 ticket 引用 | `query` 为空/不可读 | 不建 ticket；本轮按 `answer` 降级（资源键兜底句），记 `delegate_invalid_query` |
+| ③ 返回 ticket | 解析 `query` → 生成本轮 ticket 引用 | `query` 为空/不可读 | **不会走到这里**：空标签在 §4.1 已判定为"不委派"，本轮按普通答句念完（没有额外原因码） |
 | ④ 复用查询（5s 窗口） | `replayKey` 查**本会话最近 5s** 的委派（§5.4） | 命中活 ticket / 已终态 ticket | **不新建 Run**（A7），直接复用；仍然按期出声（玩家感知一致）。**窗口外一律新建**——v2 起没有键级去重 |
 | ④ 提交 | 投 `TASK` 车道 | 车道拒绝/队列满 | 立即终态 `FAILED(reason=rejected)`，投一句失败（§6.2） |
 | ⑥ 执行 | `COMPLEX` Run | 撞任一条终止条件（§3.3） | 终态 `ABORT_*`，**仍按成功路径投递**（带上"没查全"的语义，§6.2） |
@@ -1002,7 +1006,7 @@ assembleTurn(session, playerInput):
 ```text
 每个 CHAT 轮：
     mainAction              # answer | delegate
-    mainContractViolated    # bool（§4.1 的降级是否发生）
+    mainEmptyAnswer         # bool（§4.1 的空答句退化路径是否发生）
     delegateReplayHit       # bool（v2：是否由 5s 复用窗口产生）
     recallHit               # bool（该轮是否凭 T2 记忆召回直接 answer）
     repeatOrder             # int（同会话同一 normalize(query) 的第几次；0 = 首次）→ 算 recall_hit_on_repeat
@@ -1034,10 +1038,10 @@ assembleTurn(session, playerInput):
 | `no_progress_abort` > 100‰ | 工具错误结构不可读（§7.3 第 4 条），模型只会重试同一次调用 |
 | `recall_hit_on_repeat` < 0.90 | **D2 的替代机制失效**。顺序查：① 结论有没有写进记忆库（§5.2 第 ⑨ 步 / `memoryWritten=false`）；② 有没有落成可检索的事件（记忆 §4.2.1 的可见性时机）；③ 检索阈值是不是把问过的问题挡在门外（**唯一合法修法**，§5.4） |
 | `delegate_repeat_rate` > 100‰ | 同上一行。**不要**用"把 `delegateKey` 加回来"来压这个数 |
-| `delegate_replay_hit` > 50‰ | 主对话一轮发了两次 `delegate`：查 §4.1 的契约约束与流式解析是否把一次输出切成两次 |
+| `delegate_replay_hit` > 50‰ | 主对话一轮发了两次 `delegate`：查 §4.1 的"只认第一个标签"与流式解析是否把一次输出切成两次 |
 | `delivery_latency_spoken` 的 P95 远超 2s（空闲路径也慢） | 出声时机绑在了"Complex 结束"而不是"ticket 终态"（§6.4） |
-| `tag_leak > 0` | 回复在复述 `<memory>` 或 `<event>`（§8.4 的约束缺失） |
-| `simple_run_violation > 0` 且集中在主对话 | 主对话契约（§4.1）的字段定义让模型反复违约 |
+| `tag_leak > 0` | 回复在复述 `<memory>`、`<event>` 或 `<delegate>`（§8.4 的约束缺失；`<delegate>` 泄漏说明流式闸没拦住） |
+| `simple_run_violation > 0` 且集中在主对话 | 空答句（`mainEmptyAnswer`）率高：查 §4.1 的标签说明段落是否还在 S 尾部、模型是否被要求"只说人话" |
 | `speech_backlog` 持续 ≥ 3 | 播报队列只进不出（出队条件绑了错误的事件） |
 
 ---

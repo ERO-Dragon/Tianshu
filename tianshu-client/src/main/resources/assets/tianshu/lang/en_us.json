@@ -686,6 +686,11 @@
   "tianshu.ax.event.aggregate.tianshu.chat_message": "Several chat messages (%s messages)",
   "tianshu.ax.event.aggregate.tianshu.recipe_unlock": "Recipes unlocked several times (%s times)",
 
+  "ax.runtime.delegate.ack": "Let me look that up.",
+  "ax.runtime.delegate.failed": "I could not look that up. Try asking me again.",
+  "ax.runtime.delegate.timeout": "That lookup took too long, so I stopped.",
+  "ax.runtime.delegate.cancelled": "That lookup was cancelled.",
+
   "tianshu.ax.event.detail.health_critical": "at %s health",
   "tianshu.ax.event.detail.health_change": "lost %s health",
   "tianshu.ax.event.detail.hunger_critical": "hunger at %s",

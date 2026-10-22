@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * 异步委派骨架（设计 §5 / §6）：把主对话识别出的 {@code delegate} 变成一次 Complex run，并把结论送回。
+ * 异步委派骨架（设计 §5 / §6）：把主对话识别出的 {@code <delegate>} 标签变成一次 Complex run，并把结论送回。
  *
  * <p>本片<b>不含真实工具执行</b>：一步 = 提交一次模型请求 + 有界等待它的结论。循环仍是同一个
  * {@link AXAgentLoop}，只是策略换成 {@link AXRunPolicy#complex()}（25 步 / 120s / 无进展检测），

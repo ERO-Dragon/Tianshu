@@ -20,11 +20,13 @@ import com.rheinmetal.tianshu.function.auxilium.core.maintenance.AXRuntimeMainte
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXReplyTextRepository;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXAccessController;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXDialogueGateway;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXSessionController;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDelivery;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDeliverySink;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateEventLedger;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegatePromptRepository;
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateRegistry;
@@ -32,6 +34,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDispatcher;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.event.AXGameEventService;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
@@ -81,6 +84,10 @@ public final class AXModule implements TianshuManagedModule {
     private final AXRuntimePolicy runtimePolicy;
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
+    /** Voice channel for delegation lines; {@code null} means this host has no voice wiring. */
+    private final AXDelegateDeliverySink delegateSpeech;
+    /** Voice channel for game event sentences; {@code null} means this host has no voice wiring. */
+    private final AXEventSpeechSink eventSpeech;
     private final AXProtocolAdapter adapter;
     private AXParticipantRegistrar participantRegistrar;
     private AXLlmClient llmClient;
@@ -137,6 +144,27 @@ public final class AXModule implements TianshuManagedModule {
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
+        this(env, storageConfiguration, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings,
+                runtimePolicy, outputSettings, chatOutputSink, null, null);
+    }
+
+    /**
+     * @param delegateSpeech voice channel for delegation lines; {@code null} keeps the diagnostic only
+     * @param eventSpeech    voice channel for game event sentences; {@code null} keeps the diagnostic only
+     */
+    public AXModule(
+            IGameEnvironment env,
+            AXStorageConfiguration storageConfiguration,
+            ModuleRuntimeAccess runtime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXRuntimePolicy runtimePolicy,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink,
+            AXDelegateDeliverySink delegateSpeech,
+            AXEventSpeechSink eventSpeech
+    ) {
         this.env = env;
         this.storageConfiguration = storageConfiguration;
         this.runtime = runtime;
@@ -146,6 +174,8 @@ public final class AXModule implements TianshuManagedModule {
         this.runtimePolicy = runtimePolicy == null ? AXRuntimePolicy.defaults() : runtimePolicy;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
+        this.delegateSpeech = delegateSpeech;
+        this.eventSpeech = eventSpeech;
         this.adapter = new AXProtocolAdapter(runtime);
     }
 
@@ -222,7 +252,10 @@ public final class AXModule implements TianshuManagedModule {
         AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, constructionFallbackPolicy);
         dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), runtimePolicy.dynamicFactTimeoutMillis());
         AXSessionController sessionController = new AXSessionController(adapter);
-        AXOutputProcessor outputProcessor = new AXOutputProcessor(adapter, outputSettings, chatOutputSink);
+        // The output layer resolves the player-visible wording of its own fallback sentences, so it gets
+        // the same language source as the prompt side (both live in resources, never in Java).
+        AXOutputProcessor outputProcessor = new AXOutputProcessor(
+                adapter, outputSettings, chatOutputSink, new AXReplyTextRepository(promptLanguageProvider));
         delegateService = new AXDelegateService(
                 llmClient::submitDetached,
                 new AXDelegateRegistry(),
@@ -268,10 +301,11 @@ public final class AXModule implements TianshuManagedModule {
     }
 
     /**
-     * Exposes the delegation pipeline so later slices (voice, memory write-back) can reach it.
+     * Reports one delegation line as a diagnostic and hands it to the voice channel.
      *
-     * <p>The delivery handle is reported through the log only: TTS is not wired in this slice, and this
-     * layer never renders player wording — the resource key is the contract (design §6.2).</p>
+     * <p>The log line stays as the trace; the sink is the single speech path (arrival order is FIFO,
+     * queuing belongs to the TTS module). This layer never renders player wording: the resource key or
+     * the conclusion text is passed through as it is (design §6.2).</p>
      */
     private void publishDelegateDelivery(AXDelegateDelivery delivery) {
         if (delivery == null) {
@@ -280,6 +314,10 @@ public final class AXModule implements TianshuManagedModule {
         env.logs().info("ax.delegate.speech_pending task=" + delivery.taskId()
                 + (delivery.utteranceKey() == null ? "" : " key=" + delivery.utteranceKey())
                 + (delivery.isAck() ? " ack=true" : " kind=" + delivery.kind().code()));
+        AXDelegateDeliverySink sink = delegateSpeech;
+        if (sink != null) {
+            sink.publish(delivery);
+        }
     }
 
     /**
@@ -291,12 +329,13 @@ public final class AXModule implements TianshuManagedModule {
      * only decision path (tiers, blacklist, speech gate, aggregation) and its history sink appends to
      * the recent-dialogue window as a {@code world_event} turn, which is the same channel third-party
      * utterances already use. The entry carries the sentence the producer rendered; this module never
-     * words one of its own.
+     * words one of its own. Speech goes to the injected voice channel next to the diagnostic log line.
      */
     private void publishGameEventService(ModuleRuntimeContext context) {
         gameEventService = new AXGameEventService(
                 new AXEventDispatcher(),
                 this::appendHistoryEvent,
+                eventSpeech == null ? AXEventSpeechSink.NOOP : eventSpeech,
                 env.logs()
         );
         moduleServices = context.services();

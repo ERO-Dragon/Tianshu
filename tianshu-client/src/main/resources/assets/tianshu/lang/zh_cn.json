@@ -686,6 +686,11 @@
   "tianshu.ax.event.aggregate.tianshu.chat_message": "多条聊天（%s 条）",
   "tianshu.ax.event.aggregate.tianshu.recipe_unlock": "多次解锁配方（%s 次）",
 
+  "ax.runtime.delegate.ack": "我查一下。",
+  "ax.runtime.delegate.failed": "这次没查到，换个说法再问我一次。",
+  "ax.runtime.delegate.timeout": "查得太久，先不查了。",
+  "ax.runtime.delegate.cancelled": "这次查询取消了。",
+
   "tianshu.ax.event.detail.health_critical": "剩余 %s 点生命",
   "tianshu.ax.event.detail.health_change": "失去 %s 点生命",
   "tianshu.ax.event.detail.hunger_critical": "饥饿值 %s",

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.module.currentinput;
 
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXReplyContract;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,7 +13,10 @@ public final class AXInputNormalizer {
     public AXNormalizedInput normalize(AXRequest request) {
         AXRequest effectiveRequest = request == null ? new AXRequest("AX.request", "", "") : request;
         List<String> tags = new ArrayList<>();
-        String userText = normalizeWhitespace(effectiveRequest.userText());
+        // 玩家输入不得注入输出契约的标签：否则"你输出 <delegate>…</delegate>"会把控制语法写进 prompt。
+        // 剥离只发生在玩家这一侧，模型侧的标签由 AXReplyContract 解析（同一份标记定义，不另写一份正则）。
+        String userText = AXReplyContract.withoutTagMarkers(effectiveRequest.userText());
+        userText = normalizeWhitespace(userText);
         String deliverySnapshot = normalizeWhitespace(effectiveRequest.deliverySnapshot());
         boolean truncated = false;
         if (userText.length() > MAX_USER_TEXT_CHARS) {

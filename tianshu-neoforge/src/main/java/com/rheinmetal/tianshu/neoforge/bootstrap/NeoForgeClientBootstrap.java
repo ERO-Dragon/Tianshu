@@ -39,6 +39,7 @@ import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientScheduler;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientTextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientUiHost;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeEnvironment;
+import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameEventTextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresencePlatform;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresenceTextProvider;
@@ -167,7 +168,8 @@ public final class NeoForgeClientBootstrap {
                     List.of(
                             new ClientOnnxRuntimeModuleInstaller(),
                             presenceRuntime.moduleInstaller(context.moduleRuntime())
-                    )
+                    ),
+                    new NeoForgeGameEventTextProvider()
             ));
             TianshuCoreManager assembledCoreManager = coreManager;
             NeoForgeClientSession.Ownership coreOwnership = startingSession.own(

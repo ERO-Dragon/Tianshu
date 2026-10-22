@@ -26,10 +26,13 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AXReplyTextRepository;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
+import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
@@ -95,6 +98,8 @@ class AXAgentTurnWiringTest {
 
     private static final AXDialogueInputMapper MAPPER = new AXDialogueInputMapper();
     private static final AXInputNormalizer NORMALIZER = new AXInputNormalizer();
+    private static final AXReplyTextRepository REPLY_TEXTS =
+            new AXReplyTextRepository(AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN));
 
     private static final ExecutorService RUNS = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "ax-agent-wiring-test");
@@ -286,6 +291,7 @@ class AXAgentTurnWiringTest {
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
         AXLlmClient llmClient = new AXLlmClient(adapter);
         AXScope scope = writableScope();
+        AXRecentDialogueSystem recent = emptyRecent();
         List<Runnable> delegateRuns = new ArrayList<>();
         List<AXDelegateDelivery> deliveries = new CopyOnWriteArrayList<>();
         AXDelegateRegistry delegateRegistry = new AXDelegateRegistry();
@@ -303,8 +309,9 @@ class AXAgentTurnWiringTest {
                 System::currentTimeMillis);
         PointOfDeliverySink sink = new PointOfDeliverySink();
         AXTurnOrchestrator orchestrator = orchestrator(
-                adapter, llmClient, emptyRecent(), scope, sink,
+                adapter, llmClient, recent, scope, sink,
                 (taskId, task) -> RUNS.execute(task), delegateService);
+        String spokenSentence = "这个问题让我去查一下。";
 
         DialogueDeliveryPayload delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
@@ -313,7 +320,7 @@ class AXAgentTurnWiringTest {
         TianshuEnvelope request = runtime.llmRequest.get();
         llmClient.handleResult(request.envelopeId(), LLMPromptResultPayload.completed(
                 ((LLMPromptRequestPayload) request.payload()).requestId(),
-                "{\"action\":\"delegate\",\"query\":\"铁砧怎么修复工具\"}"));
+                spokenSentence + "<delegate>铁砧怎么修复工具</delegate>"));
 
         await(() -> !deliveries.isEmpty(), 5_000L, "the delegation acknowledgement");
         await(() -> !runtime.sessionControls.isEmpty(), 5_000L, "the turn release");
@@ -325,8 +332,13 @@ class AXAgentTurnWiringTest {
                 delegateRegistry.find(deliveries.get(0).taskId()).query());
         assertEquals(DialogueReleaseReason.OWNER_COMPLETED, runtime.sessionControls.get(0).reason());
         assertEquals(1, runtime.sessionControls.size(), "本轮立即结束，release 恰好一次");
-        assertTrue(sink.delivered.stream().allMatch(text -> text.isBlank()),
-                "控制用的 JSON 绝不念给玩家（§4.1）");
+        assertTrue(sink.delivered.stream().noneMatch(text -> text.contains("delegate")),
+                "标签绝不念给玩家（§4.1）");
+        assertTrue(sink.delivered.stream().allMatch(text -> text.isBlank() || text.equals(spokenSentence)),
+                "出声内容只有标签前那句话：" + sink.delivered);
+        await(() -> recent.snapshot(scope).turns().size() == 2, 5_000L, "the assistant history entry");
+        assertEquals(spokenSentence, recent.snapshot(scope).turns().get(1).content(),
+                "历史里存的是念出来的那句话，不是标签");
     }
 
     @Test
@@ -383,7 +395,7 @@ class AXAgentTurnWiringTest {
             AXDelegateService delegateService
     ) {
         AXOutputProcessor outputProcessor = new AXOutputProcessor(
-                adapter, (AXOutputSettings) () -> AXOutputMode.UI_ONLY, sink);
+                adapter, (AXOutputSettings) () -> AXOutputMode.UI_ONLY, sink, REPLY_TEXTS);
         return new AXTurnOrchestrator(
                 () -> scope,
                 MAPPER,

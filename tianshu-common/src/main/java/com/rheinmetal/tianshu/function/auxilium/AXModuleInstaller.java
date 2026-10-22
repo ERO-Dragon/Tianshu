@@ -4,8 +4,10 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDeliverySink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
@@ -21,6 +23,8 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
     private final AXRuntimePolicy runtimePolicy;
     private final AXOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
+    private final AXDelegateDeliverySink delegateSpeech;
+    private final AXEventSpeechSink eventSpeech;
 
     public AXModuleInstaller(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess moduleRuntime) {
         this(env, storageConfiguration, moduleRuntime, null);
@@ -54,6 +58,49 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
             AXOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
+        this(env, storageConfiguration, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings,
+                runtimePolicy, outputSettings, chatOutputSink, null, null);
+    }
+    /**
+     * Voice-enabled overload that keeps the default run policy.
+     *
+     * @param delegateSpeech voice channel for delegation lines; {@code null} keeps the diagnostic only
+     * @param eventSpeech    voice channel for game event sentences; {@code null} keeps the diagnostic only
+     */
+    public AXModuleInstaller(
+            IGameEnvironment env,
+            AXStorageConfiguration storageConfiguration,
+            ModuleRuntimeAccess moduleRuntime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink,
+            AXDelegateDeliverySink delegateSpeech,
+            AXEventSpeechSink eventSpeech
+    ) {
+        this(env, storageConfiguration, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings,
+                AXRuntimePolicy.defaults(), outputSettings, chatOutputSink, delegateSpeech, eventSpeech);
+    }
+
+
+    /**
+     * @param delegateSpeech voice channel for delegation lines; {@code null} keeps the diagnostic only
+     * @param eventSpeech    voice channel for game event sentences; {@code null} keeps the diagnostic only
+     */
+    public AXModuleInstaller(
+            IGameEnvironment env,
+            AXStorageConfiguration storageConfiguration,
+            ModuleRuntimeAccess moduleRuntime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXRuntimePolicy runtimePolicy,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink,
+            AXDelegateDeliverySink delegateSpeech,
+            AXEventSpeechSink eventSpeech
+    ) {
         this.env = env;
         this.storageConfiguration = storageConfiguration;
         this.moduleRuntime = moduleRuntime;
@@ -63,6 +110,8 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
         this.runtimePolicy = runtimePolicy == null ? AXRuntimePolicy.defaults() : runtimePolicy;
         this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
+        this.delegateSpeech = delegateSpeech;
+        this.eventSpeech = eventSpeech;
     }
 
     @Override
@@ -70,6 +119,17 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
         if (!assistantSettings.assistantEnabled()) {
             return;
         }
-        moduleHost.registerOptionalModule(new AXModule(env, storageConfiguration, moduleRuntime, worldIdentityProvider, promptLanguageProvider, assistantSettings, runtimePolicy, outputSettings, chatOutputSink));
+        moduleHost.registerOptionalModule(new AXModule(
+                env,
+                storageConfiguration,
+                moduleRuntime,
+                worldIdentityProvider,
+                promptLanguageProvider,
+                assistantSettings,
+                runtimePolicy,
+                outputSettings,
+                chatOutputSink,
+                delegateSpeech,
+                eventSpeech));
     }
 }

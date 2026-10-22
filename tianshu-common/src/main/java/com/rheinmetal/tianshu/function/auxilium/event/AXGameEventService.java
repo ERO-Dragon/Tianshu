@@ -26,19 +26,29 @@ import com.rheinmetal.tianshu.api.LogSink;
  * <p>The service is closed for the rest of a session once {@link #stop(long)} runs, which is what makes
  * a world logout stop all production even if a platform hook keeps ticking.
  *
- * <p>Speech is not delivered yet: the layer only reports the pending sentence through the log so the
- * voice wiring can pick it up later without this layer knowing anything about TTS. The reported
- * sentence is the producer's own text passed straight through.
+ * <p>Speech leaves through {@link AXEventSpeechSink}: the pending sentence is the producer's own text,
+ * reported in the log for diagnostics and handed to the sink for the voice channel. The layer itself
+ * still knows nothing about TTS, wording or playback order.
  */
 public final class AXGameEventService {
     private final AXEventDispatcher dispatcher;
     private final AXEventHistorySink historySink;
+    private final AXEventSpeechSink speechSink;
     private final LogSink logSink;
     private boolean closed;
 
     public AXGameEventService(AXEventDispatcher dispatcher, AXEventHistorySink historySink, LogSink logSink) {
+        this(dispatcher, historySink, AXEventSpeechSink.NOOP, logSink);
+    }
+
+    public AXGameEventService(
+            AXEventDispatcher dispatcher,
+            AXEventHistorySink historySink,
+            AXEventSpeechSink speechSink,
+            LogSink logSink) {
         this.dispatcher = dispatcher == null ? new AXEventDispatcher() : dispatcher;
         this.historySink = historySink;
+        this.speechSink = speechSink == null ? AXEventSpeechSink.NOOP : speechSink;
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
     }
 
@@ -59,11 +69,13 @@ public final class AXGameEventService {
         AXEventDecision decision = dispatcher.decide(descriptor, nowMillis);
         if (decision.action().speaks()) {
             // The pending utterance is the producer's sentence, passed through unchanged: this layer
-            // never renders wording of its own.
+            // never renders wording of its own. The log line is the diagnostic; the sink is the voice
+            // channel (arrival order is FIFO, queuing is the TTS module's business).
             logSink.info("ax.event.speech_pending kind=" + descriptor.kind()
                     + " source=" + descriptor.sourceId()
                     + " action=" + decision.action().name()
                     + " text=" + descriptor.text());
+            speechSink.speak(descriptor.kind(), descriptor.text());
         }
         if (decision.appends() && !decision.folded()) {
             append(new AXEventAppend.Single(descriptor.kind(), descriptor.text()));

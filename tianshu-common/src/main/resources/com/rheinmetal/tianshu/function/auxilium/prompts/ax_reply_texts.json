@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "kind": "ax.reply_texts",
+  "texts": {
+    "reply.empty_answer": {
+      "zh_cn": "我没太听明白，能再说一次吗？",
+      "en_us": "I did not quite follow that. Could you say it again?"
+    }
+  }
+}
