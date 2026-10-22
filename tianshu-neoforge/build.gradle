@@ -102,10 +102,6 @@ jar {
     from project(':tianshu-client').sourceSets.main.output
     from project(':tianshu-core').sourceSets.main.output
     from project(':tianshu-api').sourceSets.main.output
-    from project(':tianshu-intake').sourceSets.main.output
-    from project(':tianshu-echo').sourceSets.main.output
-    from project(':tianshu-weaving').sourceSets.main.output
-    from project(':tianshu-auxilium').sourceSets.main.output
     // Avoid signature metadata conflicts when aggregating module output.
     exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
 }

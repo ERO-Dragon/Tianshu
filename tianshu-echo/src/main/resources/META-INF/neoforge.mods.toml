@@ -1,0 +1,40 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+[[mods]]
+modId="tianshu_echo"
+version="${mod_version}"
+displayName="Tianshu - Echo"
+description='''
+Speech synthesis and playback for Tianshu.
+'''
+displayTest="IGNORE_SERVER_VERSION"
+
+[[dependencies.tianshu_echo]]
+    modId="neoforge"
+    type="required"
+    versionRange="[1,)"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_echo]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_echo]]
+    modId="tianshu"
+    type="required"
+    versionRange="[${mod_version},)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.tianshu_echo]]
+    modId="tianshu_libs"
+    type="required"
+    versionRange="${tianshu_libs_version_range}"
+    ordering="AFTER"
+    side="CLIENT"

@@ -1,0 +1,40 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+[[mods]]
+modId="tianshu_weaving"
+version="${mod_version}"
+displayName="Tianshu - Weaving"
+description='''
+Dialogue inference for Tianshu: cloud chat plus the local embedding lane for retrieval.
+'''
+displayTest="IGNORE_SERVER_VERSION"
+
+[[dependencies.tianshu_weaving]]
+    modId="neoforge"
+    type="required"
+    versionRange="[1,)"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_weaving]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_weaving]]
+    modId="tianshu"
+    type="required"
+    versionRange="[${mod_version},)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.tianshu_weaving]]
+    modId="tianshu_libs"
+    type="required"
+    versionRange="${tianshu_libs_version_range}"
+    ordering="AFTER"
+    side="CLIENT"

@@ -31,3 +31,25 @@ tasks.withType(JavaCompile).configureEach {
 test {
     useJUnitPlatform()
 }
+
+// ---------------------------------------------------------------- mod packaging
+// This module ships as its own mod jar. It keeps no platform code: the manifest below is the only
+// thing that makes it a mod, and the core declares it as a dependency from there.
+// Values are resolved here, at configuration time, so the closure never touches the project object.
+def tianshuModVersion = providers.gradleProperty('mod_version').get()
+def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+
+processResources {
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+                mod_version               : tianshuModVersion,
+                minecraft_version_range   : tianshuMcRange,
+                tianshu_libs_version_range: tianshuLibsRange
+        )
+    }
+}
+
+jar {
+    archiveBaseName = 'tianshu_auxilium'
+}
