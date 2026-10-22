@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "tianshu_intake",
+  "version": "${mod_version}",
+  "name": "Tianshu - Intake",
+  "description": "Speech intake for Tianshu: recognition, then repair of misheard words.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.rheinmetal.tianshu.function.intake.IntakeFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21 <1.22",
+    "tianshu": ">=${mod_version}",
+    "tianshu_libs": ">=1.0.0"
+  }
+}

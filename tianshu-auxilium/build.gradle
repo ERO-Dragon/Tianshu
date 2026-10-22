@@ -48,8 +48,46 @@ processResources {
                 tianshu_libs_version_range: tianshuLibsRange
         )
     }
+    filesMatching('fabric.mod.json') {
+        expand(mod_version: tianshuModVersion)
+    }
 }
 
 jar {
     archiveBaseName = 'tianshu_auxilium'
+}
+
+// ---------------------------------------------------------------- loader entrypoints
+// One empty class per loader, kept outside src/main so the platform-free gate still covers only
+// business code. The jar carries both, which is what makes it universal.
+repositories {
+    maven { url = 'https://maven.neoforged.net/releases' }
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+
+sourceSets {
+    neoforgeStubs {
+        java.srcDir 'src/neoforgeStubs'
+    }
+    neoforgeEntry {
+        java.srcDir 'src/neoforgeEntry/java'
+        compileClasspath += sourceSets.main.output + sourceSets.neoforgeStubs.output
+    }
+    fabricEntry {
+        java.srcDir 'src/fabricEntry/java'
+        compileClasspath += sourceSets.main.output
+    }
+}
+
+// Resolved here, at configuration time: the jar closure must not touch the project object.
+def neoforgeEntryOutput = sourceSets.neoforgeEntry.output
+def fabricEntryOutput = sourceSets.fabricEntry.output
+
+dependencies {
+    fabricEntryCompileOnly "net.fabricmc:fabric-loader:${fabric_loader_version}"
+}
+
+jar {
+    from neoforgeEntryOutput
+    from fabricEntryOutput
 }

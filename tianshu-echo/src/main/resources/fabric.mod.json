@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "tianshu_echo",
+  "version": "${mod_version}",
+  "name": "Tianshu - Echo",
+  "description": "Speech synthesis and playback for Tianshu.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.rheinmetal.tianshu.function.echo.EchoFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21 <1.22",
+    "tianshu": ">=${mod_version}",
+    "tianshu_libs": ">=1.0.0"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "tianshu_weaving",
+  "version": "${mod_version}",
+  "name": "Tianshu - Weaving",
+  "description": "Dialogue inference for Tianshu: cloud chat plus the local embedding lane for retrieval.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.rheinmetal.tianshu.function.weaving.WeavingFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21 <1.22",
+    "tianshu": ">=${mod_version}",
+    "tianshu_libs": ">=1.0.0"
+  }
+}
