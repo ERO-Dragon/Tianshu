@@ -53,10 +53,6 @@ public final class AXStorageLayout {
         return worldRoot(scope).resolve("manifest.json");
     }
 
-    public Path personaFile() {
-        return sharedRoot().resolve("persona.json");
-    }
-
     public Path promptsRoot() {
         return sharedRoot().resolve("prompts");
     }

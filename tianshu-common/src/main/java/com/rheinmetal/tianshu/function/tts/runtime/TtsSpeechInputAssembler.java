@@ -70,7 +70,7 @@ public final class TtsSpeechInputAssembler {
     }
 
     private Batch document(String text) {
-        TtsStreamBuffer buffer = new TtsStreamBuffer(new SentenceSegmenter());
+        TtsStreamBuffer buffer = new TtsStreamBuffer(SentenceSegmenter.spokenDialogue());
         List<String> sentences = new ArrayList<>(buffer.appendSegments(text));
         buffer.flush().ifPresent(sentences::add);
         return new Batch(true, List.copyOf(sentences), true);
@@ -88,7 +88,7 @@ public final class TtsSpeechInputAssembler {
 
     private static final class StreamState {
         private final TtsTextInputMode mode;
-        private final TtsStreamBuffer buffer = new TtsStreamBuffer(new SentenceSegmenter());
+        private final TtsStreamBuffer buffer = new TtsStreamBuffer(SentenceSegmenter.spokenDialogue());
 
         private StreamState(TtsTextInputMode mode) {
             this.mode = mode;

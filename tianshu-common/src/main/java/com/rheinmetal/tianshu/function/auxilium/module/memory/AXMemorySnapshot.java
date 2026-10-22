@@ -1,30 +1,25 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.module.memory.summary.AXMemorySummaryBlock;
-import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
-import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 
 import java.util.List;
 
 /**
- * 一次装配时记忆侧的全部输入：人格、检索命中的事件摘要、以及累积的摘要块。
+ * 一次装配时记忆侧的全部输入：检索命中的事件摘要，以及累积的摘要块。
  *
  * <p>摘要块（{@link #summaryBlock()}）替换了旧的"最近 N 个 STM 块"槽位：旧槽位每轮都进尾部、
  * 每轮都可能变；摘要块属于可缓存前缀，只有换代才变。</p>
+ *
+ * <p>这里<b>不再有人格字段</b>：人设是字节冻结的系统提示词（{@code S}）的一部分，运行期不可变。留一个
+ * "可配置但从不渲染"的人格字段只会让人以为能配。</p>
  */
 public record AXMemorySnapshot(
-        String persona,
         List<AXMemoryBlockView> retrievedPlayerMemoryBlocks,
         AXMemorySummaryBlock summaryBlock
 ) {
     public AXMemorySnapshot {
-        persona = persona == null || persona.isBlank() ? defaultPersona(AXPromptLanguage.EN_US) : persona.trim();
         retrievedPlayerMemoryBlocks = normalizeBlocks(retrievedPlayerMemoryBlocks);
         summaryBlock = summaryBlock == null ? AXMemorySummaryBlock.empty() : summaryBlock;
-    }
-
-    public AXMemorySnapshot(String persona, AXMemorySummaryBlock summaryBlock) {
-        this(persona, List.of(), summaryBlock);
     }
 
     private static List<AXMemoryBlockView> normalizeBlocks(List<AXMemoryBlockView> blocks) {
@@ -33,23 +28,15 @@ public record AXMemorySnapshot(
                 .toList();
     }
 
-    public static AXMemorySnapshot empty(AXScope scope) {
-        return new AXMemorySnapshot(defaultPersona(AXPromptLanguage.EN_US), List.of(), AXMemorySummaryBlock.empty());
-    }
-
-    public static AXMemorySnapshot empty(AXScope scope, AXPromptLanguage language) {
-        return new AXMemorySnapshot(defaultPersona(language), List.of(), AXMemorySummaryBlock.empty());
-    }
-
-    public static String defaultPersona(AXPromptLanguage language) {
-        return "";
+    public static AXMemorySnapshot empty() {
+        return new AXMemorySnapshot(List.of(), AXMemorySummaryBlock.empty());
     }
 
     public AXMemorySnapshot withRetrievedPlayerMemoryBlocks(List<AXMemoryBlockView> blocks) {
-        return new AXMemorySnapshot(persona, blocks, summaryBlock);
+        return new AXMemorySnapshot(blocks, summaryBlock);
     }
 
     public AXMemorySnapshot withSummaryBlock(AXMemorySummaryBlock block) {
-        return new AXMemorySnapshot(persona, retrievedPlayerMemoryBlocks, block);
+        return new AXMemorySnapshot(retrievedPlayerMemoryBlocks, block);
     }
 }

@@ -27,7 +27,6 @@ class AXPlayerMemoryPromptContributorTest {
         AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
         AXStmBlock stm = new AXStmBlock("", "", scope.worldId(), 1000L, 900L, 950L, "", "", 1, 0, "玩家准备挖矿。", List.of("awe_1"));
         AXMemorySnapshot memory = new AXMemorySnapshot(
-                "persona",
                 List.of(new AXMemoryBlockView(stm, List.of("玩家解锁成就：Stone Age", "玩家死亡一次。"))),
                 AXMemorySummaryBlock.empty()
         );

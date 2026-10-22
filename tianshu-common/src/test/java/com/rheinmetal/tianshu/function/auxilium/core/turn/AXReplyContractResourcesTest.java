@@ -13,6 +13,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +52,45 @@ class AXReplyContractResourcesTest {
             assertFalse(system.contains("{\"action\""), language + " 的 S 仍带 JSON 示例");
             assertFalse(system.contains("\"query\""), language + " 的 S 仍带 query 字段");
         }
+    }
+
+    /**
+     * S 的改版契约：三条 {@code <delegate>} 示例必须在位，中英两套结构对称，中文版不超过 1200 字。
+     *
+     * <p>"示例在位"只能靠数标记：说明句一次 + 正例一次 + 位置反例一次 + 单独提到标签名一次。任何一条被删，
+     * 模型就退回"只有规则没有样例"的老状态。</p>
+     */
+    @Test
+    void systemPromptCarriesTheDelegateExamplesAndBothLanguagesMatch() {
+        String zh = systemPrompt(PROMPT_DIR + "general_ax.zh_cn.default.json");
+        String en = systemPrompt(PROMPT_DIR + "general_ax.en_us.default.json");
+
+        for (String system : new String[]{zh, en}) {
+            assertTrue(count(system, AXReplyContract.TAG_OPEN) >= 4,
+                    "S 里的开标签少于 4 处，示例被删了：" + count(system, AXReplyContract.TAG_OPEN));
+            assertTrue(count(system, AXReplyContract.TAG_CLOSE) >= 3,
+                    "S 里的闭标签少于 3 处，示例被删了：" + count(system, AXReplyContract.TAG_CLOSE));
+        }
+        assertEquals(5, paragraphs(zh), "zh_cn 的 S 应为 5 段：身份/语音准则/边界/标签示例/复述修复");
+        assertEquals(paragraphs(zh), paragraphs(en), "中英两套的分段数必须一致，否则一改就漂");
+        assertTrue(zh.length() <= 1200, "zh_cn 的 S 超过 1200 字目标：" + zh.length());
+    }
+
+    private static int count(String text, String token) {
+        int hits = 0;
+        int from = 0;
+        while (true) {
+            int index = text.indexOf(token, from);
+            if (index < 0) {
+                return hits;
+            }
+            hits++;
+            from = index + token.length();
+        }
+    }
+
+    private static int paragraphs(String text) {
+        return text.split("\n\n", -1).length;
     }
 
     @Test

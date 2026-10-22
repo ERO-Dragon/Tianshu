@@ -28,7 +28,7 @@ class AXGameContextPromptContributorTest {
                 new AXRequest("request", "铁砧怎么用？", ""),
                 new AXContextSnapshot(
                         null,
-                        AXMemorySnapshot.empty(null),
+                        AXMemorySnapshot.empty(),
                         AXRecentDialogueSnapshot.empty(),
                         List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                         ""

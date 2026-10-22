@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
-import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalPolicy;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.index.AXMemoryPosition;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.index.AXMemoryRetrievalIndex;
@@ -92,9 +91,9 @@ public final class AXMemorySystem {
     public AXMemorySnapshot load(AXScope scope) {
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
         if (!effectiveScope.writable()) {
-            return AXMemorySnapshot.empty(effectiveScope);
+            return AXMemorySnapshot.empty();
         }
-        return new AXMemorySnapshot(loadPersona(), List.of(), summaryBlock(effectiveScope));
+        return new AXMemorySnapshot(List.of(), summaryBlock(effectiveScope));
     }
 
     /** 摘要块账本（换代记录）。 */
@@ -396,15 +395,6 @@ public final class AXMemorySystem {
         }
     }
 
-    private String loadPersona() {
-        if (layout == null || jsonStore == null) {
-            return AXMemorySnapshot.defaultPersona(AXPromptLanguage.EN_US);
-        }
-        return jsonStore.readObject(layout.personaFile())
-                .map(json -> json.has("persona") ? json.get("persona").getAsString() : "")
-                .filter(value -> value != null && !value.isBlank())
-                .orElse(AXMemorySnapshot.defaultPersona(AXPromptLanguage.EN_US));
-    }
 
     private static String attachedText(AXAttachedWorldEvent event) {
         if (event == null || event.isEmpty()) {

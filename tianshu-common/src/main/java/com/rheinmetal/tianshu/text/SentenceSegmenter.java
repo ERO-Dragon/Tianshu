@@ -3,10 +3,41 @@ package com.rheinmetal.tianshu.text;
 import java.util.Locale;
 import java.util.Set;
 
+/**
+ * 句子切分器。
+ *
+ * <p>语音链路的两层（AX 主对话输出层、TTS 合成层）用<b>同一份参数</b>：见
+ * {@link #SPOKEN_MIN_LENGTH} / {@link #SPOKEN_PREFERRED_LENGTH} / {@link #SPOKEN_MAX_LENGTH} 与
+ * {@link #spokenDialogue()}。任何一层要改行为就改这里，不要在调用点另写一组数字——两套参数会让"一句话"的
+ * 粒度取决于谁先切，听感会飘。</p>
+ *
+ * <p>切分规则（按优先级）：</p>
+ * <ol>
+ *   <li>强标点（{@code 。！？!?}）与换行：立即切；</li>
+ *   <li>软标点（逗号、顿号、分号、冒号）：长度 ≥ {@code minLength} 才是候选，≥ {@code preferredLength} 才切；</li>
+ *   <li>长度达到 {@code maxLength}：强制切（优先最后一个软标点，其次最后一个空白）。</li>
+ * </ol>
+ */
 public final class SentenceSegmenter {
-    private static final int DEFAULT_MIN_LENGTH = 24;
-    private static final int DEFAULT_PREFERRED_LENGTH = 90;
-    private static final int DEFAULT_MAX_LENGTH = 180;
+
+    // ------------------------------------------------------------ 语音对话的统一参数（唯一来源）
+
+    /** 软标点最早可切长度：阻止"嗯，"这类 2~3 字碎块被单独切成一条语音。 */
+    public static final int SPOKEN_MIN_LENGTH = 12;
+
+    /** 软标点优先切分长度：约一句话的自然呼吸（中文约 12~15 秒），超过它遇到逗号就切。 */
+    public static final int SPOKEN_PREFERRED_LENGTH = 60;
+
+    /** 硬上限：没有任何标点也要在这一长度内切断，避免一条长音频拖到无法及时打断。 */
+    public static final int SPOKEN_MAX_LENGTH = 120;
+
+    /** 语音对话（AX 输出层 + TTS 层）唯一允许的构造入口。 */
+    public static SentenceSegmenter spokenDialogue() {
+        return new SentenceSegmenter(SPOKEN_MIN_LENGTH, SPOKEN_PREFERRED_LENGTH, SPOKEN_MAX_LENGTH);
+    }
+
+    // ------------------------------------------------------------ 实例
+
     private static final Set<String> LATIN_ABBREVIATIONS = Set.of(
             "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e", "fig", "no", "vol"
     );
@@ -14,14 +45,6 @@ public final class SentenceSegmenter {
     private final int minLength;
     private final int preferredLength;
     private final int maxLength;
-
-    public SentenceSegmenter() {
-        this(DEFAULT_MIN_LENGTH, DEFAULT_PREFERRED_LENGTH, DEFAULT_MAX_LENGTH);
-    }
-
-    public SentenceSegmenter(int maxLength) {
-        this(DEFAULT_MIN_LENGTH, Math.max(40, maxLength / 2), maxLength);
-    }
 
     public SentenceSegmenter(int minLength, int preferredLength, int maxLength) {
         this.minLength = Math.max(8, minLength);

@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.function.tts.synthesis.TtsPlaybackBufferEstimate;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.tts.synthesis.TtsSynthesisMode;
+import com.rheinmetal.tianshu.function.tts.TtsProtocolAdapter;
 import com.rheinmetal.tianshu.function.tts.text.TtsTextNormalizer;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
@@ -269,7 +270,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
         }
 
         for (String sentence : batch.sentences()) {
-            String normalized = normalizer.normalize(sentence);
+            String normalized = normalizeSpeech(sentence);
             if (!normalized.isBlank()) {
                 speechSessionCoordinator.appendSentence(key, normalized);
             }
@@ -309,7 +310,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             fail(onFailure, failure);
             return TtsOperationResult.rejected(failure);
         }
-        String text = normalizer.normalize(request.text());
+        String text = normalizeSpeech(request.text());
         if (text.isBlank()) {
             return reject(TtsFailureCode.EMPTY_TEXT, "TTS_SYNTHESIS_TEXT_EMPTY", onFailure);
         }
@@ -352,7 +353,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
         if (!modelLifecycleCoordinator.allowsSynthesis(request)) {
             return reject(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS_MODEL_LIFECYCLE_BUSY", onFailure);
         }
-        String text = normalizer.normalize(request.text());
+        String text = normalizeSpeech(request.text());
         if (text.isBlank()) {
             return reject(TtsFailureCode.EMPTY_TEXT, "TTS_SYNTHESIS_TEXT_EMPTY", onFailure);
         }
@@ -1072,6 +1073,27 @@ public final class TtsRuntime implements TtsPlaybackListener {
         private PreparedSpeech {
             audio = audio == null ? List.of() : List.copyOf(audio);
         }
+    }
+
+    /**
+     * The single text entry point for synthesis: make the text pronounceable first, then synthesize it.
+     *
+     * <p>The cleaning itself is pure. This method only adds one duty: when an item id could not be turned into
+     * something readable, record a diagnostic, because otherwise the player silently hears a string of
+     * unpronounceable characters and nobody knows why.</p>
+     */
+    private String normalizeSpeech(String rawText) {
+        TtsTextNormalizer.Result result = normalizer.normalizeWithReport(rawText);
+        if (result.unresolvedIdentifiers() > 0) {
+            env.diagnostics().publish(DiagnosticEvent.now(
+                    TtsProtocolAdapter.MODULE_ID,
+                    "TTS_READABLE_IDENTIFIER_UNRESOLVED",
+                    DiagnosticSeverity.WARN,
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of("unresolvedIdentifiers", Integer.toString(result.unresolvedIdentifiers()))
+            ));
+        }
+        return result.text();
     }
 
     private static final class SpeechContext {

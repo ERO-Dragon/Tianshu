@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class AXSentenceBuffer {
-    private final SentenceSegmenter segmenter = new SentenceSegmenter(12, 24, 180);
+    private final SentenceSegmenter segmenter = SentenceSegmenter.spokenDialogue();
     private final StringBuilder buffer = new StringBuilder();
 
     List<String> append(String text) {

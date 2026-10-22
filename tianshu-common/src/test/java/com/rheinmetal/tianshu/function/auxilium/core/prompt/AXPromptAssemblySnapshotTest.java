@@ -42,7 +42,6 @@ class AXPromptAssemblySnapshotTest {
     void chatPromptIsSingleMessageChunkWithExpectedSectionOrder() {
         AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
         AXMemorySnapshot memory = new AXMemorySnapshot(
-                "测试人格",
                 List.of(new AXMemoryBlockView(
                         stm(scope, "retrieved", "玩家之前问过铁砧。", 1000L),
                         List.of("玩家死亡一次。")
@@ -170,7 +169,7 @@ class AXPromptAssemblySnapshotTest {
         AXScope scope = new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
         AXContextSnapshot context = new AXContextSnapshot(
                 scope,
-                AXMemorySnapshot.empty(scope),
+                AXMemorySnapshot.empty(),
                 AXRecentDialogueSnapshot.empty(),
                 List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                 "IA delivery 附带上下文"

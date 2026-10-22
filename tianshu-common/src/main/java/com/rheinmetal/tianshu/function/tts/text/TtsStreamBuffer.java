@@ -11,7 +11,7 @@ public final class TtsStreamBuffer {
     private final StringBuilder buffer = new StringBuilder();
 
     public TtsStreamBuffer(SentenceSegmenter segmenter) {
-        this.segmenter = segmenter == null ? new SentenceSegmenter() : segmenter;
+        this.segmenter = segmenter == null ? SentenceSegmenter.spokenDialogue() : segmenter;
     }
 
     public synchronized Optional<String> append(String text) {

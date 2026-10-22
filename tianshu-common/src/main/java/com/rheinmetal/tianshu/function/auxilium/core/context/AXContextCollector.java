@@ -29,7 +29,7 @@ public final class AXContextCollector {
 
     public AXContextSnapshot collect(AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts) {
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
-        AXMemorySnapshot memory = memorySystem == null ? AXMemorySnapshot.empty(effectiveScope) : memorySystem.load(effectiveScope);
+        AXMemorySnapshot memory = memorySystem == null ? AXMemorySnapshot.empty() : memorySystem.load(effectiveScope);
         AXRecentDialogueSnapshot recentDialogue = recentDialogueSystem == null
                 ? AXRecentDialogueSnapshot.empty()
                 : recentDialogueSystem.snapshot(effectiveScope);

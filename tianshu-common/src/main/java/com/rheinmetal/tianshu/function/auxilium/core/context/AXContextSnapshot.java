@@ -20,7 +20,7 @@ public record AXContextSnapshot(
             scope = AXScope.unknown();
         }
         if (memory == null) {
-            memory = AXMemorySnapshot.empty(scope);
+            memory = AXMemorySnapshot.empty();
         }
         if (recentDialogue == null) {
             recentDialogue = AXRecentDialogueSnapshot.empty();

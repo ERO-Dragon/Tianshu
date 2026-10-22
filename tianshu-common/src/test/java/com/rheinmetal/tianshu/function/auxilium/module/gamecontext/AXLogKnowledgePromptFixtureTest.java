@@ -47,7 +47,6 @@ class AXLogKnowledgePromptFixtureTest {
         List<String> sourceLines = loadLogKnowledgeLines();
         AXScope scope = new AXScope("Dev", "save:Prompt Test", "Prompt Test", AXScopeKind.LOCAL_WORLD, true);
         AXMemorySnapshot memory = new AXMemorySnapshot(
-                "玩家偏好简洁说明。",
                 List.of(new AXMemoryBlockView(
                         stm(scope, "retrieved", "玩家之前问过资源重载后物品索引为什么会变慢。", 1000L),
                         List.of("玩家在资源重载后等待过 IR 缓存加载。")

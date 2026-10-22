@@ -187,7 +187,7 @@ class AXMemorySummarySwapTest {
                 20,
                 1
         );
-        AXMemorySnapshot memory = new AXMemorySnapshot("persona", block);
+        AXMemorySnapshot memory = AXMemorySnapshot.empty().withSummaryBlock(block);
 
         String first = renderSummary(scope, memory);
         String second = renderSummary(scope, memory);
@@ -207,7 +207,7 @@ class AXMemorySummarySwapTest {
                 2
         );
 
-        String rendered = renderSummary(scope, new AXMemorySnapshot("persona", block));
+        String rendered = renderSummary(scope, AXMemorySnapshot.empty().withSummaryBlock(block));
 
         assertTrue(rendered.contains("第二代。"));
         assertTrue(rendered.contains("第一代。"));

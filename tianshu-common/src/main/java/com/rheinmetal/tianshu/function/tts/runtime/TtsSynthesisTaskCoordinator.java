@@ -407,7 +407,7 @@ final class TtsSynthesisTaskCoordinator {
     }
 
     private static List<String> splitSentences(String text) {
-        TtsStreamBuffer buffer = new TtsStreamBuffer(new SentenceSegmenter());
+        TtsStreamBuffer buffer = new TtsStreamBuffer(SentenceSegmenter.spokenDialogue());
         List<String> sentences = new ArrayList<>(buffer.appendSegments(text));
         buffer.flush().ifPresent(sentences::add);
         return sentences;
