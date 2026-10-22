@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXPromptResourceRepositoryTest {
@@ -42,9 +43,13 @@ class AXPromptResourceRepositoryTest {
 
         AXPromptProfile profile = repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, "default");
 
-        assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.en_us.default.json")));
         assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.zh_cn.default.json")));
-        assertTrue(profile.systemPrompt().contains("随行聊天助手"));
+        assertFalse(Files.exists(layout.promptsRoot().resolve("general_ax.en_us.default.json")),
+                "提示词已收敛为单一文件：按玩家语言回答写在同一份 S 里");
+        assertEquals(profile.systemPrompt(),
+                repository.loadProfile(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, "default").systemPrompt(),
+                "英文语种必须回退到同一份共享提示词，而不是 Java 默认档");
+        assertTrue(profile.systemPrompt().contains("你是天枢"));
         assertTrue(profile.systemPrompt().contains("信息不足"));
         assertTrue(profile.sectionOrder().contains("ax_system"));
         assertTrue(profile.sectionOrder().contains("game_context"));

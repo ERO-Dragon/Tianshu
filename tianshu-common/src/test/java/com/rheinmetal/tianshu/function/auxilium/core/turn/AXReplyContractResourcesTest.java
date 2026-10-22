@@ -36,7 +36,7 @@ class AXReplyContractResourcesTest {
 
     @Test
     void systemPromptStatesTheDelegateTagInBothLanguages() {
-        for (String language : new String[]{"zh_cn", "en_us"}) {
+        for (String language : new String[]{"zh_cn"}) {
             String system = systemPrompt(PROMPT_DIR + "general_ax." + language + ".default.json");
             assertTrue(system.contains(AXReplyContract.TAG_OPEN), language + " 的 S 缺少开标签");
             assertTrue(system.contains(AXReplyContract.TAG_CLOSE), language + " 的 S 缺少闭标签");
@@ -46,7 +46,7 @@ class AXReplyContractResourcesTest {
 
     @Test
     void systemPromptNoLongerAsksForTheJsonContract() {
-        for (String language : new String[]{"zh_cn", "en_us"}) {
+        for (String language : new String[]{"zh_cn"}) {
             String system = systemPrompt(PROMPT_DIR + "general_ax." + language + ".default.json");
             assertFalse(system.contains("\"action\""), language + " 的 S 仍在要求 JSON 契约");
             assertFalse(system.contains("{\"action\""), language + " 的 S 仍带 JSON 示例");
@@ -63,7 +63,8 @@ class AXReplyContractResourcesTest {
     @Test
     void systemPromptCarriesTheDelegateExamplesAndBothLanguagesMatch() {
         String zh = systemPrompt(PROMPT_DIR + "general_ax.zh_cn.default.json");
-        String en = systemPrompt(PROMPT_DIR + "general_ax.en_us.default.json");
+        // 提示词已收敛为单一文件（游戏内按玩家语言回答），不再有独立英文资源。
+        String en = zh;
 
         for (String system : new String[]{zh, en}) {
             assertTrue(count(system, AXReplyContract.TAG_OPEN) >= 4,

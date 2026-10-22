@@ -19,7 +19,6 @@ import java.util.Optional;
 public final class AXPromptResourceRepository {
     private static final String BUILTIN_TEXTS_RESOURCE = "/com/rheinmetal/tianshu/function/auxilium/prompts/ax_prompt_texts.json";
     private static final String[] BUILTIN_PROFILE_RESOURCES = {
-            "/com/rheinmetal/tianshu/function/auxilium/prompts/general_ax.en_us.default.json",
             "/com/rheinmetal/tianshu/function/auxilium/prompts/general_ax.zh_cn.default.json"
     };
 
@@ -35,11 +34,11 @@ public final class AXPromptResourceRepository {
 
     public AXPromptProfile loadProfile(AXPromptTask task, AXPromptLanguage language, String variant) {
         AXPromptTask effectiveTask = task == null ? AXPromptTask.GENERAL_AX : task;
-        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
+        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.ZH_CN : language;
         return loadProfile(new AXPromptResourceKey(effectiveTask, effectiveLanguage, variant))
-                .or(() -> loadProfile(new AXPromptResourceKey(effectiveTask, AXPromptLanguage.EN_US, variant)))
+                .or(() -> loadProfile(new AXPromptResourceKey(effectiveTask, AXPromptLanguage.ZH_CN, variant)))
                 .or(() -> loadProfile(new AXPromptResourceKey(AXPromptTask.GENERAL_AX, effectiveLanguage, variant)))
-                .or(() -> loadProfile(new AXPromptResourceKey(AXPromptTask.GENERAL_AX, AXPromptLanguage.EN_US, variant)))
+                .or(() -> loadProfile(new AXPromptResourceKey(AXPromptTask.GENERAL_AX, AXPromptLanguage.ZH_CN, variant)))
                 .orElseGet(() -> AXPromptProfile.defaultFor(effectiveTask, effectiveLanguage));
     }
 
