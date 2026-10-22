@@ -175,7 +175,7 @@ public interface LlmConfiguration {
      * the settings-access port, which is the only place a write belongs.
      */
     default int getLlmEmbeddingGpuLayers() {
-        return EMBEDDING_GPU_LAYERS_CPU;
+        return EMBEDDING_GPU_LAYERS_ALL;
     }
 
     /**

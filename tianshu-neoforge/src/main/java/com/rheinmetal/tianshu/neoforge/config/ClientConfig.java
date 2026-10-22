@@ -143,7 +143,7 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
                         "这与显存余量无关：崩溃时显存仍有富余。确认稳定的显卡可以手动切到 GPU。",
                         "GPU 载入失败时运行时会自动回落到 CPU，本键的值不变（改回 GPU 需要重新加载一次）。")
                 .defineInRange("embeddingGpuLayers",
-                        LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
+                        LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL,
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL);
         LLM_EMBEDDING_CONTEXT_SIZE = builder.comment("向量模型的上下文长度（token），直接决定 KV cache 的原生内存占用。",
