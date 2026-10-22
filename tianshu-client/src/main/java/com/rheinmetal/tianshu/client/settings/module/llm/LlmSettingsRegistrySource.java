@@ -228,6 +228,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<List<LlmModelEntry>> models;
         private final MutableSettingsValue<String> activeModelId;
         /**
+         * Where the embedding model loads. It is a draft value like the three above, because changing
+         * it costs a native model reload: the page only stages the choice and the save applies it.
+         */
+        private final MutableSettingsValue<Integer> embeddingGpuLayers;
+        /**
          * Credentials typed into the editor, keyed by model id. They are written to the configuration
          * on save and are never read back into a widget, so a blank field keeps the stored key.
          */
@@ -260,6 +265,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.models = new MutableSettingsValue<>(config::getLlmModels, config::setLlmModels,
                     value -> value != null && !value.isEmpty());
             this.activeModelId = new MutableSettingsValue<>(config::getLlmActiveModelId, config::setLlmActiveModelId, Objects::nonNull);
+            this.embeddingGpuLayers = new MutableSettingsValue<>(
+                    config::getLlmEmbeddingGpuLayers, config::setLlmEmbeddingGpuLayers,
+                    value -> value != null && value >= 0);
             modelService.refreshModelAvailabilityAsync(() -> runOnClient(() -> {
                 availabilitySnapshot = modelService.modelAvailability();
                 refreshSettingsScreen();
@@ -1106,7 +1114,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty();
-            SettingsSaveTransaction transaction = new SettingsSaveTransaction(enabled, models, activeModelId);
+            // The position is read before the transaction accepts the drafts, so this is what the save is
+            // about to change rather than what is already stored.
+            boolean embeddingPositionChanged = embeddingGpuLayers.dirty();
+            SettingsSaveTransaction transaction = new SettingsSaveTransaction(
+                    enabled, models, activeModelId, embeddingGpuLayers);
             for (String retiredModelId : retiredApiKeyIds) {
                 // An empty credential removes the entry, so a deleted model takes its key with it.
                 transaction.write(() -> config.getLlmApiKey(retiredModelId),
@@ -1123,10 +1135,10 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             retiredApiKeyIds.clear();
             if (!enabled.get()) {
                 moduleService.unload();
-            } else if (cloudSettingsChanged) {
+            } else if (cloudSettingsChanged || embeddingPositionChanged) {
                 restartRunningRemoteRuntime();
             }
-            // The cloud lane re-reads its endpoint without any model reload, so no restart is needed.
+            // The restart above is this page's own doing, so the save reports no pending one to the host.
             return SettingsSaveResult.success(llm("message.saved"), true, false, false);
         }
 
@@ -1135,6 +1147,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             enabled.reset();
             models.reset();
             activeModelId.reset();
+            embeddingGpuLayers.reset();
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             modelEditor = null;
@@ -1144,8 +1157,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         /**
          * The cloud client is built from configuration, so a running lane keeps serving the previous
-         * endpoint until it is rebuilt. Rebuilding is cheap (no GGUF is mapped) and applies the new
-         * credential immediately instead of asking the player to reload.
+         * endpoint until it is rebuilt. Rebuilding is cheap for the cloud client (no GGUF is read) but
+         * it is also what reloads the local embedding engine, which is why only a save restarts it and
+         * why a change that costs native memory is never applied on the click that staged it.
          */
         private void restartRunningRemoteRuntime() {
             if (!moduleService.snapshot().running()) {
@@ -1303,7 +1317,8 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
 
         /** Whether the embedding model is configured to run on the card. */
         private boolean embeddingUsesGpu() {
-            return config.getLlmEmbeddingGpuLayers() > 0;
+            Integer layers = embeddingGpuLayers.get();
+            return layers != null && layers > 0;
         }
 
         /** The position button states what is in use, so no second indicator is needed. */
@@ -1313,18 +1328,18 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         /**
-         * Flips the single position value and lets a running runtime pick it up by reloading.
+         * Flips the position in the draft. Nothing is written and no runtime is touched here.
          *
-         * <p>Reloading reuses the module start/stop path the runtime already has, so the change costs one
-         * engine start and nothing else; the page itself never waits for it.
+         * <p>The position decides which backend the model is loaded into, so applying it means a full
+         * native reload — hundreds of megabytes mapped and released. A click is not the place for that:
+         * the page stages the choice and the page-level save applies it together with everything else,
+         * through the same runtime restart the other settings already use.
          */
         private void toggleEmbeddingPosition(ModuleSettingsContext context) {
             boolean gpu = !embeddingUsesGpu();
-            config.setLlmEmbeddingGpuLayers(gpu ? LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL : 0);
-            config.save();
-            context.showStatus(llm("message.embedding_position_changed",
+            embeddingGpuLayers.set(gpu ? LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL : 0);
+            context.showStatus(llm("message.embedding_position_pending",
                     llm(gpu ? "action.embedding_position_gpu" : "action.embedding_position_cpu")), 2_500);
-            restartRunningRemoteRuntime();
         }
 
         private boolean sameModelName(LlmModelInfo info, String modelName) {

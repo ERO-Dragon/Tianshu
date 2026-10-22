@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BiConsumer;
 
 /**
@@ -57,6 +59,16 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
     private final String alias;
     private final BiConsumer<LocalEmbeddingEngine, EmbeddingLoadReport> loadListener;
     private final Object loadLock = new Object();
+    /**
+     * Serialises inference against teardown.
+     *
+     * <p>The libs server frees the GGUF only once its embedding worker has stopped, and when the worker
+     * does not stop inside its grace period it skips the free and marks itself shut down for good —
+     * native memory that no collector can reach. Stopping while an inference is in flight is therefore
+     * the one way this lane can leak, and teardown waits here for exactly that reason: when it reaches
+     * libs, the worker is idle by construction.
+     */
+    private final ReentrantReadWriteLock inferenceGate = new ReentrantReadWriteLock();
     private volatile JavaLlamaServer server;
     /** Layers the running server was started with; differs from the request after a fallback. */
     private volatile int gpuLayers;
@@ -101,8 +113,12 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
                 try {
                     ensureServer();
                 } catch (Exception failure) {
-                    // The failure is already published once; RAG writes degrade instead of failing the lane.
-                    env.warn("[LLM] Local embedding engine is unavailable: " + describe(failure));
+                    // A lane that was stopped on purpose is not a failure: the restart that stopped it
+                    // already queued its own engine on this lane.
+                    if (!closed) {
+                        // The failure is already published once; RAG writes degrade instead of failing the lane.
+                        env.warn("[LLM] Local embedding engine is unavailable: " + describe(failure));
+                    }
                 }
             });
         } catch (RuntimeException rejected) {
@@ -112,23 +128,35 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
 
     @Override
     public float[] embed(String text) throws Exception {
-        float[] vector = ensureServer().embed(text);
-        rememberDimension(vector);
-        return vector;
+        Lock running = inferenceGate.readLock();
+        running.lock();
+        try {
+            float[] vector = ensureServer().embed(text);
+            rememberDimension(vector);
+            return vector;
+        } finally {
+            running.unlock();
+        }
     }
 
     @Override
     public float[][] embed(List<String> texts) throws Exception {
-        float[][] vectors = ensureServer().embed(texts);
-        if (vectors != null) {
-            for (float[] vector : vectors) {
-                rememberDimension(vector);
-                if (dimension > 0) {
-                    break;
+        Lock running = inferenceGate.readLock();
+        running.lock();
+        try {
+            float[][] vectors = ensureServer().embed(texts);
+            if (vectors != null) {
+                for (float[] vector : vectors) {
+                    rememberDimension(vector);
+                    if (dimension > 0) {
+                        break;
+                    }
                 }
             }
+            return vectors;
+        } finally {
+            running.unlock();
         }
-        return vectors;
     }
 
     /** -1 until a vector has been produced, because the libs server exposes no dimension getter. */
@@ -137,23 +165,36 @@ public final class LocalEmbeddingEngine implements EmbeddingService {
         return dimension;
     }
 
+    /**
+     * Releases the engine and everything it holds in native memory.
+     *
+     * <p>The exclusive gate is what makes the release complete: libs stops accepting work, waits for
+     * its worker, and only then frees the model, so no inference may still be running when this is
+     * called. Repeatable, and a no-op when nothing was ever loaded.
+     */
     public void shutdown() {
-        JavaLlamaServer stopped;
-        synchronized (loadLock) {
-            closed = true;
-            stopped = server;
-            server = null;
-        }
-        dimension = -1;
-        loadFailure = "";
-        if (stopped == null) {
-            return;
-        }
+        Lock draining = inferenceGate.writeLock();
+        draining.lock();
         try {
-            // libs shutdown is null-safe and repeatable, so a second call after stop() is harmless.
-            stopped.shutdown();
-        } catch (RuntimeException failure) {
-            env.warn("[LLM] Failed to shut the local embedding engine down: " + failure.getMessage());
+            JavaLlamaServer stopped;
+            synchronized (loadLock) {
+                closed = true;
+                stopped = server;
+                server = null;
+            }
+            dimension = -1;
+            loadFailure = "";
+            if (stopped == null) {
+                return;
+            }
+            try {
+                // libs shutdown is null-safe and repeatable, so a second call after stop() is harmless.
+                stopped.shutdown();
+            } catch (RuntimeException failure) {
+                env.warn("[LLM] Failed to shut the local embedding engine down: " + failure.getMessage());
+            }
+        } finally {
+            draining.unlock();
         }
     }
 

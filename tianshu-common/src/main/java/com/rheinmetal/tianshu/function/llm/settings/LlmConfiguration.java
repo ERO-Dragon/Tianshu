@@ -167,6 +167,38 @@ public interface LlmConfiguration {
         return EMBEDDING_GPU_LAYERS_ALL;
     }
 
+    /**
+     * Smallest accepted runtime window of the embedding context.
+     *
+     * <p>The window is a native-memory budget, not a model property: llama.cpp sizes the KV cache from
+     * the whole window, and the embedding path of the bundled binding raises the batch size to the
+     * window as well, so the compute arena grows with it. The floor therefore has to stay big enough
+     * for one long retrieval document, or the engine would truncate the very text it is asked to
+     * vectorise.
+     */
+    int MIN_EMBEDDING_CONTEXT_SIZE = 256;
+
+    /** Largest accepted runtime window; the model's own ceiling is applied on top of this one. */
+    int MAX_EMBEDDING_CONTEXT_SIZE = 8192;
+
+    /**
+     * Default runtime window of the embedding context.
+     *
+     * <p>The retrieval inputs of this build are one event sentence (at most a couple of hundred
+     * characters) and a summary of a few hundred, so the 8K window the model was trained for costs
+     * eight times the KV cache for zero extra recall. 1024 tokens covers the longest summary this
+     * build produces.
+     */
+    int DEFAULT_EMBEDDING_CONTEXT_SIZE = 1024;
+
+    /**
+     * Runtime window of the embedding context, in tokens; the model's declared ceiling is the upper
+     * bound and is applied when the engine is built.
+     */
+    default int getLlmEmbeddingContextSize() {
+        return DEFAULT_EMBEDDING_CONTEXT_SIZE;
+    }
+
     default int getLlmRequestTimeoutSeconds() {
         return 120;
     }

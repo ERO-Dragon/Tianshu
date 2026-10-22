@@ -91,6 +91,10 @@ public final class LlmEngineProvider {
     public boolean startEmbeddingOnly() {
         String embeddingModelName = config.getLlmEmbeddingModelName();
         Path embeddingPath = modelPaths.resolveEmbeddingModel(embeddingModelName);
+        // Released before the new engine exists: a libs server holds the whole GGUF and its context as
+        // native memory, so two live instances would mean two models resident at once. The release is
+        // synchronous, so nothing is ever loaded on top of an engine that is still going away.
+        stop();
         String unavailableReason = "";
         LocalEmbeddingEngine prepared = null;
         if (embeddingPath == null) {
@@ -100,14 +104,9 @@ public final class LlmEngineProvider {
         } else {
             prepared = createEmbeddingEngine(embeddingPath, embeddingModelName);
         }
-        LocalEmbeddingEngine replaced;
         synchronized (this) {
-            replaced = embeddingEngine;
             embeddingEngine = prepared;
             embeddingLoadReport = null;
-        }
-        if (replaced != null && replaced != prepared) {
-            replaced.shutdown();
         }
         if (prepared == null) {
             publishEmbeddingUnavailable(unavailableReason);
@@ -122,12 +121,26 @@ public final class LlmEngineProvider {
         return new LocalEmbeddingEngine(
                 env,
                 modelPath,
-                modelPaths.embeddingContextSize(modelName),
+                embeddingContextSize(modelName),
                 embeddingThreads(),
                 requestedGpuLayers(),
                 blankToNull(modelName),
                 this::onLoadSettled
         );
+    }
+
+    /**
+     * The runtime window: the configured budget, never more than the model declares it can take.
+     *
+     * <p>The two numbers answer different questions. The catalog knows what the file was trained for,
+     * which is a ceiling; the configuration is what this build is willing to pay native memory for.
+     * Using the catalog value directly — as an earlier version did — meant an 8K window for inputs of
+     * a few hundred tokens.
+     */
+    private int embeddingContextSize(String modelName) {
+        int ceiling = modelPaths.embeddingContextSize(modelName);
+        int budget = config.getLlmEmbeddingContextSize();
+        return Math.max(LlmConfiguration.MIN_EMBEDDING_CONTEXT_SIZE, Math.min(ceiling, budget));
     }
 
     /** The player's choice, clamped to the only two positions the runtime knows about. */

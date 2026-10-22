@@ -51,8 +51,10 @@ class LlmPresenceActivityTest {
             List<PresenceActivityPayload> taskActivities = activities.stream()
                     .filter(activity -> "llm.task.task-1".equals(activity.activityId()))
                     .toList();
-            // 断言语义而非条数：活动发布是异步的，同一状态重复上报不该让用例失败；
-            // 本用例真正要保证的是「TASK 车道会开启、且会正常收尾」。
+            // Exactly one pair: the task lane opens and closes once, and the chat lane publishes nothing at
+            // all. A duplicate report or a chat-lane event fails here; the order of the pair is a contract
+            // because the observation point runs on a single delivery lane (see captureActivities).
+            assertEquals(2, activities.size(), "the TASK lane opens and closes once; the CHAT lane publishes nothing");
             assertEquals(PresenceActivityAction.STARTED, taskActivities.getFirst().action());
             assertEquals(PresenceActivityAction.ENDED, taskActivities.getLast().action());
             assertTrue(taskActivities.stream()
@@ -65,6 +67,13 @@ class LlmPresenceActivityTest {
         return new LlmStatusPayload(taskId, taskType, taskType, eventType, 0, "", 0, 0, "", System.currentTimeMillis());
     }
 
+    /**
+     * Presence observation point with a single delivery lane.
+     *
+     * <p>The test asserts the STARTED → ENDED pair and its order, so arrival order has to be a contract.
+     * {@code AdapterDefaults.standard()} runs {@code maxConcurrency} handlers in parallel, which lets the pair
+     * land inverted; one lane keeps the dispatch order of {@code BrokerTask} observable.</p>
+     */
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
         List<PresenceActivityPayload> activities = new java.util.concurrent.CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -72,7 +81,7 @@ class LlmPresenceActivityTest {
                 new ModuleDescriptor(
                         "module.presence.llm-test", List.of(), defaults.threadPolicy(), defaults.cancellationScope(),
                         defaults.failurePolicy(), defaults.deliveryPolicy(), defaults.cancellable(),
-                        defaults.supportsStreaming(), defaults.maxConcurrency(), defaults.queueCapacity()
+                        defaults.supportsStreaming(), 1, defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
                         ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, PresenceActivityPayload.class,

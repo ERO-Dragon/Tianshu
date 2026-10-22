@@ -340,7 +340,10 @@ class LlmProtocolAdapterTest {
         client.taskStreamTokens.get().accept("answer");
         client.taskFuture.complete("visible answer");
 
-        await(() -> result.get() != null);
+        // Stream chunks and the terminal result are delivered through independent response brokers,
+        // so the result may land before the last fragment. Wait for every expected fragment before
+        // comparing: asserting on whatever has arrived would compare a truncated list.
+        await(() -> result.get() != null && chunks.size() == 2);
         assertEquals(List.of("visible ", "answer"), List.copyOf(chunks));
         assertEquals("visible answer", result.get().text());
         assertEquals("", result.get().thinkingContent());

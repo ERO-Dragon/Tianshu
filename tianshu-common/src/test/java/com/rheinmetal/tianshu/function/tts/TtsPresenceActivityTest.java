@@ -94,6 +94,14 @@ class TtsPresenceActivityTest {
         return TtsRequestStatusPayload.now(requestId, sourceId, 0L, 0, status, "");
     }
 
+    /**
+     * presence 活动观测点：单并发收单。
+     *
+     * <p>用例断言的是"开→合"的先后（{@code getFirst()/getLast()}），顺序必须是契约；而
+     * {@code AdapterDefaults.standard()} 的 maxConcurrency 是 CPU 数，broker 会并行派发，两条事件落到
+     * 列表里的先后就不再等于发布先后。单并发沿用 {@code BrokerTask} 的派发顺序，也让"重复上报不该失败"
+     * 这条宽容度原样保留（这里不断言条数）。</p>
+     */
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
         List<PresenceActivityPayload> activities = new java.util.concurrent.CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -101,7 +109,7 @@ class TtsPresenceActivityTest {
                 new ModuleDescriptor(
                         "module.presence.tts-test", List.of(), defaults.threadPolicy(), defaults.cancellationScope(),
                         defaults.failurePolicy(), defaults.deliveryPolicy(), defaults.cancellable(),
-                        defaults.supportsStreaming(), defaults.maxConcurrency(), defaults.queueCapacity()
+                        defaults.supportsStreaming(), 1, defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
                         ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, PresenceActivityPayload.class,

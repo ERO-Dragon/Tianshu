@@ -59,6 +59,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,8 @@ class AXTurnOrchestratorTest {
     /** 兜底句读真实资源（zh_cn）：断言的就是玩家会听到的那一句，不是测试自己编的文案。 */
     private static final AXReplyTextRepository REPLY_TEXTS =
             new AXReplyTextRepository(AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN));
+    /** delivery() 的 session/turn 拼出的本轮 presence 活动 id（与 AXTurnExecution.activityId 的拼法一致）。 */
+    private static final String TURN_ACTIVITY_ID = "ax.chat.session.turn";
 
     @Test
     void streamsOnlyLlmReturnedTextAndAppendsFinalSuffix() {
@@ -373,9 +376,9 @@ class AXTurnOrchestratorTest {
 
         await(() -> llmRequest.get() != null);
         await(() -> activities.size() >= 1);
-        assertEquals(PresenceActivityAction.STARTED, activities.get(0).action());
-        assertEquals(PresenceActivityType.THINKING, activities.get(0).activityType());
-        assertEquals("ax.chat.session.turn", activities.get(0).activityId());
+        assertEquals(
+                expectedActivityKeys(turnActivity(PresenceActivityType.THINKING, PresenceActivityAction.STARTED)),
+                observedActivityKeys(activities));
         assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_ACCEPTED, AXTurnStatusPublisher.KEY_TURN_ACCEPTED);
         assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_TURN_PROCESSING, AXTurnStatusPublisher.KEY_TURN_PROCESSING);
         assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_LLM_THINKING, AXTurnStatusPublisher.KEY_LLM_THINKING);
@@ -387,26 +390,25 @@ class AXTurnOrchestratorTest {
         );
 
         await(() -> activities.size() >= 3);
-        assertEquals(List.of(
-                        PresenceActivityAction.STARTED,
-                        PresenceActivityAction.ENDED,
-                        PresenceActivityAction.STARTED
-                ),
-                activities.stream().map(PresenceActivityPayload::action).limit(3).toList());
-        assertEquals(List.of(
-                        PresenceActivityType.THINKING,
-                        PresenceActivityType.THINKING,
-                        PresenceActivityType.RESPONDING
-                ),
-                activities.stream().map(PresenceActivityPayload::activityType).limit(3).toList());
+        assertEquals(
+                expectedActivityKeys(
+                        turnActivity(PresenceActivityType.THINKING, PresenceActivityAction.STARTED),
+                        turnActivity(PresenceActivityType.THINKING, PresenceActivityAction.ENDED),
+                        turnActivity(PresenceActivityType.RESPONDING, PresenceActivityAction.STARTED)),
+                observedActivityKeys(activities));
 
         llmClient.handleResult(
                 llmRequest.get().envelopeId(),
                 LLMPromptResultPayload.completed(requestPayload.requestId(), "Streaming response.")
         );
         await(() -> activities.size() >= 4);
-        assertEquals(PresenceActivityAction.ENDED, activities.get(3).action());
-        assertEquals(PresenceActivityType.RESPONDING, activities.get(3).activityType());
+        assertEquals(
+                expectedActivityKeys(
+                        turnActivity(PresenceActivityType.THINKING, PresenceActivityAction.STARTED),
+                        turnActivity(PresenceActivityType.THINKING, PresenceActivityAction.ENDED),
+                        turnActivity(PresenceActivityType.RESPONDING, PresenceActivityAction.STARTED),
+                        turnActivity(PresenceActivityType.RESPONDING, PresenceActivityAction.ENDED)),
+                observedActivityKeys(activities));
 
         ModuleStatus responding = assertStatusKey(runtime, AXTurnStatusPublisher.TYPE_RESPONDING, AXTurnStatusPublisher.KEY_RESPONDING);
         assertEquals("responding", responding.tags().get("axPipelineStage"));
@@ -973,6 +975,34 @@ class AXTurnOrchestratorTest {
         ), (envelope, context) -> request.set(envelope));
     }
 
+    /**
+     * 本轮一条 presence 活动的身份串：哪个 turn、哪种活动、开始还是结束。
+     *
+     * <p>presence 活动经协议 broker 派发，而本用例注册的 {@code AdapterDefaults.standard()} 的
+     * maxConcurrency 是 CPU 数，同一批事件会被并行派发，落进观测列表的先后与发布先后无关。因此"第 n 条
+     * 是谁"不是契约，能断言的只有"发了哪几条、各几条"。</p>
+     */
+    private static String turnActivity(PresenceActivityType type, PresenceActivityAction action) {
+        return TURN_ACTIVITY_ID + "|" + type + "|" + action;
+    }
+
+    /** 期望侧同样排序后比较：排序后的列表相等即多重集相等，重复条目照样会被抓出来。 */
+    private static List<String> expectedActivityKeys(String... keys) {
+        return Arrays.stream(keys).sorted().toList();
+    }
+
+    private static List<String> observedActivityKeys(List<PresenceActivityPayload> activities) {
+        List<PresenceActivityPayload> snapshot;
+        // synchronizedList 的迭代必须持锁，否则并行追加会在断言时抛 ConcurrentModificationException。
+        synchronized (activities) {
+            snapshot = new ArrayList<>(activities);
+        }
+        return snapshot.stream()
+                .map(activity -> activity.activityId() + "|" + activity.activityType() + "|" + activity.action())
+                .sorted()
+                .toList();
+    }
+
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
         List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -1027,8 +1057,16 @@ class AXTurnOrchestratorTest {
         ), (envelope, context) -> request.set(envelope));
     }
 
+    /**
+     * 播报通道的测试替身：单并发收单。
+     *
+     * <p>"先念流式那句、再补终值差额"是播报顺序本身的产品契约，而 {@code AdapterDefaults.standard()}
+     * 的 maxConcurrency 是 CPU 数，broker（{@code AbstractQueueBroker.drain}）会把这批命令并行派发，
+     * 落进 {@code spoken} 的先后就不再等于发布先后。把它钉成单并发，顺序才重新成为可断言的契约
+     * （与 {@code AXOutputProcessorTest} 同一个做法）。</p>
+     */
     private static void registerTtsSink(ProtocolRuntime runtime, List<String> spoken) {
-        AdapterDefaults defaults = AdapterDefaults.standard();
+        AdapterDefaults defaults = AdapterDefaults.standard().withConcurrency(1, 64);
         runtime.registerModule(new ModuleDescriptor(
                 "module.tts.test",
                 List.of(new CapabilityDescriptor(

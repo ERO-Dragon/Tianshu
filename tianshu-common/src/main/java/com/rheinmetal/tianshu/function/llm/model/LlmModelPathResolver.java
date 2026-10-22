@@ -13,7 +13,10 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class LlmModelPathResolver {
-    /** Fallback window when the embedding catalog has no entry for the selected model. */
+    /**
+     * The window the embedding file was trained for, when the catalog has no entry for the selection.
+     * It is a ceiling, not the window the engine runs with.
+     */
     private static final int DEFAULT_EMBEDDING_CONTEXT_SIZE = 4096;
 
     private final LlmConfiguration configuration;
@@ -44,7 +47,12 @@ public final class LlmModelPathResolver {
         return embeddingContextSize(configuration.getLlmEmbeddingModelName());
     }
 
-    /** The context window of the given selection, with the catalog default when it is unknown. */
+    /**
+     * The largest window the given selection can take, with the catalog default when it is unknown.
+     *
+     * <p>This is the file's trained ceiling. The window the engine actually runs with is a configured
+     * native-memory budget clamped to it, so callers must not pass this value straight into a context.
+     */
     public int embeddingContextSize(String effectiveSelection) {
         LlmModelInfo info = embeddingCatalog.apply(normalize(effectiveSelection));
         return info == null ? DEFAULT_EMBEDDING_CONTEXT_SIZE : info.getContextSize();

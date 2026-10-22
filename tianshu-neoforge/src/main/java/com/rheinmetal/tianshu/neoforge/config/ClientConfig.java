@@ -64,6 +64,8 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.IntValue LLM_CONTEXT_TIER;
     /** Embedding position: 999 puts every layer on the card, 0 keeps the lane on the CPU. */
     public static final ModConfigSpec.IntValue LLM_EMBEDDING_GPU_LAYERS;
+    /** Runtime window of the embedding context; the model's own ceiling is applied on top. */
+    public static final ModConfigSpec.IntValue LLM_EMBEDDING_CONTEXT_SIZE;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_CACHE_MISS_INPUT_PRICE_PER_MILLION;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_CACHE_HIT_INPUT_PRICE_PER_MILLION;
     public static final ModConfigSpec.DoubleValue LLM_USAGE_OUTPUT_PRICE_PER_MILLION;
@@ -141,6 +143,13 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL,
                         0,
                         LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL);
+        LLM_EMBEDDING_CONTEXT_SIZE = builder.comment("向量模型的上下文长度（token），直接决定 KV cache 的原生内存占用。",
+                        "RAG 的实际输入只有一句事件（一两百字）和几百字的摘要，该值只需覆盖最长的摘要；",
+                        "改大不会提升召回，只会成倍吃掉内存。模型自身的上限仍然生效（此处设得比模型上限大时按模型上限）。")
+                .defineInRange("embeddingContextSize",
+                        LlmConfiguration.DEFAULT_EMBEDDING_CONTEXT_SIZE,
+                        LlmConfiguration.MIN_EMBEDDING_CONTEXT_SIZE,
+                        LlmConfiguration.MAX_EMBEDDING_CONTEXT_SIZE);
         builder.comment("Token prices in CNY per million tokens, used to turn recorded usage into a local estimate."
                         + " 0 hides the estimate. These prices never produce an authoritative amount: the provider's"
                         + " own account answer is what the HUD shows as accurate, and this estimate is reconciliation only.")
@@ -671,6 +680,16 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     @Override
     public int getLlmEmbeddingGpuLayers() {
         return LLM_EMBEDDING_GPU_LAYERS.get();
+    }
+
+    /**
+     * A hand-edited file cannot push the window below the minimum, and the model's own ceiling is
+     * applied by the engine provider on top of this value.
+     */
+    @Override
+    public int getLlmEmbeddingContextSize() {
+        return Math.max(LlmConfiguration.MIN_EMBEDDING_CONTEXT_SIZE,
+                Math.min(LlmConfiguration.MAX_EMBEDDING_CONTEXT_SIZE, LLM_EMBEDDING_CONTEXT_SIZE.get()));
     }
 
     /** The position is a two-value choice; a hand-edited file cannot push it outside that range. */

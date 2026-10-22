@@ -148,6 +148,7 @@ class AXMemoryMaintenanceServiceTest {
             assertEquals(List.of(PresenceActivityType.PROCESSING_TASK, PresenceActivityType.PROCESSING_TASK),
                     activities.stream().map(PresenceActivityPayload::activityType).toList());
             assertEquals("ax.memory.maintenance.world", activities.get(0).activityId());
+            assertEquals(activities.get(0).activityId(), activities.get(1).activityId(), "开合必须挂在同一个活动上");
         } finally {
             runtime.close();
         }
@@ -363,6 +364,14 @@ class AXMemoryMaintenanceServiceTest {
         ), llm::handle);
     }
 
+    /**
+     * presence 活动观测点：单并发收单。
+     *
+     * <p>本用例断言的是"活动开→合"（STARTED 在前、ENDED 在后，且挂在同一个 activityId 上），顺序本身
+     * 就是契约；而 {@code AdapterDefaults.standard()} 的 maxConcurrency 是 CPU 数，
+     * {@code AbstractQueueBroker.drain} 会把这几条事件并行派发，落进列表的先后就不等于发布先后。
+     * 钉成单并发后顺序重新可断言（与 {@code AsrPresenceActivityTest} 同一个做法）。</p>
+     */
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
         List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -376,7 +385,7 @@ class AXMemoryMaintenanceServiceTest {
                         defaults.deliveryPolicy(),
                         defaults.cancellable(),
                         defaults.supportsStreaming(),
-                        defaults.maxConcurrency(),
+                        1,
                         defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(

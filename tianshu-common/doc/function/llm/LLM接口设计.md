@@ -113,18 +113,23 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 
 LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoForge 的 `config/tianshu-client.toml`；setter 和保存不进入 common。`LlmModelPathResolver` 根据所选模型标识、LLM 模块根和内置 catalog 解析 chat/embedding GGUF，并拒绝越过模型根目录的选择。catalog 指定文件优先，其次才是目录内按文件名确定性排序的 GGUF。
 
-模型 context size、prompt token budget 和 embedding context size 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有推理 builder、GPU device、MTP、frame guard 或协议请求语义。
+模型 context size、prompt token budget 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有推理 builder、GPU device、MTP、frame guard 或协议请求语义。
+
+例外只有一个：embedding 的**运行时窗口**。catalog 里的 `contextSize` 是模型被训练出的上限（bge-m3 为 8192），而引擎实际使用的窗口是"本构建愿意为原生内存付多少"的选择，与 `embeddingGpuLayers` 属于同一类运行预算，因此进配置；`LlmEngineProvider` 取 `min(catalog 上限, 配置预算)`。把 catalog 值直接当窗口用过一次，结果是用 8K 窗口处理几百字的输入。
 
 ### 7.1 向量模型载入位置
 
 | 键（`config/tianshu-client.toml` 的 `[llm]` 段） | 默认 | 含义 |
 |----|----|----|
 | `embeddingGpuLayers` | `999`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL`） | 向量模型的载入位置：`999` = 全部层放到 GPU；`0` = 纯 CPU。取值域 `0..999`，写入时钳位。 |
+| `embeddingContextSize` | `1024`（`LlmConfiguration.DEFAULT_EMBEDDING_CONTEXT_SIZE`） | 向量模型的运行时上下文窗口（token）。取值域 `256..8192`，读端钳位后由 `LlmEngineProvider` 再与 catalog 上限取小。 |
 
 - 读端只有 `LlmConfiguration.getLlmEmbeddingGpuLayers()`；写端只有 `LlmSettingsAccess.setLlmEmbeddingGpuLayers(int)`，common 不出现 setter。
+- 载入位置在页面上是**草稿值**：点击 `toggleEmbeddingPosition()` 只改草稿并提示"保存后生效"，不写配置、不重启运行时；面板级保存把它并进同一个事务，保存成功后按既有机制重启运行时（换后端＝整份 GGUF 重新载入，不在点击瞬间做）。
 - 载入跑在 model-load 线程：`LlmEngineProvider.startEmbeddingOnly()` 只把引擎排进队列并立即返回；位置判定在 `LocalEmbeddingEngine.warmUp()` 里做，结论经 `EmbeddingLoadReport` 回报一次。
 - 判定以"真的能产出向量"为准（载入后跑一次 embedding 验证），三种结论：`READY`（请求位置可用，诊断 `LLM_EMBEDDING_READY`）、`DEGRADED`（GPU 失败、CPU 验证通过，向量检索照常但更慢；映迹一条 DEGRADED 提示，诊断 `LLM_EMBEDDING_DEGRADED`）、`UNAVAILABLE`（GPU 与 CPU 都失败，模型或文件损坏；向量 RAG 关闭并解绑，映迹一条 ERROR 提示，诊断 `LLM_EMBEDDING_LOAD_FAILED`）。
 - 已知覆盖缺口：`DEGRADED` 分支需要真实 GGUF 才能让 CPU 侧验证通过，单测只覆盖 `READY` 与 `UNAVAILABLE` 终态。这是有意记录的缺口，不要当成已覆盖。
+- 释放契约：模型权重与上下文都在原生内存里，GC 管不到。`LlmEngineProvider.startEmbeddingOnly()` 先 `stop()` 再建新引擎，任何时刻只有一个引擎实例；`LocalEmbeddingEngine.shutdown()` 用一把读写锁把推理与拆卸互斥（推理持读锁、拆卸持写锁），因此进入 libs 的 `EmbeddingEngine.shutdown()` 时它的工作线程必定空闲。这一点是必须的：libs 只在工作线程按期内停下的情况下 `model.close()`，超时就跳过释放并把 `running` 永久置 false——那是唯一一条真正漏掉原生内存的路径，而且无法重试。
 
 协议提交时使用：
 

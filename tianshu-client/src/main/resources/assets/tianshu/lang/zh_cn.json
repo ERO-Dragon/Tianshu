@@ -319,7 +319,7 @@
   "tianshu.gui.llm.action.embedding_position": "载入位置：%s",
   "tianshu.gui.llm.message.embedding_download_complete": "RAG 向量模型下载完成",
   "tianshu.gui.llm.message.embedding_already_downloaded": "RAG 向量模型已下载",
-  "tianshu.gui.llm.message.embedding_position_changed": "向量模型将在下次加载时使用 %s",
+  "tianshu.gui.llm.message.embedding_position_pending": "载入位置将在保存后生效（%s）",
   "tianshu.gui.llm.error.embedding_unavailable": "当前语言没有可用的 RAG 向量模型",
   "tianshu.gui.llm.download.progress": "%s %s%%",
   "tianshu.gui.llm.message.saved": "【织言】设置已保存",
