@@ -6,9 +6,17 @@ import java.util.Map;
 public record PresenceContextSnapshot(
         String playerId,
         String dimensionId,
+        /**
+         * Display name of {@link #dimensionId} in the player's language, resolved by the platform layer through the
+         * game's own translatable registry names. Empty when the platform had no name at hand; consumers then fall back
+         * to a readable form of the id.
+         */
+        String dimensionDisplayName,
         PresenceScreenKind screenKind,
         String containerKind,
         String heldItemId,
+        /** Display name of {@link #heldItemId}; same contract as {@link #dimensionDisplayName}. */
+        String heldItemDisplayName,
         List<String> equippedItemIds,
         PresenceTargetSnapshot crosshairTarget,
         boolean interactionKeyDown,
@@ -23,9 +31,16 @@ public record PresenceContextSnapshot(
         Map<String, String> facts,
         long capturedAtMillis
 ) {
+    /** Snapshot without display names: consumers fall back to a readable form of each id. */
+    public PresenceContextSnapshot(String playerId, String dimensionId, PresenceScreenKind screenKind, String containerKind, String heldItemId, List<String> equippedItemIds, PresenceTargetSnapshot crosshairTarget, boolean interactionKeyDown, boolean attackKeyDown, boolean sneaking, PresenceInputKind recentInputKind, PresencePlayerStatus playerStatus, PresenceWorldEnvironment worldEnvironment, List<PresenceInventoryItem> inventoryItems, PresenceEquipment equipment, List<PresencePotionEffect> activeEffects, Map<String, String> facts, long capturedAtMillis) {
+        this(playerId, dimensionId, "", screenKind, containerKind, heldItemId, "", equippedItemIds, crosshairTarget, interactionKeyDown, attackKeyDown, sneaking, recentInputKind, playerStatus, worldEnvironment, inventoryItems, equipment, activeEffects, facts, capturedAtMillis);
+    }
+
     public PresenceContextSnapshot {
         playerId = clean(playerId);
         dimensionId = clean(dimensionId);
+        dimensionDisplayName = clean(dimensionDisplayName);
+        heldItemDisplayName = clean(heldItemDisplayName);
         screenKind = screenKind == null ? PresenceScreenKind.NONE : screenKind;
         containerKind = clean(containerKind);
         heldItemId = clean(heldItemId);

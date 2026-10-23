@@ -11,19 +11,27 @@ import java.util.Map;
 public record DialogueArbitrationInput(
         DialogueArbitrationRequestPayload request,
         DialogueInteractionHints interactionHints,
-        DialogueContextSnapshot contextSnapshot
+        DialogueContextSnapshot contextSnapshot,
+        /** Display names for the ids in this input, keyed by raw id; carried through to the delivery payload. */
+        Map<String, String> displayNames
 ) {
+    public DialogueArbitrationInput(DialogueArbitrationRequestPayload request, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {
+        this(request, interactionHints, contextSnapshot, Map.of());
+    }
+
     public DialogueArbitrationInput {
         if (request == null) {
             throw new IllegalArgumentException("request cannot be null");
         }
         interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
         contextSnapshot = normalizeSnapshot(request.playerId(), contextSnapshot);
+        displayNames = displayNames == null ? Map.of() : Map.copyOf(displayNames);
     }
 
     public static DialogueArbitrationInput from(DialogueArbitrationRequestPayload request, DialogueContextFrame contextFrame) {
         DialogueContextFrame effectiveFrame = contextFrame == null ? DialogueContextFrame.empty(request.playerId()) : contextFrame;
-        return new DialogueArbitrationInput(request, effectiveFrame.interactionHints(), effectiveFrame.contextSnapshot());
+        return new DialogueArbitrationInput(request, effectiveFrame.interactionHints(), effectiveFrame.contextSnapshot(),
+                effectiveFrame.displayNames());
     }
 
     public String requestId() {

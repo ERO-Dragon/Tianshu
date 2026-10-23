@@ -323,9 +323,9 @@ public final class AXRawTurnWindow {
         }
     }
 
-    /** 单轮是否属于可压缩内容：世界事件不进单元，因此移出窗口时也要留下。 */
+    /** 单轮是否可以随单元摘要一起移出窗口。事件与对话一样，摘要覆盖之后就可以移出。 */
     private boolean compressibleTurn(AXRawTurn turn) {
-        return turn != null && !turn.isEmpty() && !"world_event".equals(turn.role());
+        return turn != null && !turn.isEmpty();
     }
 
 
@@ -454,9 +454,7 @@ public final class AXRawTurnWindow {
         }
 
         private List<AXRawTurn> compressibleTurns() {
-            return turns.stream()
-                    .filter(turn -> !"world_event".equals(turn.role()))
-                    .toList();
+            return turns;
         }
     }
 }

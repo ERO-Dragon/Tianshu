@@ -83,6 +83,7 @@ public final class PresenceContextFactMapper {
         values.put("hunger", Integer.toString(status.hunger()));
         values.put("experienceLevel", Integer.toString(status.experienceLevel()));
         values.put("dimensionId", snapshot.dimensionId());
+        values.put("dimensionDisplayName", snapshot.dimensionDisplayName());
         // No rendered sentence: presence publishes data, and the consumers that need words are the ones that
         // own the wording (AX renders from the typed fields, in its own language).
         return fact(PresenceContextFactIds.PLAYER_STATUS, 82, "player", List.of("player", "status"), now, values);
@@ -209,6 +210,7 @@ public final class PresenceContextFactMapper {
         }
         if (!snapshot.heldItemId().isBlank()) {
             values.put("heldItemId", snapshot.heldItemId());
+            values.put("heldItemDisplayName", snapshot.heldItemDisplayName());
         }
         if (snapshot.screenKind() != PresenceScreenKind.NONE) {
             values.put("screenKind", snapshot.screenKind().name());
@@ -290,9 +292,11 @@ public final class PresenceContextFactMapper {
                 add(fields, "hunger", values, raw -> new FactValue.Count(integerOf(raw)));
                 add(fields, "experienceLevel", values, raw -> new FactValue.Count(integerOf(raw)));
                 add(fields, "dimensionId", values, FactValue.Identifier::new);
+                add(fields, "dimensionDisplayName", values, FactValue.Text::new);
             }
             case PresenceContextFactIds.WORLD_ENVIRONMENT -> {
                 add(fields, "dimensionId", values, FactValue.Identifier::new);
+                add(fields, "dimensionDisplayName", values, FactValue.Text::new);
                 add(fields, "biomeId", values, FactValue.Identifier::new);
                 add(fields, "biomeDisplayName", values, FactValue.Text::new);
                 add(fields, "raining", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
@@ -310,7 +314,9 @@ public final class PresenceContextFactMapper {
             case PresenceContextFactIds.INTERACTION_CONTEXT -> {
                 add(fields, "playerId", values, FactValue.Identifier::new);
                 add(fields, "dimensionId", values, FactValue.Identifier::new);
+                add(fields, "dimensionDisplayName", values, FactValue.Text::new);
                 add(fields, "heldItemId", values, FactValue.Identifier::new);
+                add(fields, "heldItemDisplayName", values, FactValue.Text::new);
                 add(fields, "screenKind", values, FactValue.Identifier::new);
                 add(fields, "interactionKeyDown", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
                 add(fields, "attackKeyDown", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));

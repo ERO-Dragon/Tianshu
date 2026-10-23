@@ -64,7 +64,47 @@ public final class DialoguePresenceContextMapper {
                 splitList(fieldValues.get("equippedItemIds")),
                 facts
         );
-        return new DialogueContextFrame(hints, snapshot);
+        return new DialogueContextFrame(hints, snapshot, displayNames(fieldValues));
+    }
+
+    /**
+     * Pairs an id with the display name the snapshot happened to carry for it.
+     *
+     * <p>The presence snapshot publishes ids and, for some facts, a companion display name ({@code itemId} next to
+     * {@code displayName}, {@code dimensionId} without one). There is no fabricated name here: a value is recorded only
+     * when the companion field exists and is non-blank, so a consumer that finds no entry falls back to a readable form
+     * of the id instead of showing the player a machine identifier.</p>
+     *
+     * <p>Two companion spellings are recognised, because both occur: {@code <base>DisplayName} (a flat fact field) and
+     * {@code <parent>.displayName} (the nested record an equipment slot is flattened into).</p>
+     */
+    private static Map<String, String> displayNames(Map<String, String> values) {
+        Map<String, String> names = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String key = entry.getKey();
+            String id = entry.getValue();
+            if (key == null || !key.endsWith("Id") || id == null || id.isBlank() || id.indexOf(':') < 0) {
+                continue;
+            }
+            String stem = key.substring(0, key.length() - 2);
+            String companion = values.get(stem + "DisplayName");
+            if (companion == null || companion.isBlank()) {
+                companion = nestedDisplayName(values, stem);
+            }
+            if (companion != null && !companion.isBlank()) {
+                names.putIfAbsent(id.trim(), companion.trim());
+            }
+        }
+        return names;
+    }
+
+    /** {@code helmet.itemId} pairs with {@code helmet.displayName}; a flat field has no parent and yields nothing. */
+    private static String nestedDisplayName(Map<String, String> values, String stem) {
+        int dot = stem.lastIndexOf('.');
+        if (dot <= 0) {
+            return "";
+        }
+        return values.getOrDefault(stem.substring(0, dot) + ".displayName", "");
     }
 
     /** Every field of every fact, as strings; the only place a typed value becomes text on this path. */

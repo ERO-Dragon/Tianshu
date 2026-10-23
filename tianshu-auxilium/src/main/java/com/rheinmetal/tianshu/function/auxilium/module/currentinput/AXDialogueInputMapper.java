@@ -24,26 +24,26 @@ public final class AXDialogueInputMapper {
             appendLine(builder, "playerId=" + delivery.playerId());
         }
         if (delivery.contextSnapshot() != null && !delivery.contextSnapshot().dimensionId().isBlank()) {
-            appendLine(builder, "dimension=" + delivery.contextSnapshot().dimensionId());
+            appendLine(builder, "dimension=" + readable(delivery, delivery.contextSnapshot().dimensionId()));
         }
         if (!delivery.matchedWakeWords().isEmpty()) {
             appendLine(builder, "matchedWakeWords=" + String.join(", ", delivery.matchedWakeWords()));
         }
         if (!delivery.matchedItemIds().isEmpty()) {
-            appendLine(builder, "matchedItems=" + String.join(", ", delivery.matchedItemIds()));
+            appendLine(builder, "matchedItems=" + joinReadable(delivery, delivery.matchedItemIds()));
         }
         if (!delivery.matchedEntityTypeIds().isEmpty()) {
-            appendLine(builder, "matchedEntityTypes=" + String.join(", ", delivery.matchedEntityTypeIds()));
+            appendLine(builder, "matchedEntityTypes=" + joinReadable(delivery, delivery.matchedEntityTypeIds()));
         }
         if (!delivery.matchedEntityRefs().isEmpty()) {
             appendLine(builder, "matchedEntities=" + delivery.matchedEntityRefs().stream()
-                    .map(this::entitySummary)
+                    .map(ref -> entitySummary(delivery, ref))
                     .filter(value -> !value.isBlank())
                     .collect(java.util.stream.Collectors.joining(", ")));
         }
         if (delivery.interactionHints() != null) {
             if (!delivery.interactionHints().heldItemId().isBlank()) {
-                appendLine(builder, "heldItem=" + delivery.interactionHints().heldItemId());
+                appendLine(builder, "heldItem=" + readable(delivery, delivery.interactionHints().heldItemId()));
             }
             if (delivery.interactionHints().crosshairHit()) {
                 appendLine(builder, "crosshairHit=true");
@@ -81,13 +81,57 @@ public final class AXDialogueInputMapper {
         builder.append(line);
     }
 
-    private String entitySummary(DialogueEntityRef ref) {
-        if (ref == null || ref.entityId().isBlank()) {
+    /**
+     * Display name, then a readable form of the id, then nothing.
+     *
+     * <p>The one place this degeneration exists: the platform resolves a localized name and hands it over in
+     * {@link DialogueDeliveryPayload#displayNames()}, and whatever it could not resolve degrades here to the id's own
+     * words. A raw {@code namespace:path} is never shown to the model: a player hears "diamond sword", so the model
+     * should read the same thing.</p>
+     */
+    private String readable(DialogueDeliveryPayload delivery, String id) {
+        if (id == null || id.isBlank()) {
             return "";
         }
-        if (ref.entityTypeId().isBlank()) {
-            return ref.entityId();
+        String trimmed = id.trim();
+        String display = displayName(delivery, trimmed);
+        return display.isBlank() ? readableId(trimmed) : display;
+    }
+
+    private String displayName(DialogueDeliveryPayload delivery, String id) {
+        if (delivery.displayNames() == null) {
+            return "";
         }
-        return ref.entityTypeId() + "#" + ref.entityId();
+        String display = delivery.displayNames().get(id);
+        return display == null ? "" : display.trim();
+    }
+
+    /** {@code minecraft:diamond_sword} becomes {@code diamond sword}: keep the words, drop the machine syntax. */
+    private String readableId(String id) {
+        int colon = id.indexOf(':');
+        String path = colon >= 0 && colon + 1 < id.length() ? id.substring(colon + 1) : id;
+        return path.replace('_', ' ').replace('/', ' ').trim();
+    }
+
+    private String joinReadable(DialogueDeliveryPayload delivery, java.util.List<String> ids) {
+        return ids.stream()
+                .map(id -> readable(delivery, id))
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /**
+     * What the player is looking at, named the way they would name it.
+     *
+     * <p>The entity's instance id is deliberately absent: it identifies which zombie this is, not what it is, and a UUID
+     * in the prompt is noise the model cannot use. When neither a display name nor a readable type id is available the
+     * entry is dropped rather than filled with a machine identifier.</p>
+     */
+    private String entitySummary(DialogueDeliveryPayload delivery, DialogueEntityRef ref) {
+        if (ref == null) {
+            return "";
+        }
+        String display = ref.displayName() == null ? "" : ref.displayName().trim();
+        return display.isBlank() ? readable(delivery, ref.entityTypeId()) : display;
     }
 }

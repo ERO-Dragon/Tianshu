@@ -66,6 +66,15 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
         PresenceTargetSnapshot crosshairTarget = live ? crosshairTarget(minecraft, player) : PresenceTargetSnapshot.empty();
         String dimensionId = minecraft.level.dimension().location().toString();
         String heldItemId = live ? itemId(player.getMainHandItem()) : "";
+        // Display names come from the game's own translatable registry names. The client language policy is the only
+        // place that knows how to ask for them, so this platform keeps no name table of its own: a missing translation
+        // degrades to the same readable form the policy already uses.
+        String dimensionDisplayName = ClientLanguagePolicy.registryDisplayName(
+                minecraft.level.dimension().location(), "dimension", languageCode);
+        String heldItemDisplayName = live
+                ? ClientLanguagePolicy.itemDisplayName(player.getMainHandItem(),
+                        BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()), languageCode)
+                : "";
         List<String> equippedItems = live ? equippedItemIds(player) : List.of();
         Map<String, String> facts = live ? facts(screenKind) : Map.of();
         PresenceEquipment equipment = requested.contains(PresenceContextGroup.PLAYER_EQUIPMENT)
@@ -75,9 +84,11 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
         return new PresenceContextSnapshot(
                 player.getStringUUID(),
                 dimensionId,
+                dimensionDisplayName,
                 screenKind,
                 screen == null ? "" : screen.getClass().getSimpleName(),
                 heldItemId,
+                heldItemDisplayName,
                 equippedItems,
                 crosshairTarget,
                 live && minecraft.options.keyUse.isDown(),

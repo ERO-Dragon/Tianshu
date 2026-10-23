@@ -89,17 +89,20 @@ class AXRawTurnWindowTest {
     }
 
     @Test
-    void worldEventsAreNotDroppedByTheGenerationSwap() {
-        // 世界事件不进压缩单元，因此换代裁剪时也必须原样留下。
+    void worldEventsEnterTheCompressionUnitAndLeaveWithIt() {
+        // 事件是历史的一部分：它参与压缩，摘要覆盖之后随单元一起移出窗口。
         AXRawTurnWindow window = new AXRawTurnWindow(policy(30, 20, 10, 20, 10000, 15));
         appendRound(window, "u1", "a1", "turn-1", 10);
         window.append(scope, worldEvent("w1", "玩家死亡一次。", 5));
         appendRound(window, "u2", "a2", "turn-2", 10);
 
+        AXRawTurnBatch batch = window.selectCompressionBatch(scope, "");
+        assertEquals(true, batch.turnIds().contains("w1"), "事件必须进入压缩单元，否则它只会被裁掉而没被记住");
+
         int removed = window.dropCompressedTurns(scope, "w1");
 
-        assertEquals(2, removed, "只移出被覆盖的两轮对话");
-        assertEquals(List.of("w1", "u2", "a2"), window.snapshot(scope).stream().map(AXRawTurn::id).toList());
+        assertEquals(3, removed, "被覆盖的两轮对话与事件一起移出");
+        assertEquals(List.of("u2", "a2"), window.snapshot(scope).stream().map(AXRawTurn::id).toList());
     }
 
     @Test

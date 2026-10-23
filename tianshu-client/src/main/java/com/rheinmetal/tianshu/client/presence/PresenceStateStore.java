@@ -102,9 +102,11 @@ public final class PresenceStateStore {
         return new PresenceContextSnapshot(
                 capturedCurrentWorld ? effectiveCaptured.playerId() : effectiveBase.playerId(),
                 capturedCurrentWorld ? effectiveCaptured.dimensionId() : effectiveBase.dimensionId(),
+                capturedCurrentWorld ? effectiveCaptured.dimensionDisplayName() : effectiveBase.dimensionDisplayName(),
                 live ? effectiveCaptured.screenKind() : effectiveBase.screenKind(),
                 live ? effectiveCaptured.containerKind() : effectiveBase.containerKind(),
                 live ? effectiveCaptured.heldItemId() : effectiveBase.heldItemId(),
+                live ? effectiveCaptured.heldItemDisplayName() : effectiveBase.heldItemDisplayName(),
                 live ? effectiveCaptured.equippedItemIds() : effectiveBase.equippedItemIds(),
                 live ? effectiveCaptured.crosshairTarget() : effectiveBase.crosshairTarget(),
                 live ? effectiveCaptured.interactionKeyDown() : effectiveBase.interactionKeyDown(),
