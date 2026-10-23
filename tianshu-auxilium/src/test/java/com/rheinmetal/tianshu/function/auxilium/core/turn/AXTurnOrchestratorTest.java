@@ -607,6 +607,7 @@ class AXTurnOrchestratorTest {
                         ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
                         List.of(new PresenceContextSnapshotPayload.FactPayload(
                                 PresenceContextFactIds.INTERACTION_CONTEXT,
+                                List.of(),
                                 "",
                                 95,
                                 "presence.test",

@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.event;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Turns a submitted event into the action the caller has to perform.
@@ -18,9 +19,9 @@ import java.util.Map;
  *   low      append only, never speak                  drop, not even a history line
  * </pre>
  *
- * <p>The class never touches wording: it decides, and the sentence stays the one the producer put on
- * {@link AXEventDescriptor#text()}. Nothing here inspects {@link AXEventDescriptor#sourceId()}; the
- * source only selects a cooldown slot and an aggregation window, so a module AX has never heard of
+ * <p>The class never touches wording: it decides, and the sentence it stores is the one the caller already
+ * rendered from the descriptor's {@link AXEventText}. Nothing here inspects {@link AXEventDescriptor#sourceId()};
+ * the source only selects a cooldown slot and an aggregation window, so a module AX has never heard of
  * follows exactly the same path as the built-in producer.
  *
  * <p>The class is not thread safe by design: events are submitted from the game loop. It owns the
@@ -38,9 +39,19 @@ public final class AXEventDispatcher {
     }
 
     public AXEventDispatcher(AXEventTierTable tierTable, AXEventSettings settings) {
+        this(tierTable, settings, null);
+    }
+
+    /**
+     * @param renderer renders a fold template into a sentence; it is the same renderer that words a single
+     *                 event, which is what keeps a folded line inside the language table instead of inside
+     *                 the producer
+     */
+    public AXEventDispatcher(AXEventTierTable tierTable, AXEventSettings settings,
+                             Function<AXEventText, String> renderer) {
         this.tierTable = tierTable == null ? AXEventTierTable.builtin() : tierTable;
         this.settings = settings == null ? AXEventSettings.DEFAULT : settings;
-        this.aggregator = new AXEventAggregator(this.settings);
+        this.aggregator = new AXEventAggregator(this.settings, renderer);
     }
 
     /**
@@ -53,7 +64,7 @@ public final class AXEventDispatcher {
      * @param nowMillis monotonic wall clock of the calling tick; only gaps and windows use it, and it
      *                  never reaches the appended line
      */
-    public AXEventDecision decide(AXEventDescriptor descriptor, long nowMillis) {
+    public AXEventDecision decide(AXEventDescriptor descriptor, String sentence, long nowMillis) {
         AXEventTier tier = resolveTier(descriptor);
         boolean blacklisted = resolveBlacklisted(descriptor);
 
@@ -74,7 +85,7 @@ public final class AXEventDispatcher {
         AXEventAction action = tier == AXEventTier.MID && !blacklisted
                 ? AXEventAction.APPEND_AND_BUFFER
                 : AXEventAction.APPEND_ONLY;
-        boolean folded = aggregator.offer(descriptor, tier, nowMillis);
+        boolean folded = aggregator.offer(descriptor, tier, sentence, nowMillis);
         return new AXEventDecision(action, tier, blacklisted, folded);
     }
 

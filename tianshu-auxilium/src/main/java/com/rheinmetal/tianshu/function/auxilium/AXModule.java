@@ -34,9 +34,9 @@ import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateRegistry
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
-import com.rheinmetal.tianshu.function.auxilium.event.AXEventDispatcher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFactClient;
@@ -89,6 +89,8 @@ public final class AXModule implements TianshuManagedModule {
     private final AXDelegateDeliverySink delegateSpeech;
     /** Voice channel for game event sentences; {@code null} means this host has no voice wiring. */
     private final AXEventSpeechSink eventSpeech;
+    /** Language table the event layer renders through; {@link AXGameEventTextProvider#NONE} when unwired. */
+    private final AXGameEventTextProvider eventTexts;
     private final AXProtocolAdapter adapter;
     private AXParticipantRegistrar participantRegistrar;
     private AXLlmClient llmClient;
@@ -166,6 +168,28 @@ public final class AXModule implements TianshuManagedModule {
             AXDelegateDeliverySink delegateSpeech,
             AXEventSpeechSink eventSpeech
     ) {
+        this(env, storageConfiguration, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings,
+                runtimePolicy, outputSettings, chatOutputSink, delegateSpeech, eventSpeech, null);
+    }
+
+    /**
+     * @param eventTexts language table the event layer renders through; {@code null} renders nothing, which
+     *                   makes every event fall back to its kind code — the wiring always passes the real one
+     */
+    public AXModule(
+            IGameEnvironment env,
+            AXStorageConfiguration storageConfiguration,
+            ModuleRuntimeAccess runtime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXRuntimePolicy runtimePolicy,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink,
+            AXDelegateDeliverySink delegateSpeech,
+            AXEventSpeechSink eventSpeech,
+            AXGameEventTextProvider eventTexts
+    ) {
         this.env = env;
         this.storageConfiguration = storageConfiguration;
         this.runtime = runtime;
@@ -177,6 +201,7 @@ public final class AXModule implements TianshuManagedModule {
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
         this.delegateSpeech = delegateSpeech;
         this.eventSpeech = eventSpeech;
+        this.eventTexts = eventTexts == null ? AXGameEventTextProvider.NONE : eventTexts;
         this.adapter = new AXProtocolAdapter(runtime);
     }
 
@@ -334,9 +359,9 @@ public final class AXModule implements TianshuManagedModule {
      */
     private void publishGameEventService(ModuleRuntimeContext context) {
         gameEventService = new AXGameEventService(
-                new AXEventDispatcher(),
                 this::appendHistoryEvent,
                 eventSpeech == null ? AXEventSpeechSink.NOOP : eventSpeech,
+                eventTexts,
                 env.logs()
         );
         moduleServices = context.services();

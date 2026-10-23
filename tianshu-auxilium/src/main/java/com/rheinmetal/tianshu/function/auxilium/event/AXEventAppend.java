@@ -5,10 +5,10 @@ import java.util.Objects;
 /**
  * One entry ready to be appended to the event history.
  *
- * <p>Every entry carries the line exactly as the producer rendered it, and this layer never composes,
- * prefixes, joins or formats that line: no kind tag, no occurrence count, no value range. Folding only
- * changes the granularity of what is appended, and a folded entry holds the sentence the producer's
- * {@link AXEventAggregateRenderer} returned.
+ * <p>Every entry carries one already rendered sentence, and this layer never composes, prefixes, joins or
+ * formats that sentence: no kind tag, no occurrence count, no value range. Folding only changes the
+ * granularity of what is appended, and a folded entry holds the sentence the layer rendered from the
+ * descriptor's {@link AXEventFold} template.
  *
  * <p>{@link #kind()} is provenance metadata for the sink owner (logs, diagnostics, ledger); it is not
  * part of the appended line.

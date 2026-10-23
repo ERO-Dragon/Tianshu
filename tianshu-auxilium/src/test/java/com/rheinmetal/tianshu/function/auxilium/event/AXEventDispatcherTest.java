@@ -11,13 +11,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AXEventDispatcherTest {
     private static final long START = 1_000_000L;
     private static final String PRODUCER = "module.probe";
-    private static final AXEventAggregateRenderer FOLD = (count, first, last) -> "folded " + count;
+    private static final AXEventFold FOLD = AXEventFold.COUNT;
 
-    private final AXEventDispatcher dispatcher = new AXEventDispatcher();
+    private final AXEventDispatcher dispatcher = new AXEventDispatcher(
+            AXEventTierTable.builtin(),
+            AXEventSettings.DEFAULT,
+            // The layer words a fold itself now; this renderer is the language table standing in for a real one.
+            template -> "folded " + ((AXEventText.Arg.Value) template.args().get(0)).text());
 
     @Test
     void unknownKindFallsBackToLowAndOnlyAppends() {
-        AXEventDecision decision = dispatcher.decide(
+        AXEventDecision decision = decide(
                 event("mymod:ritual_complete", "仪式完成"), START);
 
         assertEquals(AXEventTier.LOW, decision.tier());
@@ -29,7 +33,7 @@ class AXEventDispatcherTest {
 
     @Test
     void highTierAppendsAndSpeaksImmediately() {
-        AXEventDecision decision = dispatcher.decide(event("tianshu:death", "被岩浆怪杀死"), START);
+        AXEventDecision decision = decide(event("tianshu:death", "被岩浆怪杀死"), START);
 
         assertEquals(AXEventTier.HIGH, decision.tier());
         assertEquals(AXEventAction.APPEND_AND_SPEAK, decision.action());
@@ -40,7 +44,7 @@ class AXEventDispatcherTest {
 
     @Test
     void highTierIsNeverFoldedEvenWithARenderer() {
-        AXEventDecision decision = dispatcher.decide(
+        AXEventDecision decision = decide(
                 event("tianshu:death", "被岩浆怪杀死", AXEventPayload.of(), FOLD), START);
 
         assertFalse(decision.folded());
@@ -51,9 +55,9 @@ class AXEventDispatcherTest {
     @Test
     void highTierWithSuppressOnlyAppends() {
         AXEventDescriptor descriptor = new AXEventDescriptor(
-                "tianshu:death", null, true, AXEventPayload.of(), "被岩浆怪杀死", null, PRODUCER);
+                "tianshu:death", null, true, AXEventPayload.of(), AXEventText.of("test.line", "被岩浆怪杀死"), null, PRODUCER);
 
-        AXEventDecision decision = dispatcher.decide(descriptor, START);
+        AXEventDecision decision = decide(descriptor, START);
 
         assertEquals(AXEventTier.HIGH, decision.tier());
         assertTrue(decision.blacklisted());
@@ -63,7 +67,7 @@ class AXEventDispatcherTest {
 
     @Test
     void midTierBuffersItsSpeechAndFoldsWhenTheProducerCanRenderTheWindow() {
-        AXEventDecision decision = dispatcher.decide(
+        AXEventDecision decision = decide(
                 event("tianshu:respawn", "在主世界重生点", AXEventPayload.of(), FOLD), START);
 
         assertEquals(AXEventTier.MID, decision.tier());
@@ -75,7 +79,7 @@ class AXEventDispatcherTest {
 
     @Test
     void midTierWithoutARendererAppendsImmediatelyInsteadOfInventingAFold() {
-        AXEventDecision decision = dispatcher.decide(event("tianshu:respawn", "在主世界重生点"), START);
+        AXEventDecision decision = decide(event("tianshu:respawn", "在主世界重生点"), START);
 
         assertEquals(AXEventAction.APPEND_AND_BUFFER, decision.action());
         assertFalse(decision.folded());
@@ -85,9 +89,9 @@ class AXEventDispatcherTest {
     @Test
     void midTierBlacklistedOnlyAppends() {
         AXEventDescriptor descriptor = new AXEventDescriptor(
-                "tianshu:respawn", null, true, AXEventPayload.of(), "在主世界重生点", FOLD, PRODUCER);
+                "tianshu:respawn", null, true, AXEventPayload.of(), AXEventText.of("test.line", "在主世界重生点"), FOLD, PRODUCER);
 
-        AXEventDecision decision = dispatcher.decide(descriptor, START);
+        AXEventDecision decision = decide(descriptor, START);
 
         assertEquals(AXEventAction.APPEND_ONLY, decision.action());
         assertFalse(decision.action().speaks());
@@ -96,7 +100,7 @@ class AXEventDispatcherTest {
 
     @Test
     void lowTierWithoutBlacklistOnlyAppends() {
-        AXEventDecision decision = dispatcher.decide(
+        AXEventDecision decision = decide(
                 event("tianshu:health_change", "失去 3 心", AXEventPayload.ofMagnitude(15), FOLD), START);
 
         assertEquals(AXEventTier.LOW, decision.tier());
@@ -107,7 +111,7 @@ class AXEventDispatcherTest {
 
     @Test
     void lowTierWithBuiltInBlacklistIsDroppedCompletely() {
-        AXEventDecision decision = dispatcher.decide(event("tianshu:block_break", "挖掉圆石"), START);
+        AXEventDecision decision = decide(event("tianshu:block_break", "挖掉圆石"), START);
 
         assertEquals(AXEventAction.DROP, decision.action());
         assertFalse(decision.appends());
@@ -118,12 +122,12 @@ class AXEventDispatcherTest {
     @Test
     void suppressOverridesABuiltInNonBlacklistedKind() {
         AXEventDescriptor notBlacklisted = new AXEventDescriptor(
-                "tianshu:block_place", null, false, AXEventPayload.of(), "放下工作台", null, PRODUCER);
+                "tianshu:block_place", null, false, AXEventPayload.of(), AXEventText.of("test.line", "放下工作台"), null, PRODUCER);
         AXEventDescriptor suppressed = new AXEventDescriptor(
-                "tianshu:health_critical", null, true, AXEventPayload.of(), "血量 2 心", null, PRODUCER);
+                "tianshu:health_critical", null, true, AXEventPayload.of(), AXEventText.of("test.line", "血量 2 心"), null, PRODUCER);
 
-        assertEquals(AXEventAction.DROP, dispatcher.decide(notBlacklisted, START).action());
-        AXEventDecision decision = dispatcher.decide(suppressed, START);
+        assertEquals(AXEventAction.DROP, decide(notBlacklisted, START).action());
+        AXEventDecision decision = decide(suppressed, START);
         assertTrue(decision.blacklisted());
         assertEquals(AXEventAction.APPEND_ONLY, decision.action());
     }
@@ -135,8 +139,8 @@ class AXEventDispatcherTest {
         AXEventDescriptor promotedSilentKind = event("tianshu:chat_message", "小明：借我点铁")
                 .withTier(AXEventTier.HIGH);
 
-        AXEventDecision decision = dispatcher.decide(promoted, START);
-        AXEventDecision silentKind = dispatcher.decide(promotedSilentKind, START + 400_000L);
+        AXEventDecision decision = decide(promoted, START);
+        AXEventDecision silentKind = decide(promotedSilentKind, START + 400_000L);
 
         assertEquals(AXEventTier.HIGH, decision.tier());
         assertEquals(AXEventAction.APPEND_AND_SPEAK, decision.action());
@@ -145,9 +149,9 @@ class AXEventDispatcherTest {
 
     @Test
     void globalGapTurnsASecondHighKindIntoABufferedSpeech() {
-        assertEquals(AXEventAction.APPEND_AND_SPEAK, dispatcher.decide(event("tianshu:death", "死了"), START).action());
+        assertEquals(AXEventAction.APPEND_AND_SPEAK, decide(event("tianshu:death", "死了"), START).action());
 
-        AXEventDecision second = dispatcher.decide(event("tianshu:on_fire", "着火了"), START + 30_000L);
+        AXEventDecision second = decide(event("tianshu:on_fire", "着火了"), START + 30_000L);
 
         assertEquals(AXEventTier.HIGH, second.tier());
         assertEquals(AXEventAction.APPEND_AND_BUFFER, second.action());
@@ -156,10 +160,10 @@ class AXEventDispatcherTest {
 
     @Test
     void sameKindGapKeepsTheSentenceQueuedAfterTheGlobalGapElapses() {
-        assertEquals(AXEventAction.APPEND_AND_SPEAK, dispatcher.decide(event("tianshu:death", "死了"), START).action());
+        assertEquals(AXEventAction.APPEND_AND_SPEAK, decide(event("tianshu:death", "死了"), START).action());
 
-        AXEventDecision tooSoon = dispatcher.decide(event("tianshu:death", "又死了"), START + 120_000L);
-        AXEventDecision later = dispatcher.decide(event("tianshu:death", "第三次"), START + 301_000L);
+        AXEventDecision tooSoon = decide(event("tianshu:death", "又死了"), START + 120_000L);
+        AXEventDecision later = decide(event("tianshu:death", "第三次"), START + 301_000L);
 
         assertEquals(AXEventAction.APPEND_AND_BUFFER, tooSoon.action());
         assertEquals(AXEventAction.APPEND_AND_SPEAK, later.action());
@@ -167,12 +171,12 @@ class AXEventDispatcherTest {
 
     @Test
     void sameKindGapIsSlottedPerSourceSoTwoProducersDoNotSilenceEachOther() {
-        assertEquals(AXEventAction.APPEND_AND_SPEAK, dispatcher.decide(
+        assertEquals(AXEventAction.APPEND_AND_SPEAK, decide(
                 event("tianshu:death", "死了", AXEventPayload.of(), null, "module.one"), START).action());
 
-        AXEventDecision otherSource = dispatcher.decide(
+        AXEventDecision otherSource = decide(
                 event("tianshu:death", "也死了", AXEventPayload.of(), null, "module.two"), START + 61_000L);
-        AXEventDecision sameSourceAgain = dispatcher.decide(
+        AXEventDecision sameSourceAgain = decide(
                 event("tianshu:death", "又死了", AXEventPayload.of(), null, "module.one"), START + 122_000L);
 
         assertEquals(AXEventAction.APPEND_AND_SPEAK, otherSource.action());
@@ -186,8 +190,8 @@ class AXEventDispatcherTest {
         AXEventDescriptor fromThirdParty = event("tianshu:respawn", "在主世界重生点", AXEventPayload.of(), FOLD,
                 "plugin.harvest");
 
-        AXEventDecision builtIn = new AXEventDispatcher().decide(fromBuiltIn, START);
-        AXEventDecision thirdParty = new AXEventDispatcher().decide(fromThirdParty, START);
+        AXEventDecision builtIn = new AXEventDispatcher().decide(fromBuiltIn, "sentence", START);
+        AXEventDecision thirdParty = new AXEventDispatcher().decide(fromThirdParty, "sentence", START);
 
         assertEquals(builtIn, thirdParty);
     }
@@ -195,9 +199,9 @@ class AXEventDispatcherTest {
     @Test
     void foldedEventsComeBackWhenTheirWindowCloses() {
         String source = "module.probe";
-        dispatcher.decide(event("tianshu:mob_killed", "击杀僵尸", AXEventPayload.of(), FOLD, source), START);
-        dispatcher.decide(event("tianshu:mob_killed", "击杀僵尸", AXEventPayload.of(), FOLD, source), START + 1_000L);
-        dispatcher.decide(event("tianshu:mob_killed", "击杀僵尸", AXEventPayload.of(), FOLD, source), START + 2_000L);
+        decide(event("tianshu:mob_killed", "击杀僵尸", AXEventPayload.of(), FOLD, source), START);
+        decide(event("tianshu:mob_killed", "击杀僵尸", AXEventPayload.of(), FOLD, source), START + 1_000L);
+        decide(event("tianshu:mob_killed", "击杀僵尸", AXEventPayload.of(), FOLD, source), START + 2_000L);
 
         assertTrue(dispatcher.drainDueAppends(START + 3_000L).isEmpty());
         List<AXEventAppend> appends = dispatcher.drainDueAppends(START + 32_000L);
@@ -209,17 +213,25 @@ class AXEventDispatcherTest {
         assertEquals("folded 3", aggregated.text());
     }
 
+    /**
+     * These cases assert decisions, not wording, so the sentence handed to the dispatcher is a constant:
+     * the layer never inspects it, it only stores it.
+     */
+    private AXEventDecision decide(AXEventDescriptor descriptor, long nowMillis) {
+        return dispatcher.decide(descriptor, descriptor.kind(), nowMillis);
+    }
+
     private static AXEventDescriptor event(String kind, String text) {
-        return event(kind, text, AXEventPayload.of(), null, PRODUCER);
+        return event(kind, text, AXEventPayload.of(), AXEventFold.NONE, PRODUCER);
     }
 
     private static AXEventDescriptor event(String kind, String text, AXEventPayload payload,
-                                           AXEventAggregateRenderer renderer) {
-        return event(kind, text, payload, renderer, PRODUCER);
+                                           AXEventFold fold) {
+        return event(kind, text, payload, fold, PRODUCER);
     }
 
     private static AXEventDescriptor event(String kind, String text, AXEventPayload payload,
-                                           AXEventAggregateRenderer renderer, String sourceId) {
-        return AXEventDescriptor.of(kind, sourceId, payload, text, renderer);
+                                           AXEventFold fold, String sourceId) {
+        return AXEventDescriptor.of(kind, sourceId, payload, AXEventText.of("test.line", text), fold);
     }
 }

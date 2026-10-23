@@ -52,6 +52,103 @@ tasks.named('check') {
     dependsOn tasks.named('verifyClientPlatformBoundary')
 }
 
+// ---------------------------------------------------------------- language merge
+// The runtime still ships exactly one `assets/tianshu/lang/<lang>.json` in the `tianshu` namespace, but the
+// keys are owned per module now: each module keeps its own shard under `src/main/lang/`, and the keys nobody
+// owns (the keybind names) live in the repository-level `lang/`. This task is the only place they meet.
+//
+// The merge fails on a duplicate key. That is the point of the split: before it, a repeated key was silently
+// overwritten by whichever copy the JSON parser saw last, and nothing — not the build, not a test — noticed.
+
+def languageShardDirs = [rootProject.file('lang')] + rootProject.subprojects.collect { it.file('src/main/lang') }
+// File trees instead of a resolved file list: a shard added to an existing directory must be picked up by the
+// next build, and a list captured at configuration time would silently keep merging the old set.
+def languageShardTrees = languageShardDirs.collect { dir -> rootProject.fileTree(dir) { include '*.json' } }
+def generatedLanguageRoot = layout.buildDirectory.dir('generated/lang')
+
+tasks.register('mergeLang') {
+    group = 'build'
+    description = 'Merges the per-module language shards into the runtime language files of the tianshu namespace.'
+    inputs.files(languageShardTrees)
+    outputs.dir(generatedLanguageRoot)
+
+    doLast {
+        def languages = ['zh_cn', 'en_us']
+        def problems = []
+        def languageShardFiles = languageShardTrees.collectMany { it.files }.unique().sort { it.path }
+
+        // Symmetry first: a shard is a module's own vocabulary, so both languages must carry the same keys.
+        languageShardFiles.collect { it.parentFile }.unique().each { dir ->
+            def zh = new File(dir, 'zh_cn.json')
+            def en = new File(dir, 'en_us.json')
+            if (!zh.isFile() || !en.isFile()) {
+                problems << "${dir}: a shard must carry both zh_cn.json and en_us.json".toString()
+                return
+            }
+            def zhKeys = (new groovy.json.JsonSlurper().parse(zh, 'UTF-8') as Map).keySet()
+            def enKeys = (new groovy.json.JsonSlurper().parse(en, 'UTF-8') as Map).keySet()
+            if (zhKeys != enKeys) {
+                def missingEn = (zhKeys - enKeys).take(5)
+                def missingZh = (enKeys - zhKeys).take(5)
+                problems << "${dir}: zh_cn and en_us are not symmetric (missing en: ${missingEn}, missing zh: ${missingZh})".toString()
+            }
+        }
+
+        def outputDir = new File(generatedLanguageRoot.get().asFile, 'assets/tianshu/lang')
+        outputDir.mkdirs()
+        languages.each { language ->
+            def merged = new TreeMap<String, String>()
+            def origin = [:]
+            languageShardFiles.findAll { it.name == "${language}.json" }.each { file ->
+                // A repeated key *inside* one file is what a JSON parser silently collapses, so it is
+                // detected on the raw text before parsing.
+                def seen = new HashSet<String>()
+                file.eachLine('UTF-8') { line ->
+                    def matcher = line =~ /^\s*"((?:[^"\\]|\\.)*)"\s*:/
+                    if (matcher.find() && !seen.add(matcher.group(1))) {
+                        problems << "${language}: '${matcher.group(1)}' is repeated inside ${file}".toString()
+                    }
+                }
+                def parsed = new groovy.json.JsonSlurper().parse(file, 'UTF-8')
+                if (!(parsed instanceof Map)) {
+                    throw new GradleException("language shard is not a JSON object: ${file}")
+                }
+                parsed.each { key, value ->
+                    if (merged.containsKey(key)) {
+                        problems << "${language}: '${key}' is defined by ${origin[key]} and ${file}".toString()
+                    } else {
+                        merged[key] = value
+                        origin[key] = file
+                    }
+                }
+            }
+            if (!problems.isEmpty()) {
+                throw new GradleException("Language shards are inconsistent; the runtime file would silently"
+                        + " keep only one value per key:\n  " + problems.join('\n  '))
+            }
+            // Written by hand instead of JsonOutput.prettyPrint so the file keeps the two-space style the
+            // repository already used; the output is deterministic (sorted keys), which makes the task
+            // idempotent and the diff stable.
+            def builder = new StringBuilder('{\n')
+            def entries = merged.entrySet().toList()
+            entries.eachWithIndex { entry, index ->
+                builder << '  ' << groovy.json.JsonOutput.toJson(entry.key) << ': '
+                builder << groovy.json.JsonOutput.toJson(entry.value)
+                builder << (index == entries.size() - 1 ? '\n' : ',\n')
+            }
+            builder << '}\n'
+            new File(outputDir, "${language}.json").setText(builder.toString(), 'UTF-8')
+            logger.lifecycle("mergeLang: ${merged.size()} ${language} keys from "
+                    + "${languageShardFiles.count { it.name == "${language}.json" }} shards")
+        }
+    }
+}
+
+sourceSets.main.resources.srcDir(generatedLanguageRoot)
+tasks.named('processResources') {
+    dependsOn tasks.named('mergeLang')
+}
+
 test {
     useJUnitPlatform()
 }

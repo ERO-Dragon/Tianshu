@@ -1,0 +1,5 @@
+{
+  "tianshu.presence.module.ia.starting": "Intent starting",
+  "tianshu.presence.module.ia.ready": "Intent ready",
+  "tianshu.presence.module.ia.stopped": "Intent stopped"
+}

@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.auxilium.event;
 
-import java.text.Normalizer;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -12,14 +11,15 @@ import java.util.regex.Pattern;
  * with the entry and it selects a cooldown slot and an aggregation window, and it never reaches a
  * decision branch.
  *
- * <p>{@code text} is the sentence the producer already rendered from its own language resources. The
- * layer stores that string verbatim (after the sanitation below) and never assembles wording of its
- * own, which is also why there is no "language key plus arguments" handle in this layer: a producer
- * that cannot render its own sentence must not submit an event.
+ * <p>{@code text} is the event's wording <em>as semantics</em>: a template key plus its arguments
+ * ({@link AXEventText}). The producer never words a sentence; the layer renders it once through the
+ * language table it was given, so every producer shares one rendering path instead of implementing one.
+ * The rendered sentence is what reaches the history and the voice channel.
  *
- * <p>{@code aggregateRenderer} is optional. While a window is open the layer folds occurrences and
- * calls back into the producer for the folded sentence; without a renderer the occurrences stay
- * separate entries, so a missing renderer degrades to more entries and never to generated text.
+ * <p>{@code fold} is how a closed aggregation window is worded ({@link AXEventFold}). It replaced a
+ * producer supplied renderer callback: the window knows its count and its first and last magnitudes, the
+ * fold says which of them the sentence takes, and the same renderer that words the single event words the
+ * folded one. {@link AXEventFold#NONE} keeps occurrences separate, which is the shape for a one-off moment.
  *
  * <p>{@code tier} is optional: when it is {@code null} the dispatcher consults the built-in tier
  * table and falls back to {@link AXEventTier#LOW} when the kind is unknown. {@code suppress} forces
@@ -32,8 +32,8 @@ public record AXEventDescriptor(
         AXEventTier tier,
         boolean suppress,
         AXEventPayload payload,
-        String text,
-        AXEventAggregateRenderer aggregateRenderer,
+        AXEventText text,
+        AXEventFold fold,
         String sourceId
 ) {
     /** Namespace plus local name, lowercase, colon separated; see kind discipline in the design doc. */
@@ -41,14 +41,6 @@ public record AXEventDescriptor(
 
     /** Source recorded when a producer does not name one. */
     public static final String UNKNOWN_SOURCE = "unknown";
-
-    /**
-     * Upper bound for {@link #text}.
-     *
-     * <p>Text comes from an arbitrary producer module, so one history line has to stay bounded; the
-     * cap is generous enough for a rendered sentence and its arguments.
-     */
-    public static final int MAX_TEXT_CHARS = 120;
 
     public AXEventDescriptor {
         if (kind == null || kind.isBlank()) {
@@ -59,75 +51,28 @@ public record AXEventDescriptor(
             throw new IllegalArgumentException("event kind must be namespaced, for example tianshu:death: " + kind);
         }
         Objects.requireNonNull(payload, "event payload is required");
-        text = sanitize(text);
+        text = Objects.requireNonNull(text, "event text is required: the producer states a key and its arguments");
+        fold = fold == null ? AXEventFold.NONE : fold;
         sourceId = sourceId == null || sourceId.isBlank() ? UNKNOWN_SOURCE : sourceId.trim();
     }
 
     /**
      * Submits an event whose tier comes from the built-in table and whose occurrences stay separate.
      *
-     * @param text the sentence the producer already rendered; required and never blank
+     * @param text the template and arguments that word this event; the layer renders it
      */
-    public static AXEventDescriptor of(String kind, String sourceId, AXEventPayload payload, String text) {
-        return new AXEventDescriptor(kind, null, false, payload, text, null, sourceId);
+    public static AXEventDescriptor of(String kind, String sourceId, AXEventPayload payload, AXEventText text) {
+        return new AXEventDescriptor(kind, null, false, payload, text, AXEventFold.NONE, sourceId);
     }
 
-    /** Submits an event that lets the layer fold its occurrences through the producer's renderer. */
-    public static AXEventDescriptor of(String kind, String sourceId, AXEventPayload payload, String text,
-                                       AXEventAggregateRenderer aggregateRenderer) {
-        return new AXEventDescriptor(kind, null, false, payload, text, aggregateRenderer, sourceId);
+    /** Submits an event that lets the layer fold its occurrences into one sentence of this shape. */
+    public static AXEventDescriptor of(String kind, String sourceId, AXEventPayload payload, AXEventText text,
+                                       AXEventFold fold) {
+        return new AXEventDescriptor(kind, null, false, payload, text, fold, sourceId);
     }
 
     /** Same event, declaring its own tier instead of reading the built-in table. */
     public AXEventDescriptor withTier(AXEventTier tier) {
-        return new AXEventDescriptor(kind, tier, suppress, payload, text, aggregateRenderer, sourceId);
-    }
-
-    /**
-     * Treats producer supplied text as untrusted input: NFC normalized, stripped of angle brackets (a
-     * module must not be able to inject {@code <event>} or any other prompt tag through an event
-     * line) and truncated on a word boundary so one history line stays bounded.
-     */
-    private static String sanitize(String raw) {
-        if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("event text is required: the producer must render it");
-        }
-        String normalized = Normalizer.normalize(raw, Normalizer.Form.NFC).trim();
-        StringBuilder stripped = new StringBuilder(normalized.length());
-        for (int i = 0; i < normalized.length(); i++) {
-            char ch = normalized.charAt(i);
-            if (ch != '<' && ch != '>') {
-                stripped.append(ch);
-            }
-        }
-        String cleaned = stripped.toString().trim();
-        if (cleaned.isEmpty()) {
-            throw new IllegalArgumentException("event text is required: the producer must render it");
-        }
-        return truncate(cleaned);
-    }
-
-    /**
-     * Truncates on the last separator before the cap so a word or clause is not cut in half, and
-     * never splits a surrogate pair.
-     */
-    private static String truncate(String value) {
-        if (value.length() <= MAX_TEXT_CHARS) {
-            return value;
-        }
-        int cut = MAX_TEXT_CHARS;
-        if (Character.isLowSurrogate(value.charAt(cut))) {
-            cut--;
-        }
-        for (int i = cut; i > MAX_TEXT_CHARS / 2; i--) {
-            if (isSeparator(value.charAt(i - 1))) {
-                return value.substring(0, i).trim();
-            }
-        }
-        return value.substring(0, cut).trim();
-    }
-
-    private static boolean isSeparator(char ch) {
-        return Character.isWhitespace(ch) || "，。、；：！？,.!?;:".indexOf(ch) >= 0;
+        return new AXEventDescriptor(kind, tier, suppress, payload, text, fold, sourceId);
     }
 }

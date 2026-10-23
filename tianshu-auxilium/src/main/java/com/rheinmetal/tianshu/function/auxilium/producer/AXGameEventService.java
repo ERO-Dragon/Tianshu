@@ -6,6 +6,9 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDecision;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventTexts;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventTierTable;
 import com.rheinmetal.tianshu.api.LogSink;
 
 /**
@@ -29,22 +32,27 @@ import com.rheinmetal.tianshu.api.LogSink;
  * the same descriptor from a third-party module and from the built-in game event producer, and
  * {@link AXEventDescriptor#sourceId()} is recorded, never branched on.
  *
+ * <p>This is where an event becomes a sentence. The producer states a template and its arguments, the
+ * service renders it through the injected {@link AXGameEventTextProvider}, and that one rendered line is
+ * what the decision stores, the history receives and the voice channel speaks. Rendering happens once per
+ * submission, before the decision, so the aggregator never has to re-word an occurrence.
+ *
  * <p>The service is closed for the rest of a session once {@link #stop(long)} runs, which is what makes
  * a world logout stop all production even if a platform hook keeps ticking.
- *
- * <p>Speech leaves through {@link AXEventSpeechSink}: the pending sentence is the producer's own text,
- * reported in the log for diagnostics and handed to the sink for the voice channel. The layer itself
- * still knows nothing about TTS, wording or playback order.
  */
 public final class AXGameEventService {
+    /** Diagnostic emitted when a template cannot be worded and the entry falls back to the kind code. */
+    private static final String UNRESOLVED = "ax.event.text.unresolved";
+
     private final AXEventDispatcher dispatcher;
     private final AXEventHistorySink historySink;
     private final AXEventSpeechSink speechSink;
+    private final AXGameEventTextProvider texts;
     private final LogSink logSink;
     private boolean closed;
 
     public AXGameEventService(AXEventDispatcher dispatcher, AXEventHistorySink historySink, LogSink logSink) {
-        this(dispatcher, historySink, AXEventSpeechSink.NOOP, logSink);
+        this(dispatcher, historySink, AXEventSpeechSink.NOOP, AXGameEventTextProvider.NONE, logSink);
     }
 
     public AXGameEventService(
@@ -52,10 +60,39 @@ public final class AXGameEventService {
             AXEventHistorySink historySink,
             AXEventSpeechSink speechSink,
             LogSink logSink) {
+        this(dispatcher, historySink, speechSink, AXGameEventTextProvider.NONE, logSink);
+    }
+
+    /**
+     * @param texts the language table this session renders through; it is handed to the aggregation windows
+     *              as well, so a folded line is worded by the same table and never by the producer
+     */
+    public AXGameEventService(
+            AXEventDispatcher dispatcher,
+            AXEventHistorySink historySink,
+            AXEventSpeechSink speechSink,
+            AXGameEventTextProvider texts,
+            LogSink logSink) {
         this.dispatcher = dispatcher == null ? new AXEventDispatcher() : dispatcher;
         this.historySink = historySink;
         this.speechSink = speechSink == null ? AXEventSpeechSink.NOOP : speechSink;
+        this.texts = texts == null ? AXGameEventTextProvider.NONE : texts;
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
+    }
+
+    /**
+     * Builds the decision path itself, with the renderer wired to the same language table.
+     *
+     * <p>Preferred over passing a dispatcher in: the aggregate fold templates must be rendered through this
+     * provider, and constructing both here makes it impossible to wire one without the other.
+     */
+    public AXGameEventService(
+            AXEventHistorySink historySink,
+            AXEventSpeechSink speechSink,
+            AXGameEventTextProvider texts,
+            LogSink logSink) {
+        this(new AXEventDispatcher(AXEventTierTable.builtin(), AXEventSettings.DEFAULT, texts::render),
+                historySink, speechSink, texts, logSink);
     }
 
     /** Submits one event stamped with the wall clock; the call any module makes. */
@@ -72,19 +109,20 @@ public final class AXGameEventService {
         if (closed || descriptor == null) {
             return;
         }
-        AXEventDecision decision = dispatcher.decide(descriptor, nowMillis);
+        String sentence = sentenceOf(descriptor);
+        AXEventDecision decision = dispatcher.decide(descriptor, sentence, nowMillis);
         if (decision.action().speaks()) {
-            // The pending utterance is the producer's sentence, passed through unchanged: this layer
-            // never renders wording of its own. The log line is the diagnostic; the sink is the voice
-            // channel (arrival order is FIFO, queuing is the TTS module's business).
+            // The pending utterance is the sentence this service rendered, passed through unchanged: the
+            // event layer holds no wording of its own. The log line is the diagnostic; the sink is the
+            // voice channel (arrival order is FIFO, queuing is the TTS module's business).
             logSink.info("ax.event.speech_pending kind=" + descriptor.kind()
                     + " source=" + descriptor.sourceId()
                     + " action=" + decision.action().name()
-                    + " text=" + descriptor.text());
-            speechSink.speak(descriptor.kind(), descriptor.text());
+                    + " text=" + sentence);
+            speechSink.speak(descriptor.kind(), sentence);
         }
         if (decision.appends() && !decision.folded()) {
-            append(new AXEventAppend.Single(descriptor.kind(), descriptor.text()));
+            append(new AXEventAppend.Single(descriptor.kind(), sentence));
         }
         for (AXEventAppend due : dispatcher.drainDueAppends(nowMillis)) {
             append(due);
@@ -117,6 +155,29 @@ public final class AXGameEventService {
 
     public boolean closed() {
         return closed;
+    }
+
+    /**
+     * Renders one descriptor, falling back to the kind code when the template cannot be worded.
+     *
+     * <p>An empty line would take a history slot without carrying anything, which reads to the model as an
+     * event that happened and said nothing — worse than a bare kind code, which at least names what
+     * happened. The kind fallback is the same shape the delegate failure path already uses.
+     */
+    private String sentenceOf(AXEventDescriptor descriptor) {
+        String rendered = AXEventTexts.sanitize(texts.render(descriptor.text()));
+        if (!rendered.isBlank()) {
+            return rendered;
+        }
+        String key = descriptor.text().key();
+        logSink.info(UNRESOLVED
+                + " kind=" + descriptor.kind()
+                + " source=" + descriptor.sourceId()
+                + " key=" + key
+                // A resolvable root whose result is still blank means the arguments failed: a missing nested
+                // key, or nesting past AXEventText.MAX_REF_DEPTH. Both report themselves the same way.
+                + " reason=" + (texts.exists(key) ? "arguments" : "missing_key"));
+        return descriptor.kind();
     }
 
     private void append(AXEventAppend append) {

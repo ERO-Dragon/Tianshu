@@ -15,8 +15,6 @@ dependencies {
     compileOnly 'com.google.code.gson:gson:2.10.1'
     testImplementation project(':tianshu-testkit')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
-    // The language-key gate parses both lang files, exactly as tianshu-core does for its own tests.
-    testImplementation 'com.google.code.gson:gson:2.10.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

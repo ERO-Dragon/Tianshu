@@ -11,6 +11,8 @@ import com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment;
 import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.protocol.payload.FactField;
+import com.rheinmetal.tianshu.protocol.payload.FactValue;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 
 import java.util.ArrayList;
@@ -24,6 +26,12 @@ import java.util.stream.Collectors;
 
 public final class PresenceContextFactMapper {
     private static final long FACT_TTL_MILLIS = 120_000L;
+    /**
+     * Values that are aggregate tokens rather than scalars, so the transitional field bridge skips them; step ②
+     * turns each of them into a repeated {@code FactValue.Record}.
+     */
+    private static final Set<String> AGGREGATE_TOKENS =
+            Set.of("items", "effects", "inventoryItemsJson", "activeEffectsJson", "equippedItemIds");
     private final PresenceTextProvider textProvider;
 
     public PresenceContextFactMapper() {
@@ -236,6 +244,8 @@ public final class PresenceContextFactMapper {
     ) {
         return new PresenceContextSnapshotPayload.FactPayload(
                 factId,
+                // Structured twin of the flat map below; see fieldsFrom for why both are written for now.
+                fieldsFrom(nativeValues),
                 text,
                 priority,
                 "presence",
@@ -245,6 +255,60 @@ public final class PresenceContextFactMapper {
                 FACT_TTL_MILLIS,
                 nativeValues
         );
+    }
+
+    /**
+     * The typed twin of the flat value map.
+     *
+     * <p>Transitional bridge for step ①: the flat map still has readers while they are migrated, so the
+     * producer writes both. The types are derived from the field names this producer itself defines; step ②
+     * replaces this method with the per-fact field lists, at which point the aggregate tokens
+     * ({@link #AGGREGATE_TOKENS}) become proper {@code FactValue.Record} values instead of being skipped.
+     */
+    private List<FactField> fieldsFrom(Map<String, String> values) {
+        List<FactField> fields = new ArrayList<>(values.size());
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String name = entry.getKey();
+            String raw = entry.getValue();
+            if (name == null || raw == null || raw.isBlank() || AGGREGATE_TOKENS.contains(name)) {
+                continue;
+            }
+            fields.add(new FactField(name, typedValue(name, raw)));
+        }
+        return fields;
+    }
+
+    private FactValue typedValue(String name, String raw) {
+        if (name.endsWith("Id") || "screenKind".equals(name)) {
+            return new FactValue.Identifier(raw);
+        }
+        if (name.endsWith("DisplayName")) {
+            return new FactValue.Text(raw);
+        }
+        if ("raining".equals(name) || "thundering".equals(name) || "sneaking".equals(name)
+                || "beneficial".equals(name) || name.endsWith("KeyDown")) {
+            return new FactValue.Flag(Boolean.parseBoolean(raw));
+        }
+        if ("health".equals(name) || "maxHealth".equals(name) || "crosshairTargetDistance".equals(name)) {
+            return new FactValue.Number(numberOf(raw));
+        }
+        return new FactValue.Count(integerOf(raw));
+    }
+
+    private double numberOf(String raw) {
+        try {
+            return Double.parseDouble(raw.trim());
+        } catch (NumberFormatException ignored) {
+            return 0.0D;
+        }
+    }
+
+    private int integerOf(String raw) {
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private String screenName(PresenceScreenKind kind) {

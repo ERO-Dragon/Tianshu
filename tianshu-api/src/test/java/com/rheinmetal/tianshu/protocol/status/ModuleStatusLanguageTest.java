@@ -1,11 +1,8 @@
 package com.rheinmetal.tianshu.protocol.status;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.testkit.LangShards;
 import org.junit.jupiter.api.Test;
 
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -25,19 +21,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Every language key a module can publish has text in both languages.
  *
- * <p>A missing key is invisible: the status row renders empty or shows the raw key, the build stays
- * green, and only a player notices. Two mechanisms close that hole — the lifecycle keys are derived from
- * the module id ({@link ModuleStatusKeys}), and this test checks the derived set plus every literal the
- * sources hand to {@code ModuleStatus} against both language files.</p>
+ * <p>A missing key is invisible: the status row renders empty or shows the raw key, the build stays green,
+ * and only a player notices. Two mechanisms close that hole — the lifecycle keys are derived from the module
+ * id ({@link ModuleStatusKeys}), and this test checks the derived set plus every literal the sources hand to
+ * {@code ModuleStatus} against both languages.</p>
  *
- * <p>It sweeps the sources instead of keeping a list, so a new status added anywhere under
- * {@code src/main/java} is covered without anyone remembering to add it here.</p>
+ * <p>The keys are read from the per-module shards ({@link LangShards}), not from the merged runtime file: the
+ * merged file is build output, the shards are the source of truth the merge reads. The sweep over the sources
+ * stays, so a new status added anywhere under {@code src/main/java} is covered without anyone remembering to
+ * add it here.</p>
  */
 class ModuleStatusLanguageTest {
 
-    /** Repository root, relative to this module's test working directory. */
-    private static final Path REPO = Path.of("..");
-    private static final Path LANG_ROOT = Path.of("../tianshu-client/src/main/resources/assets/tianshu/lang");
+    private static final Path REPO = LangShards.repositoryRoot();
 
     /** Presence-row keys and settings-page keys are the two families a module status can carry. */
     private static final Pattern KEY_LITERAL = Pattern.compile("\"(tianshu\\.(?:presence|gui)\\.[a-zA-Z0-9_.]+)\"");
@@ -61,9 +57,9 @@ class ModuleStatusLanguageTest {
     );
 
     @Test
-    void everyDerivedLifecycleKeyHasTextInBothLanguages() throws Exception {
-        Set<String> zh = keys("zh_cn.json");
-        Set<String> en = keys("en_us.json");
+    void everyDerivedLifecycleKeyHasTextInBothLanguages() {
+        Set<String> zh = LangShards.keys(LangShards.ZH_CN);
+        Set<String> en = LangShards.keys(LangShards.EN_US);
 
         Set<String> lifecycle = ModuleStatusKeys.lifecycleKeys();
         assertFalse(lifecycle.isEmpty(), "the lifecycle key set must not be empty");
@@ -75,8 +71,8 @@ class ModuleStatusLanguageTest {
 
     @Test
     void everyKeyLiteralInTheSourcesHasTextInBothLanguages() throws Exception {
-        Set<String> zh = keys("zh_cn.json");
-        Set<String> en = keys("en_us.json");
+        Set<String> zh = LangShards.keys(LangShards.ZH_CN);
+        Set<String> en = LangShards.keys(LangShards.EN_US);
 
         Map<String, String> literals = keyLiteralsInSources();
         assertTrue(literals.size() > 50, "the source sweep must actually find the keys: " + literals.size());
@@ -87,13 +83,13 @@ class ModuleStatusLanguageTest {
                 missing.add(entry.getKey() + " (" + entry.getValue() + ")");
             }
         }
-        assertTrue(missing.isEmpty(), "language keys referenced by the sources but missing from a language file: " + missing);
+        assertTrue(missing.isEmpty(), "language keys referenced by the sources but missing from a language shard: " + missing);
     }
 
     @Test
-    void keysAssembledAtRuntimeHaveTextInBothLanguages() throws Exception {
-        Set<String> zh = keys("zh_cn.json");
-        Set<String> en = keys("en_us.json");
+    void keysAssembledAtRuntimeHaveTextInBothLanguages() {
+        Set<String> zh = LangShards.keys(LangShards.ZH_CN);
+        Set<String> en = LangShards.keys(LangShards.EN_US);
 
         for (String key : CONCATENATED_KEYS) {
             assertTrue(zh.contains(key), "missing in zh_cn: " + key);
@@ -131,19 +127,6 @@ class ModuleStatusLanguageTest {
                 continue;
             }
             found.putIfAbsent(key, path.getFileName().toString());
-        }
-    }
-
-    private static Set<String> keys(String fileName) throws Exception {
-        Path file = LANG_ROOT.resolve(fileName);
-        assertTrue(Files.isRegularFile(file), "missing language file: " + file);
-        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            JsonElement parsed = JsonParser.parseReader(reader);
-            assertTrue(parsed.isJsonObject(), "language file is not a JSON object: " + file);
-            JsonObject json = parsed.getAsJsonObject();
-            Set<String> keys = new TreeSet<>();
-            json.keySet().forEach(keys::add);
-            return keys;
         }
     }
 

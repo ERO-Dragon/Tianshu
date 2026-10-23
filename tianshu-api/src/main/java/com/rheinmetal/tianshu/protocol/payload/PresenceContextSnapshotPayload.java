@@ -36,8 +36,21 @@ public record PresenceContextSnapshotPayload(
         return value.trim();
     }
 
+    /**
+     * One requested fact, as structured data.
+     *
+     * <p><strong>Facts are data, not speech.</strong> This type carries a fact id plus typed fields;
+     * presentation is decided by whichever consumer reads it, in its own language, through its own templates.
+     * There is no rendered sentence on this contract, because a sentence is one particular consumer's view of
+     * the data.
+     *
+     * <p>{@code nativeValues} is a transitional mirror of the same information in flat string form. It exists so
+     * the consumers that still read a flat map keep working while they are migrated to {@code fields}; the
+     * producer writes it alongside {@code fields}, and it goes away once the last reader is converted.
+     */
     public record FactPayload(
             String factId,
+            List<FactField> fields,
             String text,
             int priority,
             String source,
@@ -49,7 +62,7 @@ public record PresenceContextSnapshotPayload(
     ) implements ITianshuPayload {
         public FactPayload(
                 String factId,
-                String text,
+                List<FactField> fields,
                 int priority,
                 String source,
                 String subject,
@@ -57,11 +70,14 @@ public record PresenceContextSnapshotPayload(
                 long updatedAtMillis,
                 long ttlMillis
         ) {
-            this(factId, text, priority, source, subject, tags, updatedAtMillis, ttlMillis, Map.of());
+            this(factId, fields, "", priority, source, subject, tags, updatedAtMillis, ttlMillis, Map.of());
         }
 
         public FactPayload {
             factId = clean(factId, "presence.fact.unknown");
+            fields = fields == null ? List.of() : List.copyOf(fields.stream()
+                    .filter(field -> field != null && !field.blank())
+                    .toList());
             text = clean(text, "");
             priority = Math.max(0, Math.min(100, priority));
             source = clean(source, "presence");
@@ -83,7 +99,21 @@ public record PresenceContextSnapshotPayload(
         }
 
         public boolean isEmpty() {
-            return text.isBlank() && nativeValues.isEmpty();
+            // While the deprecated text is still on the contract, a fact that only has it is not empty yet.
+            return fields.isEmpty() && nativeValues.isEmpty() && text.isBlank();
+        }
+
+        /** The first field with this name, or {@code null}; convenience for consumers reading one value. */
+        public FactField field(String name) {
+            if (name == null) {
+                return null;
+            }
+            for (FactField field : fields) {
+                if (name.equals(field.name())) {
+                    return field;
+                }
+            }
+            return null;
         }
     }
 }

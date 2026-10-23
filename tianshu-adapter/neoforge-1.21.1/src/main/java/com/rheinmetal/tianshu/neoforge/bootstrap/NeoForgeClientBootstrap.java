@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.intake.AsrModuleInstaller;
 import com.rheinmetal.tianshu.function.echo.TtsModuleInstaller;
 import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.AXModuleInstaller;
+import com.rheinmetal.tianshu.function.auxilium.AXRuntimePolicy;
 import com.rheinmetal.tianshu.function.weaving.LlmModuleInstaller;
 import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
@@ -356,10 +357,13 @@ public final class NeoForgeClientBootstrap {
     private TianshuModuleInstaller createAxInstaller(
             TianshuModuleAssemblyContext context,
             AXWorldIdentityProvider worldIdentityProvider) {
+        // One language door for this session: the speech lines and the event layer both resolve through it,
+        // so the provider is created once and shared instead of each path making its own.
+        NeoForgeGameEventTextProvider texts = new NeoForgeGameEventTextProvider();
         AXSpeechBridge speechBridge = new AXSpeechBridge(
                 new AXProtocolSpeechOutlet(
                         new VoiceNotificationService(context.moduleRuntime()),
-                        new NeoForgeGameEventTextProvider(),
+                        texts,
                         config,
                         context.env().logs()),
                 context.env().logs());
@@ -370,10 +374,12 @@ public final class NeoForgeClientBootstrap {
                 worldIdentityProvider,
                 languageSnapshot::promptLanguage,
                 config instanceof AXAssistantSettings assistantSettings ? assistantSettings : AXAssistantSettings.DEFAULT,
+                AXRuntimePolicy.defaults(),
                 config,
                 AXChatOutputSink.NOOP,
                 speechBridge,
-                speechBridge
+                speechBridge,
+                texts
         );
     }
 

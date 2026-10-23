@@ -76,8 +76,8 @@ class AXEventTierTableTest {
     }
 
     /**
-     * Wording is not table data any more: how a folded window reads is declared by the producer's own
-     * {@link AXEventAggregateRenderer}, so a table row carries a tier and a blacklist flag only.
+     * Wording is not table data: how a folded window reads is declared by the descriptor's own
+     * {@link AXEventFold}, so a table row carries a tier and a blacklist flag only.
      */
     @Test
     void tableRowsCarryNoWordingMetadata() {

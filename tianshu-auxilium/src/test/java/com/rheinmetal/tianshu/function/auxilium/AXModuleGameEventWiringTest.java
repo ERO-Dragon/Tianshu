@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -58,8 +59,10 @@ class AXModuleGameEventWiringTest {
 
         // Any module that only holds the registry handle submits here; nothing marks a source as the
         // privileged one, so a third-party kind takes the same call as a built-in one.
-        service.submit(AXEventDescriptor.of("plugin:harvest", "plugin.farming", AXEventPayload.of(), "收下三株小麦"));
-        service.submit(AXEventDescriptor.of("tianshu:death", "module.probe", AXEventPayload.of(), "被岩浆怪杀死"));
+        service.submit(AXEventDescriptor.of("plugin:harvest", "plugin.farming", AXEventPayload.of(),
+                AXEventText.of("tianshu.ax.event.line.plugin.harvest")));
+        service.submit(AXEventDescriptor.of("tianshu:death", "module.probe", AXEventPayload.of(),
+                AXEventText.of("tianshu.ax.event.line.tianshu.death")));
         assertFalse(service.closed());
 
         module.stop();

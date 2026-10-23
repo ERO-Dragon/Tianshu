@@ -56,7 +56,7 @@ public final class NeoForgeGameEventHooks {
                 serviceLookup,
                 logSink == null ? LogSink.NOOP : logSink,
                 new AXGameEventProbe(),
-                new AXGameEventSentences(new NeoForgeGameEventTextProvider())
+                new AXGameEventSentences()
         ));
     }
 

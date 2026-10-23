@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateDelivery
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
@@ -25,6 +26,8 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
     private final AXChatOutputSink chatOutputSink;
     private final AXDelegateDeliverySink delegateSpeech;
     private final AXEventSpeechSink eventSpeech;
+    /** Language table the event layer renders through; {@link AXGameEventTextProvider#NONE} when unwired. */
+    private final AXGameEventTextProvider eventTexts;
 
     public AXModuleInstaller(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess moduleRuntime) {
         this(env, storageConfiguration, moduleRuntime, null);
@@ -101,6 +104,28 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
             AXDelegateDeliverySink delegateSpeech,
             AXEventSpeechSink eventSpeech
     ) {
+        this(env, storageConfiguration, moduleRuntime, worldIdentityProvider, promptLanguageProvider,
+                assistantSettings, runtimePolicy, outputSettings, chatOutputSink, delegateSpeech, eventSpeech, null);
+    }
+
+    /**
+     * @param eventTexts language table the event layer renders through; {@code null} renders nothing, which
+     *                   makes every event fall back to its kind code
+     */
+    public AXModuleInstaller(
+            IGameEnvironment env,
+            AXStorageConfiguration storageConfiguration,
+            ModuleRuntimeAccess moduleRuntime,
+            AXWorldIdentityProvider worldIdentityProvider,
+            AXPromptLanguageProvider promptLanguageProvider,
+            AXAssistantSettings assistantSettings,
+            AXRuntimePolicy runtimePolicy,
+            AXOutputSettings outputSettings,
+            AXChatOutputSink chatOutputSink,
+            AXDelegateDeliverySink delegateSpeech,
+            AXEventSpeechSink eventSpeech,
+            AXGameEventTextProvider eventTexts
+    ) {
         this.env = env;
         this.storageConfiguration = storageConfiguration;
         this.moduleRuntime = moduleRuntime;
@@ -112,6 +137,7 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
         this.delegateSpeech = delegateSpeech;
         this.eventSpeech = eventSpeech;
+        this.eventTexts = eventTexts;
     }
 
     @Override
@@ -130,6 +156,7 @@ public final class AXModuleInstaller implements TianshuModuleInstaller {
                 outputSettings,
                 chatOutputSink,
                 delegateSpeech,
-                eventSpeech));
+                eventSpeech,
+                eventTexts));
     }
 }

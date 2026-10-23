@@ -22,9 +22,9 @@ import java.util.Optional;
  * permissive on purpose - an unknown kind resolves to an empty tier and a {@code false} blacklist, and
  * the dispatcher turns that into the {@code low} fallback.
  *
- * <p>The table says nothing about wording. How a folded window reads is declared by the producer
- * through {@link AXEventAggregateRenderer}, so a kind unknown to this table can still fold if its
- * producer supplies a renderer.
+ * <p>The table says nothing about wording. How a folded window reads is declared by the descriptor's
+ * {@link AXEventFold}, so a kind unknown to this table can still fold as long as its producer names a fold
+ * shape and its template resolves through the session's text provider.
  */
 public final class AXEventTierTable {
     private static final String BUILTIN_RESOURCE =

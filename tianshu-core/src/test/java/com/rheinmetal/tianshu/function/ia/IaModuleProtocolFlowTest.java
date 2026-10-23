@@ -514,6 +514,7 @@ class IaModuleProtocolFlowTest {
         return PresenceContextSnapshotPayload.success("test.presence.context", List.of(
                 new PresenceContextSnapshotPayload.FactPayload(
                         PresenceContextFactIds.INTERACTION_CONTEXT,
+                        List.of(),
                         "interaction",
                         84,
                         "presence",
