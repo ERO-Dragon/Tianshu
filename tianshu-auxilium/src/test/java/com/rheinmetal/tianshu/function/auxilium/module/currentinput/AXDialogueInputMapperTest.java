@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXDialogueInputMapperTest {
@@ -40,6 +41,10 @@ class AXDialogueInputMapperTest {
         assertTrue(request.deliverySnapshot().contains("matchedWakeWords=wakeword"));
         assertTrue(request.deliverySnapshot().contains("matchedEntities=minecraft:villager#entity-uuid"));
         assertTrue(request.deliverySnapshot().contains("heldItem=minecraft:stick"));
-        assertTrue(request.deliverySnapshot().contains("weather=clear"));
+        // Only the names of the available facts belong here: the values are rendered as prose in the
+        // game-context section, and dumping them again as key=value would duplicate them in a format the
+        // model has no use for.
+        assertTrue(request.deliverySnapshot().contains("facts=weather"));
+        assertFalse(request.deliverySnapshot().contains("weather=clear"));
     }
 }

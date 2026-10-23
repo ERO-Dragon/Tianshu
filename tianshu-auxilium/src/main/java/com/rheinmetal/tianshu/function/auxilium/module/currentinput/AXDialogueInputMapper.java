@@ -55,12 +55,18 @@ public final class AXDialogueInputMapper {
                 appendLine(builder, "targetDistance=" + delivery.interactionHints().targetDistance());
             }
         }
+        // Only which facts are available, never their values: the values reach the model as rendered prose in
+        // the game-context section, and repeating them here as a machine dump would teach the model a data
+        // format it has no use for while doubling the tokens those facts cost.
         if (delivery.contextSnapshot() != null && !delivery.contextSnapshot().facts().isEmpty()) {
-            delivery.contextSnapshot().facts().forEach((key, value) -> {
-                if (key != null && !key.isBlank() && value != null && !value.isBlank()) {
-                    appendLine(builder, key.trim() + "=" + value.trim());
-                }
-            });
+            String factIds = delivery.contextSnapshot().facts().keySet().stream()
+                    .filter(key -> key != null && !key.isBlank())
+                    .map(String::trim)
+                    .sorted()
+                    .collect(java.util.stream.Collectors.joining(","));
+            if (!factIds.isBlank()) {
+                appendLine(builder, "facts=" + factIds);
+            }
         }
         return builder.toString().trim();
     }

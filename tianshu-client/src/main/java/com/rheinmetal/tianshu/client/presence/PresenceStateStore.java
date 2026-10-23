@@ -95,6 +95,7 @@ public final class PresenceStateStore {
         boolean playerStatus = groups.contains(PresenceContextGroup.PLAYER_STATUS);
         boolean worldEnvironment = groups.contains(PresenceContextGroup.WORLD_ENVIRONMENT);
         boolean inventory = groups.contains(PresenceContextGroup.PLAYER_INVENTORY);
+        boolean equipment = groups.contains(PresenceContextGroup.PLAYER_EQUIPMENT);
         boolean effects = groups.contains(PresenceContextGroup.PLAYER_ACTIVE_EFFECTS);
         boolean capturedCurrentWorld = !groups.isEmpty();
 
@@ -113,6 +114,7 @@ public final class PresenceStateStore {
                 playerStatus ? effectiveCaptured.playerStatus() : effectiveBase.playerStatus(),
                 worldEnvironment ? effectiveCaptured.worldEnvironment() : effectiveBase.worldEnvironment(),
                 inventory ? effectiveCaptured.inventoryItems() : effectiveBase.inventoryItems(),
+                equipment ? effectiveCaptured.equipment() : effectiveBase.equipment(),
                 effects ? effectiveCaptured.activeEffects() : effectiveBase.activeEffects(),
                 live ? effectiveCaptured.facts() : effectiveBase.facts(),
                 Math.max(effectiveBase.capturedAtMillis(), effectiveCaptured.capturedAtMillis())

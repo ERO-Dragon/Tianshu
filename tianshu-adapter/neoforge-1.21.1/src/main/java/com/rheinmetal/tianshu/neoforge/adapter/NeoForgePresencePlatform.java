@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.client.presence.model.PresenceEquipment;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInventoryItem;
 import com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus;
@@ -18,6 +19,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -65,6 +68,9 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
         String heldItemId = live ? itemId(player.getMainHandItem()) : "";
         List<String> equippedItems = live ? equippedItemIds(player) : List.of();
         Map<String, String> facts = live ? facts(screenKind) : Map.of();
+        PresenceEquipment equipment = requested.contains(PresenceContextGroup.PLAYER_EQUIPMENT)
+                ? equipment(player, languageCode)
+                : PresenceEquipment.empty();
 
         return new PresenceContextSnapshot(
                 player.getStringUUID(),
@@ -81,6 +87,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 requested.contains(PresenceContextGroup.PLAYER_STATUS) ? playerStatus(player) : PresencePlayerStatus.empty(),
                 requested.contains(PresenceContextGroup.WORLD_ENVIRONMENT) ? worldEnvironment(minecraft.level, player, languageCode) : PresenceWorldEnvironment.empty(),
                 requested.contains(PresenceContextGroup.PLAYER_INVENTORY) ? inventoryItems(player, languageCode) : List.of(),
+                equipment,
                 requested.contains(PresenceContextGroup.PLAYER_ACTIVE_EFFECTS) ? activeEffects(player, languageCode) : List.of(),
                 live ? facts : Map.of(),
                 System.currentTimeMillis()
@@ -153,6 +160,47 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
         return List.copyOf(result);
     }
 
+    /**
+     * Worn and held items plus the armour numbers the game reports.
+     *
+     * <p>An empty slot stays {@code null} instead of becoming a zero-count stack, so a consumer can tell "no
+     * chestplate" from "a chestplate with nothing in it" — those are different things to say to the player.</p>
+     *
+     * <p>Armour toughness is read through the attribute lookup rather than assumed present: a modded or
+     * custom entity may not carry that attribute, and a missing attribute means zero toughness, not a crash
+     * while building a prompt fact.</p>
+     */
+    private PresenceEquipment equipment(Player player, String languageCode) {
+        return new PresenceEquipment(
+                equipmentItem(player.getItemBySlot(EquipmentSlot.HEAD), languageCode),
+                equipmentItem(player.getItemBySlot(EquipmentSlot.CHEST), languageCode),
+                equipmentItem(player.getItemBySlot(EquipmentSlot.LEGS), languageCode),
+                equipmentItem(player.getItemBySlot(EquipmentSlot.FEET), languageCode),
+                equipmentItem(player.getMainHandItem(), languageCode),
+                equipmentItem(player.getOffhandItem(), languageCode),
+                player.getArmorValue(),
+                armorToughness(player)
+        );
+    }
+
+    private PresenceInventoryItem equipmentItem(ItemStack stack, String languageCode) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        ResourceLocation itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        String itemId = itemKey == null ? stack.getItemHolder().getRegisteredName() : itemKey.toString();
+        return new PresenceInventoryItem(
+                itemId,
+                ClientLanguagePolicy.itemDisplayName(stack, itemKey, languageCode),
+                stack.getCount(),
+                stack.getMaxStackSize()
+        );
+    }
+
+    private float armorToughness(Player player) {
+        var attribute = player.getAttribute(Attributes.ARMOR_TOUGHNESS);
+        return attribute == null ? 0.0F : (float) attribute.getValue();
+    }
     private List<PresencePotionEffect> activeEffects(Player player, String languageCode) {
         List<PresencePotionEffect> result = new ArrayList<>();
         for (MobEffectInstance effect : player.getActiveEffects()) {

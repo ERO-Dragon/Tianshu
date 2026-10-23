@@ -33,6 +33,14 @@
       "zh_cn": "当前玩家背包中有：{{items}}。",
       "en_us": "The player's inventory contains: {{items}}."
     },
+    "dynamic_knowledge.player.equipment": {
+      "zh_cn": "玩家装备：{{slots}}。护甲值 {{armorPoints}}。",
+      "en_us": "Player equipment: {{slots}}. Armor points {{armorPoints}}."
+    },
+    "dynamic_knowledge.player.equipment.slot": {
+      "zh_cn": "{{slot}}是{{name}}",
+      "en_us": "{{slot}} {{name}}"
+    },
     "dynamic_knowledge.inventory.item": {
       "zh_cn": "{{name}}{{amount}}",
       "en_us": "{{name}}{{amount}}"

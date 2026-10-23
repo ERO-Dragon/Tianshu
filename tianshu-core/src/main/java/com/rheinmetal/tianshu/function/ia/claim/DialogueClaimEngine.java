@@ -103,15 +103,32 @@ public final class DialogueClaimEngine {
                 .anyMatch(ref -> matchesAny(condition.values(), List.of(ref.entityTypeId())));
     }
 
+    /**
+     * A {@code CONTEXT_FACT} condition matches the fact's <em>field values</em>.
+     *
+     * <p>The map value is the fact's field summary ({@code name=value;name=value}) as the IA context mapper
+     * built it; presence stopped rendering sentences, so a condition can no longer compare against prose. Empty
+     * {@code values} means "the fact is present"; otherwise the expected values are compared against every field
+     * value in the summary (the summary itself is included so a wildcard can span the whole fact).
+     */
     private static boolean matchesContextFact(DialogueClaimCondition condition, Map<String, String> facts) {
         if (condition.factKey().isBlank() || facts == null || facts.isEmpty()) {
             return false;
         }
-        String value = facts.get(condition.factKey());
-        if (value == null || value.isBlank()) {
+        String summary = facts.get(condition.factKey());
+        if (summary == null || summary.isBlank()) {
             return false;
         }
-        return condition.values().isEmpty() || matchesAny(condition.values(), List.of(value));
+        if (condition.values().isEmpty()) {
+            return true;
+        }
+        List<String> candidates = new ArrayList<>();
+        candidates.add(summary);
+        for (String field : summary.split(";")) {
+            int separator = field.indexOf('=');
+            candidates.add(separator >= 0 ? field.substring(separator + 1) : field);
+        }
+        return matchesAny(condition.values(), candidates);
     }
 
     private static boolean matchesAny(List<String> expected, List<String> actual) {

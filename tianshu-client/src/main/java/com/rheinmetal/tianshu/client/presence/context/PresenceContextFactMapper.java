@@ -1,15 +1,17 @@
 package com.rheinmetal.tianshu.client.presence.context;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.client.presence.model.PresenceEquipment;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInventoryItem;
 import com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus;
 import com.rheinmetal.tianshu.client.presence.model.PresencePotionEffect;
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment;
-import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.payload.FactField;
 import com.rheinmetal.tianshu.protocol.payload.FactValue;
@@ -26,21 +28,6 @@ import java.util.stream.Collectors;
 
 public final class PresenceContextFactMapper {
     private static final long FACT_TTL_MILLIS = 120_000L;
-    /**
-     * Values that are aggregate tokens rather than scalars, so the transitional field bridge skips them; step ②
-     * turns each of them into a repeated {@code FactValue.Record}.
-     */
-    private static final Set<String> AGGREGATE_TOKENS =
-            Set.of("items", "effects", "inventoryItemsJson", "activeEffectsJson", "equippedItemIds");
-    private final PresenceTextProvider textProvider;
-
-    public PresenceContextFactMapper() {
-        this(PresenceTextProvider.NOOP);
-    }
-
-    public PresenceContextFactMapper(PresenceTextProvider textProvider) {
-        this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
-    }
 
     public List<PresenceContextSnapshotPayload.FactPayload> factsFrom(
             PresenceContextSnapshot snapshot,
@@ -66,6 +53,9 @@ public final class PresenceContextFactMapper {
         }
         if (requested.contains(PresenceContextFactIds.PLAYER_INVENTORY)) {
             addFact(facts, inventory(snapshot, now));
+        }
+        if (requested.contains(PresenceContextFactIds.PLAYER_EQUIPMENT)) {
+            addFact(facts, playerEquipment(snapshot, now));
         }
         if (requested.contains(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS)) {
             addFact(facts, activeEffects(snapshot, now));
@@ -93,14 +83,56 @@ public final class PresenceContextFactMapper {
         values.put("hunger", Integer.toString(status.hunger()));
         values.put("experienceLevel", Integer.toString(status.experienceLevel()));
         values.put("dimensionId", snapshot.dimensionId());
-        String text = tr("tianshu.presence.context.player_status",
-                formatDecimal(status.health()),
-                formatDecimal(status.maxHealth()),
-                status.hunger(),
-                status.experienceLevel());
-        return fact(PresenceContextFactIds.PLAYER_STATUS, text, 82, "player", List.of("player", "status"), now, values);
+        // No rendered sentence: presence publishes data, and the consumers that need words are the ones that
+        // own the wording (AX renders from the typed fields, in its own language).
+        return fact(PresenceContextFactIds.PLAYER_STATUS, 82, "player", List.of("player", "status"), now, values);
     }
 
+    /**
+     * Worn and held items plus the armour numbers.
+     *
+     * <p>An empty slot contributes no field at all — "no chestplate" is the absence of the field, which is how
+     * the renderer tells it apart from a stack that happens to be empty. When nothing is worn, held or counted,
+     * the whole fact is dropped: a fact that says nothing is worse than no fact.</p>
+     *
+     * <p>No rendered sentence is produced for this fact: equipment is prompt material only, and its wording
+     * lives in the prompt templates like every other dynamic fact.</p>
+     */
+    private PresenceContextSnapshotPayload.FactPayload playerEquipment(PresenceContextSnapshot snapshot, long now) {
+        PresenceEquipment equipment = snapshot.equipment();
+        if (equipment == null) {
+            return null;
+        }
+        List<FactField> fields = new ArrayList<>();
+        addEquipmentSlot(fields, "helmet", equipment.helmet());
+        addEquipmentSlot(fields, "chestplate", equipment.chestplate());
+        addEquipmentSlot(fields, "leggings", equipment.leggings());
+        addEquipmentSlot(fields, "boots", equipment.boots());
+        addEquipmentSlot(fields, "mainHand", equipment.mainHand());
+        addEquipmentSlot(fields, "offHand", equipment.offHand());
+        if (fields.isEmpty() && equipment.armorPoints() <= 0) {
+            return null;
+        }
+        fields.add(new FactField("armorPoints", new FactValue.Count(equipment.armorPoints())));
+        fields.add(new FactField("armorToughness", new FactValue.Number(equipment.armorToughness())));
+        Map<String, String> values = orderedMap();
+        values.put("armorPoints", Integer.toString(equipment.armorPoints()));
+        values.put("armorToughness", formatDecimal(equipment.armorToughness()));
+        return fact(PresenceContextFactIds.PLAYER_EQUIPMENT, 84, "player",
+                List.of("player", "equipment"), now, fields);
+    }
+
+    private void addEquipmentSlot(List<FactField> fields, String name, PresenceInventoryItem item) {
+        if (item == null || item.count() <= 0) {
+            return;
+        }
+        fields.add(new FactField(name, new FactValue.Record(List.of(
+                new FactField("itemId", new FactValue.Identifier(item.itemId())),
+                new FactField("displayName", new FactValue.Text(item.displayName())),
+                new FactField("count", new FactValue.Count(item.count())),
+                new FactField("maxStackSize", new FactValue.Count(item.maxStackSize()))
+        ))));
+    }
     private PresenceContextSnapshotPayload.FactPayload worldEnvironment(PresenceContextSnapshot snapshot, long now) {
         PresenceWorldEnvironment environment = snapshot.worldEnvironment();
         if (environment == null || environment.biomeId().isBlank()) {
@@ -113,17 +145,7 @@ public final class PresenceContextFactMapper {
         values.put("raining", Boolean.toString(environment.raining()));
         values.put("thundering", Boolean.toString(environment.thundering()));
         values.put("dayTimeTicks", Long.toString(environment.dayTimeTicks()));
-        String weatherKey = environment.thundering()
-                ? "tianshu.presence.context.weather.thunder"
-                : environment.raining()
-                ? "tianshu.presence.context.weather.rain"
-                : "tianshu.presence.context.weather.clear";
-        String text = tr("tianshu.presence.context.world_environment",
-                readableDimension(snapshot.dimensionId()),
-                readable(environment.biomeDisplayName(), environment.biomeId()),
-                tr(weatherKey),
-                environment.dayTimeTicks());
-        return fact(PresenceContextFactIds.WORLD_ENVIRONMENT, text, 66, "world", List.of("world", "environment"), now, values);
+        return fact(PresenceContextFactIds.WORLD_ENVIRONMENT, 66, "world", List.of("world", "environment"), now, values);
     }
 
     private PresenceContextSnapshotPayload.FactPayload inventory(PresenceContextSnapshot snapshot, long now) {
@@ -144,33 +166,27 @@ public final class PresenceContextFactMapper {
         if (counts.isEmpty()) {
             return null;
         }
-        String itemsText = counts.entrySet().stream()
-                .limit(8)
-                .map(entry -> tr("tianshu.presence.context.inventory.item", entry.getKey(), entry.getValue().count))
-                .collect(Collectors.joining(tr("tianshu.presence.context.list_separator")));
         Map<String, String> values = orderedMap();
         values.put("itemCount", Integer.toString(snapshot.inventoryItems().size()));
         values.put("items", counts.entrySet().stream()
                 .map(entry -> valueToken(ids.get(entry.getKey())) + ":" + entry.getValue().count)
                 .collect(Collectors.joining("|")));
         values.put("inventoryItemsJson", inventoryItemsJson(snapshot.inventoryItems()));
-        String text = tr("tianshu.presence.context.inventory", itemsText);
-        return fact(PresenceContextFactIds.PLAYER_INVENTORY, text, 78, "player_inventory", List.of("inventory", "items"), now, values);
+        return fact(PresenceContextFactIds.PLAYER_INVENTORY, 78, "player_inventory", List.of("inventory", "items"), now, values);
     }
 
     private PresenceContextSnapshotPayload.FactPayload activeEffects(PresenceContextSnapshot snapshot, long now) {
         if (snapshot.activeEffects().isEmpty()) {
             return null;
         }
-        String effectsText = snapshot.activeEffects().stream()
+        // The emptiness rule is "no effect with anything to say", which used to be phrased against the joined
+        // sentence. It is now phrased on the effects themselves, so it no longer depends on wording existing.
+        boolean named = snapshot.activeEffects().stream()
                 .filter(effect -> effect != null && !readable(effect.displayName(), effect.effectId()).isBlank())
                 .limit(6)
-                .map(effect -> tr("tianshu.presence.context.effect.item",
-                        readable(effect.displayName(), effect.effectId()),
-                        effect.amplifier() + 1,
-                        Math.max(0, effect.durationTicks() / 20)))
-                .collect(Collectors.joining(tr("tianshu.presence.context.list_separator")));
-        if (effectsText.isBlank()) {
+                .findAny()
+                .isPresent();
+        if (!named) {
             return null;
         }
         Map<String, String> values = orderedMap();
@@ -179,12 +195,10 @@ public final class PresenceContextFactMapper {
                 .map(effect -> valueToken(effect.effectId()) + ":" + effect.amplifier() + ":" + effect.durationTicks())
                 .collect(Collectors.joining("|")));
         values.put("activeEffectsJson", activeEffectsJson(snapshot.activeEffects()));
-        String text = tr("tianshu.presence.context.effects", effectsText);
-        return fact(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS, text, 76, "player", List.of("player", "effects"), now, values);
+        return fact(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS, 76, "player", List.of("player", "effects"), now, values);
     }
 
     private PresenceContextSnapshotPayload.FactPayload interactionContext(PresenceContextSnapshot snapshot, long now) {
-        List<String> parts = new ArrayList<>();
         Map<String, String> values = orderedMap();
         values.put("playerId", snapshot.playerId());
         values.put("dimensionId", snapshot.dimensionId());
@@ -195,23 +209,18 @@ public final class PresenceContextFactMapper {
         }
         if (!snapshot.heldItemId().isBlank()) {
             values.put("heldItemId", snapshot.heldItemId());
-            parts.add(tr("tianshu.presence.context.interaction.held_item", readableId(snapshot.heldItemId())));
         }
         if (snapshot.screenKind() != PresenceScreenKind.NONE) {
             values.put("screenKind", snapshot.screenKind().name());
-            parts.add(tr("tianshu.presence.context.interaction.screen", screenName(snapshot.screenKind())));
         }
         if (snapshot.interactionKeyDown()) {
             values.put("interactionKeyDown", "true");
-            parts.add(tr("tianshu.presence.context.interaction.key_down"));
         }
         if (snapshot.attackKeyDown()) {
             values.put("attackKeyDown", "true");
-            parts.add(tr("tianshu.presence.context.interaction.attack_key_down"));
         }
         if (snapshot.sneaking()) {
             values.put("sneaking", "true");
-            parts.add(tr("tianshu.presence.context.interaction.sneaking"));
         }
         PresenceTargetSnapshot target = snapshot.crosshairTarget();
         if (target != null && target.present()) {
@@ -219,80 +228,192 @@ public final class PresenceContextFactMapper {
             values.put("crosshairTargetTypeId", target.entityTypeId());
             values.put("crosshairTargetDisplayName", target.displayName());
             values.put("crosshairTargetDistance", formatDecimal(target.distance()));
-            parts.add(tr("tianshu.presence.context.interaction.crosshair",
-                    readable(target.displayName(), readableId(target.entityTypeId())),
-                    formatDecimal(target.distance())));
         }
-        if (parts.isEmpty() && values.size() <= 2) {
+        // Two fields are always written (playerId, dimensionId); anything beyond them is real interaction data.
+        if (values.size() <= 2) {
             return null;
         }
-        String text = parts.isEmpty()
-                ? ""
-                : tr("tianshu.presence.context.interaction",
-                String.join(tr("tianshu.presence.context.list_separator"), parts));
-        return fact(PresenceContextFactIds.INTERACTION_CONTEXT, text, 84, "interaction", List.of("interaction", "screen"), now, values);
+        List<FactField> fields = fieldsFrom(PresenceContextFactIds.INTERACTION_CONTEXT, values);
+        if (!snapshot.equippedItemIds().isEmpty()) {
+            // The aggregate keeps a typed home: it is the only carrier of "which slots hold something", and the
+            // arbitration hints read it as a list.
+            fields.add(new FactField("equippedItemIds", new FactValue.Text(
+                    snapshot.equippedItemIds().stream().map(this::valueToken).collect(Collectors.joining("|")))));
+        }
+        return fact(PresenceContextFactIds.INTERACTION_CONTEXT, 84, "interaction", List.of("interaction", "screen"), now, fields);
     }
 
     private PresenceContextSnapshotPayload.FactPayload fact(
             String factId,
-            String text,
             int priority,
             String subject,
             List<String> tags,
             long now,
-            Map<String, String> nativeValues
+            Map<String, String> values
+    ) {
+        return fact(factId, priority, subject, tags, now, fieldsFrom(factId, values));
+    }
+
+    private PresenceContextSnapshotPayload.FactPayload fact(
+            String factId,
+            int priority,
+            String subject,
+            List<String> tags,
+            long now,
+            List<FactField> fields
     ) {
         return new PresenceContextSnapshotPayload.FactPayload(
                 factId,
-                // Structured twin of the flat map below; see fieldsFrom for why both are written for now.
-                fieldsFrom(nativeValues),
-                text,
+                fields,
                 priority,
                 "presence",
                 subject,
                 tags,
                 now,
-                FACT_TTL_MILLIS,
-                nativeValues
+                FACT_TTL_MILLIS
         );
     }
 
     /**
      * The typed twin of the flat value map.
-     *
-     * <p>Transitional bridge for step ①: the flat map still has readers while they are migrated, so the
-     * producer writes both. The types are derived from the field names this producer itself defines; step ②
-     * replaces this method with the per-fact field lists, at which point the aggregate tokens
-     * ({@link #AGGREGATE_TOKENS}) become proper {@code FactValue.Record} values instead of being skipped.
+     * <p>Every fact lists its field names and types explicitly — there is no inference from a name suffix, so a
+     * new field cannot silently become the wrong type. The repeated structures (the two JSON blobs) become
+     * {@code FactValue.Record} entries below; {@code equippedItemIds} is added by {@link #interactionContext} as
+     * a typed field of its own, because arbitration reads it as a list.
      */
-    private List<FactField> fieldsFrom(Map<String, String> values) {
-        List<FactField> fields = new ArrayList<>(values.size());
-        for (Map.Entry<String, String> entry : values.entrySet()) {
-            String name = entry.getKey();
-            String raw = entry.getValue();
-            if (name == null || raw == null || raw.isBlank() || AGGREGATE_TOKENS.contains(name)) {
-                continue;
+    private List<FactField> fieldsFrom(String factId, Map<String, String> values) {
+        List<FactField> fields = new ArrayList<>();
+        switch (factId) {
+            case PresenceContextFactIds.PLAYER_STATUS -> {
+                add(fields, "health", values, raw -> new FactValue.Number(numberOf(raw)));
+                add(fields, "maxHealth", values, raw -> new FactValue.Number(numberOf(raw)));
+                add(fields, "hunger", values, raw -> new FactValue.Count(integerOf(raw)));
+                add(fields, "experienceLevel", values, raw -> new FactValue.Count(integerOf(raw)));
+                add(fields, "dimensionId", values, FactValue.Identifier::new);
             }
-            fields.add(new FactField(name, typedValue(name, raw)));
+            case PresenceContextFactIds.WORLD_ENVIRONMENT -> {
+                add(fields, "dimensionId", values, FactValue.Identifier::new);
+                add(fields, "biomeId", values, FactValue.Identifier::new);
+                add(fields, "biomeDisplayName", values, FactValue.Text::new);
+                add(fields, "raining", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
+                add(fields, "thundering", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
+                add(fields, "dayTimeTicks", values, raw -> new FactValue.Count(integerOf(raw)));
+            }
+            case PresenceContextFactIds.PLAYER_INVENTORY -> {
+                add(fields, "itemCount", values, raw -> new FactValue.Count(integerOf(raw)));
+                // The repeated structure is a list, not a scalar: one record per inventory entry, which is the
+                // only shape a consumer can iterate without parsing a string.
+                fields.addAll(itemRecords(values.get("inventoryItemsJson")));
+            }
+            case PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS ->
+                    fields.addAll(effectRecords(values.get("activeEffectsJson")));
+            case PresenceContextFactIds.INTERACTION_CONTEXT -> {
+                add(fields, "playerId", values, FactValue.Identifier::new);
+                add(fields, "dimensionId", values, FactValue.Identifier::new);
+                add(fields, "heldItemId", values, FactValue.Identifier::new);
+                add(fields, "screenKind", values, FactValue.Identifier::new);
+                add(fields, "interactionKeyDown", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
+                add(fields, "attackKeyDown", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
+                add(fields, "sneaking", values, raw -> new FactValue.Flag(Boolean.parseBoolean(raw)));
+                add(fields, "crosshairTargetId", values, FactValue.Identifier::new);
+                add(fields, "crosshairTargetTypeId", values, FactValue.Identifier::new);
+                add(fields, "crosshairTargetDisplayName", values, FactValue.Text::new);
+                add(fields, "crosshairTargetDistance", values, raw -> new FactValue.Number(numberOf(raw)));
+            }
+            default -> {
+            }
         }
         return fields;
     }
 
-    private FactValue typedValue(String name, String raw) {
-        if (name.endsWith("Id") || "screenKind".equals(name)) {
-            return new FactValue.Identifier(raw);
+    /**
+     * One record per inventory entry, named {@code item}.
+     *
+     * <p>Record members are always present (empty text, zero count) even when the game omitted one, because a
+     * record is a fixed shape its reader indexes by name; that is different from a top level field, where a
+     * missing value is skipped so a consumer can tell "absent" from "zero".
+     */
+    private List<FactField> itemRecords(String json) {
+        List<FactField> records = new ArrayList<>();
+        for (JsonObject item : objects(json)) {
+            records.add(new FactField("item", new FactValue.Record(List.of(
+                    new FactField("itemId", new FactValue.Identifier(textOf(item, "itemId"))),
+                    new FactField("displayName", new FactValue.Text(textOf(item, "displayName"))),
+                    new FactField("count", new FactValue.Count(intOf(item, "count"))),
+                    new FactField("maxStackSize", new FactValue.Count(intOf(item, "maxStackSize")))))));
         }
-        if (name.endsWith("DisplayName")) {
-            return new FactValue.Text(raw);
+        return records;
+    }
+
+    /** One record per active effect, named {@code effect}; {@code beneficial} is not read by any consumer. */
+    private List<FactField> effectRecords(String json) {
+        List<FactField> records = new ArrayList<>();
+        for (JsonObject effect : objects(json)) {
+            records.add(new FactField("effect", new FactValue.Record(List.of(
+                    new FactField("effectId", new FactValue.Identifier(textOf(effect, "effectId"))),
+                    new FactField("displayName", new FactValue.Text(textOf(effect, "displayName"))),
+                    new FactField("durationTicks", new FactValue.Count(intOf(effect, "durationTicks"))),
+                    new FactField("amplifier", new FactValue.Count(intOf(effect, "amplifier")))))));
         }
-        if ("raining".equals(name) || "thundering".equals(name) || "sneaking".equals(name)
-                || "beneficial".equals(name) || name.endsWith("KeyDown")) {
-            return new FactValue.Flag(Boolean.parseBoolean(raw));
+        return records;
+    }
+
+    private List<JsonObject> objects(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
         }
-        if ("health".equals(name) || "maxHealth".equals(name) || "crosshairTargetDistance".equals(name)) {
-            return new FactValue.Number(numberOf(raw));
+        try {
+            JsonElement parsed = JsonParser.parseString(json);
+            if (parsed == null || !parsed.isJsonArray()) {
+                return List.of();
+            }
+            List<JsonObject> objects = new ArrayList<>();
+            for (JsonElement element : parsed.getAsJsonArray()) {
+                if (element != null && element.isJsonObject()) {
+                    objects.add(element.getAsJsonObject());
+                }
+            }
+            return objects;
+        } catch (RuntimeException ignored) {
+            return List.of();
         }
-        return new FactValue.Count(integerOf(raw));
+    }
+
+    private String textOf(JsonObject json, String key) {
+        if (json == null || !json.has(key) || json.get(key).isJsonNull()) {
+            return "";
+        }
+        try {
+            return json.get(key).getAsString().trim();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private int intOf(JsonObject json, String key) {
+        if (json == null || !json.has(key) || json.get(key).isJsonNull()) {
+            return 0;
+        }
+        try {
+            return json.get(key).getAsInt();
+        } catch (RuntimeException ignored) {
+            return 0;
+        }
+    }
+
+    /**
+     * Adds one field when the producer wrote a value for it.
+     *
+     * <p>Skipped rather than defaulted on purpose: a missing value means the snapshot did not carry it, and a
+     * fabricated {@code 0} would read to a consumer as a real measurement.
+     */
+    private void add(List<FactField> fields, String name, Map<String, String> values,
+                     java.util.function.Function<String, FactValue> factory) {
+        String raw = values.get(name);
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        fields.add(new FactField(name, factory.apply(raw)));
     }
 
     private double numberOf(String raw) {
@@ -311,49 +432,12 @@ public final class PresenceContextFactMapper {
         }
     }
 
-    private String screenName(PresenceScreenKind kind) {
-        PresenceScreenKind effective = kind == null ? PresenceScreenKind.NONE : kind;
-        return tr("tianshu.presence.context.screen." + effective.name().toLowerCase(Locale.ROOT));
-    }
-
-    private String readableDimension(String dimensionId) {
-        if (dimensionId == null || dimensionId.isBlank()) {
-            return tr("tianshu.presence.context.unknown");
-        }
-        String key = "tianshu.presence.context.dimension." + dimensionId.trim().replace(':', '.');
-        if (textProvider.exists(key)) {
-            return textProvider.text(key);
-        }
-        return readableId(dimensionId);
-    }
-
-    private String readableId(String value) {
-        if (value == null || value.isBlank()) {
-            return tr("tianshu.presence.context.unknown");
-        }
-        String normalized = value.trim();
-        int separator = normalized.indexOf(':');
-        if (separator >= 0 && separator < normalized.length() - 1) {
-            normalized = normalized.substring(separator + 1);
-        }
-        return normalized.replace('_', ' ').replace('-', ' ');
-    }
-
+    /** The game-supplied display name, or the raw id when the game gave none; grouping key only. */
     private String readable(String value, String fallback) {
         if (value != null && !value.isBlank()) {
             return value.trim();
         }
         return fallback == null ? "" : fallback.trim();
-    }
-
-    private String tr(String key, Object... args) {
-        if (key == null || key.isBlank()) {
-            return "";
-        }
-        if (textProvider.exists(key)) {
-            return textProvider.text(key, args);
-        }
-        return PresenceTextProvider.NOOP.text(key, args);
     }
 
     private String formatDecimal(double value) {

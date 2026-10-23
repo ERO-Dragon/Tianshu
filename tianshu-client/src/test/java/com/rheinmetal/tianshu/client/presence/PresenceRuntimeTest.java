@@ -223,6 +223,7 @@ class PresenceRuntimeTest {
                 empty.playerStatus(),
                 empty.worldEnvironment(),
                 List.of(),
+                empty.equipment(),
                 List.of(),
                 Map.of(),
                 1L

@@ -59,6 +59,18 @@ public record DialogueClaimCondition(
         return new DialogueClaimCondition(DialogueClaimConditionType.INTERACTION_TAG, List.of(values), "");
     }
 
+    /**
+     * A condition on one presence context fact.
+     *
+     * <p>{@code factKey} is a fact id from {@code PresenceContextFactIds}. The {@code values} are matched
+     * against that fact's <b>field values</b> — the structured data presence publishes — and no longer against
+     * a rendered sentence, because presence stopped rendering (wording belongs to the consumer that reads the
+     * fields). Empty {@code values} means "the fact is present"; otherwise the usual {@code matchesValue} forms
+     * apply, including {@code minecraft:*} and {@code #minecraft:plains}.
+     *
+     * <p>Example: {@code contextFact(PresenceContextFactIds.INTERACTION_CONTEXT, "minecraft:diamond_sword")}
+     * matches when any field of the interaction fact carries that item id.
+     */
     public static DialogueClaimCondition contextFact(String factKey, String... values) {
         return new DialogueClaimCondition(DialogueClaimConditionType.CONTEXT_FACT, List.of(values), factKey);
     }

@@ -32,6 +32,8 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.FactField;
+import com.rheinmetal.tianshu.protocol.payload.FactValue;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
@@ -511,29 +513,46 @@ class IaModuleProtocolFlowTest {
             String targetName,
             String targetDistance
     ) {
+        // Typed fields only: the IA mapper flattens them itself now, so this fixture has to speak the same
+        // language the producer does.
+        List<FactField> fields = new ArrayList<>();
+        addField(fields, "playerId", identifier(playerId));
+        addField(fields, "dimensionId", identifier(dimensionId));
+        addField(fields, "heldItemId", identifier(heldItemId));
+        addField(fields, "equippedItemIds", identifier(equippedItemIds));
+        addField(fields, "crosshairTargetId", identifier(targetId));
+        addField(fields, "crosshairTargetTypeId", identifier(targetTypeId));
+        addField(fields, "crosshairTargetDisplayName", identifier(targetName));
+        addField(fields, "crosshairTargetDistance", number(targetDistance));
         return PresenceContextSnapshotPayload.success("test.presence.context", List.of(
                 new PresenceContextSnapshotPayload.FactPayload(
                         PresenceContextFactIds.INTERACTION_CONTEXT,
-                        List.of(),
-                        "interaction",
+                        fields,
                         84,
                         "presence",
                         "interaction",
                         List.of(),
                         System.currentTimeMillis(),
-                        120_000L,
-                        Map.of(
-                                "playerId", playerId,
-                                "dimensionId", dimensionId,
-                                "heldItemId", heldItemId,
-                                "equippedItemIds", equippedItemIds,
-                                "crosshairTargetId", targetId,
-                                "crosshairTargetTypeId", targetTypeId,
-                                "crosshairTargetDisplayName", targetName,
-                                "crosshairTargetDistance", targetDistance
-                        )
+                        120_000L
                 )
         ));
+    }
+
+    private static void addField(List<FactField> fields, String name, FactValue value) {
+        if (value != null) {
+            fields.add(new FactField(name, value));
+        }
+    }
+
+    private static FactValue identifier(String value) {
+        return value == null || value.isBlank() ? null : new FactValue.Identifier(value);
+    }
+
+    private static FactValue number(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return new FactValue.Number(Double.parseDouble(value.trim()));
     }
 
     private void subscribeOwnerPreview(RecordingHandler handler) {

@@ -1,8 +1,14 @@
 package com.rheinmetal.tianshu.function.auxilium.module.gamecontext;
 
 import java.util.List;
-import java.util.Map;
 
+/**
+ * One rendered dynamic fact, ready for the prompt.
+ *
+ * <p>{@code text} is this module's rendering — AX owns the wording, and it renders from the typed fields of the
+ * presence fact, in the language of the prompt. The structured data itself is not carried any further: nothing
+ * downstream reads it, so a second copy here would only be a second place to keep in sync.</p>
+ */
 public record AXDynamicFact(
         String factId,
         String text,
@@ -11,22 +17,8 @@ public record AXDynamicFact(
         String subject,
         List<String> tags,
         long updatedAtMillis,
-        long ttlMillis,
-        Map<String, String> nativeValues
+        long ttlMillis
 ) {
-    public AXDynamicFact(
-            String factId,
-            String text,
-            int priority,
-            String source,
-            String subject,
-            List<String> tags,
-            long updatedAtMillis,
-            long ttlMillis
-    ) {
-        this(factId, text, priority, source, subject, tags, updatedAtMillis, ttlMillis, Map.of());
-    }
-
     public AXDynamicFact {
         factId = clean(factId, "dynamic.fact.unknown");
         text = clean(text, "");
@@ -39,14 +31,6 @@ public record AXDynamicFact(
                 .toList());
         updatedAtMillis = updatedAtMillis <= 0L ? System.currentTimeMillis() : updatedAtMillis;
         ttlMillis = Math.max(0L, ttlMillis);
-        nativeValues = nativeValues == null ? Map.of() : Map.copyOf(nativeValues.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank()
-                        && entry.getValue() != null && !entry.getValue().isBlank())
-                .collect(java.util.stream.Collectors.toMap(
-                        entry -> entry.getKey().trim(),
-                        entry -> entry.getValue().trim(),
-                        (first, second) -> second
-                )));
     }
 
     public static AXDynamicFact of(String text, int priority, String source) {
@@ -63,7 +47,7 @@ public record AXDynamicFact(
     }
 
     public boolean isEmpty() {
-        return text.isBlank() && nativeValues.isEmpty();
+        return text.isBlank();
     }
 
     public boolean isExpired(long nowMillis) {

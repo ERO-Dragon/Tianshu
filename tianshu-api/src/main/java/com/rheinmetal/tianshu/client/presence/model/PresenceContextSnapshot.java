@@ -18,6 +18,7 @@ public record PresenceContextSnapshot(
         PresencePlayerStatus playerStatus,
         PresenceWorldEnvironment worldEnvironment,
         List<PresenceInventoryItem> inventoryItems,
+        PresenceEquipment equipment,
         List<PresencePotionEffect> activeEffects,
         Map<String, String> facts,
         long capturedAtMillis
@@ -37,6 +38,7 @@ public record PresenceContextSnapshot(
         playerStatus = playerStatus == null ? PresencePlayerStatus.empty() : playerStatus;
         worldEnvironment = worldEnvironment == null ? PresenceWorldEnvironment.empty() : worldEnvironment;
         inventoryItems = inventoryItems == null ? List.of() : List.copyOf(inventoryItems);
+        equipment = equipment == null ? PresenceEquipment.empty() : equipment;
         activeEffects = activeEffects == null ? List.of() : List.copyOf(activeEffects);
         facts = facts == null ? Map.of() : Map.copyOf(facts);
         if (capturedAtMillis <= 0L) {
@@ -60,6 +62,7 @@ public record PresenceContextSnapshot(
                 PresencePlayerStatus.empty(),
                 PresenceWorldEnvironment.empty(),
                 List.of(),
+                PresenceEquipment.empty(),
                 List.of(),
                 Map.of(),
                 System.currentTimeMillis()

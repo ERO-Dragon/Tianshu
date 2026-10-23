@@ -25,6 +25,8 @@ public record AXPromptTexts(
     public static final String GAME_CONTEXT_FACT_LINE = "game_context.fact_line";
     public static final String DYNAMIC_KNOWLEDGE_PLAYER_STATUS = "dynamic_knowledge.player.status";
     public static final String DYNAMIC_KNOWLEDGE_WORLD_ENVIRONMENT = "dynamic_knowledge.world.environment";
+    public static final String DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT = "dynamic_knowledge.player.equipment";
+    public static final String DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT_SLOT = "dynamic_knowledge.player.equipment.slot";
     public static final String DYNAMIC_KNOWLEDGE_INVENTORY_ITEMS = "dynamic_knowledge.inventory.items";
     public static final String DYNAMIC_KNOWLEDGE_INVENTORY_ITEM = "dynamic_knowledge.inventory.item";
     public static final String DYNAMIC_KNOWLEDGE_INVENTORY_SEPARATOR = "dynamic_knowledge.inventory.separator";

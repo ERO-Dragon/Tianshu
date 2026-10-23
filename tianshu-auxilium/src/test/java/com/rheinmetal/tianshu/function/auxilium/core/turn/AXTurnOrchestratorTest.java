@@ -43,6 +43,8 @@ import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.FactField;
+import com.rheinmetal.tianshu.protocol.payload.FactValue;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
@@ -607,18 +609,16 @@ class AXTurnOrchestratorTest {
                         ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
                         List.of(new PresenceContextSnapshotPayload.FactPayload(
                                 PresenceContextFactIds.INTERACTION_CONTEXT,
-                                List.of(),
-                                "",
+                                List.of(
+                                        new FactField("crosshairTargetTypeId",
+                                                new FactValue.Identifier("minecraft:enchanting_table")),
+                                        new FactField("crosshairTargetDistance", new FactValue.Number(4.0D))),
                                 95,
                                 "presence.test",
                                 "minecraft:enchanting_table",
                                 List.of("crosshair"),
                                 System.currentTimeMillis(),
-                                1_000L,
-                                Map.of(
-                                        "crosshairTargetTypeId", "minecraft:enchanting_table",
-                                        "crosshairTargetDistance", "4.0"
-                                )
+                                1_000L
                         ))
                 )
         ).build());

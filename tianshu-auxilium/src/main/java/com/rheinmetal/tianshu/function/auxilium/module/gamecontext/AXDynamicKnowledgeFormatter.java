@@ -1,14 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium.module.gamecontext;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptResourceRepository;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptTexts;
 import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.protocol.payload.FactValue;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 
 import java.util.ArrayList;
@@ -27,16 +24,21 @@ public final class AXDynamicKnowledgeFormatter {
     }
 
     public AXDynamicFact format(PresenceContextSnapshotPayload.FactPayload fact) {
-        if (fact == null || fact.nativeValues().isEmpty()) {
+        if (fact == null) {
+            return null;
+        }
+        AXFactView view = AXFactView.of(fact.fields());
+        if (view.isEmpty()) {
             return null;
         }
         AXPromptTexts texts = loadTexts();
         String rendered = switch (fact.factId()) {
-            case PresenceContextFactIds.PLAYER_STATUS -> playerStatus(texts, fact.nativeValues());
-            case PresenceContextFactIds.WORLD_ENVIRONMENT -> worldEnvironment(texts, fact.nativeValues());
-            case PresenceContextFactIds.PLAYER_INVENTORY -> inventory(texts, fact.nativeValues());
-            case PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS -> activeEffects(texts, fact.nativeValues());
-            case PresenceContextFactIds.INTERACTION_CONTEXT -> interaction(texts, fact.nativeValues());
+            case PresenceContextFactIds.PLAYER_STATUS -> playerStatus(texts, view);
+            case PresenceContextFactIds.WORLD_ENVIRONMENT -> worldEnvironment(texts, view);
+            case PresenceContextFactIds.PLAYER_INVENTORY -> inventory(texts, view);
+            case PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS -> activeEffects(texts, view);
+            case PresenceContextFactIds.PLAYER_EQUIPMENT -> equipment(texts, view);
+            case PresenceContextFactIds.INTERACTION_CONTEXT -> interaction(texts, view);
             default -> "";
         };
         if (rendered.isBlank()) {
@@ -50,8 +52,7 @@ public final class AXDynamicKnowledgeFormatter {
                 fact.subject(),
                 fact.tags(),
                 fact.updatedAtMillis(),
-                fact.ttlMillis(),
-                fact.nativeValues()
+                fact.ttlMillis()
         );
     }
 
@@ -63,41 +64,39 @@ public final class AXDynamicKnowledgeFormatter {
         return resourceRepository.loadTexts(language);
     }
 
-    private String playerStatus(AXPromptTexts texts, Map<String, String> values) {
+    private String playerStatus(AXPromptTexts texts, AXFactView view) {
         return texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_PLAYER_STATUS, vars(
-                "dimension", readableId(texts, values.get("dimensionId")),
-                "health", values.get("health"),
-                "hunger", values.get("hunger"),
-                "experienceLevel", values.get("experienceLevel")
+                "dimension", readableId(texts, view.text("dimensionId")),
+                "health", view.text("health"),
+                "hunger", view.text("hunger"),
+                "experienceLevel", view.text("experienceLevel")
         ));
     }
 
-    private String worldEnvironment(AXPromptTexts texts, Map<String, String> values) {
+    private String worldEnvironment(AXPromptTexts texts, AXFactView view) {
         return texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_WORLD_ENVIRONMENT, vars(
-                "biome", readable(values.get("biomeDisplayName"), readableId(texts, values.get("biomeId"))),
-                "weather", weather(texts, values),
-                "time", values.get("dayTimeTicks")
+                "biome", readable(view.text("biomeDisplayName"), readableId(texts, view.text("biomeId"))),
+                "weather", weather(texts, view),
+                "time", view.text("dayTimeTicks")
         ));
     }
 
-    private String inventory(AXPromptTexts texts, Map<String, String> values) {
-        JsonArray items = readArray(values.get("inventoryItemsJson"));
+    private String inventory(AXPromptTexts texts, AXFactView view) {
+        List<Map<String, FactValue>> items = view.records("item");
         if (items.isEmpty()) {
             return "";
         }
         Map<String, InventoryAmount> counts = new LinkedHashMap<>();
-        for (JsonElement element : items) {
-            if (element == null || !element.isJsonObject()) {
-                continue;
-            }
-            JsonObject item = element.getAsJsonObject();
-            int count = intValue(item, "count", 0);
+        for (Map<String, FactValue> item : items) {
+            int count = AXFactView.memberInt(item, "count", 0);
             if (count <= 0) {
                 continue;
             }
-            String name = readable(stringValue(item, "displayName"), readableId(texts, stringValue(item, "itemId")));
-            InventoryAmount amount = counts.computeIfAbsent(name, ignored -> new InventoryAmount(intValue(item, "maxStackSize", 64)));
-            amount.add(count, intValue(item, "maxStackSize", 64));
+            String name = readable(AXFactView.memberText(item, "displayName"),
+                    readableId(texts, AXFactView.memberText(item, "itemId")));
+            int maxStackSize = AXFactView.memberInt(item, "maxStackSize", 64);
+            InventoryAmount amount = counts.computeIfAbsent(name, ignored -> new InventoryAmount(maxStackSize));
+            amount.add(count, maxStackSize);
         }
         if (counts.isEmpty()) {
             return "";
@@ -118,25 +117,22 @@ public final class AXDynamicKnowledgeFormatter {
         ));
     }
 
-    private String activeEffects(AXPromptTexts texts, Map<String, String> values) {
-        JsonArray effects = readArray(values.get("activeEffectsJson"));
+    private String activeEffects(AXPromptTexts texts, AXFactView view) {
+        List<Map<String, FactValue>> effects = view.records("effect");
         if (effects.isEmpty()) {
             return "";
         }
         List<String> lines = new ArrayList<>();
-        for (JsonElement element : effects) {
-            if (element == null || !element.isJsonObject()) {
-                continue;
-            }
-            JsonObject effect = element.getAsJsonObject();
-            String name = readable(stringValue(effect, "displayName"), readableId(texts, stringValue(effect, "effectId")));
+        for (Map<String, FactValue> effect : effects) {
+            String name = readable(AXFactView.memberText(effect, "displayName"),
+                    readableId(texts, AXFactView.memberText(effect, "effectId")));
             if (name.isBlank()) {
                 continue;
             }
             lines.add(texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_EFFECTS_ENTRY, vars(
                     "name", name,
-                    "level", effectLevel(texts, intValue(effect, "amplifier", 0) + 1),
-                    "duration", durationText(texts, Math.max(0, intValue(effect, "durationTicks", 0) / 20))
+                    "level", effectLevel(texts, AXFactView.memberInt(effect, "amplifier", 0) + 1),
+                    "duration", durationText(texts, Math.max(0, AXFactView.memberInt(effect, "durationTicks", 0) / 20))
             )));
             if (lines.size() >= 6) {
                 break;
@@ -150,31 +146,31 @@ public final class AXDynamicKnowledgeFormatter {
         ));
     }
 
-    private String interaction(AXPromptTexts texts, Map<String, String> values) {
+    private String interaction(AXPromptTexts texts, AXFactView view) {
         List<String> parts = new ArrayList<>();
-        if (hasText(values.get("heldItemId"))) {
+        if (hasText(view.text("heldItemId"))) {
             parts.add(texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_INTERACTION_HELD_ITEM, vars(
-                    "item", readableId(texts, values.get("heldItemId"))
+                    "item", readableId(texts, view.text("heldItemId"))
             )));
         }
-        if (hasText(values.get("screenKind")) && !Objects.equals(values.get("screenKind"), "NONE")) {
+        if (hasText(view.text("screenKind")) && !Objects.equals(view.text("screenKind"), "NONE")) {
             parts.add(texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_INTERACTION_SCREEN, vars(
-                    "screen", values.get("screenKind").toLowerCase(java.util.Locale.ROOT)
+                    "screen", view.text("screenKind").toLowerCase(java.util.Locale.ROOT)
             )));
         }
-        if (Boolean.parseBoolean(values.get("interactionKeyDown"))) {
+        if (Boolean.parseBoolean(view.text("interactionKeyDown"))) {
             parts.add(texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_INTERACTION_USE_KEY));
         }
-        if (Boolean.parseBoolean(values.get("attackKeyDown"))) {
+        if (Boolean.parseBoolean(view.text("attackKeyDown"))) {
             parts.add(texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_INTERACTION_ATTACK_KEY));
         }
-        if (Boolean.parseBoolean(values.get("sneaking"))) {
+        if (Boolean.parseBoolean(view.text("sneaking"))) {
             parts.add(texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_INTERACTION_SNEAKING));
         }
-        if (hasText(values.get("crosshairTargetTypeId"))) {
+        if (hasText(view.text("crosshairTargetTypeId"))) {
             parts.add(texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_INTERACTION_CROSSHAIR, vars(
-                    "target", readable(values.get("crosshairTargetDisplayName"), readableId(texts, values.get("crosshairTargetTypeId"))),
-                    "distance", values.get("crosshairTargetDistance")
+                    "target", readable(view.text("crosshairTargetDisplayName"), readableId(texts, view.text("crosshairTargetTypeId"))),
+                    "distance", view.text("crosshairTargetDistance")
             )));
         }
         List<String> cleanParts = parts.stream().filter(text -> text != null && !text.isBlank()).toList();
@@ -186,11 +182,47 @@ public final class AXDynamicKnowledgeFormatter {
         ));
     }
 
-    private String weather(AXPromptTexts texts, Map<String, String> values) {
-        if (Boolean.parseBoolean(values.get("thundering"))) {
+    /** Slot order the sentence lists equipment in; also the record field names the producer uses. */
+    private static final List<String> EQUIPMENT_SLOTS = List.of(
+            "helmet", "chestplate", "leggings", "boots", "mainHand", "offHand");
+
+    /**
+     * Worn and held items plus the armour number.
+     *
+     * <p>Only slots the player actually fills are mentioned, so an empty slot produces no clause at all — that is
+     * why the producer omits the field instead of sending an empty stack. When nothing is worn or held the whole
+     * sentence is dropped, because "Player equipment:" with an empty list tells the model less than saying
+     * nothing.</p>
+     */
+    private String equipment(AXPromptTexts texts, AXFactView view) {
+        List<String> parts = new ArrayList<>();
+        for (String slot : EQUIPMENT_SLOTS) {
+            List<Map<String, FactValue>> records = view.records(slot);
+            if (records.isEmpty()) {
+                continue;
+            }
+            Map<String, FactValue> record = records.get(0);
+            String name = readable(AXFactView.memberText(record, "displayName"),
+                    readableId(texts, AXFactView.memberText(record, "itemId")));
+            if (name.isBlank()) {
+                continue;
+            }
+            parts.add(texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT_SLOT,
+                    vars("slot", slot, "name", name)));
+        }
+        if (parts.isEmpty()) {
+            return "";
+        }
+        return texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT, vars(
+                "slots", String.join(texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_INVENTORY_SEPARATOR), parts),
+                "armorPoints", view.text("armorPoints")
+        ));
+    }
+    private String weather(AXPromptTexts texts, AXFactView view) {
+        if (Boolean.parseBoolean(view.text("thundering"))) {
             return texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_WEATHER_THUNDER);
         }
-        if (Boolean.parseBoolean(values.get("raining"))) {
+        if (Boolean.parseBoolean(view.text("raining"))) {
             return texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_WEATHER_RAIN);
         }
         return texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_WEATHER_CLEAR);
@@ -255,35 +287,6 @@ public final class AXDynamicKnowledgeFormatter {
         ));
     }
 
-    private JsonArray readArray(String value) {
-        if (!hasText(value)) {
-            return new JsonArray();
-        }
-        try {
-            JsonElement element = JsonParser.parseString(value);
-            return element != null && element.isJsonArray() ? element.getAsJsonArray() : new JsonArray();
-        } catch (RuntimeException ignored) {
-            return new JsonArray();
-        }
-    }
-
-    private String stringValue(JsonObject json, String key) {
-        if (json == null || key == null || !json.has(key) || json.get(key).isJsonNull()) {
-            return "";
-        }
-        return json.get(key).getAsString().trim();
-    }
-
-    private int intValue(JsonObject json, String key, int fallback) {
-        if (json == null || key == null || !json.has(key) || json.get(key).isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return json.get(key).getAsInt();
-        } catch (RuntimeException ignored) {
-            return fallback;
-        }
-    }
 
     private String readable(String value, String fallback) {
         return hasText(value) ? value.trim() : clean(fallback);

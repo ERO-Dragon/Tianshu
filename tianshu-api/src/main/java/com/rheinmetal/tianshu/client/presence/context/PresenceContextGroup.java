@@ -10,6 +10,7 @@ public enum PresenceContextGroup {
     INTERACTION_CONTEXT(PresenceContextFactIds.INTERACTION_CONTEXT),
     PLAYER_STATUS(PresenceContextFactIds.PLAYER_STATUS),
     PLAYER_INVENTORY(PresenceContextFactIds.PLAYER_INVENTORY),
+    PLAYER_EQUIPMENT(PresenceContextFactIds.PLAYER_EQUIPMENT),
     PLAYER_ACTIVE_EFFECTS(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS),
     WORLD_ENVIRONMENT(PresenceContextFactIds.WORLD_ENVIRONMENT);
 

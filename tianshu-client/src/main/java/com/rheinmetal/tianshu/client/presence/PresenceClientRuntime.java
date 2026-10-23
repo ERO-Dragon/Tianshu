@@ -29,7 +29,8 @@ public final class PresenceClientRuntime {
     public PresenceClientRuntime(ClientGameContextProvider platform, PresenceTextProvider textProvider) {
         PresenceTextProvider effectiveTextProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
         displayPolicy = new PresenceDisplayPolicy(effectiveTextProvider);
-        contextFactMapper = new PresenceContextFactMapper(effectiveTextProvider);
+        // The fact mapper no longer renders anything, so it takes no text provider.
+        contextFactMapper = new PresenceContextFactMapper();
         contextQueryCoordinator = new PresenceContextQueryCoordinator(stateStore, contextFactMapper);
         eventCollector = new PresenceEventCollector(stateStore, Objects.requireNonNull(platform, "platform"));
         stateStore.resetWorldState();
