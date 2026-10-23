@@ -167,7 +167,7 @@ public final class LlmModule implements TianshuManagedModule {
     public void prepare(ModuleRuntimeContext context) {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
-        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.llm.starting", lifecycleStatusGeneration));
+        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         runtimeContext = context;
         markCapabilitiesInstalled(context);
         if (config.isLlmEnabled()) {
@@ -376,7 +376,7 @@ public final class LlmModule implements TianshuManagedModule {
             moduleService.markReady();
         }
         publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
-        publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.llm.ready", lifecycleStatusGeneration));
+        publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
         clearRuntimeRetry();
     }
 
@@ -557,7 +557,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
         if (lifecycleActive) {
             lifecycleActive = false;
-            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.llm.stopped", lifecycleStatusGeneration));
+            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
         }
     }
 

@@ -15,6 +15,13 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 public final class NamedObjectReloadListener extends SimplePreparableReloadListener<byte[]> {
+    /**
+     * The optional resource-pack override of the intent keyword table.
+     *
+     * <p>The table itself ships in the intake module, beside {@code IntentKeywordLoader}, which reads it on
+     * first use; this listener only replaces it when a pack provides a file with this name. A missing
+     * override is therefore the normal case and is not reported at all, while a read failure still is.</p>
+     */
     private static final ResourceLocation KEYWORDS_ID = ResourceLocation.fromNamespaceAndPath("tianshu", "ir-intent-keywords.json");
     private final Supplier<ClientNamedObjectIndexManager> indexManagerSupplier;
     private final Runnable refreshSnapshot;
@@ -44,7 +51,7 @@ public final class NamedObjectReloadListener extends SimplePreparableReloadListe
     private byte[] readKeywords(ResourceManager resourceManager) {
         Resource resource = resourceManager.getResource(KEYWORDS_ID).orElse(null);
         if (resource == null) {
-            logSink.warn("neoforge.ir.keywords.resource_missing id=" + KEYWORDS_ID);
+            // No pack overrides the table: the bundled copy in the intake module stays in force.
             return null;
         }
         try (InputStream input = resource.open()) {

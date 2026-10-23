@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.List;
 
 public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
-    private final IGameEnvironment env;
     private final TtsModelService modelService;
     private final TtsModelResolver modelResolver;
     private final TtsActiveModelSelection modelSelection;
@@ -26,7 +25,6 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
             TtsModelService modelService,
             TtsCodecExecution codecExecution
     ) {
-        this.env = env;
         this.modelService = modelService;
         this.modelResolver = new TtsModelResolver(env, modelService);
         this.modelSelection = new TtsActiveModelSelection(config::getCustomTtsName);
@@ -35,19 +33,16 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
 
     @Override
     public synchronized boolean initialize() {
-        Optional<TtsResolvedModel> resolved = modelResolver.resolve(modelSelection.currentModelName());
-        if (resolved.isEmpty()) {
-            initialized = false;
-            activeBackend = null;
-            loadedModel = null;
-            return false;
-        }
-        TtsResolvedModel model = resolved.get();
-        TtsBackend backend = engineProvider.acquire(model);
-        initialized = backend.isInitialized();
-        activeBackend = initialized ? backend : null;
-        loadedModel = initialized ? model : null;
-        return initialized;
+        return applyModel(modelSelection.currentModelName(), false);
+    }
+
+    /**
+     * Discards nothing: the replacement is loaded first and the running backend is closed only once the
+     * replacement is up, so a failed reload leaves the lane exactly as it was.
+     */
+    @Override
+    public synchronized boolean reload() {
+        return applyModel(modelSelection.currentModelName(), true);
     }
 
     @Override
@@ -126,15 +121,69 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
         if (info == null) {
             return false;
         }
-        if (initialized && loadedModel != null && loadedModel.modelInfo() != null
-                && loadedModel.modelInfo().name != null
-                && loadedModel.modelInfo().name.equalsIgnoreCase(info.name)
-                && activeBackend != null && activeBackend.isInitialized()) {
+        if (isRunning(info.name)) {
             return true;
         }
-        modelSelection.activate(info.name);
-        shutdown();
-        return initialize();
+        return applyModel(info.name, false);
+    }
+
+    /**
+     * Brings the backend up on {@code modelName} and adopts the model only after the load succeeded.
+     *
+     * <p>Adopting afterwards is what makes a rejected switch harmless: the selection, the loaded model and
+     * the active backend all still describe the model that is really running, so the next synthesis — and
+     * the next load attempt — start from the truth instead of from a model that was never loaded.</p>
+     */
+    private boolean applyModel(String modelName, boolean forceReload) {
+        Optional<TtsResolvedModel> resolved = modelResolver.resolve(modelName);
+        if (resolved.isEmpty()) {
+            // Nothing resolvable: keep serving whatever is up rather than dropping a working model for a
+            // selection that names nothing.
+            return false;
+        }
+        TtsResolvedModel model = resolved.get();
+        TtsEngineProvider.Load load = engineProvider.acquire(model, forceReload);
+        return switch (load.outcome()) {
+            case UNCHANGED -> {
+                initialized = true;
+                yield true;
+            }
+            case RELOADED -> {
+                adoptSelection(model);
+                initialized = true;
+                activeBackend = load.backend();
+                loadedModel = model;
+                yield true;
+            }
+            case FAILED -> {
+                // The engine kept whatever was already serving, so the state has to follow that backend
+                // rather than the model that was asked for.
+                boolean serving = load.backend() != null && load.backend().isInitialized();
+                initialized = serving;
+                activeBackend = serving ? load.backend() : null;
+                if (!serving) {
+                    loadedModel = null;
+                }
+                yield false;
+            }
+        };
+    }
+
+    private boolean isRunning(String modelName) {
+        return initialized
+                && loadedModel != null
+                && loadedModel.modelInfo() != null
+                && loadedModel.modelInfo().name != null
+                && loadedModel.modelInfo().name.equalsIgnoreCase(modelName)
+                && activeBackend != null
+                && activeBackend.isInitialized();
+    }
+
+    private void adoptSelection(TtsResolvedModel model) {
+        TtsModelInfo info = model.modelInfo();
+        if (info != null && info.name != null && !info.name.isBlank()) {
+            modelSelection.activate(info.name);
+        }
     }
 
     @Override
@@ -145,7 +194,11 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
 
     @Override
     public synchronized void synthesize(TtsRequest request, TtsAudioSink sink) {
-        if (!initialize()) {
+        // No lazy load here on purpose. Loading reads a native model, and that may only happen on the
+        // managed path — the coordinator, under the shared permit. A synthesis that arrives before the
+        // model is up reports that instead of quietly becoming the second door into native memory, which
+        // would also make "is the gate in place" unobservable from the outside.
+        if (!isInitialized()) {
             throw new IllegalStateException("TTS synthesis engine is unavailable");
         }
         TtsBackend backend = activeBackend;

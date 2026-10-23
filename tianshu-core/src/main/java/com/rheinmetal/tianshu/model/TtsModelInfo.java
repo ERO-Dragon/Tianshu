@@ -178,7 +178,13 @@ public class TtsModelInfo {
         return !supportsVoiceClone() && voicesFile != null && !voicesFile.isBlank();
     }
 
-    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/tts-model.json";
+    /*
+     * The catalog ships with the module that owns the models (tianshu-echo), not with this reader: the
+     * reader is shared by the owning module, the settings page and the platform configuration, so it stays
+     * in the kernel while the data follows its owner. The path mirrors this package, so the kernel never
+     * has to name a feature package.
+     */
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/model/catalog/tts-model.json";
     private static final Gson GSON = new Gson();
     private static List<TtsModelInfo> cachedCatalog = null;
 

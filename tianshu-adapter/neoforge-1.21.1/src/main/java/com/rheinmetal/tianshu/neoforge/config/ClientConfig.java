@@ -63,7 +63,10 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     public static final ModConfigSpec.ConfigValue<List<? extends String>> LLM_CREDENTIALS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_WINDOW_TOKENS;
     public static final ModConfigSpec.IntValue LLM_CONTEXT_TIER;
-    /** Embedding position: 999 puts every layer on the card, 0 — the default — keeps the lane on the CPU. */
+    /**
+     * Embedding position: 999 puts every layer on the card and is the default; 0 keeps the lane on the
+     * CPU and is where a failed GPU load falls back to, not the default.
+     */
     public static final ModConfigSpec.IntValue LLM_EMBEDDING_GPU_LAYERS;
     /** Runtime window of the embedding context; the model's own ceiling is applied on top. */
     public static final ModConfigSpec.IntValue LLM_EMBEDDING_CONTEXT_SIZE;
@@ -774,7 +777,8 @@ public class ClientConfig implements AsrConfiguration, LlmConfiguration, TtsConf
     /** The position is a two-value choice; a hand-edited file cannot push it outside that range. */
     @Override
     public void setLlmEmbeddingGpuLayers(int layers) {
-        LLM_EMBEDDING_GPU_LAYERS.set(Math.max(0, Math.min(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL, layers)));
+        LLM_EMBEDDING_GPU_LAYERS.set(Math.max(LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
+                Math.min(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL, layers)));
     }
 
     public void save() {

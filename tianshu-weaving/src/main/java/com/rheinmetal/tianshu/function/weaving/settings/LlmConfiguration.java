@@ -190,7 +190,14 @@ public interface LlmConfiguration {
      */
     int MIN_EMBEDDING_CONTEXT_SIZE = 256;
 
-    /** Largest accepted runtime window; the model's own ceiling is applied on top of this one. */
+    /**
+     * Largest accepted runtime window; the model's own ceiling is applied on top of this one.
+     *
+     * <p>This is a build-side cap, not a model property: it exists so a mistyped configuration cannot ask
+     * for a window this build was never sized for. The catalog's {@code contextSize} is the other cap and
+     * is read from the model file itself, so the two are equal for the shipped embedding model (bge-m3,
+     * 8192) only by coincidence — neither may be derived from the other.
+     */
     int MAX_EMBEDDING_CONTEXT_SIZE = 8192;
 
     /**
@@ -199,10 +206,15 @@ public interface LlmConfiguration {
      * <p>The retrieval inputs of this build are one event sentence (sixty characters at most) and a
      * summary of a few hundred, so the 8K window the model was trained for costs eight times the KV
      * cache for zero extra recall. The window is not free: llama.cpp sizes the KV cache in proportion
-     * to it, and that cache is native memory no collector can reclaim. 512 tokens is what a machine
+     * to it, and that cache is native memory no collector can reclaim. The value below is what a machine
      * whose page file is already nearly exhausted can still pay, and it covers the event sentence plus
      * the summary this build stores. Going lower starts truncating summaries, which are the carrier of
      * long-term memory — a truncation that costs retrieval quality silently instead of loudly.
+     *
+     * <p>Distinct from both neighbours on purpose: {@link #MIN_EMBEDDING_CONTEXT_SIZE} is the floor the
+     * reader clamps to, {@link #MAX_EMBEDDING_CONTEXT_SIZE} the largest budget this build accepts, and the
+     * catalog's own {@code contextSize} is the ceiling the file was trained for — the engine runs with
+     * {@code min(catalog, this)}.
      */
     int DEFAULT_EMBEDDING_CONTEXT_SIZE = 1024;
 

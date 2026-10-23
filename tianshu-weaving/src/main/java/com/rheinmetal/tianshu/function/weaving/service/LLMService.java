@@ -61,7 +61,7 @@ public class LLMService {
                 builder.cacheNamespace,
                 builder.embeddingConfigured
         );
-        this.requestPreparer = new LlmRequestPreparer(inferenceClient, ragService, metadata);
+        this.requestPreparer = new LlmRequestPreparer(ragService, metadata);
         this.initialized = true;
         env.info("[LLMService] Initialized, cache mode: " + (builder.usePersistentCache ? "PERSISTENT" : "MEMORY"));
     }

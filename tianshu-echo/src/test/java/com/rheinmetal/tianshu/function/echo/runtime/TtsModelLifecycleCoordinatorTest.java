@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.echo.runtime;
 
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsAudioSink;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -93,6 +94,137 @@ class TtsModelLifecycleCoordinatorTest {
 
         assertTrue(completions.await(2L, TimeUnit.SECONDS));
         assertTrue(engine.initializeCalls.get() == 1);
+    }
+
+    /**
+     * A second switch asked while one is loading is merged, not rejected and not queued: the newest target
+     * wins, both callers are answered, and the model is loaded once more for the target that actually
+     * changed.
+     */
+    @Test
+    void aSwitchAskedWhileAnotherIsLoadingIsCoalesced() throws Exception {
+        BlockingSwitchEngine engine = new BlockingSwitchEngine();
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(executors, engine, ignored -> { });
+        CountDownLatch completions = new CountDownLatch(2);
+
+        assertTrue(coordinator.useModel("first", result -> completions.countDown()).accepted());
+        assertTrue(engine.firstSwitchStarted.await(2L, TimeUnit.SECONDS));
+        assertTrue(coordinator.useModel("second", result -> completions.countDown()).accepted(),
+                "a request that arrives during a switch must be merged, not rejected as busy");
+
+        engine.releaseFirstSwitch.countDown();
+
+        assertTrue(completions.await(2L, TimeUnit.SECONDS), "both callers must be answered");
+        assertEquals(List.of("first", "second"), engine.requested,
+                "the load has to follow the newest target instead of the one that was already superseded");
+    }
+
+    /**
+     * Shutdown is terminal, so a switch still parked in the gate has to be answered.
+     *
+     * <p>It used to be dropped: the caller waited for an outcome that could never arrive, because the load
+     * it was waiting on would never run. Exactly one outcome, and it is a rejection.
+     */
+    @Test
+    void shutdownAnswersASwitchParkedInTheGate() throws Exception {
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(
+                executors, new ThreadRecordingEngine(), ignored -> { }, ignored -> { }, gateHeldElsewhere());
+        List<TtsControlResult> outcomes = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch answered = new CountDownLatch(1);
+
+        assertTrue(coordinator.useModel("voice-model", outcome -> {
+            outcomes.add(outcome);
+            answered.countDown();
+        }).accepted());
+        coordinator.shutdown();
+        // A second teardown must not answer the same caller again.
+        coordinator.shutdown();
+
+        assertTrue(answered.await(2L, TimeUnit.SECONDS), "shutdown must answer the in-flight switch, not drop it");
+        assertEquals(1, outcomes.size(), "exactly one outcome per waiting caller");
+        assertFalse(outcomes.get(0).accepted(), "a module that went away did not switch the model");
+        assertEquals(TtsFailureCode.CANCELLED, outcomes.get(0).failure().code());
+    }
+
+    @Test
+    void shutdownAnswersAPrepareParkedInTheGate() throws Exception {
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(
+                executors, new ThreadRecordingEngine(), ignored -> { }, ignored -> { }, gateHeldElsewhere());
+        List<Boolean> outcomes = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch answered = new CountDownLatch(1);
+
+        assertTrue(coordinator.prepare(initialized -> {
+            outcomes.add(initialized);
+            answered.countDown();
+        }).accepted());
+        coordinator.shutdown();
+
+        assertTrue(answered.await(2L, TimeUnit.SECONDS), "shutdown must answer the in-flight prepare, not drop it");
+        assertEquals(1, outcomes.size(), "exactly one outcome per waiting caller");
+        assertFalse(outcomes.get(0), "a prepare that never ran did not initialize the engine");
+    }
+
+    @Test
+    void shutdownAnswersAPreviewParkedInTheGate() throws Exception {
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(
+                executors, new ThreadRecordingEngine(), ignored -> { }, ignored -> { }, gateHeldElsewhere());
+        List<TtsFailure> failures = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch answered = new CountDownLatch(1);
+
+        assertTrue(coordinator.beginExclusivePreview(
+                "request-1",
+                "preview-model",
+                "restore-model",
+                null,
+                null,
+                failure -> {
+                    failures.add(failure);
+                    answered.countDown();
+                }
+        ).accepted());
+        coordinator.shutdown();
+
+        assertTrue(answered.await(2L, TimeUnit.SECONDS), "shutdown must answer the in-flight preview, not drop it");
+        assertEquals(1, failures.size(), "exactly one failure per waiting preview");
+        assertEquals(TtsFailureCode.CANCELLED, failures.get(0).code());
+    }
+
+    /** A gate whose permit is held by another module forever, so every request from here parks. */
+    private static NativeModelLoadQueue gateHeldElsewhere() {
+        NativeModelLoadQueue queue = new NativeModelLoadQueue();
+        assertEquals(NativeModelLoadQueue.Outcome.GRANTED, queue.request("seed", "seed", () -> { },
+                NativeModelLoadQueue.Tier.PRIMARY));
+        return queue;
+    }
+
+    private static final class BlockingSwitchEngine implements TtsSynthesisEngine {
+        private final CountDownLatch firstSwitchStarted = new CountDownLatch(1);
+        private final CountDownLatch releaseFirstSwitch = new CountDownLatch(1);
+        private final List<String> requested = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public boolean useModel(String modelName) {
+            requested.add(modelName);
+            if (requested.size() == 1) {
+                firstSwitchStarted.countDown();
+                try {
+                    releaseFirstSwitch.await(2L, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        @Override public boolean initialize() { return true; }
+        @Override public boolean isInitialized() { return !requested.isEmpty(); }
+        @Override public boolean isAutoregressive() { return false; }
+        @Override public int sampleRate() { return 24_000; }
+        @Override public TtsBackendSnapshot backendSnapshot() { return TtsBackendSnapshot.unavailable(); }
+        @Override public void synthesize(TtsRequest request, TtsAudioSink sink) { }
+        @Override public void interrupt() { }
+        @Override public void shutdown() { }
     }
 
     private static final class ThreadRecordingEngine implements TtsSynthesisEngine {

@@ -31,7 +31,7 @@ class ModelArchiveDownloaderTest {
         String modelInfo = source("src/main/java/com/rheinmetal/tianshu/model/TtsModelInfo.java");
         String coordinator = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/download/TtsModelDownloadCoordinator.java");
         String service = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/TtsModelService.java");
-        String catalog = source("src/main/resources/com/rheinmetal/tianshu/constant/tts-model.json");
+        String catalog = source("../tianshu-echo/src/main/resources/com/rheinmetal/tianshu/model/catalog/tts-model.json");
 
         assertTrue(modelInfo.contains("downloadUri"));
         assertTrue(coordinator.contains("ModelArchiveDownloader"));

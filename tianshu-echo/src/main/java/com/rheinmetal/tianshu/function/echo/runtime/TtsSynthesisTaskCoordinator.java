@@ -199,7 +199,9 @@ final class TtsSynthesisTaskCoordinator {
                 return;
             }
             task.start();
-            if (!synthesisEngine.initialize()) {
+            // No lazy load: the model read belongs to the managed load path, so a task that finds the lane
+            // unprepared fails here rather than pulling native memory in on the synthesis thread.
+            if (!synthesisEngine.isInitialized()) {
                 failTask(task, TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
                         "TTS_SYNTHESIS_ENGINE_UNAVAILABLE", false);
                 return;

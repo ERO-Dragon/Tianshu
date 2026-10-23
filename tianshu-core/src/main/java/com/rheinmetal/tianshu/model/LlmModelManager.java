@@ -25,8 +25,14 @@ import java.util.List;
  */
 public class LlmModelManager {
 
-    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/llm_models.json";
-    private static final String EMBEDDING_CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/llm_embedding_models.json";
+    /*
+     * Both catalogs ship with the module that owns the models (tianshu-weaving), not with this reader: the
+     * reader is shared by the owning module, the settings page and the platform configuration, so it stays
+     * in the kernel while the data follows its owner. The path mirrors this package, so the kernel never
+     * has to name a feature package.
+     */
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/model/catalog/llm_models.json";
+    private static final String EMBEDDING_CATALOG_RESOURCE = "/com/rheinmetal/tianshu/model/catalog/llm_embedding_models.json";
     private static final Gson GSON = new Gson();
     private static List<LlmModelInfo> cachedCatalog = null;
     private static List<LlmModelInfo> cachedEmbeddingCatalog = null;

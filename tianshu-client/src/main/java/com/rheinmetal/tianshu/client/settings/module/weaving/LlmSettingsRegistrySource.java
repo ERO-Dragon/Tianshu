@@ -235,10 +235,17 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         private final MutableSettingsValue<List<LlmModelEntry>> models;
         private final MutableSettingsValue<String> activeModelId;
         /**
-         * Where the embedding model loads. It is a draft value like the three above, because changing
-         * it costs a native model reload: the page only stages the choice and the save applies it.
+         * The load position the player staged on this page, or {@code null} while the page follows the
+         * configuration.
+         *
+         * <p>Changing the position costs a native model reload, so it is staged like the three drafts
+         * above and applied by the save. It is deliberately <em>not</em> a {@code MutableSettingsValue}:
+         * that caches its source at construction, and a cached position outlives every later change to
+         * the configuration — the page went on showing the position the file had when the page session
+         * began, and the next save wrote that stale value back. Only a staged change is state here;
+         * everything else is read live.
          */
-        private final MutableSettingsValue<Integer> embeddingGpuLayers;
+        private volatile Integer pendingGpuLayers;
         /**
          * Credentials typed into the editor, keyed by model id. They are written to the configuration
          * on save and are never read back into a widget, so a blank field keeps the stored key.
@@ -272,9 +279,6 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             this.models = new MutableSettingsValue<>(config::getLlmModels, config::setLlmModels,
                     value -> value != null && !value.isEmpty());
             this.activeModelId = new MutableSettingsValue<>(config::getLlmActiveModelId, config::setLlmActiveModelId, Objects::nonNull);
-            this.embeddingGpuLayers = new MutableSettingsValue<>(
-                    config::getLlmEmbeddingGpuLayers, config::setLlmEmbeddingGpuLayers,
-                    value -> value != null && value >= 0);
             modelService.refreshModelAvailabilityAsync(() -> runOnClient(() -> {
                 availabilitySnapshot = modelService.modelAvailability();
                 refreshSettingsScreen();
@@ -1024,7 +1028,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     || cloudSettingsDirty()
                     // 载入位置是草稿态（保存后才重启引擎），所以它也算未保存改动，
                     // 否则切换 CPU/GPU 后页面仍是"干净"的，保存按钮不会亮。
-                    || embeddingGpuLayers.dirty()
+                    || positionStaged()
                     // An open form is unsaved state of this module. Counting it here is what makes the
                     // page-level 保存 reach this session at all: without it, a credential typed into the
                     // form would leave the session "clean" and the save would be skipped entirely.
@@ -1124,11 +1128,18 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty();
-            // The position is read before the transaction accepts the drafts, so this is what the save is
-            // about to change rather than what is already stored.
-            boolean embeddingPositionChanged = embeddingGpuLayers.dirty();
+            // Only a staged position is written. A save that never touched the button must not rewrite the
+            // key from whatever this page happened to read first, which is what turned a stale page into a
+            // stale file. The value is read before the transaction writes, so this is the change about to be
+            // applied rather than what is already stored.
+            Integer stagedPosition = positionStaged() ? pendingGpuLayers : null;
+            boolean embeddingPositionChanged = stagedPosition != null;
             SettingsSaveTransaction transaction = new SettingsSaveTransaction(
-                    enabled, models, activeModelId, embeddingGpuLayers);
+                    enabled, models, activeModelId);
+            if (stagedPosition != null) {
+                transaction.write(config::getLlmEmbeddingGpuLayers, config::setLlmEmbeddingGpuLayers,
+                        stagedPosition);
+            }
             for (String retiredModelId : retiredApiKeyIds) {
                 // An empty credential removes the entry, so a deleted model takes its key with it.
                 transaction.write(() -> config.getLlmApiKey(retiredModelId),
@@ -1141,6 +1152,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
                         value -> config.setLlmApiKey(modelId, value), apiKey);
             }
             transaction.commit(config::save);
+            // Accepted only after persistence succeeded: a failed save keeps the staged position so the
+            // player can retry it instead of finding the button silently back at the stored value.
+            pendingGpuLayers = null;
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             if (!enabled.get()) {
@@ -1157,7 +1171,7 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             enabled.reset();
             models.reset();
             activeModelId.reset();
-            embeddingGpuLayers.reset();
+            pendingGpuLayers = null;
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             modelEditor = null;
@@ -1205,11 +1219,11 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
         }
 
         /**
-         * The embedding section: which model, what its download is doing, and why the load position starts
-         * on the CPU.
+         * The embedding section: which model, what its download is doing, and what a load on the card
+         * risks on this machine.
          *
          * <p>The note is a row of its own instead of a suffix on the position button: the button has to stay
-         * a button ("载入位置：CPU"), while the risk of switching it — the GPU backend can destabilise the
+         * a button ("载入位置：GPU"), while the risk of leaving it there — the GPU backend can destabilise the
          * game on some drivers — has to be readable before the player clicks it.</p>
          */
         private void buildEmbeddingStatus(StatusTemplate status) {
@@ -1333,10 +1347,34 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
             });
         }
 
-        /** Whether the embedding model is configured to run on the card. */
+        /**
+         * Whether the embedding model runs on the card.
+         *
+         * <p>Read live: a staged change wins, otherwise the configuration is asked on every render. That is
+         * what keeps the button equal to what is actually configured — a position edited outside this page
+         * (a hand-edited file, a default that moved with an update, another page's save) shows up on the
+         * next repaint instead of being masked by a value this page read once at construction.
+         */
         private boolean embeddingUsesGpu() {
-            Integer layers = embeddingGpuLayers.get();
-            return layers != null && layers > 0;
+            return effectiveGpuLayers() > 0;
+        }
+
+        /** The position the player staged, or the configured one while nothing was staged. */
+        private int effectiveGpuLayers() {
+            Integer staged = pendingGpuLayers;
+            return staged != null ? staged : config.getLlmEmbeddingGpuLayers();
+        }
+
+        /**
+         * Whether the staged position still differs from what is configured.
+         *
+         * <p>Compared against the live value rather than against a snapshot, so toggling the position and
+         * toggling it back leaves the page clean and the save does nothing — and so a staged value that a
+         * hand edit or another page already applied is not written again.</p>
+         */
+        private boolean positionStaged() {
+            Integer staged = pendingGpuLayers;
+            return staged != null && staged != config.getLlmEmbeddingGpuLayers();
         }
 
         /** The position button states what is in use, so no second indicator is needed. */
@@ -1355,9 +1393,9 @@ public final class LlmSettingsRegistrySource implements TianshuSettingsRegistryS
          */
         private void toggleEmbeddingPosition(ModuleSettingsContext context) {
             boolean gpu = !embeddingUsesGpu();
-            embeddingGpuLayers.set(gpu
+            pendingGpuLayers = gpu
                     ? LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL
-                    : LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU);
+                    : LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU;
             context.showStatus(llm("message.embedding_position_pending",
                     llm(gpu ? "action.embedding_position_gpu" : "action.embedding_position_cpu")), 2_500);
         }

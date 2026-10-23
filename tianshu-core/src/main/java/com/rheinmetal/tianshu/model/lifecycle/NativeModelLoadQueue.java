@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.model.lifecycle;
 
-import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -21,15 +21,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * every load on the lane that owns its cancellation, interrupt and status semantics, and leaves the
  * queue with exactly one job — deciding who may run now.
  *
- * <p>The embedding model is the <em>primary</em> load. Retrieval is a precondition for dialogue, so a
- * deferred load waits until the primary attempt has settled — success or failure, either way the
- * permit must not be held forever by a model that never loads. {@link #claimPrimary()} is how the
- * owner announces that a primary load is still to come; without it a deferred request would park
- * forever on a build whose LLM module has no embedding model at all.
+ * <p>Order is part of the contract, not something the callers fake with delays: {@link Tier} is the
+ * order, and it lives here. Retrieval goes first because dialogue depends on it, speech output second
+ * because it is the next thing the player notices, speech input last because the module refuses to
+ * record until it is up anyway. A lower tier always wins, whether it asked earlier or later.
  *
- * <p>Deliberately not re-entrant and deliberately not fair-by-priority: parked requests are granted in
- * arrival order, because the order the modules ask in is the order the player expects to get their
- * features back.
+ * <p>A tier can announce that a load of its own is still to come ({@link #expect(Tier)}); a better tier
+ * never waits for a worse one, but a worse tier waits for every better tier that is expected and not
+ * yet settled. The permit must not be held forever by a model that never loads, so a tier that decides
+ * not to load settles or abandons its claim — {@link #claimPrimary()} is how the retrieval lane
+ * announces itself, and the speech-output tier is expected from the start because a voice-input load
+ * must not overtake it even when the two ask in the opposite order.
  */
 public final class NativeModelLoadQueue {
 
@@ -46,29 +48,70 @@ public final class NativeModelLoadQueue {
         void onGranted(String moduleId, String action);
     }
 
+    /**
+     * Load order. The rank is the whole priority policy — nothing outside this type may reorder loads.
+     */
+    public enum Tier {
+        /** Retrieval: dialogue depends on it, so it runs before anything else. */
+        PRIMARY(0),
+        /** Speech output: the next capability the player notices, and the one synthesis needs. */
+        DEFERRED(1),
+        /** Speech input: last, because the module refuses to record until its model is up. */
+        LAST(2);
+
+        private final int rank;
+
+        Tier(int rank) {
+            this.rank = rank;
+        }
+
+        int rank() {
+            return rank;
+        }
+
+        static Tier byRank(int rank) {
+            for (Tier tier : values()) {
+                if (tier.rank == rank) {
+                    return tier;
+                }
+            }
+            throw new IllegalArgumentException("No load tier has rank " + rank);
+        }
+    }
+
     /** Upper bound of parked requests; exceeding it means a module is not releasing its permit. */
     private static final int MAX_PARKED = 8;
+    private static final int TIER_COUNT = Tier.values().length;
 
     private static final class Request {
         private final String moduleId;
         private final String action;
         private final Runnable submit;
-        private final boolean primary;
+        private final Tier tier;
 
-        private Request(String moduleId, String action, Runnable submit, boolean primary) {
+        private Request(String moduleId, String action, Runnable submit, Tier tier) {
             this.moduleId = moduleId;
             this.action = action;
             this.submit = submit;
-            this.primary = primary;
+            this.tier = tier;
         }
     }
 
     private final Object lock = new Object();
-    private final ArrayDeque<Request> parked = new ArrayDeque<>();
+    /** Kept rank-ordered, arrival-ordered inside a rank; see {@link #parkLocked(Request)}. */
+    private final List<Request> parked = new ArrayList<>();
     private final List<Observer> observers = new CopyOnWriteArrayList<>();
+    /** Per rank: whether a load of that tier is still to come, and whether it has already ended. */
+    private final boolean[] tierExpected = new boolean[TIER_COUNT];
+    private final boolean[] tierSettled = new boolean[TIER_COUNT];
     private Request active;
-    private boolean primaryExpected;
-    private boolean primarySettled;
+
+    public NativeModelLoadQueue() {
+        // Retrieval announces itself with claimPrimary(); the speech-output tier is expected from the
+        // start, so a voice-input load cannot slip in ahead of it when it happens to ask first.
+        tierSettled[Tier.LAST.rank()] = true;
+        tierExpected[Tier.DEFERRED.rank()] = true;
+    }
 
     public void addObserver(Observer observer) {
         if (observer != null && !observers.contains(observer)) {
@@ -80,35 +123,48 @@ public final class NativeModelLoadQueue {
         observers.remove(observer);
     }
 
-    /**
-     * Claims the primary (retrieval) lane.
-     *
-     * <p>Announces that a primary load is still to come, so deferred requests must wait for its
-     * outcome before they may start — and clears a primary permit left behind by a previous attempt
-     * whose lane submission was cancelled, which would otherwise park this claim for good.
-     *
-     * <p>Only a <em>primary</em> permit is abandoned here. A speech load that happens to be running when
-     * a new session claims retrieval is left alone: dropping its permit would let the two overlap, which
-     * is the one thing this queue exists to prevent.
-     */
-    public void claimPrimary() {
+    /** Announces that a load of {@code tier} is still to come; worse tiers wait for it to settle. */
+    public void expect(Tier tier) {
+        Objects.requireNonNull(tier, "tier");
         synchronized (lock) {
-            if (active != null && active.primary) {
-                active = null;
-            }
-            primaryExpected = true;
-            primarySettled = false;
+            expectLocked(tier);
         }
     }
 
     /**
-     * The primary attempt has ended — loaded, degraded, unavailable or abandoned. Releases every
-     * deferred request that was waiting on it.
+     * Claims the primary (retrieval) lane.
+     *
+     * <p>Announces that a primary load is still to come, so worse tiers must wait for its outcome before
+     * they may start — and clears a primary permit left behind by a previous attempt whose lane submission
+     * was cancelled, which would otherwise park this claim for good.
+     *
+     * <p>Only a <em>primary</em> permit is abandoned here. A speech load that happens to be running when a
+     * new session claims retrieval is left alone: dropping its permit would let the two overlap, which is
+     * the one thing this queue exists to prevent.
      */
+    public void claimPrimary() {
+        synchronized (lock) {
+            if (active != null && active.tier == Tier.PRIMARY) {
+                active = null;
+            }
+            expectLocked(Tier.PRIMARY);
+        }
+    }
+
+    /** The primary attempt has ended — loaded, degraded, unavailable or abandoned. */
     public void settlePrimary() {
+        settle(Tier.PRIMARY);
+    }
+
+    /**
+     * The attempt of {@code tier} has ended — loaded, degraded, unavailable or abandoned. Whatever was
+     * waiting for it is granted on this same call.
+     */
+    public void settle(Tier tier) {
+        Objects.requireNonNull(tier, "tier");
         List<Request> granted;
         synchronized (lock) {
-            primarySettled = true;
+            tierSettled[tier.rank()] = true;
             granted = drainLocked();
         }
         grantAll(granted);
@@ -125,20 +181,21 @@ public final class NativeModelLoadQueue {
     }
 
     /**
-     * Asks for the permit.
+     * Asks for the permit at the given tier.
      *
      * @param submit runnable that submits the actual load onto the caller's own lane; it must end by
-     *               calling {@link #release()}, normally from a {@code finally}
-     * @param primary whether this is the retrieval lane that deferred requests wait for
+     *               calling {@link #release(String)}, normally from a {@code finally}
+     * @param tier   where this load sits in the order; see {@link Tier}
      * @return {@link Outcome#GRANTED}, {@link Outcome#PARKED} or {@link Outcome#REFUSED}
      */
-    public Outcome request(String moduleId, String action, Runnable submit, boolean primary) {
+    public Outcome request(String moduleId, String action, Runnable submit, Tier tier) {
         Objects.requireNonNull(submit, "submit");
+        Objects.requireNonNull(tier, "tier");
         Request request = new Request(
                 moduleId == null ? "" : moduleId,
                 action == null ? "" : action,
                 submit,
-                primary
+                tier
         );
         boolean granted = false;
         int ahead = 0;
@@ -151,7 +208,7 @@ public final class NativeModelLoadQueue {
                 // and the caller still sees the refusal and reports its own queue-full failure.
                 return Outcome.REFUSED;
             } else {
-                parked.addLast(request);
+                parkLocked(request);
                 ahead = parked.size();
             }
         }
@@ -168,17 +225,15 @@ public final class NativeModelLoadQueue {
     /**
      * Hands the permit back, but only if this module still holds it.
      *
-     * <p>Called by the lane task that ran a granted request, whether the load succeeded or not — a
-     * failure that never released the permit would park every later model load for the rest of the
-     * session.
+     * <p>Called by the lane task that ran a granted request, whether the load succeeded or not — a failure
+     * that never released the permit would park every later model load for the rest of the session.
      *
-     * <p>The owner check is what makes release idempotent and safe to call from a teardown path at the
-     * same time as the load task itself: a module that no longer holds the permit returns here without
-     * touching it, so a second release can never steal the permit from whichever module was granted in
-     * the meantime.
+     * <p>The owner check is what makes release idempotent and safe to call from a teardown path at the same
+     * time as the load task itself: a module that no longer holds the permit returns here without touching
+     * it, so a second release can never steal the permit from whichever module was granted in the meantime.
      *
-     * <p>Releasing the primary request is also what settles it: the retrieval attempt is over, so the
-     * deferred speech loads no longer have anything to wait for and one is granted on this same call.
+     * <p>Releasing also settles the holder's tier: the attempt is over, so every worse tier that was
+     * waiting on it is granted on this same call.
      */
     public void release(String moduleId) {
         String owner = moduleId == null ? "" : moduleId;
@@ -187,9 +242,7 @@ public final class NativeModelLoadQueue {
             if (active == null || !active.moduleId.equals(owner)) {
                 return;
             }
-            if (active.primary) {
-                primarySettled = true;
-            }
+            tierSettled[active.tier.rank()] = true;
             active = null;
             granted = drainLocked();
         }
@@ -197,44 +250,88 @@ public final class NativeModelLoadQueue {
     }
 
     /**
-     * Gives up the retrieval claim and hands the gate to whoever was waiting behind it.
+     * Gives up the claim of {@code tier} and hands the gate to whoever was waiting behind it.
      *
-     * <p>Used when the LLM module stops: a primary load queued on a lane that will never run must not
-     * hold the permit, and a deferred speech load parked behind retrieval may now go ahead. A permit
-     * held by a <em>speech</em> load is left alone — that load is in flight and will release its own.
+     * <p>Used when a module stops or decides not to load: a load queued on a lane that will never run must
+     * not hold a claim, and the worse tiers parked behind it may now go ahead. A permit held by a load of
+     * that tier is cleared, because that load will never run either; a permit held by another tier is left
+     * alone and releases its own.
      */
-    public void abandonPrimary() {
+    public void abandon(Tier tier) {
+        Objects.requireNonNull(tier, "tier");
         List<Request> granted;
         synchronized (lock) {
-            if (active != null && active.primary) {
+            if (active != null && active.tier == tier) {
                 active = null;
             }
-            primaryExpected = false;
-            primarySettled = true;
+            tierExpected[tier.rank()] = false;
+            tierSettled[tier.rank()] = true;
             granted = drainLocked();
         }
         grantAll(granted);
+    }
+
+    /** Gives up the retrieval claim; see {@link #abandon(Tier)}. */
+    public void abandonPrimary() {
+        abandon(Tier.PRIMARY);
+    }
+
+    private void expectLocked(Tier tier) {
+        tierExpected[tier.rank()] = true;
+        tierSettled[tier.rank()] = false;
+    }
+
+    /**
+     * Keeps the waiting list rank-ordered and arrival-ordered inside one rank.
+     *
+     * <p>Inserting after every request of the same or a better rank is what makes the order a promise:
+     * an equal rank never overtakes an equal rank, and a worse rank never overtakes a better one no matter
+     * which of them asked first.
+     */
+    private void parkLocked(Request request) {
+        int index = 0;
+        while (index < parked.size() && parked.get(index).tier.rank() <= request.tier.rank()) {
+            index++;
+        }
+        parked.add(index, request);
     }
 
     private boolean canStartLocked(Request request) {
         if (active != null) {
             return false;
         }
-        if (request.primary) {
-            return true;
+        for (int rank = 0; rank < request.tier.rank(); rank++) {
+            Tier better = Tier.byRank(rank);
+            if (tierExpected[rank] && !tierSettled[rank]) {
+                // A better tier is still to come; starting now would make it wait behind this one.
+                return false;
+            }
+            if (hasParkedLocked(better)) {
+                // A better tier is already waiting; it must not be overtaken by this request.
+                return false;
+            }
         }
-        return !primaryExpected || primarySettled;
+        return true;
+    }
+
+    private boolean hasParkedLocked(Tier tier) {
+        for (Request request : parked) {
+            if (request.tier == tier) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Request> drainLocked() {
         if (active != null || parked.isEmpty()) {
             return List.of();
         }
-        Request next = parked.peekFirst();
+        Request next = parked.get(0);
         if (next == null || !canStartLocked(next)) {
             return List.of();
         }
-        parked.pollFirst();
+        parked.remove(0);
         active = next;
         return List.of(next);
     }

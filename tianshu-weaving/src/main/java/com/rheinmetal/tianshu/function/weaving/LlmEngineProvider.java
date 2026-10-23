@@ -37,6 +37,8 @@ public final class LlmEngineProvider {
     private static final String MODULE_ID = ProtocolModuleIds.LLM;
     /** Queue action name for the retrieval load, which the gate treats as the primary request. */
     private static final String LOAD_ACTION = "embedding";
+    /** Detail reported when the gate has no room left for the primary request. */
+    private static final String QUEUE_REFUSED_REASON = "the native model load queue is full";
     private final IGameEnvironment env;
     private final LlmConfiguration config;
     private final LlmModelPathResolver modelPaths;
@@ -148,26 +150,58 @@ public final class LlmEngineProvider {
         // The permit is taken here rather than inside the lane task so the speech lane parks from world
         // entry on: retrieval is a precondition for dialogue, and a speech model that starts first would
         // hold the permit for the embedding load's whole window.
-        warmUpThroughQueue(prepared);
+        if (!warmUpThroughQueue(prepared)) {
+            refuseQueuedLoad(prepared);
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * The gate refused the primary request: the parked requests already reached its capacity, which means
+     * some earlier load never handed its permit back.
+     *
+     * <p>Ignoring the refusal — which is what this branch used to do — left the primary claim unsettled
+     * for the rest of the session: every deferred speech load parked behind a retrieval load that was
+     * never going to run, and nothing said so. The engine is therefore unbound, the claim is settled so
+     * the speech lane may proceed, and the failure is reported on both the log/diagnostic channel and the
+     * presence channel the other load outcomes use.</p>
+     */
+    private void refuseQueuedLoad(LocalEmbeddingEngine refused) {
+        EmbeddingLoadReport report = EmbeddingLoadReport.unavailable(QUEUE_REFUSED_REASON);
+        synchronized (this) {
+            if (embeddingEngine == refused) {
+                embeddingEngine = null;
+                embeddingLoadReport = report;
+            }
+        }
+        publishEmbeddingFailure("LLM_EMBEDDING_LOAD_REFUSED", QUEUE_REFUSED_REASON);
+        loadListener.accept(report);
+        // Nothing is coming for the retrieval lane, so the deferred speech load must not keep waiting.
+        if (loadQueue != null) {
+            loadQueue.settlePrimary();
+        }
     }
 
     /**
      * Hands the load to the serial gate, which decides when it may run; the permit goes back when the
      * load ends, whether it loaded or not.
+     *
+     * @return false when the gate refused the request, so the caller can report it instead of pretending
+     *         the load was queued
      */
-    private void warmUpThroughQueue(LocalEmbeddingEngine engine) {
+    private boolean warmUpThroughQueue(LocalEmbeddingEngine engine) {
         if (loadQueue == null) {
             engine.warmUp(modelLoadExecutor);
-            return;
+            return true;
         }
-        loadQueue.request(MODULE_ID, LOAD_ACTION, () -> modelLoadExecutor.execute(() -> {
+        return loadQueue.request(MODULE_ID, LOAD_ACTION, () -> modelLoadExecutor.execute(() -> {
             try {
                 engine.loadNow();
             } finally {
                 loadQueue.release(MODULE_ID);
             }
-        }), true);
+        }), NativeModelLoadQueue.Tier.PRIMARY) != NativeModelLoadQueue.Outcome.REFUSED;
     }
 
     /** Called on stop so a claimed but never-queued primary load cannot park the speech lane. */
@@ -206,7 +240,8 @@ public final class LlmEngineProvider {
     /** The player's choice, clamped to the only two positions the runtime knows about. */
     private int requestedGpuLayers() {
         int configured = config.getLlmEmbeddingGpuLayers();
-        return Math.max(0, Math.min(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL, configured));
+        return Math.max(LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
+                Math.min(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL, configured));
     }
 
     /**
@@ -237,13 +272,18 @@ public final class LlmEngineProvider {
     }
 
     private void publishEmbeddingUnavailable(String reason) {
+        publishEmbeddingFailure("LLM_EMBEDDING_UNAVAILABLE", reason);
+    }
+
+    /** The one log-plus-diagnostic outlet for "this lane will not carry vectors", whatever the cause. */
+    private void publishEmbeddingFailure(String code, String reason) {
         String detail = reason == null || reason.isBlank() ? "no embedding model is configured" : reason;
         String embeddingModelName = config.getLlmEmbeddingModelName();
         env.warn("[LLM] Vector RAG stays disabled: " + detail + ". Chat is unaffected.");
         try {
             env.diagnostics().publish(DiagnosticEvent.now(
                     ProtocolModuleIds.LLM,
-                    "LLM_EMBEDDING_UNAVAILABLE",
+                    code,
                     DiagnosticSeverity.WARN,
                     DiagnosticPrivacy.REDACTED,
                     Map.of(

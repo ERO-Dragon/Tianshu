@@ -129,12 +129,22 @@ public final class TtsModule implements TianshuManagedModule {
     public void prepare(ModuleRuntimeContext context) {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
-        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.tts.starting", lifecycleStatusGeneration));
+        if (loadQueue != null) {
+            // Re-arms the ordering claim for this session: the queue expects the speech-output tier from
+            // construction, and a stopped-and-restarted module has to say so again.
+            loadQueue.expect(NativeModelLoadQueue.Tier.DEFERRED);
+        }
+        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         if (!config.isTtsEnabled()) {
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS is disabled");
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS is disabled");
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.VOICE_LIBRARY, moduleId(), "TTS is disabled");
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.MODEL_MANAGEMENT, moduleId(), "TTS is disabled");
+            if (loadQueue != null) {
+                // Disabled means no speech load will ever come from this tier; the voice-input load parked
+                // behind it must not wait for one.
+                loadQueue.abandon(NativeModelLoadQueue.Tier.DEFERRED);
+            }
             publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.tts.failed", lifecycleStatusGeneration));
             return;
         }
@@ -177,7 +187,7 @@ public final class TtsModule implements TianshuManagedModule {
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.VOICE_LIBRARY, moduleId());
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.MODEL_MANAGEMENT, moduleId());
             publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.tts.ready"));
-            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.tts.ready", lifecycleStatusGeneration));
+            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
         } else {
             context.runtimeState().capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS synthesis engine initialization failed");
             context.runtimeState().capabilities().markReady(TtsRuntimeCapabilities.PLAYBACK, moduleId());
@@ -238,6 +248,11 @@ public final class TtsModule implements TianshuManagedModule {
         if (scheduled != null && !scheduled.isDone()) {
             scheduled.cancel("TTS module stopped");
         }
+        if (loadQueue != null) {
+            // The scheduled auto-load may have been cancelled above, so its tier is given up here rather
+            // than in the load that will never run — otherwise the voice-input tier would wait forever.
+            loadQueue.abandon(NativeModelLoadQueue.Tier.DEFERRED);
+        }
         if (ttsRuntime != null) {
             ttsRuntime.stop();
         }
@@ -247,7 +262,7 @@ public final class TtsModule implements TianshuManagedModule {
         endActiveRequestActivities();
         if (lifecycleActive) {
             lifecycleActive = false;
-            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.tts.stopped", lifecycleStatusGeneration));
+            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
         }
     }
 

@@ -17,7 +17,13 @@ import java.util.stream.Collectors;
 
 public class AsrModelManager {
 
-    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/constant/asr_model.json";
+    /*
+     * The catalog ships with the module that owns the models (tianshu-intake), not with this reader: the
+     * reader is shared by the owning module, the settings page and the platform configuration, so it stays
+     * in the kernel while the data follows its owner. The path mirrors this package, so the kernel never
+     * has to name a feature package.
+     */
+    private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/model/catalog/asr_model.json";
     private static final Gson GSON = new Gson();
     private static List<AsrModelInfo> cachedCatalog = null;
 

@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.weaving;
 
 import com.rheinmetal.tianshu.function.weaving.service.Chunk;
 import com.rheinmetal.tianshu.function.weaving.service.LLMRequest;
-import com.rheinmetal.tianshu.function.weaving.service.LlmInferencePolicy;
 import com.rheinmetal.tianshu.function.weaving.service.MessageItem;
 import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
@@ -31,7 +30,8 @@ final class LlmPromptPayloadMapper {
         request.setLane(payload.lane());
         request.setTaskPriority(payload.taskPriority());
         request.setTaskPreemptible(payload.taskPreemptible());
-        request.setInferencePolicy(toInferencePolicy(payload.inferencePolicy()));
+        // payload.inferencePolicy() is deliberately not mapped: frame guard, target fps and MTP only ever
+        // fed the retired local chat lane. The field stays on the wire for compatibility, nothing reads it.
         for (LLMPromptRequestPayload.ChunkPayload chunk : payload.chunks()) {
             if (chunk == null) {
                 continue;
@@ -85,12 +85,6 @@ final class LlmPromptPayloadMapper {
             }
         }
         return request;
-    }
-
-    private LlmInferencePolicy toInferencePolicy(LLMPromptRequestPayload.InferencePolicyPayload payload) {
-        return payload == null
-                ? LlmInferencePolicy.defaults()
-                : new LlmInferencePolicy(payload.frameGuardEnabled(), payload.targetFps(), payload.mtpEnabled());
     }
 
     private Chunk toMessageChunk(List<LLMPromptRequestPayload.MessageItemPayload> messages) {

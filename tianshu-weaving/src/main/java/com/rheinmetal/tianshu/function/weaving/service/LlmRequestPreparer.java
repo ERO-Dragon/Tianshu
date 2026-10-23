@@ -10,16 +10,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class LlmRequestPreparer {
-    private final LlmInferenceClient inferenceClient;
     private final LlmRagService ragService;
     private final LlmServiceMetadata metadata;
 
     LlmRequestPreparer(
-            LlmInferenceClient inferenceClient,
             LlmRagService ragService,
             LlmServiceMetadata metadata
     ) {
-        this.inferenceClient = inferenceClient;
         this.ragService = ragService;
         this.metadata = metadata;
     }
@@ -43,10 +40,9 @@ final class LlmRequestPreparer {
             }
         }
 
-        LlmInferencePolicy inferencePolicy = effectiveRequest.getInferencePolicy();
-        boolean mtpEnabled = inferencePolicy != null
-                && Boolean.TRUE.equals(inferencePolicy.mtpEnabled())
-                && inferenceClient.supportsMtp();
+        // No inference policy is read here any more: frame guard, target fps and MTP only ever fed the
+        // retired local chat lane, and the HTTP client reads neither. The payload still carries those
+        // fields for wire compatibility; nothing in this build consumes them.
         return new PreparedRequest(
                 buildLibsMessages(messages.finish()),
                 createSampler(effectiveRequest),
@@ -54,9 +50,6 @@ final class LlmRequestPreparer {
                 effectiveRequest.getTaskPriority(),
                 effectiveRequest.getTaskPreemptible(),
                 new LlmInferenceOptions(
-                        mtpEnabled,
-                        null,
-                        null,
                         Boolean.TRUE.equals(effectiveRequest.getCaptureThinkingContent()),
                         effectiveRequest.getToolsJson()
                 ),

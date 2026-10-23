@@ -14,6 +14,15 @@ import java.util.List;
  */
 public class LlmModelInfo {
 
+    /**
+     * The context window assumed for a catalog entry that declares none.
+     *
+     * <p>This is the <em>only</em> definition of that fallback: the embedding resolver answers the same
+     * question when the selection is not in the catalog at all, and both must answer it with one number.
+     * It is a ceiling the file was trained for, never the window the engine runs with.
+     */
+    public static final int DEFAULT_CONTEXT_SIZE = 4096;
+
     public String name;
     public String displayName;
     public String repoId;
@@ -66,7 +75,7 @@ public class LlmModelInfo {
     }
 
     public int getContextSize() {
-        return contextSize > 0 ? contextSize : 4096;
+        return contextSize > 0 ? contextSize : DEFAULT_CONTEXT_SIZE;
     }
 
     public int getPromptTokenBudget() {

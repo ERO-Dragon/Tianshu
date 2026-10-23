@@ -51,19 +51,19 @@ public final class PresenceModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        publishLifecycle(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.presence.starting", lifecycleGeneration.incrementAndGet()));
+        publishLifecycle(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleGeneration.incrementAndGet()));
         adapter.registerOwnedTopics(context.protocol());
         adapter.registerQueryContextCapability(this::handleQueryContext);
         adapter.subscribePresenceActivity(this::handlePresenceActivity);
         lifecycleActive = true;
-        publishLifecycle(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.presence.ready", lifecycleGeneration.get()));
+        publishLifecycle(ModuleStatuses.lifecycleReady(moduleId(), lifecycleGeneration.get()));
     }
 
     @Override
     public void stop() {
         if (lifecycleActive) {
             lifecycleActive = false;
-            publishLifecycle(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.presence.stopped", lifecycleGeneration.get()));
+            publishLifecycle(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleGeneration.get()));
         }
     }
 

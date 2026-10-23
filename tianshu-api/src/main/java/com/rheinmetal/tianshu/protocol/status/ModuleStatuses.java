@@ -21,19 +21,42 @@ public final class ModuleStatuses {
         return keyed(moduleId, TYPE_READY, messageKey, ModuleStatusSeverity.NOTICE, READY_TTL_MILLIS);
     }
 
-    public static ModuleStatus lifecycleStarting(String moduleId, String messageKey, long generation) {
-        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.INFO, generation);
+    /** Lifecycle "starting" for {@code moduleId}; the language key is derived, never passed in. */
+    public static ModuleStatus lifecycleStarting(String moduleId, long generation) {
+        return lifecycleStarting(moduleId, ModuleStatusKeys.starting(moduleId), generation);
     }
 
-    public static ModuleStatus lifecycleReady(String moduleId, String messageKey, long generation) {
-        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.NOTICE, generation);
+    /** Lifecycle "ready" for {@code moduleId}; the language key is derived, never passed in. */
+    public static ModuleStatus lifecycleReady(String moduleId, long generation) {
+        return lifecycleReady(moduleId, ModuleStatusKeys.ready(moduleId), generation);
     }
 
+    /** Lifecycle "failed" for {@code moduleId}; the key names the actionable cause, so it stays explicit. */
     public static ModuleStatus lifecycleFailed(String moduleId, String messageKey, long generation) {
         return lifecycle(moduleId, messageKey, ModuleStatusSeverity.CRITICAL, generation);
     }
 
-    public static ModuleStatus lifecycleStopped(String moduleId, String messageKey, long generation) {
+    /** Lifecycle "stopped" for {@code moduleId}; the language key is derived, never passed in. */
+    public static ModuleStatus lifecycleStopped(String moduleId, long generation) {
+        return lifecycleStopped(moduleId, ModuleStatusKeys.stopped(moduleId), generation);
+    }
+
+    /**
+     * A lifecycle status whose language key the caller supplies.
+     *
+     * <p>Deliberately private: the derived overloads above are the only door for starting / ready /
+     * stopped, which is what keeps those keys a single source. Failure keys stay caller-supplied and are
+     * swept by {@code ModuleStatusLanguageTest}.</p>
+     */
+    private static ModuleStatus lifecycleStarting(String moduleId, String messageKey, long generation) {
+        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.INFO, generation);
+    }
+
+    private static ModuleStatus lifecycleReady(String moduleId, String messageKey, long generation) {
+        return lifecycle(moduleId, messageKey, ModuleStatusSeverity.NOTICE, generation);
+    }
+
+    private static ModuleStatus lifecycleStopped(String moduleId, String messageKey, long generation) {
         return lifecycle(moduleId, messageKey, ModuleStatusSeverity.INFO, generation);
     }
 

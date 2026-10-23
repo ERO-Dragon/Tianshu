@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,6 +125,54 @@ class LlmEngineProviderTest {
 
         assertNull(provider.embeddingService());
         assertEquals(warningsWhileLoaded, env.warnings, "releasing a dead engine must not report a new failure");
+    }
+
+    /**
+     * The gate has a bounded park queue; a request that finds it full is refused. Ignoring that refusal
+     * left the primary claim unsettled, so every deferred speech load parked behind a retrieval load that
+     * was never going to run. This pins the whole obligation of the refusal branch: report it, do not bind
+     * an engine that will never load, and settle the claim so the speech lane goes through.
+     */
+    @Test
+    void aRefusedPrimaryRequestIsReportedAndReleasesTheDeferredLane() throws Exception {
+        FakeGameEnvironment env = new FakeGameEnvironment();
+        Path modelFile = tempDir.resolve("llm").resolve("model").resolve("embed.gguf");
+        Files.createDirectories(modelFile.getParent());
+        Files.writeString(modelFile, "placeholder");
+        List<Runnable> queued = new ArrayList<>();
+        List<EmbeddingLoadReport> reports = new ArrayList<>();
+        NativeModelLoadQueue queue = new NativeModelLoadQueue();
+        // One live permit plus a full park queue: the next request can only be refused.
+        assertEquals(NativeModelLoadQueue.Outcome.GRANTED, queue.request("seed", "seed", () -> { }, NativeModelLoadQueue.Tier.DEFERRED));
+        for (int index = 0; index < 8; index++) {
+            assertEquals(NativeModelLoadQueue.Outcome.PARKED,
+                    queue.request("parked" + index, "parked", () -> { }, NativeModelLoadQueue.Tier.DEFERRED));
+        }
+        LlmEngineProvider provider = new LlmEngineProvider(
+                env,
+                new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf"),
+                queued::add,
+                reports::add,
+                queue
+        );
+
+        assertFalse(provider.startEmbeddingOnly(), "a refused load is not a queued load");
+        assertTrue(queued.isEmpty(), "nothing may be handed to the lane the gate never admitted");
+        assertFalse(provider.isEmbeddingConfigured());
+        assertNull(provider.embeddingService(), "a model that will never load must not stay bound to RAG");
+        assertTrue(warned(env, "load queue is full"), env.warnings.toString());
+        assertEquals(1, reports.size(), reports.toString());
+        assertEquals(EmbeddingLoadReport.Outcome.UNAVAILABLE, reports.get(0).outcome());
+
+        queue.release("seed");
+        for (int index = 0; index < 8; index++) {
+            queue.release("parked" + index);
+        }
+        AtomicBoolean admitted = new AtomicBoolean();
+        assertEquals(NativeModelLoadQueue.Outcome.GRANTED,
+                queue.request("module.tts", "tts-model", () -> admitted.set(true), NativeModelLoadQueue.Tier.DEFERRED),
+                "the settled claim must let the deferred speech lane through");
+        assertTrue(admitted.get(), "the deferred lane has to run, not just be accepted");
     }
 
     private static boolean warned(FakeGameEnvironment env, String fragment) {

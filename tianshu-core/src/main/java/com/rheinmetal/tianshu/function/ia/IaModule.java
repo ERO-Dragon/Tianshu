@@ -170,7 +170,7 @@ public final class IaModule implements TianshuManagedModule {
         lifecycleStatusGeneration = runtimeGeneration.get() + 1L;
         runtimeGeneration.incrementAndGet();
         lifecycleActive = true;
-        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.ia.starting", lifecycleStatusGeneration));
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         if (runtimeContext != null) {
             deactivateRuntime();
         }
@@ -180,7 +180,7 @@ public final class IaModule implements TianshuManagedModule {
         voiceTriggerSynchronizer.bind(nextContext.voiceResources(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         ownerPreviewRefreshCoordinator.start();
-        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.ia.ready", lifecycleStatusGeneration));
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
     }
 
     @Override
@@ -190,7 +190,7 @@ public final class IaModule implements TianshuManagedModule {
         participantLifecycleCoordinator.unregisterModule(null, moduleId(), now);
         if (lifecycleActive) {
             lifecycleActive = false;
-            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.ia.stopped", lifecycleStatusGeneration));
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
         }
     }
 

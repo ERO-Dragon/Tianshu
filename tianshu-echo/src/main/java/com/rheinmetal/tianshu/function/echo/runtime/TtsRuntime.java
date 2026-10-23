@@ -643,7 +643,10 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 return;
             }
             transition(session, TtsSessionState.SYNTHESIZING);
-            if (!synthesisEngine.initialize()) {
+            // The sentence must not load the model: a native read belongs to the managed load path under
+            // the shared permit, so a lane that was never prepared reports itself here instead of quietly
+            // loading on the synthesis thread.
+            if (!synthesisEngine.isInitialized()) {
                 TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS synthesis engine is unavailable");
                 failSpeechSession(session, work, context, failure);
                 return;
@@ -755,7 +758,9 @@ public final class TtsRuntime implements TtsPlaybackListener {
         }
         try {
             transition(session, TtsSessionState.SYNTHESIZING);
-            if (!synthesisEngine.initialize()) {
+            // Synthesising never loads the model: a native read belongs to the managed load path under the
+            // shared permit, so an unprepared lane reports itself instead of loading on this thread.
+            if (!synthesisEngine.isInitialized()) {
                 failSpeechSession(session, work, context,
                         TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS synthesis engine is unavailable"));
                 return;

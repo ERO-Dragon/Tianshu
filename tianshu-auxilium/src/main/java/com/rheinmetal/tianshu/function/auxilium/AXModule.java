@@ -200,7 +200,7 @@ public final class AXModule implements TianshuManagedModule {
         }
         lifecycleStatusGeneration++;
         lifecycleActive = true;
-        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.ax.starting", lifecycleStatusGeneration));
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         llmClient = new AXLlmClient(adapter);
         turnStatusPublisher = new AXTurnStatusPublisher(adapter);
         retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.retrievalPrimitiveTimeoutMillis());
@@ -298,7 +298,7 @@ public final class AXModule implements TianshuManagedModule {
         if (moduleServices != null) {
             moduleServices.register(AXDelegateService.class, delegateService);
         }
-        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.ax.ready", lifecycleStatusGeneration));
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
     }
 
     /**
@@ -422,7 +422,7 @@ public final class AXModule implements TianshuManagedModule {
         delegateService = null;
         if (lifecycleActive) {
             lifecycleActive = false;
-            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.ax.stopped", lifecycleStatusGeneration));
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
         }
     }
 

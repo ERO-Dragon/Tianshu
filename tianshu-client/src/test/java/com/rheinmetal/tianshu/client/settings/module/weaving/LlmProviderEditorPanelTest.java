@@ -169,14 +169,60 @@ final class LlmProviderEditorPanelTest {
 
             assertEquals(List.of("llm.embedding.model", "llm.embedding.state", "llm.embedding.hint"),
                     embedding.statuses().stream().map(SettingsTemplateModel.StatusEntry::id).toList(),
-                    "the section states which vector model, what its download is doing, and why the load "
-                            + "position starts on the CPU");
+                    "the section states which vector model, what its download is doing, and what a load "
+                            + "on the card risks on this machine");
 
             SettingsTemplateModel.ActionEntry download = embedding.actions().get(0);
             assertEquals("llm.embedding.download", download.id(),
                     "the button comes first: it is the row's only action");
             assertEquals("tianshu.gui.llm.action.download_embedding", download.label().value(),
                     "and it offers a download while none was attempted");
+        }
+    }
+
+    /**
+     * The position button states the position that is actually configured, and keeps stating it.
+     *
+     * <p>It used to read a value the page captured once when it was built, so a configuration changed
+     * underneath the page — a hand-edited file, a default that moved with an update, another page's save —
+     * left the button on the old position for the rest of the session: the button said "CPU" while the
+     * configuration said "GPU", and the next save wrote that stale value back. The three reads below all
+     * happen in one page session, and 999 is the configured default (every layer on the card).
+     */
+    @Test
+    void thePositionButtonStatesTheConfiguredPositionAndFollowsIt() throws Exception {
+        try (Harness harness = new Harness(gameDirectory,
+                access -> access.setLlmEmbeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL))) {
+            assertEquals("tianshu.gui.llm.action.embedding_position_gpu", harness.positionArgumentKey(),
+                    "999 offloads every layer, so the button has to say GPU");
+
+            harness.access().setLlmEmbeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU);
+            assertEquals("tianshu.gui.llm.action.embedding_position_cpu", harness.positionArgumentKey(),
+                    "a page built when the configuration said CPU must not outlive that answer");
+
+            harness.access().setLlmEmbeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL);
+            assertEquals("tianshu.gui.llm.action.embedding_position_gpu", harness.positionArgumentKey(),
+                    "and it follows the configuration back without a restart");
+        }
+    }
+
+    /** A click stages the position: the button says so at once, and the save is what writes it. */
+    @Test
+    void clickingThePositionStagesItAndTheSaveWritesIt() throws Exception {
+        try (Harness harness = new Harness(gameDirectory,
+                access -> access.setLlmEmbeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL))) {
+            harness.runEmbeddingAction("llm.embedding.position");
+
+            assertEquals("tianshu.gui.llm.action.embedding_position_cpu", harness.positionArgumentKey(),
+                    "the click has to show the position it staged");
+            assertEquals(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL,
+                    harness.access().getLlmEmbeddingGpuLayers(),
+                    "and it must not write anything by itself: the load costs a native reload");
+
+            assertTrue(harness.session().save().success());
+
+            assertEquals(LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU, harness.access().getLlmEmbeddingGpuLayers(),
+                    "the page save applies the staged position");
         }
     }
 
@@ -730,6 +776,37 @@ final class LlmProviderEditorPanelTest {
                 }
             }
             fail("the editor has no action " + actionId);
+        }
+
+        /** Presses a button of the vector-model section: the download and the load position live there. */
+        private void runEmbeddingAction(String actionId) {
+            SettingsTemplateModel.CompoundGroup embedding = group(EMBEDDING_GROUP);
+            assertNotNull(embedding, "no vector-model section to act on");
+            for (SettingsTemplateModel.ActionEntry action : embedding.actions()) {
+                if (action.id().equals(actionId)) {
+                    assertTrue(action.enabled().getAsBoolean(), () -> actionId + " is disabled");
+                    action.action().run();
+                    return;
+                }
+            }
+            fail("the vector model section has no action " + actionId);
+        }
+
+        /**
+         * The language key of the position button's slot: the button is one sentence whose only variable is
+         * the position, so the slot is exactly what the player reads.
+         */
+        private String positionArgumentKey() {
+            SettingsTemplateModel.CompoundGroup embedding = group(EMBEDDING_GROUP);
+            assertNotNull(embedding, "the vector model has a section of its own");
+            for (SettingsTemplateModel.ActionEntry action : embedding.actions()) {
+                if (action.id().equals("llm.embedding.position")) {
+                    assertEquals("tianshu.gui.llm.action.embedding_position", action.label().value(),
+                            "the button states the position in one slot");
+                    return ((UiText) action.label().arguments().get(0)).value();
+                }
+            }
+            return fail("the vector model section has no position button");
         }
 
         private String editorStatusValue(String rowId) {

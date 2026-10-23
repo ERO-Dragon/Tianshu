@@ -151,7 +151,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     public void prepare(ModuleRuntimeContext context) {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
-        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), "tianshu.presence.module.asr.starting", lifecycleStatusGeneration));
+        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         try {
             destroyed = false;
             runtimeContext = context;
@@ -178,7 +178,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             if (config.isAsrEnabled()) {
                 context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.INPUT, moduleId());
             }
-            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), "tianshu.presence.module.asr.ready", lifecycleStatusGeneration));
+            publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
             // Queued, never awaited: the model read belongs to the ASR lane and the native-load gate, so
             // preparing the module never blocks the caller on an ONNX read. The outcome arrives through
             // the MODEL capability and the status channel, exactly like the speech backend of TTS.
@@ -203,7 +203,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
         if (lifecycleActive) {
             lifecycleActive = false;
-            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), "tianshu.presence.module.asr.stopped", lifecycleStatusGeneration));
+            publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
         }
     }
 
@@ -364,7 +364,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             return;
         }
         NativeModelLoadQueue.Outcome outcome = loadQueue.request(
-                moduleId(), LOAD_ACTION, () -> submitEngineLoad(context, reason), false);
+                moduleId(), LOAD_ACTION, () -> submitEngineLoad(context, reason), NativeModelLoadQueue.Tier.LAST);
         if (outcome == NativeModelLoadQueue.Outcome.REFUSED) {
             failEngineLoad(context, reason, "the native model load queue is full");
             return;
