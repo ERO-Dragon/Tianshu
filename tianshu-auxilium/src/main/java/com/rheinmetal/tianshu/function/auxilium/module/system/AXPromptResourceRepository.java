@@ -43,15 +43,15 @@ public final class AXPromptResourceRepository {
     }
 
     public AXPromptTexts loadTexts(AXPromptLanguage language) {
-        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
+        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.BASE : language;
         Map<String, String> values = new LinkedHashMap<>();
-        AXPromptTexts.mergeCatalog(values, readBuiltinTexts(), AXPromptLanguage.EN_US);
-        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+        AXPromptTexts.mergeCatalog(values, readBuiltinTexts(), AXPromptLanguage.BASE);
+        if (effectiveLanguage != AXPromptLanguage.BASE) {
             AXPromptTexts.mergeCatalog(values, readBuiltinTexts(), effectiveLanguage);
         }
         JsonObject external = readExternalTexts();
-        AXPromptTexts.mergeCatalog(values, external, AXPromptLanguage.EN_US);
-        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+        AXPromptTexts.mergeCatalog(values, external, AXPromptLanguage.BASE);
+        if (effectiveLanguage != AXPromptLanguage.BASE) {
             AXPromptTexts.mergeCatalog(values, external, effectiveLanguage);
         }
         return new AXPromptTexts(effectiveLanguage, values);

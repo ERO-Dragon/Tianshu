@@ -63,6 +63,61 @@ class AXEventLayerBoundaryTest {
             "switch (sourceId"
     );
 
+    /** Names the event decision layer retired; a survivor would silently resolve to a fallback. */
+    private static final List<String> RETIRED_NAMES = List.of(
+            "AXEventAction",
+            "APPEND_AND_SPEAK",
+            "APPEND_AND_BUFFER",
+            "APPEND_ONLY",
+            "AXEventTier.HIGH",
+            "AXEventTier.MID",
+            "AXEventTier.LOW"
+    );
+
+    /** The old tier ids as JSON values: a table still using them parses as "unknown tier" and falls back silently. */
+    private static final List<String> RETIRED_TIER_IDS = List.of("\"high\"", "\"mid\"", "\"low\"");
+
+    /**
+     * The rename left nothing behind.
+     *
+     * <p>Two places have to agree on the tier vocabulary: the enum that parses it and the table that stores it. A stale id
+     * on either side does not fail loudly — the table parser reports an unknown tier, the dispatcher falls back, and the
+     * event quietly changes class. That is why this is a source-level gate rather than a code review note.
+     */
+    @Test
+    void theRetiredTierVocabularyLeavesNoTrace() throws Exception {
+        for (Path file : sources()) {
+            String source = Files.readString(file, StandardCharsets.UTF_8);
+            for (String retired : RETIRED_NAMES) {
+                assertFalse(source.contains(retired), () -> "retired name " + retired + " in " + file);
+            }
+        }
+        StringBuilder table = new StringBuilder();
+        for (Path directory : List.of(EVENT_SOURCES, Path.of("src/test/java/com/rheinmetal/tianshu/function/auxilium/event"))) {
+            try (var files = Files.walk(directory)) {
+                for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                    if (file.getFileName().toString().equals("AXEventLayerBoundaryTest.java")) {
+                        // This file names the retired vocabulary on purpose; it is the gate, not a survivor.
+                        continue;
+                    }
+                    String source = Files.readString(file, StandardCharsets.UTF_8);
+                    for (String retired : RETIRED_NAMES) {
+                        assertFalse(source.contains(retired), () -> "retired name " + retired + " in " + file);
+                    }
+                }
+            }
+        }
+        String resource = Files.readString(
+                Path.of("src/main/resources/com/rheinmetal/tianshu/function/auxilium/event/ax_event_tiers.json"),
+                StandardCharsets.UTF_8);
+        table.append(resource);
+        for (String retired : RETIRED_TIER_IDS) {
+            assertFalse(table.toString().contains("\"tier\": " + retired), () -> "retired tier id in the table: " + retired);
+        }
+        assertFalse(table.toString().contains("\"tier\":"), "the table stores a tier value per kind, not a tier field");
+    }
+
+
     @Test
     void theLayerHoldsNoNaturalLanguageAndNeverRenders() throws Exception {
         for (Path file : sources()) {

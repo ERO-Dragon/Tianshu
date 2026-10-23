@@ -13,10 +13,6 @@
     "memory.compact.turn_dialogue": {
       "zh_cn": "[{{index}}] {{role}}: {{content}}",
       "en_us": "[{{index}}] {{role}}: {{content}}"
-    },
-    "memory.compact.turn_game_chat": {
-      "zh_cn": "[{{index}}] {{sender}}说：{{message}}",
-      "en_us": "[{{index}}] {{sender}} says: {{message}}"
     }
   }
 }

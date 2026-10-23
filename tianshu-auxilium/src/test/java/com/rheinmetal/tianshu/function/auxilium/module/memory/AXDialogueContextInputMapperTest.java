@@ -18,11 +18,11 @@ class AXDialogueContextInputMapperTest {
     private final AXScope scope = new AXScope("player", "save:Test World", "Test World", AXScopeKind.LOCAL_WORLD, true);
 
     @Test
-    void mapsThirdPartyUtteranceIntoGameChatTurn() {
+    void mapsThirdPartyUtteranceIntoAnEventWithItsSpeaker() {
         AXRawTurn turn = mapper.map(scope, "module.example.npc", new DialogueContextInputPayload("铁匠", "今天矿石不够了。", "line-1"));
 
-        assertEquals("game_chat", turn.role());
-        assertTrue(turn.gameChatRole());
+        assertEquals("world_event", turn.role());
+        assertTrue(turn.worldEventRole());
         assertFalse(turn.assistantRole());
         assertEquals("今天矿石不够了。", turn.content());
         assertEquals("铁匠", turn.speakerName());

@@ -216,16 +216,9 @@ public final class AXRecentDialogueSystem {
     }
 
     private String tokenizerContent(AXRawTurn turn) {
-        if (turn == null || turn.content() == null) {
-            return "";
-        }
-        if (turn.worldEventRole()) {
-            return "<event>" + turn.content().trim() + "</event>";
-        }
-        if (turn.gameChatRole()) {
-            String speaker = turn.speakerName() == null || turn.speakerName().isBlank() ? "unknown" : turn.speakerName().trim();
-            return "<chat speaker=\"" + speaker + "\">" + turn.content().trim() + "</chat>";
-        }
-        return turn.content().trim();
+        // The same renderer the prompt uses, so the estimate is measured against the wrapper that is actually
+        // sent. Only the language connective of a speaker event can be missing here (no vocabulary at this
+        // layer), which is a handful of tokens: the estimate stays directional instead of exact.
+        return AXRawTurnPromptText.render(turn, null);
     }
 }

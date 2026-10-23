@@ -14,12 +14,12 @@ import java.util.List;
  * 角色映射：
  * <ul>
  *   <li>assistant → assistant 消息</li>
- *   <li>game_chat（其他玩家聊天）→ user 消息，内容用 {@code <chat speaker="...">} 包裹，
- *       帮助模型区分"环境聊天事件"与"当前玩家指令"，避免小模型对历史 user 消息一并作答</li>
- *   <li>world_event（游戏事件）→ user 消息，内容用 {@code <event>} 包裹，
+ *   <li>world_event（其他玩家聊天、其他模组投递、游戏事件）→ user 消息，内容统一用 {@code <event>} 包裹，
+ *       带主体时正文写成"同伴 X 说：…"（模板见 {@code recent_dialogue.event.said}），
  *       让模型把它读成"刚刚发生的事实"，而不是玩家说的话</li>
  *   <li>user → user 消息（当前玩家与 AX 的直接对话）</li>
  * </ul>
+ * 包裹与正文的拼装只有一份实现（{@link AXRawTurnPromptText}），token 计数走的也是它。
  */
 public final class AXRecentDialoguePromptContributor implements AXPromptContributor {
     public static final String SECTION_ID = "recent_dialogue";
@@ -44,7 +44,7 @@ public final class AXRecentDialoguePromptContributor implements AXPromptContribu
                 .sorted(Comparator.comparingLong(AXRawTurn::createdAtMillis))
                 .toList();
         for (AXRawTurn turn : selected) {
-            String content = renderTurnContent(turn);
+            String content = renderTurnContent(turn, context);
             if (content.isBlank()) {
                 continue;
             }
@@ -59,21 +59,7 @@ public final class AXRecentDialoguePromptContributor implements AXPromptContribu
         return "user";
     }
 
-    private String renderTurnContent(AXRawTurn turn) {
-        String message = turn.content();
-        if (message == null || message.isBlank()) {
-            return "";
-        }
-        if (turn.worldEventRole()) {
-            return "<event>" + message.trim() + "</event>";
-        }
-        if (turn.gameChatRole()) {
-            String speaker = turn.speakerName();
-            if (speaker == null || speaker.isBlank()) {
-                speaker = "unknown";
-            }
-            return "<chat speaker=\"" + speaker.trim() + "\">" + message.trim() + "</chat>";
-        }
-        return message.trim();
+    private String renderTurnContent(AXRawTurn turn, AXPromptBuildContext context) {
+        return AXRawTurnPromptText.render(turn, context == null ? null : context.texts());
     }
 }

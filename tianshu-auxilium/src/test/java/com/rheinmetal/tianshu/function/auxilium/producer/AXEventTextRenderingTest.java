@@ -81,8 +81,10 @@ class AXEventTextRenderingTest {
                 new RecordingLog(logs)
         );
 
+        // Highlighted so the event takes the immediate class: this case is about the fallback wording, not about the
+        // tier table, and an immediate event is the one that reaches the history on arrival.
         service.submit(AXEventDescriptor.of("tianshu:death", "module.probe", AXEventPayload.of(),
-                AXEventText.of("tianshu.ax.event.line.tianshu.death")), 1_000L);
+                AXEventText.of("tianshu.ax.event.line.tianshu.death")).withHighlight(true), 1_000L);
 
         assertEquals(1, appended.size(), "the entry is still recorded");
         AXEventAppend entry = appended.get(0);

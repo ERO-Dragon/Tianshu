@@ -28,7 +28,7 @@ class AXRawTurnWindowTest {
     void interleavedGameChatStaysInsideDialogueRound() {
         AXRawTurnWindow window = new AXRawTurnWindow(policy(25, 20, 1000, 1000, 10000));
         window.append(scope, turn("u1", "user", "帮我看附近", "turn-1", 10));
-        window.append(scope, gameChat("g1", "Steve", "附近有村庄吗？", 5));
+        window.append(scope, chatEvent("g1", "Steve", "附近有村庄吗？", 5));
         window.append(scope, turn("a1", "assistant", "我会结合聊天判断", "turn-1", 10));
 
         List<AXRawTurn> recent = window.recent(scope);
@@ -134,7 +134,7 @@ class AXRawTurnWindowTest {
         window.append(scope, turn("u1", "user", "第一问", "turn-1", 10));
         window.append(scope, turn("a1", "assistant", "第一答", "turn-1", 10));
         window.append(scope, turn("u2", "user", "第二问", "turn-2", 10));
-        window.append(scope, gameChat("g2", "Steve", "补充信息", 5));
+        window.append(scope, chatEvent("g2", "Steve", "补充信息", 5));
 
         assertEquals(List.of("u2", "g2"), window.snapshot(scope).stream().map(AXRawTurn::id).toList());
     }
@@ -148,8 +148,8 @@ class AXRawTurnWindowTest {
         return new AXRawTurn(id, role, content, clock++, scope.worldId(), "session", turnId, tokens, content.length(), "");
     }
 
-    private AXRawTurn gameChat(String id, String speaker, String content, int tokens) {
-        return new AXRawTurn(id, "game_chat", content, clock++, scope.worldId(), "", "presence.chat", tokens, content.length(), "", speaker);
+    private AXRawTurn chatEvent(String id, String speaker, String content, int tokens) {
+        return new AXRawTurn(id, "world_event", content, clock++, scope.worldId(), "", "presence.chat", tokens, content.length(), "", speaker);
     }
 
     private AXRawTurn worldEvent(String id, String content, int tokens) {

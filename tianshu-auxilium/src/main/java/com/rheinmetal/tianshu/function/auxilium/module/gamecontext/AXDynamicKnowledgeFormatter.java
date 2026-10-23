@@ -77,7 +77,7 @@ public final class AXDynamicKnowledgeFormatter {
         return texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_WORLD_ENVIRONMENT, vars(
                 "biome", readable(view.text("biomeDisplayName"), readableId(texts, view.text("biomeId"))),
                 "weather", weather(texts, view),
-                "time", view.text("dayTimeTicks")
+                "time", clockTime(view.text("dayTimeTicks"))
         ));
     }
 
@@ -182,6 +182,26 @@ public final class AXDynamicKnowledgeFormatter {
         ));
     }
 
+    /**
+     * Wall-clock time of day for a tick count, as {@code HH:mm}.
+     *
+     * <p>A raw tick count means nothing to a reader, so the prompt says what a player would say: {@code 6000}
+     * ticks is noon. Ticks start at 06:00 and a full day is 24000, so the hour is {@code ticks/1000 + 6} modulo
+     * 24 — negative or out-of-range values are wrapped instead of blowing up, because a modded dimension may
+     * report anything.</p>
+     */
+    private String clockTime(String ticks) {
+        long raw;
+        try {
+            raw = Long.parseLong(ticks == null ? "" : ticks.trim());
+        } catch (NumberFormatException notANumber) {
+            return ticks == null ? "" : ticks;
+        }
+        long dayMillis = ((raw % 24000L) + 24000L) % 24000L;
+        long hour = (dayMillis / 1000L + 6L) % 24L;
+        long minute = (dayMillis % 1000L) * 60L / 1000L;
+        return String.format(java.util.Locale.ROOT, "%02d:%02d", hour, minute);
+    }
     /** Slot order the sentence lists equipment in; also the record field names the producer uses. */
     private static final List<String> EQUIPMENT_SLOTS = List.of(
             "helmet", "chestplate", "leggings", "boots", "mainHand", "offHand");
@@ -208,7 +228,7 @@ public final class AXDynamicKnowledgeFormatter {
                 continue;
             }
             parts.add(texts.render(AXPromptTexts.DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT_SLOT,
-                    vars("slot", slot, "name", name)));
+                    vars("slot", slotLabel(texts, slot), "name", name)));
         }
         if (parts.isEmpty()) {
             return "";
@@ -217,6 +237,17 @@ public final class AXDynamicKnowledgeFormatter {
                 "slots", String.join(texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_INVENTORY_SEPARATOR), parts),
                 "armorPoints", view.text("armorPoints")
         ));
+    }
+    /**
+     * The word used for a slot inside the sentence.
+     *
+     * <p>The slot keys ({@code helmet}, {@code mainHand}, …) are identifiers, not words a player reads, so the
+     * prompt names them through their own language keys and falls back to the raw key only when a template for
+     * that slot is missing — an untranslated slot then looks odd, but it never renders as an empty clause.</p>
+     */
+    private String slotLabel(AXPromptTexts texts, String slot) {
+        String label = texts.text(AXPromptTexts.DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT_SLOT_LABEL_PREFIX + slot);
+        return label.isBlank() ? slot : label;
     }
     private String weather(AXPromptTexts texts, AXFactView view) {
         if (Boolean.parseBoolean(view.text("thundering"))) {

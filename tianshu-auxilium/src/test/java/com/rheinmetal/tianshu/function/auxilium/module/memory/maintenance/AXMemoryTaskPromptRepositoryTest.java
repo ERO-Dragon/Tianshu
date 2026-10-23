@@ -61,10 +61,16 @@ class AXMemoryTaskPromptRepositoryTest {
 
         AXRawTurn user = AXRawTurn.dialogue(SCOPE, "user", "我不喜欢下矿。", "session", "turn-1");
         AXRawTurn assistant = AXRawTurn.dialogue(SCOPE, "assistant", "记下了。", "session", "turn-1");
+        // One line template for every turn kind: a speaker event puts the speaker in the role slot, so the
+        // compression input still knows who said it without a second template.
+        AXRawTurn chatEvent = AXRawTurn.worldEvent(SCOPE, "铁匠", "今天矿石不够了。", 1_000L, "line-1");
+        AXRawTurn plainEvent = AXRawTurn.worldEvent(SCOPE, "玩家击杀了僵尸", 2_000L);
 
         assertEquals("[1] user: 我不喜欢下矿。", repository.compactTurnLine(user, 1));
         assertEquals("[2] assistant: 记下了。", repository.compactTurnLine(assistant, 2));
-        assertEquals("", repository.compactTurnLine(null, 3));
+        assertEquals("[3] 铁匠: 今天矿石不够了。", repository.compactTurnLine(chatEvent, 3));
+        assertEquals("[4] world_event: 玩家击杀了僵尸", repository.compactTurnLine(plainEvent, 4));
+        assertEquals("", repository.compactTurnLine(null, 5));
     }
 
     @Test

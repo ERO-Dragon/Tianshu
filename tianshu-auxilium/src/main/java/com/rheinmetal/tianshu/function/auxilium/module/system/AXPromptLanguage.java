@@ -4,6 +4,15 @@ public enum AXPromptLanguage {
     ZH_CN("zh_cn"),
     EN_US("en_us");
 
+    /**
+     * The language the prompt resources are authored in.
+     *
+     * <p>Prompts are written once in this language and every player gets them as-is: the model is asked to
+     * answer in the player's language, so the input context does not have to be translated. This is the
+     * single place that decision lives — resource lookups fall back here, not to English.</p>
+     */
+    public static final AXPromptLanguage BASE = ZH_CN;
+
     private final String code;
 
     AXPromptLanguage(String code) {

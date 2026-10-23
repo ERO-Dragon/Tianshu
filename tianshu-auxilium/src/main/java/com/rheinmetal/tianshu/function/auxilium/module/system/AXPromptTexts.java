@@ -27,6 +27,9 @@ public record AXPromptTexts(
     public static final String DYNAMIC_KNOWLEDGE_WORLD_ENVIRONMENT = "dynamic_knowledge.world.environment";
     public static final String DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT = "dynamic_knowledge.player.equipment";
     public static final String DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT_SLOT = "dynamic_knowledge.player.equipment.slot";
+    /** Per-slot display name, suffixed with the slot key (helmet, mainHand, ...). */
+    public static final String DYNAMIC_KNOWLEDGE_PLAYER_EQUIPMENT_SLOT_LABEL_PREFIX =
+            "dynamic_knowledge.player.equipment.slot.label.";
     public static final String DYNAMIC_KNOWLEDGE_INVENTORY_ITEMS = "dynamic_knowledge.inventory.items";
     public static final String DYNAMIC_KNOWLEDGE_INVENTORY_ITEM = "dynamic_knowledge.inventory.item";
     public static final String DYNAMIC_KNOWLEDGE_INVENTORY_SEPARATOR = "dynamic_knowledge.inventory.separator";
@@ -63,9 +66,16 @@ public record AXPromptTexts(
     public static final String PLAYER_MEMORY_SUMMARY_LINE = "player_memory.summary_line";
     public static final String PLAYER_MEMORY_CONCURRENT_EVENTS_GROUP = "player_memory.concurrent_events_group";
     public static final String PLAYER_MEMORY_CONCURRENT_EVENT_LINE = "player_memory.concurrent_event_line";
+    /**
+     * Body of an {@code <event>} whose fact came from someone else: {@code 同伴 {{speaker}} 说：{{text}}}.
+     *
+     * <p>Every non-player source is one event kind now, so the speaker has to be inside the text — a model that
+     * only sees the sentence cannot tell a companion's words from the player's own.
+     */
+    public static final String RECENT_DIALOGUE_EVENT_SAID = "recent_dialogue.event.said";
 
     public AXPromptTexts {
-        language = language == null ? AXPromptLanguage.EN_US : language;
+        language = language == null ? AXPromptLanguage.BASE : language;
         values = values == null ? Map.of() : Map.copyOf(values);
     }
 
@@ -89,15 +99,15 @@ public record AXPromptTexts(
     }
 
     public static AXPromptTexts builtin(AXPromptLanguage language) {
-        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
+        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.BASE : language;
         return new AXPromptTexts(effectiveLanguage, valuesFromCatalog(readBuiltinCatalog(), effectiveLanguage));
     }
 
     public static Map<String, String> valuesFromCatalog(JsonObject catalog, AXPromptLanguage language) {
-        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.EN_US : language;
+        AXPromptLanguage effectiveLanguage = language == null ? AXPromptLanguage.BASE : language;
         Map<String, String> values = new LinkedHashMap<>();
-        mergeCatalog(values, catalog, AXPromptLanguage.EN_US);
-        if (effectiveLanguage != AXPromptLanguage.EN_US) {
+        mergeCatalog(values, catalog, AXPromptLanguage.BASE);
+        if (effectiveLanguage != AXPromptLanguage.BASE) {
             mergeCatalog(values, catalog, effectiveLanguage);
         }
         return Map.copyOf(values);

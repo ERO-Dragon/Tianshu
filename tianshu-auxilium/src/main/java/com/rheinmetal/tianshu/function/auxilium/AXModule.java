@@ -34,6 +34,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateRegistry
 import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
@@ -316,7 +317,8 @@ public final class AXModule implements TianshuManagedModule {
                 adapter::submitAgentTurn,
                 delegateService
         );
-        dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher);
+        dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher,
+                this::flushHeldEventsBeforeUserTurn);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
         participantRegistrar.register();
         publishGameEventService(context);
@@ -362,10 +364,47 @@ public final class AXModule implements TianshuManagedModule {
                 this::appendHistoryEvent,
                 eventSpeech == null ? AXEventSpeechSink.NOOP : eventSpeech,
                 eventTexts,
+                eventSettings(),
                 env.logs()
         );
         moduleServices = context.services();
         moduleServices.register(AXGameEventService.class, gameEventService);
+    }
+
+    /**
+     * Tunables of the event layer.
+     *
+     * <p>The interruption permission is the player's own setting. The busy signal is the turn pipeline's existing
+     * in-flight state ({@link AXTurnOrchestrator#hasActiveTurn()}), not an approximation: an immediate event may only
+     * wait for a turn that is really running, and must not queue behind playback or activity that outlives it.
+     */
+    private AXEventSettings eventSettings() {
+        return new AXEventSettings() {
+            @Override
+            public boolean allowInterruption() {
+                return assistantSettings.allowInterruption();
+            }
+
+            @Override
+            public boolean busy() {
+                AXTurnOrchestrator current = turnOrchestrator;
+                return current != null && current.hasActiveTurn();
+            }
+        };
+    }
+
+    /**
+     * Turns everything the event layer is holding into history, in arrival order, before the player's own line.
+     *
+     * <p>Wired into the dialogue gateway, so it runs once per accepted player delivery: that is the moment "the user
+     * spoke first" becomes true, and the only moment where the held lines still precede the player's line in the
+     * history.
+     */
+    private void flushHeldEventsBeforeUserTurn() {
+        AXGameEventService current = gameEventService;
+        if (current != null) {
+            current.beforeUserTurn(System.currentTimeMillis());
+        }
     }
 
     private void appendHistoryEvent(AXEventAppend append) {

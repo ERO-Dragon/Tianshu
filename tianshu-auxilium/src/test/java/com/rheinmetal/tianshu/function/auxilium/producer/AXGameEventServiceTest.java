@@ -1,12 +1,15 @@
 package com.rheinmetal.tianshu.function.auxilium.producer;
 
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventClassBuffer;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventFold;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventTexts;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventTier;
 import com.rheinmetal.tianshu.api.LogSink;
 import org.junit.jupiter.api.Test;
 
@@ -19,182 +22,243 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The service is where an event becomes a sentence: it renders once, then stores, speaks and folds.
+ * What the service does with each class: queue, defer, fold, drop, and the user turn that empties both areas.
  *
- * <p>The sentences asserted here used to be supplied by each producer. They now come from the injected
- * language table, which is what this stub stands in for — the expected wording is unchanged, only its
- * source moved. What the provider does with nesting and missing keys is covered by
- * {@link AXEventTextRenderingTest}; this class covers the service's pipeline.
+ * <p>The cooldown window is pinned through an injected buffer (jitter zero) and the busy signal through settings, so
+ * "not yet, then spoken" and "queued, then history" are assertions about behaviour rather than about timing luck.
  */
 class AXGameEventServiceTest {
     private static final long START = 5_000_000L;
+    private static final long COOLDOWN = AXEventSettings.DEFAULT_DEFERRED_COOLDOWN_BASE_MILLIS;
     private static final String PRODUCER = "module.probe";
-    private static final String AGGREGATE_HEALTH = AXEventTexts.AGGREGATE_PREFIX + "tianshu.health_change";
 
     /** Stands in for the platform language table; the wording below is the fixture, not production text. */
     private static final AXGameEventTextProvider TEXTS = new AXGameEventTextProvider() {
-        private static final java.util.Set<String> KEYS = java.util.Set.of(
-                "line.death", "line.harvest", "line.ritual", "line.health_a", "line.health_b",
-                "line.block", "line.mob", "line.folded", AGGREGATE_HEALTH);
-
         @Override
         public boolean exists(String key) {
-            // Membership only: an answer that renders would need the aggregate arguments, which a lookup
-            // does not carry.
-            return KEYS.contains(key);
+            return key != null && (key.startsWith("line.") || key.startsWith(AXEventTexts.AGGREGATE_PREFIX));
         }
 
         @Override
         public String text(String key, Object... args) {
-            return switch (key) {
+            if (key != null && key.startsWith(AXEventTexts.AGGREGATE_PREFIX)) {
+                return "折叠 " + (args == null || args.length == 0 ? "?" : args[0]) + " 次";
+            }
+            return switch (key == null ? "" : key) {
                 case "line.death" -> "被岩浆怪杀死";
-                case "line.harvest" -> "收下三株小麦";
-                case "line.ritual" -> "祭坛亮了";
-                case "line.health_a" -> "失去 3 点生命";
-                case "line.health_b" -> "失去 4 点生命";
                 case "line.block" -> "挖掉圆石";
-                case "line.mob" -> "击杀僵尸";
-                case "line.folded" -> "击杀僵尸";
-                case AGGREGATE_HEALTH -> String.format("血量多次下降（%s 次，%s→%s）", args[0], args[1], args[2]);
+                case "line.health" -> "失去 3 点生命";
+                case "line.stone" -> "合成圆石";
+                case "line.dirt" -> "合成泥土";
                 default -> "";
             };
         }
     };
 
     private final List<AXEventAppend> appended = new ArrayList<>();
+    private final List<String> spoken = new ArrayList<>();
     private final List<String> logs = new ArrayList<>();
-    private final AXGameEventService service = new AXGameEventService(
-            appended::add,
-            AXEventSpeechSink.NOOP,
-            TEXTS,
-            new RecordingLogSink(logs)
-    );
 
-    @Test
-    void theRenderedSentenceLandsInTheHistoryVerbatim() {
-        service.submit(descriptor("tianshu:death", PRODUCER, AXEventPayload.of(), "line.death"), START);
+    /** Busy and non-interrupting by default: the immediate queue is the case under test. */
+    private AXGameEventService service(boolean busy, boolean allowInterruption) {
+        AXEventSettings settings = new AXEventSettings() {
+            @Override
+            public boolean busy() {
+                return busy;
+            }
 
-        assertEquals(1, appended.size());
-        assertEquals(new AXEventAppend.Single("tianshu:death", "被岩浆怪杀死"), appended.get(0));
-        assertEquals("被岩浆怪杀死", appended.get(0).text());
-        assertFalse(appended.get(0).text().contains("tianshu"), "no internal kind tag in the history line");
-        assertFalse(appended.get(0).text().contains(PRODUCER), "no internal source tag in the history line");
+            @Override
+            public boolean allowInterruption() {
+                return allowInterruption;
+            }
+
+            @Override
+            public int aggregateThreshold() {
+                return 2;
+            }
+        };
+        AXEventClassBuffer buffer = new AXEventClassBuffer(settings, () -> 0L);
+        return new AXGameEventService(appended::add, (kind, text) -> spoken.add(text), TEXTS, settings, buffer,
+                new RecordingLogSink(logs));
     }
 
     @Test
-    void anyModuleReachesTheSameChainWithItsOwnWording() {
-        service.submit(descriptor("plugin:harvest", "plugin.farming", AXEventPayload.of(), "line.harvest"), START);
-        service.submit(descriptor("tianshu:death", PRODUCER, AXEventPayload.of(), "line.death"), START + 1_000L);
-        service.submit(descriptor("mymod:ritual", AXEventDescriptor.UNKNOWN_SOURCE, AXEventPayload.of(),
-                "line.ritual"), START + 2_000L);
+    void aDeferredKindWaitsForItsWindowAndIsThenSpokenAsOneTurn() {
+        AXGameEventService service = service(false, true);
 
-        assertEquals(3, appended.size());
-        assertEquals("收下三株小麦", appended.get(0).text());
-        assertEquals("被岩浆怪杀死", appended.get(1).text());
-        assertEquals("祭坛亮了", appended.get(2).text());
-    }
+        service.submit(event("tianshu:dimension_enter", "line.death"), START);
+        service.submit(event("tianshu:dimension_enter", "line.death"), START + 1_000L);
 
-    @Test
-    void thePendingSpeechCarriesTheRenderedSentence() {
-        service.submit(descriptor("tianshu:death", PRODUCER, AXEventPayload.of(), "line.death"), START);
-
-        assertTrue(logs.stream().anyMatch(line -> line.contains("ax.event.speech_pending")
-                && line.contains("APPEND_AND_SPEAK")
-                && line.contains("source=" + PRODUCER)
-                && line.contains("text=被岩浆怪杀死")));
-    }
-
-    @Test
-    void aSuppressedEventReachesHistoryWithoutAnySpeech() {
-        AXEventDescriptor suppressed = new AXEventDescriptor(
-                "tianshu:death", null, true, AXEventPayload.of(), AXEventText.of("line.death"),
-                AXEventFold.NONE, PRODUCER);
-
-        service.submit(suppressed, START);
-
-        assertEquals(1, appended.size());
-        assertTrue(logs.isEmpty());
-    }
-
-    @Test
-    void repeatedOccurrencesLandAsOneLineRenderedByTheLayer() {
-        service.submit(descriptor("tianshu:health_change", PRODUCER,
-                AXEventPayload.ofMagnitude(15), "line.health_a", AXEventFold.RANGE), START);
-        service.submit(descriptor("tianshu:health_change", PRODUCER,
-                AXEventPayload.ofMagnitude(11), "line.health_b", AXEventFold.RANGE), START + 1_000L);
-        service.submit(descriptor("tianshu:health_change", PRODUCER,
-                AXEventPayload.ofMagnitude(8), "line.health_a", AXEventFold.RANGE), START + 2_000L);
+        assertTrue(spoken.isEmpty(), "a deferred event never speaks on arrival");
         assertTrue(appended.isEmpty());
+        assertEquals(2, service.bufferedDeferredCount());
 
-        service.flush(START + 3_000L);
+        service.tick(START + COOLDOWN - 1L);
+        assertTrue(spoken.isEmpty(), "one millisecond before the window closes nothing happens");
+
+        service.tick(START + COOLDOWN);
+        assertEquals(List.of("被岩浆怪杀死" + '\n' + "被岩浆怪杀死"), spoken,
+                "the batch is spoken as one voluntary turn");
+        assertEquals(2, appended.size(), "each occurrence is still its own history line");
+        assertEquals(0, service.bufferedDeferredCount());
+    }
+
+    @Test
+    void aUserTurnTurnsTheDeferredBatchIntoHistory() {
+        AXGameEventService service = service(false, true);
+        service.submit(event("tianshu:dimension_enter", "line.death"), START);
+        service.submit(event("tianshu:dimension_enter", "line.block"), START + 1_000L);
+
+        service.beforeUserTurn(START + 2_000L);
+
+        assertEquals(List.of("被岩浆怪杀死", "挖掉圆石"), texts(appended), "arrival order, appended as history");
+        assertEquals(0, service.bufferedDeferredCount());
+        assertTrue(spoken.isEmpty(), "a user turn answers with history, not with a voluntary utterance");
+    }
+
+    @Test
+    void aBusyAssistantQueuesImmediateEventsUntilTheUserSpeaks() {
+        AXGameEventService service = service(true, false);
+        AXEventDescriptor first = event("tianshu:death", "line.death").withHighlight(true);
+        AXEventDescriptor second = event("tianshu:death", "line.block").withHighlight(true);
+
+        service.submit(first, START);
+        service.submit(second, START + 1_000L);
+
+        assertTrue(spoken.isEmpty(), "a non-interrupting player keeps the assistant quiet");
+        assertEquals(2, service.queuedImmediateCount());
+
+        service.beforeUserTurn(START + 2_000L);
+
+        assertEquals(List.of("被岩浆怪杀死", "挖掉圆石"), texts(appended), "queued lines become history in order");
+        assertEquals(0, service.queuedImmediateCount());
+        assertTrue(spoken.isEmpty());
+
+        service.beforeUserTurn(START + 3_000L);
+        assertEquals(2, appended.size(), "the queue is empty after the first turn");
+    }
+
+    /**
+     * Nobody is talking, so the immediate class says its line at once — and the same line lands in the history, because a
+     * sentence AX said must be a sentence AX can remember.
+     */
+    @Test
+    void anIdleAssistantSpeaksTheImmediateEventAndWritesItToHistory() {
+        AXGameEventService service = service(false, false);
+
+        service.submit(event("tianshu:death", "line.death"), START);
+
+        assertEquals(List.of("被岩浆怪杀死"), spoken, "an idle assistant speaks an actionable warning at once");
+        assertEquals(List.of("被岩浆怪杀死"), texts(appended), "and the spoken line is its own history line");
+        assertEquals(0, service.queuedImmediateCount(), "nothing had to wait");
+    }
+
+    @Test
+    void anInterruptingPlayerHearsTheImmediateEventOnArrival() {
+        AXGameEventService service = service(true, true);
+
+        service.submit(event("tianshu:death", "line.death").withHighlight(true), START);
+
+        assertEquals(List.of("被岩浆怪杀死"), spoken);
+        assertEquals(0, service.queuedImmediateCount(), "an interrupted assistant does not also queue it");
+    }
+
+    @Test
+    void theSilentClassFoldsIntoOneCountedLine() {
+        AXGameEventService service = service(false, true);
+        for (int occurrence = 0; occurrence < 3; occurrence++) {
+            service.submit(event("tianshu:respawn", "line.death", AXEventFold.COUNT)
+                    .withTier(AXEventTier.NORMAL), START + occurrence * 100L);
+        }
+
+        assertTrue(appended.isEmpty(), "a silent occurrence only reaches the history through its window");
+
+        service.flush(START + 1_000L);
 
         assertEquals(1, appended.size());
-        assertEquals("血量多次下降（3 次，15→8）", appended.get(0).text());
+        AXEventAppend.Aggregated aggregated = (AXEventAppend.Aggregated) appended.get(0);
+        assertEquals(3, aggregated.count());
+        assertEquals("折叠 3 次", aggregated.text());
     }
 
     @Test
-    void occurrencesWithoutAFoldShapeLandAsSeparateLines() {
-        service.submit(descriptor("tianshu:health_change", PRODUCER,
-                AXEventPayload.ofMagnitude(15), "line.health_a"), START);
-        service.submit(descriptor("tianshu:health_change", PRODUCER,
-                AXEventPayload.ofMagnitude(11), "line.health_b"), START + 1_000L);
+    void differentSubjectsDoNotShareOneCount() {
+        AXGameEventService service = service(false, true);
+        service.submit(event("tianshu:respawn", "line.stone").withTier(AXEventTier.NORMAL), START);
+        service.submit(event("tianshu:respawn", "line.dirt").withTier(AXEventTier.NORMAL), START + 100L);
 
-        assertEquals(2, appended.size());
-        assertEquals("失去 3 点生命", appended.get(0).text());
-        assertEquals("失去 4 点生命", appended.get(1).text());
+        service.flush(START + 1_000L);
+
+        assertEquals(List.of("合成圆石", "合成泥土"), texts(appended),
+                "below the fold threshold each subject keeps its own line");
     }
 
     @Test
-    void anEventWithoutATemplateNeverReachesTheLayer() {
-        // The old case asserted "the producer must render or the event is refused". Now the refusal is at the
-        // descriptor boundary: no template means no descriptor. A *blank or unresolvable* template is legal
-        // and falls back to the kind code, which AXEventTextRenderingTest covers.
+    void aDroppedEventLeavesNoTrace() {
+        AXGameEventService service = service(false, true);
+
+        service.submit(event("tianshu:health_change", "line.health"), START);
+        service.flush(START + 60_000L);
+
+        assertTrue(appended.isEmpty(), "the dropped class does not reach the history");
+        assertTrue(spoken.isEmpty(), "and it is never spoken");
+        assertTrue(logs.isEmpty(), "and it is not even logged: nothing happened");
+    }
+
+    /**
+     * A highlight lifts a frequent kind from DROP to SILENT, and frequency stops there: the tier is already the most
+     * frequent one, so a producer that marks everything ends up with one counted history line instead of silence.
+     */
+    @Test
+    void aHighlightLiftsAFrequentEventIntoTheHistoryAndFrequencyStopsThere() {
+        AXGameEventService service = service(false, true);
+
+        for (int occurrence = 0; occurrence < 10; occurrence++) {
+            service.submit(event("tianshu:health_change", "line.health", AXEventFold.COUNT).withHighlight(true),
+                    START + occurrence * 100L);
+        }
+        service.flush(START + 2_000L);
+
+        assertEquals(1, appended.size(), "the lifted kind is retained as one folded line");
+        assertEquals(10, ((AXEventAppend.Aggregated) appended.get(0)).count(),
+                "ten occurrences, and the tier cannot be corrected past frequent");
+        assertTrue(spoken.isEmpty(), "a lifted frequent kind still may not speak");
+    }
+
+    @Test
+    void stoppedServiceAppendsWaitingEntriesAndIgnoresLaterSubmissions() {
+        AXGameEventService service = service(false, true);
+        service.submit(event("tianshu:death", "line.death"), START);
+
+        service.stop(START + 1_000L);
+
+        assertTrue(service.closed());
+        assertEquals(List.of("被岩浆怪杀死"), texts(appended), "waiting entries are owed to the history");
+
+        service.submit(event("tianshu:death", "line.block"), START + 2_000L);
+        assertEquals(1, appended.size(), "a closed service ignores later submissions");
+    }
+
+    @Test
+    void anEventWithoutATemplateIsRefusedAtTheBoundary() {
         assertThrows(NullPointerException.class, () -> AXEventDescriptor.of(
                 "plugin:harvest", "plugin.farming", AXEventPayload.of(), null));
-
-        assertTrue(appended.isEmpty());
     }
 
-    @Test
-    void droppedEventNeverReachesHistory() {
-        service.submit(descriptor("tianshu:block_break", PRODUCER, AXEventPayload.of(), "line.block"), START);
-
-        assertTrue(appended.isEmpty());
-        assertTrue(logs.isEmpty());
-        service.flush(START + 60_000L);
-        assertTrue(appended.isEmpty());
+    private static List<String> texts(List<AXEventAppend> appends) {
+        List<String> texts = new ArrayList<>(appends.size());
+        for (AXEventAppend append : appends) {
+            texts.add(append.text());
+        }
+        return texts;
     }
 
-    @Test
-    void stoppedServiceIgnoresLaterSubmissions() {
-        service.stop(START);
-
-        assertTrue(service.closed());
-        service.submit(descriptor("tianshu:death", PRODUCER, AXEventPayload.of(), "line.death"), START + 1_000L);
-
-        assertTrue(appended.isEmpty());
+    private static AXEventDescriptor event(String kind, String key) {
+        return AXEventDescriptor.of(kind, PRODUCER, AXEventPayload.of(), AXEventText.of(key));
     }
 
-    @Test
-    void stopFlushesTheOpenWindowBeforeClosing() {
-        service.submit(descriptor("tianshu:mob_killed", PRODUCER, AXEventPayload.of(), "line.folded",
-                AXEventFold.COUNT), START);
-        service.submit(descriptor("tianshu:mob_killed", PRODUCER, AXEventPayload.of(), "line.folded",
-                AXEventFold.COUNT), START + 1_000L);
-
-        service.stop(START + 2_000L);
-
-        assertEquals(2, appended.size(), "below the threshold the occurrences survive as themselves");
-        assertTrue(service.closed());
-    }
-
-    private static AXEventDescriptor descriptor(String kind, String sourceId, AXEventPayload payload, String key) {
-        return AXEventDescriptor.of(kind, sourceId, payload, AXEventText.of(key));
-    }
-
-    private static AXEventDescriptor descriptor(String kind, String sourceId, AXEventPayload payload, String key,
-                                                AXEventFold fold) {
-        return AXEventDescriptor.of(kind, sourceId, payload, AXEventText.of(key), fold);
+    private static AXEventDescriptor event(String kind, String key, AXEventFold fold) {
+        return AXEventDescriptor.of(kind, PRODUCER, AXEventPayload.of(), AXEventText.of(key), fold);
     }
 
     private record RecordingLogSink(List<String> lines) implements LogSink {

@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.event;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -72,9 +73,9 @@ class AXEventDescriptorTest {
         AXEventDescriptor descriptor = AXEventDescriptor.of(
                 "mymod:ritual", "mymod", AXEventPayload.of(3, 7), LINE, AXEventFold.COUNT);
 
-        AXEventDescriptor promoted = descriptor.withTier(AXEventTier.HIGH);
+        AXEventDescriptor promoted = descriptor.withTier(AXEventTier.RARE);
 
-        assertEquals(AXEventTier.HIGH, promoted.tier());
+        assertEquals(AXEventTier.RARE, promoted.tier());
         assertEquals(descriptor.kind(), promoted.kind());
         assertEquals(descriptor.sourceId(), promoted.sourceId());
         assertSame(descriptor.text(), promoted.text());
@@ -82,5 +83,26 @@ class AXEventDescriptorTest {
         assertNotNull(promoted.text());
         assertEquals(7, promoted.payload().magnitude());
         assertEquals(3, promoted.payload().count());
+    }
+
+    /**
+     * The highlight flag is the producer's per-occurrence opinion, and it defaults to off: a producer that never thinks
+     * about it gets the standing table, not an accidental whitelist.
+     */
+    @Test
+    void highlightDefaultsToOffAndFlipsWithoutTouchingAnythingElse() {
+        AXEventDescriptor descriptor = AXEventDescriptor.of(
+                "mymod:ritual", "mymod", AXEventPayload.of(), LINE, AXEventFold.COUNT);
+
+        assertFalse(descriptor.highlight());
+
+        AXEventDescriptor highlighted = descriptor.withHighlight(true);
+
+        assertTrue(highlighted.highlight());
+        assertEquals(descriptor.kind(), highlighted.kind());
+        assertEquals(descriptor.sourceId(), highlighted.sourceId());
+        assertEquals(descriptor.fold(), highlighted.fold());
+        assertSame(descriptor.text(), highlighted.text());
+        assertFalse(highlighted.suppress());
     }
 }

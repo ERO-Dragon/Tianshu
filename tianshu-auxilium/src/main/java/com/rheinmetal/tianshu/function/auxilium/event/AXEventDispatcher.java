@@ -1,38 +1,34 @@
 package com.rheinmetal.tianshu.function.auxilium.event;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Turns a submitted event into the action the caller has to perform.
+ * Turns a submitted event into the handling class the caller has to perform.
  *
- * <p>This is the single landing point of the operation matrix: the effective tier selects the row,
- * the effective blacklist flag selects the column, and the speech gate turns "speak now" into
- * "speak later" while a cooldown is still open.
+ * <p>Three inputs decide, in this order: the effective tier, the effective blacklist flag, and how often the kind
+ * has happened recently.
  *
- * <pre>
- *            not blacklisted                          blacklisted
- *   high     append and speak now                      append only
- *   mid      append and buffer for idle speech         append only
- *   low      append only, never speak                  drop, not even a history line
- * </pre>
+ * <ol>
+ *   <li>{@link AXEventFrequencyGate} corrects the tier when the kind keeps happening — a tier is a frequency, so the
+ *       frequency question is answered in the tier, not in the handling class.</li>
+ *   <li>{@link AXEventPolicy} maps (corrected tier, list) to a class. It is a pure function: no threshold, no clock.</li>
+ *   <li>A {@link AXEventClass#SILENT} occurrence goes through the fold windows: the history gets one line with a
+ *       count instead of one line per occurrence.</li>
+ * </ol>
  *
  * <p>The class never touches wording: it decides, and the sentence it stores is the one the caller already
  * rendered from the descriptor's {@link AXEventText}. Nothing here inspects {@link AXEventDescriptor#sourceId()};
- * the source only selects a cooldown slot and an aggregation window, so a module AX has never heard of
- * follows exactly the same path as the built-in producer.
+ * a module AX has never heard of follows exactly the same path as the built-in producer.
  *
- * <p>The class is not thread safe by design: events are submitted from the game loop. It owns the
- * speech gate state and the aggregation windows, so the caller only has to wire one object.
+ * <p>Not thread safe by design: events are submitted from the game loop. It owns the frequency gate and the fold
+ * windows, so the caller only has to wire one object.
  */
 public final class AXEventDispatcher {
     private final AXEventTierTable tierTable;
     private final AXEventSettings settings;
     private final AXEventAggregator aggregator;
-    private final Map<String, Long> lastSpeechAtBySlot = new HashMap<>();
-    private long lastSpeechAtMillis = Long.MIN_VALUE;
+    private final AXEventFrequencyGate frequencyGate;
 
     public AXEventDispatcher() {
         this(AXEventTierTable.builtin(), AXEventSettings.DEFAULT);
@@ -43,53 +39,49 @@ public final class AXEventDispatcher {
     }
 
     /**
-     * @param renderer renders a fold template into a sentence; it is the same renderer that words a single
-     *                 event, which is what keeps a folded line inside the language table instead of inside
-     *                 the producer
+     * @param renderer renders a fold template into a sentence; it is the same renderer that words a single event,
+     *                 which keeps a folded line inside the language table instead of inside the producer
      */
     public AXEventDispatcher(AXEventTierTable tierTable, AXEventSettings settings,
                              Function<AXEventText, String> renderer) {
         this.tierTable = tierTable == null ? AXEventTierTable.builtin() : tierTable;
         this.settings = settings == null ? AXEventSettings.DEFAULT : settings;
         this.aggregator = new AXEventAggregator(this.settings, renderer);
+        this.frequencyGate = new AXEventFrequencyGate(this.settings);
     }
 
     /**
-     * Resolves the tier, the blacklist flag and the matrix outcome of one event.
+     * Resolves the handling class of one occurrence.
      *
-     * <p>A declared tier always wins over the table; otherwise the table decides, and an unknown kind
-     * falls back to {@link AXEventTier#LOW} so a module AX does not know can never interrupt the
-     * player.
+     * <p>A declared tier always wins over the table; otherwise the table decides, and an unknown kind falls back
+     * to {@link AXEventTier#FREQUENT} — the most conservative tier, so a module AX does not know can never
+     * interrupt the player.
      *
-     * @param nowMillis monotonic wall clock of the calling tick; only gaps and windows use it, and it
-     *                  never reaches the appended line
+     * <p>The order is fixed and each step owns one question: the frequency gate first corrects the <em>tier</em> (a tier
+     * is a frequency, so repetition belongs there), then {@link AXEventPolicy} — a pure function of tier and list —
+     * names the class. A producer that marks everything as highlighted therefore cannot turn AX into a repeater: its
+     * kind is simply corrected to a more frequent tier, and the list then nudges that tier up one step instead of up
+     * from the original one.
+     *
+     * @param nowMillis monotonic wall clock of the calling tick; only windows use it, and it never reaches the
+     *                  appended line
      */
     public AXEventDecision decide(AXEventDescriptor descriptor, String sentence, long nowMillis) {
-        AXEventTier tier = resolveTier(descriptor);
-        boolean blacklisted = resolveBlacklisted(descriptor);
-
-        if (tier == AXEventTier.LOW && blacklisted) {
-            return new AXEventDecision(AXEventAction.DROP, tier, true, false);
+        AXEventTier declaredTier = resolveTier(descriptor);
+        AXEventTier tier = frequencyGate.correctedTier(descriptor.kind(), declaredTier, nowMillis);
+        AXEventList list = resolveList(descriptor);
+        AXEventClass eventClass = AXEventPolicy.classFor(tier, list);
+        boolean blacklisted = list == AXEventList.BLACKLIST;
+        if (eventClass != AXEventClass.SILENT) {
+            return new AXEventDecision(eventClass, tier, blacklisted, false);
         }
-        if (tier == AXEventTier.HIGH && !blacklisted) {
-            // High tier is appended immediately either way; the gate only moves the sentence from
-            // "speak now" to "queue it", it never holds the history entry back.
-            String slot = speechSlot(descriptor);
-            if (maySpeakNow(slot, nowMillis)) {
-                recordSpeech(slot, nowMillis);
-                return new AXEventDecision(AXEventAction.APPEND_AND_SPEAK, tier, false, false);
-            }
-            return new AXEventDecision(AXEventAction.APPEND_AND_BUFFER, tier, false, false);
-        }
-
-        AXEventAction action = tier == AXEventTier.MID && !blacklisted
-                ? AXEventAction.APPEND_AND_BUFFER
-                : AXEventAction.APPEND_ONLY;
-        boolean folded = aggregator.offer(descriptor, tier, sentence, nowMillis);
-        return new AXEventDecision(action, tier, blacklisted, folded);
+        // Only the silent class folds: the history keeps one counted line instead of one line per occurrence, and
+        // the window key includes the rendered line so two different payloads of the same kind never merge.
+        boolean folded = aggregator.offer(descriptor, sentence, nowMillis);
+        return new AXEventDecision(eventClass, tier, blacklisted, folded);
     }
 
-    /** Appends closed by an expired aggregation window; append them in order before the next turn. */
+    /** Appends closed by an expired fold window; append them in order before the next turn. */
     public List<AXEventAppend> drainDueAppends(long nowMillis) {
         return aggregator.drainDue(nowMillis);
     }
@@ -99,39 +91,33 @@ public final class AXEventDispatcher {
         return aggregator.drainAll();
     }
 
+    /** Occurrences of {@code kind} inside the frequency window as of {@code nowMillis}; diagnostics and tests. */
+    public int recentOccurrences(String kind, long nowMillis) {
+        return frequencyGate.count(kind, nowMillis);
+    }
+
     private AXEventTier resolveTier(AXEventDescriptor descriptor) {
         if (descriptor.tier() != null) {
             return descriptor.tier();
         }
-        return tierTable.tierOf(descriptor.kind()).orElse(AXEventTier.LOW);
-    }
-
-    private boolean resolveBlacklisted(AXEventDescriptor descriptor) {
-        return descriptor.suppress() || tierTable.blacklisted(descriptor.kind());
+        return tierTable.tierOf(descriptor.kind()).orElse(AXEventTier.FREQUENT);
     }
 
     /**
-     * Cooldown slot of the same kind speech gap.
+     * Where this occurrence sits on the attention list.
      *
-     * <p>The slot is the only thing the source takes part in besides being recorded, so two producers
-     * sharing a kind do not silence each other while a single producer still cannot repeat itself.
+     * <p>The producer's per-occurrence flags come first: a {@code highlight} is a dynamic whitelist and outranks the
+     * static list (the module is the one that knows whether this occurrence matters); {@code suppress} is the
+     * standing "do not interrupt for this" of the producer and registers as a blacklist. Without either, the static
+     * table answers.
      */
-    private String speechSlot(AXEventDescriptor descriptor) {
-        return descriptor.sourceId() + ":" + descriptor.kind();
-    }
-
-    private boolean maySpeakNow(String slot, long nowMillis) {
-        if (lastSpeechAtMillis != Long.MIN_VALUE
-                && nowMillis - lastSpeechAtMillis < settings.globalMinGapMillis()) {
-            return false;
+    private AXEventList resolveList(AXEventDescriptor descriptor) {
+        if (descriptor.highlight()) {
+            return AXEventList.WHITELIST;
         }
-        Long lastSameSlot = lastSpeechAtBySlot.get(slot);
-        return lastSameSlot == null
-                || nowMillis - lastSameSlot >= settings.sameKindMinGapMillis();
-    }
-
-    private void recordSpeech(String slot, long nowMillis) {
-        lastSpeechAtMillis = nowMillis;
-        lastSpeechAtBySlot.put(slot, nowMillis);
+        if (descriptor.suppress()) {
+            return AXEventList.BLACKLIST;
+        }
+        return tierTable.listOf(descriptor.kind());
     }
 }

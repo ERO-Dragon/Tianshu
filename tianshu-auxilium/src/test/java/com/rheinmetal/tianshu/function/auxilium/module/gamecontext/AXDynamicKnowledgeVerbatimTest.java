@@ -31,12 +31,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class AXDynamicKnowledgeVerbatimTest {
     private final AXDynamicKnowledgeFormatter formatter = new AXDynamicKnowledgeFormatter(
-            null, AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US));
+            null, AXPromptLanguageProvider.fixed(AXPromptLanguage.ZH_CN));
 
     @Test
     void playerStatusKeepsItsWording() {
         assertEquals(
-                "The player is currently in overworld. Health is about 20.0, hunger is about 20, and experience level is 5.",
+                "当前玩家位于overworld，生命值约20.0，饥饿值约20，经验等级为5。",
                 render(PresenceContextFactIds.PLAYER_STATUS, values(
                         "health", "20.0", "maxHealth", "20.0", "hunger", "20",
                         "experienceLevel", "5", "dimensionId", "minecraft:overworld")));
@@ -45,7 +45,7 @@ class AXDynamicKnowledgeVerbatimTest {
     @Test
     void worldEnvironmentKeepsItsWording() {
         assertEquals(
-                "The current biome is Plains, the weather is clear, and the in-game time is about 6000.",
+                "当前生物群系是Plains，天气是晴朗，当前游戏时间是12:00。",
                 render(PresenceContextFactIds.WORLD_ENVIRONMENT, values(
                         "dimensionId", "minecraft:overworld", "biomeId", "minecraft:plains",
                         "biomeDisplayName", "Plains", "raining", "false", "thundering", "false",
@@ -56,7 +56,7 @@ class AXDynamicKnowledgeVerbatimTest {
     void inventoryKeepsItsWordingAndItsItemOrder() {
         // Current output, quirky spacing included: behaviour must not change, only where the values come from.
         assertEquals(
-                "The player's inventory contains: Breada few, Sticka few.",
+                "当前玩家背包中有：Bread少量，Stick少量。",
                 render(PresenceContextFactIds.PLAYER_INVENTORY, values(
                         "itemCount", "2", "items", "minecraft:bread:3|minecraft:stick:2"),
                         itemRecord("minecraft:bread", "Bread", 3, 64),
@@ -66,7 +66,7 @@ class AXDynamicKnowledgeVerbatimTest {
     @Test
     void activeEffectsKeepTheirWording() {
         assertEquals(
-                "Current active effects: Speed I, 10 seconds remaining.",
+                "当前状态效果：SpeedI，剩余10秒。",
                 render(PresenceContextFactIds.PLAYER_ACTIVE_EFFECTS, values(
                         "effects", "minecraft:speed:0:200"),
                         effectRecord("minecraft:speed", "Speed", 200, 0)));
@@ -75,8 +75,7 @@ class AXDynamicKnowledgeVerbatimTest {
     @Test
     void interactionContextKeepsItsWording() {
         assertEquals(
-                "Current interaction: holding diamond sword, use key is pressed, "
-                        + "crosshair targets Cow at about 3.5 blocks.",
+                "当前交互：手持diamond sword，正在按住使用键，准星指向Cow，距离约3.5格。",
                 render(PresenceContextFactIds.INTERACTION_CONTEXT, values(
                         "playerId", "Steve", "dimensionId", "minecraft:overworld",
                         "heldItemId", "minecraft:diamond_sword", "screenKind", "NONE",
@@ -95,7 +94,7 @@ class AXDynamicKnowledgeVerbatimTest {
                 "playerId", "Steve", "dimensionId", "minecraft:overworld",
                 "screenKind", "PAUSE"));
 
-        assertEquals("Current interaction: screen pause is open.", rendered);
+        assertEquals("当前交互：打开pause界面。", rendered);
     }
 
     /**
@@ -104,7 +103,7 @@ class AXDynamicKnowledgeVerbatimTest {
     @Test
     void equipmentNamesOnlyFilledSlotsAndTheArmourNumber() {
         assertEquals(
-                "Player equipment: helmet Diamond Helmet, mainHand Diamond Sword. Armor points 15.",
+                "玩家装备：头盔是Diamond Helmet，主手是Diamond Sword。护甲值 15。",
                 render(PresenceContextFactIds.PLAYER_EQUIPMENT, values("armorPoints", "15", "armorToughness", "2.0"),
                         slotRecord("helmet", "minecraft:diamond_helmet", "Diamond Helmet"),
                         slotRecord("mainHand", "minecraft:diamond_sword", "Diamond Sword")));
@@ -129,6 +128,26 @@ class AXDynamicKnowledgeVerbatimTest {
                 new FactField("displayName", new FactValue.Text(displayName)),
                 new FactField("count", new FactValue.Count(1)),
                 new FactField("maxStackSize", new FactValue.Count(1)))));
+    }
+    /**
+     * Ticks become wall-clock time: 0 is sunrise, 6000 noon, 12000 dusk and 18000 midnight. Negative and
+     * out-of-range counts wrap instead of throwing, which matters for modded dimensions.
+     */
+    @Test
+    void dayTicksBecomeWallClockTime() {
+        assertEquals("当前生物群系是Plains，天气是晴朗，当前游戏时间是06:00。", environmentAt(0));
+        assertEquals("当前生物群系是Plains，天气是晴朗，当前游戏时间是12:00。", environmentAt(6000));
+        assertEquals("当前生物群系是Plains，天气是晴朗，当前游戏时间是18:00。", environmentAt(12000));
+        assertEquals("当前生物群系是Plains，天气是晴朗，当前游戏时间是00:00。", environmentAt(18000));
+        assertEquals("当前生物群系是Plains，天气是晴朗，当前游戏时间是12:00。", environmentAt(6000 + 24000));
+        assertEquals("当前生物群系是Plains，天气是晴朗，当前游戏时间是05:54。", environmentAt(-100));
+    }
+
+    private String environmentAt(long ticks) {
+        return render(PresenceContextFactIds.WORLD_ENVIRONMENT, values(
+                "dimensionId", "minecraft:overworld", "biomeId", "minecraft:plains",
+                "biomeDisplayName", "Plains", "raining", "false", "thundering", "false",
+                "dayTimeTicks", Long.toString(ticks)));
     }
     private String render(String factId, Map<String, String> values, FactField... records) {
         List<FactField> fields = new ArrayList<>(fieldsFor(values));

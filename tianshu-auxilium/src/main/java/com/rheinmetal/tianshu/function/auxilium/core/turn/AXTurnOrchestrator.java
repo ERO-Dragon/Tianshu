@@ -603,7 +603,19 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         return scope == null ? AXScope.unknown() : scope;
     }
 
-    public void interruptActiveTurn(AXTurnCancellation cancellation) {        AXTurnExecution execution = activeExecution.get();
+    /**
+     * Whether one LLM turn is currently running.
+     *
+     * <p>Read only, and deliberately about the turn itself: the event layer asks this to decide whether an immediate
+     * event may interrupt or has to wait for the next lull. It must not be approximated from activity, playback or
+     * module state — those outlive the turn, and an event would then queue behind something that already ended.
+     */
+    public boolean hasActiveTurn() {
+        return activeExecution.get() != null;
+    }
+
+    public void interruptActiveTurn(AXTurnCancellation cancellation) {
+        AXTurnExecution execution = activeExecution.get();
         if (execution != null) {
             cancelExecution(execution, cancellation == null
                     ? AXTurnCancellation.playerInterrupted("AX turn interrupted")

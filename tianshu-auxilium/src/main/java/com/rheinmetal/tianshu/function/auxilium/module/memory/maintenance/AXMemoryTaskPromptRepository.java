@@ -25,7 +25,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
  * <ul>
  *   <li>{@code memory.compact.system} — 一段式压缩的规则表 + JSON schema + importance 锚例</li>
  *   <li>{@code memory.compact.user} — 指令后缀（请求里唯一新增的真后缀）</li>
- *   <li>{@code memory.compact.turn_dialogue} / {@code memory.compact.turn_game_chat} — 带序号的一行轮次</li>
+ *   <li>{@code memory.compact.turn_dialogue} — 带序号的一行轮次（所有轮次共用一行，事件的主体写在角色位）</li>
  * </ul>
  */
 public final class AXMemoryTaskPromptRepository {
@@ -59,25 +59,20 @@ public final class AXMemoryTaskPromptRepository {
      *
      * <p>序号是 1-based，与提示词里 {@code turnRefs} 的写法一致——模型只要抄行首方括号里的数字就能
      * 给出轮级溯源。</p>
+     *
+     * <p>只有一种行：事件与对话共用 {@code memory.compact.turn_dialogue}。带主体的事件把主体写进角色位
+     * （{@code [7] 铁匠: 今天矿石不够了。}），因此压缩输入仍然认得出"谁说的"，而不再有第二套模板。</p>
      */
     public String compactTurnLine(AXRawTurn turn, int oneBasedIndex) {
         if (turn == null || turn.isEmpty()) {
             return "";
         }
         AXPromptLanguage language = currentLanguage();
-        String index = Integer.toString(oneBasedIndex);
-        if (turn.gameChatRole()) {
-            String template = load("memory.compact.turn_game_chat", language);
-            return render(template, Map.of(
-                    "index", index,
-                    "sender", clean(turn.speakerName()),
-                    "message", clean(turn.content())
-            ));
-        }
+        String speaker = turn.speakerName() == null ? "" : turn.speakerName().trim();
         String template = load("memory.compact.turn_dialogue", language);
         return render(template, Map.of(
-                "index", index,
-                "role", clean(turn.role()),
+                "index", Integer.toString(oneBasedIndex),
+                "role", speaker.isBlank() ? clean(turn.role()) : speaker,
                 "content", clean(turn.content())
         ));
     }

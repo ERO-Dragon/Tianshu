@@ -5,17 +5,18 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueContextInputPayload;
 
 /**
- * 上下文型对话输入到近期对话原始轮次的映射。
+ * Maps a third-party dialogue input into the recent-dialogue history.
  *
- * <p>外部模块的话语以第三方发言人身份进入上下文，与游戏聊天消息共用 {@code game_chat} 角色，
- * 因此不会与 AX/玩家二元对话混淆，也不会触发回答。</p>
+ * <p>Another mod's line is an event like any other non-player source: it becomes a {@code world_event} whose
+ * speaker is the third-party name, so it never mixes with the player/AX dialogue and never triggers an answer.
+ * The source turn id is kept as the turn's external identity, so a re-delivery keeps the same id.</p>
  */
 public final class AXDialogueContextInputMapper {
     public AXRawTurn map(AXScope scope, String sourceId, DialogueContextInputPayload payload) {
         if (payload == null) {
-            return AXRawTurn.gameChat(scope, "", "", 0L, "");
+            return AXRawTurn.worldEvent(scope, "", "", 0L, "");
         }
-        return AXRawTurn.gameChat(
+        return AXRawTurn.worldEvent(
                 scope,
                 payload.speakerName(),
                 payload.messageText(),

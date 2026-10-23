@@ -61,7 +61,7 @@ class AXPromptAssemblySnapshotTest {
                 scope,
                 memory,
                 new AXRecentDialogueSnapshot(List.of(
-                        AXRawTurn.gameChat(scope, "Alex", "聊天栏消息", 3000L, "turn")
+                        AXRawTurn.worldEvent(scope, "Alex", "聊天栏消息", 3000L, "turn")
                 )),
                 List.of(AXDynamicFact.of("玩家准星指向 minecraft:anvil", 90, "test")),
                 "IA delivery 附带上下文"
@@ -95,9 +95,11 @@ class AXPromptAssemblySnapshotTest {
         // 最后一条是当前输入
         assertEquals("user", messages.get(messages.size() - 1).role());
         assertEquals("当前输入：这个怎么修？", messages.get(messages.size() - 1).content());
-        // 其他玩家聊天作为对话流中的 user 消息，用 xml 标签包裹
+        // 其他玩家聊天作为对话流中的 user 消息，统一用 <event> 包裹（主体在正文里）
         assertTrue(messages.stream().anyMatch(m -> "user".equals(m.role())
-                && m.content().contains("<chat speaker=\"Alex\">聊天栏消息</chat>")));
+                && m.content().contains("<event>同伴 Alex 说：聊天栏消息</event>")));
+        assertTrue(messages.stream().noneMatch(m -> m.content().contains("<chat")),
+                "the chat wrapper is retired");
 
         String joined = messages.stream().map(LLMPromptRequestPayload.MessageItemPayload::content).collect(java.util.stream.Collectors.joining("\n\n"));
         // system 段内顺序：ax_system → game_context → player_memory（recent_dialogue 已展开为对话流）

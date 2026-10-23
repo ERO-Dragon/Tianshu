@@ -97,11 +97,16 @@ public final class NeoForgeGameEventHooks {
             return;
         }
         long nowMillis = System.currentTimeMillis();
+        AXGameEventService service = binding.service();
+        if (service != null && !service.closed()) {
+            // The deferred window runs on the wall clock, so it is advanced on every tick rather than only when a sample
+            // is due: otherwise the voluntary turn would wait for the next event to be submitted.
+            service.tick(nowMillis);
+        }
         if (nowMillis - binding.lastSampleAtMillis < SAMPLE_INTERVAL_MILLIS) {
             return;
         }
         binding.lastSampleAtMillis = nowMillis;
-        AXGameEventService service = binding.service();
         if (service == null || service.closed()) {
             return;
         }

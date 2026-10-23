@@ -67,11 +67,28 @@ public record AXRawTurn(
         );
     }
 
-    public static AXRawTurn gameChat(AXScope scope, String speakerName, String content, long createdAtMillis, String sourceTurnId) {
+    /**
+     * An event-flow entry with a subject, and the external identity of its source.
+     *
+     * <p>{@code <event>} is a one-off fact appended to the history, not a tail block rebuilt every turn. Every
+     * non-player source is one: another player's chat line, a message another mod delivered, and the world
+     * changing on its own. The speaker therefore travels in {@code speakerName} and is written into the body by
+     * the renderer — there is no second wrapper.
+     *
+     * @param speakerName  who said it, or empty when nobody did
+     * @param sourceTurnId the sender's own identity for this line, so a re-delivery keeps the same turn id
+     */
+    public static AXRawTurn worldEvent(
+            AXScope scope,
+            String speakerName,
+            String content,
+            long createdAtMillis,
+            String sourceTurnId
+    ) {
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
         return new AXRawTurn(
                 "",
-                "game_chat",
+                "world_event",
                 content,
                 createdAtMillis,
                 effectiveScope.worldId(),
@@ -84,25 +101,14 @@ public record AXRawTurn(
         );
     }
 
-    /**
-     * 事件流条目。{@code <event>} 是追加进历史的一次性事实，不是每轮重建的尾部块：
-     * {@code content} 形如 {@code <kind> <短句>}，由事件层渲染成一行，此后随历史一起参与压缩与检索。
-     */
+    /** An event from someone, with no external identity of its own. */
+    public static AXRawTurn worldEvent(AXScope scope, String speakerName, String content, long createdAtMillis) {
+        return worldEvent(scope, speakerName, content, createdAtMillis, "");
+    }
+
+    /** An event without a subject: the environment changed on its own. */
     public static AXRawTurn worldEvent(AXScope scope, String content, long createdAtMillis) {
-        AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
-        return new AXRawTurn(
-                "",
-                "world_event",
-                content,
-                createdAtMillis,
-                effectiveScope.worldId(),
-                "",
-                "",
-                0,
-                0,
-                "",
-                ""
-        );
+        return worldEvent(scope, "", content, createdAtMillis, "");
     }
 
     public boolean isEmpty() {
@@ -111,14 +117,6 @@ public record AXRawTurn(
 
     public boolean assistantRole() {
         return "assistant".equals(role);
-    }
-
-    public boolean chatRole() {
-        return gameChatRole();
-    }
-
-    public boolean gameChatRole() {
-        return "game_chat".equals(role);
     }
 
     public boolean worldEventRole() {
@@ -170,8 +168,9 @@ public record AXRawTurn(
         return switch (normalized) {
             case "assistant", "ax" -> "assistant";
             case "system" -> "system";
-            case "chat", "game_chat", "gamechat" -> "game_chat";
-            case "world_event" -> "world_event";
+            // "chat" / "game_chat" are the retired second event flavour: history written by an older build still
+            // reads as an event, and its speakerName keeps the subject visible.
+            case "world_event", "chat", "game_chat", "gamechat" -> "world_event";
             default -> "user";
         };
     }

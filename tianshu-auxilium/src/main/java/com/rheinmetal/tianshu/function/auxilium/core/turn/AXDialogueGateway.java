@@ -10,15 +10,27 @@ public final class AXDialogueGateway {
     private final AXAccessController accessController;
     private final AXTurnPipeline orchestrator;
     private final AXTurnStatusPublisher statusPublisher;
+    private final Runnable onUserTurnStart;
 
     public AXDialogueGateway(AXAccessController accessController, AXTurnPipeline orchestrator) {
-        this(accessController, orchestrator, null);
+        this(accessController, orchestrator, null, null);
     }
 
     public AXDialogueGateway(AXAccessController accessController, AXTurnPipeline orchestrator, AXTurnStatusPublisher statusPublisher) {
+        this(accessController, orchestrator, statusPublisher, null);
+    }
+
+    /**
+     * @param onUserTurnStart runs once per accepted player delivery, before the turn starts and therefore before the
+     *                        player's own line reaches the history; the event layer uses it to turn everything it was
+     *                        holding into history in arrival order
+     */
+    public AXDialogueGateway(AXAccessController accessController, AXTurnPipeline orchestrator,
+                             AXTurnStatusPublisher statusPublisher, Runnable onUserTurnStart) {
         this.accessController = Objects.requireNonNull(accessController, "accessController");
         this.orchestrator = Objects.requireNonNull(orchestrator, "orchestrator");
         this.statusPublisher = statusPublisher;
+        this.onUserTurnStart = onUserTurnStart;
     }
 
     public void handleDelivery(TianshuEnvelope envelope, ProtocolContext context) {
@@ -31,6 +43,11 @@ public final class AXDialogueGateway {
             return;
         }
         try {
+            // Before the orchestrator appends the player's line: the history has to read in the order the session
+            // happened, so whatever the event layer was holding belongs before this turn.
+            if (onUserTurnStart != null) {
+                onUserTurnStart.run();
+            }
             orchestrator.startTurn(envelope, payload);
             complete(context, envelope);
         } catch (Exception e) {

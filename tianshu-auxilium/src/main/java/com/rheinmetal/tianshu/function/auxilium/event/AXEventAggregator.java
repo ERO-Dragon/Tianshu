@@ -8,24 +8,19 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Folds repeated occurrences of one kind into a single history entry.
+ * Folds repeated silent occurrences into one counted history line.
  *
- * <p>Frequency never changes a tier; it only changes granularity. The aggregator therefore holds
- * mid and low entries back until their window closes, then emits either one {@link
- * AXEventAppend.Aggregated} entry (when the window reached the threshold and the folded sentence could be
- * rendered) or the retained {@link AXEventAppend.Single} entries, so a non blacklisted event always ends up
- * in the history.
+ * <p>Only {@link AXEventClass#SILENT} reaches this class: a spoken event is never folded, because a folded "said it
+ * five times" loses which line was which and the speech channel already throttles itself. For a silent kind the
+ * fold is the whole point — the model should learn that the thing happened, not read it forty-three times.
  *
- * <p>A window is opened per source and kind. Two producers that happen to use the same kind keep their own
- * window; the slot never influences a tier, a blacklist flag or a decision.
+ * <p>A window is keyed by the kind <em>and the rendered line</em>. That is what keeps two different payloads of the
+ * same kind apart: four different items crafted are four windows with one occurrence each, never one window of
+ * "item × 4". The key never influences a tier, a blacklist flag or a class.
  *
- * <p>The folded sentence is no longer a producer callback. The window carries the descriptor's
- * {@link AXEventFold}, and at close time the aggregator builds the fold template through
- * {@link AXEventTexts#aggregate} and renders it with the same renderer the single occurrences use, so the
- * producer never contributes wording to a fold.
- *
- * <p>High tier events are never aggregated: a folded "died 5 times" loses which death was which, and
- * high tier already has the global and per kind speech gaps as its throttle.
+ * <p>The folded sentence is not a producer callback. The window carries the descriptor's {@link AXEventFold}, and at
+ * close time the aggregator builds the fold template through {@link AXEventTexts#aggregate} and renders it with the
+ * same renderer the single occurrences use, so the producer never contributes wording to a fold.
  */
 final class AXEventAggregator {
     private final AXEventSettings settings;
@@ -45,17 +40,17 @@ final class AXEventAggregator {
     /**
      * Offers one occurrence for folding.
      *
-     * @param sentence the already rendered sentence of this occurrence, kept so a window that never folds
-     *                 still contributes readable single entries
-     * @return {@code true} when the occurrence was retained in a window, {@code false} when the caller must
-     *         append it immediately
+     * @param sentence the already rendered sentence of this occurrence, kept so a window that never folds still
+     *                 contributes readable single entries
+     * @return {@code true} when the occurrence was retained in a window, {@code false} when the caller must append it
+     *         immediately
      */
-    boolean offer(AXEventDescriptor descriptor, AXEventTier tier, String sentence, long nowMillis) {
-        if (tier == AXEventTier.HIGH || descriptor.fold() == AXEventFold.NONE) {
+    boolean offer(AXEventDescriptor descriptor, String sentence, long nowMillis) {
+        if (descriptor.fold() == AXEventFold.NONE) {
             // A one-off moment keeps its occurrences separate: there is no fold shape to word.
             return false;
         }
-        WindowKey key = new WindowKey(descriptor.sourceId(), descriptor.kind());
+        WindowKey key = new WindowKey(descriptor.kind(), identityOf(descriptor.text()));
         Window window = windows.get(key);
         if (window != null && isDue(window, nowMillis)) {
             // The window went idle before this occurrence arrived. Close it into the pending queue
@@ -141,7 +136,54 @@ final class AXEventAggregator {
         return singles;
     }
 
-    private record WindowKey(String sourceId, String kind) {
+    /**
+     * What makes two occurrences "the same event": the template key plus its non-numeric arguments.
+     *
+     * <p>Numeric arguments are excluded on purpose. They are the magnitudes a {@link AXEventFold#RANGE} or
+     * {@link AXEventFold#COUNT} window is supposed to summarise ("lost 5 hearts" three times is one line), so treating
+     * them as identity would make every occurrence its own window and every fold template unreachable. Text arguments
+     * are the subject — an item name, a dimension, a player — and those must keep the windows apart: four different
+     * items crafted are four lines, never "item × 4".
+     *
+     * <p>Nested templates contribute their own key and non-numeric arguments for the same reason.
+     */
+    private static String identityOf(AXEventText text) {
+        StringBuilder identity = new StringBuilder();
+        appendIdentity(text, identity, 0);
+        return identity.toString();
+    }
+
+    private static void appendIdentity(AXEventText text, StringBuilder out, int depth) {
+        if (text == null || depth > AXEventText.MAX_REF_DEPTH) {
+            return;
+        }
+        out.append(text.key());
+        for (AXEventText.Arg arg : text.args()) {
+            if (arg instanceof AXEventText.Arg.Value value) {
+                if (!isNumeric(value.text())) {
+                    out.append('\u0000').append(value.text());
+                }
+            } else if (arg instanceof AXEventText.Arg.Nested nested) {
+                out.append('\u0000');
+                appendIdentity(nested.text(), out, depth + 1);
+            }
+        }
+    }
+
+    private static boolean isNumeric(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        try {
+            Double.parseDouble(value.trim());
+            return true;
+        } catch (NumberFormatException notANumber) {
+            return false;
+        }
+    }
+
+    /** Kind plus the occurrence's identity: two different subjects must never share one count. */
+    private record WindowKey(String kind, String identity) {
     }
 
     private record Item(String text, Integer magnitude) {

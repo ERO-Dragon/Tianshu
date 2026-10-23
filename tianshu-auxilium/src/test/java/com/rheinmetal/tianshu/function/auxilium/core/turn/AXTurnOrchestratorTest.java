@@ -189,6 +189,7 @@ class AXTurnOrchestratorTest {
         );
 
         await(() -> recentDialogueSystem.snapshot(scope).turns().size() == 2);
+        assertFalse(orchestrator.hasActiveTurn(), "the finished turn is no longer active");
         assertEquals(999, recentDialogueSystem.snapshot(scope).turns().get(0).tokenCount());
         assertEquals(7, recentDialogueSystem.snapshot(scope).turns().get(1).tokenCount());
     }
@@ -226,6 +227,8 @@ class AXTurnOrchestratorTest {
         orchestrator.startTurn(deliveryEnvelope(), delivery());
 
         await(() -> llmRequest.get() != null);
+        // The event layer asks exactly this to decide whether an immediate event may interrupt or has to queue.
+        assertTrue(orchestrator.hasActiveTurn(), "a turn waiting for its stream is an active turn");
         LLMPromptRequestPayload requestPayload = (LLMPromptRequestPayload) llmRequest.get().payload();
         llmClient.handleStreamChunk(
                 llmRequest.get().envelopeId(),

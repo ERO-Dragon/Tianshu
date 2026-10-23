@@ -2,212 +2,181 @@
   "schemaVersion": 2,
   "texts": {
     "section.ax_system": {
-      "zh_cn": "<ax_system>\n{{content}}\n</ax_system>",
-      "en_us": "<ax_system>\n{{content}}\n</ax_system>"
+      "zh_cn": "<ax_system>\n{{content}}\n</ax_system>"
     },
     "section.game_context": {
-      "zh_cn": "<game_context>\n{{content}}\n</game_context>",
-      "en_us": "<game_context>\n{{content}}\n</game_context>"
+      "zh_cn": "<game_context>\n{{content}}\n</game_context>"
     },
     "game_context.current_situation_intro": {
-      "zh_cn": "以下信息与玩家当前所处的情况相关：",
-      "en_us": "The following information is relevant to the player's current situation:"
+      "zh_cn": "以下信息与玩家当前所处的情况相关："
     },
     "game_context.relevant_knowledge_intro": {
-      "zh_cn": "以下是与玩家当前问题相关的游戏知识：",
-      "en_us": "The following game knowledge is relevant to the player's current question:"
+      "zh_cn": "以下是与玩家当前问题相关的游戏知识："
     },
     "game_context.fact_line": {
-      "zh_cn": "- {{fact}}",
-      "en_us": "- {{fact}}"
+      "zh_cn": "- {{fact}}"
     },
     "dynamic_knowledge.player.status": {
-      "zh_cn": "当前玩家位于{{dimension}}，生命值约{{health}}，饥饿值约{{hunger}}，经验等级为{{experienceLevel}}。",
-      "en_us": "The player is currently in {{dimension}}. Health is about {{health}}, hunger is about {{hunger}}, and experience level is {{experienceLevel}}."
+      "zh_cn": "当前玩家位于{{dimension}}，生命值约{{health}}，饥饿值约{{hunger}}，经验等级为{{experienceLevel}}。"
     },
     "dynamic_knowledge.world.environment": {
-      "zh_cn": "当前生物群系是{{biome}}，天气是{{weather}}，游戏时间约{{time}}。",
-      "en_us": "The current biome is {{biome}}, the weather is {{weather}}, and the in-game time is about {{time}}."
+      "zh_cn": "当前生物群系是{{biome}}，天气是{{weather}}，当前游戏时间是{{time}}。"
     },
     "dynamic_knowledge.inventory.items": {
-      "zh_cn": "当前玩家背包中有：{{items}}。",
-      "en_us": "The player's inventory contains: {{items}}."
+      "zh_cn": "当前玩家背包中有：{{items}}。"
     },
     "dynamic_knowledge.player.equipment": {
-      "zh_cn": "玩家装备：{{slots}}。护甲值 {{armorPoints}}。",
-      "en_us": "Player equipment: {{slots}}. Armor points {{armorPoints}}."
+      "zh_cn": "玩家装备：{{slots}}。护甲值 {{armorPoints}}。"
+    },
+    "dynamic_knowledge.player.equipment.slot.label.helmet": {
+      "zh_cn": "头盔"
+    },
+    "dynamic_knowledge.player.equipment.slot.label.chestplate": {
+      "zh_cn": "胸甲"
+    },
+    "dynamic_knowledge.player.equipment.slot.label.leggings": {
+      "zh_cn": "护腿"
+    },
+    "dynamic_knowledge.player.equipment.slot.label.boots": {
+      "zh_cn": "靴子"
+    },
+    "dynamic_knowledge.player.equipment.slot.label.mainHand": {
+      "zh_cn": "主手"
+    },
+    "dynamic_knowledge.player.equipment.slot.label.offHand": {
+      "zh_cn": "副手"
     },
     "dynamic_knowledge.player.equipment.slot": {
-      "zh_cn": "{{slot}}是{{name}}",
-      "en_us": "{{slot}} {{name}}"
+      "zh_cn": "{{slot}}是{{name}}"
     },
     "dynamic_knowledge.inventory.item": {
-      "zh_cn": "{{name}}{{amount}}",
-      "en_us": "{{name}}{{amount}}"
+      "zh_cn": "{{name}}{{amount}}"
     },
     "dynamic_knowledge.inventory.separator": {
-      "zh_cn": "，",
-      "en_us": ", "
+      "zh_cn": "，"
     },
     "dynamic_knowledge.inventory.amount.few": {
-      "zh_cn": "少量",
-      "en_us": " a few"
+      "zh_cn": "少量"
     },
     "dynamic_knowledge.inventory.amount.less_than_half_stack": {
-      "zh_cn": "不到半组",
-      "en_us": " less than half a stack"
+      "zh_cn": "不到半组"
     },
     "dynamic_knowledge.inventory.amount.half_stack": {
-      "zh_cn": "半组",
-      "en_us": " half a stack"
+      "zh_cn": "半组"
     },
     "dynamic_knowledge.inventory.amount.more_than_half_stack": {
-      "zh_cn": "半组多",
-      "en_us": " more than half a stack"
+      "zh_cn": "半组多"
     },
     "dynamic_knowledge.inventory.amount.one_stack": {
-      "zh_cn": "一组",
-      "en_us": " one stack"
+      "zh_cn": "一组"
     },
     "dynamic_knowledge.inventory.amount.one_stack_more": {
-      "zh_cn": "一组多",
-      "en_us": " more than one stack"
+      "zh_cn": "一组多"
     },
     "dynamic_knowledge.inventory.amount.multi_stack": {
-      "zh_cn": "{{stacks}}组",
-      "en_us": " {{stacks}} stacks"
+      "zh_cn": "{{stacks}}组"
     },
     "dynamic_knowledge.inventory.amount.multi_stack_more": {
-      "zh_cn": "{{stacks}}组多",
-      "en_us": " more than {{stacks}} stacks"
+      "zh_cn": "{{stacks}}组多"
     },
     "dynamic_knowledge.inventory.stack_count.2": {
-      "zh_cn": "两",
-      "en_us": "two"
+      "zh_cn": "两"
     },
     "dynamic_knowledge.inventory.stack_count.3": {
-      "zh_cn": "三",
-      "en_us": "three"
+      "zh_cn": "三"
     },
     "dynamic_knowledge.inventory.stack_count.4": {
-      "zh_cn": "四",
-      "en_us": "four"
+      "zh_cn": "四"
     },
     "dynamic_knowledge.inventory.stack_count.5": {
-      "zh_cn": "五",
-      "en_us": "five"
+      "zh_cn": "五"
     },
     "dynamic_knowledge.effects.active": {
-      "zh_cn": "当前状态效果：{{effects}}。",
-      "en_us": "Current active effects: {{effects}}."
+      "zh_cn": "当前状态效果：{{effects}}。"
     },
     "dynamic_knowledge.effects.entry": {
-      "zh_cn": "{{name}}{{level}}，剩余{{duration}}",
-      "en_us": "{{name}} {{level}}, {{duration}} remaining"
+      "zh_cn": "{{name}}{{level}}，剩余{{duration}}"
     },
     "dynamic_knowledge.effect.level.1": {
-      "zh_cn": "I",
-      "en_us": "I"
+      "zh_cn": "I"
     },
     "dynamic_knowledge.effect.level.2": {
-      "zh_cn": "II",
-      "en_us": "II"
+      "zh_cn": "II"
     },
     "dynamic_knowledge.effect.level.3": {
-      "zh_cn": "III",
-      "en_us": "III"
+      "zh_cn": "III"
     },
     "dynamic_knowledge.effect.level.4": {
-      "zh_cn": "IV",
-      "en_us": "IV"
+      "zh_cn": "IV"
     },
     "dynamic_knowledge.effect.level.5": {
-      "zh_cn": "V",
-      "en_us": "V"
+      "zh_cn": "V"
     },
     "dynamic_knowledge.duration.seconds": {
-      "zh_cn": "{{seconds}}秒",
-      "en_us": "{{seconds}} seconds"
+      "zh_cn": "{{seconds}}秒"
     },
     "dynamic_knowledge.duration.minutes": {
-      "zh_cn": "{{minutes}}分钟",
-      "en_us": "{{minutes}} minutes"
+      "zh_cn": "{{minutes}}分钟"
     },
     "dynamic_knowledge.duration.minutes_seconds": {
-      "zh_cn": "{{minutes}}分{{seconds}}秒",
-      "en_us": "{{minutes}} minutes {{seconds}} seconds"
+      "zh_cn": "{{minutes}}分{{seconds}}秒"
     },
     "dynamic_knowledge.interaction": {
-      "zh_cn": "当前交互：{{details}}。",
-      "en_us": "Current interaction: {{details}}."
+      "zh_cn": "当前交互：{{details}}。"
     },
     "dynamic_knowledge.interaction.held_item": {
-      "zh_cn": "手持{{item}}",
-      "en_us": "holding {{item}}"
+      "zh_cn": "手持{{item}}"
     },
     "dynamic_knowledge.interaction.screen": {
-      "zh_cn": "打开{{screen}}界面",
-      "en_us": "screen {{screen}} is open"
+      "zh_cn": "打开{{screen}}界面"
     },
     "dynamic_knowledge.interaction.use_key": {
-      "zh_cn": "正在按住使用键",
-      "en_us": "use key is pressed"
+      "zh_cn": "正在按住使用键"
     },
     "dynamic_knowledge.interaction.attack_key": {
-      "zh_cn": "正在按住攻击键",
-      "en_us": "attack key is pressed"
+      "zh_cn": "正在按住攻击键"
     },
     "dynamic_knowledge.interaction.sneaking": {
-      "zh_cn": "玩家正在潜行",
-      "en_us": "player is sneaking"
+      "zh_cn": "玩家正在潜行"
     },
     "dynamic_knowledge.interaction.crosshair": {
-      "zh_cn": "准星指向{{target}}，距离约{{distance}}格",
-      "en_us": "crosshair targets {{target}} at about {{distance}} blocks"
+      "zh_cn": "准星指向{{target}}，距离约{{distance}}格"
     },
     "dynamic_knowledge.value.unknown": {
-      "zh_cn": "未知",
-      "en_us": "unknown"
+      "zh_cn": "未知"
     },
     "dynamic_knowledge.weather.clear": {
-      "zh_cn": "晴朗",
-      "en_us": "clear"
+      "zh_cn": "晴朗"
     },
     "dynamic_knowledge.weather.rain": {
-      "zh_cn": "下雨",
-      "en_us": "raining"
+      "zh_cn": "下雨"
     },
     "dynamic_knowledge.weather.thunder": {
-      "zh_cn": "雷暴",
-      "en_us": "thundering"
+      "zh_cn": "雷暴"
     },
     "section.player_memory": {
-      "zh_cn": "<player_memory>\n{{content}}\n</player_memory>",
-      "en_us": "<player_memory>\n{{content}}\n</player_memory>"
+      "zh_cn": "<player_memory>\n{{content}}\n</player_memory>"
     },
     "player_memory.remembered_history_group": {
-      "zh_cn": "你记得此前与玩家发生过这些事情：\n{{summaries}}",
-      "en_us": "You remember these earlier interactions and events involving the player:\n{{summaries}}"
+      "zh_cn": "你记得此前与玩家发生过这些事情：\n{{summaries}}"
     },
     "memory_summary.block": {
-      "zh_cn": "<memory_summary>\n{{units}}\n</memory_summary>",
-      "en_us": "<memory_summary>\n{{units}}\n</memory_summary>"
+      "zh_cn": "<memory_summary>\n{{units}}\n</memory_summary>"
     },
     "memory_summary.unit_line": {
-      "zh_cn": "<unit_summary>\n{{summary}}\n</unit_summary>",
-      "en_us": "<unit_summary>\n{{summary}}\n</unit_summary>"
+      "zh_cn": "<unit_summary>\n{{summary}}\n</unit_summary>"
     },
     "player_memory.summary_line": {
-      "zh_cn": "- {{summary}}",
-      "en_us": "- {{summary}}"
+      "zh_cn": "- {{summary}}"
     },
     "player_memory.concurrent_events_group": {
-      "zh_cn": "  当时还发生了：\n{{events}}",
-      "en_us": "  This also happened at the time:\n{{events}}"
+      "zh_cn": "  当时还发生了：\n{{events}}"
     },
     "player_memory.concurrent_event_line": {
-      "zh_cn": "  - {{event}}",
-      "en_us": "  - {{event}}"
+      "zh_cn": "  - {{event}}"
+    },
+    "recent_dialogue.event.said": {
+      "zh_cn": "同伴 {{speaker}} 说：{{text}}"
     }
   }
 }

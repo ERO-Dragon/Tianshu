@@ -99,7 +99,7 @@ class AXEventAggregatorTest {
         AXEventAggregator aggregator = aggregator("never used");
         AXEventDescriptor descriptor = descriptor("mymod:ritual", null, AXEventFold.NONE, SOURCE);
 
-        assertFalse(aggregator.offer(descriptor, AXEventTier.LOW, "开坛了", START));
+        assertFalse(aggregator.offer(descriptor, "开坛了", START));
         assertEquals(0, aggregator.openWindowCount());
         assertTrue(aggregator.drainAll().isEmpty());
     }
@@ -134,16 +134,21 @@ class AXEventAggregatorTest {
         assertEquals(3, aggregator.drainAll().size());
     }
 
+    /**
+     * A magnitude is what a fold summarises, not what identifies the event: drops of different sizes are one window,
+     * otherwise every RANGE template would be unreachable.
+     */
     @Test
-    void highTierIsNeverFolded() {
-        AXEventAggregator aggregator = aggregator("folded");
+    void numericArgumentsDoNotSplitAWindow() {
+        AXEventAggregator aggregator = new AXEventAggregator(threshold(2), template -> "folded");
+        AXEventDescriptor hit = AXEventDescriptor.of("tianshu:health_change", SOURCE,
+                AXEventPayload.of(), AXEventText.of("line.health", "5"), AXEventFold.COUNT);
 
-        assertFalse(aggregator.offer(descriptor("tianshu:death", null, AXEventFold.COUNT, SOURCE),
-                AXEventTier.HIGH, "死了", START));
-        assertFalse(aggregator.offer(descriptor("tianshu:death", null, AXEventFold.COUNT, SOURCE),
-                AXEventTier.HIGH, "又死了", START + 1_000L));
-        assertEquals(0, aggregator.openWindowCount());
-        assertTrue(aggregator.drainAll().isEmpty());
+        assertTrue(aggregator.offer(hit, "失去 5 心", START));
+        assertTrue(aggregator.offer(hit, "失去 4 心", START + 1_000L));
+
+        assertEquals(1, aggregator.openWindowCount(), "the number is the fold input, not the identity");
+        assertEquals(1, aggregator.drainAll().size());
     }
 
     @Test
@@ -177,26 +182,28 @@ class AXEventAggregatorTest {
     }
 
     @Test
-    void twoProducersKeepTheirOwnWindowAndTheirOwnFold() {
-        AXEventAggregator perSource = new AXEventAggregator(threshold(2), template -> "folded");
-        AXEventDescriptor one = descriptor("tianshu:mob_killed", null, AXEventFold.COUNT, "module.one");
-        AXEventDescriptor two = descriptor("tianshu:mob_killed", null, AXEventFold.COUNT, "plugin.two");
+    void differentSubjectsKeepTheirOwnWindowAndTheirOwnCount() {
+        AXEventAggregator perSubject = new AXEventAggregator(threshold(2), template -> "folded");
+        AXEventDescriptor stone = AXEventDescriptor.of("tianshu:mob_killed", SOURCE,
+                AXEventPayload.of(), AXEventText.of("line.item", "minecraft:stone"), AXEventFold.COUNT);
+        AXEventDescriptor dirt = AXEventDescriptor.of("tianshu:mob_killed", SOURCE,
+                AXEventPayload.of(), AXEventText.of("line.item", "minecraft:dirt"), AXEventFold.COUNT);
 
-        perSource.offer(one, AXEventTier.MID, "一", START);
-        perSource.offer(one, AXEventTier.MID, "一", START + 1_000L);
-        perSource.offer(two, AXEventTier.MID, "二", START + 2_000L);
-        perSource.offer(two, AXEventTier.MID, "二", START + 3_000L);
+        perSubject.offer(stone, "圆石", START);
+        perSubject.offer(stone, "圆石", START + 1_000L);
+        perSubject.offer(dirt, "泥土", START + 2_000L);
+        perSubject.offer(dirt, "泥土", START + 3_000L);
 
-        List<AXEventAppend> appends = perSource.drainAll();
+        List<AXEventAppend> appends = perSubject.drainAll();
 
-        assertEquals(2, appends.size(), "each source folds only its own occurrences");
+        assertEquals(2, appends.size(), "two subjects, two counted lines, never one 'item x 4'");
         assertEquals(2, ((AXEventAppend.Aggregated) appends.get(0)).count());
         assertEquals(2, ((AXEventAppend.Aggregated) appends.get(1)).count());
     }
 
     private void fold(AXEventAggregator aggregator, String kind, String sentence, Integer magnitude,
                       AXEventFold fold, String sourceId, long nowMillis) {
-        assertTrue(aggregator.offer(descriptor(kind, magnitude, fold, sourceId), AXEventTier.LOW, sentence, nowMillis),
+        assertTrue(aggregator.offer(descriptor(kind, magnitude, fold, sourceId), sentence, nowMillis),
                 "occurrence should be folded: " + kind);
     }
 
