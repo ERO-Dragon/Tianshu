@@ -147,7 +147,7 @@ class IaModuleLifecycleTest {
                 PayloadType.DIALOGUE_ARBITRATION_REQUEST,
                 new DialogueArbitrationRequestPayload(
                         "request", "module.ir", "player", "turn", 1L,
-                        "hello", "hello", List.of(), List.of(), List.of(),
+                        "hello", "hello", List.of(), List.of(),
                         System.currentTimeMillis(), System.currentTimeMillis() + 10_000L
                 )
         ).build());

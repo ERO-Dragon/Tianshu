@@ -139,11 +139,9 @@ api.unregisterVoiceTriggers("example_radar");
 ```java
 for (VoiceTriggerConflict conflict : result.conflicts()) {
     String word = conflict.word();
-    List<String> owners = conflict.moduleIds();
+    List<String> moduleIds = conflict.moduleIds();
 }
 ```
-
-ASR / IR 命中后，主干会自动通过协议能力投递 `VoiceTriggerPayload` 到注册的 `VoiceTriggerDeliveryTarget`。外部模组不需要手动拉取匹配结果，也不应把它理解为主干直接调用 addon 方法。
 
 默认投递目标为：
 
@@ -159,20 +157,14 @@ new VoiceTriggerDeliveryTarget("example_radar", "EXAMPLE_RADAR.VOICE_TRIGGER")
 
 该 capability 由外部模组自己注册和处理。
 
-标准投递字段包括：
+命中结果的行为以 IR 发布的证据为准，外部模组不需要自己拉取匹配结果。`IR.RESULT` 上的 `IrResultPayload` 携带：
 
-- `sourceText`
-- `normalizedText`
-- `moduleId`
-- `matchedWakeWords`
-- `matchedCommandWords`
-- `sourceChannel`
-- `confidence`
-- `matchedItemNames`
-- `matchedItemIds`
-- `timestamp`
-- `sessionId`
-- `turnId`
+- `repairedText` / `normalizedText` / `rawText`
+- `objectMatches`：每个命中具名对象一条（`spokenWord`、`registryId`、`registryKind`、`languageKey`）
+- `moduleMatches`：每个命中模块触发词一条（`moduleId`、`spokenWord`、`registeredWord`）
+- `turnId` / `sessionId` / `timestampMillis`
+
+对话场景下，IA 选出的 owner 会通过 `DialogueDeliveryPayload` 收到同一份 `objectMatches` / `moduleMatches`，以及世界侧的 `displayNames`（维度、手持、实体）。
 
 ## 模块状态
 

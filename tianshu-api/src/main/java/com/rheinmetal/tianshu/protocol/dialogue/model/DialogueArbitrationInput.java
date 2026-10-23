@@ -4,18 +4,24 @@ import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
-
 import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * One arbitration turn: the request, the context it was frozen against, and the evidence read off the request.
+ *
+ * <p>The display names here are the world's names — dimension, held item, entities — because those are what the
+ * presence snapshot knows. The names of the objects the player mentioned travel inside the object matches, so there
+ * is no second source of names to merge and no way for one side to overwrite the other.</p>
+ */
 public record DialogueArbitrationInput(
         DialogueArbitrationRequestPayload request,
         DialogueInteractionHints interactionHints,
         DialogueContextSnapshot contextSnapshot,
-        /** Display names for the ids in this input, keyed by raw id; carried through to the delivery payload. */
+        /** Display names the world side resolved for its own ids (dimension, held item, entities), keyed by raw id. */
         Map<String, String> displayNames,
         /** Named objects the utterance was matched to, straight from the repair step. */
         List<IrObjectMatch> objectMatches,
@@ -39,12 +45,9 @@ public record DialogueArbitrationInput(
 
     public static DialogueArbitrationInput from(DialogueArbitrationRequestPayload request, DialogueContextFrame contextFrame) {
         DialogueContextFrame effectiveFrame = contextFrame == null ? DialogueContextFrame.empty(request.playerId()) : contextFrame;
-        // The frame names what the world knows about; the request names what the repair step matched. Both are
-        // needed: merging here keeps a single map travelling down to the delivery payload.
-        Map<String, String> displayNames = new java.util.LinkedHashMap<>(effectiveFrame.displayNames());
-        displayNames.putAll(request.displayNames());
+        // The evidence rides along from the request unchanged; only the frame names what the world itself knows.
         return new DialogueArbitrationInput(request, effectiveFrame.interactionHints(), effectiveFrame.contextSnapshot(),
-                displayNames, request.objectMatches(), request.moduleMatches());
+                effectiveFrame.displayNames(), request.objectMatches(), request.moduleMatches());
     }
 
     public String requestId() {
@@ -65,18 +68,6 @@ public record DialogueArbitrationInput(
 
     public String normalizedText() {
         return request.normalizedText();
-    }
-
-    public List<String> matchedWakeWords() {
-        return request.matchedWakeWords();
-    }
-
-    public List<String> matchedItemIds() {
-        return request.matchedItemIds();
-    }
-
-    public List<String> matchedEntityTypeIds() {
-        return request.matchedEntityTypeIds();
     }
 
     public long timestampMillis() {

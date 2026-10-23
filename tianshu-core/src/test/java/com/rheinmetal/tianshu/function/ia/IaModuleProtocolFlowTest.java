@@ -34,6 +34,8 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.FactField;
 import com.rheinmetal.tianshu.protocol.payload.FactValue;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
@@ -45,7 +47,6 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -145,7 +146,7 @@ class IaModuleProtocolFlowTest {
     }
 
     @Test
-    void participantVoiceTriggerGroupKeepsExtraWordsOutOfIaClaims() {
+    void aTriggerWordThatIsNotTheParticipantsWakeWordLeavesTheClaimToTheDefaultOwner() {
         com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration config = () -> java.nio.file.Path.of("build/test-voice-trigger-group").resolve("asr");
         VoiceResourceManager voiceResources = new VoiceResourceManager(new FakeGameEnvironment(), config);
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
@@ -184,17 +185,19 @@ class IaModuleProtocolFlowTest {
                 new IrResultPayload(
                         "farm please",
                         "farm please",
-                        List.of(new VoiceTriggerMatch("module.maid", List.of(), List.of("farm"), 1.0D)),
+                        "farm please",
                         List.of(),
-                        List.of(),
+                        List.of(new IrModuleMatch("module.maid", "farm", "farm")),
                         18,
                         910L,
                         System.currentTimeMillis()
                 )
         ).build());
 
-        axDelivery.awaitPayload(DialogueDeliveryPayload.class);
-        assertTrue(maidDelivery.envelopes().isEmpty());
+        DialogueDeliveryPayload delivery = axDelivery.awaitPayload(DialogueDeliveryPayload.class);
+        assertEquals(List.of(new IrModuleMatch("module.maid", "farm", "farm")), delivery.moduleMatches(),
+                "the evidence reaches the delivery as it was reported");
+        assertTrue(maidDelivery.envelopes().isEmpty(), "a trigger word that is not the wake word must not claim the turn");
     }
 
     @Test
@@ -278,9 +281,9 @@ class IaModuleProtocolFlowTest {
                 new IrResultPayload(
                         "酒狐帮我种地",
                         "酒狐帮我种地",
-                        List.of(new VoiceTriggerMatch("module.maid", List.of("酒狐"), List.of(), 1.0D)),
+                        "九狐帮我种地",
                         List.of(),
-                        List.of(),
+                        List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")),
                         1,
                         900L,
                         System.currentTimeMillis()
@@ -290,7 +293,7 @@ class IaModuleProtocolFlowTest {
         DialogueDeliveryPayload delivery = maidDelivery.awaitPayload(DialogueDeliveryPayload.class);
         DialogueOwnerPreviewPayload preview = previewEvents.awaitPayload(DialogueOwnerPreviewPayload.class);
         assertEquals("酒狐帮我种地", delivery.repairedText());
-        assertEquals(List.of("酒狐"), delivery.matchedWakeWords());
+        assertEquals(List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")), delivery.moduleMatches());
         assertEquals(1, delivery.matchedEntityRefs().size());
         assertEquals("maid-uuid", delivery.matchedEntityRefs().get(0).entityId());
         assertEquals("local", delivery.contextSnapshot().playerId());
@@ -424,10 +427,13 @@ class IaModuleProtocolFlowTest {
     }
 
     private DialogueArbitrationRequestPayload request(String requestId, String playerId, String turnId, long sourceSessionId, String text, List<String> wakeWords, List<String> itemIds) {
-        List<VoiceTriggerMatch> voiceMatches = wakeWords.isEmpty()
-                ? List.of()
-                : List.of(new VoiceTriggerMatch("module.test", wakeWords, List.of(), 1.0D));
-        return new DialogueArbitrationRequestPayload(requestId, "module.ir", playerId, turnId, sourceSessionId, text, text, voiceMatches, itemIds, List.of(), System.currentTimeMillis(), System.currentTimeMillis() + 10_000L);
+        List<IrModuleMatch> moduleMatches = wakeWords.stream()
+                .map(word -> new IrModuleMatch("module.test", word, word))
+                .toList();
+        List<IrObjectMatch> objectMatches = itemIds.stream()
+                .map(id -> new IrObjectMatch(id, id, IrObjectMatch.KIND_ITEM, ""))
+                .toList();
+        return new DialogueArbitrationRequestPayload(requestId, "module.ir", playerId, turnId, sourceSessionId, text, text, objectMatches, moduleMatches, System.currentTimeMillis(), System.currentTimeMillis() + 10_000L);
     }
 
     private DialogueParticipantDescriptor participant(String participantId, String moduleId, String routeCapability, int priority, DialogueClaimProfile profile) {

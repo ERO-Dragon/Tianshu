@@ -37,18 +37,25 @@ subscribeTopic(
 | --- | --- |
 | `repairedText` | 最终修复后的自然语言正文。 |
 | `normalizedText` | 预处理后的过滤文本。 |
-| `voiceMatches` | `List<VoiceTriggerMatch>`，保留 moduleId、wake、extra 和 confidence。 |
-| `matchedItemIds` | 命中的物品 ID。 |
-| `matchedEntityTypeIds` | 命中的实体类型 ID。 |
+| `rawText` | ASR 原始识别文本，未经任何修复。 |
+| `objectMatches` | `List<IrObjectMatch>`，每个命中的具名对象一条证据。 |
+| `moduleMatches` | `List<IrModuleMatch>`，每个命中的模块触发词一条证据。 |
 | `turnId` / `sessionId` | 与 ASR 输入关联。 |
 | `timestampMillis` | IR 分析完成时间。 |
 
-`VoiceTriggerMatch` 中：
+`IrObjectMatch` 中：
 
-- `matchedWakeWords` 是 IA 可使用的仲裁证据；
-- `matchedExtraWords` 当前只作为保留字段传递，不形成 IA claim；
-- `moduleId` 表示该词组的注册来源，不代表最终 owner；
-- `confidence` 是 IR 匹配质量，不替代 IA 的 claim strength 或 participant priority。
+- `spokenWord` 是玩家实际说出的词，提示词直接展示它；
+- `registryId` 是解析到的注册表 id（如 `minecraft:diamond_hoe`）；
+- `registryKind` 是开放字符串（`item` / `entity` / `block` / `dimension` / `biome` / `effect` 以及模组注册的其它类别），消费方必须自行兜底，不能假设只有固定几种；
+- `languageKey` 是由 id 与类别派生的翻译键，类别未知时为空——猜出来的键比没有更糟；
+- `entity()` 按 `registryKind` 判定是否为实体，与 id 的形状无关。
+
+`IrModuleMatch` 中：
+
+- `moduleId` 表示该触发词的注册来源，不代表最终 owner；
+- `spokenWord` 是玩家说出的词，`registeredWord` 是该模块注册的词；
+- 每个命中词一条；模块之间按匹配质量降序排列，匹配质量只用于排序、不进入 payload，也不替代 IA 的 claim strength 或 participant priority。
 
 ## 3. IA 消费语义
 
@@ -56,14 +63,14 @@ IA 直接订阅 `ProtocolTopics.IR_RESULT`。标准语音链路中，IR 不调�
 
 IA 会结合：
 
-- IR 的 wake word、物品和实体文本事实；
+- IR 的具名对象命中（`objectMatches`）与模块触发词命中（`moduleMatches`）；
 - ASR speaking 阶段冻结的 Presence 上下文；
 - 当前实时 Presence 上下文；
 - participant claim rules；
 - attention 状态；
 - participant priority；
 
-决定 owner 或拒绝本轮输入。没有 wake word 不代表 IR 丢弃文本，也不代表 IA 必须接受文本。
+决定 owner 或拒绝本轮输入。没有触发词命中不代表 IR 丢弃文本，也不代表 IA 必须接受文本。
 
 `DIALOGUE_ARBITRATE` 仍属于 IA 自己的受信服务端口，用于明确需要直接请求仲裁的模块、诊断和测试，不是 IR 的输出方式。
 
@@ -83,7 +90,7 @@ IR 可能请求 `INTERACTION_CONTEXT` 和 `PLAYER_INVENTORY`，用于命名对�
 
 - IR handler、索引初始化触发和 Presence 查询不得占用 Minecraft 主线程；索引未就绪时解析立即降级，不等待构建完成。
 - 订阅者不得在 `IR_RESULT` handler 中执行阻塞 IO、模型推理或游戏主线程工作。
-- 不要根据 `voiceMatches.moduleId` 绕过 IA 投递正文。
+- 不要根据 `moduleMatches.moduleId` 绕过 IA 投递正文。
 - 不要自行把玩家正文写入公共日志或私有 debug 文件。
 - IR 诊断由 `module.ir` 设置控制，并由宿主集中异步落盘。
 
@@ -92,7 +99,7 @@ IR 可能请求 `INTERACTION_CONTEXT` 和 `PLAYER_INVENTORY`，用于命名对�
 - [ ] 使用自己的 adapter 和 `ModuleRuntimeAccess`。
 - [ ] 只在确实需要观察分析结果时订阅 `ProtocolTopics.IR_RESULT`。
 - [ ] 使用 `sessionId + turnId` 关联链路。
-- [ ] 不把 wake match 当成最终 owner。
-- [ ] 不给 extra word 添加当前不存在的仲裁语义。
+- [ ] 不把触发词命中当成最终 owner。
+- [ ] 实体仲裁只读 `objectMatches` 中 `entity()` 为真的条目，不按 id 形状猜类别。
 - [ ] 不阻塞协议线程或 Minecraft 主线程。
 - [ ] 需要处理正文时，通过 IA participant 和 delivery 契约接入。

@@ -313,16 +313,16 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 IrResultPayload(
     repairedText,
     normalizedText,
-    voiceMatches,
-    matchedItemIds,
-    matchedEntityTypeIds,
+    rawText,
+    objectMatches,
+    moduleMatches,
     turnId,
     sessionId,
     timestampMillis
 )
 ```
 
-`voiceMatches` 使用 `VoiceTriggerMatch` 保留 moduleId、matchedWakeWords、matchedExtraWords 和 confidence。IA 当前只把 wake word 用于 claim；extra word 是保留字段，不参与仲裁。IR match 顺序和 confidence 不替代 IA 的 claim strength 或 participant priority。
+`objectMatches` 是 `List<IrObjectMatch>`（`spokenWord` / `registryId` / `registryKind` / `languageKey`），`moduleMatches` 是 `List<IrModuleMatch>`（`moduleId` / `spokenWord` / `registeredWord`）。IA 的 `WAKE_WORD` claim 比较 `moduleMatches.spokenWord`；`MENTIONED_ENTITY` claim 只取 `objectMatches` 里 `entity()` 为真的 `registryId`，不按 id 形状猜类别。IR 的匹配排序不替代 IA 的 claim strength 或 participant priority。
 
 受信 `DIALOGUE_ARBITRATE` capability 输入：
 
@@ -335,9 +335,8 @@ DialogueArbitrationRequestPayload(
     sourceSessionId,
     repairedText,
     normalizedText,
-    voiceMatches,
-    matchedItemIds,
-    matchedEntityTypeIds,
+    objectMatches,
+    moduleMatches,
     timestampMillis,
     expireAtMillis
 )
@@ -354,13 +353,12 @@ DialogueArbitrationRequestPayload(
 | `sourceSessionId` | 上游 ASR/输入会话 ID，用于关联“开始说话时冻结的上下文快照”。 |
 | `repairedText` | IR 修复后的自然语言文本，例如同音错词修正；不携带物品资源 ID，仅允许进入仲裁机关和候选 owner 判断，不做公共广播。 |
 | `normalizedText` | 归一化文本。 |
-| `voiceMatches` | 结构化语音词命中；IA 从中提取 wake word，保留 extra word 但当前不用于 claim。 |
-| `matchedItemIds` | IR 增强识别出的结构化物品 ID。 |
-| `matchedEntityTypeIds` | IR 增强识别出的结构化实体类型 ID。 |
+| `objectMatches` | 命中具名对象的证据，包含玩家说出的词与解析到的 registry id。 |
+| `moduleMatches` | 命中模块触发词的证据，包含说出的词与该模块注册的词。 |
 | `timestampMillis` | 请求创建时间。 |
 | `expireAtMillis` | 请求过期时间。 |
 
-IR topic 和显式仲裁请求都只承载文本侧结果：修复文本、归一化文本、语音词命中、物品 ID 和实体类型 ID。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 通过 `PRESENCE.QUERY_CONTEXT` 按需请求，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。
+IR topic 和显式仲裁请求都只承载文本侧结果：修复文本、归一化文本、具名对象命中与模块触发词命中。手持物、身上装备、准星实体、按键状态、维度等轻量交互上下文由 IA 通过 `PRESENCE.QUERY_CONTEXT` 按需请求，并组合成内部 `DialogueArbitrationInput` 供硬 claim 判断和 owner delivery 使用。`DialogueArbitrationInput.displayNames` 只来自 Presence 冻结帧（维度、手持、实体等世界侧名字），与请求里的对象命中不合并。
 
 IA 会订阅 `INPUT.ASR_SPEECH_ACTIVITY / ASR_SPEECH_ACTIVITY`。当 ASR 发布 `speaking=true` 时，IA 立即通过 Presence 请求并按 sessionId 冻结一份上下文快照；当后续 `IrResultPayload` 带有相同 sessionId 时，IA 优先消费这份冻结快照。`speaking=false` 不会立刻删除快照，因为最终文本通常在用户说完后才进入 IR；快照会短时间保留，直到被仲裁消费或过期清理。这样 claim 判断使用的是“用户开始说话时”的手持、装备、准星和按键状态，而不是 ASR 识别完成后的状态。
 

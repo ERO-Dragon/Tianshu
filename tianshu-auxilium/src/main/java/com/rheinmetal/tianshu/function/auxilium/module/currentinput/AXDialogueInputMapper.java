@@ -26,21 +26,12 @@ public final class AXDialogueInputMapper {
         if (delivery.contextSnapshot() != null && !delivery.contextSnapshot().dimensionId().isBlank()) {
             appendLine(builder, "dimension=" + readable(delivery, delivery.contextSnapshot().dimensionId()));
         }
-        if (!delivery.matchedWakeWords().isEmpty()) {
-            appendLine(builder, "matchedWakeWords=" + String.join(", ", delivery.matchedWakeWords()));
-        }
         // What the player actually said about a matched object is the best name to show: it is already in their
-        // language and in their words. The id lists remain only as the fallback for payloads built without it.
+        // language and in their words. A payload with no object matches simply has no line, instead of falling back
+        // to a registry id the model would have to decode.
         String matchedObjects = matchedObjectWords(delivery);
         if (!matchedObjects.isBlank()) {
             appendLine(builder, "matchedObjects=" + matchedObjects);
-        } else {
-            if (!delivery.matchedItemIds().isEmpty()) {
-                appendLine(builder, "matchedItems=" + joinReadable(delivery, delivery.matchedItemIds()));
-            }
-            if (!delivery.matchedEntityTypeIds().isEmpty()) {
-                appendLine(builder, "matchedEntityTypes=" + joinReadable(delivery, delivery.matchedEntityTypeIds()));
-            }
         }
         if (!delivery.matchedEntityRefs().isEmpty()) {
             appendLine(builder, "matchedEntities=" + delivery.matchedEntityRefs().stream()
@@ -120,20 +111,6 @@ public final class AXDialogueInputMapper {
         return path.replace('_', ' ').replace('/', ' ').trim();
     }
 
-    private String joinReadable(DialogueDeliveryPayload delivery, java.util.List<String> ids) {
-        return ids.stream()
-                .map(id -> readable(delivery, id))
-                .filter(value -> !value.isBlank())
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    /**
-     * What the player is looking at, named the way they would name it.
-     *
-     * <p>The entity's instance id is deliberately absent: it identifies which zombie this is, not what it is, and a UUID
-     * in the prompt is noise the model cannot use. When neither a display name nor a readable type id is available the
-     * entry is dropped rather than filled with a machine identifier.</p>
-     */
     /** The words the player used for the matched objects, in match order and without repeats. */
     private static String matchedObjectWords(DialogueDeliveryPayload delivery) {
         if (delivery == null || delivery.objectMatches() == null || delivery.objectMatches().isEmpty()) {
@@ -145,6 +122,14 @@ public final class AXDialogueInputMapper {
                 .distinct()
                 .collect(java.util.stream.Collectors.joining(", "));
     }
+
+    /**
+     * What the player is looking at, named the way they would name it.
+     *
+     * <p>The entity's instance id is deliberately absent: it identifies which zombie this is, not what it is, and a UUID
+     * in the prompt is noise the model cannot use. When neither a display name nor a readable type id is available the
+     * entry is dropped rather than filled with a machine identifier.</p>
+     */
     private String entitySummary(DialogueDeliveryPayload delivery, DialogueEntityRef ref) {
         if (ref == null) {
             return "";

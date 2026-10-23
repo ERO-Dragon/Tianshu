@@ -3,11 +3,16 @@ package com.rheinmetal.tianshu.protocol.dialogue.payload;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 
 import java.util.List;
-import java.util.Map;
 
+/**
+ * One turn asking to arbitrate who owns the player's next reply.
+ *
+ * <p>The evidence is carried as matches, not as flattened word and id lists: a named object arrives with the words
+ * the player used and the registry id it resolved to, a module trigger word arrives with the word that module
+ * registered. Aggregated accessors used to rebuild those pairings here; a consumer reads the match it needs instead.</p>
+ */
 public record DialogueArbitrationRequestPayload(
         String requestId,
         String sourceModuleId,
@@ -16,37 +21,13 @@ public record DialogueArbitrationRequestPayload(
         long sourceSessionId,
         String repairedText,
         String normalizedText,
-        List<VoiceTriggerMatch> voiceMatches,
-        List<String> matchedItemIds,
-        List<String> matchedEntityTypeIds,
-        long timestampMillis,
-        long expireAtMillis,
-        /** Display names for the matched ids, keyed by raw id: the name is what a prompt should show. */
-        Map<String, String> displayNames,
-        /** Named objects the utterance was matched to, with the words that were said. */
+        /** Named objects the utterance was matched to, each carrying the words that were said. */
         List<IrObjectMatch> objectMatches,
-        /** Module trigger words the utterance hit. */
-        List<IrModuleMatch> moduleMatches
+        /** Module trigger words the utterance hit, each carrying the word that module registered. */
+        List<IrModuleMatch> moduleMatches,
+        long timestampMillis,
+        long expireAtMillis
 ) implements ITianshuPayload {
-    public DialogueArbitrationRequestPayload(
-            String requestId,
-            String sourceModuleId,
-            String playerId,
-            String turnId,
-            long sourceSessionId,
-            String repairedText,
-            String normalizedText,
-            List<VoiceTriggerMatch> voiceMatches,
-            List<String> matchedItemIds,
-            List<String> matchedEntityTypeIds,
-            long timestampMillis,
-            long expireAtMillis
-    ) {
-        this(requestId, sourceModuleId, playerId, turnId, sourceSessionId, repairedText, normalizedText,
-                voiceMatches, matchedItemIds, matchedEntityTypeIds, timestampMillis, expireAtMillis,
-                Map.of(), List.of(), List.of());
-    }
-
     public DialogueArbitrationRequestPayload {
         requestId = requireText(requestId, "requestId");
         sourceModuleId = requireText(sourceModuleId, "sourceModuleId");
@@ -55,36 +36,14 @@ public record DialogueArbitrationRequestPayload(
         sourceSessionId = Math.max(0L, sourceSessionId);
         repairedText = sanitize(repairedText);
         normalizedText = sanitize(normalizedText);
-        voiceMatches = voiceMatches == null || voiceMatches.isEmpty() ? List.of() : List.copyOf(voiceMatches);
-        matchedItemIds = copyTextList(matchedItemIds);
-        matchedEntityTypeIds = copyTextList(matchedEntityTypeIds);
-        timestampMillis = Math.max(0L, timestampMillis);
-        expireAtMillis = Math.max(0L, expireAtMillis);
-        displayNames = displayNames == null ? Map.of() : Map.copyOf(displayNames);
         objectMatches = objectMatches == null ? List.of() : List.copyOf(objectMatches);
         moduleMatches = moduleMatches == null ? List.of() : List.copyOf(moduleMatches);
+        timestampMillis = Math.max(0L, timestampMillis);
+        expireAtMillis = Math.max(0L, expireAtMillis);
     }
 
     public boolean expiredAt(long nowMillis) {
         return expireAtMillis > 0L && expireAtMillis <= nowMillis;
-    }
-
-    public List<String> matchedWakeWords() {
-        return voiceMatches.stream()
-                .flatMap(match -> match.matchedWakeWords().stream())
-                .distinct()
-                .toList();
-    }
-
-    public List<String> matchedExtraWords() {
-        return voiceMatches.stream()
-                .flatMap(match -> match.matchedExtraWords().stream())
-                .distinct()
-                .toList();
-    }
-
-    private static List<String> copyTextList(List<String> values) {
-        return values == null ? List.of() : List.copyOf(values.stream().filter(value -> value != null && !value.isBlank()).map(String::trim).toList());
     }
 
     private static String requireText(String value, String name) {

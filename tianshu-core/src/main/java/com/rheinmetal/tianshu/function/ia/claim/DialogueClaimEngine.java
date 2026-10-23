@@ -11,6 +11,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -72,10 +74,10 @@ public final class DialogueClaimEngine {
         DialogueInteractionHints hints = input.interactionHints();
         DialogueContextSnapshot context = input.contextSnapshot();
         return switch (condition.type()) {
-            case WAKE_WORD -> matchesAny(condition.values(), input.matchedWakeWords());
+            case WAKE_WORD -> matchesAny(condition.values(), triggerWords(input));
             case HELD_ITEM -> matchesAny(condition.values(), List.of(hints.heldItemId()));
             case EQUIPPED_ITEM -> matchesAny(condition.values(), context.equippedItemIds());
-            case MENTIONED_ENTITY -> matchesAny(condition.values(), input.matchedEntityTypeIds());
+            case MENTIONED_ENTITY -> matchesAny(condition.values(), mentionedEntityTypeIds(input));
             case CROSSHAIR_ENTITY -> matchesAny(condition.values(), crosshairEntityTypes(context));
             case NEAREST_ENTITY_WITHIN -> matchesNearestEntityWithin(condition, context);
             case CROSSHAIR_HIT -> hints.crosshairHit();
@@ -84,6 +86,38 @@ public final class DialogueClaimEngine {
             case INTERACTION_TAG -> matchesAny(condition.values(), hints.tags());
             case CONTEXT_FACT -> matchesContextFact(condition, context.facts());
         };
+    }
+
+    /**
+     * The trigger words the repair step reported, each in the form the player said it.
+     *
+     * <p>A wake-word condition asks whether the word was said as a module trigger at all. The repair step reports one
+     * entry per hit trigger word and no longer separates a module's names from its variants, so the condition is
+     * compared against the spoken side of every module match; a word that no module registered still matches
+     * nothing, which is what keeps an unrelated utterance from claiming the turn.</p>
+     */
+    private static List<String> triggerWords(DialogueArbitrationInput input) {
+        return input.moduleMatches().stream()
+                .filter(match -> IrModuleMatch.KIND_WAKE.equals(match.kind()))
+                .map(IrModuleMatch::spokenWord)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * Registry ids of the mentioned objects that are creatures.
+     *
+     * <p>Decided by the match's own registry kind ({@link IrObjectMatch#entity()}), not by the shape of the id:
+     * mentioning {@code minecraft:minecart} as an item must not claim a condition that asks for the entity.</p>
+     */
+    private static List<String> mentionedEntityTypeIds(DialogueArbitrationInput input) {
+        return input.objectMatches().stream()
+                .filter(IrObjectMatch::entity)
+                .map(IrObjectMatch::registryId)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .toList();
     }
 
     private static List<String> crosshairEntityTypes(DialogueContextSnapshot context) {

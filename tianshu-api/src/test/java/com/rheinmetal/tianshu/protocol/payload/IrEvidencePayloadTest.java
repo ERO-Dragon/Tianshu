@@ -2,8 +2,9 @@ package com.rheinmetal.tianshu.protocol.payload;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.RecordComponent;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,32 +47,55 @@ class IrEvidencePayloadTest {
         IrResultPayload payload = new IrResultPayload(
                 "帮我用钻石锄耕地",
                 "帮我用钻石锄耕地",
-                List.of(),
-                List.of("minecraft:diamond_hoe"),
-                List.of(),
-                6,
-                91L,
-                1_000L,
-                Map.of(),
                 "帮我用钻石除头耕地",
                 List.of(new IrObjectMatch("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe")),
-                List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐"))
+                List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")),
+                6,
+                91L,
+                1_000L
         );
 
         assertEquals("帮我用钻石除头耕地", payload.rawText(), "the original utterance survives the repair");
         assertEquals("帮我用钻石锄耕地", payload.repairedText());
         assertEquals(1, payload.objectMatches().size());
+        assertEquals("钻石锄", payload.objectMatches().get(0).spokenWord());
         assertEquals(1, payload.moduleMatches().size());
+        assertEquals("module.maid", payload.moduleMatches().get(0).moduleId());
         assertEquals("酒狐", payload.moduleMatches().get(0).registeredWord());
     }
 
+    /** Null evidence is "nothing matched", never a null list a consumer has to guard against. */
     @Test
-    void theOlderConstructorStillProducesAnEmptyEvidenceShape() {
-        IrResultPayload payload = new IrResultPayload(
-                "修复后", "归一化", List.of(), List.of(), List.of(), 1, 2L, 3L);
+    void absentEvidenceNormalizesToEmptyListsAndEmptyText() {
+        IrResultPayload payload = new IrResultPayload("修复后", null, null, null, null, 1, 2L, 3L);
 
         assertEquals("", payload.rawText());
+        assertEquals("", payload.normalizedText());
         assertEquals(List.of(), payload.objectMatches());
         assertEquals(List.of(), payload.moduleMatches());
+    }
+
+    /**
+     * The record is the contract: the evidence is two match lists and nothing restates them.
+     *
+     * <p>A parallel id list or an id-to-name map would let a reader pick the flatter field and lose the pairing that
+     * makes the match evidence, so the shape itself is pinned here rather than left to convention.</p>
+     */
+    @Test
+    void theEvidenceShapeIsOnlyTextAndTwoMatchLists() {
+        List<String> components = Stream.of(IrResultPayload.class.getRecordComponents())
+                .map(RecordComponent::getName)
+                .toList();
+
+        assertEquals(List.of(
+                "repairedText",
+                "normalizedText",
+                "rawText",
+                "objectMatches",
+                "moduleMatches",
+                "turnId",
+                "sessionId",
+                "timestampMillis"
+        ), components);
     }
 }

@@ -67,24 +67,6 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         return collectConflicts(registrations.values().stream().toList());
     }
 
-    public synchronized List<VoiceTriggerMatch> match(String text) {
-        String normalizedText = TextListNormalizer.normalizeText(text);
-        if (normalizedText.isEmpty()) {
-            return List.of();
-        }
-        List<VoiceTriggerMatch> matches = new ArrayList<>();
-        for (VoiceTriggerRegistration registration : registrations.values()) {
-            List<String> matchedWakeWords = TextListNormalizer.collectMatches(normalizedText, registration.wakeWords());
-            List<String> matchedExtraWords = TextListNormalizer.collectMatches(normalizedText, registration.extraWords());
-            if (matchedWakeWords.isEmpty() && matchedExtraWords.isEmpty()) {
-                continue;
-            }
-            double confidence = confidence(registration, matchedWakeWords, matchedExtraWords);
-            matches.add(new VoiceTriggerMatch(registration.moduleId(), matchedWakeWords, matchedExtraWords, confidence));
-        }
-        return List.copyOf(matches);
-    }
-
     private List<VoiceTriggerConflict> conflictsFor(VoiceTriggerRegistration registration) {
         if (registration == null) {
             return List.of();
@@ -197,11 +179,5 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         for (Runnable listener : changeListeners) {
             listener.run();
         }
-    }
-
-    private static double confidence(VoiceTriggerRegistration registration, List<String> matchedWakeWords, List<String> matchedExtraWords) {
-        int total = Math.max(1, registration.wakeWords().size() + registration.extraWords().size());
-        double score = matchedWakeWords.size() * 2.0D + matchedExtraWords.size();
-        return Math.min(1.0D, score / Math.max(2.0D, total));
     }
 }

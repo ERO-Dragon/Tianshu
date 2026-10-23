@@ -18,14 +18,10 @@ final class IrResultArbitrationMapper {
                 payload.sessionId(),
                 payload.repairedText(),
                 payload.normalizedText(),
-                payload.voiceMatches(),
-                payload.matchedItemIds(),
-                payload.matchedEntityTypeIds(),
-                timestampMillis,
-                timestampMillis + REQUEST_TTL_MILLIS,
-                payload.displayNames(),
                 payload.objectMatches(),
-                payload.moduleMatches()
+                payload.moduleMatches(),
+                timestampMillis,
+                timestampMillis + REQUEST_TTL_MILLIS
         );
     }
 }

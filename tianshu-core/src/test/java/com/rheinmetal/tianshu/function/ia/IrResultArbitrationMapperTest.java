@@ -4,24 +4,35 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.RecordComponent;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class IrResultArbitrationMapperTest {
     @Test
-    void preservesStructuredVoiceEvidenceWithoutGivingExtraWordsClaimMeaning() {
+    void carriesMatchedObjectsAndTriggerWordsAsEvidence() {
+        List<IrObjectMatch> objectMatches = List.of(
+                new IrObjectMatch("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe"),
+                new IrObjectMatch("女仆", "touhou_little_maid:maid", "entity", "entity.touhou_little_maid.maid")
+        );
+        List<IrModuleMatch> moduleMatches = List.of(
+                new IrModuleMatch("module.maid", "酒狐", "酒狐"),
+                new IrModuleMatch("module.maid", "种地", "种地")
+        );
         IrResultPayload result = new IrResultPayload(
                 "酒狐帮我种地",
                 "酒狐帮我种地",
-                List.of(new VoiceTriggerMatch("module.maid", List.of("酒狐"), List.of("种地"), 0.8D)),
-                List.of("minecraft:diamond_hoe"),
-                List.of("touhou_little_maid:maid"),
+                "九狐帮我种地",
+                objectMatches,
+                moduleMatches,
                 6,
                 91L,
                 1_000L
@@ -35,30 +46,30 @@ class IrResultArbitrationMapperTest {
 
         DialogueArbitrationRequestPayload request = new IrResultArbitrationMapper().map(envelope, result);
 
-        assertEquals(result.voiceMatches(), request.voiceMatches());
-        assertEquals(List.of("酒狐"), request.matchedWakeWords());
-        assertEquals(List.of("种地"), request.matchedExtraWords());
-        assertEquals(List.of("minecraft:diamond_hoe"), request.matchedItemIds());
-        assertEquals(List.of("touhou_little_maid:maid"), request.matchedEntityTypeIds());
+        assertEquals(objectMatches, request.objectMatches());
+        assertEquals(moduleMatches, request.moduleMatches());
+        assertEquals(2, request.moduleMatches().size(), "every trigger word is one entry, not one entry per module");
+        assertEquals("酒狐帮我种地", request.repairedText());
         assertEquals("local", request.playerId());
     }
 
     /**
-     * The names the repair step matched must survive the hop, otherwise the id travels alone and every reader has
-     * to rebuild the name it was shown.
+     * The words the player used travel with the id they resolved to, so nothing has to rebuild a name afterwards.
+     *
+     * <p>That pairing is why the request carries no id-to-name map of its own: the request asks who owns the turn,
+     * and the names it may want are already attached to the match that produced them.</p>
      */
     @Test
-    void carriesTheDisplayNamesOfTheMatchedObjects() {
+    void theSpokenWordTravelsWithTheIdInsteadOfASeparateNameMap() {
         IrResultPayload result = new IrResultPayload(
                 "酒狐帮我种地",
                 "酒狐帮我种地",
+                "酒狐帮我种地",
+                List.of(new IrObjectMatch("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe")),
                 List.of(),
-                List.of("minecraft:diamond_hoe"),
-                List.of("touhou_little_maid:maid"),
                 7,
                 92L,
-                1_000L,
-                Map.of("minecraft:diamond_hoe", "钻石锄", "touhou_little_maid:maid", "女仆")
+                1_000L
         );
         var envelope = EnvelopeBuilder.eventTopic(
                 "module.ir",
@@ -69,7 +80,11 @@ class IrResultArbitrationMapperTest {
 
         DialogueArbitrationRequestPayload request = new IrResultArbitrationMapper().map(envelope, result);
 
-        assertEquals("钻石锄", request.displayNames().get("minecraft:diamond_hoe"));
-        assertEquals("女仆", request.displayNames().get("touhou_little_maid:maid"));
+        assertEquals("钻石锄", request.objectMatches().get(0).spokenWord());
+        assertEquals("minecraft:diamond_hoe", request.objectMatches().get(0).registryId());
+        assertFalse(Stream.of(DialogueArbitrationRequestPayload.class.getRecordComponents())
+                        .map(RecordComponent::getName)
+                        .anyMatch("displayNames"::equals),
+                "the request carries evidence, not a name map");
     }
 }

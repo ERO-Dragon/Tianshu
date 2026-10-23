@@ -437,8 +437,6 @@ class AXAgentTurnWiringTest {
                 "暮色森林怎么进？",
                 "",
                 List.of(),
-                List.of(),
-                List.of(),
                 DialogueInteractionHints.empty(),
                 DialogueContextSnapshot.empty("player"),
                 System.currentTimeMillis(),

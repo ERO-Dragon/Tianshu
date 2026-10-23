@@ -1,14 +1,16 @@
 package com.rheinmetal.tianshu.protocol.dialogue.context;
 
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
+
 import java.util.List;
 
 public record DialogueScoringContext(
         String requestId,
         String playerId,
         String turnId,
-        List<String> matchedWakeWords,
-        List<String> matchedItemIds,
-        List<String> matchedEntityTypeIds,
+        List<IrObjectMatch> objectMatches,
+        List<IrModuleMatch> moduleMatches,
         DialogueInteractionHints interactionHints,
         DialogueContextSnapshot contextSnapshot,
         long timestampMillis,
@@ -18,9 +20,8 @@ public record DialogueScoringContext(
         requestId = requireText(requestId, "requestId");
         playerId = requireText(playerId, "playerId");
         turnId = sanitize(turnId);
-        matchedWakeWords = copyTextList(matchedWakeWords);
-        matchedItemIds = copyTextList(matchedItemIds);
-        matchedEntityTypeIds = copyTextList(matchedEntityTypeIds);
+        objectMatches = objectMatches == null ? List.of() : List.copyOf(objectMatches);
+        moduleMatches = moduleMatches == null ? List.of() : List.copyOf(moduleMatches);
         interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
         contextSnapshot = contextSnapshot == null ? DialogueContextSnapshot.empty(playerId) : contextSnapshot;
         timestampMillis = Math.max(0L, timestampMillis);
@@ -29,14 +30,6 @@ public record DialogueScoringContext(
 
     public boolean expiredAt(long nowMillis) {
         return expireAtMillis > 0L && expireAtMillis <= nowMillis;
-    }
-
-    private static List<String> copyTextList(List<String> values) {
-        return values == null ? List.of() : List.copyOf(values.stream()
-                .filter(value -> value != null && !value.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList());
     }
 
     private static String requireText(String value, String name) {

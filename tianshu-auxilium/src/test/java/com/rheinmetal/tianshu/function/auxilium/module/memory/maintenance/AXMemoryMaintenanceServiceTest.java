@@ -85,7 +85,10 @@ class AXMemoryMaintenanceServiceTest {
             }
             """;
 
-    @TempDir
+    // Windows: the maintenance service can still hold a handle for a moment after close(), and JUnit's automatic
+    // cleanup then fails the test for a directory it could not delete — a red that says nothing about the
+    // assertions. The directory is left to the OS instead.
+    @TempDir(cleanup = org.junit.jupiter.api.io.CleanupMode.NEVER)
     Path tempDir;
 
     @Test

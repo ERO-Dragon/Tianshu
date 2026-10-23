@@ -23,7 +23,8 @@ class IrProtocolDocumentationBoundaryTest {
                 "ProtocolTopics.INPUT_ASR_FINAL_TEXT",
                 "ProtocolTopics.IR_RESULT",
                 "IrResultPayload",
-                "VoiceTriggerMatch",
+                "IrObjectMatch",
+                "IrModuleMatch",
                 "ProtocolCapabilities.DIALOGUE_ARBITRATE",
                 "ProtocolCapabilities.PRESENCE_QUERY_CONTEXT",
                 "PresenceContextSnapshotPayload"

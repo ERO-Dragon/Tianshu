@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.repair;
 
 import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,7 @@ class IrWakeWordEnhancerTest {
         IrMatchBatch batch = new IrVoiceTriggerMatcher().match(repaired, index);
 
         assertEquals("酒狐帮我种地", repaired.text());
-        assertEquals(List.of("酒狐"), batch.matches().get(0).matchedWakeWords());
+        assertEquals(List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")), batch.matches());
     }
 
     @Test
@@ -72,7 +73,7 @@ class IrWakeWordEnhancerTest {
         assertEquals("酒狐女仆帮我种地", repaired.text());
         assertTrue(batch.matches().stream()
                 .filter(match -> match.moduleId().equals("module.long"))
-                .anyMatch(match -> match.matchedWakeWords().equals(List.of("酒狐女仆"))));
+                .anyMatch(match -> match.spokenWord().equals("酒狐女仆") && match.registeredWord().equals("酒狐女仆")));
     }
 
     @Test
@@ -89,7 +90,7 @@ class IrWakeWordEnhancerTest {
         IrMatchBatch batch = new IrVoiceTriggerMatcher().match(repaired, index);
 
         assertEquals("酒狐和机械动力都在吗", repaired.text());
-        assertTrue(batch.matches().stream().map(com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch::moduleId).toList().containsAll(List.of("module.maid", "module.create")));
+        assertTrue(batch.matches().stream().map(IrModuleMatch::moduleId).toList().containsAll(List.of("module.maid", "module.create")));
     }
 
     @Test

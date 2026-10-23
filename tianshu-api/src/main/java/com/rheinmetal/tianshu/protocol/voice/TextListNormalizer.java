@@ -1,5 +1,4 @@
 package com.rheinmetal.tianshu.protocol.voice;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -37,19 +36,6 @@ final class TextListNormalizer {
             }
         }
         return builder.toString();
-    }
-
-    static List<String> collectMatches(String text, List<String> words) {
-        if (text.isEmpty() || words.isEmpty()) {
-            return List.of();
-        }
-        List<String> matches = new ArrayList<>();
-        for (String word : words) {
-            if (text.contains(normalizeText(word))) {
-                matches.add(word);
-            }
-        }
-        return List.copyOf(matches);
     }
 
     private static boolean isCommonPunctuation(char ch) {

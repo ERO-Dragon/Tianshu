@@ -51,16 +51,12 @@ IrInputPreprocessor
   ↓
 IrNamedObjectEnhancer
   ├─ 修复物品、实体名称
-  ├─ matchedItemIds
-  └─ matchedEntityTypeIds
+  └─ objectMatches：spokenWord + registryId + registryKind + languageKey
   ↓
 IrWakeWordEnhancer
   ↓
 IrVoiceTriggerMatcher
-  ├─ moduleId
-  ├─ matchedWakeWords
-  ├─ matchedExtraWords
-  └─ confidence
+  └─ moduleMatches：每个命中触发词一条（匹配质量只用于排序）
   ↓
 IrResultPayload
   ↓ topic
@@ -96,7 +92,9 @@ IR 不再包含独立 routing policy，也不包含 IA request mapper。发布�
 
 - `repairedText`：修复后的自然语言正文。
 - `matchedItemNames` / `matchedEntityNames`：内部匹配和诊断信息。
-- `matchedItemIds` / `matchedEntityTypeIds`：发布给 IA 的结构化事实。
+- `matchedItemIds` / `matchedEntityTypeIds`：增强阶段内部的结构化结果，发布前折算为 `IrObjectMatch`。
+
+发布时每个命中对象一条 `IrObjectMatch`：`spokenWord` 是对词典命中的词（玩家实际说的词），`registryKind` 记录类别，`languageKey` 由类别与 id 派生、类别未知时为空。
 
 资源 ID 不会替换进玩家正文。索引检索、拼音评分和文本替换均为 common 纯计算逻辑，不依赖 Minecraft 或 NeoForge 活对象。
 
@@ -115,20 +113,20 @@ IR 不再包含独立 routing policy，也不包含 IA request mapper。发布�
 
 IR 从共享 `VoiceTriggerRegistry` 读取各模块注册的词组。
 
-`IrWakeWordEnhancer` 只修复 wake word，不修复 extra word。`IrVoiceTriggerMatcher` 将每组命中保留为 `VoiceTriggerMatch`：
+`IrWakeWordEnhancer` 只修复 wake word，不修复 extra word。`IrVoiceTriggerMatcher` 对每个命中的触发词产出一条：
 
 ```text
 moduleId
-matchedWakeWords
-matchedExtraWords
-confidence
+spokenWord
+registeredWord
 ```
+
+一个模块命中多个词就是多条。匹配质量（命中词数 / 注册词数）只用于给多条命中排序——命中更多的模块排在前面——不进入 payload，也不替代 IA 的 claim strength 或 participant priority。
 
 语义边界：
 
-- wake word 是 IA 可以使用的强仲裁证据之一；
-- extra word 当前只是保留的扩展字段和 ASR 热词来源；
-- extra word 当前不形成 IA claim，也不改变 owner；
+- 触发词命中是 IA 可用的仲裁证据之一；
+- extra word 命中同样会出现在 `moduleMatches` 里，但只有当它与 claim 条件声明的词相同时才形成 claim；
 - IR 不根据 participant priority 排序或选择目标；priority 只由 IA 在有效 claim 之间使用。
 
 ## 7. IR_RESULT 契约
@@ -139,9 +137,9 @@ confidence
 | --- | --- |
 | `repairedText` | 完成命名对象和 wake word 修复后的自然语言正文。 |
 | `normalizedText` | 预处理后的过滤文本视图。 |
-| `voiceMatches` | 按模块分组的 wake/extra 命中和 confidence。 |
-| `matchedItemIds` | 文本中命中的物品资源 ID。 |
-| `matchedEntityTypeIds` | 文本中命中的实体类型 ID。 |
+| `rawText` | ASR 原始识别文本，未经修复。 |
+| `objectMatches` | 每个命中具名对象一条：`spokenWord` / `registryId` / `registryKind` / `languageKey`。 |
+| `moduleMatches` | 每个命中触发词一条：`moduleId` / `spokenWord` / `registeredWord`。 |
 | `turnId` / `sessionId` | 与 ASR 输入段关联。 |
 | `timestampMillis` | IR 完成分析并发布的时间。 |
 

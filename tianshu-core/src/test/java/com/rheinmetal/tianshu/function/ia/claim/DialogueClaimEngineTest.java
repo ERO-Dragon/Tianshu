@@ -15,10 +15,11 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescrip
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerMatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,7 +32,13 @@ class DialogueClaimEngineTest {
                 "maid.wake_word", DialogueAttentionDecay.SLOW, DialogueClaimCondition.wakeWord("酒狐")
         )));
 
-        List<DialogueClaim> claims = engine.collectLocalClaims(List.of(participant), request(List.of("酒狐"), List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
+        // The condition names the word the player says; the word the module registered is a different string here on
+        // purpose, because a claim is decided by what was said, not by which registered alias happened to hit.
+        List<DialogueClaim> claims = engine.collectLocalClaims(
+                List.of(participant),
+                requestWith(List.of(new IrModuleMatch("module.maid", "酒狐", "maid.name")),
+                        List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"))
+        );
 
         assertEquals(1, claims.size());
         DialogueClaim claim = claims.get(0);
@@ -43,7 +50,7 @@ class DialogueClaimEngineTest {
     }
 
     @Test
-    void legacyItemUsesGameStateOnlyAndIgnoresMatchedItemText() {
+    void mentionedItemNeverCountsAsAHeldOrEquippedState() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
         DialogueParticipantDescriptor machine = descriptor("machine", 3, DialogueClaimProfile.rules(DialogueClaimRule.anyNormal(
                 "machine.item",
@@ -51,7 +58,7 @@ class DialogueClaimEngineTest {
                 DialogueClaimCondition.equippedItem("mod:wrench")
         )));
 
-        List<DialogueClaim> textOnlyClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of("mod:wrench"), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
+        List<DialogueClaim> textOnlyClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of(new IrObjectMatch("扳手", "mod:wrench", "item", "item.mod.wrench")), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
         List<DialogueClaim> heldClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of(), new DialogueInteractionHints("mod:wrench", false, false, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player")));
 
         assertTrue(textOnlyClaims.isEmpty());
@@ -234,9 +241,8 @@ class DialogueClaimEngineTest {
                 9L,
                 "村民怎么交易",
                 "村名怎么交易",
+                List.of(new IrObjectMatch("村民", "minecraft:villager", "entity", "entity.minecraft.villager")),
                 List.of(),
-                List.of(),
-                List.of("minecraft:villager"),
                 100L,
                 1_000L
         );
@@ -249,6 +255,40 @@ class DialogueClaimEngineTest {
         assertEquals(1, claims.size());
         assertEquals("villager", claims.get(0).participantId());
         assertEquals("hard_claim:villager.mentioned", claims.get(0).reason());
+    }
+
+    /**
+     * The registry kind decides, not the shape of the id.
+     *
+     * <p>{@code minecraft:minecart} is both an item and a creature, so a mention of the item must not satisfy a
+     * condition that asks for the creature — the same reasoning that makes the spoken word unreliable here.</p>
+     */
+    @Test
+    void mentionedItemIsNotAMentionedEntityEvenWhenTheRegistryIdCollides() {
+        DialogueClaimEngine engine = new DialogueClaimEngine();
+        DialogueParticipantDescriptor minecartModule = descriptor(
+                "minecart",
+                2,
+                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("minecart.mentioned", DialogueClaimCondition.mentionedEntity("minecraft:minecart")))
+        );
+        DialogueArbitrationRequestPayload itemMention = new DialogueArbitrationRequestPayload(
+                "request", "module.ir", "player", "turn", 9L,
+                "矿车物品怎么做", "矿车物品怎么做",
+                List.of(new IrObjectMatch("矿车物品", "minecraft:minecart", "item", "item.minecraft.minecart")),
+                List.of(),
+                100L, 1_000L
+        );
+        DialogueArbitrationRequestPayload entityMention = new DialogueArbitrationRequestPayload(
+                "request", "module.ir", "player", "turn", 9L,
+                "矿车实体在哪里", "矿车实体在哪里",
+                List.of(new IrObjectMatch("矿车实体", "minecraft:minecart", "entity", "entity.minecraft.minecart")),
+                List.of(),
+                100L, 1_000L
+        );
+
+        assertTrue(engine.collectLocalClaims(List.of(minecartModule), input(itemMention)).isEmpty(),
+                "an item mention must not claim a creature condition");
+        assertEquals(1, engine.collectLocalClaims(List.of(minecartModule), input(entityMention)).size());
     }
 
     @Test
@@ -330,11 +370,17 @@ class DialogueClaimEngineTest {
         return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, claimProfile, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
     }
 
-    private DialogueArbitrationInput request(List<String> wakeWords, List<String> itemIds, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {
-        List<VoiceTriggerMatch> voiceMatches = wakeWords.isEmpty()
-                ? List.of()
-                : List.of(new VoiceTriggerMatch("module.test", wakeWords, List.of(), 1.0D));
-        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("request", "module.ir", "player", "turn", 9L, "text", "text", voiceMatches, itemIds, List.of(), 100L, 1_000L);
+    private DialogueArbitrationInput request(List<String> triggerWords, List<IrObjectMatch> objectMatches, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {
+        return requestWith(triggerWords.stream().map(word -> new IrModuleMatch("module.test", word, word)).toList(),
+                objectMatches, interactionHints, contextSnapshot);
+    }
+
+    private DialogueArbitrationInput requestWith(List<IrModuleMatch> moduleMatches, List<IrObjectMatch> objectMatches, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {
+        DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload("request", "module.ir", "player", "turn", 9L, "text", "text", objectMatches, moduleMatches, 100L, 1_000L);
         return DialogueArbitrationInput.from(request, new DialogueContextFrame(interactionHints, contextSnapshot));
+    }
+
+    private DialogueArbitrationInput input(DialogueArbitrationRequestPayload request) {
+        return DialogueArbitrationInput.from(request, new DialogueContextFrame(DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
     }
 }

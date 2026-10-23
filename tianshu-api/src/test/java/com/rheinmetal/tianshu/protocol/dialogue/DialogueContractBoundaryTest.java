@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueScoreResponsePayload;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -94,7 +96,9 @@ class DialogueContractBoundaryTest {
     @Test
     void scoringContextContainsOnlyStructuredDialogueContext() {
         DialogueScoringContext context = new DialogueScoringContext(
-                "request", "player", "turn", List.of("wake"), List.of("item"), List.of("entity"),
+                "request", "player", "turn",
+                List.of(new IrObjectMatch("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe")),
+                List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")),
                 DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"), 10L, 20L
         );
 
@@ -102,6 +106,11 @@ class DialogueContractBoundaryTest {
                 .map(component -> component.getName())
                 .toList();
         assertTrue(components.stream().noneMatch(name -> List.of("repairedText", "normalizedText", "prompt", "rawText").contains(name)));
+        assertTrue(components.contains("objectMatches"));
+        assertTrue(components.contains("moduleMatches"));
+        assertEquals(1, context.objectMatches().size());
+        assertEquals("minecraft:diamond_hoe", context.objectMatches().get(0).registryId());
+        assertEquals(1, context.moduleMatches().size());
     }
 
     @Test

@@ -40,8 +40,9 @@ AX 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的
 | `turnId` | 本轮标识 |
 | `repairedText` | 修复后的玩家原话 |
 | `normalizedText` | 归一化文本 |
-| `matchedWakeWords` | 命中的唤醒词 |
-| `matchedItemIds` / `matchedEntityTypeIds` / `matchedEntityRefs` | 命中的物品、实体类型、实体引用 |
+| `objectMatches` | 命中的具名对象（玩家说出的词 + 解析到的 registry id） |
+| `moduleMatches` | 命中的模块触发词（说出的词 + 该模块注册的词） |
+| `displayNames` / `matchedEntityRefs` | 世界侧显示名（维度、手持、实体）与命中的实体引用 |
 | `interactionHints` | 交互提示（准星目标等） |
 | `contextSnapshot` | 投递时刻的上下文快照（按玩家兜底） |
 | `timestampMillis` / `expireAtMillis` | 产生时刻与过期时刻 |

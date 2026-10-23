@@ -11,6 +11,7 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -75,14 +76,15 @@ class AsrTextRepairerTest {
 
         IrResultPayload result = irResults.awaitPayload(IrResultPayload.class);
         assertEquals("酒狐帮我种地", result.repairedText());
+        assertEquals("九狐帮我种地", result.rawText());
         assertEquals(42, result.turnId());
         assertEquals(77L, result.sessionId());
-        assertEquals(1, result.voiceMatches().size());
-        assertEquals("module.maid", result.voiceMatches().get(0).moduleId());
-        assertEquals(List.of("酒狐"), result.voiceMatches().get(0).matchedWakeWords());
-        assertEquals(List.of("种地"), result.voiceMatches().get(0).matchedExtraWords());
-        assertTrue(result.matchedItemIds().isEmpty());
-        assertTrue(result.matchedEntityTypeIds().isEmpty());
+        // One entry per hit trigger word, in the order the matcher decided: wake words first, then variants.
+        assertEquals(List.of(
+                new IrModuleMatch("module.maid", "酒狐", "酒狐", IrModuleMatch.KIND_WAKE),
+                new IrModuleMatch("module.maid", "种地", "种地", IrModuleMatch.KIND_EXTRA)
+        ), result.moduleMatches(), "an auxiliary word keeps its own kind instead of passing as a wake word");
+        assertTrue(result.objectMatches().isEmpty());
         assertTrue(result.timestampMillis() > 0L);
         assertTrue(arbitration.envelopes().isEmpty());
         assertTrue(runtime.deadLetters().snapshot(16).isEmpty());

@@ -118,7 +118,7 @@ class DialogueScoreCoordinatorTest {
     }
 
     private static DialogueScoringContext context() {
-        return new DialogueScoringContext("request-1", "player-1", "turn-1", List.of(), List.of(), List.of(),
+        return new DialogueScoringContext("request-1", "player-1", "turn-1", List.of(), List.of(),
                 DialogueContextFrame.empty("player-1").interactionHints(),
                 DialogueContextFrame.empty("player-1").contextSnapshot(), System.currentTimeMillis(), System.currentTimeMillis() + 1_000L);
     }

@@ -5,11 +5,10 @@ import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
-
-import java.util.LinkedHashMap;
 import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,21 +19,21 @@ public record DialogueDeliveryPayload(
         String turnId,
         String repairedText,
         String normalizedText,
-        List<String> matchedWakeWords,
-        List<String> matchedItemIds,
-        List<String> matchedEntityTypeIds,
         List<DialogueEntityRef> matchedEntityRefs,
         DialogueInteractionHints interactionHints,
         DialogueContextSnapshot contextSnapshot,
         long timestampMillis,
         long expireAtMillis,
         /**
-         * Display names for the ids in this payload, keyed by the raw id (item, entity type, dimension, held item).
+         * Display names for the ids the world side resolved, keyed by the raw id (dimension, held item, entity type).
          *
          * <p>One map instead of a parallel list per id kind: a consumer that renders an id asks this map first and
          * falls back to a readable form of the id when the producer had no localized name at hand. A missing key is
          * the normal case, not an error — the model must never be shown a raw {@code namespace:path} because the
          * name was unavailable.</p>
+         *
+         * <p>Names of the objects the player mentioned are not here: they travel inside
+         * {@link #objectMatches()}, which is where the words actually said come from.</p>
          */
         Map<String, String> displayNames,
         /** Named objects the utterance was matched to, each carrying the words that were actually said. */
@@ -42,18 +41,11 @@ public record DialogueDeliveryPayload(
         /** Module trigger words the utterance hit, each carrying the word that module registered. */
         List<IrModuleMatch> moduleMatches
 ) implements ITianshuPayload {
-    /** Payload without display names: every consumer then falls back to a readable form of each id. */
-    public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<String> matchedEntityTypeIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis) {
-        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, matchedEntityTypeIds, matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of(), List.of(), List.of());
+    /** Payload without display names or matches: every consumer then falls back to a readable form of each id. */
+    public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis) {
+        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of(), List.of(), List.of());
     }
 
-    public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis) {
-        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, List.of(), matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of(), List.of(), List.of());
-    }
-
-    public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<String> matchedEntityTypeIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis, Map<String, String> displayNames) {
-        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, matchedEntityTypeIds, matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, displayNames, List.of(), List.of());
-    }
     public DialogueDeliveryPayload {
         sessionId = requireText(sessionId, "sessionId");
         requestId = requireText(requestId, "requestId");
@@ -61,9 +53,6 @@ public record DialogueDeliveryPayload(
         turnId = sanitize(turnId);
         repairedText = sanitize(repairedText);
         normalizedText = sanitize(normalizedText);
-        matchedWakeWords = copyTextList(matchedWakeWords);
-        matchedItemIds = copyTextList(matchedItemIds);
-        matchedEntityTypeIds = copyTextList(matchedEntityTypeIds);
         matchedEntityRefs = copyEntityRefs(matchedEntityRefs);
         interactionHints = interactionHints == null ? DialogueInteractionHints.empty() : interactionHints;
         contextSnapshot = contextSnapshot == null ? DialogueContextSnapshot.empty(playerId) : contextSnapshot;
@@ -82,9 +71,6 @@ public record DialogueDeliveryPayload(
                 input.turnId(),
                 input.repairedText(),
                 input.normalizedText(),
-                input.matchedWakeWords(),
-                input.matchedItemIds(),
-                input.matchedEntityTypeIds(),
                 input.contextSnapshot().entityRefs(),
                 input.interactionHints(),
                 input.contextSnapshot(),
@@ -109,10 +95,6 @@ public record DialogueDeliveryPayload(
             copied.putIfAbsent(key.trim(), value.trim());
         });
         return Map.copyOf(copied);
-    }
-
-    private static List<String> copyTextList(List<String> values) {
-        return values == null ? List.of() : List.copyOf(values.stream().filter(value -> value != null && !value.isBlank()).map(String::trim).toList());
     }
 
     private static List<DialogueEntityRef> copyEntityRefs(List<DialogueEntityRef> values) {

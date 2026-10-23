@@ -160,8 +160,9 @@ public final class AXDynamicFactClient {
             return List.of();
         }
         java.util.ArrayList<String> values = new java.util.ArrayList<>();
-        values.addAll(delivery.matchedItemIds());
-        values.addAll(delivery.matchedEntityTypeIds());
+        delivery.objectMatches().stream()
+                .map(match -> match.registryId())
+                .forEach(values::add);
         if (delivery.interactionHints() != null && !delivery.interactionHints().heldItemId().isBlank()) {
             values.add(delivery.interactionHints().heldItemId());
         }

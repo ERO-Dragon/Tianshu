@@ -330,7 +330,7 @@ class AXTurnOrchestratorTest {
         orchestrator.startTurn(deliveryEnvelope(), delivery());
         await(() -> llmRequest.get() != null);
         orchestrator.startTurn(deliveryEnvelope(), new DialogueDeliveryPayload(
-                "session-2", "request-2", "player", "turn-2", "second delivery", "", List.of(), List.of(), List.of(),
+                "session-2", "request-2", "player", "turn-2", "second delivery", "", List.of(),
                 DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
                 System.currentTimeMillis(), System.currentTimeMillis() + 30_000L
         ));
@@ -456,7 +456,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope firstRequest = llmRequest.get();
 
         orchestrator.startTurn(deliveryEnvelope(), new DialogueDeliveryPayload(
-                "session", "request-2", "player", "turn-2", "second delivery", "", List.of(), List.of(), List.of(),
+                "session", "request-2", "player", "turn-2", "second delivery", "", List.of(),
                 DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
                 System.currentTimeMillis(), System.currentTimeMillis() + 30_000L
         ));
@@ -893,8 +893,6 @@ class AXTurnOrchestratorTest {
                 "turn",
                 "repaired player text",
                 "normalized text should not be used",
-                List.of(),
-                List.of(),
                 List.of(),
                 DialogueInteractionHints.empty(),
                 DialogueContextSnapshot.empty("player"),
