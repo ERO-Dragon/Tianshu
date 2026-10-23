@@ -29,11 +29,18 @@ public final class AXDialogueInputMapper {
         if (!delivery.matchedWakeWords().isEmpty()) {
             appendLine(builder, "matchedWakeWords=" + String.join(", ", delivery.matchedWakeWords()));
         }
-        if (!delivery.matchedItemIds().isEmpty()) {
-            appendLine(builder, "matchedItems=" + joinReadable(delivery, delivery.matchedItemIds()));
-        }
-        if (!delivery.matchedEntityTypeIds().isEmpty()) {
-            appendLine(builder, "matchedEntityTypes=" + joinReadable(delivery, delivery.matchedEntityTypeIds()));
+        // What the player actually said about a matched object is the best name to show: it is already in their
+        // language and in their words. The id lists remain only as the fallback for payloads built without it.
+        String matchedObjects = matchedObjectWords(delivery);
+        if (!matchedObjects.isBlank()) {
+            appendLine(builder, "matchedObjects=" + matchedObjects);
+        } else {
+            if (!delivery.matchedItemIds().isEmpty()) {
+                appendLine(builder, "matchedItems=" + joinReadable(delivery, delivery.matchedItemIds()));
+            }
+            if (!delivery.matchedEntityTypeIds().isEmpty()) {
+                appendLine(builder, "matchedEntityTypes=" + joinReadable(delivery, delivery.matchedEntityTypeIds()));
+            }
         }
         if (!delivery.matchedEntityRefs().isEmpty()) {
             appendLine(builder, "matchedEntities=" + delivery.matchedEntityRefs().stream()
@@ -127,6 +134,17 @@ public final class AXDialogueInputMapper {
      * in the prompt is noise the model cannot use. When neither a display name nor a readable type id is available the
      * entry is dropped rather than filled with a machine identifier.</p>
      */
+    /** The words the player used for the matched objects, in match order and without repeats. */
+    private static String matchedObjectWords(DialogueDeliveryPayload delivery) {
+        if (delivery == null || delivery.objectMatches() == null || delivery.objectMatches().isEmpty()) {
+            return "";
+        }
+        return delivery.objectMatches().stream()
+                .map(match -> match.spokenWord())
+                .filter(word -> word != null && !word.isBlank())
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
     private String entitySummary(DialogueDeliveryPayload delivery, DialogueEntityRef ref) {
         if (ref == null) {
             return "";

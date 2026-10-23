@@ -43,7 +43,23 @@ class TtsModelLifecycleCoordinatorTest {
         assertTrue(completed.await(2, TimeUnit.SECONDS));
         assertNotEquals(callerThread, engine.initializeThread.get());
         assertTrue(engine.initializeThread.get().contains("MODEL_LOAD"));
+        // The completion callback and the loading pulse travel on different paths: the pulse is cleared by the
+        // lane wrapper after the work returns, so it can land a hair after the completion. Wait for it instead
+        // of asserting on a half-filled list — this assertion only ever ran green when the machine was idle.
+        awaitLoadingPulse(loading);
         assertEquals(List.of(true, false), loading);
+    }
+
+    private static void awaitLoadingPulse(List<Boolean> loading) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            synchronized (loading) {
+                if (loading.size() >= 2) {
+                    return;
+                }
+            }
+            Thread.sleep(5L);
+        }
     }
 
     @Test

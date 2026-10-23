@@ -22,7 +22,10 @@ final class IrResultArbitrationMapper {
                 payload.matchedItemIds(),
                 payload.matchedEntityTypeIds(),
                 timestampMillis,
-                timestampMillis + REQUEST_TTL_MILLIS
+                timestampMillis + REQUEST_TTL_MILLIS,
+                payload.displayNames(),
+                payload.objectMatches(),
+                payload.moduleMatches()
         );
     }
 }

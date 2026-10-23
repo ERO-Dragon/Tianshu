@@ -7,6 +7,9 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 import java.util.LinkedHashMap;
+import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
+
 import java.util.List;
 import java.util.Map;
 
@@ -33,17 +36,24 @@ public record DialogueDeliveryPayload(
          * the normal case, not an error — the model must never be shown a raw {@code namespace:path} because the
          * name was unavailable.</p>
          */
-        Map<String, String> displayNames
+        Map<String, String> displayNames,
+        /** Named objects the utterance was matched to, each carrying the words that were actually said. */
+        List<IrObjectMatch> objectMatches,
+        /** Module trigger words the utterance hit, each carrying the word that module registered. */
+        List<IrModuleMatch> moduleMatches
 ) implements ITianshuPayload {
     /** Payload without display names: every consumer then falls back to a readable form of each id. */
     public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<String> matchedEntityTypeIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis) {
-        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, matchedEntityTypeIds, matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of());
+        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, matchedEntityTypeIds, matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of(), List.of(), List.of());
     }
 
     public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis) {
-        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, List.of(), matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of());
+        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, List.of(), matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, Map.of(), List.of(), List.of());
     }
 
+    public DialogueDeliveryPayload(String sessionId, String requestId, String playerId, String turnId, String repairedText, String normalizedText, List<String> matchedWakeWords, List<String> matchedItemIds, List<String> matchedEntityTypeIds, List<DialogueEntityRef> matchedEntityRefs, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot, long timestampMillis, long expireAtMillis, Map<String, String> displayNames) {
+        this(sessionId, requestId, playerId, turnId, repairedText, normalizedText, matchedWakeWords, matchedItemIds, matchedEntityTypeIds, matchedEntityRefs, interactionHints, contextSnapshot, timestampMillis, expireAtMillis, displayNames, List.of(), List.of());
+    }
     public DialogueDeliveryPayload {
         sessionId = requireText(sessionId, "sessionId");
         requestId = requireText(requestId, "requestId");
@@ -60,6 +70,8 @@ public record DialogueDeliveryPayload(
         timestampMillis = Math.max(0L, timestampMillis);
         expireAtMillis = Math.max(0L, expireAtMillis);
         displayNames = copyDisplayNames(displayNames);
+        objectMatches = objectMatches == null ? List.of() : List.copyOf(objectMatches);
+        moduleMatches = moduleMatches == null ? List.of() : List.copyOf(moduleMatches);
     }
 
     public static DialogueDeliveryPayload from(String sessionId, DialogueArbitrationInput input) {
@@ -78,7 +90,9 @@ public record DialogueDeliveryPayload(
                 input.contextSnapshot(),
                 input.timestampMillis(),
                 input.expireAtMillis(),
-                input.displayNames()
+                input.displayNames(),
+                input.objectMatches(),
+                input.moduleMatches()
         );
     }
 
