@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,7 +29,7 @@ final class LlmTaskAdmissionController {
         this.agingBoostPerRequest = Math.max(0, agingBoostPerRequest);
     }
 
-    static LlmTaskAdmissionController fromConfig(LlmConfiguration config) {
+    static LlmTaskAdmissionController fromConfig(WeavingConfiguration config) {
         int waitingTasks = config == null ? 0 : config.getLlmTaskAdmissionQueueSize();
         int agingBoost = config == null ? 1 : config.getLlmTaskAgingBoostPerRequest();
         return new LlmTaskAdmissionController(waitingTasks, agingBoost);

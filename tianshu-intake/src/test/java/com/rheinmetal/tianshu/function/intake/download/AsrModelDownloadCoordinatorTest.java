@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.download;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.model.AsrModelDownloader;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelDownloader;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

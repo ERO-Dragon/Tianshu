@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.echo.synthesis;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.function.echo.TtsModelService;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsBackendSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 
 import java.util.Optional;
 import java.util.List;
@@ -21,7 +21,7 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
 
     public DefaultTtsSynthesisEngine(
             IGameEnvironment env,
-            TtsConfiguration config,
+            EchoConfiguration config,
             TtsModelService modelService,
             TtsCodecExecution codecExecution
     ) {

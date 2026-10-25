@@ -46,7 +46,7 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -74,9 +74,9 @@ class IaModuleProtocolFlowTest {
 
     @Test
     void voiceTriggersRegisteredBeforePrepareAreSynchronizedWhenRuntimeContextArrives() {
-        com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration config = () -> java.nio.file.Path.of("build/test-voice-resources-before-prepare").resolve("asr");
-        VoiceResourceManager voiceResources = new VoiceResourceManager(new FakeGameEnvironment(), config);
-        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        
+        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -94,18 +94,17 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.wakeWord("酒狐")
                 ))
         ));
-        assertTrue(voiceResources.voiceTriggers().asrHotwords().isEmpty());
+        assertTrue(voiceResources.registeredWords().isEmpty());
 
         ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
 
-        assertEquals(List.of("酒狐"), voiceResources.voiceTriggers().asrHotwords());
+        assertEquals(List.of("酒狐"), voiceResources.registeredWords());
     }
 
     @Test
     void voiceTriggersFollowRuntimeParticipantUpdatesAndUnregisters() {
-        com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration config = () -> java.nio.file.Path.of("build/test-voice-resources-runtime-update").resolve("asr");
-        VoiceResourceManager voiceResources = new VoiceResourceManager(new FakeGameEnvironment(), config);
-        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -125,7 +124,7 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.wakeWord("酒狐")
                 ))
         ));
-        assertEquals(List.of("酒狐"), voiceResources.voiceTriggers().asrHotwords());
+        assertEquals(List.of("酒狐"), voiceResources.registeredWords());
 
         service.registerParticipant(participant(
                 "maid",
@@ -138,18 +137,17 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.wakeWord("女仆")
                 ))
         ));
-        assertEquals(List.of("女仆"), voiceResources.voiceTriggers().asrHotwords());
+        assertEquals(List.of("女仆"), voiceResources.registeredWords());
 
         service.unregisterModule("module.maid");
 
-        assertTrue(voiceResources.voiceTriggers().asrHotwords().isEmpty());
+        assertTrue(voiceResources.registeredWords().isEmpty());
     }
 
     @Test
     void aTriggerWordThatIsNotTheParticipantsWakeWordLeavesTheClaimToTheDefaultOwner() {
-        com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration config = () -> java.nio.file.Path.of("build/test-voice-trigger-group").resolve("asr");
-        VoiceResourceManager voiceResources = new VoiceResourceManager(new FakeGameEnvironment(), config);
-        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -176,7 +174,7 @@ class IaModuleProtocolFlowTest {
         ));
         service.registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
 
-        assertEquals(List.of("maid", "farm"), voiceResources.voiceTriggers().asrHotwords());
+        assertEquals(List.of("maid", "farm"), voiceResources.registeredWords());
 
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.ir",
@@ -202,9 +200,8 @@ class IaModuleProtocolFlowTest {
 
     @Test
     void participantRegistrationPublishesWakeWordsToSharedVoiceResources() {
-        com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration config = () -> java.nio.file.Path.of("build/test-voice-resources").resolve("asr");
-        VoiceResourceManager voiceResources = new VoiceResourceManager(new FakeGameEnvironment(), config);
-        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -224,8 +221,8 @@ class IaModuleProtocolFlowTest {
                 ))
         ));
 
-        await(() -> !voiceResources.voiceTriggers().asrHotwords().isEmpty());
-        assertEquals(List.of("酒狐"), voiceResources.voiceTriggers().asrHotwords());
+        await(() -> !voiceResources.registeredWords().isEmpty());
+        assertEquals(List.of("酒狐"), voiceResources.registeredWords());
     }
 
     @Test
@@ -334,9 +331,8 @@ class IaModuleProtocolFlowTest {
 
     @Test
     void readyArbitrationWithoutParticipantsRejectsSilentlyWithoutPresenceLookup() {
-        com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration config = () -> java.nio.file.Path.of("build/test-ia-no-participant").resolve("asr");
-        VoiceResourceManager voiceResources = new VoiceResourceManager(new FakeGameEnvironment(), config);
-        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources.voiceTriggers());
+        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         MutablePresenceContextHandler presence = new MutablePresenceContextHandler();
         registerPresenceContextHandler(presence);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
@@ -613,7 +609,7 @@ class IaModuleProtocolFlowTest {
     }
 
     private static void await(BooleanCondition condition) {
-        long deadline = System.currentTimeMillis() + 3_000L;
+        long deadline = System.currentTimeMillis() + 10_000L;
         while (System.currentTimeMillis() < deadline) {
             if (condition.satisfied()) {
                 return;
@@ -671,7 +667,7 @@ class IaModuleProtocolFlowTest {
         }
 
         private <T> T awaitPayload(Class<T> type) {
-            long deadline = System.currentTimeMillis() + 3_000L;
+            long deadline = System.currentTimeMillis() + 10_000L;
             while (System.currentTimeMillis() < deadline) {
                 for (TianshuEnvelope envelope : envelopes) {
                     if (type.isInstance(envelope.payload())) {

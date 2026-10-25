@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.synthesis;
 
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 
 import java.nio.file.Path;
 

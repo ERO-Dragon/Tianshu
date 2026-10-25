@@ -1,8 +1,9 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.function.intake.repair.core.IntentKeywordLoader;
-import com.rheinmetal.tianshu.function.intake.index.ClientNamedObjectIndexManager;
+import com.rheinmetal.tianshu.api.assembly.KeywordTableReloadPort;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.game.NamedObjectIndex;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.Resource;
@@ -23,12 +24,10 @@ public final class NamedObjectReloadListener extends SimplePreparableReloadListe
      * override is therefore the normal case and is not reported at all, while a read failure still is.</p>
      */
     private static final ResourceLocation KEYWORDS_ID = ResourceLocation.fromNamespaceAndPath("tianshu", "ir-intent-keywords.json");
-    private final Supplier<ClientNamedObjectIndexManager> indexManagerSupplier;
     private final Runnable refreshSnapshot;
     private final LogSink logSink;
 
-    public NamedObjectReloadListener(Supplier<ClientNamedObjectIndexManager> indexManagerSupplier, Runnable refreshSnapshot, LogSink logSink) {
-        this.indexManagerSupplier = Objects.requireNonNull(indexManagerSupplier, "indexManagerSupplier");
+    public NamedObjectReloadListener(Runnable refreshSnapshot, LogSink logSink) {
         this.refreshSnapshot = refreshSnapshot == null ? () -> { } : refreshSnapshot;
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
     }
@@ -41,11 +40,12 @@ public final class NamedObjectReloadListener extends SimplePreparableReloadListe
     @Override
     protected void apply(byte[] keywords, ResourceManager resourceManager, ProfilerFiller profiler) {
         refreshSnapshot.run();
-        ClientNamedObjectIndexManager indexManager = indexManagerSupplier.get();
-        indexManager.reloadAsync(
-                "client resource reload",
-                () -> reloadKeywords(keywords)
-        );
+        // The module that owns the index decides when to rebuild it; an absent module means nobody to ask.
+        TianshuRuntimePorts.find(NamedObjectIndex.class).ifPresent(index ->
+                index.reloadAsync(
+                        "client resource reload",
+                        () -> reloadKeywords(keywords)
+                ));
     }
 
     private byte[] readKeywords(ResourceManager resourceManager) {
@@ -67,7 +67,7 @@ public final class NamedObjectReloadListener extends SimplePreparableReloadListe
             return;
         }
         try (InputStream input = new ByteArrayInputStream(keywords)) {
-            IntentKeywordLoader.reload(input);
+            TianshuRuntimePorts.find(KeywordTableReloadPort.class).orElseThrow().reload(input);
             logSink.info("neoforge.ir.keywords.reloaded");
         } catch (Exception e) {
             logSink.error("neoforge.ir.keywords.reload_failed", e);

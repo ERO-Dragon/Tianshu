@@ -8,7 +8,7 @@ public record TtsSettingsSnapshot(
         String modelName,
         Path modelPath
 ) {
-    public static TtsSettingsSnapshot from(TtsConfiguration config) {
+    public static TtsSettingsSnapshot from(EchoConfiguration config) {
         return new TtsSettingsSnapshot(
                 config != null && config.isTtsEnabled(),
                 config == null ? "" : safe(config.getCustomTtsName()),
@@ -16,7 +16,7 @@ public record TtsSettingsSnapshot(
         );
     }
 
-    private static Path selectedModelPath(TtsConfiguration config) {
+    private static Path selectedModelPath(EchoConfiguration config) {
         String modelName = safe(config.getCustomTtsName());
         if (modelName.isEmpty()) {
             return null;

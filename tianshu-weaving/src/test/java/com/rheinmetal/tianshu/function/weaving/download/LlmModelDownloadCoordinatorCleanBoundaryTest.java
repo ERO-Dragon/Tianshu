@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.weaving.download;
 
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.model.LlmModelDownloader;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelDownloader;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

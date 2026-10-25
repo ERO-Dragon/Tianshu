@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.intake.download;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.model.AsrModelDownloader;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelDownloader;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.download.DownloadGate;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 

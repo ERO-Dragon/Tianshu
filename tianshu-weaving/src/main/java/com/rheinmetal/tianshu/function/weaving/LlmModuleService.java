@@ -8,7 +8,7 @@ import com.rheinmetal.tianshu.function.weaving.catalog.LlmModelCatalogClient;
 import com.rheinmetal.tianshu.function.weaving.catalog.LlmModelCatalogKeySource;
 import com.rheinmetal.tianshu.function.weaving.catalog.LlmModelCatalogResult;
 import com.rheinmetal.tianshu.function.weaving.catalog.LlmModelCatalogState;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmControlResult;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState;
@@ -27,7 +27,7 @@ public final class LlmModuleService {
         void stop();
     }
 
-    private final LlmConfiguration config;
+    private final WeavingConfiguration config;
     private final LlmUsageLedger usageLedger;
     private final LlmAccountQuery accountQuery = new LlmAccountQuery();
     private final AtomicReference<LlmModelCatalogClient> modelCatalogClient =
@@ -39,7 +39,7 @@ public final class LlmModuleService {
     /**
      * @param usageLedger the ledger the request path records into; this service only reads it
      */
-    public LlmModuleService(LlmConfiguration config, LlmUsageLedger usageLedger) {
+    public LlmModuleService(WeavingConfiguration config, LlmUsageLedger usageLedger) {
         this.config = Objects.requireNonNull(config, "config");
         this.usageLedger = usageLedger == null ? new LlmUsageLedger() : usageLedger;
     }

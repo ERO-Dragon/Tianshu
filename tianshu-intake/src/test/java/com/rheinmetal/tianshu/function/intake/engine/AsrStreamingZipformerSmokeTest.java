@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.intake.engine;
 
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
-import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelManager;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 

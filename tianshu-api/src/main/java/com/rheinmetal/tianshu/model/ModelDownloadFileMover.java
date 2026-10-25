@@ -7,15 +7,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 /** Promotes a completed download while tolerating file-system limits on atomic replacement. */
-final class ModelDownloadFileMover {
+public final class ModelDownloadFileMover {
     private ModelDownloadFileMover() {
     }
 
-    static void moveReplacing(Path source, Path target) throws IOException {
+    public static void moveReplacing(Path source, Path target) throws IOException {
         moveReplacing(source, target, Files::move);
     }
 
-    static void moveReplacing(Path source, Path target, MoveOperation operation) throws IOException {
+    public static void moveReplacing(Path source, Path target, MoveOperation operation) throws IOException {
         try {
             operation.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (FileSystemException unsupported) {

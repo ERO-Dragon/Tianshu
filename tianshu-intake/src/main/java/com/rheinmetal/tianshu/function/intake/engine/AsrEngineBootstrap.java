@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.intake.engine;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.function.intake.AsrRuntimeCapabilities;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
-import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.ModelFilesMissingException;
 import com.rheinmetal.tianshu.utils.PathUtils;
 
@@ -16,21 +16,21 @@ import java.util.function.Consumer;
 
 public final class AsrEngineBootstrap {
     private final IGameEnvironment env;
-    private final AsrConfiguration config;
+    private final IntakeConfiguration config;
     private final Consumer<AsrEngineBootstrapStatus> statusSink;
     private final Consumer<Boolean> loadingSink;
 
-    public AsrEngineBootstrap(IGameEnvironment env, AsrConfiguration config) {
+    public AsrEngineBootstrap(IGameEnvironment env, IntakeConfiguration config) {
         this(env, config, null, null);
     }
 
-    public AsrEngineBootstrap(IGameEnvironment env, AsrConfiguration config, Consumer<AsrEngineBootstrapStatus> statusSink) {
+    public AsrEngineBootstrap(IGameEnvironment env, IntakeConfiguration config, Consumer<AsrEngineBootstrapStatus> statusSink) {
         this(env, config, statusSink, null);
     }
 
     public AsrEngineBootstrap(
             IGameEnvironment env,
-            AsrConfiguration config,
+            IntakeConfiguration config,
             Consumer<AsrEngineBootstrapStatus> statusSink,
             Consumer<Boolean> loadingSink
     ) {
@@ -93,12 +93,10 @@ public final class AsrEngineBootstrap {
             env.error("ASR model is not declared in asr_model.json: " + modelPath.getFileName(), null);
             return false;
         }
-
-        Path hotwordsFile = AsrHotwordSupport.fromModel(modelInfo).reloadRequired() ? resolveHotwordsFile(context, modelInfo) : null;
         boolean initialized;
         loadingSink.accept(true);
         try {
-            initialized = engine.initialize(modelInfo, safeDir.toPath(), hotwordsFile);
+            initialized = engine.initialize(modelInfo, safeDir.toPath());
         } finally {
             loadingSink.accept(false);
         }
@@ -112,33 +110,6 @@ public final class AsrEngineBootstrap {
     private AsrModelInfo resolveModelInfo(Path modelPath) {
         String dirName = modelPath.getFileName() != null ? modelPath.getFileName().toString() : "";
         return AsrModelManager.getModelByLocalKey(dirName);
-    }
-
-    private Path resolveHotwordsFile(ModuleRuntimeContext context, AsrModelInfo modelInfo) {
-        String language = resolveHotwordLanguage(modelInfo);
-        if ("en".equals(language)) {
-            return context.voiceResources().snapshot().enHotwordsFile();
-        }
-        return context.voiceResources().snapshot().zhHotwordsFile();
-    }
-
-    private String resolveHotwordLanguage(AsrModelInfo modelInfo) {
-        if (modelInfo == null) {
-            return "zh";
-        }
-        for (String lang : modelInfo.getLang()) {
-            if (lang == null) {
-                continue;
-            }
-            String normalized = lang.trim().toLowerCase();
-            if (normalized.startsWith("en")) {
-                return "en";
-            }
-            if (normalized.startsWith("zh") || normalized.startsWith("cmn") || normalized.startsWith("cn")) {
-                return "zh";
-            }
-        }
-        return "zh";
     }
 
     private void markFailed(ModuleRuntimeContext context, String moduleId, String reason) {

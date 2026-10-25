@@ -6,8 +6,8 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizer;
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig;
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
-import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelManager;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -63,7 +63,7 @@ class AsrSenseVoiceSmokeTest {
         Assumptions.assumeTrue(Files.isRegularFile(modelDir.resolve("tokens.txt")), "SenseVoice tokens file is missing");
 
         SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(new FakeGameEnvironment());
-        SherpaOnnxAsrConfigFactory.ResolvedConfig resolved = factory.build(modelInfo, modelDir, null).orElseThrow();
+        SherpaOnnxAsrConfigFactory.ResolvedConfig resolved = factory.build(modelInfo, modelDir).orElseThrow();
 
         assertDoesNotThrow(() -> {
             OfflineRecognizer recognizer = new OfflineRecognizer(resolved.offlineConfig());

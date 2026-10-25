@@ -32,11 +32,13 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     ) {
         this(
                 new CoreManagerLifecycle(services.coreManager()),
-                () -> services.namedObjectIndexManager().initializeAsync("client startup"),
+                // The kernel owns no client resource of its own any more: module resources (the named-object
+                // index among them) are built and released by the module that owns them.
+                () -> { },
                 services.audioManager()::releaseCaptureHardware,
                 services.audioManager()::shutdown,
                 services.diagnosticRouter()::close,
-                services.namedObjectIndexManager()::close,
+                () -> { },
                 services.presenceRuntime()::tick,
                 services.presenceRuntime()::startWorldSession,
                 services.presenceRuntime()::stopWorldSession,

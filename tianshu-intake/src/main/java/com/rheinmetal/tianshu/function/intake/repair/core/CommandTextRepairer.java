@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.intake.repair.core;
 
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -159,10 +160,10 @@ final class CommandTextRepairer {
             LinkedHashSet<String> itemIds = new LinkedHashSet<>();
             LinkedHashSet<String> entityTypeIds = new LinkedHashSet<>();
             for (String objectId : objectIds) {
-                if (IRObjectId.isEntity(objectId)) {
-                    entityTypeIds.add(IRObjectId.raw(objectId));
+                if (GameObjectId.isEntity(objectId)) {
+                    entityTypeIds.add(GameObjectId.raw(objectId));
                 } else {
-                    itemIds.add(IRObjectId.raw(objectId));
+                    itemIds.add(GameObjectId.raw(objectId));
                 }
             }
             return new RepairResult(text, List.copyOf(itemIds), List.copyOf(entityTypeIds));

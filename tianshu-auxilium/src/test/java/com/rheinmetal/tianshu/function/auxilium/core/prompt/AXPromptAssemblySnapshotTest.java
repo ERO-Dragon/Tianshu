@@ -2,12 +2,11 @@ package com.rheinmetal.tianshu.function.auxilium.core.prompt;
 
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
-import com.rheinmetal.tianshu.function.auxilium.AXAssistantSettings;
+import com.rheinmetal.tianshu.function.auxilium.AuxiliumAssistantSettings;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXDynamicFact;
-import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.module.gamecontext.AXKnowledgeHit;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
@@ -120,7 +119,7 @@ class AXPromptAssemblySnapshotTest {
 
     @Test
     void chatThinkingSettingIsForwardedWithoutCapturingThinkingContent() {
-        AXAssistantSettings settings = new AXAssistantSettings() {
+        AuxiliumAssistantSettings settings = new AuxiliumAssistantSettings() {
             @Override
             public String wakeWord() {
                 return DEFAULT_WAKE_WORD;

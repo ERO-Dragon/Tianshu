@@ -27,7 +27,7 @@ class ModelDownloaderBoundaryTest {
     @Test
     void asrFacadeDoesNotOwnRawHttpTransportOrHuggingFaceUrls() throws Exception {
         String source = Files.readString(
-                MODEL_SOURCE.resolve("AsrModelDownloader.java"),
+                Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/model/AsrModelDownloader.java"),
                 StandardCharsets.UTF_8
         );
 

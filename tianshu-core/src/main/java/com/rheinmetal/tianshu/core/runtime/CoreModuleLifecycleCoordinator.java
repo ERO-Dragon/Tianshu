@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,7 +18,7 @@ public final class CoreModuleLifecycleCoordinator {
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
-    private final VoiceResourceManager voiceResourceManager;
+    private final VoiceTriggerRegistry voiceTriggers;
     private final ModuleRuntimeState runtimeState;
     private final RuntimeReadinessState readinessState;
     private final RuntimeInterruptionService interruptionService;
@@ -39,7 +39,7 @@ public final class CoreModuleLifecycleCoordinator {
             ProtocolRuntime protocolRuntime,
             TianshuModuleHost moduleHost,
             ModuleServiceRegistry moduleServices,
-            VoiceResourceManager voiceResourceManager,
+            VoiceTriggerRegistry voiceTriggers,
             ModuleRuntimeState runtimeState,
             RuntimeReadinessState readinessState,
             RuntimeInterruptionService interruptionService,
@@ -49,12 +49,12 @@ public final class CoreModuleLifecycleCoordinator {
         this.protocolRuntime = protocolRuntime;
         this.moduleHost = moduleHost;
         this.moduleServices = moduleServices;
-        this.voiceResourceManager = voiceResourceManager;
+        this.voiceTriggers = voiceTriggers;
         this.runtimeState = runtimeState;
         this.readinessState = readinessState;
         this.interruptionService = interruptionService;
         this.moduleBuilder = moduleBuilder;
-        this.voiceResourceManager.voiceTriggers().addChangeListener(this.voiceResourceManager::materialize);
+
     }
 
     public boolean isInitialized() {
@@ -198,8 +198,8 @@ public final class CoreModuleLifecycleCoordinator {
                 moduleHost.registerAll(registrationContext, runtimeState.capabilities());
             }
 
-            voiceResourceManager.materialize();
-            ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, voiceResourceManager, runtimeState, env.diagnostics());
+
+            ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, voiceTriggers, runtimeState, env.diagnostics());
             moduleHost.prepareAll(runtimeContext);
             moduleHost.startAll(runtimeContext);
 

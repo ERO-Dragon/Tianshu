@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium.speech;
 
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.protocol.voice.VoiceNotificationService;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
@@ -23,10 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AXProtocolSpeechOutletTest {
 
     /** Voice switched on: the mode the dialogue output needs to reach TTS at all. */
-    private static final AXOutputSettings TTS_ON = () -> AXOutputMode.UI_AND_TTS;
+    private static final AuxiliumOutputSettings TTS_ON = () -> AuxiliumOutputMode.UI_AND_TTS;
 
     /** Voice switched off: everything must degrade to a diagnostic. */
-    private static final AXOutputSettings TTS_OFF = () -> AXOutputMode.UI_ONLY;
+    private static final AuxiliumOutputSettings TTS_OFF = () -> AuxiliumOutputMode.UI_ONLY;
 
     @Test
     void literalLineIsSpokenAsItIs() {
@@ -110,7 +110,7 @@ class AXProtocolSpeechOutletTest {
 
     private static AXProtocolSpeechOutlet outlet(
             VoiceNotificationService voice,
-            AXOutputSettings settings,
+            AuxiliumOutputSettings settings,
             Map<String, String> table) {
         return new AXProtocolSpeechOutlet(voice, provider(table), settings, LogSink.NOOP);
     }

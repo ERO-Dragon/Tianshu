@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapabilityState;
 import com.rheinmetal.tianshu.function.intake.AsrRuntimeCapabilities;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -78,7 +78,7 @@ class AsrEngineBootstrapActivityTest {
         return new ModuleRuntimeContext(null, new ModuleServiceRegistry(), null, runtimeState);
     }
 
-    private record FakeConfiguration(boolean enabled, Path basePath, String modelName) implements AsrConfiguration {
+    private record FakeConfiguration(boolean enabled, Path basePath, String modelName) implements IntakeConfiguration {
         @Override public boolean isAsrEnabled() { return enabled; }
         @Override public String getSelectedMicName() { return ""; }
         @Override public boolean isAsrRnnoiseEnabled() { return false; }

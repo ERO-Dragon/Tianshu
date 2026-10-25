@@ -177,7 +177,7 @@ public final class IaModule implements TianshuManagedModule {
         runtimeContext = nextContext;
         runtimeAccepting = true;
         diagnostics = nextContext.diagnostics();
-        voiceTriggerSynchronizer.bind(nextContext.voiceResources(), participantRegistry.snapshot());
+        voiceTriggerSynchronizer.bind(nextContext.voiceTriggers(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         ownerPreviewRefreshCoordinator.start();
         adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));

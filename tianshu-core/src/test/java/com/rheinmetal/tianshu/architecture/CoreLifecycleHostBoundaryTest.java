@@ -105,7 +105,7 @@ class CoreLifecycleHostBoundaryTest {
     }
 
     @Test
-    void irNamedObjectIndexIsClientLifetimeAsyncResource() throws Exception {
+    void namedObjectIndexBelongsToTheModuleThatReadsSpeech() throws Exception {
         Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java/com/rheinmetal/tianshu/neoforge");
         Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
         String bootstrap = Files.readString(
@@ -120,21 +120,29 @@ class CoreLifecycleHostBoundaryTest {
                 Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/index/ClientNamedObjectIndexManager.java"),
                 StandardCharsets.UTF_8
         );
+        String provider = Files.readString(
+                Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/IntakeModuleProvider.java"),
+                StandardCharsets.UTF_8
+        );
         String reloadListener = Files.readString(
                 neoforgeRoot.resolve("event/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(runtime.contains("namedObjectIndexManager().initializeAsync("));
-        assertTrue(runtime.contains("namedObjectIndexManager()::close"));
-        assertFalse(bootstrap.contains("ClientNamedObjectIndexManager.ensureIndex(\"client login\")"));
+        // The kernel drives nothing: it has no handle on the index at all.
+        assertFalse(runtime.contains("namedObjectIndexManager"));
+        assertFalse(bootstrap.contains("ClientNamedObjectIndexManager"));
+        // The module builds it, caches under its own directory and publishes it as an observable port.
+        assertTrue(provider.contains("new ClientNamedObjectIndexManager("));
+        assertTrue(provider.contains("resolve(\"asr\")"));
+        assertTrue(provider.contains("TianshuRuntimePorts.register(NamedObjectIndex.class"));
         assertTrue(manager.contains("ExecutorService"));
         assertTrue(manager.contains("initializeAsync("));
         assertTrue(manager.contains("reloadAsync("));
         assertFalse(manager.contains("catch (Throwable throwable)"));
-        assertTrue(reloadListener.contains("indexManager.reloadAsync("));
+        // The platform only pokes the port when the game reloads resources.
+        assertTrue(reloadListener.contains("TianshuRuntimePorts.find(NamedObjectIndex.class)"));
     }
-
     private static String apiSource(String relativePath) throws Exception {
         return Files.readString(Path.of("../tianshu-api/src/main/java").resolve(relativePath), StandardCharsets.UTF_8);
     }

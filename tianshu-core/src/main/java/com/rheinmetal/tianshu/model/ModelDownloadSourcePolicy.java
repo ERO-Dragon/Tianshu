@@ -10,11 +10,11 @@ import java.util.Objects;
 import java.util.Set;
 
 /** Builds deterministic model-download source candidates without performing I/O. */
-final class ModelDownloadSourcePolicy {
+public final class ModelDownloadSourcePolicy {
     private final String hfOfficialBase;
     private final String hfMirrorBase;
 
-    ModelDownloadSourcePolicy(String hfOfficialBase, String hfMirrorBase) {
+    public ModelDownloadSourcePolicy(String hfOfficialBase, String hfMirrorBase) {
         this.hfOfficialBase = normalizeBase(hfOfficialBase, "hfOfficialBase");
         this.hfMirrorBase = normalizeBase(hfMirrorBase, "hfMirrorBase");
     }
@@ -26,7 +26,7 @@ final class ModelDownloadSourcePolicy {
     String mirrorBase() {
         return hfMirrorBase;
     }
-    List<URI> huggingFaceTreeCandidates(String preferredBase, String repoId, String revision) {
+    public List<URI> huggingFaceTreeCandidates(String preferredBase, String repoId, String revision) {
         String encodedRepo = encodePath(repoId, "repoId");
         String encodedRevision = encodeSegment(revision, "revision");
         List<URI> candidates = new ArrayList<>();
@@ -39,7 +39,7 @@ final class ModelDownloadSourcePolicy {
         return List.copyOf(candidates);
     }
 
-    List<URI> huggingFaceFileCandidates(
+    public List<URI> huggingFaceFileCandidates(
             String preferredBase,
             String repoId,
             String revision,
@@ -57,7 +57,7 @@ final class ModelDownloadSourcePolicy {
         return List.copyOf(candidates);
     }
 
-    static List<URI> githubArchiveCandidates(String directUrl, String proxyBaseUrl, boolean proxyFirst) {
+    public static List<URI> githubArchiveCandidates(String directUrl, String proxyBaseUrl, boolean proxyFirst) {
         String direct = requireNonBlank(directUrl, "directUrl");
         String proxyBase = proxyBaseUrl == null || proxyBaseUrl.isBlank()
                 ? ""

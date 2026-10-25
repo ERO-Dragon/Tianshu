@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.account;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import org.junit.jupiter.api.Test;
 
 import javax.net.ssl.SSLContext;
@@ -277,7 +277,7 @@ final class DeepSeekBalanceProbeTest {
     }
 
     /** The configuration the probe reads: endpoint and credential, nothing else. */
-    private record StubConfig(String baseUrl, String apiKey) implements LlmConfiguration {
+    private record StubConfig(String baseUrl, String apiKey) implements WeavingConfiguration {
         @Override
         public boolean isLlmEnabled() {
             return true;

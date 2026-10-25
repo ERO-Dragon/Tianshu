@@ -9,7 +9,7 @@ public class ModelFilesMissingException extends Exception {
     private final List<String> missingFiles;
 
     public ModelFilesMissingException(String modelName, List<String> missingFiles) {
-        super("ASR 模型 [" + modelName + "] 缺失文件: " + String.join(", ", missingFiles));
+        super("model [" + modelName + "] is missing files: " + String.join(", ", missingFiles));
         this.modelName = modelName;
         this.missingFiles = Collections.unmodifiableList(missingFiles);
     }

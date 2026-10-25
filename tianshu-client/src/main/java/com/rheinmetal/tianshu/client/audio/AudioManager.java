@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.audio;
 
+import com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.LogSink;

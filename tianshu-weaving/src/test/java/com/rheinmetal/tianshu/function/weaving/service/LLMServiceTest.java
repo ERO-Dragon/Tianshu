@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
@@ -530,7 +530,7 @@ class LLMServiceTest {
         @Override public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() { return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP; }
     }
 
-    private static final class FakeConfig implements LlmConfiguration {
+    private static final class FakeConfig implements WeavingConfiguration {
         @Override public boolean isLlmEnabled() { return true; }
         @Override public String getCustomLlmName() { return ""; }
         @Override public Path getLlmBasePath() { return Path.of("."); }

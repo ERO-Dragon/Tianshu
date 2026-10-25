@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
@@ -22,7 +22,7 @@ class AXModuleInstallerTest {
     void disabledAssistantIsNotInstalledIntoTheModuleLifecycle() {
         FakeGameEnvironment environment = new FakeGameEnvironment();
         TianshuModuleHost moduleHost = new TianshuModuleHost(environment);
-        AXAssistantSettings disabledSettings = new AXAssistantSettings() {
+        AuxiliumAssistantSettings disabledSettings = new AuxiliumAssistantSettings() {
             @Override
             public String wakeWord() {
                 return DEFAULT_WAKE_WORD;
@@ -44,13 +44,13 @@ class AXModuleInstallerTest {
         FakeGameEnvironment environment = new FakeGameEnvironment();
         TianshuModuleHost moduleHost = new TianshuModuleHost(environment);
 
-        installer(environment, AXAssistantSettings.DEFAULT).install(moduleHost, new ModuleServiceRegistry());
+        installer(environment, AuxiliumAssistantSettings.DEFAULT).install(moduleHost, new ModuleServiceRegistry());
 
         assertEquals(1, moduleHost.managedModules().size());
         assertEquals(AXModule.MODULE_ID, moduleHost.managedModules().get(0).moduleId());
     }
 
-    private AXModuleInstaller installer(FakeGameEnvironment environment, AXAssistantSettings settings) {
+    private AXModuleInstaller installer(FakeGameEnvironment environment, AuxiliumAssistantSettings settings) {
         return new AXModuleInstaller(
                 environment,
                 new TestLlmSupport.FakeConfig(tempDir.resolve("module")),
@@ -58,7 +58,7 @@ class AXModuleInstallerTest {
                 null,
                 null,
                 settings,
-                AXOutputSettings.DEFAULT,
+                AuxiliumOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP
         );
     }

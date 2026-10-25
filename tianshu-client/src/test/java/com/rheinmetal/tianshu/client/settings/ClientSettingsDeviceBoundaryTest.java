@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,7 +12,7 @@ final class ClientSettingsDeviceBoundaryTest {
     @Test
     void asrSettingsReadsCachedMicrophonesAndRequestsAsyncRefresh() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/intake/AsrSettingsRegistrySource.java"),
+                SettingsSourcePaths.page("intake", "IntakeSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -25,14 +24,14 @@ final class ClientSettingsDeviceBoundaryTest {
 
     @Test
     void modelPagesReadAvailabilitySnapshotsInsteadOfScanningModelFiles() throws Exception {
-        assertSnapshotBoundary("intake/AsrSettingsRegistrySource.java");
-        assertSnapshotBoundary("weaving/LlmSettingsRegistrySource.java");
-        assertSnapshotBoundary("echo/TtsSettingsRegistrySource.java");
+        assertSnapshotBoundary("intake/IntakeSettingsRegistrySource.java");
+        assertSnapshotBoundary("weaving/WeavingSettingsRegistrySource.java");
+        assertSnapshotBoundary("echo/EchoSettingsRegistrySource.java");
     }
 
     private static void assertSnapshotBoundary(String relativePath) throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module").resolve(relativePath),
+                SettingsSourcePaths.page(relativePath),
                 StandardCharsets.UTF_8
         );
 
@@ -45,7 +44,7 @@ final class ClientSettingsDeviceBoundaryTest {
     @Test
     void ttsVoiceLibraryWorkUsesTheModuleIoBoundary() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/echo/TtsSettingsRegistrySource.java"),
+                SettingsSourcePaths.page("echo", "EchoSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 

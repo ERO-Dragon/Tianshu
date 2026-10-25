@@ -7,7 +7,7 @@ import java.nio.file.Path;
 public final class AXStorageLayout {
     private final Path root;
 
-    public AXStorageLayout(AXStorageConfiguration configuration) {
+    public AXStorageLayout(AuxiliumStorageConfiguration configuration) {
         if (configuration == null || configuration.storageRoot() == null) {
             throw new IllegalArgumentException("AX storage configuration is required");
         }

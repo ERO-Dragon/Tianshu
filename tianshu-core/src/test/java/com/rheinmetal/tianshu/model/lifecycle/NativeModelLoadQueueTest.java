@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.model.lifecycle;
 
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

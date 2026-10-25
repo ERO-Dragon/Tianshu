@@ -25,12 +25,12 @@ class LlmModelSettingsTest {
 
         assertFalse(settings.storedModelsPresent());
         assertEquals(1, settings.models().size());
-        assertEquals(LlmModelEntry.LEGACY_ID, settings.activeModelId());
-        assertEquals(LlmModelEntry.LEGACY_ID, settings.activeModel().id());
+        assertEquals(WeavingModelEntry.LEGACY_ID, settings.activeModelId());
+        assertEquals(WeavingModelEntry.LEGACY_ID, settings.activeModel().id());
         assertEquals("https://api.deepseek.com/v1", settings.activeModel().baseUrl());
         assertEquals("deepseek-flash", settings.activeModel().modelId());
         assertEquals(102_400, settings.activeModel().contextWindowTokens());
-        assertEquals(LEGACY_KEY, settings.apiKey(LlmModelEntry.LEGACY_ID));
+        assertEquals(LEGACY_KEY, settings.apiKey(WeavingModelEntry.LEGACY_ID));
         assertTrue(settings.modelLines().isEmpty(), "reading a legacy file must not invent a model list");
     }
 
@@ -74,7 +74,7 @@ class LlmModelSettingsTest {
                 LEGACY_KEY);
 
         assertTrue(settings.storedModelsPresent());
-        assertEquals(LEGACY_KEY, settings.apiKey(LlmModelEntry.LEGACY_ID));
+        assertEquals(LEGACY_KEY, settings.apiKey(WeavingModelEntry.LEGACY_ID));
     }
 
     @Test
@@ -106,7 +106,7 @@ class LlmModelSettingsTest {
 
     @Test
     void separatorInsideAFieldSurvivesTheRoundTrip() {
-        LlmModelEntry awkward = new LlmModelEntry(
+        WeavingModelEntry awkward = new WeavingModelEntry(
                 "eu-west",
                 "Fast | Europe",
                 "azure|custom",
@@ -160,14 +160,14 @@ class LlmModelSettingsTest {
         assertTrue(migrated.storedModelsPresent());
         assertEquals(1, providerLines(migrated).size(), "the migration materialises exactly the synthesised provider");
         assertEquals(1, modelLines(migrated).size(), "and exactly the one model it serves");
-        assertTrue(migrated.credentialLines().contains(LlmModelEntry.LEGACY_ID + "=" + LEGACY_KEY),
+        assertTrue(migrated.credentialLines().contains(WeavingModelEntry.LEGACY_ID + "=" + LEGACY_KEY),
                 "the adopted credential lives in the credential store, not in the entry");
         assertEquals(ids(legacy.models()), ids(readBack.models()));
         assertEquals(ids(readBack.models()), ids(secondPass.models()));
         assertEquals(legacy.activeModelId(), secondPass.activeModelId());
         assertEquals(readBack.modelLines(), secondPass.modelLines());
         assertEquals(readBack.credentialLines(), secondPass.credentialLines());
-        assertEquals(LEGACY_KEY, secondPass.apiKey(LlmModelEntry.LEGACY_ID), "the key must survive every pass");
+        assertEquals(LEGACY_KEY, secondPass.apiKey(WeavingModelEntry.LEGACY_ID), "the key must survive every pass");
         assertEquals(LEGACY_KEY, secondPass.apiKey(secondPass.activeModelId()));
     }
 
@@ -178,7 +178,7 @@ class LlmModelSettingsTest {
         assertTrue(legacy.withLegacyCredentialAdopted().credentialLines().isEmpty(),
                 "a profile without a list keeps its credential in the legacy key only");
         LlmModelSettings migrated = legacy.withModels(legacy.models()).withLegacyCredentialAdopted();
-        assertEquals(List.of(LlmModelEntry.LEGACY_ID + "=" + LEGACY_KEY), migrated.credentialLines());
+        assertEquals(List.of(WeavingModelEntry.LEGACY_ID + "=" + LEGACY_KEY), migrated.credentialLines());
         assertEquals(migrated.credentialLines(), migrated.withLegacyCredentialAdopted().credentialLines(),
                 "adopting twice must not duplicate the credential");
         assertTrue(migrated.modelLines().stream().noneMatch(line -> line.contains(LEGACY_KEY)));
@@ -194,11 +194,11 @@ class LlmModelSettingsTest {
         assertEquals("https://moved.example/v1", replaced.models().get(0).baseUrl());
         assertEquals("deep", replaced.activeModelId());
 
-        LlmModelSettings appended = twoEntries().withEntry(new LlmModelEntry("new", null, null,
+        LlmModelSettings appended = twoEntries().withEntry(new WeavingModelEntry("new", null, null,
                 "https://new.example/v1", "deepseek-flash", 0));
         assertEquals(List.of("fast", "deep", "new"), ids(appended.models()));
         assertEquals("new", appended.models().get(2).id());
-        assertEquals(LlmModelEntry.CUSTOM_PROVIDER_ID, appended.models().get(2).providerId());
+        assertEquals(WeavingModelEntry.CUSTOM_PROVIDER_ID, appended.models().get(2).providerId());
     }
 
     @Test
@@ -206,13 +206,13 @@ class LlmModelSettingsTest {
         LlmModelSettings cleared = twoEntries().withModels(List.of());
 
         assertFalse(cleared.storedModelsPresent());
-        assertEquals(List.of(LlmModelEntry.LEGACY_ID), ids(cleared.models()));
+        assertEquals(List.of(WeavingModelEntry.LEGACY_ID), ids(cleared.models()));
         assertTrue(cleared.modelLines().isEmpty());
     }
 
     @Test
     void oneProviderServesSeveralModelsAndKeepsTheOneInUse() {
-        LlmModelEntry entry = catalogSettings().activeModel();
+        WeavingModelEntry entry = catalogSettings().activeModel();
 
         assertEquals(3, entry.models().size());
         assertEquals("deepseek-reasoner", entry.activeModelId());
@@ -224,9 +224,9 @@ class LlmModelSettingsTest {
 
     @Test
     void switchingTheActiveModelMovesTheSingleModelAccessors() {
-        LlmModelEntry entry = catalogSettings().activeModel();
+        WeavingModelEntry entry = catalogSettings().activeModel();
 
-        LlmModelEntry flash = entry.withActiveModelId("deepseek-flash");
+        WeavingModelEntry flash = entry.withActiveModelId("deepseek-flash");
         assertEquals("deepseek-flash", flash.modelId());
         assertEquals(51_200, flash.contextWindowTokens());
 
@@ -237,7 +237,7 @@ class LlmModelSettingsTest {
 
     @Test
     void renamingTheActiveModelFollowsItInTheCatalog() {
-        LlmModelEntry renamed = catalogSettings().activeModel().withModelId("deepseek-reasoner-2");
+        WeavingModelEntry renamed = catalogSettings().activeModel().withModelId("deepseek-reasoner-2");
 
         assertEquals("deepseek-reasoner-2", renamed.modelId());
         assertEquals(3, renamed.models().size());
@@ -246,7 +246,7 @@ class LlmModelSettingsTest {
                 "a custom display name survives the rename");
 
         // Pointing at a model the catalog already serves switches to it instead of renaming over it.
-        LlmModelEntry switched = catalogSettings().activeModel().withModelId("deepseek-vl");
+        WeavingModelEntry switched = catalogSettings().activeModel().withModelId("deepseek-vl");
         assertEquals(3, switched.models().size());
         assertEquals("deepseek-vl", switched.modelId());
     }
@@ -272,7 +272,7 @@ class LlmModelSettingsTest {
                 legacyEntry(),
                 LEGACY_KEY);
 
-        LlmModelEntry entry = settings.activeModel();
+        WeavingModelEntry entry = settings.activeModel();
         assertEquals(1, entry.models().size());
         assertEquals("deepseek-flash", entry.models().get(0).modelId());
         assertEquals("deepseek-flash", entry.models().get(0).displayName());
@@ -305,7 +305,7 @@ class LlmModelSettingsTest {
                         "@model|known|deepseek-reasoner|Reasoner|maybe|204800"),
                 "known", List.of(), legacyEntry(), LEGACY_KEY);
 
-        LlmModelEntry entry = settings.models().get(0);
+        WeavingModelEntry entry = settings.models().get(0);
         assertEquals(List.of("deepseek-flash", "deepseek-reasoner"), modelIdsOf(entry),
                 "the retired column must never cost a model");
         assertEquals(51_200, entry.models().get(0).contextWindowTokens());
@@ -328,9 +328,9 @@ class LlmModelSettingsTest {
                 List.of("@entry|known|Known|deepseek|https://known.example/v1|deepseek-flash"),
                 "known", List.of(), legacyEntry(), LEGACY_KEY);
 
-        LlmModelEntry entry = settings.models().get(0);
+        WeavingModelEntry entry = settings.models().get(0);
         assertEquals(1, entry.models().size(), "a provider always has a model to talk to");
-        assertEquals(LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL, entry.modelId());
+        assertEquals(WeavingConfiguration.DEFAULT_LLM_REMOTE_MODEL, entry.modelId());
     }
 
     /** A config file that only knows the single-model keys: no model list and no credential store. */
@@ -347,12 +347,12 @@ class LlmModelSettingsTest {
                 LEGACY_KEY);
     }
 
-    private static LlmModelEntry legacyEntry() {
-        return LlmModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400);
+    private static WeavingModelEntry legacyEntry() {
+        return WeavingModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400);
     }
 
-    private static List<String> ids(List<LlmModelEntry> entries) {
-        return entries.stream().map(LlmModelEntry::id).toList();
+    private static List<String> ids(List<WeavingModelEntry> entries) {
+        return entries.stream().map(WeavingModelEntry::id).toList();
     }
 
     /** A document in the current two-line-kind format: one provider serving three models. */
@@ -377,16 +377,16 @@ class LlmModelSettingsTest {
         return settings.modelLines().stream().filter(line -> line.startsWith("@model")).toList();
     }
 
-    private static List<String> modelIdsOf(LlmModelEntry entry) {
-        return entry.models().stream().map(LlmModelSpec::modelId).toList();
+    private static List<String> modelIdsOf(WeavingModelEntry entry) {
+        return entry.models().stream().map(WeavingModelSpec::modelId).toList();
     }
 
     /** Everything one provider carries: what a round trip has to reproduce exactly. */
-    private static List<String> entrySignature(LlmModelEntry entry) {
+    private static List<String> entrySignature(WeavingModelEntry entry) {
         List<String> signature = new ArrayList<>();
         signature.add(entry.id() + "|" + entry.displayName() + "|" + entry.providerId() + "|"
                 + entry.baseUrl() + "|" + entry.activeModelId());
-        for (LlmModelSpec spec : entry.models()) {
+        for (WeavingModelSpec spec : entry.models()) {
             signature.add(spec.modelId() + "|" + spec.displayName() + "|" + spec.contextWindowTokens());
         }
         return signature;

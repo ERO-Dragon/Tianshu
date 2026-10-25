@@ -23,4 +23,9 @@ public final class NeoForgeClientTextProvider implements ClientTextProvider {
     public String currentLanguage() {
         return net.minecraft.client.Minecraft.getInstance().options.languageCode;
     }
+
+    @Override
+    public boolean hasKey(String key) {
+        return key != null && !key.isBlank() && I18n.exists(key);
+    }
 }

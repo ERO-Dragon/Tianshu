@@ -36,7 +36,7 @@ class AsrModelServicePreviewBoundaryTest {
     @Test
     void previewFailuresUseResourceKeysThatTheHostLocalizes() throws Exception {
         String service = read("src/main/java/com/rheinmetal/tianshu/function/intake/AsrModelService.java");
-        String gui = read("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/settings/module/intake/AsrSettingsRegistrySource.java");
+        String gui = read("src/main/java/com/rheinmetal/tianshu/function/intake/settings/IntakeSettingsRegistrySource.java");
 
         assertTrue(service.contains("tianshu.gui.asr.failure."));
         assertFalse(service.contains("ASR preview is already running."));

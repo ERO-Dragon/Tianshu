@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.echo.runtime;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;

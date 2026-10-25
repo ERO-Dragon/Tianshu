@@ -5,7 +5,7 @@ import com.k2fsa.sherpa.onnx.OfflineStream;
 import com.k2fsa.sherpa.onnx.OnlineRecognizer;
 import com.k2fsa.sherpa.onnx.OnlineStream;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
 import com.rheinmetal.tianshu.model.ModelFilesMissingException;
 
 import java.nio.file.Files;
@@ -36,15 +36,11 @@ public class AsrEngine {
     }
 
     public boolean initialize(AsrModelInfo modelInfo, Path modelDir) throws ModelFilesMissingException {
-        return initialize(modelInfo, modelDir, null);
-    }
-
-    public boolean initialize(AsrModelInfo modelInfo, Path modelDir, Path hotwordsFile) throws ModelFilesMissingException {
         env.info("Initializing ASR engine, model=" + modelInfo.localKey() + ", modelDir=" + modelDir);
         validateRequiredFiles(modelInfo, modelDir);
         try {
             SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(env);
-            SherpaOnnxAsrConfigFactory.ResolvedConfig resolved = factory.build(modelInfo, modelDir, hotwordsFile).orElse(null);
+            SherpaOnnxAsrConfigFactory.ResolvedConfig resolved = factory.build(modelInfo, modelDir).orElse(null);
             if (resolved == null) {
                 return false;
             }

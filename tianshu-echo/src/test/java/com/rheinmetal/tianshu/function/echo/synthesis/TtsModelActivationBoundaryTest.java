@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.synthesis;
 
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -15,6 +16,6 @@ class TtsModelActivationBoundaryTest {
         String text = Files.readString(source, StandardCharsets.UTF_8);
 
         assertFalse(text.contains("getTtsModelPath"));
-        assertFalse(text.contains("TtsConfiguration"));
+        assertFalse(text.contains("EchoConfiguration"));
     }
 }

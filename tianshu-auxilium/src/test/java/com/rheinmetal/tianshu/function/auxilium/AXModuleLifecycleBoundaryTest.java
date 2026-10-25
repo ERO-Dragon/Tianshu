@@ -6,12 +6,12 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -45,7 +45,7 @@ class AXModuleLifecycleBoundaryTest {
                 null,
                 () -> "天枢",
                 AXRuntimePolicy.defaults(),
-                AXOutputSettings.DEFAULT,
+                AuxiliumOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP
         );
 
@@ -57,7 +57,7 @@ class AXModuleLifecycleBoundaryTest {
         module.prepare(new ModuleRuntimeContext(
                 runtime,
                 services,
-                new VoiceResourceManager(env, config),
+                new VoiceTriggerRegistry(),
                 new ModuleRuntimeState()
         ));
 

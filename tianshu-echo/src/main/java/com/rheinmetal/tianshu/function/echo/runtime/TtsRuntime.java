@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMode;
 import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
 import com.rheinmetal.tianshu.function.echo.text.TtsTextNormalizer;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;

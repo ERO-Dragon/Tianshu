@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.echo.synthesis;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.TtsModelService;
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

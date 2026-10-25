@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.function.intake.index;
 
 import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
+import com.rheinmetal.tianshu.api.game.NamedObjectIndex;
 import com.rheinmetal.tianshu.function.intake.repair.core.IRCommandService;
 import com.rheinmetal.tianshu.function.intake.repair.core.IRParseResult;
 import com.rheinmetal.tianshu.function.intake.repair.core.IRSnapshot;
@@ -22,11 +24,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /** Client-lifetime IR index. It is shared by all world sessions and owns one bounded worker. */
-public final class ClientNamedObjectIndexManager implements AutoCloseable {
+public final class ClientNamedObjectIndexManager implements NamedObjectIndex {
     private final LogSink logSink;
 
     private final IRCommandService irService = new IRCommandService();
-    private final NamedObjectDictionaryProvider dictionaryProvider;
+    private final NamedObjectDictionary dictionaryProvider;
     private final IRCacheStore cacheStore;
     private final ExecutorService indexExecutor;
     private final Object taskMonitor = new Object();
@@ -35,7 +37,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
     private CompletableFuture<Boolean> initializationFuture;
 
     public ClientNamedObjectIndexManager(
-            NamedObjectDictionaryProvider dictionaryProvider,
+            NamedObjectDictionary dictionaryProvider,
             Path cacheDirectory,
             Supplier<String> languageCodeSupplier
     ) {
@@ -43,7 +45,7 @@ public final class ClientNamedObjectIndexManager implements AutoCloseable {
     }
 
     public ClientNamedObjectIndexManager(
-            NamedObjectDictionaryProvider dictionaryProvider,
+            NamedObjectDictionary dictionaryProvider,
             Path cacheDirectory,
             Supplier<String> languageCodeSupplier,
             LogSink logSink

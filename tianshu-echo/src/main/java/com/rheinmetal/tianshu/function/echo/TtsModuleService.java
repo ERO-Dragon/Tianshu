@@ -13,7 +13,7 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsRequestSource;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntime;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsVoiceProfile;
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.Priority;
 
 import java.util.Objects;

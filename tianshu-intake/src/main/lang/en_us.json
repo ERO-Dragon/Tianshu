@@ -116,10 +116,6 @@
   "tianshu.presence.module.asr.download_failed": "ASR model download failed",
   "tianshu.presence.module.asr.download_busy": "ASR model download is already running",
   "tianshu.presence.module.asr.download_queue_full": "ASR model download queue is full",
-  "tianshu.presence.module.asr.reload_started": "Reloading ASR voice resources",
-  "tianshu.presence.module.asr.reload_complete": "ASR voice resources reloaded",
-  "tianshu.presence.module.asr.reload_failed": "ASR voice resource reload failed",
-  "tianshu.presence.module.asr.reload_rejected": "ASR voice resource reload could not be queued",
   "tianshu.presence.module.asr.starting": "Listening starting",
   "tianshu.presence.module.asr.stopped": "Listening stopped"
 }

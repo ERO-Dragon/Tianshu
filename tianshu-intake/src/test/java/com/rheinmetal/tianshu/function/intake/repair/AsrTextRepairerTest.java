@@ -20,8 +20,6 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceSnapshot;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -128,31 +126,8 @@ class AsrTextRepairerTest {
         repairer.process(payload, published);
     }
 
-    private VoiceResourceAccess voiceAccess() {
-        return new VoiceResourceAccess() {
-            @Override
-            public VoiceTriggerRegistry voiceTriggers() {
-                return runtime.voiceTriggers();
-            }
-
-            @Override
-            public VoiceResourceSnapshot snapshot() {
-                return null;
-            }
-
-            @Override
-            public Path resolveHotwordsFile(String language) {
-                return null;
-            }
-
-            @Override
-            public void addChangeListener(Consumer<VoiceResourceSnapshot> listener) {
-            }
-
-            @Override
-            public void removeChangeListener(Consumer<VoiceResourceSnapshot> listener) {
-            }
-        };
+    private VoiceTriggerRegistry voiceAccess() {
+        return runtime.voiceTriggers();
     }
 
     private void registerCapability(String moduleId, String capabilityId, PayloadType payloadType, Class<?> payloadClass, EnumSet<PacketType> packets, EnvelopeHandler handler) {

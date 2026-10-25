@@ -21,7 +21,6 @@ class TianshuCoreManagerReadinessTest {
     void environmentReadinessFollowsCoreLifecycle() throws Exception {
         TianshuCoreManager coreManager = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge()
         );
 

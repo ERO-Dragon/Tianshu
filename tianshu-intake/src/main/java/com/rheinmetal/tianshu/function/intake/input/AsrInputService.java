@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.intake.input;
 
-public interface AsrInputService {
+public interface AsrInputService extends com.rheinmetal.tianshu.api.assembly.VoiceInputPort {
     boolean canAcceptVoiceInput();
 
     void beginVoiceInput();

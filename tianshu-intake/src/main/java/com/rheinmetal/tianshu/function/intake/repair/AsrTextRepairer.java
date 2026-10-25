@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 
 import java.util.List;
@@ -51,7 +51,7 @@ public final class AsrTextRepairer {
 
     private volatile List<VoiceTriggerRegistration> indexedRegistrations = List.of();
     private volatile List<IrCompiledVoiceTrigger> voiceTriggerIndex = List.of();
-    private volatile VoiceResourceAccess voiceResources;
+    private volatile VoiceTriggerRegistry voiceTriggers;
     private volatile boolean acceptingInput;
     private volatile DiagnosticSink diagnostics = DiagnosticSink.NOOP;
 
@@ -64,9 +64,9 @@ public final class AsrTextRepairer {
         this.matcher = new IrVoiceTriggerMatcher();
     }
 
-    /** Binds the voice-resource view and starts accepting repairs; called from the speech module's prepare. */
-    public void initialize(VoiceResourceAccess voiceResources, DiagnosticSink diagnostics) {
-        this.voiceResources = voiceResources;
+    /** Binds the shared trigger registry and starts accepting repairs; called from the speech module's prepare. */
+    public void initialize(VoiceTriggerRegistry voiceTriggers, DiagnosticSink diagnostics) {
+        this.voiceTriggers = voiceTriggers;
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
         this.acceptingInput = true;
         refreshVoiceTriggerIndex(currentVoiceTriggerRegistrations());
@@ -78,7 +78,7 @@ public final class AsrTextRepairer {
 
     public void destroy() {
         stop();
-        voiceResources = null;
+        voiceTriggers = null;
         indexedRegistrations = List.of();
         voiceTriggerIndex = List.of();
         diagnostics = DiagnosticSink.NOOP;
@@ -156,11 +156,8 @@ public final class AsrTextRepairer {
     }
 
     private List<VoiceTriggerRegistration> currentVoiceTriggerRegistrations() {
-        VoiceResourceAccess resources = voiceResources;
-        if (resources != null && resources.voiceTriggers() != null) {
-            return resources.voiceTriggers().registrations();
-        }
-        return List.of();
+        VoiceTriggerRegistry triggers = voiceTriggers;
+        return triggers == null ? List.of() : triggers.registrations();
     }
 
     /**

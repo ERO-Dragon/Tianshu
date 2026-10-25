@@ -9,7 +9,7 @@ import java.util.List;
  * id here and the endpoint, the model id and the context window are taken from the profile instead of
  * being typed. That is what makes the shipped profile — not the config file — the definition of a
  * built-in provider, and it is why an entry that is exactly a profile can be recognised again
- * ({@link Provider#isProfileOf(LlmModelEntry)}) when it is edited.
+ * ({@link Provider#isProfileOf(WeavingModelEntry)}) when it is edited.
  *
  * <p>The label is a language key rather than text on purpose: a built-in provider's name is player
  * facing, so it lives in the language files, and the stored {@code providerId} stays a stable,
@@ -22,11 +22,11 @@ import java.util.List;
 public final class LlmBuiltinProviders {
     /** DeepSeek's OpenAI-compatible endpoint; also the defaults of the legacy single-model keys. */
     private static final Provider DEEPSEEK = new Provider(
-            LlmConfiguration.DEFAULT_LLM_PROVIDER_ID,
+            WeavingConfiguration.DEFAULT_LLM_PROVIDER_ID,
             "tianshu.gui.llm.provider.deepseek",
-            LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL,
-            LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL,
-            LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS);
+            WeavingConfiguration.DEFAULT_LLM_REMOTE_BASE_URL,
+            WeavingConfiguration.DEFAULT_LLM_REMOTE_MODEL,
+            WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS);
 
     /** Every built-in provider, in the order the form lists them; the first one is the default. */
     private static final List<Provider> PROVIDERS = List.of(DEEPSEEK);
@@ -90,13 +90,13 @@ public final class LlmBuiltinProviders {
             int contextWindowTokens
     ) {
         public Provider {
-            id = requireText(id, LlmConfiguration.DEFAULT_LLM_PROVIDER_ID);
+            id = requireText(id, WeavingConfiguration.DEFAULT_LLM_PROVIDER_ID);
             labelKey = requireText(labelKey, "");
-            baseUrl = requireText(baseUrl, LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
-            defaultModelId = requireText(defaultModelId, LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL);
+            baseUrl = requireText(baseUrl, WeavingConfiguration.DEFAULT_LLM_REMOTE_BASE_URL);
+            defaultModelId = requireText(defaultModelId, WeavingConfiguration.DEFAULT_LLM_REMOTE_MODEL);
             contextWindowTokens = contextWindowTokens > 0
                     ? contextWindowTokens
-                    : LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
+                    : WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
         }
 
         /**
@@ -106,7 +106,7 @@ public final class LlmBuiltinProviders {
          * window is a custom configuration, and editing it in built-in mode would overwrite the
          * difference with the shipped defaults.
          */
-        public boolean isProfileOf(LlmModelEntry entry) {
+        public boolean isProfileOf(WeavingModelEntry entry) {
             return entry != null
                     && id.equals(entry.providerId())
                     && baseUrl.equals(entry.baseUrl())
@@ -121,12 +121,12 @@ public final class LlmBuiltinProviders {
          * compares the configured catalog with, so "default" has one definition instead of a second
          * guess in the UI layer.
          */
-        public List<LlmModelSpec> defaultCatalog() {
-            return List.of(new LlmModelSpec(defaultModelId, defaultModelId, contextWindowTokens));
+        public List<WeavingModelSpec> defaultCatalog() {
+            return List.of(new WeavingModelSpec(defaultModelId, defaultModelId, contextWindowTokens));
         }
 
         /** Whether a model catalog is exactly {@link #defaultCatalog()}. */
-        public boolean isDefaultCatalog(List<LlmModelSpec> models) {
+        public boolean isDefaultCatalog(List<WeavingModelSpec> models) {
             return models != null && defaultCatalog().equals(models);
         }
 

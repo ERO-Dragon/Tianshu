@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.event;
 
+import com.rheinmetal.tianshu.function.auxilium.AuxiliumAssistantSettings;
+
 /**
  * How one event is handled once the policy table has decided.
  *
@@ -7,7 +9,7 @@ package com.rheinmetal.tianshu.function.auxilium.event;
  *
  * <ul>
  *   <li>{@link #IMMEDIATE} — try to speak on arrival. A busy assistant decides through
- *       {@code AXAssistantSettings.allowInterruption()} whether that means interrupting or waiting its turn.</li>
+ *       {@code AuxiliumAssistantSettings.allowInterruption()} whether that means interrupting or waiting its turn.</li>
  *   <li>{@link #DEFERRED} — hold it in the deferred buffer and say it during the next lull, as one voluntary
  *       turn.</li>
  *   <li>{@link #SILENT} — never speak it; fold it into the history with a count so memory still learns it

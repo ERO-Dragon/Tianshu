@@ -1,23 +1,21 @@
 package com.rheinmetal.tianshu.client.diagnostics;
 
 import com.rheinmetal.tianshu.client.config.ClientDiagnosticsConfiguration;
-import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
-import com.rheinmetal.tianshu.function.auxilium.AXModule;
-import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
 public final class ClientDiagnosticPolicy implements Predicate<String> {
+    // Ids come from the protocol's single source of truth: the kernel names the modules it expects in
+    // the pipeline without importing the jars that implement them.
     private static final Set<String> DIAGNOSTIC_MODULES = Set.of(
-            AsrProtocolAdapter.MODULE_ID,
-            IaProtocolAdapter.MODULE_ID,
-            AXModule.MODULE_ID,
-            LlmProtocolAdapter.MODULE_ID,
-            TtsProtocolAdapter.MODULE_ID
+            ProtocolModuleIds.ASR,
+            ProtocolModuleIds.IA,
+            ProtocolModuleIds.AX,
+            ProtocolModuleIds.LLM,
+            ProtocolModuleIds.TTS
     );
 
     private final ClientDiagnosticsConfiguration config;

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.assembly.GameEventPort;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
@@ -20,7 +21,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.core.maintenance.AXRuntimeMaintenanceCoordinator;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXReplyTextRepository;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXAccessController;
@@ -37,6 +38,7 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
+import com.rheinmetal.tianshu.function.auxilium.producer.AuxiliumGameEvents;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
@@ -61,7 +63,7 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.DefaultAXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
-import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
+import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
@@ -78,13 +80,13 @@ public final class AXModule implements TianshuManagedModule {
     public static final String MODULE_ID = ProtocolModuleIds.AX;
 
     private final IGameEnvironment env;
-    private final AXStorageConfiguration storageConfiguration;
+    private final AuxiliumStorageConfiguration storageConfiguration;
     private final ModuleRuntimeAccess runtime;
     private final AXWorldIdentityProvider worldIdentityProvider;
     private final AXPromptLanguageProvider promptLanguageProvider;
-    private final AXAssistantSettings assistantSettings;
+    private final AuxiliumAssistantSettings assistantSettings;
     private final AXRuntimePolicy runtimePolicy;
-    private final AXOutputSettings outputSettings;
+    private final AuxiliumOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
     /** Voice channel for delegation lines; {@code null} means this host has no voice wiring. */
     private final AXDelegateDeliverySink delegateSpeech;
@@ -116,22 +118,22 @@ public final class AXModule implements TianshuManagedModule {
     private final AXDialogueContextInputMapper contextInputMapper = new AXDialogueContextInputMapper();
     private final AXPresenceWorldEventMapper worldEventMapper = new AXPresenceWorldEventMapper();
 
-    public AXModule(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime) {
+    public AXModule(IGameEnvironment env, AuxiliumStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime) {
         this(env, storageConfiguration, runtime, null);
     }
 
-    public AXModule(IGameEnvironment env, AXStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime, AXWorldIdentityProvider worldIdentityProvider) {
-        this(env, storageConfiguration, runtime, worldIdentityProvider, null, AXAssistantSettings.DEFAULT, AXOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
+    public AXModule(IGameEnvironment env, AuxiliumStorageConfiguration storageConfiguration, ModuleRuntimeAccess runtime, AXWorldIdentityProvider worldIdentityProvider) {
+        this(env, storageConfiguration, runtime, worldIdentityProvider, null, AuxiliumAssistantSettings.DEFAULT, AuxiliumOutputSettings.DEFAULT, AXChatOutputSink.NOOP);
     }
 
     public AXModule(
             IGameEnvironment env,
-            AXStorageConfiguration storageConfiguration,
+            AuxiliumStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
-            AXAssistantSettings assistantSettings,
-            AXOutputSettings outputSettings,
+            AuxiliumAssistantSettings assistantSettings,
+            AuxiliumOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
         this(env, storageConfiguration, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings, AXRuntimePolicy.defaults(), outputSettings, chatOutputSink);
@@ -139,13 +141,13 @@ public final class AXModule implements TianshuManagedModule {
 
     public AXModule(
             IGameEnvironment env,
-            AXStorageConfiguration storageConfiguration,
+            AuxiliumStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
-            AXAssistantSettings assistantSettings,
+            AuxiliumAssistantSettings assistantSettings,
             AXRuntimePolicy runtimePolicy,
-            AXOutputSettings outputSettings,
+            AuxiliumOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink
     ) {
         this(env, storageConfiguration, runtime, worldIdentityProvider, promptLanguageProvider, assistantSettings,
@@ -158,13 +160,13 @@ public final class AXModule implements TianshuManagedModule {
      */
     public AXModule(
             IGameEnvironment env,
-            AXStorageConfiguration storageConfiguration,
+            AuxiliumStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
-            AXAssistantSettings assistantSettings,
+            AuxiliumAssistantSettings assistantSettings,
             AXRuntimePolicy runtimePolicy,
-            AXOutputSettings outputSettings,
+            AuxiliumOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink,
             AXDelegateDeliverySink delegateSpeech,
             AXEventSpeechSink eventSpeech
@@ -179,13 +181,13 @@ public final class AXModule implements TianshuManagedModule {
      */
     public AXModule(
             IGameEnvironment env,
-            AXStorageConfiguration storageConfiguration,
+            AuxiliumStorageConfiguration storageConfiguration,
             ModuleRuntimeAccess runtime,
             AXWorldIdentityProvider worldIdentityProvider,
             AXPromptLanguageProvider promptLanguageProvider,
-            AXAssistantSettings assistantSettings,
+            AuxiliumAssistantSettings assistantSettings,
             AXRuntimePolicy runtimePolicy,
-            AXOutputSettings outputSettings,
+            AuxiliumOutputSettings outputSettings,
             AXChatOutputSink chatOutputSink,
             AXDelegateDeliverySink delegateSpeech,
             AXEventSpeechSink eventSpeech,
@@ -196,9 +198,9 @@ public final class AXModule implements TianshuManagedModule {
         this.runtime = runtime;
         this.worldIdentityProvider = worldIdentityProvider;
         this.promptLanguageProvider = promptLanguageProvider == null ? AXPromptLanguageProvider.fixed(AXPromptLanguage.EN_US) : promptLanguageProvider;
-        this.assistantSettings = assistantSettings == null ? AXAssistantSettings.DEFAULT : assistantSettings;
+        this.assistantSettings = assistantSettings == null ? AuxiliumAssistantSettings.DEFAULT : assistantSettings;
         this.runtimePolicy = runtimePolicy == null ? AXRuntimePolicy.defaults() : runtimePolicy;
-        this.outputSettings = outputSettings == null ? AXOutputSettings.DEFAULT : outputSettings;
+        this.outputSettings = outputSettings == null ? AuxiliumOutputSettings.DEFAULT : outputSettings;
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
         this.delegateSpeech = delegateSpeech;
         this.eventSpeech = eventSpeech;
@@ -369,6 +371,9 @@ public final class AXModule implements TianshuManagedModule {
         );
         moduleServices = context.services();
         moduleServices.register(AXGameEventService.class, gameEventService);
+        // The platform ticks this port with plain readings; the probe, the wording and the submission
+        // all stay on this side, so the adapter never names an auxilium type.
+        moduleServices.register(GameEventPort.class, new AuxiliumGameEvents(() -> gameEventService, env.logs()));
     }
 
     /**

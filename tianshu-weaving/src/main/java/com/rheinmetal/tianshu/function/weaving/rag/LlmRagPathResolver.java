@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.rag;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.core.scope.WorldScope;
 import com.rheinmetal.tianshu.core.scope.WorldScopeProvider;
 
@@ -10,7 +10,7 @@ public final class LlmRagPathResolver {
     private final Path ragRoot;
     private final WorldScopeProvider worldScopeProvider;
 
-    public LlmRagPathResolver(LlmConfiguration config, WorldScopeProvider worldScopeProvider) {
+    public LlmRagPathResolver(WeavingConfiguration config, WorldScopeProvider worldScopeProvider) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }

@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.weaving.service;
 
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
-import com.rheinmetal.tianshu.model.LlmModelInfo;
-import com.rheinmetal.tianshu.model.LlmModelManager;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
 import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
 
 import java.util.ArrayList;

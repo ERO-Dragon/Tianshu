@@ -4,8 +4,8 @@ import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.weaving.catalog.OpenAiCompatibleModelCatalogClient;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmContextTiers;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingContextTiers;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
@@ -20,7 +20,7 @@ import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.weaving.service.OpenAiCompatibleInferenceClient;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -65,7 +65,7 @@ public final class LlmModule implements TianshuManagedModule {
     private static final Duration EMBEDDING_LOAD_DELAY_AFTER_WORLD_ENTRY = Duration.ofSeconds(6);
 
     private final IGameEnvironment env;
-    private final LlmConfiguration config;
+    private final WeavingConfiguration config;
     private final ModuleRuntimeAccess runtime;
     private final LlmRagCacheLayout ragCacheLayout;
     private final LlmRagStorageService ragStorageService;
@@ -98,11 +98,11 @@ public final class LlmModule implements TianshuManagedModule {
     private volatile long lifecycleStatusGeneration;
     private volatile boolean lifecycleActive;
 
-    public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime) {
+    public LlmModule(IGameEnvironment env, WeavingConfiguration config, ModuleRuntimeAccess runtime) {
         this(env, config, runtime, null);
     }
 
-    public LlmModule(IGameEnvironment env, LlmConfiguration config, ModuleRuntimeAccess runtime,
+    public LlmModule(IGameEnvironment env, WeavingConfiguration config, ModuleRuntimeAccess runtime,
                      NativeModelLoadQueue loadQueue) {
         this.env = env;
         this.config = config;
@@ -402,7 +402,7 @@ public final class LlmModule implements TianshuManagedModule {
             return null;
         }
         int windowTokens = config.getLlmContextWindowTokens();
-        int tier = LlmContextTiers.downgradeToLargestAvailable(config.getLlmContextTier(), windowTokens);
+        int tier = WeavingContextTiers.downgradeToLargestAvailable(config.getLlmContextTier(), windowTokens);
         if (tier != config.getLlmContextTier()) {
             env.warn("[LLM] Context tier downgraded to fit the declared window: requested="
                     + config.getLlmContextTier() + " window=" + windowTokens + " effective=" + tier);

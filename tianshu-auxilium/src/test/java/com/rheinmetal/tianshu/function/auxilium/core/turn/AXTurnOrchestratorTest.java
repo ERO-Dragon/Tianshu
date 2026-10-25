@@ -18,9 +18,9 @@ import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueIn
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXReplyTextRepository;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
@@ -854,8 +854,8 @@ class AXTurnOrchestratorTest {
         assertFalse(diagnostic.attributes().containsKey("reason"), "标签契约没有原因码");
     }
 
-    private static AXOutputSettings outputSettings() {
-        return () -> AXOutputMode.UI_AND_TTS;
+    private static AuxiliumOutputSettings outputSettings() {
+        return () -> AuxiliumOutputMode.UI_AND_TTS;
     }
 
     /**

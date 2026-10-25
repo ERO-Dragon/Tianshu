@@ -8,7 +8,7 @@ import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 import com.rheinmetal.tianshu.utils.PathUtils;
 
 import java.io.File;

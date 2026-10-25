@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.intake.repair.core;
 
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -72,7 +73,7 @@ public final class CommandParser {
             } else {
                 CommandCandidateRanker.ScoredCandidate best = findBestCandidateForIntercept(rawText, contextInternalIds, sharedLcsWorkspace);
                 if (isItemCandidate(best) && best.score >= policy.finalIrFixedThreshold()) {
-                    results.add(new ParseUnit(Intent.UNKNOWN, IRObjectId.raw(IRBaseUtils.reverseLookupArray[best.internalId]), false));
+                    results.add(new ParseUnit(Intent.UNKNOWN, GameObjectId.raw(IRBaseUtils.reverseLookupArray[best.internalId]), false));
                 }
             }
         } else if (isFastIR) {
@@ -103,7 +104,7 @@ public final class CommandParser {
                 matchedItemRealIds,
                 matchedEntityTypeIds,
                 reviewHint.bestCandidateText,
-                IRObjectId.raw(reviewHint.bestCandidateRealItemId),
+                GameObjectId.raw(reviewHint.bestCandidateRealItemId),
                 reviewHint.bestScore,
                 reviewHint.entityRatio,
                 reviewHint.interceptThreshold,
@@ -129,7 +130,7 @@ public final class CommandParser {
             if (isItemCandidate(best)
                     && best.score >= threshold
                     && !isGenericContainedQuery(IRBaseUtils.tokenize(rawText), ranked)) {
-                interceptedUnit = new ParseUnit(Intent.UNKNOWN, IRObjectId.raw(targetObjectId), false);
+                interceptedUnit = new ParseUnit(Intent.UNKNOWN, GameObjectId.raw(targetObjectId), false);
             }
         }
 
@@ -210,11 +211,11 @@ public final class CommandParser {
         if (!isItemCandidate(selected)) {
             return null;
         }
-        return new ParseUnit(subQuery.intent, IRObjectId.raw(IRBaseUtils.reverseLookupArray[selected.internalId]), subQuery.negFlag);
+        return new ParseUnit(subQuery.intent, GameObjectId.raw(IRBaseUtils.reverseLookupArray[selected.internalId]), subQuery.negFlag);
     }
 
     private boolean isItemCandidate(CommandCandidateRanker.ScoredCandidate candidate) {
-        return candidate != null && IRObjectId.isItem(IRBaseUtils.reverseLookupArray[candidate.internalId]);
+        return candidate != null && GameObjectId.isItem(IRBaseUtils.reverseLookupArray[candidate.internalId]);
     }
 
     private boolean isGenericContainedQuery(String[] queryTokens, CommandCandidateRanker.ScoredCandidate[] ranked) {

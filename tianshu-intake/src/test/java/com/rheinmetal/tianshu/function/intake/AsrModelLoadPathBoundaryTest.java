@@ -30,8 +30,8 @@ class AsrModelLoadPathBoundaryTest {
 
         assertEquals(1, occurrences(source, "= createEngine("),
                 "the model must be read from exactly one place, so every path takes the same gate");
-        assertTrue(source.contains("requestEngineLoad(context, EngineLoadReason.HOTWORD_RELOAD)"),
-                "a hotword change must re-enter the gated load instead of reading the model on its own");
+        assertTrue(source.contains("requestEngineLoad(context)"),
+                "the model is read through one gated entry only");
         assertFalse(source.contains(":engine.reload"),
                 "a dedicated reload lane key would be a second, ungated door into the model");
     }

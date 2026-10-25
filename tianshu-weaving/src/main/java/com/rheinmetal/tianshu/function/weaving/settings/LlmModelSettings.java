@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
  * provider serves and the credentials keyed by provider id.
  *
  * <p>The credential is stored <em>next to</em> the entries, never inside one:
- * {@link LlmModelEntry} cannot carry it, {@link #modelLines()} cannot write it, and
+ * {@link WeavingModelEntry} cannot carry it, {@link #modelLines()} cannot write it, and
  * {@link #toString()} reports ids only. That way an entry, a model list or a debug line can never leak
  * a key.
  *
@@ -82,13 +82,13 @@ public final class LlmModelSettings {
      */
     private static final Pattern ID_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
-    private final List<LlmModelEntry> storedEntries;
-    private final LlmModelEntry legacyEntry;
+    private final List<WeavingModelEntry> storedEntries;
+    private final WeavingModelEntry legacyEntry;
     private final String requestedActiveId;
     private final Map<String, String> credentials;
     private final String legacyApiKey;
 
-    private LlmModelSettings(List<LlmModelEntry> storedEntries, LlmModelEntry legacyEntry, String requestedActiveId,
+    private LlmModelSettings(List<WeavingModelEntry> storedEntries, WeavingModelEntry legacyEntry, String requestedActiveId,
                              Map<String, String> credentials, String legacyApiKey) {
         this.storedEntries = storedEntries;
         this.legacyEntry = legacyEntry;
@@ -109,9 +109,9 @@ public final class LlmModelSettings {
      */
     public static LlmModelSettings fromStored(List<? extends String> modelLines, String storedActiveId,
                                               List<? extends String> credentialLines,
-                                              LlmModelEntry legacyEntry, String legacyApiKey) {
-        LlmModelEntry fallbackEntry = legacyEntry == null
-                ? LlmModelEntry.legacy(null, null, 0)
+                                              WeavingModelEntry legacyEntry, String legacyApiKey) {
+        WeavingModelEntry fallbackEntry = legacyEntry == null
+                ? WeavingModelEntry.legacy(null, null, 0)
                 : legacyEntry;
         return new LlmModelSettings(
                 decodeEntries(modelLines),
@@ -122,7 +122,7 @@ public final class LlmModelSettings {
     }
 
     /** Every configured provider, in configuration order and never empty. */
-    public List<LlmModelEntry> models() {
+    public List<WeavingModelEntry> models() {
         return storedEntries.isEmpty() ? List.of(legacyEntry) : storedEntries;
     }
 
@@ -133,13 +133,13 @@ public final class LlmModelSettings {
 
     /**
      * Id of the active <em>provider</em>; an unknown or missing selection falls back to the first one.
-     * The active <em>model</em> is per provider and lives in {@link LlmModelEntry#activeModelId()}.
+     * The active <em>model</em> is per provider and lives in {@link WeavingModelEntry#activeModelId()}.
      */
     public String activeModelId() {
         if (storedEntries.isEmpty()) {
-            return LlmModelEntry.LEGACY_ID;
+            return WeavingModelEntry.LEGACY_ID;
         }
-        for (LlmModelEntry entry : storedEntries) {
+        for (WeavingModelEntry entry : storedEntries) {
             if (entry.id().equals(requestedActiveId)) {
                 return entry.id();
             }
@@ -148,9 +148,9 @@ public final class LlmModelSettings {
     }
 
     /** The active provider, with the model it should talk to. */
-    public LlmModelEntry activeModel() {
+    public WeavingModelEntry activeModel() {
         String activeModelId = activeModelId();
-        for (LlmModelEntry entry : models()) {
+        for (WeavingModelEntry entry : models()) {
             if (entry.id().equals(activeModelId)) {
                 return entry;
             }
@@ -172,7 +172,7 @@ public final class LlmModelSettings {
         if (dedicated != null) {
             return dedicated;
         }
-        return LlmModelEntry.LEGACY_ID.equals(trimmedId) ? legacyApiKey : "";
+        return WeavingModelEntry.LEGACY_ID.equals(trimmedId) ? legacyApiKey : "";
     }
 
     /**
@@ -181,9 +181,9 @@ public final class LlmModelSettings {
      */
     public List<String> modelLines() {
         List<String> lines = new ArrayList<>(storedEntries.size());
-        for (LlmModelEntry entry : storedEntries) {
+        for (WeavingModelEntry entry : storedEntries) {
             lines.add(encodeEntry(entry));
-            for (LlmModelSpec spec : entry.models()) {
+            for (WeavingModelSpec spec : entry.models()) {
                 lines.add(encodeModel(entry.id(), spec));
             }
         }
@@ -200,7 +200,7 @@ public final class LlmModelSettings {
     }
 
     /** Replaces the stored provider list; an empty list hands control back to the legacy keys. */
-    public LlmModelSettings withModels(List<LlmModelEntry> models) {
+    public LlmModelSettings withModels(List<WeavingModelEntry> models) {
         return new LlmModelSettings(sanitizeEntries(models), legacyEntry, requestedActiveId, credentials,
                 legacyApiKey);
     }
@@ -228,11 +228,11 @@ public final class LlmModelSettings {
     }
 
     /** Replaces the stored provider that carries the same id; an unknown id is appended. */
-    public LlmModelSettings withEntry(LlmModelEntry entry) {
+    public LlmModelSettings withEntry(WeavingModelEntry entry) {
         if (entry == null) {
             return this;
         }
-        List<LlmModelEntry> next = new ArrayList<>(storedEntries);
+        List<WeavingModelEntry> next = new ArrayList<>(storedEntries);
         boolean replaced = false;
         for (int index = 0; index < next.size(); index++) {
             if (next.get(index).id().equals(entry.id())) {
@@ -256,7 +256,7 @@ public final class LlmModelSettings {
         if (!storedModelsPresent() || legacyApiKey.isEmpty()) {
             return this;
         }
-        return withApiKey(LlmModelEntry.LEGACY_ID, legacyApiKey);
+        return withApiKey(WeavingModelEntry.LEGACY_ID, legacyApiKey);
     }
 
     /**
@@ -266,7 +266,7 @@ public final class LlmModelSettings {
     @Override
     public String toString() {
         List<String> modelIds = new ArrayList<>(models().size());
-        for (LlmModelEntry entry : models()) {
+        for (WeavingModelEntry entry : models()) {
             modelIds.add(entry.id());
         }
         return "LlmModelSettings{models=" + modelIds
@@ -281,7 +281,7 @@ public final class LlmModelSettings {
      * lines freely. A model line naming a provider that is not in the file is dropped: it belongs to
      * nothing, and inventing a provider from it would create an endpoint nobody configured.
      */
-    private static List<LlmModelEntry> decodeEntries(List<? extends String> lines) {
+    private static List<WeavingModelEntry> decodeEntries(List<? extends String> lines) {
         if (lines == null || lines.isEmpty()) {
             return List.of();
         }
@@ -312,12 +312,12 @@ public final class LlmModelSettings {
                     providers.putIfAbsent(provider.id(), provider);
                     // The old line is one provider *and* its only model, so it contributes both kinds.
                     modelLines.add(new ModelLine(provider.id(),
-                            new LlmModelSpec(provider.activeModelId(), provider.activeModelId(),
+                            new WeavingModelSpec(provider.activeModelId(), provider.activeModelId(),
                                     provider.legacyWindow())));
                 }
             }
         }
-        List<LlmModelEntry> decoded = new ArrayList<>(providers.size());
+        List<WeavingModelEntry> decoded = new ArrayList<>(providers.size());
         for (ProviderLine provider : providers.values()) {
             decoded.add(provider.toEntry(modelsOf(provider, modelLines)));
         }
@@ -325,8 +325,8 @@ public final class LlmModelSettings {
     }
 
     /** The models of one provider, in file order; an entry with none falls back to the defaults. */
-    private static List<LlmModelSpec> modelsOf(ProviderLine provider, List<ModelLine> modelLines) {
-        List<LlmModelSpec> specs = new ArrayList<>();
+    private static List<WeavingModelSpec> modelsOf(ProviderLine provider, List<ModelLine> modelLines) {
+        List<WeavingModelSpec> specs = new ArrayList<>();
         for (ModelLine model : modelLines) {
             if (model.entryId().equals(provider.id())) {
                 specs.add(model.spec());
@@ -385,7 +385,7 @@ public final class LlmModelSettings {
         if (window == null) {
             return null;
         }
-        return new ModelLine(entryId, new LlmModelSpec(modelId, fields.get(3), window));
+        return new ModelLine(entryId, new WeavingModelSpec(modelId, fields.get(3), window));
     }
 
     private static Integer parseWindow(String raw) {
@@ -396,7 +396,7 @@ public final class LlmModelSettings {
         }
     }
 
-    private static String encodeEntry(LlmModelEntry entry) {
+    private static String encodeEntry(WeavingModelEntry entry) {
         return ENTRY_TAG + FIELD_SEPARATOR
                 + escape(entry.id()) + FIELD_SEPARATOR
                 + escape(entry.displayName()) + FIELD_SEPARATOR
@@ -405,7 +405,7 @@ public final class LlmModelSettings {
                 + escape(entry.activeModelId());
     }
 
-    private static String encodeModel(String entryId, LlmModelSpec spec) {
+    private static String encodeModel(String entryId, WeavingModelSpec spec) {
         return MODEL_TAG + FIELD_SEPARATOR
                 + escape(entryId) + FIELD_SEPARATOR
                 + escape(spec.modelId()) + FIELD_SEPARATOR
@@ -437,12 +437,12 @@ public final class LlmModelSettings {
     }
 
     /** One entry per id: the first occurrence wins, so a stale duplicate cannot shadow a live entry. */
-    private static List<LlmModelEntry> sanitizeEntries(List<LlmModelEntry> entries) {
+    private static List<WeavingModelEntry> sanitizeEntries(List<WeavingModelEntry> entries) {
         if (entries == null || entries.isEmpty()) {
             return List.of();
         }
-        Map<String, LlmModelEntry> unique = new LinkedHashMap<>();
-        for (LlmModelEntry entry : entries) {
+        Map<String, WeavingModelEntry> unique = new LinkedHashMap<>();
+        for (WeavingModelEntry entry : entries) {
             if (entry != null && ID_PATTERN.matcher(entry.id()).matches()) {
                 unique.putIfAbsent(entry.id(), entry);
             }
@@ -492,12 +492,12 @@ public final class LlmModelSettings {
     /** One decoded provider line plus the models read for it. */
     private record ProviderLine(String id, String displayName, String providerId, String baseUrl,
                                 String activeModelId, int legacyWindow) {
-        private LlmModelEntry toEntry(List<LlmModelSpec> models) {
-            return new LlmModelEntry(id, displayName, providerId, baseUrl, models, activeModelId);
+        private WeavingModelEntry toEntry(List<WeavingModelSpec> models) {
+            return new WeavingModelEntry(id, displayName, providerId, baseUrl, models, activeModelId);
         }
     }
 
     /** One decoded model line. */
-    private record ModelLine(String entryId, LlmModelSpec spec) {
+    private record ModelLine(String entryId, WeavingModelSpec spec) {
     }
 }

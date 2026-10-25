@@ -11,18 +11,18 @@ import java.util.Objects;
 
 public final class AXOutputProcessor {
     private final AXProtocolAdapter adapter;
-    private final AXOutputSettings settings;
+    private final AuxiliumOutputSettings settings;
     private final AXChatOutputSink chatSink;
     private final AXReplyTextRepository replyTexts;
 
     public AXOutputProcessor(
             AXProtocolAdapter adapter,
-            AXOutputSettings settings,
+            AuxiliumOutputSettings settings,
             AXChatOutputSink chatSink,
             AXReplyTextRepository replyTexts
     ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
-        this.settings = settings == null ? AXOutputSettings.DEFAULT : settings;
+        this.settings = settings == null ? AuxiliumOutputSettings.DEFAULT : settings;
         this.chatSink = chatSink == null ? AXChatOutputSink.NOOP : chatSink;
         this.replyTexts = Objects.requireNonNull(replyTexts, "replyTexts");
     }
@@ -124,7 +124,7 @@ public final class AXOutputProcessor {
         }
 
         private boolean enabledForChat() {
-            return chatLane && settings.outputMode() != AXOutputMode.DISABLED;
+            return chatLane && settings.outputMode() != AuxiliumOutputMode.DISABLED;
         }
 
         private void speak(String sentence) {

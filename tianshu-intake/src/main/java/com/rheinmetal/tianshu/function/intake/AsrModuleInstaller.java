@@ -2,13 +2,13 @@ package com.rheinmetal.tianshu.function.intake;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.function.intake.repair.AsrTextRepairer;
 import com.rheinmetal.tianshu.function.intake.repair.enhance.IrNamedObjectEnhancer;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.function.BooleanSupplier;
@@ -18,7 +18,7 @@ public final class AsrModuleInstaller implements TianshuModuleInstaller {
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
     private final IGameEnvironment env;
-    private final AsrConfiguration config;
+    private final IntakeConfiguration config;
     private final BooleanSupplier voiceInputGate;
     private final LongSupplier interruptionSignal;
     /** Serial gate shared with the retrieval and speech lanes; null installs the module without one. */
@@ -26,12 +26,12 @@ public final class AsrModuleInstaller implements TianshuModuleInstaller {
     /** Game-term repair supplied by the host; null restricts the repair lane to voice triggers. */
     private final IrNamedObjectEnhancer namedObjectEnhancer;
 
-    public AsrModuleInstaller(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputGate, LongSupplier interruptionSignal) {
+    public AsrModuleInstaller(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, IntakeConfiguration config, BooleanSupplier voiceInputGate, LongSupplier interruptionSignal) {
         this(audioBridge, moduleRuntime, env, config, voiceInputGate, interruptionSignal, null, null);
     }
 
     public AsrModuleInstaller(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env,
-                              AsrConfiguration config, BooleanSupplier voiceInputGate,
+                              IntakeConfiguration config, BooleanSupplier voiceInputGate,
                               LongSupplier interruptionSignal, NativeModelLoadQueue loadQueue) {
         this(audioBridge, moduleRuntime, env, config, voiceInputGate, interruptionSignal, loadQueue, null);
     }
@@ -41,7 +41,7 @@ public final class AsrModuleInstaller implements TianshuModuleInstaller {
      *                            only it can read the game's object registry
      */
     public AsrModuleInstaller(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env,
-                              AsrConfiguration config, BooleanSupplier voiceInputGate,
+                              IntakeConfiguration config, BooleanSupplier voiceInputGate,
                               LongSupplier interruptionSignal, NativeModelLoadQueue loadQueue,
                               IrNamedObjectEnhancer namedObjectEnhancer) {
         this.audioBridge = audioBridge;

@@ -5,7 +5,7 @@ import com.k2fsa.sherpa.onnx.OfflineTts;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy;
-import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
 
 import java.util.Map;
 
@@ -36,7 +36,7 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
             tts = new OfflineTts(resolvedConfig.config());
             sampleRate = tts.getSampleRate();
             zipVoice = resolvedConfig.zipVoice();
-            ModelSettings.TtsSettings settings = ModelSettings.loadTtsSettings(model.modelDir());
+            TtsModelSettings settings = TtsModelSettings.load(model.modelDir());
             defaultSpeed = (float) settings.speed;
             defaultSpeakerId = settings.speakerId;
             initialized = true;

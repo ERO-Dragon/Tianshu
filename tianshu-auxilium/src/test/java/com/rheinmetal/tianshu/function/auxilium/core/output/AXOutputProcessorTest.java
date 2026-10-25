@@ -40,7 +40,7 @@ class AXOutputProcessorTest {
         List<PacketType> packets = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken, packets);
         RecordingChatSink chatSink = new RecordingChatSink();
-        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_AND_TTS), chatSink, REPLY_TEXTS);
+        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AuxiliumOutputMode.UI_AND_TTS), chatSink, REPLY_TEXTS);
 
         AXOutputProcessor.AXOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
         turn.append("This is the first sentence. ");
@@ -61,7 +61,7 @@ class AXOutputProcessorTest {
         List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
-        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_ONLY), chatSink, REPLY_TEXTS);
+        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AuxiliumOutputMode.UI_ONLY), chatSink, REPLY_TEXTS);
 
         AXOutputProcessor.AXOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
         turn.complete("Only visible in UI.");
@@ -76,7 +76,7 @@ class AXOutputProcessorTest {
         List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
-        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.TTS_ONLY), chatSink, REPLY_TEXTS);
+        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AuxiliumOutputMode.TTS_ONLY), chatSink, REPLY_TEXTS);
 
         AXOutputProcessor.AXOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
         turn.complete("Only spoken.");
@@ -93,7 +93,7 @@ class AXOutputProcessorTest {
         List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
-        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.DISABLED), chatSink, REPLY_TEXTS);
+        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AuxiliumOutputMode.DISABLED), chatSink, REPLY_TEXTS);
 
         AXOutputProcessor.AXOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
         turn.complete("No output.");
@@ -109,7 +109,7 @@ class AXOutputProcessorTest {
         List<String> spoken = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, spoken);
         RecordingChatSink chatSink = new RecordingChatSink();
-        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AXOutputMode.UI_AND_TTS), chatSink, REPLY_TEXTS);
+        AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings(AuxiliumOutputMode.UI_AND_TTS), chatSink, REPLY_TEXTS);
 
         AXOutputProcessor.AXOutputTurn turn = processor.startTurn(parentEnvelope(), context(), false);
         turn.complete("Task result.");
@@ -123,8 +123,8 @@ class AXOutputProcessorTest {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         List<TtsVoiceOptions> voices = new CopyOnWriteArrayList<>();
         registerTtsSink(runtime, new CopyOnWriteArrayList<>(), new CopyOnWriteArrayList<>(), voices);
-        AXOutputSettings settings = new AXOutputSettings() {
-            @Override public AXOutputMode outputMode() { return AXOutputMode.TTS_ONLY; }
+        AuxiliumOutputSettings settings = new AuxiliumOutputSettings() {
+            @Override public AuxiliumOutputMode outputMode() { return AuxiliumOutputMode.TTS_ONLY; }
             @Override public TtsVoiceOptions ttsVoiceOptions() { return new TtsVoiceOptions("ax:voice", 1.2F, 3); }
         };
         AXOutputProcessor processor = new AXOutputProcessor(new AXProtocolAdapter(runtime), settings, AXChatOutputSink.NOOP, REPLY_TEXTS);
@@ -135,7 +135,7 @@ class AXOutputProcessorTest {
         assertTrue(voices.stream().allMatch(voice -> voice.equals(new TtsVoiceOptions("ax:voice", 1.2F, 3))));
     }
 
-    private static AXOutputSettings settings(AXOutputMode mode) {
+    private static AuxiliumOutputSettings settings(AuxiliumOutputMode mode) {
         return () -> mode;
     }
 

@@ -273,3 +273,22 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 ### 11.1 配置所有权
 
 NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一读写宿主。common 不创建第二份 TOML，也不保存 GUI 配置。`TianshuClient` 在组合根把同一个宿主配置映射为 ASR、LLM、TTS 和 AX 的窄读取端口；`TianshuModuleAssemblyContext` 只提供环境、音频桥、模块运行时和生命周期信号，不提供配置总接口。
+
+## 12. 装配边界（后续修订）
+
+`TianshuCoreManager` 现在**不认识任何功能模块**，也不再是唯一装配入口。三条规则取代了早期的"组合根写死七个 installer"：
+
+1. **模块自注册**：模块在自己的 `@Mod` 构造里调用 `TianshuModuleProviderRegistry.register(factory)`；内核每个世界会话把工厂实例化成 provider。
+2. **两个装配入口**：`TianshuModuleRegistrar` 只有 `addModule(installer)` 与 `addSettings(page)`。内置页与外置贡献走同一条路（`ModuleSettingsSourceRegistry`），没有第二条特权路径。
+3. **只交端口**：`TianshuModuleAssemblyContext` 给出 `ClientPorts`（scheduler / uiHost / texts / filePicker / settingsLayers / audioDevices / configStores / modelLoadQueue）、`ModuleRuntimeServices`（findService / requireService / requestRefresh）与宿主信号；**不交** CoreManager、ProtocolRuntime、ClientConfig。
+
+配置与模型资产的归属随之改变：
+
+| 内容 | 归属 |
+|---|---|
+| 四个功能模组的设置 | `config/Tianshu/module/<moduleId>.properties`，键名、默认值、路径全部在模块内 |
+| 内核设置 | `config/tianshu-client.toml`（debug / 映迹 HUD）；`ClientConfig` 只实现内核自己的 3 个接口 |
+| 具名对象索引 | 听澜自建、自持生命周期、缓存到 `<module>/asr/index`；内核只能通过 `NamedObjectIndex` 端口观测 |
+| 模型清单与读取器 | intake / weaving / echo 各自持有；`tianshu-core/model` 只留传输与状态机 |
+
+`VoiceResourceConfiguration` 与 `VoiceResourceManager` 已删除：内核只持有 `VoiceTriggerRegistry`，不再写热词文件、不再知道任何模组目录。热词加权链路整体移除（只对部分 ASR 模型有效），唤醒词与指令词改由 IR 的 trigger index 匹配。

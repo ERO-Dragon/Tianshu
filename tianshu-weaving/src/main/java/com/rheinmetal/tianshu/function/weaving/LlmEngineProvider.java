@@ -10,8 +10,8 @@ import com.rheinmetal.tianshu.function.weaving.model.LlmModelPathResolver;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingService;
 import com.rheinmetal.tianshu.function.weaving.service.LocalEmbeddingEngine;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,7 +40,7 @@ public final class LlmEngineProvider {
     /** Detail reported when the gate has no room left for the primary request. */
     private static final String QUEUE_REFUSED_REASON = "the native model load queue is full";
     private final IGameEnvironment env;
-    private final LlmConfiguration config;
+    private final WeavingConfiguration config;
     private final LlmModelPathResolver modelPaths;
     private final InferenceResourcePolicy resourcePolicy;
     private final Executor modelLoadExecutor;
@@ -51,17 +51,17 @@ public final class LlmEngineProvider {
     /** How the bound engine's load ended; null while the model-load lane is still working on it. */
     private volatile EmbeddingLoadReport embeddingLoadReport;
 
-    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config) {
+    public LlmEngineProvider(IGameEnvironment env, WeavingConfiguration config) {
         this(env, config, Runnable::run, ignored -> {});
     }
 
-    public LlmEngineProvider(IGameEnvironment env, LlmConfiguration config, Executor modelLoadExecutor) {
+    public LlmEngineProvider(IGameEnvironment env, WeavingConfiguration config, Executor modelLoadExecutor) {
         this(env, config, modelLoadExecutor, ignored -> {});
     }
 
     public LlmEngineProvider(
             IGameEnvironment env,
-            LlmConfiguration config,
+            WeavingConfiguration config,
             Executor modelLoadExecutor,
             Consumer<EmbeddingLoadReport> loadListener
     ) {
@@ -79,7 +79,7 @@ public final class LlmEngineProvider {
      */
     public LlmEngineProvider(
             IGameEnvironment env,
-            LlmConfiguration config,
+            WeavingConfiguration config,
             Executor modelLoadExecutor,
             Consumer<EmbeddingLoadReport> loadListener,
             NativeModelLoadQueue loadQueue
@@ -234,14 +234,14 @@ public final class LlmEngineProvider {
     private int embeddingContextSize(String modelName) {
         int ceiling = modelPaths.embeddingContextSize(modelName);
         int budget = config.getLlmEmbeddingContextSize();
-        return Math.max(LlmConfiguration.MIN_EMBEDDING_CONTEXT_SIZE, Math.min(ceiling, budget));
+        return Math.max(WeavingConfiguration.MIN_EMBEDDING_CONTEXT_SIZE, Math.min(ceiling, budget));
     }
 
     /** The player's choice, clamped to the only two positions the runtime knows about. */
     private int requestedGpuLayers() {
         int configured = config.getLlmEmbeddingGpuLayers();
-        return Math.max(LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU,
-                Math.min(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL, configured));
+        return Math.max(WeavingConfiguration.EMBEDDING_GPU_LAYERS_CPU,
+                Math.min(WeavingConfiguration.EMBEDDING_GPU_LAYERS_ALL, configured));
     }
 
     /**
@@ -268,7 +268,7 @@ public final class LlmEngineProvider {
     }
 
     private int embeddingThreads() {
-        return Math.max(1, Math.min(resourcePolicy.processors(), resourcePolicy.llmGpuHelperThreads()));
+        return Math.max(1, Math.min(resourcePolicy.processors(), resourcePolicy.embeddingGpuHelperThreads()));
     }
 
     private void publishEmbeddingUnavailable(String reason) {

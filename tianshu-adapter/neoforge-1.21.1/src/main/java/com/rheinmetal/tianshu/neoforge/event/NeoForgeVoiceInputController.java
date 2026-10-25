@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
+import com.rheinmetal.tianshu.api.assembly.VoiceInputPort;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -8,12 +8,12 @@ import java.util.function.Supplier;
 
 /** Maps the NeoForge voice key state to the ASR input contract. */
 final class NeoForgeVoiceInputController {
-    private final Supplier<Optional<AsrInputService>> inputServiceSupplier;
+    private final Supplier<Optional<VoiceInputPort>> inputServiceSupplier;
     private final Runnable recordPresenceInput;
 
     private boolean inputActive;
     NeoForgeVoiceInputController(
-            Supplier<Optional<AsrInputService>> inputServiceSupplier,
+            Supplier<Optional<VoiceInputPort>> inputServiceSupplier,
             Runnable recordPresenceInput
     ) {
         this.inputServiceSupplier = Objects.requireNonNull(inputServiceSupplier, "inputServiceSupplier");
@@ -21,13 +21,13 @@ final class NeoForgeVoiceInputController {
     }
 
     void tick(boolean keyAvailable, boolean keyDown) {
-        Optional<AsrInputService> service = inputServiceSupplier.get();
+        Optional<VoiceInputPort> service = inputServiceSupplier.get();
         if (!keyAvailable || service.isEmpty()) {
             reset();
             return;
         }
 
-        AsrInputService inputService = service.get();
+        VoiceInputPort inputService = service.get();
         if (!inputService.canAcceptVoiceInput()) {
             cancelActiveInput(inputService);
             reset();
@@ -41,7 +41,7 @@ final class NeoForgeVoiceInputController {
         resetState();
     }
 
-    private void handlePushToTalkMode(AsrInputService inputService, boolean keyDown) {
+    private void handlePushToTalkMode(VoiceInputPort inputService, boolean keyDown) {
         if (keyDown && !inputActive) {
             inputActive = true;
             dispatch(inputService::beginVoiceInput);
@@ -51,7 +51,7 @@ final class NeoForgeVoiceInputController {
         }
     }
 
-    private void cancelActiveInput(AsrInputService inputService) {
+    private void cancelActiveInput(VoiceInputPort inputService) {
         if (!inputActive) {
             return;
         }

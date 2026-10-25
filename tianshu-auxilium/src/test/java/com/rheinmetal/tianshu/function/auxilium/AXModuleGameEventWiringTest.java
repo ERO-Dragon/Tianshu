@@ -6,14 +6,14 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,7 +40,7 @@ class AXModuleGameEventWiringTest {
                 null,
                 () -> "天枢",
                 AXRuntimePolicy.defaults(),
-                AXOutputSettings.DEFAULT,
+                AuxiliumOutputSettings.DEFAULT,
                 AXChatOutputSink.NOOP
         );
 
@@ -50,7 +50,7 @@ class AXModuleGameEventWiringTest {
         module.prepare(new ModuleRuntimeContext(
                 runtime,
                 services,
-                new VoiceResourceManager(env, config),
+                new VoiceTriggerRegistry(),
                 new ModuleRuntimeState()
         ));
 

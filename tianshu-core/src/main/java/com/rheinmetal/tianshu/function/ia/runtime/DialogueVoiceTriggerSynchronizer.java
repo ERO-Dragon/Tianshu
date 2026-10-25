@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescrip
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
 import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
 import com.rheinmetal.tianshu.protocol.voice.VoiceCommandScope;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
+
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 
@@ -22,8 +22,7 @@ public final class DialogueVoiceTriggerSynchronizer {
     private final Set<String> syncedModules = new LinkedHashSet<>();
     private VoiceTriggerRegistry registry;
 
-    public synchronized void bind(VoiceResourceAccess resources, List<DialogueParticipantDescriptor> participants) {
-        VoiceTriggerRegistry nextRegistry = resources == null ? null : resources.voiceTriggers();
+    public synchronized void bind(VoiceTriggerRegistry nextRegistry, List<DialogueParticipantDescriptor> participants) {
         if (registry != nextRegistry) {
             unregisterAll();
             registry = nextRegistry;

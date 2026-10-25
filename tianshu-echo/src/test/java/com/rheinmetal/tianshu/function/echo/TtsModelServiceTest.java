@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;

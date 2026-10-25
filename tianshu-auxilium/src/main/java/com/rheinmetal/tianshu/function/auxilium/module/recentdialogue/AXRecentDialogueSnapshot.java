@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.auxilium.module.recentdialogue;
 
-import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 
 import java.util.List;
 

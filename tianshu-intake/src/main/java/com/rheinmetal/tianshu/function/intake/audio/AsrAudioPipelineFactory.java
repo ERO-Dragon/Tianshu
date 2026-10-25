@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.audio;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,15 +10,15 @@ public final class AsrAudioPipelineFactory {
     private static final int ASR_SAMPLE_RATE = 16000;
     private static final double DEFAULT_HIGH_PASS_CUTOFF_HZ = 80.0D;
 
-    private final AsrConfiguration config;
+    private final IntakeConfiguration config;
     private final IGameEnvironment env;
     private final NoiseSuppressorProvider noiseSuppressorProvider;
 
-    public AsrAudioPipelineFactory(AsrConfiguration config, IGameEnvironment env) {
+    public AsrAudioPipelineFactory(IntakeConfiguration config, IGameEnvironment env) {
         this(config, env, NoiseSuppressorProvider.unavailable());
     }
 
-    public AsrAudioPipelineFactory(AsrConfiguration config, IGameEnvironment env, NoiseSuppressorProvider noiseSuppressorProvider) {
+    public AsrAudioPipelineFactory(IntakeConfiguration config, IGameEnvironment env, NoiseSuppressorProvider noiseSuppressorProvider) {
         this.config = config;
         this.env = env;
         this.noiseSuppressorProvider = noiseSuppressorProvider == null ? NoiseSuppressorProvider.unavailable() : noiseSuppressorProvider;

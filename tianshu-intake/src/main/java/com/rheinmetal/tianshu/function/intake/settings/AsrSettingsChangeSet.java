@@ -10,7 +10,7 @@ public record AsrSettingsChangeSet(
         boolean modelChanged,
         boolean audioPipelineChanged
 ) {
-    public static AsrSettingsChangeSet between(AsrSettingsSnapshot before, AsrSettingsSnapshot after) {
+    public static AsrSettingsChangeSet between(IntakeSettingsSnapshot before, IntakeSettingsSnapshot after) {
         boolean enabledChanged = before.enabled() != after.enabled();
         return new AsrSettingsChangeSet(
                 enabledChanged,

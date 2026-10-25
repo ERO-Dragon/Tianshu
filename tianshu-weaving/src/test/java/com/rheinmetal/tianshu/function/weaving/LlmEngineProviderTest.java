@@ -3,8 +3,8 @@ package com.rheinmetal.tianshu.function.weaving;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -68,7 +68,7 @@ class LlmEngineProviderTest {
         LlmEngineProvider provider = new LlmEngineProvider(
                 env,
                 new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf")
-                        .embeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL),
+                        .embeddingGpuLayers(WeavingConfiguration.EMBEDDING_GPU_LAYERS_ALL),
                 task -> { }
         );
 
@@ -96,7 +96,7 @@ class LlmEngineProviderTest {
         LlmEngineProvider provider = new LlmEngineProvider(
                 env,
                 new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("embed.gguf")
-                        .embeddingGpuLayers(LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL),
+                        .embeddingGpuLayers(WeavingConfiguration.EMBEDDING_GPU_LAYERS_ALL),
                 queued::add,
                 reports::add
         );

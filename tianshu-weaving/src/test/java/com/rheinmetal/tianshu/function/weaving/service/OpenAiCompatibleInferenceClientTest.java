@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.weaving.service;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import org.junit.jupiter.api.AfterAll;
@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenAiCompatibleInferenceClientTest {
     private static final String BASE_URL = "https://api.deepseek.com/v1";
     /** The production default, so this fixture cannot drift away from what a fresh install sends. */
-    private static final String MODEL = LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL;
+    private static final String MODEL = WeavingConfiguration.DEFAULT_LLM_REMOTE_MODEL;
     private static final Duration AWAIT = Duration.ofSeconds(5);
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "tianshu-llm-remote-test");

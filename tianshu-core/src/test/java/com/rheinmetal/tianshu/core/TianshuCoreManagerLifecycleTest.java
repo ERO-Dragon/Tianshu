@@ -40,7 +40,6 @@ class TianshuCoreManagerLifecycleTest {
         AtomicInteger moduleIds = new AtomicInteger();
         TianshuCoreManager core = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge(),
                 context -> (moduleHost, moduleServices) -> {
                     moduleHost.clear();
@@ -83,7 +82,6 @@ class TianshuCoreManagerLifecycleTest {
     void emptyCoreCanRestartWorldSessionAndDestroyIsTerminalAndIdempotent() throws Exception {
         TianshuCoreManager core = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge()
         );
 
@@ -112,7 +110,6 @@ class TianshuCoreManagerLifecycleTest {
         CountDownLatch releasePrepare = new CountDownLatch(1);
         TianshuCoreManager core = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge(),
                 context -> (moduleHost, moduleServices) -> {
                     moduleHost.clear();
@@ -149,7 +146,6 @@ class TianshuCoreManagerLifecycleTest {
         CountDownLatch releaseFirstPrepare = new CountDownLatch(1);
         TianshuCoreManager core = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge(),
                 context -> (moduleHost, moduleServices) -> {
                     moduleHost.clear();
@@ -192,7 +188,6 @@ class TianshuCoreManagerLifecycleTest {
         CountDownLatch releaseRefreshPrepare = new CountDownLatch(1);
         TianshuCoreManager core = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge(),
                 context -> (moduleHost, moduleServices) -> {
                     moduleHost.clear();
@@ -223,7 +218,6 @@ class TianshuCoreManagerLifecycleTest {
         RuntimeCapability capability = RuntimeCapability.of("capability.test.required");
         TianshuCoreManager core = new TianshuCoreManager(
                 new FakeGameEnvironment(),
-                () -> tempDir.resolve("asr"),
                 new NoopAudioBridge(),
                 context -> (moduleHost, moduleServices) -> {
                     moduleHost.clear();

@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.weaving.model;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.model.LlmModelInfo;
-import com.rheinmetal.tianshu.model.LlmModelManager;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,15 +13,15 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class LlmModelPathResolver {
-    private final LlmConfiguration configuration;
+    private final WeavingConfiguration configuration;
     private final Function<String, LlmModelInfo> embeddingCatalog;
 
-    public LlmModelPathResolver(LlmConfiguration configuration) {
+    public LlmModelPathResolver(WeavingConfiguration configuration) {
         this(configuration, LlmModelManager::getEmbeddingModelByName);
     }
 
     LlmModelPathResolver(
-            LlmConfiguration configuration,
+            WeavingConfiguration configuration,
             Function<String, LlmModelInfo> embeddingCatalog
     ) {
         this.configuration = Objects.requireNonNull(configuration, "configuration");

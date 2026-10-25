@@ -284,3 +284,23 @@ Broker 是能力或订阅的资源控制器，负责排队、拒绝、合并、�
 7. 所有跨模块 Payload 必须不可变且不含 Minecraft 活对象。
 
 这份契约的目标是让模块边界清楚：公开入口用能力，广播事件用主题，回包关系由协议中心按请求链路托管。
+
+## 9. 装配端口（后续修订）
+
+协议中心之外，模块装配期还会拿到一组**内核端口**。它们不是协议的一部分，但同样是"模块能看见什么"的边界，所以在此登记；完整清单见 `doc/architecture/模块拆分工程方案.md` §9.3。
+
+| 端口 | 说明 |
+|---|---|
+| `ClientPorts` | 装配期客户端服务：scheduler / uiHost / texts / filePicker / settingsLayers / audioDevices / configStores / modelLoadQueue |
+| `ModuleRuntimeServices` | 设置页用的最小内核面：`findService` / `requireService` / `requestRefresh` |
+| `NamedObjectIndex` | 内核只持有索引的生命周期调用；索引本体属于听澜，缺 jar 则端口不存在 |
+| `WorldFactsSource` | 平台世界事实（`kindId` 为字符串），语义由消费模块解释 |
+| `VoiceInputPort` | 语音按键语义，听澜实现 |
+| `GameEventPort` | 平台采样（血量/饥饿/维度/群系/死亡信息），探针与措辞在辅星 |
+| `KeywordTableReloadPort` | 平台读资源包字节，听澜解析词表 |
+| `TianshuRuntimePorts` | 会话之前就要用的端口（世界事实、热词重载、具名对象索引）的注册表 |
+
+两条约束：
+
+1. 端口的**实现方**要么是平台（adapter/client），要么是某个模块；内核不实现任何功能语义。
+2. 端口**可以缺席**：查不到就降级（例如没有索引就没有对象纠错），不得因此启动失败——与能力探测是同一原则。

@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -27,10 +31,10 @@ class ModuleConfigurationBoundaryTest {
 
     @Test
     void modulesMustNotDependOnAnotherModulesConfigurationPort() throws Exception {
-        assertNoConfigurationDependency("asr", "function.llm.settings.LlmConfiguration", "function.tts.settings.TtsConfiguration", "auxilium.storage.AXStorageConfiguration");
-        assertNoConfigurationDependency("llm", "function.asr.settings.AsrConfiguration", "function.tts.settings.TtsConfiguration", "auxilium.storage.AXStorageConfiguration");
-        assertNoConfigurationDependency("tts", "function.asr.settings.AsrConfiguration", "function.llm.settings.LlmConfiguration", "auxilium.storage.AXStorageConfiguration");
-        assertNoConfigurationDependency("auxilium", "function.asr.settings.AsrConfiguration", "function.llm.settings.LlmConfiguration", "function.tts.settings.TtsConfiguration");
+        assertNoConfigurationDependency("asr", "function.llm.settings.WeavingConfiguration", "function.tts.settings.EchoConfiguration", "auxilium.storage.AuxiliumStorageConfiguration");
+        assertNoConfigurationDependency("llm", "function.asr.settings.IntakeConfiguration", "function.tts.settings.EchoConfiguration", "auxilium.storage.AuxiliumStorageConfiguration");
+        assertNoConfigurationDependency("tts", "function.asr.settings.IntakeConfiguration", "function.llm.settings.WeavingConfiguration", "auxilium.storage.AuxiliumStorageConfiguration");
+        assertNoConfigurationDependency("auxilium", "function.asr.settings.IntakeConfiguration", "function.llm.settings.WeavingConfiguration", "function.tts.settings.EchoConfiguration");
     }
 
     @Test

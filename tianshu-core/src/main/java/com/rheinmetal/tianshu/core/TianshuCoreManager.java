@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.core;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.assembly.ClientPorts;
+import com.rheinmetal.tianshu.api.assembly.ModuleRuntimeServices;
 import com.rheinmetal.tianshu.core.lifecycle.EmptyTianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssembler;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblerFactory;
@@ -32,8 +34,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
 
@@ -42,29 +44,38 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 
-public class TianshuCoreManager {
+public class TianshuCoreManager implements ModuleRuntimeServices {
 
     private final IGameEnvironment env;
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
-    private final VoiceResourceManager voiceResourceManager;
+    private final VoiceTriggerRegistry voiceTriggers;
     private final ModuleRuntimeState runtimeState;
     private final RuntimeReadinessState state;
     private final RuntimeInterruptionService interruptionService;
     private final TianshuModuleAssembler moduleAssembler;
     private final CoreModuleLifecycleCoordinator lifecycleCoordinator;
 
-    public TianshuCoreManager(IGameEnvironment env, VoiceResourceConfiguration voiceResourceConfiguration, IAudioBridge audioBridge) {
-        this(env, voiceResourceConfiguration, audioBridge, null);
+    public TianshuCoreManager(IGameEnvironment env, IAudioBridge audioBridge) {
+        this(env, audioBridge, null, null);
     }
 
-    public TianshuCoreManager(IGameEnvironment env, VoiceResourceConfiguration voiceResourceConfiguration, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
+    public TianshuCoreManager(IGameEnvironment env, IAudioBridge audioBridge, TianshuModuleAssemblerFactory moduleAssemblerFactory) {
+        this(env, audioBridge, null, moduleAssemblerFactory);
+    }
+
+    /**
+     * @param clientPorts the client services a module may use while it builds itself; {@code null} in a
+     *                    headless assembly, where modules that need a UI are simply not installed
+     */
+    public TianshuCoreManager(IGameEnvironment env, IAudioBridge audioBridge, ClientPorts clientPorts,
+                              TianshuModuleAssemblerFactory moduleAssemblerFactory) {
         this.env = env;
         this.moduleHost = new TianshuModuleHost(env);
         this.moduleServices = new ModuleServiceRegistry();
-        this.voiceResourceManager = new VoiceResourceManager(env, voiceResourceConfiguration);
-        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread, voiceResourceManager.voiceTriggers());
+        this.voiceTriggers = new VoiceTriggerRegistry();
+        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread, voiceTriggers);
         this.runtimeState = new ModuleRuntimeState();
         this.state = runtimeState.readiness();
         this.interruptionService = new RuntimeInterruptionService(protocolRuntime.runtimeInterrupts());
@@ -73,7 +84,9 @@ public class TianshuCoreManager {
                 audioBridge,
                 protocolRuntime,
                 this::runtimeReadyForRequests,
-                this::interruptOngoingProcessing
+                this::interruptOngoingProcessing,
+                clientPorts,
+                this
         );
         this.moduleAssembler = moduleAssemblerFactory == null
                 ? new EmptyTianshuModuleAssembler()
@@ -83,7 +96,7 @@ public class TianshuCoreManager {
                 protocolRuntime,
                 moduleHost,
                 moduleServices,
-                voiceResourceManager,
+                voiceTriggers,
                 runtimeState,
                 state,
                 interruptionService,
@@ -228,8 +241,13 @@ public class TianshuCoreManager {
     public CompletableFuture<CoreRuntimeStatus> refreshRuntime(RuntimeRefreshReason reason) {
         RuntimeRefreshReason refreshReason = reason == null ? RuntimeRefreshReason.RESOURCE_CHANGED : reason;
         return lifecycleCoordinator.refresh(refreshReason);
+
     }
 
+    @Override
+    public void requestRefresh(RuntimeRefreshReason reason) {
+        refreshRuntime(reason);
+    }
     public long interruptOngoingProcessing() {
         env.info("打断正在进行的运行时处理");
         return interruptionService.interruptOngoingProcessing(RuntimeInterruptPayload.Reason.USER_INPUT, "runtime_interrupt");

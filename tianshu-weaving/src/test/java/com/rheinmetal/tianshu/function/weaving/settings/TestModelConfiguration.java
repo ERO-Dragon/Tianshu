@@ -3,12 +3,12 @@ package com.rheinmetal.tianshu.function.weaving.settings;
 import java.nio.file.Path;
 
 /**
- * Test double that answers {@link LlmConfiguration} from one {@link LlmModelSettings} document.
+ * Test double that answers {@link WeavingConfiguration} from one {@link LlmModelSettings} document.
  *
  * <p>It mirrors the wiring the loader-side configuration performs, so the migration contract can be
  * asserted on the interface the runtime actually reads instead of on the storage class alone.
  */
-final class TestModelConfiguration implements LlmConfiguration {
+final class TestModelConfiguration implements WeavingConfiguration {
     private LlmModelSettings settings;
 
     TestModelConfiguration(LlmModelSettings settings) {
@@ -35,7 +35,7 @@ final class TestModelConfiguration implements LlmConfiguration {
     }
 
     @Override
-    public java.util.List<LlmModelEntry> getLlmModels() {
+    public java.util.List<WeavingModelEntry> getLlmModels() {
         return settings.models();
     }
 

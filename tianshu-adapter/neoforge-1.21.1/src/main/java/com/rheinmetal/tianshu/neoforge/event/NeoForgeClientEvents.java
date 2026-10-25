@@ -4,7 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
+import com.rheinmetal.tianshu.api.assembly.VoiceInputPort;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
@@ -55,7 +55,7 @@ public final class NeoForgeClientEvents {
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.voiceInputController = new NeoForgeVoiceInputController(
-                () -> coreManager.findService(AsrInputService.class),
+                () -> coreManager.findService(VoiceInputPort.class),
                 presenceRuntime::recordVoiceKeyInput
         );
     }

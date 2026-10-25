@@ -75,7 +75,7 @@ public class HuggingFaceDownloader {
         );
     }
 
-    HuggingFaceDownloader(
+    public HuggingFaceDownloader(
             IGameEnvironment env,
             ModelDownloadSourcePolicy sources,
             ModelDownloadHttpClient http,

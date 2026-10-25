@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.model;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,8 +83,8 @@ class LlmModelPathResolverTest {
         return tempDir.resolve("llm").resolve("model").resolve(name);
     }
 
-    private LlmConfiguration configuration(String embeddingModel) {
-        return new LlmConfiguration() {
+    private WeavingConfiguration configuration(String embeddingModel) {
+        return new WeavingConfiguration() {
             @Override
             public boolean isLlmEnabled() {
                 return true;

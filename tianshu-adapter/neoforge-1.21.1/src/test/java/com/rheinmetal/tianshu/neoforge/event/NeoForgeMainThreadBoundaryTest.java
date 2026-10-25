@@ -38,10 +38,10 @@ final class NeoForgeMainThreadBoundaryTest {
         String prepare = methodBody(listener, "protected byte[] prepare");
         String apply = methodBody(listener, "protected void apply");
         assertTrue(listener.contains("extends SimplePreparableReloadListener<byte[]>"));
-        assertTrue(listener.contains("Supplier<ClientNamedObjectIndexManager>"));
+        assertTrue(listener.contains("TianshuRuntimePorts.find(NamedObjectIndex.class)"));
         assertTrue(prepare.contains("readKeywords(resourceManager)"));
-        assertTrue(apply.contains("indexManagerSupplier.get()"));
-        assertTrue(apply.contains("indexManager.reloadAsync("));
+        assertTrue(apply.contains("TianshuRuntimePorts.find(NamedObjectIndex.class)"));
+        assertTrue(apply.contains("index.reloadAsync("));
         assertFalse(apply.contains("readKeywords("));
         assertFalse(apply.contains("readAllBytes("));
     }
@@ -69,11 +69,16 @@ final class NeoForgeMainThreadBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String config = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/config/ClientConfig.java"),
+                Path.of("../../tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/WeavingConfig.java"),
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(bootstrap.contains("languageSnapshot::promptLanguage"));
+        // The mapping from a platform locale to a prompt language moved into the module that owns it.
+        assertFalse(bootstrap.contains("AXPromptLanguageProvider"));
+        assertTrue(Files.readString(
+                Path.of("../../tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/AuxiliumModuleProvider.java"),
+                StandardCharsets.UTF_8
+        ).contains("AXPromptLanguageProvider.ofCode(ports.texts()::currentLanguage)"));
         assertFalse(bootstrap.contains("ClientLanguagePolicy::currentPromptLanguage"));
         assertFalse(methodBody(config, "public String getLlmEmbeddingModelName").contains("Minecraft.getInstance()"));
     }
@@ -94,15 +99,15 @@ final class NeoForgeMainThreadBoundaryTest {
         );
 
         assertTrue(bootstrap.contains("FMLPaths.GAMEDIR.get()"));
-        assertTrue(bootstrap.contains("new ClientConfig(gameDirectory,"));
+        assertTrue(bootstrap.contains("new ClientConfig(gameDirectory)"));
         assertFalse(config.contains("Minecraft.getInstance()"));
         assertFalse(environment.contains("Minecraft.getInstance().gameDirectory"));
     }
 
     @Test
-    void axWorldIdentityProviderDoesNotReadMinecraftFromBackgroundCallers() throws Exception {
-        String provider = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/adapter/NeoForgeAXWorldIdentityProvider.java"),
+    void worldIdentityIsCapturedOnTheClientThreadOnly() throws Exception {
+        String capture = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/adapter/NeoForgeWorldIdentityCapture.java"),
                 StandardCharsets.UTF_8
         );
         String events = Files.readString(
@@ -110,7 +115,10 @@ final class NeoForgeMainThreadBoundaryTest {
                 StandardCharsets.UTF_8
         );
 
-        assertFalse(provider.contains("Minecraft"));
+        // The capture is the only reader of the live game; consumers see a plain snapshot.
+        assertTrue(capture.contains("Minecraft.getInstance()"));
+        assertTrue(capture.contains("public WorldFacts current()"));
+        assertFalse(capture.contains("env.executeOnMainThread"));
         assertTrue(events.contains("onPlayerClone"));
         assertTrue(events.contains("worldIdentityCapture.refresh()"));
         assertTrue(events.contains("worldIdentityCapture.clear()"));

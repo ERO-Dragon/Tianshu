@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.repair.enhance;
 
 import com.rheinmetal.tianshu.function.intake.repair.core.IRCommandService;
-import com.rheinmetal.tianshu.function.intake.repair.core.IRObjectId;
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrPreparedInput;
 import org.junit.jupiter.api.Test;
@@ -65,10 +65,10 @@ class DefaultIrNamedObjectEnhancerTest {
 
     private Map<String, List<String>> namedObjectDictionary() {
         Map<String, List<String>> dictionary = new LinkedHashMap<>();
-        dictionary.put(IRObjectId.item("minecraft:oak_door"), List.of("\u6a61\u6728\u95e8", "oak_door"));
-        dictionary.put(IRObjectId.entity("minecraft:creeper"), List.of("\u82e6\u529b\u6015", "creeper"));
-        dictionary.put(IRObjectId.item("minecraft:minecart"), List.of("\u77ff\u8f66\u7269\u54c1", "minecart_item"));
-        dictionary.put(IRObjectId.entity("minecraft:minecart"), List.of("\u77ff\u8f66\u5b9e\u4f53", "minecart_entity"));
+        dictionary.put(GameObjectId.item("minecraft:oak_door"), List.of("\u6a61\u6728\u95e8", "oak_door"));
+        dictionary.put(GameObjectId.entity("minecraft:creeper"), List.of("\u82e6\u529b\u6015", "creeper"));
+        dictionary.put(GameObjectId.item("minecraft:minecart"), List.of("\u77ff\u8f66\u7269\u54c1", "minecart_item"));
+        dictionary.put(GameObjectId.entity("minecraft:minecart"), List.of("\u77ff\u8f66\u5b9e\u4f53", "minecart_entity"));
         return dictionary;
     }
 }

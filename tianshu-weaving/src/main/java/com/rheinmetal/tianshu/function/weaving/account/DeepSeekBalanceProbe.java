@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.account;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -50,17 +50,17 @@ public final class DeepSeekBalanceProbe implements LlmAccountProbe {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
     private static final String DIAGNOSTIC_PREFIX = "[LLM] account_balance";
 
-    private final LlmConfiguration config;
+    private final WeavingConfiguration config;
     private final Consumer<String> diagnostics;
     private final HttpClient httpClient;
     private final Duration timeout;
 
-    public DeepSeekBalanceProbe(LlmConfiguration config, Consumer<String> diagnostics) {
+    public DeepSeekBalanceProbe(WeavingConfiguration config, Consumer<String> diagnostics) {
         this(config, diagnostics, null, null);
     }
 
     /** Transport seam: tests drive the real request/response path with a stub {@link HttpClient}. */
-    DeepSeekBalanceProbe(LlmConfiguration config, Consumer<String> diagnostics, HttpClient httpClient, Duration timeout) {
+    DeepSeekBalanceProbe(WeavingConfiguration config, Consumer<String> diagnostics, HttpClient httpClient, Duration timeout) {
         this.config = config;
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
         this.timeout = timeout == null || timeout.isZero() || timeout.isNegative() ? DEFAULT_TIMEOUT : timeout;

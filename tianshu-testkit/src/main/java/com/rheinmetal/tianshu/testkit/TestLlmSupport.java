@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.testkit;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
-import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageConfiguration;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
-import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
+import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
+
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -15,15 +15,15 @@ public final class TestLlmSupport {
     private TestLlmSupport() {
     }
 
-    public static final class FakeConfig implements AsrConfiguration, LlmConfiguration, TtsConfiguration,
-            AXStorageConfiguration, VoiceResourceConfiguration {
+    public static final class FakeConfig implements IntakeConfiguration, WeavingConfiguration, EchoConfiguration,
+            AuxiliumStorageConfiguration {
         private final Path root;
         private boolean aiEnabled = true;
         private String customLlmName = "test-llm";
         private int taskAdmissionQueueSize = 0;
         private int taskAgingBoostPerRequest = 1;
         private String embeddingModelName = "";
-    private int embeddingGpuLayers = LlmConfiguration.EMBEDDING_GPU_LAYERS_CPU;
+    private int embeddingGpuLayers = WeavingConfiguration.EMBEDDING_GPU_LAYERS_CPU;
         private long llmAutoLoadDelayMillis = 3_000L;
         private long ttsAutoLoadDelayMillis = 1_000L;
         private String remoteApiKey = "";

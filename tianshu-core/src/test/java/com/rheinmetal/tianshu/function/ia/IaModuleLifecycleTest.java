@@ -78,7 +78,7 @@ class IaModuleLifecycleTest {
         first.destroy();
         assertTrue(firstServices.require(IaModuleService.class).snapshot().participants().isEmpty());
         assertTrue(firstServices.require(IaModuleService.class).snapshot().sessions().isEmpty());
-        runtime.unregisterModule(IaProtocolAdapter.MODULE_ID);
+        runtime.voiceTriggers().unregisterModule(IaProtocolAdapter.MODULE_ID);
 
         ModuleServiceRegistry nextServices = new ModuleServiceRegistry();
         IaModule next = registeredModule(nextServices);

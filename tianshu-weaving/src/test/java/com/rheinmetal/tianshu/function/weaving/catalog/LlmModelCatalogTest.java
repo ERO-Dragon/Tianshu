@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.catalog;
 
 import com.rheinmetal.tianshu.function.weaving.LlmModuleService;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
 import org.junit.jupiter.api.Test;
 
@@ -472,7 +472,7 @@ class LlmModelCatalogTest {
     }
 
     /** Minimal configuration; the catalog seam only needs the service, not the settings. */
-    private static final class StubConfiguration implements LlmConfiguration {
+    private static final class StubConfiguration implements WeavingConfiguration {
         @Override
         public boolean isLlmEnabled() {
             return true;

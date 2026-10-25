@@ -10,7 +10,7 @@ import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmTokenEstimator;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
@@ -95,7 +95,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Duration timeout,
             Consumer<String> diagnostics
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS);
+        this(baseUrl, apiKey, model, timeout, diagnostics, WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS);
     }
 
     public OpenAiCompatibleInferenceClient(
@@ -120,7 +120,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Executor executor
     ) {
         this(baseUrl, apiKey, model, timeout, diagnostics,
-                LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS, httpClient, executor);
+                WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS, httpClient, executor);
     }
 
     OpenAiCompatibleInferenceClient(

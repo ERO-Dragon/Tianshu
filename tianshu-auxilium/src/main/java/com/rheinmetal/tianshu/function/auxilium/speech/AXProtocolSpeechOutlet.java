@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.speech;
 
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.protocol.voice.VoiceNotificationService;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
@@ -28,17 +28,17 @@ public final class AXProtocolSpeechOutlet implements AXSpeechOutlet {
 
     private final VoiceNotificationService voice;
     private final AXGameEventTextProvider texts;
-    private final AXOutputSettings settings;
+    private final AuxiliumOutputSettings settings;
     private final LogSink logs;
 
     public AXProtocolSpeechOutlet(
             VoiceNotificationService voice,
             AXGameEventTextProvider texts,
-            AXOutputSettings settings,
+            AuxiliumOutputSettings settings,
             LogSink logs) {
         this.voice = voice;
         this.texts = texts == null ? AXGameEventTextProvider.NONE : texts;
-        this.settings = settings == null ? AXOutputSettings.DEFAULT : settings;
+        this.settings = settings == null ? AuxiliumOutputSettings.DEFAULT : settings;
         this.logs = logs == null ? LogSink.NOOP : logs;
     }
 

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.intake.repair.core;
 
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import com.rheinmetal.tianshu.function.intake.repair.core.collection.Long2LongOpenHashMap;
 
 import java.util.Collection;
@@ -136,11 +137,11 @@ public final class IRCommandService {
         if (direct != null) {
             return direct;
         }
-        Integer preferred = IRBaseUtils.forwardLookupMap.get(itemPreferred ? IRObjectId.item(normalized) : IRObjectId.entity(normalized));
+        Integer preferred = IRBaseUtils.forwardLookupMap.get(itemPreferred ? GameObjectId.item(normalized) : GameObjectId.entity(normalized));
         if (preferred != null) {
             return preferred;
         }
-        return IRBaseUtils.forwardLookupMap.get(itemPreferred ? IRObjectId.entity(normalized) : IRObjectId.item(normalized));
+        return IRBaseUtils.forwardLookupMap.get(itemPreferred ? GameObjectId.entity(normalized) : GameObjectId.item(normalized));
     }
 
     public IRSnapshot snapshot(String fingerprint) {

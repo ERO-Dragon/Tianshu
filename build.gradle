@@ -65,3 +65,20 @@ tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
     dependsOn tasks.named('verifyNoPlatformImport')
 }
+
+// ---------------------------------------------------------------- test concurrency
+// Compiles stay parallel; test tasks run one at a time. Several suites drive real threads and
+// wall-clock attention windows (protocol flows, audio device stubs), so letting six module test JVMs
+// compete for the CPU turns them into flakes: they pass alone and time out in a full `check`. One
+// shared service with a single usage slot serialises them; the configuration has to reach the
+// subprojects, because the root project has no Test task of its own.
+def testSerialService = gradle.sharedServices.registerIfAbsent('tianshuTestSerial', org.gradle.api.services.BuildService) {
+    maxParallelUsages = 1
+}
+
+allprojects {
+    tasks.withType(Test).configureEach {
+        usesService(testSerialService)
+        maxParallelForks = 1
+    }
+}

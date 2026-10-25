@@ -2,10 +2,10 @@ package com.rheinmetal.tianshu.function.echo;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.function.echo.download.TtsModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsModelSnapshot;
-import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDeleteCallback;
@@ -13,7 +13,7 @@ import com.rheinmetal.tianshu.model.lifecycle.ModelDeletionRunner;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
-import com.rheinmetal.tianshu.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
@@ -50,7 +50,7 @@ public class TtsModelService {
     }
 
     private final IGameEnvironment env;
-    private final TtsConfiguration config;
+    private final EchoConfiguration config;
     private final ModuleExecutionAccess executorManager;
     private final TtsModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
@@ -60,11 +60,11 @@ public class TtsModelService {
     private final ModelAvailabilityRefresher availabilityRefresher;
     private final ModelDeletionRunner deletionRunner;
 
-    public TtsModelService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess executorManager) {
+    public TtsModelService(IGameEnvironment env, EchoConfiguration config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
     }
 
-    public TtsModelService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+    public TtsModelService(IGameEnvironment env, EchoConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;
@@ -98,9 +98,9 @@ public class TtsModelService {
         return configured == null ? "" : configured.trim();
     }
 
-    public ModelSettings.TtsSettings loadSettings(TtsModelInfo info) {
+    public TtsModelSettings loadSettings(TtsModelInfo info) {
         Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
-        return modelDir == null ? new ModelSettings.TtsSettings() : ModelSettings.loadTtsSettings(modelDir);
+        return modelDir == null ? new TtsModelSettings() : TtsModelSettings.load(modelDir);
     }
 
     public Path resolveVoiceSamplePath(TtsModelInfo info, String sampleNameOrPath) {
@@ -130,13 +130,13 @@ public class TtsModelService {
         return null;
     }
 
-    public void saveSettings(TtsModelInfo info, ModelSettings.TtsSettings settings) {
+    public void saveSettings(TtsModelInfo info, TtsModelSettings settings) {
         Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
         if (modelDir == null || settings == null) {
             throw new IllegalArgumentException("TTS_MODEL_SETTINGS_TARGET_UNAVAILABLE");
         }
         try {
-            ModelSettings.saveTtsSettings(modelDir, settings);
+            TtsModelSettings.save(modelDir, settings);
         } catch (RuntimeException e) {
             env.error("tts.model.settings.save_failed", e);
             throw e;
@@ -488,7 +488,7 @@ public class TtsModelService {
             if (!TtsModelInfo.isModelDirectoryComplete(info, stagingDir)) {
                 throw new IOException("tts.download.model_incomplete: " + info.getDisplayName());
             }
-            ModelSettings.saveTtsSettings(stagingDir, ModelSettings.loadTtsSettings(stagingDir));
+            TtsModelSettings.save(stagingDir, TtsModelSettings.load(stagingDir));
             commitStagingDownload(stagingDir, task.modelDir());
             finishDownloadComplete(task, callback);
         } catch (Exception e) {

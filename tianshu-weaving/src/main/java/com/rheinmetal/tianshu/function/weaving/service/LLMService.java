@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
@@ -700,7 +700,7 @@ public class LLMService {
 
     public static class Builder {
         private IGameEnvironment env;
-        private LlmConfiguration config;
+        private WeavingConfiguration config;
         private LlmInferenceClient inferenceClient;
         private boolean usePersistentCache = true;
         private Path cacheDirectory;
@@ -715,7 +715,7 @@ public class LLMService {
             return this;
         }
 
-        public Builder config(LlmConfiguration config) {
+        public Builder config(WeavingConfiguration config) {
             this.config = config;
             return this;
         }

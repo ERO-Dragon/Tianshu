@@ -116,10 +116,6 @@
   "tianshu.presence.module.asr.download_failed": "ASR 模型下载失败",
   "tianshu.presence.module.asr.download_busy": "ASR 模型下载已在进行",
   "tianshu.presence.module.asr.download_queue_full": "ASR 模型下载队列已满",
-  "tianshu.presence.module.asr.reload_started": "ASR 语音资源重载中",
-  "tianshu.presence.module.asr.reload_complete": "ASR 语音资源重载完成",
-  "tianshu.presence.module.asr.reload_failed": "ASR 语音资源重载失败",
-  "tianshu.presence.module.asr.reload_rejected": "ASR 语音资源重载任务提交失败",
   "tianshu.presence.module.asr.starting": "听澜正在启动",
   "tianshu.presence.module.asr.stopped": "听澜已停止"
 }

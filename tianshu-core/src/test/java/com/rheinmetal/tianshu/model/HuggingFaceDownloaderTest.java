@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.model;
 
+import com.rheinmetal.tianshu.testkit.ModelDownloadTestServer;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

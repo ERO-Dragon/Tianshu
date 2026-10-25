@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.weaving.download;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.model.LlmModelDownloader;
-import com.rheinmetal.tianshu.model.LlmModelInfo;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelDownloader;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
 import com.rheinmetal.tianshu.model.download.DownloadGate;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 

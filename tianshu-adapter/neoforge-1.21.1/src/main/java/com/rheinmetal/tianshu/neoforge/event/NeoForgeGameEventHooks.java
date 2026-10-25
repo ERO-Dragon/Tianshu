@@ -1,41 +1,24 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventProbe;
-import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventSample;
-import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventSentences;
-import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventSignal;
-import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
-import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameEventTextProvider;
+import com.rheinmetal.tianshu.api.assembly.GameEventPort;
+import com.rheinmetal.tianshu.api.game.GameEventFacts;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
-import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
- * Client side capture hook: reads the local player, asks the probe for threshold crossings, lets the
- * producer render its sentences and submits the descriptor to the AX event service.
+ * Client side capture hook: reads the local player and hands the reading to the module that cares.
  *
- * <p>This hook is an ordinary producer. It builds the same {@link AXEventDescriptor} any other module
- * would build - a kind, a payload, the sentence {@link AXGameEventSentences} rendered from the client
- * language table and an optional fold renderer - and it calls the same
- * {@link AXGameEventService#submit(AXEventDescriptor)} that is reachable from the module service
- * registry. Nothing here is privileged: the service never inspects the source it was handed, so this
- * producer cannot take a shortcut and no wording is assembled on the AX side.
- *
- * <p>Everything above the probe is deliberately thin: the state machine lives in the platform neutral
- * probe so it can be unit tested, and the wording lives in language keys so no sentence is hardcoded
- * here.
- *
- * <p>Production stops when the bound service is gone. The AX module registers that service on world
- * start and unregisters it on world stop, so a stale hook cannot produce events outside a session.
+ * <p>Everything above the reading is a module decision. This class therefore keeps only what needs the
+ * game: health, food, dimension, biome, the death message and the sampling cadence. Which of those mean
+ * "hurt" or "dying", and how they are worded, lives behind {@link GameEventPort}.</p>
  */
 public final class NeoForgeGameEventHooks {
+
     /**
      * Sampling cadence. Crossings are seconds apart at the fastest, so four readings per second keeps
      * the per tick cost and the per tick allocation off the render thread without missing a crossing.
@@ -47,17 +30,12 @@ public final class NeoForgeGameEventHooks {
     private NeoForgeGameEventHooks() {
     }
 
-    public static void bind(Supplier<AXGameEventService> serviceLookup, LogSink logSink) {
-        if (serviceLookup == null) {
+    public static void bind(Supplier<GameEventPort> portLookup, LogSink logSink) {
+        if (portLookup == null) {
             BINDING.set(null);
             return;
         }
-        BINDING.set(new Binding(
-                serviceLookup,
-                logSink == null ? LogSink.NOOP : logSink,
-                new AXGameEventProbe(),
-                new AXGameEventSentences()
-        ));
+        BINDING.set(new Binding(portLookup, logSink == null ? LogSink.NOOP : logSink));
     }
 
     public static void clear() {
@@ -67,8 +45,9 @@ public final class NeoForgeGameEventHooks {
     /** Drops the probe baseline so the first reading of the next world reports nothing. */
     public static void resetWorldSession() {
         Binding binding = BINDING.get();
-        if (binding != null) {
-            binding.probe.reset();
+        GameEventPort port = binding == null ? null : binding.port();
+        if (port != null) {
+            port.resetSession();
             binding.lastSampleAtMillis = 0L;
         }
     }
@@ -76,12 +55,9 @@ public final class NeoForgeGameEventHooks {
     /** Closes pending aggregation windows while the world is still addressable. */
     public static void flush() {
         Binding binding = BINDING.get();
-        if (binding == null) {
-            return;
-        }
-        AXGameEventService service = binding.service();
-        if (service != null) {
-            service.flush();
+        GameEventPort port = binding == null ? null : binding.port();
+        if (port != null) {
+            port.flush();
         }
     }
 
@@ -97,39 +73,23 @@ public final class NeoForgeGameEventHooks {
             return;
         }
         long nowMillis = System.currentTimeMillis();
-        AXGameEventService service = binding.service();
-        if (service != null && !service.closed()) {
-            // The deferred window runs on the wall clock, so it is advanced on every tick rather than only when a sample
-            // is due: otherwise the voluntary turn would wait for the next event to be submitted.
-            service.tick(nowMillis);
+        GameEventPort port = binding.port();
+        if (port == null) {
+            return;
         }
+        port.tick(nowMillis);
         if (nowMillis - binding.lastSampleAtMillis < SAMPLE_INTERVAL_MILLIS) {
             return;
         }
         binding.lastSampleAtMillis = nowMillis;
-        if (service == null || service.closed()) {
-            return;
-        }
-        AXGameEventSample sample = new AXGameEventSample(
+        port.sample(new GameEventFacts(
                 Math.max(0, Math.round(player.getHealth())),
                 player.getFoodData().getFoodLevel(),
                 level.dimension().location().toString(),
                 biomeId(level, player),
-                player.getHealth() <= 0.0F || player.deathTime > 0
-        );
-        List<AXGameEventSignal> signals = binding.probe.sample(sample);
-        if (signals.isEmpty()) {
-            return;
-        }
-        String deathMessage = deathMessage(player);
-        for (AXGameEventSignal signal : signals) {
-            Optional<AXEventDescriptor> descriptor = binding.sentences.describe(signal, sample, deathMessage);
-            if (descriptor.isEmpty()) {
-                binding.logSink.warn("neoforge.ax.event.unrenderable_signal kind=" + signal.kind());
-                continue;
-            }
-            service.submit(descriptor.get());
-        }
+                player.getHealth() <= 0.0F || player.deathTime > 0,
+                deathMessage(player),
+                nowMillis));
     }
 
     /** The vanilla death message, empty when the combat tracker cannot name one. */
@@ -156,23 +116,19 @@ public final class NeoForgeGameEventHooks {
     }
 
     private static final class Binding {
-        private final Supplier<AXGameEventService> serviceLookup;
+        private final Supplier<GameEventPort> portLookup;
+        @SuppressWarnings("unused")
         private final LogSink logSink;
-        private final AXGameEventProbe probe;
-        private final AXGameEventSentences sentences;
         private long lastSampleAtMillis;
 
-        private Binding(Supplier<AXGameEventService> serviceLookup, LogSink logSink, AXGameEventProbe probe,
-                        AXGameEventSentences sentences) {
-            this.serviceLookup = serviceLookup;
+        private Binding(Supplier<GameEventPort> portLookup, LogSink logSink) {
+            this.portLookup = portLookup;
             this.logSink = logSink;
-            this.probe = probe;
-            this.sentences = sentences;
         }
 
-        private AXGameEventService service() {
+        private GameEventPort port() {
             try {
-                return serviceLookup.get();
+                return portLookup.get();
             } catch (RuntimeException ignored) {
                 return null;
             }

@@ -3,21 +3,20 @@ package com.rheinmetal.tianshu.function.intake;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import com.rheinmetal.tianshu.function.intake.repair.AsrTextRepairer;
 import com.rheinmetal.tianshu.function.intake.repair.enhance.IrNamedObjectEnhancer;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.function.intake.audio.AudioCaptureService;
 import com.rheinmetal.tianshu.function.intake.audio.AsrAudioPipelineFactory;
 import com.rheinmetal.tianshu.function.intake.control.AsrController;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngine;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngineBootstrap;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngineBootstrapStatus;
-import com.rheinmetal.tianshu.function.intake.engine.AsrHotwordSupport;
 import com.rheinmetal.tianshu.function.intake.input.AsrInputGateway;
 import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
 import com.rheinmetal.tianshu.function.intake.recognition.AsrRecognitionService;
@@ -32,8 +31,6 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceAccess;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceSnapshot;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -48,18 +45,10 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
     private final IGameEnvironment env;
-    private final AsrConfiguration config;
+    private final IntakeConfiguration config;
     private final BooleanSupplier voiceInputAcceptance;
     private final LongSupplier interruptProcessing;
     private final AtomicBoolean engineLoadInFlight = new AtomicBoolean(false);
-    /**
-     * A hotword change that arrived while a model read was already running.
-     *
-     * <p>Coalesced into a single flag rather than a queue: the reader always loads the newest hotword
-     * file, so one follow-up run is enough no matter how many changes piled up behind it. Dropping the
-     * change instead would silently lose the update, which is the one thing a reload may not do.
-     */
-    private final AtomicBoolean reloadPending = new AtomicBoolean(false);
     /**
      * Guards the native-load permit so that exactly one hand-back happens no matter how the load ends.
      *
@@ -77,8 +66,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private AsrInputGateway inputGateway;
     private ModuleRuntimeState runtimeState;
     private ModuleRuntimeContext runtimeContext;
-    private VoiceResourceAccess voiceResources;
-    private Consumer<VoiceResourceSnapshot> voiceResourceListener;
     private volatile AsrEngine engine;
     /**
      * How the speech-engine lane last ended, kept so a voice key press can say why nothing is happening.
@@ -92,13 +79,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     /** The queued/loading engine task, kept so teardown can cancel a load that has not started. */
     private volatile ProtocolTaskHandle engineLoadTask;
     private volatile AudioCaptureService audioCapture;
-    private volatile long appliedVoiceResourceVersion = -1L;
     private volatile boolean destroyed;
     private AsrModelService modelService;
     private volatile long lifecycleStatusGeneration;
     private volatile boolean lifecycleActive;
 
-    public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, AsrConfiguration config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
+    public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env, IntakeConfiguration config, BooleanSupplier voiceInputAcceptance, LongSupplier interruptProcessing) {
         this(audioBridge, moduleRuntime, env, config, voiceInputAcceptance, interruptProcessing, null, null);
     }
 
@@ -108,7 +94,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      *                  retrieval is a precondition for dialogue. Null keeps this module self-contained.
      */
     public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env,
-                     AsrConfiguration config, BooleanSupplier voiceInputAcceptance,
+                     IntakeConfiguration config, BooleanSupplier voiceInputAcceptance,
                      LongSupplier interruptProcessing, NativeModelLoadQueue loadQueue) {
         this(audioBridge, moduleRuntime, env, config, voiceInputAcceptance, interruptProcessing, loadQueue, null);
     }
@@ -118,7 +104,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      *                            lane to the registered voice triggers
      */
     public AsrModule(IAudioBridge audioBridge, ModuleRuntimeAccess moduleRuntime, IGameEnvironment env,
-                     AsrConfiguration config, BooleanSupplier voiceInputAcceptance,
+                     IntakeConfiguration config, BooleanSupplier voiceInputAcceptance,
                      LongSupplier interruptProcessing, NativeModelLoadQueue loadQueue,
                      IrNamedObjectEnhancer namedObjectEnhancer) {
         this.audioBridge = audioBridge;
@@ -157,8 +143,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             runtimeContext = context;
             runtimeState = context.runtimeState();
             engineStatus = null;
-            bindVoiceResources(context.voiceResources());
-            textRepairer.initialize(context.voiceResources(), context.diagnostics());
+                textRepairer.initialize(context.voiceTriggers(), context.diagnostics());
             AsrStateMachine stateMachine = new AsrStateMachine();
             AsrSessionManager sessionManager = new AsrSessionManager();
             audioCapture = new AudioCaptureService(audioBridge, env);
@@ -213,7 +198,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         textRepairer.destroy();
         // Covers the initial read and a hotword refresh alike: they share one latch and one lane task.
         cancelEngineLoad();
-        unbindVoiceResources();
         stop();
         if (modelService != null) {
             modelService.close();
@@ -327,46 +311,24 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      * Within the deferred tier there is deliberately no ordering: whoever asks first is granted first.
      */
     /**
-     * What the read is for. The gate, the lane and the release path are identical for both; only the
-     * swap policy and the status keys differ, which is the whole reason they share one entry.
-     */
-    private enum EngineLoadReason {
-        /** No engine exists yet: the result becomes the lane's engine, success or not. */
-        INITIAL,
-        /** Hotwords changed: the running engine keeps serving until the replacement is ready. */
-        HOTWORD_RELOAD
-    }
-
-    private void requestEngineLoad(ModuleRuntimeContext context) {
-        requestEngineLoad(context, EngineLoadReason.INITIAL);
-    }
-
-    /**
-     * The single entry for every native read of the speech model, initial and hotword-triggered alike.
+     * The single entry for every native read of the speech model.
      *
      * <p>Request the permit, re-enter this module's own lane once it is granted, read, and hand the permit
-     * back in a {@code finally}. A second request while one is in flight is coalesced instead of queued:
-     * the reader always picks up the newest hotword file, so one follow-up run covers any number of
-     * changes that arrived behind it.
+     * back in a {@code finally}. A second request while one is in flight is dropped: the model is read
+     * once per enable, not rebuilt afterwards.
      */
-    private void requestEngineLoad(ModuleRuntimeContext context, EngineLoadReason reason) {
+    private void requestEngineLoad(ModuleRuntimeContext context) {
         if (!engineLoadInFlight.compareAndSet(false, true)) {
-            if (reason == EngineLoadReason.HOTWORD_RELOAD) {
-                reloadPending.set(true);
-            }
             return;
         }
-        if (reason == EngineLoadReason.HOTWORD_RELOAD) {
-            publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.reload_started"));
-        }
         if (loadQueue == null) {
-            submitEngineLoad(context, reason);
+            submitEngineLoad(context);
             return;
         }
         NativeModelLoadQueue.Outcome outcome = loadQueue.request(
-                moduleId(), LOAD_ACTION, () -> submitEngineLoad(context, reason), NativeModelLoadQueue.Tier.LAST);
+                moduleId(), LOAD_ACTION, () -> submitEngineLoad(context), NativeModelLoadQueue.Tier.LAST);
         if (outcome == NativeModelLoadQueue.Outcome.REFUSED) {
-            failEngineLoad(context, reason, "the native model load queue is full");
+            failEngineLoad(context, "the native model load queue is full");
             return;
         }
         if (outcome == NativeModelLoadQueue.Outcome.PARKED) {
@@ -377,12 +339,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     /** The permit arrived: the load re-enters this module's own lane instead of running on the giver. */
-    private void submitEngineLoad(ModuleRuntimeContext context, EngineLoadReason reason) {
+    private void submitEngineLoad(ModuleRuntimeContext context) {
         engineLoadPermit.set(true);
-        ProtocolTaskHandle handle = moduleRuntime.submit(engineLoadSpec(), () -> runEngineLoad(context, reason));
+        ProtocolTaskHandle handle = moduleRuntime.submit(engineLoadSpec(), () -> runEngineLoad(context));
         if (handle.state() == ProtocolTaskState.REJECTED) {
             engineLoadTask = null;
-            failEngineLoad(context, reason, "the model-load lane rejected the task");
+            failEngineLoad(context, "the model-load lane rejected the task");
             return;
         }
         engineLoadTask = handle;
@@ -397,7 +359,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      * the lane exactly as it was, and the MODEL dimension is put back to ready, because the bootstrap's
      * failure marking describes the replacement that failed, not the engine still running.
      */
-    private void runEngineLoad(ModuleRuntimeContext context, EngineLoadReason reason) {
+    private void runEngineLoad(ModuleRuntimeContext context) {
         try {
             if (destroyed) {
                 return;
@@ -408,45 +370,14 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
                 shutdownQuietly(loaded);
                 return;
             }
-            if (reason == EngineLoadReason.HOTWORD_RELOAD) {
-                if (loaded == null) {
-                    restoreModelReadyIfServing(previous);
-                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.reload_failed"));
-                    env.warn("asr.voice_resource.reload.no_engine");
-                    return;
-                }
-                engine = loaded;
-                applyVoiceResourceVersion(context);
-                shutdownQuietly(previous);
-                publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.asr.reload_complete"));
-                env.info("asr.voice_resource.reload.completed version=" + appliedVoiceResourceVersion);
-                return;
-            }
             engine = loaded;
-            if (loaded != null) {
-                applyVoiceResourceVersion(context);
-            }
         } catch (RuntimeException | LinkageError failure) {
             env.error("asr.engine.load_failed", failure);
             publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.exception"));
         } finally {
-            boolean followUp = reloadPending.compareAndSet(true, false) && !destroyed;
             engineLoadInFlight.set(false);
             adapter.publishLoadingActivity(false);
             releaseEnginePermit();
-            // Asked for only after the permit is back: requesting while still holding it would park this
-            // module behind itself and hand the gate back to nobody.
-            if (followUp) {
-                requestEngineLoad(context, EngineLoadReason.HOTWORD_RELOAD);
-            }
-        }
-    }
-
-    /** The version the loaded engine was built from; the listener compares against it to find work. */
-    private void applyVoiceResourceVersion(ModuleRuntimeContext context) {
-        VoiceResourceAccess resources = context.voiceResources();
-        if (resources != null) {
-            appliedVoiceResourceVersion = resources.snapshot().version();
         }
     }
 
@@ -481,28 +412,18 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      * <p>A rejected hotword refresh is different: the engine that is already serving is untouched, so the
      * refresh is reported as failed without downgrading a lane that still works.
      */
-    private void failEngineLoad(ModuleRuntimeContext context, EngineLoadReason reason, String detail) {
+    private void failEngineLoad(ModuleRuntimeContext context, String detail) {
         engineLoadInFlight.set(false);
         adapter.publishLoadingActivity(false);
         releaseEnginePermit();
         env.warn("asr.engine.load_rejected: " + detail);
-        boolean initial = reason == EngineLoadReason.INITIAL;
-        if (initial) {
-            ModuleRuntimeState state = runtimeState;
-            if (state != null) {
-                state.capabilities().markFailed(AsrRuntimeCapabilities.MODEL, moduleId(), detail);
-            }
+        ModuleRuntimeState state = runtimeState;
+        if (state != null) {
+            state.capabilities().markFailed(AsrRuntimeCapabilities.MODEL, moduleId(), detail);
         }
-        ModuleStatus failed = ModuleStatuses.failedKeyed(moduleId(), initial
-                ? "tianshu.presence.module.asr.load_rejected"
-                : "tianshu.presence.module.asr.reload_rejected");
-        if (initial) {
-            engineStatus = failed;
-        }
+        ModuleStatus failed = ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.load_rejected");
+        engineStatus = failed;
         publishModuleStatus(failed);
-        if (reloadPending.compareAndSet(true, false) && !destroyed) {
-            requestEngineLoad(context, EngineLoadReason.HOTWORD_RELOAD);
-        }
     }
 
     /**
@@ -537,7 +458,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             releaseEnginePermit();
         }
         engineLoadInFlight.set(false);
-        reloadPending.set(false);
         adapter.publishLoadingActivity(false);
     }
 
@@ -578,52 +498,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (status != null) {
             adapter.publishModuleStatus(status);
         }
-    }
-
-    private void bindVoiceResources(VoiceResourceAccess resources) {
-        unbindVoiceResources();
-        voiceResources = resources;
-        voiceResourceListener = this::handleVoiceResourceChanged;
-        if (voiceResources != null) {
-            voiceResources.addChangeListener(voiceResourceListener);
-        }
-    }
-
-    private void unbindVoiceResources() {
-        VoiceResourceAccess resources = voiceResources;
-        Consumer<VoiceResourceSnapshot> listener = voiceResourceListener;
-        if (resources != null && listener != null) {
-            resources.removeChangeListener(listener);
-        }
-        voiceResources = null;
-        voiceResourceListener = null;
-    }
-
-    private void handleVoiceResourceChanged(VoiceResourceSnapshot snapshot) {
-        if (snapshot == null || destroyed || snapshot.version() <= appliedVoiceResourceVersion) {
-            return;
-        }
-        if (!currentModelHotwordsRequireReload()) {
-            appliedVoiceResourceVersion = snapshot.version();
-            env.info("ASR model does not require hotword reload, applied voice resource version=" + snapshot.version());
-            return;
-        }
-        // The same entry as the initial read: a hotword refresh is a native model read like any other, so
-        // it takes the same gate and the same lane instead of being a second, unguarded door into the
-        // model. A change that arrives mid-read is coalesced by requestEngineLoad, not queued behind it.
-        ModuleRuntimeContext context = runtimeContext;
-        if (context == null) {
-            return;
-        }
-        requestEngineLoad(context, EngineLoadReason.HOTWORD_RELOAD);
-    }
-
-    private boolean currentModelHotwordsRequireReload() {
-        String modelName = config.getCustomAsrName();
-        if (modelName == null || modelName.isBlank()) {
-            return false;
-        }
-        return AsrHotwordSupport.fromModelPath(config.getAsrModelPath()).reloadRequired();
     }
 }
 

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.index;
 
 import com.rheinmetal.tianshu.function.intake.repair.core.IRBaseUtils;
-import com.rheinmetal.tianshu.function.intake.repair.core.IRObjectId;
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import com.rheinmetal.tianshu.function.intake.repair.core.ItemContextProvider;
 import com.rheinmetal.tianshu.function.intake.repair.enhance.IrContextHint;
 
@@ -24,7 +24,7 @@ final class ClientItemContextResolver {
             return;
         }
         String normalized = itemId.trim();
-        Integer internalId = IRBaseUtils.forwardLookupMap.get(IRObjectId.item(normalized));
+        Integer internalId = IRBaseUtils.forwardLookupMap.get(GameObjectId.item(normalized));
         if (internalId == null) {
             internalId = IRBaseUtils.forwardLookupMap.get(normalized);
         }

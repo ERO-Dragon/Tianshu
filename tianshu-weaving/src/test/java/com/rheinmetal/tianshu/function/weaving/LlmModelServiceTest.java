@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.weaving;
 
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
-import com.rheinmetal.tianshu.model.LlmModelInfo;
-import com.rheinmetal.tianshu.model.LlmModelManager;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

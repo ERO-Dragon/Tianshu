@@ -17,12 +17,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class AXParticipantRegistrar {
     public static final String PARTICIPANT_ID = "tianshu.AX";
     private final AXProtocolAdapter adapter;
-    private final AXAssistantSettings settings;
+    private final AuxiliumAssistantSettings settings;
     private final AtomicBoolean registered = new AtomicBoolean(false);
 
-    public AXParticipantRegistrar(AXProtocolAdapter adapter, AXAssistantSettings settings) {
+    public AXParticipantRegistrar(AXProtocolAdapter adapter, AuxiliumAssistantSettings settings) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
-        this.settings = settings == null ? AXAssistantSettings.DEFAULT : settings;
+        this.settings = settings == null ? AuxiliumAssistantSettings.DEFAULT : settings;
     }
 
     public void register() {

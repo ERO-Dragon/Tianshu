@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.echo;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
@@ -21,13 +21,13 @@ import java.util.function.Consumer;
 
 public class TtsVoiceLibraryService {
     private final IGameEnvironment env;
-    private final TtsConfiguration config;
+    private final EchoConfiguration config;
     private final ModuleExecutionAccess execution;
     private final AtomicBoolean refreshQueued = new AtomicBoolean(false);
     private final ConcurrentLinkedQueue<Runnable> refreshCallbacks = new ConcurrentLinkedQueue<>();
     private final AtomicReference<List<String>> voiceSamples = new AtomicReference<>(List.of());
 
-    public TtsVoiceLibraryService(IGameEnvironment env, TtsConfiguration config, ModuleExecutionAccess execution) {
+    public TtsVoiceLibraryService(IGameEnvironment env, EchoConfiguration config, ModuleExecutionAccess execution) {
         this.env = env;
         this.config = config;
         this.execution = execution;

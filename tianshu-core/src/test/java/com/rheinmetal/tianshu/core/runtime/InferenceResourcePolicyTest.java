@@ -36,8 +36,8 @@ class InferenceResourcePolicyTest {
 
     @Test
     void llmPolicyUsesSmallCpuHelperBudget() {
-        assertEquals(2, InferenceResourcePolicy.fixedProcessors(2).llmGpuHelperThreads());
-        assertEquals(3, InferenceResourcePolicy.fixedProcessors(8).llmGpuHelperThreads());
-        assertEquals(4, InferenceResourcePolicy.fixedProcessors(16).llmGpuHelperThreads());
+        assertEquals(2, InferenceResourcePolicy.fixedProcessors(2).embeddingGpuHelperThreads());
+        assertEquals(3, InferenceResourcePolicy.fixedProcessors(8).embeddingGpuHelperThreads());
+        assertEquals(4, InferenceResourcePolicy.fixedProcessors(16).embeddingGpuHelperThreads());
     }
 }

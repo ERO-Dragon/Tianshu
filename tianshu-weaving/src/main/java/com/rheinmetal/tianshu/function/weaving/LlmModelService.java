@@ -2,11 +2,11 @@ package com.rheinmetal.tianshu.function.weaving;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.download.LlmModelDownloadCoordinator;
-import com.rheinmetal.tianshu.model.LlmModelDownloader;
-import com.rheinmetal.tianshu.model.LlmModelInfo;
-import com.rheinmetal.tianshu.model.LlmModelManager;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelDownloader;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
+import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
@@ -58,7 +58,7 @@ public final class LlmModelService {
     }
 
     private final IGameEnvironment env;
-    private final LlmConfiguration config;
+    private final WeavingConfiguration config;
     private final ModuleExecutionAccess executorManager;
     private final LlmModelDownloadCoordinator downloadCoordinator;
     private final Consumer<ModuleStatus> moduleStatusSink;
@@ -67,11 +67,11 @@ public final class LlmModelService {
     private final AtomicReference<DownloadSnapshot> downloadSnapshot = new AtomicReference<>(DownloadSnapshot.idle());
     private final ModelAvailabilityRefresher availabilityRefresher;
 
-    public LlmModelService(IGameEnvironment env, LlmConfiguration config, ModuleExecutionAccess executorManager) {
+    public LlmModelService(IGameEnvironment env, WeavingConfiguration config, ModuleExecutionAccess executorManager) {
         this(env, config, executorManager, null);
     }
 
-    public LlmModelService(IGameEnvironment env, LlmConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+    public LlmModelService(IGameEnvironment env, WeavingConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
         this.env = Objects.requireNonNull(env, "env");
         this.config = Objects.requireNonNull(config, "config");
         this.executorManager = Objects.requireNonNull(executorManager, "executorManager");

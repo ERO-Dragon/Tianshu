@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.intake.engine;
 
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -68,7 +68,7 @@ class SherpaOnnxAsrDecodingPolicyTest {
             Files.writeString(modelDir.resolve(file), "test");
         }
         SherpaOnnxAsrConfigFactory factory = new SherpaOnnxAsrConfigFactory(new FakeGameEnvironment());
-        return factory.build(info, modelDir, null).orElseThrow();
+        return factory.build(info, modelDir).orElseThrow();
     }
 
     private AsrModelInfo model(String name, String architecture, boolean streaming, Map<String, String> fileRoles) {

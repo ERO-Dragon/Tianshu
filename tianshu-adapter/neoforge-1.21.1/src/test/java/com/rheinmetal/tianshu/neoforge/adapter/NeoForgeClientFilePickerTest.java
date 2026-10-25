@@ -17,6 +17,7 @@ class NeoForgeClientFilePickerTest {
     private final ClientTextProvider texts = new ClientTextProvider() {
         public String text(UiText text) { return text.value(); }
         public String currentLanguage() { return "en_us"; }
+        public boolean hasKey(String key) { return false; }
     };
 
     @Test
@@ -32,10 +33,10 @@ class NeoForgeClientFilePickerTest {
         var release = new CountDownLatch(1);
         SwingUtilities.invokeLater(() -> {
             entered.countDown();
-            try { release.await(5, TimeUnit.SECONDS); }
+            try { release.await(10, TimeUnit.SECONDS); }
             catch (InterruptedException failure) { Thread.currentThread().interrupt(); }
         });
-        assertTrue(entered.await(3, TimeUnit.SECONDS));
+        assertTrue(entered.await(10, TimeUnit.SECONDS));
         try (var picker = new NeoForgeClientFilePicker(texts, () -> new JFileChooser() {
             @Override public int showOpenDialog(Component parent) {
                 assertTrue(SwingUtilities.isEventDispatchThread());
@@ -47,7 +48,7 @@ class NeoForgeClientFilePickerTest {
             assertFalse(selected.isDone());
             assertSame(selected, picker.chooseWavFile(UiText.literal("voice")));
             release.countDown();
-            assertEquals(Path.of("voice.wav"), selected.get(5, TimeUnit.SECONDS).orElseThrow());
+            assertEquals(Path.of("voice.wav"), selected.get(10, TimeUnit.SECONDS).orElseThrow());
         } finally {
             release.countDown();
         }
@@ -77,8 +78,8 @@ class NeoForgeClientFilePickerTest {
             };
         })) {
             assertThrows(java.util.concurrent.ExecutionException.class,
-                    () -> picker.chooseWavFile(UiText.literal("voice")).get(5, TimeUnit.SECONDS));
-            assertTrue(picker.chooseWavFile(UiText.literal("voice")).get(5, TimeUnit.SECONDS).isEmpty());
+                    () -> picker.chooseWavFile(UiText.literal("voice")).get(10, TimeUnit.SECONDS));
+            assertTrue(picker.chooseWavFile(UiText.literal("voice")).get(10, TimeUnit.SECONDS).isEmpty());
         }
     }
 }

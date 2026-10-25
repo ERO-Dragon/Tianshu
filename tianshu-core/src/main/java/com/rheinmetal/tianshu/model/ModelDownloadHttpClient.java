@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Executes model-download HTTP requests while keeping source selection outside transport. */
-final class ModelDownloadHttpClient {
+public final class ModelDownloadHttpClient {
     private static final int BUFFER_SIZE = 8192;
     private static final long CONTROL_POLL_MILLIS = 100L;
     private static final Pattern CONTENT_RANGE = Pattern.compile("bytes\\s+(\\d+)-(\\d+)/(\\d+)", Pattern.CASE_INSENSITIVE);
@@ -31,15 +31,15 @@ final class ModelDownloadHttpClient {
     private final IGameEnvironment env;
     private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
 
-    ModelDownloadHttpClient(IGameEnvironment env) {
+    public ModelDownloadHttpClient(IGameEnvironment env) {
         this.env = Objects.requireNonNull(env, "env");
     }
 
-    String readUtf8(List<URI> candidates, RetryPolicy policy, DownloadControl control) throws IOException {
+    public String readUtf8(List<URI> candidates, RetryPolicy policy, DownloadControl control) throws IOException {
         return executeCandidates(candidates, policy, control, this::readUtf8Once);
     }
 
-    void download(
+    public void download(
             List<URI> candidates,
             Path target,
             RetryPolicy policy,
@@ -68,7 +68,7 @@ final class ModelDownloadHttpClient {
         }
     }
 
-    void cancelActiveTransfers() {
+    public void cancelActiveTransfers() {
         for (HttpURLConnection connection : activeConnections) {
             if (connection != null) {
                 connection.disconnect();
@@ -529,13 +529,13 @@ final class ModelDownloadHttpClient {
         return result;
     }
 
-    record RetryPolicy(
+    public record RetryPolicy(
             int maxAttempts,
             int connectTimeoutMillis,
             int readTimeoutMillis,
             long backoffMillis
     ) {
-        RetryPolicy {
+        public RetryPolicy {
             if (maxAttempts < 1) throw new IllegalArgumentException("maxAttempts must be positive");
             if (connectTimeoutMillis < 1) throw new IllegalArgumentException("connectTimeoutMillis must be positive");
             if (readTimeoutMillis < 1) throw new IllegalArgumentException("readTimeoutMillis must be positive");
@@ -544,21 +544,21 @@ final class ModelDownloadHttpClient {
     }
 
     @FunctionalInterface
-    interface DownloadControl {
+    public interface DownloadControl {
         void awaitReady() throws IOException;
     }
 
     @FunctionalInterface
-    interface ProgressListener {
+    public interface ProgressListener {
         void onProgress(long downloaded, long total);
     }
 
-    static final class DownloadCancelledException extends IOException {
-        DownloadCancelledException(String message) {
+    public static final class DownloadCancelledException extends IOException {
+        public DownloadCancelledException(String message) {
             super(message);
         }
 
-        DownloadCancelledException(String message, Throwable cause) {
+        public DownloadCancelledException(String message, Throwable cause) {
             super(message, cause);
         }
     }

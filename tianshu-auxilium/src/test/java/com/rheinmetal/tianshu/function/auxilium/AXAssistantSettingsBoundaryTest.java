@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class AXAssistantSettingsBoundaryTest {
     @Test
     void commonDefaultHasNoWakeWord() {
-        assertEquals("", AXAssistantSettings.DEFAULT_WAKE_WORD);
-        assertEquals("", AXAssistantSettings.DEFAULT.wakeWord());
+        assertEquals("", AuxiliumAssistantSettings.DEFAULT_WAKE_WORD);
+        assertEquals("", AuxiliumAssistantSettings.DEFAULT.wakeWord());
     }
 
     @Test
@@ -22,7 +22,7 @@ class AXAssistantSettingsBoundaryTest {
 
         String code = Files.readString(clientConfig, StandardCharsets.UTF_8);
 
-        assertFalse(code.contains("builder.define(\"wakeWord\", AXAssistantSettings.DEFAULT_WAKE_WORD)"));
+        assertFalse(code.contains("builder.define(\"wakeWord\", AuxiliumAssistantSettings.DEFAULT_WAKE_WORD)"));
         assertFalse(code.contains("builder.define(\"wakeWord\", \"天枢\")"));
     }
 }

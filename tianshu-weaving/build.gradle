@@ -93,10 +93,12 @@ sourceSets {
     neoforgeEntry {
         java.srcDir 'src/neoforgeEntry/java'
         compileClasspath += sourceSets.main.output + sourceSets.neoforgeStubs.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
     }
     fabricEntry {
         java.srcDir 'src/fabricEntry/java'
         compileClasspath += sourceSets.main.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
     }
 }
 

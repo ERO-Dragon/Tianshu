@@ -23,9 +23,9 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputContext;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputMode;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputProcessor;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXOutputSettings;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXReplyTextRepository;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
@@ -395,7 +395,7 @@ class AXAgentTurnWiringTest {
             AXDelegateService delegateService
     ) {
         AXOutputProcessor outputProcessor = new AXOutputProcessor(
-                adapter, (AXOutputSettings) () -> AXOutputMode.UI_ONLY, sink, REPLY_TEXTS);
+                adapter, (AuxiliumOutputSettings) () -> AuxiliumOutputMode.UI_ONLY, sink, REPLY_TEXTS);
         return new AXTurnOrchestrator(
                 () -> scope,
                 MAPPER,

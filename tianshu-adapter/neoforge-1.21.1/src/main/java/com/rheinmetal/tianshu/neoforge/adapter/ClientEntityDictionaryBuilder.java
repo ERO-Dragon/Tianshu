@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.function.intake.repair.core.IRObjectId;
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -42,7 +42,7 @@ final class ClientEntityDictionaryBuilder {
             }
 
             if (!aliases.isEmpty()) {
-                dictionary.put(IRObjectId.entity(entityTypeId), aliases);
+                dictionary.put(GameObjectId.entity(entityTypeId), aliases);
             }
         }
         return dictionary;

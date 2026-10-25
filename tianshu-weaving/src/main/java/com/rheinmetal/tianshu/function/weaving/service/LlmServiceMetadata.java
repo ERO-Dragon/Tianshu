@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 
 /**
  * Per-runtime metadata: the model name the runtime is attributed to, the cloud model whose sampling
@@ -12,13 +12,13 @@ import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
  * preparer needs that id to find a model's sampling defaults. Folding the two together would re-key every
  * usage record the moment the sampling source changed.
  *
- * <p>The window is read from {@link LlmConfiguration#getLlmContextWindowTokens()} — the cloud endpoint
+ * <p>The window is read from {@link WeavingConfiguration#getLlmContextWindowTokens()} — the cloud endpoint
  * never reports its own window, so the configured number is the only source. It is a fallback only (see
  * {@code LlmRuntimeInspector}): when the inference client can plan a budget, the plan wins.</p>
  */
 record LlmServiceMetadata(String modelName, String samplingModelId, String embeddingModelName,
                           int declaredContextWindowTokens) {
-    static LlmServiceMetadata from(LlmConfiguration config) {
+    static LlmServiceMetadata from(WeavingConfiguration config) {
         if (config == null) {
             return new LlmServiceMetadata("", "", "", 0);
         }

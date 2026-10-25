@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.echo;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.echo.settings.TtsConfiguration;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
@@ -22,7 +22,7 @@ import com.rheinmetal.tianshu.function.echo.synthesis.DefaultTtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.echo.voice.TtsVoiceCloneProfile;
 import com.rheinmetal.tianshu.function.echo.voice.TtsVoiceCloneRegistry;
 import com.rheinmetal.tianshu.function.echo.voice.TtsVoiceRequestValidator;
-import com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
@@ -53,7 +53,7 @@ public final class TtsModule implements TianshuManagedModule {
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess runtime;
     private final IGameEnvironment env;
-    private final TtsConfiguration config;
+    private final EchoConfiguration config;
     private final TtsProtocolAdapter adapter;
     private TtsRuntime ttsRuntime;
     private TtsModuleService moduleService;
@@ -71,11 +71,11 @@ public final class TtsModule implements TianshuManagedModule {
     /** Tells the player the speech model is queued behind retrieval instead of stalled. */
     private final NativeModelLoadQueue.Observer loadQueueObserver;
 
-    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config) {
+    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, EchoConfiguration config) {
         this(audioBridge, runtime, env, config, null);
     }
 
-    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, TtsConfiguration config,
+    public TtsModule(IAudioBridge audioBridge, ModuleRuntimeAccess runtime, IGameEnvironment env, EchoConfiguration config,
                      NativeModelLoadQueue loadQueue) {
         this.audioBridge = audioBridge;
         this.runtime = runtime;
@@ -546,8 +546,8 @@ public final class TtsModule implements TianshuManagedModule {
             return new TtsVoiceProfile(voiceId, options.speed() == null ? 1.0F : options.speed(),
                     options.speakerId() == null ? 0 : options.speakerId(), "");
         }
-        com.rheinmetal.tianshu.model.TtsModelInfo info = modelService.resolveCurrentModelInfo();
-        com.rheinmetal.tianshu.model.ModelSettings.TtsSettings settings = modelService.loadSettings(info);
+        com.rheinmetal.tianshu.function.echo.model.TtsModelInfo info = modelService.resolveCurrentModelInfo();
+        com.rheinmetal.tianshu.function.echo.model.TtsModelSettings settings = modelService.loadSettings(info);
         float speed = options.speed() == null ? (float) settings.speed : options.speed();
         int speakerId = options.speakerId() == null ? settings.speakerId : options.speakerId();
         String voiceSample = "";
@@ -580,7 +580,7 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private java.util.Optional<TtsFailure> validateVoice(TtsVoiceOptions voiceOptions) {
-        com.rheinmetal.tianshu.model.TtsModelInfo info = modelService == null
+        com.rheinmetal.tianshu.function.echo.model.TtsModelInfo info = modelService == null
                 ? null
                 : modelService.resolveCurrentModelInfo();
         return TtsVoiceRequestValidator.validate(

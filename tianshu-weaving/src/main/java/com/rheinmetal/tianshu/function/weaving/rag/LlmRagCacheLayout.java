@@ -1,21 +1,21 @@
 package com.rheinmetal.tianshu.function.weaving.rag;
 
-import com.rheinmetal.tianshu.function.weaving.settings.LlmConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.core.scope.WorldScopeProvider;
 
 import java.nio.file.Path;
 
 public final class LlmRagCacheLayout {
-    private final LlmConfiguration config;
+    private final WeavingConfiguration config;
 
-    public LlmRagCacheLayout(LlmConfiguration config) {
+    public LlmRagCacheLayout(WeavingConfiguration config) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }
         this.config = config;
     }
 
-    public LlmRagCacheLayout(LlmConfiguration config, WorldScopeProvider ignoredWorldScopeProvider) {
+    public LlmRagCacheLayout(WeavingConfiguration config, WorldScopeProvider ignoredWorldScopeProvider) {
         this(config);
     }
 

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.function.intake.repair.core.IRObjectId;
+import com.rheinmetal.tianshu.api.game.GameObjectId;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -41,7 +41,7 @@ final class ClientItemDictionaryBuilder {
             }
             
             if (!aliases.isEmpty()) {
-                dictionary.put(IRObjectId.item(realItemId), aliases);
+                dictionary.put(GameObjectId.item(realItemId), aliases);
             }
         }
         return dictionary;

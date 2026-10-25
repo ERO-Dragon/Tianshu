@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.intake.index;
 
+import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.function.intake.repair.core.IRParseResult;
 import com.rheinmetal.tianshu.function.intake.repair.enhance.IrContextHint;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class ClientNamedObjectIndexManagerTest {
         CountDownLatch allowBuild = new CountDownLatch(1);
         AtomicInteger activeBuilds = new AtomicInteger();
         AtomicInteger maxActiveBuilds = new AtomicInteger();
-        NamedObjectDictionaryProvider provider = () -> {
+        NamedObjectDictionary provider = () -> {
             int active = activeBuilds.incrementAndGet();
             maxActiveBuilds.accumulateAndGet(active, Math::max);
             try {

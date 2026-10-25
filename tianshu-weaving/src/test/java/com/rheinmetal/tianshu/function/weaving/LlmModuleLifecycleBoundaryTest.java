@@ -8,7 +8,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
-import com.rheinmetal.tianshu.protocol.voice.VoiceResourceManager;
+import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapabilityState;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -51,7 +51,7 @@ class LlmModuleLifecycleBoundaryTest {
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         LlmModule module = new LlmModule(env, config, runtime);
         module.register(new ModuleRegistrationContext(runtime, services));
-        module.prepare(new ModuleRuntimeContext(runtime, services, new VoiceResourceManager(env, config), new ModuleRuntimeState()));
+        module.prepare(new ModuleRuntimeContext(runtime, services, new VoiceTriggerRegistry(), new ModuleRuntimeState()));
 
         module.start(null);
 
@@ -68,7 +68,7 @@ class LlmModuleLifecycleBoundaryTest {
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         LlmModule module = new LlmModule(env, config, runtime);
         module.register(new ModuleRegistrationContext(runtime, services));
-        module.prepare(new ModuleRuntimeContext(runtime, services, new VoiceResourceManager(env, config), new ModuleRuntimeState()));
+        module.prepare(new ModuleRuntimeContext(runtime, services, new VoiceTriggerRegistry(), new ModuleRuntimeState()));
 
         LlmModuleService service = services.require(LlmModuleService.class);
         service.load();
@@ -89,7 +89,7 @@ class LlmModuleLifecycleBoundaryTest {
         ModuleRuntimeState state = new ModuleRuntimeState();
         LlmModule module = new LlmModule(env, config, runtime);
         module.register(new ModuleRegistrationContext(runtime, services));
-        module.prepare(new ModuleRuntimeContext(runtime, services, new VoiceResourceManager(env, config), state));
+        module.prepare(new ModuleRuntimeContext(runtime, services, new VoiceTriggerRegistry(), state));
 
         assertEquals(RuntimeCapabilityState.FAILED, state.capabilities().status(LlmRuntimeCapabilities.LLM_REQUEST).state());
         assertEquals(RuntimeCapabilityState.READY, state.capabilities().status(LlmRuntimeCapabilities.LLM_CACHE_MANAGE).state());

@@ -79,13 +79,13 @@ class ModelCatalogOwnershipTest {
 
     @Test
     void everyReaderNamesTheOwnedPath() throws Exception {
-        assertReaderNames("tianshu-core/src/main/java/com/rheinmetal/tianshu/model/AsrModelManager.java",
+        assertReaderNames("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/model/AsrModelManager.java",
                 "/com/rheinmetal/tianshu/model/catalog/asr_model.json");
-        assertReaderNames("tianshu-core/src/main/java/com/rheinmetal/tianshu/model/LlmModelManager.java",
+        assertReaderNames("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/model/LlmModelManager.java",
                 "/com/rheinmetal/tianshu/model/catalog/llm_models.json");
-        assertReaderNames("tianshu-core/src/main/java/com/rheinmetal/tianshu/model/LlmModelManager.java",
+        assertReaderNames("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/model/LlmModelManager.java",
                 "/com/rheinmetal/tianshu/model/catalog/llm_embedding_models.json");
-        assertReaderNames("tianshu-core/src/main/java/com/rheinmetal/tianshu/model/TtsModelInfo.java",
+        assertReaderNames("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/model/TtsModelInfo.java",
                 "/com/rheinmetal/tianshu/model/catalog/tts-model.json");
     }
 

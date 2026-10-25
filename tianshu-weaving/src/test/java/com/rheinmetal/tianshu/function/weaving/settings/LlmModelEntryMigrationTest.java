@@ -15,12 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LlmModelEntryMigrationTest {
     @Test
     void legacyKeysSynthesiseExactlyOneEntry() {
-        List<LlmModelEntry> models = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400)
+        List<WeavingModelEntry> models = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400)
                 .getLlmModels();
 
         assertEquals(1, models.size());
-        LlmModelEntry entry = models.get(0);
-        assertEquals(LlmModelEntry.LEGACY_ID, entry.id());
+        WeavingModelEntry entry = models.get(0);
+        assertEquals(WeavingModelEntry.LEGACY_ID, entry.id());
         assertEquals("https://api.deepseek.com/v1", entry.baseUrl());
         assertEquals("deepseek-flash", entry.modelId());
         assertEquals(102_400, entry.contextWindowTokens());
@@ -28,20 +28,20 @@ class LlmModelEntryMigrationTest {
 
     @Test
     void activeIdPointsAtTheLegacyEntry() {
-        assertEquals(LlmModelEntry.LEGACY_ID, config("", "", "deepseek-flash", 102_400).getLlmActiveModelId());
+        assertEquals(WeavingModelEntry.LEGACY_ID, config("", "", "deepseek-flash", 102_400).getLlmActiveModelId());
     }
 
     @Test
     void apiKeyIsOnlyResolvableForTheActiveEntry() {
-        LlmConfiguration config = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400);
+        WeavingConfiguration config = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400);
 
-        assertEquals("sk-legacy", config.getLlmApiKey(LlmModelEntry.LEGACY_ID));
+        assertEquals("sk-legacy", config.getLlmApiKey(WeavingModelEntry.LEGACY_ID));
         assertEquals("", config.getLlmApiKey("some-other-model"));
     }
 
     @Test
     void entryNeverCarriesTheCredential() {
-        LlmModelEntry entry = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400)
+        WeavingModelEntry entry = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400)
                 .getLlmModels()
                 .get(0);
 
@@ -50,11 +50,11 @@ class LlmModelEntryMigrationTest {
 
     @Test
     void blankFieldsFallBackInsteadOfProducingEmptyEndpoints() {
-        LlmModelEntry entry = config("", "", "", 0).getLlmModels().get(0);
+        WeavingModelEntry entry = config("", "", "", 0).getLlmModels().get(0);
 
-        assertEquals(LlmConfiguration.DEFAULT_LLM_REMOTE_BASE_URL, entry.baseUrl());
-        assertEquals(LlmConfiguration.DEFAULT_LLM_REMOTE_MODEL, entry.modelId());
-        assertEquals(LlmConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS, entry.contextWindowTokens());
+        assertEquals(WeavingConfiguration.DEFAULT_LLM_REMOTE_BASE_URL, entry.baseUrl());
+        assertEquals(WeavingConfiguration.DEFAULT_LLM_REMOTE_MODEL, entry.modelId());
+        assertEquals(WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS, entry.contextWindowTokens());
     }
 
     @Test
@@ -85,12 +85,12 @@ class LlmModelEntryMigrationTest {
 
     @Test
     void theDefaultViewAndTheStoredDocumentAgreeOnALegacyProfile() {
-        LlmConfiguration profile = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400);
+        WeavingConfiguration profile = config("https://api.deepseek.com/v1", "sk-legacy", "deepseek-flash", 102_400);
         LlmModelSettings stored = LlmModelSettings.fromStored(
                 List.of(),
                 "",
                 List.of(),
-                LlmModelEntry.legacy(
+                WeavingModelEntry.legacy(
                         profile.getLlmRemoteBaseUrl(),
                         profile.getLlmRemoteModel(),
                         profile.getLlmContextWindowTokens()),
@@ -109,25 +109,25 @@ class LlmModelEntryMigrationTest {
                 List.of(),
                 "",
                 List.of(),
-                LlmModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400),
+                WeavingModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400),
                 "sk-legacy");
         LlmModelSettings migrated = legacy.withModels(legacy.models()).withLegacyCredentialAdopted();
         LlmModelSettings firstPass = LlmModelSettings.fromStored(
                 migrated.modelLines(),
                 migrated.activeModelId(),
                 migrated.credentialLines(),
-                LlmModelEntry.legacy("", "", 0),
+                WeavingModelEntry.legacy("", "", 0),
                 "");
         LlmModelSettings secondPass = LlmModelSettings.fromStored(
                 firstPass.modelLines(),
                 firstPass.activeModelId(),
                 firstPass.credentialLines(),
-                LlmModelEntry.legacy("", "", 0),
+                WeavingModelEntry.legacy("", "", 0),
                 "");
 
         assertEquals(1, firstPass.models().size());
-        assertEquals(List.of(LlmModelEntry.LEGACY_ID), ids(secondPass.models()));
-        assertEquals(LlmModelEntry.LEGACY_ID, secondPass.activeModelId());
+        assertEquals(List.of(WeavingModelEntry.LEGACY_ID), ids(secondPass.models()));
+        assertEquals(WeavingModelEntry.LEGACY_ID, secondPass.activeModelId());
         assertEquals(firstPass.modelLines(), secondPass.modelLines(), "a second pass must not rewrite the list");
         assertEquals("https://api.deepseek.com/v1", secondPass.activeModel().baseUrl());
         assertEquals("deepseek-flash", secondPass.activeModel().modelId());
@@ -158,14 +158,14 @@ class LlmModelEntryMigrationTest {
                 List.of("eu-west|Europe|deepseek|https://eu.example/v1|deepseek-flash|51200"),
                 "eu-west",
                 List.of(),
-                LlmModelEntry.legacy("", "", 0),
+                WeavingModelEntry.legacy("", "", 0),
                 "");
         LlmModelSettings rewritten = LlmModelSettings.fromStored(
                 legacyLine.modelLines(), legacyLine.activeModelId(), legacyLine.credentialLines(),
-                LlmModelEntry.legacy("", "", 0), "");
+                WeavingModelEntry.legacy("", "", 0), "");
         LlmModelSettings secondPass = LlmModelSettings.fromStored(
                 rewritten.modelLines(), rewritten.activeModelId(), rewritten.credentialLines(),
-                LlmModelEntry.legacy("", "", 0), "");
+                WeavingModelEntry.legacy("", "", 0), "");
 
         assertTrue(rewritten.modelLines().get(0).startsWith("@entry|eu-west|"), "writing upgrades the line");
         assertEquals(2, rewritten.modelLines().size(), "one provider line and one model line");
@@ -182,7 +182,7 @@ class LlmModelEntryMigrationTest {
                         "reasoner|DeepSeek Reasoner|deepseek|https://reasoner.example/v1|deepseek-reasoner|204800"),
                 "chat",
                 List.of("chat=sk-chat", "reasoner=sk-reasoner"),
-                LlmModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400),
+                WeavingModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400),
                 "sk-legacy");
     }
 
@@ -195,16 +195,16 @@ class LlmModelEntryMigrationTest {
                         "@model|deepseek|deepseek-reasoner|DeepSeek Reasoner|204800"),
                 "deepseek",
                 List.of("deepseek=sk-deepseek"),
-                LlmModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400),
+                WeavingModelEntry.legacy("https://api.deepseek.com/v1", "deepseek-flash", 102_400),
                 "sk-legacy");
     }
 
-    private static List<String> ids(List<LlmModelEntry> entries) {
-        return entries.stream().map(LlmModelEntry::id).toList();
+    private static List<String> ids(List<WeavingModelEntry> entries) {
+        return entries.stream().map(WeavingModelEntry::id).toList();
     }
 
-    private static LlmConfiguration config(String baseUrl, String apiKey, String model, int window) {
-        return new LlmConfiguration() {
+    private static WeavingConfiguration config(String baseUrl, String apiKey, String model, int window) {
+        return new WeavingConfiguration() {
             @Override
             public boolean isLlmEnabled() {
                 return true;

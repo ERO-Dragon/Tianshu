@@ -3,11 +3,11 @@ package com.rheinmetal.tianshu.function.intake;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.intake.settings.AsrConfiguration;
+import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import com.rheinmetal.tianshu.function.intake.download.AsrModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngine;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
-import com.rheinmetal.tianshu.model.AsrModelManager;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelManager;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDeleteCallback;
@@ -50,7 +50,7 @@ public class AsrModelService {
     }
 
     private final IGameEnvironment env;
-    private final AsrConfiguration config;
+    private final IntakeConfiguration config;
     private final ModuleExecutionAccess executorManager;
     private final AsrModelDownloadCoordinator downloadCoordinator;
     private final AsrPreviewCoordinator previewCoordinator;
@@ -63,13 +63,13 @@ public class AsrModelService {
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
 
-    public AsrModelService(IGameEnvironment env, AsrConfiguration config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
+    public AsrModelService(IGameEnvironment env, IntakeConfiguration config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
         this(env, config, audioBridge, executorManager, engineSupplier, readySupplier, null);
     }
 
     public AsrModelService(
             IGameEnvironment env,
-            AsrConfiguration config,
+            IntakeConfiguration config,
             IAudioBridge audioBridge,
             ModuleExecutionAccess executorManager,
             Supplier<AsrEngine> engineSupplier,
@@ -509,7 +509,7 @@ public class AsrModelService {
         @Override
         public void prepare() throws Exception {
             engine = new AsrEngine(env);
-            if (!engine.initialize(info, modelDir, null)) {
+            if (!engine.initialize(info, modelDir)) {
                 throw new IllegalStateException("ASR preview model initialization failed");
             }
         }

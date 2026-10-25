@@ -17,8 +17,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig;
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
-import com.rheinmetal.tianshu.model.AsrModelInfo;
-import com.rheinmetal.tianshu.model.ModelSettings;
+import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,7 +44,7 @@ public final class SherpaOnnxAsrConfigFactory {
         this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
     }
 
-    public Optional<ResolvedConfig> build(AsrModelInfo info, Path modelDir, Path hotwordsFile) {
+    public Optional<ResolvedConfig> build(AsrModelInfo info, Path modelDir) {
         if (info == null || modelDir == null) {
             return Optional.empty();
         }
@@ -53,8 +52,8 @@ public final class SherpaOnnxAsrConfigFactory {
         ModelFileResolver files = new ModelFileResolver(info, modelDir, env);
         return switch (architecture) {
             case TRANSDUCER -> info.isStreamingModel()
-                    ? buildOnlineTransducer(info, files, modelDir, hotwordsFile)
-                    : buildOfflineTransducer(info, files, modelDir, hotwordsFile);
+                    ? buildOnlineTransducer(info, files, modelDir)
+                    : buildOfflineTransducer(info, files, modelDir);
             case PARAFORMER -> info.isStreamingModel()
                     ? buildOnlineParaformer(info, files)
                     : buildOfflineParaformer(info, files);
@@ -85,7 +84,7 @@ public final class SherpaOnnxAsrConfigFactory {
         return builder.get();
     }
 
-    private Optional<ResolvedConfig> buildOnlineTransducer(AsrModelInfo info, ModelFileResolver files, Path modelDir, Path hotwordsFile) {
+    private Optional<ResolvedConfig> buildOnlineTransducer(AsrModelInfo info, ModelFileResolver files, Path modelDir) {
         String encoder = files.require("encoder", ".onnx");
         String decoder = files.require("decoder", ".onnx");
         String joiner = files.require("joiner", ".onnx");
@@ -107,11 +106,10 @@ public final class SherpaOnnxAsrConfigFactory {
         OnlineRecognizerConfig.Builder configBuilder = OnlineRecognizerConfig.builder()
                 .setDecodingMethod(DECODING_MODIFIED_BEAM_SEARCH)
                 .setOnlineModelConfig(modelConfig);
-        configureOnlineTransducerHotwords(configBuilder, modelDir, hotwordsFile);
         return Optional.of(ResolvedConfig.online("online-transducer", configBuilder.build()));
     }
 
-    private Optional<ResolvedConfig> buildOfflineTransducer(AsrModelInfo info, ModelFileResolver files, Path modelDir, Path hotwordsFile) {
+    private Optional<ResolvedConfig> buildOfflineTransducer(AsrModelInfo info, ModelFileResolver files, Path modelDir) {
         String encoder = files.require("encoder", ".onnx");
         String decoder = files.require("decoder", ".onnx");
         String joiner = files.require("joiner", ".onnx");
@@ -129,7 +127,7 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setTokens(tokens)
                 .setNumThreads(threadsFor(info))
                 .setDebug(SHERPA_DEBUG_LOGGING)
-                .build(), DECODING_MODIFIED_BEAM_SEARCH, builder -> configureOfflineTransducerHotwords(builder, modelDir, hotwordsFile));
+                .build(), DECODING_MODIFIED_BEAM_SEARCH, builder -> { });
     }
 
     private Optional<ResolvedConfig> buildOfflineParaformer(AsrModelInfo info, ModelFileResolver files) {
@@ -317,35 +315,6 @@ public final class SherpaOnnxAsrConfigFactory {
                 .setOfflineModelConfig(modelConfig);
         recognizerCustomizer.accept(builder);
         return Optional.of(ResolvedConfig.offline(kind, builder.build()));
-    }
-
-    private boolean configureOnlineTransducerHotwords(OnlineRecognizerConfig.Builder builder, Path modelDir, Path hotwordsFile) {
-        Optional<Path> resolvedHotwordsFile = resolveHotwordsFile(hotwordsFile);
-        if (resolvedHotwordsFile.isEmpty()) {
-            return false;
-        }
-        ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(modelDir);
-        builder.setHotwordsFile(resolvedHotwordsFile.get().toString())
-                .setHotwordsScore((float) settings.hotwordsScore);
-        return true;
-    }
-
-    private boolean configureOfflineTransducerHotwords(OfflineRecognizerConfig.Builder builder, Path modelDir, Path hotwordsFile) {
-        Optional<Path> resolvedHotwordsFile = resolveHotwordsFile(hotwordsFile);
-        if (resolvedHotwordsFile.isEmpty()) {
-            return false;
-        }
-        ModelSettings.AsrSettings settings = ModelSettings.loadAsrSettings(modelDir);
-        builder.setHotwordsFile(resolvedHotwordsFile.get().toString())
-                .setHotwordsScore((float) settings.hotwordsScore);
-        return true;
-    }
-
-    private Optional<Path> resolveHotwordsFile(Path hotwordsFile) {
-        if (hotwordsFile == null || !Files.isRegularFile(hotwordsFile)) {
-            return Optional.empty();
-        }
-        return Optional.of(hotwordsFile.toAbsolutePath().normalize());
     }
 
     private int threadsFor(AsrModelInfo info) {

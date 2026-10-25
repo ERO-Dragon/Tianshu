@@ -54,7 +54,7 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         return List.copyOf(registrations.values());
     }
 
-    public synchronized List<String> asrHotwords() {
+    public synchronized List<String> registeredWords() {
         Set<String> words = new LinkedHashSet<>();
         for (VoiceTriggerRegistration registration : registrations.values()) {
             words.addAll(registration.wakeWords());

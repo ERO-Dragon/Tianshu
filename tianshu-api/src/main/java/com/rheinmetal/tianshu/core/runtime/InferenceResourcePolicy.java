@@ -23,7 +23,7 @@ public final class InferenceResourcePolicy {
         return processors;
     }
 
-    public int llmGpuHelperThreads() {
+    public int embeddingGpuHelperThreads() {
         if (processors >= 12) {
             return 4;
         }

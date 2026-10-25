@@ -22,7 +22,7 @@ final class SettingsRegistryTest {
     @Test
     void presenceSettingsDoNotExposeInternalModuleSourceFilters() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/presence/PresenceSettingsRegistrySource.java"),
+                SettingsSourcePaths.page("presence", "PresenceSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -36,7 +36,7 @@ final class SettingsRegistryTest {
     @Test
     void asrSettingsExposeTheVoiceSwitchAsReadOnlyState() throws Exception {
         String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/client/settings/module/intake/AsrSettingsRegistrySource.java"),
+                SettingsSourcePaths.page("intake", "IntakeSettingsRegistrySource.java"),
                 StandardCharsets.UTF_8
         );
 

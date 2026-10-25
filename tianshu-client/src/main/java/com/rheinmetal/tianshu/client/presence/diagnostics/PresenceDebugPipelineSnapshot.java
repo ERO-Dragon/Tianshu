@@ -2,22 +2,20 @@ package com.rheinmetal.tianshu.client.presence.diagnostics;
 
 import com.rheinmetal.tianshu.client.presence.PresenceProtocolAdapter;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
-import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
-import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.List;
 
 public final class PresenceDebugPipelineSnapshot {
+    // The pipeline this view reports on is addressed by protocol module ids, so the HUD degrades to
+    // "no status" for an absent module instead of failing to load.
     private static final List<ModuleEntry> MODULES = List.of(
-            new ModuleEntry(AsrProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.asr"),
-            new ModuleEntry(IaProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.ia"),
-            new ModuleEntry(AXProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.ax"),
-            new ModuleEntry(LlmProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.llm"),
-            new ModuleEntry(TtsProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.tts"),
+            new ModuleEntry(ProtocolModuleIds.ASR, "tianshu.gui.presence.debug.module.asr"),
+            new ModuleEntry(ProtocolModuleIds.IA, "tianshu.gui.presence.debug.module.ia"),
+            new ModuleEntry(ProtocolModuleIds.AX, "tianshu.gui.presence.debug.module.ax"),
+            new ModuleEntry(ProtocolModuleIds.LLM, "tianshu.gui.presence.debug.module.llm"),
+            new ModuleEntry(ProtocolModuleIds.TTS, "tianshu.gui.presence.debug.module.tts"),
             new ModuleEntry(PresenceProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.presence")
     );
 

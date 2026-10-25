@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.adapter;
 
-import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -26,11 +26,12 @@ public final class ClientLanguagePolicy {
             }
         } catch (Exception ignored) {
         }
-        return AXPromptLanguage.EN_US.code();
+        return "en_us";
     }
 
     public static boolean useChineseContent(String languageCode) {
-        return AXPromptLanguage.fromCode(languageCode) == AXPromptLanguage.ZH_CN;
+        String normalized = languageCode == null ? "" : languageCode.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+        return normalized.startsWith("zh");
     }
 
     public static String itemDisplayName(ItemStack stack, ResourceLocation itemId, String languageCode) {
