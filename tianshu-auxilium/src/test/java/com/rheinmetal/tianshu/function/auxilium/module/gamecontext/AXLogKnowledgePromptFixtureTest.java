@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

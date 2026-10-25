@@ -9,7 +9,7 @@ import com.rheinmetal.tianshu.function.intake.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.intake.state.AsrState;
 import com.rheinmetal.tianshu.function.intake.state.AsrStateMachine;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 

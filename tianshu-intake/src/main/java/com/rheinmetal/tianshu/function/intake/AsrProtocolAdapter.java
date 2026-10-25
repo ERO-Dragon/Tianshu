@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.AsrSpeechActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;

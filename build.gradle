@@ -17,9 +17,22 @@ tasks.withType(JavaCompile).configureEach {
 def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
+// Feature modules may know each other only along these directed edges. The consumer owns the dependency:
+// it declares the producer as compileOnly and treats it as optional at runtime.
+//   auxilium -> intake, weaving, echo
+//   intake   -> weaving, echo
+//   weaving, echo are leaves
+def allowedFeatureEdges = [
+        'auxilium': ['intake', 'weaving', 'echo'],
+        'intake'  : ['weaving', 'echo'],
+        'weaving' : [],
+        'echo'    : [],
+]
+def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
+
 tasks.register('verifyFeatureIsolation') {
     group = 'verification'
-    description = 'Rejects imports between the four feature modules.'
+    description = 'Feature modules may only reference each other along the declared optional edges.'
     inputs.files(files(featureModules.collect { "${it}/src/main/java" }))
     doLast { task ->
         def names = featureModules.collect { it - 'tianshu-' } as Set
@@ -31,15 +44,73 @@ tasks.register('verifyFeatureIsolation') {
             if (!ownerMatch.find()) return
             def owner = ownerMatch.group(1)
             if (!(owner in names)) return
+            def allowed = allowedFeatureEdges[owner] ?: []
             source.eachLine('UTF-8') { line ->
                 def m = line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium)\./
-                if (m.find() && m.group(1) != owner) {
-                    violations << "${source.name}: ${owner} -> ${m.group(1)}: ${line.trim()}"
+                if (m.find() && m.group(1) != owner && !(m.group(1) in allowed)) {
+                    violations << "${source.name}: ${owner} -> ${m.group(1)} is not an allowed edge: ${line.trim()}"
                 }
             }
         }
         if (!violations.isEmpty()) {
-            throw new GradleException("Cross-feature imports found:\n" + violations.join('\n'))
+            throw new GradleException("Illegal cross-feature imports:\n" + violations.join('\n'))
+        }
+    }
+}
+
+tasks.register('verifyFeatureOptionalDependencies') {
+    group = 'verification'
+    description = 'Every referenced feature module must be declared compileOnly, never as a hard dependency.'
+    def buildFiles = featureModules.collectEntries { module ->
+        [(module): file("${module}/build.gradle")]
+    }
+    def sourcesByModule = featureModules.collectEntries { module ->
+        [(module): fileTree("${module}/src/main/java") { include '**/*.java' }.files]
+    }
+    inputs.files(buildFiles.values())
+    inputs.files(sourcesByModule.values().flatten())
+    doLast {
+        def violations = []
+        featureModules.each { module ->
+            def owner = module - 'tianshu-'
+            def buildFile = buildFiles[module]
+            if (!buildFile.exists()) return
+            def text = buildFile.text
+            def sources = sourcesByModule[module]
+            (allowedFeatureEdges[owner] ?: []).each { target ->
+                def marker = "import com.rheinmetal.tianshu.function.${target}."
+                def used = sources.any { candidate -> candidate.text.contains(marker) }
+                if (!used) return
+                if (!text.contains("compileOnly project(':tianshu-${target}')")) {
+                    violations << "${module} uses tianshu-${target} but does not declare it as compileOnly"
+                }
+            }
+            (text =~ /(api|implementation) project\(':tianshu-(intake|echo|weaving|auxilium)'\)/).each { match ->
+                violations << "${module} declares a hard dependency on tianshu-${match[2]}"
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Feature dependency declarations are wrong:\n" + violations.join('\n'))
+        }
+    }
+}
+
+tasks.register('verifyHostHasNoFeatureDependency') {
+    group = 'verification'
+    description = 'The kernel modules must never reference a feature module.'
+    inputs.files(files(hostModules.collect { "${it}/src/main/java" }))
+    doLast { task ->
+        def violations = []
+        task.inputs.files.files.each { source ->
+            if (!source.path.endsWith('.java')) return
+            source.eachLine('UTF-8') { line ->
+                if (line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium)\./) {
+                    violations << "${source.name}: ${line.trim()}"
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Kernel modules reference feature modules:\n" + violations.join('\n'))
         }
     }
 }
@@ -63,6 +134,8 @@ tasks.register('verifyNoPlatformImport') {
 
 tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
+    dependsOn tasks.named('verifyFeatureOptionalDependencies')
+    dependsOn tasks.named('verifyHostHasNoFeatureDependency')
     dependsOn tasks.named('verifyNoPlatformImport')
 }
 

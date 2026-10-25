@@ -14,10 +14,10 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.preference.AXPlaye
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;

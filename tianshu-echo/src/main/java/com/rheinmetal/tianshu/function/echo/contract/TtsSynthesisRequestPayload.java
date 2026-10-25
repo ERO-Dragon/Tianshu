@@ -1,5 +1,6 @@
-package com.rheinmetal.tianshu.protocol.payload;
+package com.rheinmetal.tianshu.function.echo.contract;
 
+import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 public record TtsSynthesisRequestPayload(

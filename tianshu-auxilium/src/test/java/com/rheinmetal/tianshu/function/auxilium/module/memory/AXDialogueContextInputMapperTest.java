@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurnWindow;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueContextInputPayload;
+import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

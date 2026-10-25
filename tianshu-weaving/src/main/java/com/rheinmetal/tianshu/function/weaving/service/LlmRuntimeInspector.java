@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapsh
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationResult;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCapabilitySnapshot;
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;

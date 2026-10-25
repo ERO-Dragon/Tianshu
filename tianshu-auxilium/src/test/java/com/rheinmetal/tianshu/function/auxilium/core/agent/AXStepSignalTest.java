@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.agent;
 
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeoutException;

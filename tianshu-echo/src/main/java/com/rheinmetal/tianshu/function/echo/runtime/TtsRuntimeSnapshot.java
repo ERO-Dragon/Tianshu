@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
+import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackState;
 
 public record TtsRuntimeSnapshot(
         boolean bound,

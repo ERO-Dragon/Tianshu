@@ -16,9 +16,9 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventHistorySink;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 
 import java.util.ArrayList;
 import java.util.List;

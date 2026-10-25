@@ -25,7 +25,7 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;

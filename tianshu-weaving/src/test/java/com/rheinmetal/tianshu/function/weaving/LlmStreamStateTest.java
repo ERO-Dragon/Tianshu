@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

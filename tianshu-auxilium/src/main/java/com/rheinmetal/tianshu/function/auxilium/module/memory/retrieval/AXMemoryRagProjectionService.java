@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXEventVecto
 import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.index.AXMemoryRetrievalIndex;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManageResultPayload;
 
 import java.util.LinkedHashMap;
 import java.util.List;

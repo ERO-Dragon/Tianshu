@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.payload;
+package com.rheinmetal.tianshu.function.weaving.contract;
 
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 

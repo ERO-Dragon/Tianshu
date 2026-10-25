@@ -12,7 +12,7 @@ import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;

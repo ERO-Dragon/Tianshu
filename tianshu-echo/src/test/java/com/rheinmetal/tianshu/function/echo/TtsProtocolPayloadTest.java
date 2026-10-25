@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.function.echo;
 
 import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
-import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsAudioAckPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsAudioPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
 import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import org.junit.jupiter.api.Test;

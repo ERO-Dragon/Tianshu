@@ -29,7 +29,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 
 import java.time.Duration;
@@ -587,7 +587,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
     }
 
-    void publishInferenceStatus(com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload status) {
+    void publishInferenceStatus(com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload status) {
         if (status == null) {
             return;
         }
@@ -595,13 +595,13 @@ public final class LlmModule implements TianshuManagedModule {
         if (!"TASK".equals(status.taskType()) || status.taskId().isBlank()) {
             return;
         }
-        if (com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.STARTED.equals(status.eventType())) {
+        if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.STARTED.equals(status.eventType())) {
             adapter.publishTaskActivity(status.taskId(), true);
             return;
         }
-        if (com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.COMPLETED.equals(status.eventType())
-                || com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.CANCELLED.equals(status.eventType())
-                || com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload.FAILED.equals(status.eventType())) {
+        if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.COMPLETED.equals(status.eventType())
+                || com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.CANCELLED.equals(status.eventType())
+                || com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.FAILED.equals(status.eventType())) {
             adapter.publishTaskActivity(status.taskId(), false);
         }
     }

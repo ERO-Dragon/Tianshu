@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.context;
 
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPrimitiveClient;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;

@@ -37,9 +37,9 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemory
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 
 import java.util.LinkedHashMap;
 import java.util.List;

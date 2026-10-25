@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueContextInputPayload;
+import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 
 /**
  * Maps a third-party dialogue input into the recent-dialogue history.

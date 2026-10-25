@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
+import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

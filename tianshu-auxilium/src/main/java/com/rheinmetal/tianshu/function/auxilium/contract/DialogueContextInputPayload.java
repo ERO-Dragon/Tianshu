@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.dialogue.payload;
+package com.rheinmetal.tianshu.function.auxilium.contract;
 
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 

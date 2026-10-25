@@ -50,8 +50,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;

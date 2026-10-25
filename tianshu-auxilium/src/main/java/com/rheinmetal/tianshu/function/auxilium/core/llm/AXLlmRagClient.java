@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium.core.llm;
 
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LLMCacheManagePayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManageResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 

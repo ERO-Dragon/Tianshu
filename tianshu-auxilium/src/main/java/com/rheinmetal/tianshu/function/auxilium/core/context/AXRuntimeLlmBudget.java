@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.context;
 
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 
 /**
  * The budget an AX turn actually runs on.

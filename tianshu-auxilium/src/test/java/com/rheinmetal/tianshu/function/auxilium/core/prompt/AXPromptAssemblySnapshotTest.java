@@ -22,7 +22,7 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

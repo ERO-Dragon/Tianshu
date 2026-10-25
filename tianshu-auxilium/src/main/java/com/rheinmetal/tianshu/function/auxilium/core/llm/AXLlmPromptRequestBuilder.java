@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptAssembly;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 
 import java.util.List;
 import java.util.Objects;

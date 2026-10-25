@@ -5,8 +5,8 @@ import com.rheinmetal.tianshu.function.auxilium.core.agent.AXRunTermination;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

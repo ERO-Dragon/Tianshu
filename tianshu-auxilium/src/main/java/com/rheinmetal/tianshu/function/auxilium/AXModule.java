@@ -67,7 +67,7 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfigura
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueContextInputPayload;
+import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;

@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.payload;
+package com.rheinmetal.tianshu.function.weaving.contract;
 
 import org.junit.jupiter.api.Test;
 

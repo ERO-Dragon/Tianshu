@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 
 import java.util.ArrayList;
 import java.util.List;

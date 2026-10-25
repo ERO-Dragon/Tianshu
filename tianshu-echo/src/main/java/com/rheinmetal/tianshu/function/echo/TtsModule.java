@@ -27,13 +27,13 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.TtsAudioPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsAudioAckPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackState;
+import com.rheinmetal.tianshu.function.echo.contract.TtsAudioPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsAudioAckPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackStatusPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsSynthesisRequestPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsSynthesisRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -631,7 +631,7 @@ public final class TtsModule implements TianshuManagedModule {
         adapter.publishPlaybackStatus(TtsPlaybackStatusPayload.now(state));
     }
 
-    void publishRequestStatus(com.rheinmetal.tianshu.protocol.payload.TtsRequestStatusPayload status) {
+    void publishRequestStatus(com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatusPayload status) {
         if (status == null) {
             return;
         }
@@ -639,8 +639,8 @@ public final class TtsModule implements TianshuManagedModule {
         if (ProtocolModuleIds.AX.equals(status.sourceId()) || status.requestId().isBlank()) {
             return;
         }
-        if (status.status() == com.rheinmetal.tianshu.protocol.payload.TtsRequestStatus.QUEUED
-                || status.status() == com.rheinmetal.tianshu.protocol.payload.TtsRequestStatus.PLAYING) {
+        if (status.status() == com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatus.QUEUED
+                || status.status() == com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatus.PLAYING) {
             beginRequestActivity(status.sourceId(), status.requestId());
             return;
         }

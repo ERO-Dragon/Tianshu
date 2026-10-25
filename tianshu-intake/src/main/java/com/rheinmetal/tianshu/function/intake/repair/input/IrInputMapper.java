@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.intake.repair.input;
 
-import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 
 public final class IrInputMapper {
     private IrInputMapper() {

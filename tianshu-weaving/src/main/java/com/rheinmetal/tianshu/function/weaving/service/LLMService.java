@@ -15,10 +15,10 @@ import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 
 import java.nio.file.Path;
 import java.util.List;

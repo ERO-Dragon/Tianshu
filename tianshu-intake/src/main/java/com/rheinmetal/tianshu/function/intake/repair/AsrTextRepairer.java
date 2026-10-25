@@ -12,7 +12,7 @@ import com.rheinmetal.tianshu.function.intake.repair.input.IrInputPreprocessor;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrPreparedInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.AsrTextPayload;
+import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
 import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;

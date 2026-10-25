@@ -3,8 +3,8 @@ package com.rheinmetal.tianshu.function.weaving;
 import com.rheinmetal.tianshu.function.weaving.service.Chunk;
 import com.rheinmetal.tianshu.function.weaving.service.LLMRequest;
 import com.rheinmetal.tianshu.function.weaving.service.MessageItem;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 
 import java.util.List;
 

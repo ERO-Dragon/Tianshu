@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.prompt.AXPromptOrchestrator;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXReplyContract;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

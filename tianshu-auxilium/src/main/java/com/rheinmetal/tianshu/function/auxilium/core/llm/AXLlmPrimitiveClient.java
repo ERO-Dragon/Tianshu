@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium.core.llm;
 
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 

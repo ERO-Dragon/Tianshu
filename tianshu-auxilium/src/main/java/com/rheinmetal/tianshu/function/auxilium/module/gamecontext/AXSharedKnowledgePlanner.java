@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
-import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManageResultPayload;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

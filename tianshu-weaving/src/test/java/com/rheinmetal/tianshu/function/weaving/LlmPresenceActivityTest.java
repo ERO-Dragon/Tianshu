@@ -9,7 +9,7 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.LlmStatusPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;

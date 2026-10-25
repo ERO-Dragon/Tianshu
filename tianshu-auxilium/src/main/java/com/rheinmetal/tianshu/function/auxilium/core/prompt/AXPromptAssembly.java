@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.prompt;
 
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 
 import java.util.List;
 

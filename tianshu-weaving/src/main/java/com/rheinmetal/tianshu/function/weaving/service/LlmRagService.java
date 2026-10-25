@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.weaving.service;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 
 import java.nio.file.Path;
 import java.util.ArrayDeque;

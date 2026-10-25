@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.event.AXMemoryEven
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemoryBlockView;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.shortterm.AXStmBlock;
-import com.rheinmetal.tianshu.protocol.payload.LLMCacheManageResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManageResultPayload;
 
 import java.util.ArrayList;
 import java.util.Comparator;

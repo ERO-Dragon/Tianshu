@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.core.delegate;
 
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
-import com.rheinmetal.tianshu.protocol.payload.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 
 /**
  * 把一次 Complex 请求交出去（设计 §5.1 步骤 ⑥）。
