@@ -136,6 +136,18 @@ public final class LlmModule implements TianshuManagedModule {
     public void register(ModuleRegistrationContext context) {
         serviceRegistry = context == null ? null : context.services();
         moduleService = new LlmModuleService(config, usageLedger);
+        // The service owns the runtime state; the module owns what the HUD is told about it. Switching the
+        // module off has to end with a visible "stopped", otherwise the last status — usually "starting",
+        // which never expires — is what the player keeps seeing on screen.
+        moduleService.onStateChanged(state -> {
+            if (state == com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState.STOPPED
+                    || state == com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState.DISABLED) {
+                publishStoppedStatus();
+            } else if (state == com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState.FAILED) {
+                publishModuleStatus(ModuleStatuses.lifecycleFailed(
+                        moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
+            }
+        });
         moduleService.bindRuntimeController(new LlmModuleService.RuntimeController() {
             @Override
             public void start() {
@@ -167,21 +179,22 @@ public final class LlmModule implements TianshuManagedModule {
     public void prepare(ModuleRuntimeContext context) {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
-        publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         runtimeContext = context;
         markCapabilitiesInstalled(context);
         if (config.isLlmEnabled()) {
+            publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
             markGenerationCapabilityFailed("LLM model is not loaded");
             markStorageCapabilitiesReady();
             if (moduleService != null) {
                 moduleService.markStopped();
             }
         } else {
+            // Switched off is a resting state, not a failure: the HUD says "stopped" and stays quiet.
             disableCapabilities();
             if (moduleService != null) {
                 moduleService.markStopped();
             }
-            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
+            publishStoppedStatus();
         }
     }
 
@@ -579,6 +592,11 @@ public final class LlmModule implements TianshuManagedModule {
                 adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }
+    }
+
+    /** The status a module reports when it is not — or no longer — running. */
+    private void publishStoppedStatus() {
+        publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
     }
 
     private void publishModuleStatus(ModuleStatus status) {

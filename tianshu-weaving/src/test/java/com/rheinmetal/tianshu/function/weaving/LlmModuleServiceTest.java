@@ -18,6 +18,29 @@ class LlmModuleServiceTest {
     @TempDir
     Path tempDir;
 
+    /**
+     * Every runtime transition has to be observable, because the module is what publishes the status the HUD
+     * shows.
+     *
+     * <p>The bug this pins: the service used to change its own state and tell nobody, so switching the module
+     * off left the last status on screen — and a lifecycle status has no expiry, so "loading" stayed there for
+     * the rest of the session.</p>
+     */
+    @Test
+    void everyStateChangeIsAnnouncedSoTheModuleCanPublishATerminalStatus() {
+        LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir), new LlmUsageLedger());
+        java.util.List<LlmRuntimeState> states = new java.util.ArrayList<>();
+        service.onStateChanged(states::add);
+
+        service.markReady();
+        service.unload();
+
+        assertTrue(states.contains(LlmRuntimeState.RUNNING), states.toString());
+        assertTrue(
+                states.contains(LlmRuntimeState.STOPPED) || states.contains(LlmRuntimeState.DISABLED),
+                "a stop must be observable, otherwise the HUD keeps the previous status: " + states);
+    }
+
     @Test
     void loadRejectsWhenDisabled() {
         LlmModuleService service = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir).llmEnabled(false), new LlmUsageLedger());

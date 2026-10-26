@@ -35,6 +35,8 @@ public final class LlmModuleService {
     private final AtomicReference<LlmRuntimeState> state = new AtomicReference<>(LlmRuntimeState.STOPPED);
     private final AtomicReference<String> failureMessage = new AtomicReference<>("");
     private final AtomicReference<RuntimeController> runtimeController = new AtomicReference<>();
+    private volatile Consumer<LlmRuntimeState> stateListener = ignored -> {
+    };
 
     /**
      * @param usageLedger the ledger the request path records into; this service only reads it
@@ -44,13 +46,28 @@ public final class LlmModuleService {
         this.usageLedger = usageLedger == null ? new LlmUsageLedger() : usageLedger;
     }
 
+    /**
+     * Observes runtime state changes; the module turns them into the status the HUD shows.
+     *
+     * <p>Without this the service stopped silently: the player could switch the module off and the last
+     * status the kernel ever received would stay on screen, because a lifecycle status has no expiry.</p>
+     */
+    public void onStateChanged(Consumer<LlmRuntimeState> listener) {
+        this.stateListener = listener == null ? ignored -> {
+        } : listener;
+    }
+
+    private void transition(LlmRuntimeState next) {
+        state.set(next);
+        stateListener.accept(next);
+    }
     public void bindRuntimeController(RuntimeController controller) {
         runtimeController.set(controller);
     }
 
     public LlmControlResult load() {
         if (!config.isLlmEnabled()) {
-            state.set(LlmRuntimeState.DISABLED);
+            transition(LlmRuntimeState.DISABLED);
             return LlmControlResult.rejected("LLM is disabled");
         }
         LlmRuntimeState current = state.get();
@@ -61,7 +78,7 @@ public final class LlmModuleService {
             return LlmControlResult.accepted(current, "LLM is loading");
         }
         failureMessage.set("");
-        state.set(LlmRuntimeState.STARTING);
+        transition(LlmRuntimeState.STARTING);
         RuntimeController controller = runtimeController.get();
         if (controller == null) {
             markFailed("LLM runtime controller is not bound");
@@ -95,7 +112,7 @@ public final class LlmModuleService {
             }
             return LlmControlResult.accepted(state.get(), "LLM runtime was failed");
         }
-        state.set(LlmRuntimeState.STOPPING);
+        transition(LlmRuntimeState.STOPPING);
         RuntimeController controller = runtimeController.get();
         if (controller != null) {
             try {
@@ -112,17 +129,17 @@ public final class LlmModuleService {
 
     public void markReady() {
         failureMessage.set("");
-        state.set(config.isLlmEnabled() ? LlmRuntimeState.RUNNING : LlmRuntimeState.DISABLED);
+        transition(config.isLlmEnabled() ? LlmRuntimeState.RUNNING : LlmRuntimeState.DISABLED);
     }
 
     public void markFailed(String reason) {
         failureMessage.set(reason == null ? "" : reason.trim());
-        state.set(config.isLlmEnabled() ? LlmRuntimeState.FAILED : LlmRuntimeState.DISABLED);
+        transition(config.isLlmEnabled() ? LlmRuntimeState.FAILED : LlmRuntimeState.DISABLED);
     }
 
     public void markStopped() {
         failureMessage.set("");
-        state.set(config.isLlmEnabled() ? LlmRuntimeState.STOPPED : LlmRuntimeState.DISABLED);
+        transition(config.isLlmEnabled() ? LlmRuntimeState.STOPPED : LlmRuntimeState.DISABLED);
     }
 
     public LlmRuntimeSnapshot snapshot() {
