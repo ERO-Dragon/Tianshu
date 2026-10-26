@@ -55,10 +55,6 @@ public final class PayloadType {
     public static final PayloadType DIALOGUE_OWNER_PREVIEW = register("DIALOGUE_OWNER_PREVIEW");
     public static final PayloadType DIALOGUE_DELIVERY = register("DIALOGUE_DELIVERY");
     public static final PayloadType DIALOGUE_CONTEXT_INPUT = register("DIALOGUE_CONTEXT_INPUT");
-    public static final PayloadType DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST =
-            register("DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST");
-    public static final PayloadType DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT =
-            register("DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT");
     public static final PayloadType DIALOGUE_SCORE_REQUEST = register("DIALOGUE_SCORE_REQUEST");
     public static final PayloadType DIALOGUE_SCORE_RESPONSE = register("DIALOGUE_SCORE_RESPONSE");
     /** Escape hatch for module payloads that live outside the kernel's vocabulary. */

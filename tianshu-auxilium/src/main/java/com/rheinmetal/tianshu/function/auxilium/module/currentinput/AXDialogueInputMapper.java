@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.currentinput;
 
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 
 public final class AXDialogueInputMapper {
     public AXRequest map(DialogueDeliveryPayload delivery) {

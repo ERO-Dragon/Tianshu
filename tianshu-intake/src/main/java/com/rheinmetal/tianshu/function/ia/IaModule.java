@@ -1,0 +1,691 @@
+package com.rheinmetal.tianshu.function.ia;
+
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
+import com.rheinmetal.tianshu.function.ia.claim.DialogueClaimEngine;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
+import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueScoringContext;
+import com.rheinmetal.tianshu.function.ia.context.DialoguePresenceContextClient;
+import com.rheinmetal.tianshu.function.ia.context.DialoguePresenceFactPlanner;
+import com.rheinmetal.tianshu.function.ia.control.DialogueSessionControlDecision;
+import com.rheinmetal.tianshu.function.ia.control.DialogueSessionControlPolicy;
+import com.rheinmetal.tianshu.function.ia.diagnostics.DialogueDiagnosticsView;
+import com.rheinmetal.tianshu.function.ia.event.DialogueArbitrationEventOrchestrator;
+import com.rheinmetal.tianshu.function.ia.event.DialogueEventPublisher;
+import com.rheinmetal.tianshu.function.ia.gateway.DialogueMessageGateway;
+import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantScore;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionEventType;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueOwnerPreviewPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
+import com.rheinmetal.tianshu.function.ia.policy.DialogueArbitrationPolicy;
+import com.rheinmetal.tianshu.function.ia.score.DialogueScoreCoordinator;
+import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
+import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
+import com.rheinmetal.tianshu.function.ia.runtime.DialogueVoiceTriggerSynchronizer;
+import com.rheinmetal.tianshu.function.ia.runtime.DialogueLifecycleSweeper;
+import com.rheinmetal.tianshu.function.ia.runtime.DialogueParticipantLifecycleCoordinator;
+import com.rheinmetal.tianshu.function.ia.runtime.OwnerPreviewRefreshCoordinator;
+import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
+import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
+import com.rheinmetal.tianshu.function.ia.session.DialogueAttentionMemory;
+import com.rheinmetal.tianshu.function.ia.session.DialogueContextFreezeStore;
+import com.rheinmetal.tianshu.function.ia.session.DialogueSessionStore;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+
+import java.time.Duration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+public final class IaModule implements TianshuManagedModule {
+    private static final Duration OWNER_PREVIEW_REFRESH_INTERVAL = Duration.ofMillis(500L);
+    private static final Duration SPEECH_CONTEXT_RETENTION = Duration.ofSeconds(30L);
+
+    private final IaProtocolAdapter adapter;
+    private final DialogueParticipantRegistry participantRegistry;
+    private final DialogueSessionStore sessionStore;
+    private final DialogueAttentionMemory attentionMemory;
+    private final DialogueContextFreezeStore contextFreezeStore;
+    private final DialogueClaimEngine claimEngine;
+    private final DialogueArbitrationPolicy arbitrationPolicy;
+    private final DialogueScoreCoordinator scoreCoordinator;
+    private final DialogueSessionControlPolicy sessionControlPolicy;
+    private final DialogueAccessController accessController;
+    private final DialogueEventPublisher eventPublisher;
+    private final DialogueArbitrationEventOrchestrator arbitrationEventOrchestrator;
+    private final DialogueMessageGateway messageGateway;
+    private final DialogueLifecycleSweeper lifecycleSweeper;
+    private final DialogueParticipantLifecycleCoordinator participantLifecycleCoordinator;
+    private final DialogueParticipantContractValidator participantContractValidator;
+    private final DialoguePresenceContextClient presenceContextClient;
+    private final DialoguePresenceFactPlanner presenceFactPlanner;
+    private final DialogueDiagnosticsView diagnosticsView;
+    private final IaModuleService moduleService;
+    private final Map<String, DialogueOwnerPreviewPayload> ownerPreviews = new ConcurrentHashMap<>();
+    private final DialogueVoiceTriggerSynchronizer voiceTriggerSynchronizer;
+    private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
+    private final IrResultArbitrationMapper irResultMapper;
+    private final AtomicLong runtimeGeneration = new AtomicLong(1L);
+    private ModuleRuntimeContext runtimeContext;
+    private volatile boolean runtimeAccepting = true;
+    private volatile long lifecycleStatusGeneration;
+    private volatile boolean lifecycleActive;
+    private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
+
+    public IaModule(ModuleRuntimeAccess runtime) {
+        this.adapter = new IaProtocolAdapter(runtime);
+        this.participantRegistry = new DialogueParticipantRegistry();
+        this.sessionStore = new DialogueSessionStore();
+        this.attentionMemory = new DialogueAttentionMemory();
+        this.contextFreezeStore = new DialogueContextFreezeStore(SPEECH_CONTEXT_RETENTION);
+        this.claimEngine = new DialogueClaimEngine();
+        this.arbitrationPolicy = new DialogueArbitrationPolicy();
+        this.scoreCoordinator = new DialogueScoreCoordinator(adapter, 120L, runtimeGeneration::get);
+        this.sessionControlPolicy = new DialogueSessionControlPolicy();
+        this.accessController = new DialogueAccessController();
+        this.eventPublisher = new DialogueEventPublisher(adapter, accessController);
+        this.arbitrationEventOrchestrator = new DialogueArbitrationEventOrchestrator(eventPublisher);
+        this.messageGateway = new DialogueMessageGateway(adapter, accessController);
+        this.lifecycleSweeper = new DialogueLifecycleSweeper(sessionStore, eventPublisher);
+        this.participantLifecycleCoordinator = new DialogueParticipantLifecycleCoordinator(participantRegistry, sessionStore, eventPublisher);
+        this.participantContractValidator = new DialogueParticipantContractValidator(runtime);
+        this.presenceContextClient = new DialoguePresenceContextClient(adapter);
+        this.presenceFactPlanner = new DialoguePresenceFactPlanner();
+        this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
+        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
+        this.voiceTriggerSynchronizer = new DialogueVoiceTriggerSynchronizer();
+        this.irResultMapper = new IrResultArbitrationMapper();
+        this.ownerPreviewRefreshCoordinator = new OwnerPreviewRefreshCoordinator(
+                (task, delay) -> runtime.schedule(
+                        ProtocolTaskSpec.builder()
+                                .moduleId(moduleId())
+                                .lane(ExecutionLane.SCHEDULED)
+                                .taskId("ia.owner-preview-refresh")
+                                .build(),
+                        task,
+                        delay
+                ),
+                OWNER_PREVIEW_REFRESH_INTERVAL,
+                this::refreshOwnerPreviewState
+        );
+    }
+
+    @Override
+    public String moduleId() {
+        return IaProtocolAdapter.MODULE_ID;
+    }
+
+    @Override
+    public void register(ModuleRegistrationContext context) {
+        adapter.registerArbitrationCapability(this::handleArbitration);
+        adapter.registerParticipantCapability(this::handleParticipantRegister);
+        adapter.registerParticipantUnregisterCapability(this::handleParticipantUnregister);
+        adapter.registerSessionControlCapability(this::handleSessionControl);
+        adapter.subscribeAsrSpeechActivity(this::handleAsrSpeechActivity);
+        adapter.subscribeIrResult(this::handleIrResult);
+        context.services().register(DialogueParticipantRegistry.class, participantRegistry);
+        context.services().register(DialogueDiagnosticsView.class, diagnosticsView);
+        context.services().register(IaModuleService.class, moduleService);
+    }
+
+    @Override
+    public synchronized void prepare(ModuleRuntimeContext context) {
+        ModuleRuntimeContext nextContext = Objects.requireNonNull(context, "context");
+        lifecycleStatusGeneration = runtimeGeneration.get() + 1L;
+        runtimeGeneration.incrementAndGet();
+        lifecycleActive = true;
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
+        if (runtimeContext != null) {
+            deactivateRuntime();
+        }
+        runtimeContext = nextContext;
+        runtimeAccepting = true;
+        diagnostics = nextContext.diagnostics();
+        voiceTriggerSynchronizer.bind(nextContext.voiceTriggers(), participantRegistry.snapshot());
+        nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
+        ownerPreviewRefreshCoordinator.start();
+        adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
+    }
+
+    @Override
+    public synchronized void stop() {
+        deactivateRuntime();
+        long now = System.currentTimeMillis();
+        participantLifecycleCoordinator.unregisterModule(null, moduleId(), now);
+        if (lifecycleActive) {
+            lifecycleActive = false;
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
+        }
+    }
+
+    @Override
+    public synchronized void destroy() {
+        deactivateRuntime();
+        participantRegistry.clear();
+        sessionStore.clear();
+        attentionMemory.clear();
+        contextFreezeStore.clear();
+        presenceContextClient.clear();
+        ownerPreviews.clear();
+        runtimeContext = null;
+    }
+
+    private void deactivateRuntime() {
+        runtimeAccepting = false;
+        runtimeGeneration.incrementAndGet();
+        presenceContextClient.clear();
+        ownerPreviewRefreshCoordinator.stop();
+        voiceTriggerSynchronizer.unbind();
+        if (runtimeContext != null) {
+            runtimeContext.runtimeState().capabilities().remove(IaRuntimeCapabilities.ARBITRATION);
+        }
+        diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
+    }
+
+    private void handleParticipantRegister(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        if (!(envelope.payload() instanceof DialogueParticipantRegisterPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue participant payload is invalid", null);
+            return;
+        }
+        ValidationResult validation = participantContractValidator.validate(payload.descriptor());
+        if (!validation.accepted()) {
+            context.fail(envelope.envelopeId(), validation.code(), validation.message(), null);
+            return;
+        }
+        participantRegistry.register(payload.descriptor());
+        handleParticipantsChanged();
+        refreshOwnerPreviews(envelope, System.currentTimeMillis());
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handleParticipantUnregister(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        if (!(envelope.payload() instanceof DialogueParticipantUnregisterPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue participant unregister payload is invalid", null);
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (payload.allParticipants()) {
+            participantLifecycleCoordinator.unregisterModule(envelope, payload.moduleId(), now);
+        } else {
+            participantLifecycleCoordinator.unregisterParticipant(envelope, payload.moduleId(), payload.participantId(), now);
+        }
+        handleParticipantsChanged();
+        refreshOwnerPreviews(envelope, now);
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handleArbitration(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        if (!(envelope.payload() instanceof DialogueArbitrationRequestPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue arbitration payload is invalid", null);
+            return;
+        }
+        processArbitration(envelope, context, payload);
+    }
+
+    private void handleIrResult(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        if (!(envelope.payload() instanceof IrResultPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "IR result payload is invalid", null);
+            return;
+        }
+        if (payload.repairedText().isBlank() && payload.normalizedText().isBlank()) {
+            context.complete(envelope.envelopeId());
+            return;
+        }
+        processArbitration(envelope, context, irResultMapper.map(envelope, payload));
+    }
+
+    private void processArbitration(TianshuEnvelope envelope, ProtocolContext context, DialogueArbitrationRequestPayload payload) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        lifecycleSweeper.sweep(envelope, now);
+        if (payload.expiredAt(now)) {
+            DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_REJECTED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
+            respondArbitrationResultIfRequested(envelope, rejectedResult(payload, rejected, "REQUEST_EXPIRED"));
+            context.complete(envelope.envelopeId());
+            return;
+        }
+        List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+        if (participants.isEmpty()) {
+            continueArbitration(
+                    envelope,
+                    context,
+                    payload,
+                    DialogueContextFrame.empty(payload.playerId()),
+                    now
+            );
+            return;
+        }
+        Optional<DialogueContextFrame> frozenContext = frozenContextFor(payload, now);
+        if (frozenContext.isPresent()) {
+            continueArbitration(envelope, context, payload, frozenContext.get(), now);
+            return;
+        }
+        long generation = runtimeGeneration.get();
+        requestPresenceContext(
+                envelope,
+                "IA.arbitration." + payload.requestId(),
+                Long.toString(payload.sourceSessionId()),
+                payload.turnId(),
+                payload.playerId(),
+                payload.repairedText(),
+                participants,
+                frame -> {
+                    if (!isRuntimeGenerationActive(generation)) {
+                        context.complete(envelope.envelopeId());
+                        return;
+                    }
+                    continueArbitration(envelope, context, payload, frame, System.currentTimeMillis());
+                },
+                () -> context.complete(envelope.envelopeId())
+        );
+    }
+
+    private void continueArbitration(
+            TianshuEnvelope envelope,
+            ProtocolContext context,
+            DialogueArbitrationRequestPayload payload,
+            DialogueContextFrame contextFrame,
+            long now
+    ) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        lifecycleSweeper.sweep(envelope, now);
+        if (payload.expiredAt(now)) {
+            DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_REJECTED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.EXPIRED, "REQUEST_EXPIRED", now);
+            respondArbitrationResultIfRequested(envelope, rejectedResult(payload, rejected, "REQUEST_EXPIRED"));
+            context.complete(envelope.envelopeId());
+            return;
+        }
+        List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+        if (participants.isEmpty()) {
+            DialogueArbitrationInput input = DialogueArbitrationInput.from(
+                    payload,
+                    withPlayerId(contextFrame, payload.playerId())
+            );
+            completeArbitration(
+                    envelope,
+                    context,
+                    payload,
+                    input,
+                    List.of(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(),
+                    Map.of(),
+                    now
+            );
+            return;
+        }
+        Optional<DialogueSession> activeSession = sessionStore.activeForPlayer(payload.playerId(), now);
+        Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(payload.playerId(), participants, now);
+        DialogueArbitrationInput input = DialogueArbitrationInput.from(payload, withPlayerId(contextFrame, payload.playerId()));
+        List<com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim> hardClaims = claimEngine.collectLocalClaims(participants, input);
+        if (hardClaims.isEmpty()) {
+            long generation = runtimeGeneration.get();
+            DialogueScoringContext scoringContext = new DialogueScoringContext(
+                    payload.requestId(),
+                    payload.playerId(),
+                    payload.turnId(),
+                    payload.objectMatches(),
+                    payload.moduleMatches(),
+                    input.interactionHints(),
+                    input.contextSnapshot(),
+                    payload.timestampMillis(),
+                    payload.expireAtMillis()
+            );
+            scoreCoordinator.collect(envelope, scoringContext, participants, generation, result -> {
+                if (result.stale() || !isRuntimeGenerationActive(generation)) {
+                    context.complete(envelope.envelopeId());
+                    return;
+                }
+                completeArbitration(envelope, context, payload, input, participants, activeSession, attentionState,
+                        hardClaims, result.scores(), System.currentTimeMillis());
+            });
+            return;
+        }
+        completeArbitration(envelope, context, payload, input, participants, activeSession, attentionState,
+                hardClaims, Map.of(), now);
+    }
+
+    private void completeArbitration(
+            TianshuEnvelope envelope,
+            ProtocolContext context,
+            DialogueArbitrationRequestPayload payload,
+            DialogueArbitrationInput input,
+            List<DialogueParticipantDescriptor> participants,
+            Optional<DialogueSession> activeSession,
+            Optional<DialogueAttentionState> attentionState,
+            List<com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim> hardClaims,
+            Map<String, DialogueParticipantScore> dynamicScores,
+            long now
+    ) {
+        DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, hardClaims, dynamicScores, attentionState, now);
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
+                decision.accepted() ? DiagnosticSeverity.INFO : DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "requestId", payload.requestId(),
+                        "playerId", payload.playerId(),
+                        "owner", decision.owner() == null ? "" : decision.owner().participantId(),
+                        "reason", decision.reason() == null ? "" : decision.reason()
+                )
+        ));
+        if (!decision.accepted()) {
+            publishOwnerPreviewIfChanged(envelope, emptyPreview(payload.playerId(), now));
+            DialogueSession rejected = sessionStore.reject(payload.playerId(), payload.turnId(), now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_REJECTED, DialogueReleaseReason.REJECTED, decision.reason(), now);
+            eventPublisher.publish(envelope, rejected, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.REJECTED, decision.reason(), now);
+            respondArbitrationResultIfRequested(envelope, rejectedResult(payload, rejected, decision.reason()));
+            context.complete(envelope.envelopeId());
+            return;
+        }
+        rememberAttentionForDecision(payload.playerId(), decision, now);
+        publishOwnerPreviewIfChanged(envelope, previewFor(payload.playerId(), decision.owner(), now));
+        DialogueSession session = claimSession(payload, decision.owner(), now);
+        releasePreviousTurnIfPresent(envelope, activeSession, session, now);
+        arbitrationEventOrchestrator.publishAccepted(envelope, session, ownerChanged(activeSession, decision.owner()), decision.reason(), now);
+        DialogueAccessDecision deliveryDecision = messageGateway.deliverToOwner(envelope, session, decision.owner(), input);
+        if (!deliveryDecision.allowed()) {
+            DialogueSession released = sessionStore.release(session.sessionId(), DialogueReleaseReason.ACCESS_DENIED, now);
+            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.ACCESS_DENIED, deliveryDecision.reasonCode(), now);
+            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.ACCESS_DENIED, deliveryDecision.reasonCode(), now);
+            context.fail(envelope.envelopeId(), deliveryDecision.reasonCode(), deliveryDecision.message(), null);
+            return;
+        }
+        DialogueSession active = sessionStore.activate(session.sessionId(), now);
+        respondArbitrationResultIfRequested(envelope, acceptedResult(payload, active, decision.owner(), decision.reason()));
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        if (!(envelope.payload() instanceof AsrSpeechActivityPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "ASR speech activity payload is invalid", null);
+            return;
+        }
+        long now = payload.occurredAtMillis() > 0L ? payload.occurredAtMillis() : System.currentTimeMillis();
+        if (payload.speaking()) {
+            List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+            long generation = runtimeGeneration.get();
+            requestPresenceContext(
+                    envelope,
+                    "IA.speech." + payload.sessionId(),
+                    Long.toString(payload.sessionId()),
+                    "",
+                    "",
+                    "",
+                    participants,
+                    frame -> {
+                        if (isRuntimeGenerationActive(generation)) {
+                            contextFreezeStore.freeze(payload.sessionId(), frame, now);
+                        }
+                    },
+                    () -> {
+                    }
+            );
+        } else {
+            contextFreezeStore.markEnded(payload.sessionId(), now);
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private Optional<DialogueContextFrame> frozenContextFor(DialogueArbitrationRequestPayload payload, long now) {
+        contextFreezeStore.sweep(now);
+        return contextFreezeStore.consume(payload.sourceSessionId(), now)
+                .map(frame -> withPlayerId(frame, payload.playerId()));
+    }
+
+    private void handleParticipantsChanged() {
+        voiceTriggerSynchronizer.synchronize(participantRegistry.snapshot());
+    }
+
+    private void requestPresenceContext(
+            TianshuEnvelope parent,
+            String requestId,
+            String sessionId,
+            String turnId,
+            String playerId,
+            String userText,
+            List<DialogueParticipantDescriptor> participants,
+            DialoguePresenceContextClient.Completion completion,
+            Runnable cancelled
+    ) {
+        presenceContextClient.request(
+                parent,
+                requestId,
+                sessionId,
+                turnId,
+                playerId,
+                userText,
+                presenceFactPlanner.plan(participants),
+                completion,
+                cancelled
+        );
+    }
+
+    private boolean rejectWhenInactive(TianshuEnvelope envelope, ProtocolContext context) {
+        if (runtimeAccepting) {
+            return false;
+        }
+        if (context != null && envelope != null) {
+            context.complete(envelope.envelopeId());
+        }
+        return true;
+    }
+
+    private boolean isRuntimeGenerationActive(long generation) {
+        return runtimeAccepting && runtimeGeneration.get() == generation;
+    }
+
+    private DialogueContextFrame withPlayerId(DialogueContextFrame frame, String playerId) {
+        DialogueContextFrame effectiveFrame = frame == null ? DialogueContextFrame.empty(playerId) : frame;
+        DialogueContextSnapshot snapshot = effectiveFrame.contextSnapshot();
+        return new DialogueContextFrame(
+                effectiveFrame.interactionHints(),
+                new DialogueContextSnapshot(
+                        playerId,
+                        snapshot.dimensionId(),
+                        snapshot.entityRefs(),
+                        snapshot.equippedItemIds(),
+                        snapshot.facts()
+                )
+        );
+    }
+
+    private void respondArbitrationResultIfRequested(TianshuEnvelope envelope, DialogueArbitrationResultPayload result) {
+        if (envelope.header().packetType() == PacketType.REQUEST) {
+            adapter.respondArbitrationResult(envelope, result);
+        }
+    }
+
+    private void rememberAttentionForDecision(String playerId, DialogueArbitrationDecision decision, long now) {
+        if (decision.claim() != null) {
+            attentionMemory.remember(playerId, decision.owner(), decision.claim(), now);
+        } else if ("DEFAULT_OWNER".equals(decision.reason()) || !decision.accepted()) {
+            attentionMemory.clearPlayer(playerId);
+        }
+    }
+
+    private void publishOwnerPreviewIfChanged(TianshuEnvelope parent, DialogueOwnerPreviewPayload preview) {
+        if (preview == null || preview.playerId().isBlank()) {
+            return;
+        }
+        DialogueOwnerPreviewPayload previous = ownerPreviews.get(preview.playerId());
+        if (preview.sameOwner(previous)) {
+            return;
+        }
+        ownerPreviews.put(preview.playerId(), preview);
+        adapter.publishOwnerPreview(parent, preview);
+    }
+
+    private DialogueOwnerPreviewPayload previewFor(String playerId, DialogueParticipantDescriptor owner, long now) {
+        if (owner == null) {
+            return emptyPreview(playerId, now);
+        }
+        return new DialogueOwnerPreviewPayload(playerId, owner.moduleId(), owner.participantId(), owner.displayName(), now);
+    }
+
+    private DialogueOwnerPreviewPayload emptyPreview(String playerId, long now) {
+        return new DialogueOwnerPreviewPayload(playerId, "", "", "", now);
+    }
+
+    private void refreshOwnerPreviews(TianshuEnvelope parent, long now) {
+        List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
+        Set<String> playerIds = new HashSet<>(ownerPreviews.keySet());
+        playerIds.addAll(attentionMemory.playerIds());
+        for (String playerId : playerIds) {
+            Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(playerId, participants, now);
+            DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, List.of(), attentionState);
+            if (decision.accepted()) {
+                rememberAttentionForDecision(playerId, decision, now);
+                publishOwnerPreviewIfChanged(parent, previewFor(playerId, decision.owner(), now));
+            } else {
+                attentionMemory.clearPlayer(playerId);
+                publishOwnerPreviewIfChanged(parent, emptyPreview(playerId, now));
+            }
+        }
+    }
+
+    private void refreshOwnerPreviewState() {
+        long now = System.currentTimeMillis();
+        contextFreezeStore.sweep(now);
+        refreshOwnerPreviews(null, now);
+    }
+
+    private void handleSessionControl(TianshuEnvelope envelope, ProtocolContext context) {
+        if (rejectWhenInactive(envelope, context)) {
+            return;
+        }
+        if (!(envelope.payload() instanceof DialogueSessionControlPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Dialogue session control payload is invalid", null);
+            return;
+        }
+        long now = System.currentTimeMillis();
+        lifecycleSweeper.sweep(envelope, now);
+        Optional<DialogueSession> optionalSession = sessionStore.find(payload.sessionId());
+        if (optionalSession.isEmpty()) {
+            context.fail(envelope.envelopeId(), "SESSION_NOT_FOUND", "Dialogue session not found", null);
+            return;
+        }
+        DialogueSession session = optionalSession.get();
+        DialogueAccessDecision accessDecision = accessController.authorizeSessionControl(session, payload.requesterModuleId(), payload.requesterParticipantId());
+        if (!accessDecision.allowed()) {
+            context.fail(envelope.envelopeId(), accessDecision.reasonCode(), accessDecision.message(), null);
+            return;
+        }
+        DialogueSessionControlDecision controlDecision = sessionControlPolicy.decide(session, payload.action(), now);
+        if (!controlDecision.allowed()) {
+            context.fail(envelope.envelopeId(), controlDecision.reasonCode(), controlDecision.message(), null);
+            return;
+        }
+        if (payload.action() == DialogueSessionControlAction.EXTEND_PROCESSING) {
+            Optional<DialogueParticipantDescriptor> owner = participantRegistry.find(session.ownerModuleId(), session.ownerParticipantId());
+            if (owner.isEmpty()) {
+                context.fail(envelope.envelopeId(), "SESSION_OWNER_NOT_FOUND", "Dialogue session owner is not registered", null);
+                return;
+            }
+            if (!owner.get().turnProcessingPolicy().extendable()) {
+                context.fail(envelope.envelopeId(), "SESSION_PROCESSING_EXTENSION_NOT_ALLOWED", "Dialogue session owner does not allow processing extension", null);
+                return;
+            }
+            DialogueSession extended = sessionStore.extendProcessing(
+                    session.sessionId(),
+                    now,
+                    owner.get().turnProcessingPolicy().extendDeadlineAt(session.createdAtMillis(), now, payload.requestedProcessingMillis())
+            );
+            eventPublisher.publish(envelope, extended, DialogueSessionEventType.CONVERSATION_CLAIMED, null, "PROCESSING_EXTENDED", now);
+        } else if (payload.action() == DialogueSessionControlAction.INTERRUPT_ACK) {
+            DialogueSession interrupted = sessionStore.interrupting(session.sessionId(), now);
+            eventPublisher.publish(envelope, interrupted, DialogueSessionEventType.CONVERSATION_INTERRUPTED, null, "INTERRUPT_ACK", now);
+        } else {
+            DialogueReleaseReason reason = payload.reason() == null ? DialogueReleaseReason.OWNER_COMPLETED : payload.reason();
+            DialogueSession released = sessionStore.release(session.sessionId(), reason, now);
+            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, reason, payload.action().name(), now);
+            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, reason, payload.action().name(), now);
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private DialogueSession claimSession(DialogueArbitrationRequestPayload payload, DialogueParticipantDescriptor owner, long now) {
+        return sessionStore.createClaimed(payload.playerId(), payload.turnId(), owner, now);
+    }
+
+    private boolean ownerChanged(Optional<DialogueSession> activeSession, DialogueParticipantDescriptor owner) {
+        return activeSession.isPresent() && !activeSession.get().ownedBy(owner.moduleId(), owner.participantId());
+    }
+
+    private void releasePreviousTurnIfPresent(TianshuEnvelope envelope, Optional<DialogueSession> activeSession, DialogueSession currentSession, long now) {
+        if (activeSession.isEmpty()) {
+            return;
+        }
+        DialogueSession previous = activeSession.get();
+        if (previous.sessionId().equals(currentSession.sessionId())) {
+            return;
+        }
+        DialogueSession released = sessionStore.release(previous.sessionId(), DialogueReleaseReason.PREEMPTED, now);
+        eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.PREEMPTED, "TURN_SUPERSEDED", now);
+        eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.PREEMPTED, "TURN_SUPERSEDED", now);
+    }
+
+    private DialogueArbitrationResultPayload acceptedResult(DialogueArbitrationRequestPayload request, DialogueSession session, DialogueParticipantDescriptor owner, String reason) {
+        return new DialogueArbitrationResultPayload(request.requestId(), session.sessionId(), true, owner.moduleId(), owner.participantId(), owner.routeCapability(), reason, session.processingDeadlineMillis());
+    }
+
+    private DialogueArbitrationResultPayload rejectedResult(DialogueArbitrationRequestPayload request, DialogueSession session, String reason) {
+        return new DialogueArbitrationResultPayload(request.requestId(), session.sessionId(), false, "", "", "", reason, session.processingDeadlineMillis());
+    }
+
+}

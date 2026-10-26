@@ -1,8 +1,11 @@
 package com.rheinmetal.tianshu.neoforge;
 
+import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.neoforge.bootstrap.NeoForgeClientBootstrap;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.common.NeoForge;
@@ -15,6 +18,10 @@ public final class TianshuNeoForge {
     private final NeoForgeClientBootstrap clientBootstrap = new NeoForgeClientBootstrap();
 
     public TianshuNeoForge(IEventBus modEventBus, ModContainer modContainer) {
+        // Modules are platform-free: when they integrate with an optional partner, the only sane answer to
+        // "is it there?" has to come from here. Registered before any module assembles.
+        TianshuRuntimePorts.register(InstalledMods.class,
+                modId -> modId != null && !modId.isBlank() && ModList.get().isLoaded(modId));
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC);
         modEventBus.addListener(clientBootstrap::registerKeyMappings);
         modEventBus.addListener(clientBootstrap::registerReloadListeners);

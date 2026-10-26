@@ -7,8 +7,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 
 import java.util.List;
 import java.util.Objects;

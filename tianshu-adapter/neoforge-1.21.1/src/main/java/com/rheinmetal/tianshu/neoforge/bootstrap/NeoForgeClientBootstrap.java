@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.bootstrap;
 
-import com.rheinmetal.tianshu.protocol.voice.VoiceNotificationService;
 
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
@@ -44,7 +43,6 @@ import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
-import com.rheinmetal.tianshu.function.ia.IaModuleInstaller;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresencePlatform;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresenceTextProvider;
@@ -334,8 +332,7 @@ public final class NeoForgeClientBootstrap {
             NativeModelLoadQueue loadQueue) {
         return List.of(
                 registrar -> registrar.addModule(new ClientOnnxRuntimeModuleInstaller()),
-                registrar -> registrar.addModule(presenceRuntime.moduleInstaller(context.moduleRuntime())),
-                registrar -> registrar.addModule(new IaModuleInstaller(context.moduleRuntime()))
+                registrar -> registrar.addModule(presenceRuntime.moduleInstaller(context.moduleRuntime()))
         );
     }
 

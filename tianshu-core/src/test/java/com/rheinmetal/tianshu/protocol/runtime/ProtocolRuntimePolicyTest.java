@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.protocol.runtime;
 
+import com.rheinmetal.tianshu.protocol.payload.EmptyPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;

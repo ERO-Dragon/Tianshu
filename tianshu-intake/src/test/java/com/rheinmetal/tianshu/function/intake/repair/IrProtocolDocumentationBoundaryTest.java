@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.intake.repair;
 
+import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
+import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

@@ -13,22 +13,43 @@ tasks.withType(JavaCompile).configureEach {
 
 // ---------------------------------------------------------------- boundary gates
 // These rules span modules, so they live at the root instead of inside one of them.
+//
+// Payload/dependency rule (full text: doc/architecture/模块拆分工程方案.md §9.7):
+//   1. a payload class belongs to the module that produces it (protocol base payloads: tianshu-api);
+//   2. a REQUIRED partner -> hard dependency, plain import, no guard;
+//   3. an OPTIONAL partner -> compileOnly, and the partner's classes may only be touched from a `bridge`
+//      package loaded behind InstalledMods.isLoaded(...);
+//   4. the kernel (core/client/adapter) referencing a payload at all is the only reason it belongs in api —
+//      never move a feature payload into api just to avoid writing a guard.
 
 def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
-// Feature modules may know each other only along these directed edges. The consumer owns the dependency:
-// it declares the producer as compileOnly and treats it as optional at runtime.
-//   auxilium -> intake, weaving, echo
-//   intake   -> weaving, echo
+// Feature modules relate to each other in exactly two ways, and the difference is a product statement:
+//   required — the consumer is not functional without it: a hard dependency, classes always visible,
+//              no optionality code at all.
+//   optional — "integrate when present": compileOnly plus a runtime presence guard.
+//   auxilium -> weaving (required), intake/echo (optional)
+//   intake   -> weaving/echo (optional)
 //   weaving, echo are leaves
-def allowedFeatureEdges = [
-        'auxilium': ['intake', 'weaving', 'echo'],
+def requiredFeatureEdges = [
+        'auxilium': ['weaving'],
+        'intake'  : [],
+        'weaving' : [],
+        'echo'    : [],
+]
+def optionalFeatureEdges = [
+        'auxilium': ['intake', 'echo'],
         'intake'  : ['weaving', 'echo'],
         'weaving' : [],
         'echo'    : [],
 ]
-def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
+def allowedFeatureEdges = [:]
+featureModules.each { module ->
+    def owner = module - 'tianshu-'
+    allowedFeatureEdges[owner] = ((requiredFeatureEdges[owner] ?: []) + (optionalFeatureEdges[owner] ?: [])).unique()
+}
+def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit', 'tianshu-adapter']
 
 tasks.register('verifyFeatureIsolation') {
     group = 'verification'
@@ -60,15 +81,19 @@ tasks.register('verifyFeatureIsolation') {
 
 tasks.register('verifyFeatureOptionalDependencies') {
     group = 'verification'
-    description = 'Every referenced feature module must be declared compileOnly, never as a hard dependency.'
+    description = 'Required edges are hard dependencies, optional edges are compileOnly, and nothing else exists.'
     def buildFiles = featureModules.collectEntries { module ->
         [(module): file("${module}/build.gradle")]
     }
     def sourcesByModule = featureModules.collectEntries { module ->
         [(module): fileTree("${module}/src/main/java") { include '**/*.java' }.files]
     }
+    def modsTomlByModule = featureModules.collectEntries { module ->
+        [(module): fileTree("${module}/src") { include '**/neoforge.mods.toml' }.files]
+    }
     inputs.files(buildFiles.values())
     inputs.files(sourcesByModule.values().flatten())
+    inputs.files(modsTomlByModule.values().flatten())
     doLast {
         def violations = []
         featureModules.each { module ->
@@ -77,16 +102,37 @@ tasks.register('verifyFeatureOptionalDependencies') {
             if (!buildFile.exists()) return
             def text = buildFile.text
             def sources = sourcesByModule[module]
-            (allowedFeatureEdges[owner] ?: []).each { target ->
+            def tomlText = (modsTomlByModule[module] ?: []).collect { it.text }.join('\n')
+            def required = requiredFeatureEdges[owner] ?: []
+            def optional = optionalFeatureEdges[owner] ?: []
+            (required + optional).each { target ->
                 def marker = "import com.rheinmetal.tianshu.function.${target}."
                 def used = sources.any { candidate -> candidate.text.contains(marker) }
                 if (!used) return
-                if (!text.contains("compileOnly project(':tianshu-${target}')")) {
-                    violations << "${module} uses tianshu-${target} but does not declare it as compileOnly"
+                def hardDeclaration = text.contains("api project(':tianshu-${target}')")
+                        || text.contains("implementation project(':tianshu-${target}')")
+                def optionalDeclaration = text.contains("compileOnly project(':tianshu-${target}')")
+                def expectedType = target in required ? 'required' : 'optional'
+                if (target in required && !hardDeclaration) {
+                    violations << "${module} requires tianshu-${target} but does not declare it as a hard dependency"
+                }
+                if (target in optional && !optionalDeclaration) {
+                    violations << "${module} integrates with tianshu-${target} but does not declare it as compileOnly"
+                }
+                // The loader has to know the same thing the build does, or load order and the "missing mod"
+                // message disagree with what the code actually assumes.
+                def modId = "tianshu_${target}"
+                def declared = tomlText =~ /modId\s*=\s*"${modId}"\s*\n\s*type\s*=\s*"(\w+)"/
+                if (!declared.find()) {
+                    violations << "${module} does not declare ${modId} in neoforge.mods.toml"
+                } else if (declared.group(1) != expectedType) {
+                    violations << "${module} declares ${modId} as ${declared.group(1)} but it is ${expectedType}"
                 }
             }
             (text =~ /(api|implementation) project\(':tianshu-(intake|echo|weaving|auxilium)'\)/).each { match ->
-                violations << "${module} declares a hard dependency on tianshu-${match[2]}"
+                if (!(match[2] in required)) {
+                    violations << "${module} declares a hard dependency on tianshu-${match[2]}, which is only an optional integration"
+                }
             }
         }
         if (!violations.isEmpty()) {

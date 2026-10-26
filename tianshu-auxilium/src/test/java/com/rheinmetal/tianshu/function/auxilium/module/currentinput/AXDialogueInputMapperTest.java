@@ -4,9 +4,9 @@ import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
-import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
+import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

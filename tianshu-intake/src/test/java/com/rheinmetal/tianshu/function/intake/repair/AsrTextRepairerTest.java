@@ -11,8 +11,8 @@ import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
-import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
-import com.rheinmetal.tianshu.protocol.payload.IrResultPayload;
+import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
+import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -63,7 +63,7 @@ class AsrTextRepairerTest {
                 "test.ia",
                 ProtocolCapabilities.DIALOGUE_ARBITRATE,
                 PayloadType.DIALOGUE_ARBITRATION_REQUEST,
-                com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueArbitrationRequestPayload.class,
+                com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload.class,
                 EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
                 arbitration
         );

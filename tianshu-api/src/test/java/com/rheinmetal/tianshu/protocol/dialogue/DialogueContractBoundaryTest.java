@@ -1,15 +1,16 @@
 package com.rheinmetal.tianshu.protocol.dialogue;
 
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
 import org.junit.jupiter.api.Test;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueScoringContext;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueScoringContext;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueScoreResponsePayload;
-import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
-import com.rheinmetal.tianshu.protocol.payload.IrObjectMatch;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueScoreResponsePayload;
+import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
+import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

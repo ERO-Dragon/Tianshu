@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -29,7 +29,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
-import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -420,7 +420,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload payload) {
+    public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload payload) {
         return commandCapability(parent, ProtocolCapabilities.DIALOGUE_SESSION_CONTROL, PayloadType.DIALOGUE_SESSION_CONTROL, payload);
     }
 }

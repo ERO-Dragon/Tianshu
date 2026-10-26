@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
+import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;

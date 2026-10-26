@@ -19,5 +19,6 @@ public final class IntakeNeoForgeMod {
     public IntakeNeoForgeMod() {
         TianshuRuntimePorts.register(KeywordTableReloadPort.class, new IntentKeywordReloader());
         TianshuModuleProviderRegistry.register(IntakeModuleProvider::new);
+        TianshuModuleProviderRegistry.register(com.rheinmetal.tianshu.function.ia.IaModuleProvider::new);
     }
 }

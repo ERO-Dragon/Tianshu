@@ -35,7 +35,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemory
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalResult;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;

@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.intake.repair;
 
 import com.rheinmetal.tianshu.function.intake.repair.core.IRBaseUtils;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
-import com.rheinmetal.tianshu.protocol.payload.IrModuleMatch;
+import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 
 import java.util.ArrayList;
 import java.util.Comparator;

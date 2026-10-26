@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.protocol.voice;
 
+import com.rheinmetal.tianshu.protocol.payload.VoiceTriggerRegistryPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

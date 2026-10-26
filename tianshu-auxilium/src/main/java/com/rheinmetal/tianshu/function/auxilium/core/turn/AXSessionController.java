@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueSessionControlPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 
 import java.util.Objects;

@@ -6,8 +6,6 @@ import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationRequestPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -51,11 +49,7 @@ final class LlmPromptRequestHandler {
             reject(envelope, payload, context, "LLM_SERVICE_NOT_READY", "LLM service is not initialized");
             return;
         }
-        if (requiresDialogueAuthorization(payload)) {
-            authorizeDialogueChatThenHandle(envelope, payload, context, usage);
-        } else {
-            handleAuthorized(envelope, payload, context, usage);
-        }
+        handleAuthorized(envelope, payload, context, usage);
     }
 
     private void handleAuthorized(
@@ -360,74 +354,6 @@ final class LlmPromptRequestHandler {
         });
     }
 
-    private boolean requiresDialogueAuthorization(LLMPromptRequestPayload payload) {
-        return payload != null && "CHAT".equalsIgnoreCase(payload.lane());
-    }
-
-    private void authorizeDialogueChatThenHandle(
-            TianshuEnvelope envelope,
-            LLMPromptRequestPayload payload,
-            ProtocolContext context,
-            UsageRecording usage
-    ) {
-        if (!payload.hasDialogueAuthorizationContext()) {
-            reject(envelope, payload, context, "DIALOGUE_AUTH_CONTEXT_MISSING",
-                    "CHAT LLM request requires dialogue session authorization context");
-            return;
-        }
-        String requesterModuleId = envelope.header() == null ? "" : clean(envelope.header().sourceId());
-        if (requesterModuleId.isBlank() || !requesterModuleId.equals(payload.requesterModuleId())) {
-            reject(envelope, payload, context, "DIALOGUE_AUTH_REQUESTER_MISMATCH",
-                    "CHAT LLM requester module must match envelope source module");
-            return;
-        }
-        if (!adapter.hasCapability(ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE)) {
-            reject(envelope, payload, context, "DIALOGUE_AUTH_UNAVAILABLE",
-                    "Dialogue LLM authorization capability is not available");
-            return;
-        }
-
-        DialogueLlmUsageAuthorizationRequestPayload authorizationPayload =
-                new DialogueLlmUsageAuthorizationRequestPayload(
-                        payload.dialogueSessionId(),
-                        requesterModuleId,
-                        payload.requesterParticipantId(),
-                        payload.dialogueTurnId(),
-                        System.currentTimeMillis()
-                );
-        TianshuEnvelope authorizationEnvelope =
-                adapter.buildDialogueLlmUsageAuthorizationRequest(envelope, authorizationPayload);
-        adapter.registerDialogueLlmUsageAuthorizationResponse(
-                authorizationEnvelope.envelopeId(),
-                (responseEnvelope, responseContext) -> {
-                    try {
-                        if (!(responseEnvelope.payload() instanceof DialogueLlmUsageAuthorizationResultPayload result)) {
-                            reject(envelope, payload, context, "DIALOGUE_AUTH_INVALID_RESPONSE",
-                                    "Dialogue authorization response payload is invalid");
-                            fail(responseContext, responseEnvelope, "INVALID_PAYLOAD",
-                                    "Dialogue authorization response payload is invalid", null);
-                            return;
-                        }
-                        if (!result.allowed()) {
-                            String reason = result.reasonCode().isBlank()
-                                    ? "DIALOGUE_AUTH_DENIED"
-                                    : result.reasonCode();
-                            String message = result.message().isBlank()
-                                    ? "Dialogue LLM usage is not authorized"
-                                    : result.message();
-                            reject(envelope, payload, context, reason, message);
-                            complete(responseContext, responseEnvelope);
-                            return;
-                        }
-                        complete(responseContext, responseEnvelope);
-                        handleAuthorized(envelope, payload, context, usage);
-                    } finally {
-                        adapter.unregisterAuthorizationResponse(authorizationEnvelope.envelopeId());
-                    }
-                }
-        );
-        adapter.submitDialogueLlmUsageAuthorizationRequest(authorizationEnvelope);
-    }
 
     private void reject(
             TianshuEnvelope envelope,

@@ -12,7 +12,7 @@ import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioAckPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;

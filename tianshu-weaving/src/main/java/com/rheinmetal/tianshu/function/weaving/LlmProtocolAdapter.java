@@ -16,8 +16,6 @@ import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationRequestPayload;
-import com.rheinmetal.tianshu.protocol.dialogue.payload.DialogueLlmUsageAuthorizationResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManageResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
@@ -294,36 +292,6 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 );
     }
 
-    public TianshuEnvelope buildDialogueLlmUsageAuthorizationRequest(
-            TianshuEnvelope parent,
-            DialogueLlmUsageAuthorizationRequestPayload payload
-    ) {
-        return buildRequestCapability(
-                parent,
-                ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE,
-                PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST,
-                payload
-        );
-    }
-
-    public TianshuEnvelope submitDialogueLlmUsageAuthorizationRequest(TianshuEnvelope envelope) {
-        return submitPrepared(envelope);
-    }
-
-    public void registerDialogueLlmUsageAuthorizationResponse(String requestEnvelopeId, EnvelopeHandler handler) {
-        registerResponseHandler(
-                requestEnvelopeId,
-                PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT,
-                DialogueLlmUsageAuthorizationResultPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.RESPONSE),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
     public void handleLLMRequest(TianshuEnvelope envelope) {
         handleLLMRequest(envelope, null);
     }
@@ -338,10 +306,6 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
     boolean hasCapability(String capabilityId) {
         return runtime().capabilityProviderCount(capabilityId) > 0;
-    }
-
-    void unregisterAuthorizationResponse(String requestEnvelopeId) {
-        unregisterResponseHandlers(requestEnvelopeId);
     }
 
     public void handleLLMCacheManage(TianshuEnvelope envelope) {

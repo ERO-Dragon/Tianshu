@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

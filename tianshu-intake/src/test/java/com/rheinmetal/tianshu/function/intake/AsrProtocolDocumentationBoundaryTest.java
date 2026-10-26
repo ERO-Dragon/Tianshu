@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.intake;
 
+import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

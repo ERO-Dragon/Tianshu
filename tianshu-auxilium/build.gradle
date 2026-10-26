@@ -13,7 +13,8 @@ repositories {
 
 dependencies {
     api project(':tianshu-core')
-    compileOnly project(':tianshu-weaving')
+    api project(':tianshu-weaving')
+    compileOnly project(':tianshu-intake')
     compileOnly project(':tianshu-echo')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'

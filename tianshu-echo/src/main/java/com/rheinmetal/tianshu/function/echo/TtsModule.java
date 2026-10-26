@@ -29,7 +29,7 @@ import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioAckPayload;
-import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
+import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackState;
 import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
