@@ -1,18 +1,16 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
-import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
@@ -37,6 +35,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
+import java.util.Set;
 import java.time.Duration;
 
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
@@ -63,18 +62,25 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return runtime();
     }
 
-    public void registerDialogueInputCapability(EnvelopeHandler handler) {
-        registerCapability(
-                DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
-                DialogueDeliveryPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.COMMAND),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
+    /**
+     * Registers a capability whose payload type this module does not own.
+     *
+     * <p>The generic form exists so a bridge can name a partner's payload class while this class stays free of
+     * the partner's types: when the partner is not installed, the bridge — and therefore this method — is never
+     * loaded.</p>
+     */
+    public void registerCapabilityWith(
+            String capabilityId,
+            PayloadType payloadType,
+            Class<? extends ITianshuPayload> payloadClass,
+            BrokerType brokerType,
+            Set<PacketType> acceptedPacketTypes,
+            Priority minPriority,
+            CompletionPolicy completionPolicy,
+            EnvelopeHandler handler
+    ) {
+        registerCapability(capabilityId, payloadType, payloadClass, brokerType, acceptedPacketTypes,
+                minPriority, completionPolicy, handler, defaults());
     }
 
     /**
@@ -387,15 +393,13 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return runtime().capabilityProviderCount(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER);
     }
 
-    public TianshuEnvelope registerDialogueParticipant(DialogueParticipantRegisterPayload payload) {
-        return commandCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER, PayloadType.DIALOGUE_PARTICIPANT_REGISTER, payload);
+    /** Generic command forms: the payload is built by the bridge that owns the partner's vocabulary. */
+    public TianshuEnvelope commandCapabilityWith(String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
+        return commandCapability(capabilityId, payloadType, payload);
     }
 
-    public TianshuEnvelope unregisterDialogueParticipant(DialogueParticipantUnregisterPayload payload) {
-        return commandCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER, PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER, payload);
-    }
-
-    public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload payload) {
-        return commandCapability(parent, ProtocolCapabilities.DIALOGUE_SESSION_CONTROL, PayloadType.DIALOGUE_SESSION_CONTROL, payload);
+    public TianshuEnvelope commandCapabilityWith(
+            TianshuEnvelope parent, String capabilityId, PayloadType payloadType, ITianshuPayload payload) {
+        return commandCapability(parent, capabilityId, payloadType, payload);
     }
 }

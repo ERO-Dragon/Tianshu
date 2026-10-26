@@ -28,7 +28,7 @@ AX 不创建独立 `Screen`，只通过 `AXSettingsRegistrySource` 向统一 `Ti
 AX common 的 `AXParticipantRegistrar` 会把该值同时写入：
 
 - `DialogueClaimCondition.wakeWord`，作为 IA 强仲裁条件；
-- `DialogueVoiceTriggerGroup.wakeWords`，由 IA 汇总进共享语音触发注册表。
+- `DialogueTriggerGroup.wakeWords`，由 IA 汇总进共享语音触发注册表。
 
 IR 从共享注册表构建触发词索引，执行近似修复和命中，再把结果送回 IA 仲裁。因此 NeoForge 设置页只保存该值并刷新 AX 运行时，不直接向 IR 注册，也不建立第二条仲裁链路。
 

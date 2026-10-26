@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.voice;
+package com.rheinmetal.tianshu.protocol.trigger;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;

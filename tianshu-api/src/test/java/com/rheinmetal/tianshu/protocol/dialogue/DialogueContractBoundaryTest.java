@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.protocol.dialogue;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import org.junit.jupiter.api.Test;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
@@ -77,13 +77,13 @@ class DialogueContractBoundaryTest {
         DialogueParticipantDescriptor legacy = new DialogueParticipantDescriptor(
                 "legacy", "module.legacy", "Legacy", 1,
                 DialogueClaimProfile.DISABLED,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 "LEGACY.ROUTE", DialogueTurnProcessingPolicy.DEFAULT
         );
         DialogueParticipantDescriptor scored = new DialogueParticipantDescriptor(
                 "scored", "module.scored", "Scored", 1,
                 DialogueClaimProfile.DISABLED,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 "SCORE.ROUTE", DialogueTurnProcessingPolicy.DEFAULT,
                 "SCORE.CAPABILITY", 2.0D
         );

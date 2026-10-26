@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.function.auxilium.bridge.IaDialogueBridge;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
@@ -64,7 +65,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerAccess;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerAccess;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -408,7 +409,7 @@ class AXAgentTurnWiringTest {
                 null,
                 null,
                 llmClient,
-                new AXSessionController(adapter),
+                new AXSessionController(new IaDialogueBridge(adapter)),
                 null,
                 recent,
                 outputProcessor,
@@ -586,8 +587,8 @@ class AXAgentTurnWiringTest {
         }
 
         @Override
-        public VoiceTriggerAccess voiceTriggers() {
-            return delegate.voiceTriggers();
+        public TriggerAccess triggers() {
+            return delegate.triggers();
         }
 
         @Override

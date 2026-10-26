@@ -4,12 +4,12 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimConditionType;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
-import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
-import com.rheinmetal.tianshu.protocol.voice.VoiceCommandScope;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerCategory;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerScope;
 
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,11 +18,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class DialogueVoiceTriggerSynchronizer {
+public final class DialogueTriggerSynchronizer {
     private final Set<String> syncedModules = new LinkedHashSet<>();
-    private VoiceTriggerRegistry registry;
+    private TriggerRegistry registry;
 
-    public synchronized void bind(VoiceTriggerRegistry nextRegistry, List<DialogueParticipantDescriptor> participants) {
+    public synchronized void bind(TriggerRegistry nextRegistry, List<DialogueParticipantDescriptor> participants) {
         if (registry != nextRegistry) {
             unregisterAll();
             registry = nextRegistry;
@@ -55,12 +55,12 @@ public final class DialogueVoiceTriggerSynchronizer {
         }
         for (Map.Entry<String, TriggerWords> entry : desiredTriggers.entrySet()) {
             TriggerWords words = entry.getValue();
-            registry.register(new VoiceTriggerRegistration(
+            registry.register(new TriggerRegistration(
                     entry.getKey(),
                     words.wakeWords(),
                     words.extraWords(),
-                    VoiceCommandCategory.GENERAL,
-                    VoiceCommandScope.CLIENT,
+                    TriggerCategory.GENERAL,
+                    TriggerScope.CLIENT,
                     true
             ));
             syncedModules.add(entry.getKey());
@@ -102,7 +102,7 @@ public final class DialogueVoiceTriggerSynchronizer {
     private TriggerWords triggerWordsFor(DialogueParticipantDescriptor participant) {
         LinkedHashSet<String> wakeWords = new LinkedHashSet<>(claimWakeWords(participant));
         LinkedHashSet<String> extraWords = new LinkedHashSet<>();
-        DialogueVoiceTriggerGroup group = participant.voiceTriggerGroup();
+        DialogueTriggerGroup group = participant.triggerGroup();
         if (group != null) {
             wakeWords.addAll(group.wakeWords());
             extraWords.addAll(group.extraWords());

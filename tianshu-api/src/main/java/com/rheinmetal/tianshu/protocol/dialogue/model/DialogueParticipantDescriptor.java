@@ -6,7 +6,7 @@ public record DialogueParticipantDescriptor(
         String displayName,
         int priority,
         DialogueClaimProfile claimProfile,
-        DialogueVoiceTriggerGroup voiceTriggerGroup,
+        DialogueTriggerGroup triggerGroup,
         String routeCapability,
         DialogueTurnProcessingPolicy turnProcessingPolicy,
         String scoreCapability,
@@ -18,11 +18,11 @@ public record DialogueParticipantDescriptor(
             String displayName,
             int priority,
             DialogueClaimProfile claimProfile,
-            DialogueVoiceTriggerGroup voiceTriggerGroup,
+            DialogueTriggerGroup triggerGroup,
             String routeCapability,
             DialogueTurnProcessingPolicy turnProcessingPolicy
     ) {
-        this(participantId, moduleId, displayName, priority, claimProfile, voiceTriggerGroup, routeCapability,
+        this(participantId, moduleId, displayName, priority, claimProfile, triggerGroup, routeCapability,
                 turnProcessingPolicy, "", 0.0D);
     }
 
@@ -31,7 +31,7 @@ public record DialogueParticipantDescriptor(
         moduleId = requireText(moduleId, "moduleId");
         displayName = sanitize(displayName);
         claimProfile = claimProfile == null ? DialogueClaimProfile.DISABLED : claimProfile;
-        voiceTriggerGroup = voiceTriggerGroup == null ? DialogueVoiceTriggerGroup.EMPTY : voiceTriggerGroup;
+        triggerGroup = triggerGroup == null ? DialogueTriggerGroup.EMPTY : triggerGroup;
         routeCapability = requireText(routeCapability, "routeCapability");
         turnProcessingPolicy = turnProcessingPolicy == null ? DialogueTurnProcessingPolicy.DEFAULT : turnProcessingPolicy;
         scoreCapability = sanitize(scoreCapability);

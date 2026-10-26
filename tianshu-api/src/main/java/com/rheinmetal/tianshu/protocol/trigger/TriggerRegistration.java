@@ -1,31 +1,31 @@
-package com.rheinmetal.tianshu.protocol.voice;
+package com.rheinmetal.tianshu.protocol.trigger;
 
 import java.util.List;
 
-public record VoiceTriggerRegistration(
+public record TriggerRegistration(
         String moduleId,
         List<String> wakeWords,
         List<String> extraWords,
-        VoiceCommandCategory category,
-        VoiceCommandScope scope,
+        TriggerCategory category,
+        TriggerScope scope,
         boolean dialogueEligible,
-        VoiceTriggerDeliveryTarget deliveryTarget
+        TriggerDeliveryTarget deliveryTarget
 ) {
-    public VoiceTriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords) {
-        this(moduleId, wakeWords, extraWords, VoiceCommandCategory.GENERAL, VoiceCommandScope.CLIENT, false, null);
+    public TriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords) {
+        this(moduleId, wakeWords, extraWords, TriggerCategory.GENERAL, TriggerScope.CLIENT, false, null);
     }
 
-    public VoiceTriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords, VoiceCommandCategory category, VoiceCommandScope scope, boolean dialogueEligible) {
+    public TriggerRegistration(String moduleId, List<String> wakeWords, List<String> extraWords, TriggerCategory category, TriggerScope scope, boolean dialogueEligible) {
         this(moduleId, wakeWords, extraWords, category, scope, dialogueEligible, null);
     }
 
-    public VoiceTriggerRegistration {
+    public TriggerRegistration {
         moduleId = normalizeRequired(moduleId, "moduleId");
         wakeWords = TextListNormalizer.normalize(wakeWords);
         extraWords = TextListNormalizer.normalize(extraWords);
-        category = category == null ? VoiceCommandCategory.GENERAL : category;
-        scope = scope == null ? VoiceCommandScope.CLIENT : scope;
-        deliveryTarget = deliveryTarget == null ? VoiceTriggerDeliveryTarget.defaultFor(moduleId) : deliveryTarget;
+        category = category == null ? TriggerCategory.GENERAL : category;
+        scope = scope == null ? TriggerScope.CLIENT : scope;
+        deliveryTarget = deliveryTarget == null ? TriggerDeliveryTarget.defaultFor(moduleId) : deliveryTarget;
         if (!deliveryTarget.moduleId().equals(moduleId)) {
             throw new IllegalArgumentException("deliveryTarget moduleId must match registration moduleId");
         }

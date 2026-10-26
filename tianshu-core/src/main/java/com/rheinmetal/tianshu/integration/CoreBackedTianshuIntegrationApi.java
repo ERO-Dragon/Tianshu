@@ -8,8 +8,8 @@ import com.rheinmetal.tianshu.protocol.integration.CoreCapabilityProbe;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleDeclaration;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistrationResult;
 
 import java.util.List;
 
@@ -54,13 +54,13 @@ public final class CoreBackedTianshuIntegrationApi implements TianshuIntegration
     }
 
     @Override
-    public VoiceTriggerRegistrationResult registerVoiceTrigger(VoiceTriggerRegistration registration) {
-        return coreManager.registerVoiceTrigger(registration);
+    public TriggerRegistrationResult registerTrigger(TriggerRegistration registration) {
+        return coreManager.registerTrigger(registration);
     }
 
     @Override
-    public void unregisterVoiceTriggers(String moduleId) {
-        coreManager.unregisterVoiceTriggers(moduleId);
+    public void unregisterTriggers(String moduleId) {
+        coreManager.unregisterTriggers(moduleId);
     }
 
     @Override

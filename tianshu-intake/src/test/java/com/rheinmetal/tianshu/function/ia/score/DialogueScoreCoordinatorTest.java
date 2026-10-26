@@ -12,7 +12,7 @@ import com.rheinmetal.tianshu.function.ia.contract.DialogueScoringContext;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueScoreResponsePayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
@@ -112,7 +112,7 @@ class DialogueScoreCoordinatorTest {
     private static DialogueParticipantDescriptor participant(String id, String capability) {
         return new DialogueParticipantDescriptor(
                 id, "module." + id, id, 0, DialogueClaimProfile.DISABLED,
-                DialogueVoiceTriggerGroup.EMPTY, "route." + id, DialogueTurnProcessingPolicy.DEFAULT,
+                DialogueTriggerGroup.EMPTY, "route." + id, DialogueTurnProcessingPolicy.DEFAULT,
                 capability, 0.0D
         );
     }

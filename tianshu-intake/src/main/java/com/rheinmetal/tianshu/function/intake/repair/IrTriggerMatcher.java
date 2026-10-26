@@ -8,8 +8,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-final class IrVoiceTriggerMatcher {
-    IrMatchBatch match(IrInputText input, List<IrCompiledVoiceTrigger> index) {
+final class IrTriggerMatcher {
+    IrMatchBatch match(IrInputText input, List<IrCompiledTrigger> index) {
         if (input == null || input.blank()) {
             return new IrMatchBatch(input, List.of());
         }
@@ -18,7 +18,7 @@ final class IrVoiceTriggerMatcher {
             return new IrMatchBatch(input, List.of());
         }
         List<TriggerHits> hits = new ArrayList<>();
-        for (IrCompiledVoiceTrigger trigger : index) {
+        for (IrCompiledTrigger trigger : index) {
             List<String> wakeWords = collectTokenMatches(tokenText, trigger.wakeWords());
             List<String> extraWords = collectTokenMatches(tokenText, trigger.extraWords());
             if (wakeWords.isEmpty() && extraWords.isEmpty()) {
@@ -27,7 +27,7 @@ final class IrVoiceTriggerMatcher {
             // Wake words and auxiliary words stay separate all the way out: only a wake word may satisfy a
             // wake-word condition, and merging them here silently widened that condition.
             hits.add(new TriggerHits(trigger.moduleId(), List.copyOf(wakeWords), List.copyOf(extraWords),
-                    voiceTriggerConfidence(trigger, wakeWords.size() + extraWords.size())));
+                    triggerConfidence(trigger, wakeWords.size() + extraWords.size())));
         }
         // A module that matched more of its words explains the utterance better, so its hits come first. The score
         // orders the evidence and stays here: publishing it invites a consumer to invent a threshold, which is
@@ -60,7 +60,7 @@ final class IrVoiceTriggerMatcher {
         return matches;
     }
 
-    private double voiceTriggerConfidence(IrCompiledVoiceTrigger trigger, int matchedWords) {
+    private double triggerConfidence(IrCompiledTrigger trigger, int matchedWords) {
         return Math.min(1.0D, matchedWords / (double) trigger.totalWords());
     }
 

@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
@@ -44,7 +44,7 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -71,9 +71,9 @@ class IaModuleProtocolFlowTest {
     }
 
     @Test
-    void voiceTriggersRegisteredBeforePrepareAreSynchronizedWhenRuntimeContextArrives() {
+    void triggersRegisteredBeforePrepareAreSynchronizedWhenRuntimeContextArrives() {
         
-        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
@@ -100,8 +100,8 @@ class IaModuleProtocolFlowTest {
     }
 
     @Test
-    void voiceTriggersFollowRuntimeParticipantUpdatesAndUnregisters() {
-        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+    void triggersFollowRuntimeParticipantUpdatesAndUnregisters() {
+        TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
@@ -144,7 +144,7 @@ class IaModuleProtocolFlowTest {
 
     @Test
     void aTriggerWordThatIsNotTheParticipantsWakeWordLeavesTheClaimToTheDefaultOwner() {
-        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
@@ -158,7 +158,7 @@ class IaModuleProtocolFlowTest {
         subscribeSessionEvents(new RecordingHandler());
         IaModuleService service = services.require(IaModuleService.class);
 
-        service.registerParticipant(participantWithVoiceTriggers(
+        service.registerParticipant(participantWithTriggers(
                 "maid",
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
@@ -168,7 +168,7 @@ class IaModuleProtocolFlowTest {
                         DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("maid")
                 )),
-                DialogueVoiceTriggerGroup.of(List.of("maid"), List.of("farm"))
+                DialogueTriggerGroup.of(List.of("maid"), List.of("farm"))
         ));
         service.registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
 
@@ -198,7 +198,7 @@ class IaModuleProtocolFlowTest {
 
     @Test
     void participantRegistrationPublishesWakeWordsToSharedVoiceResources() {
-        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
@@ -329,7 +329,7 @@ class IaModuleProtocolFlowTest {
 
     @Test
     void readyArbitrationWithoutParticipantsRejectsSilentlyWithoutPresenceLookup() {
-        VoiceTriggerRegistry voiceResources = new VoiceTriggerRegistry();
+        TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         MutablePresenceContextHandler presence = new MutablePresenceContextHandler();
         registerPresenceContextHandler(presence);
@@ -390,20 +390,20 @@ class IaModuleProtocolFlowTest {
                 participantId,
                 priority,
                 profile,
-                DialogueVoiceTriggerGroup.EMPTY,
+                DialogueTriggerGroup.EMPTY,
                 routeCapability,
                 DialogueTurnProcessingPolicy.DEFAULT
         );
     }
 
-    private DialogueParticipantDescriptor participantWithVoiceTriggers(String participantId, String moduleId, String routeCapability, int priority, DialogueClaimProfile profile, DialogueVoiceTriggerGroup voiceTriggerGroup) {
+    private DialogueParticipantDescriptor participantWithTriggers(String participantId, String moduleId, String routeCapability, int priority, DialogueClaimProfile profile, DialogueTriggerGroup triggerGroup) {
         return new DialogueParticipantDescriptor(
                 participantId,
                 moduleId,
                 participantId,
                 priority,
                 profile,
-                voiceTriggerGroup,
+                triggerGroup,
                 routeCapability,
                 DialogueTurnProcessingPolicy.DEFAULT
         );

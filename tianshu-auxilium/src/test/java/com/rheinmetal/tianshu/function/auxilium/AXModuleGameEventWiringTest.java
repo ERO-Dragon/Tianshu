@@ -13,7 +13,7 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -50,7 +50,7 @@ class AXModuleGameEventWiringTest {
         module.prepare(new ModuleRuntimeContext(
                 runtime,
                 services,
-                new VoiceTriggerRegistry(),
+                new TriggerRegistry(),
                 new ModuleRuntimeState()
         ));
 

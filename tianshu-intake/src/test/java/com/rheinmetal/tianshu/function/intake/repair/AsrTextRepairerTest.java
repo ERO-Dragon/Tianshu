@@ -20,8 +20,8 @@ import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -56,7 +56,7 @@ class AsrTextRepairerTest {
         runtime = ProtocolBootstrap.create(Runnable::run);
         AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
         AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
-        runtime.voiceTriggers().register(new VoiceTriggerRegistration("module.maid", List.of("酒狐"), List.of("种地")));
+        runtime.triggers().register(new TriggerRegistration("module.maid", List.of("酒狐"), List.of("种地")));
         repairer.initialize(voiceAccess(), DiagnosticSink.NOOP);
         RecordingHandler arbitration = new RecordingHandler();
         registerCapability(
@@ -126,8 +126,8 @@ class AsrTextRepairerTest {
         repairer.process(payload, published);
     }
 
-    private VoiceTriggerRegistry voiceAccess() {
-        return runtime.voiceTriggers();
+    private TriggerRegistry voiceAccess() {
+        return runtime.triggers();
     }
 
     private void registerCapability(String moduleId, String capabilityId, PayloadType payloadType, Class<?> payloadClass, EnumSet<PacketType> packets, EnvelopeHandler handler) {

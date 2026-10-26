@@ -1,62 +1,64 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannel;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Announces this participant to the dialogue domain.
+ *
+ * <p>The descriptor is protocol vocabulary (api), so building it needs no bridge; only handing it over does,
+ * which is why the channel is the one partner-shaped thing here. Without a dialogue domain the registration
+ * availability reads false and nothing is announced — a module that cannot be addressed simply stays quiet.</p>
+ */
 public final class AXParticipantRegistrar {
     public static final String PARTICIPANT_ID = "tianshu.AX";
-    private final AXProtocolAdapter adapter;
+
+    private final AXDialogueChannel channel;
     private final AuxiliumAssistantSettings settings;
     private final AtomicBoolean registered = new AtomicBoolean(false);
 
-    public AXParticipantRegistrar(AXProtocolAdapter adapter, AuxiliumAssistantSettings settings) {
-        this.adapter = Objects.requireNonNull(adapter, "adapter");
+    public AXParticipantRegistrar(AXDialogueChannel channel, AuxiliumAssistantSettings settings) {
+        this.channel = Objects.requireNonNull(channel, "channel");
         this.settings = settings == null ? AuxiliumAssistantSettings.DEFAULT : settings;
     }
 
     public void register() {
         List<String> wakeWords = wakeWords();
-        if (adapter.dialogueParticipantRegistrationProviderCount() <= 0) {
+        if (!channel.participantRegistrationAvailable()) {
             return;
         }
         if (!registered.compareAndSet(false, true)) {
             return;
         }
-        adapter.registerDialogueParticipant(new DialogueParticipantRegisterPayload(new DialogueParticipantDescriptor(
+        channel.registerParticipant(new DialogueParticipantDescriptor(
                 PARTICIPANT_ID,
                 AXModule.MODULE_ID,
                 settings.wakeWord(),
                 0,
                 claimProfile(wakeWords),
-                voiceTriggerGroup(wakeWords),
+                triggerGroup(wakeWords),
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 DialogueTurnProcessingPolicy.DEFAULT,
                 "",
                 settings.fallbackScore()
-        ), System.currentTimeMillis()));
+        ));
     }
 
     public void unregister() {
         if (!registered.compareAndSet(true, false)) {
             return;
         }
-        adapter.unregisterDialogueParticipant(new DialogueParticipantUnregisterPayload(
-                AXModule.MODULE_ID,
-                PARTICIPANT_ID,
-                false,
-                System.currentTimeMillis()
-        ));
+        channel.unregisterParticipant();
     }
 
     private DialogueClaimProfile claimProfile(List<String> wakeWords) {
@@ -70,8 +72,8 @@ public final class AXParticipantRegistrar {
         ));
     }
 
-    private DialogueVoiceTriggerGroup voiceTriggerGroup(List<String> wakeWords) {
-        return DialogueVoiceTriggerGroup.of(wakeWords, List.of());
+    private DialogueTriggerGroup triggerGroup(List<String> wakeWords) {
+        return DialogueTriggerGroup.of(wakeWords, List.of());
     }
 
     private List<String> wakeWords() {

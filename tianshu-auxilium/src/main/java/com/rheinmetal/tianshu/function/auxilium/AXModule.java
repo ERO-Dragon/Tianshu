@@ -71,8 +71,8 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.api.assembly.InputSignals;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTypedTurnEnvelope;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
-import com.rheinmetal.tianshu.function.auxilium.input.AXMatchedObject;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannel;
+import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannels;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
@@ -103,6 +103,7 @@ public final class AXModule implements TianshuManagedModule {
     private final AXGameEventTextProvider eventTexts;
     private final AXProtocolAdapter adapter;
     private AXParticipantRegistrar participantRegistrar;
+    private AXDialogueChannel dialogueChannel = AXDialogueChannel.NONE;
     private AXLlmClient llmClient;
     private AXLlmPrimitiveClient retrievalPrimitiveClient;
     private AXLlmPrimitiveClient maintenancePrimitiveClient;
@@ -228,7 +229,8 @@ public final class AXModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        adapter.registerDialogueInputCapability(this::handleDialogueDelivery);
+        dialogueChannel = AXDialogueChannels.forRuntime(adapter);
+        dialogueChannel.openInbound(this::handleDialogueInput);
         adapter.registerContextInputCapability(this::handleContextInput);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
         adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
@@ -293,7 +295,7 @@ public final class AXModule implements TianshuManagedModule {
         AXLlmPromptRequestBuilder llmRequestBuilder = new AXLlmPromptRequestBuilder(promptOrchestrator, assistantSettings);
         AXRuntimeLlmBudgetResolver budgetResolver = new AXRuntimeLlmBudgetResolver(retrievalPrimitiveClient, constructionFallbackPolicy);
         dynamicFactClient = new AXDynamicFactClient(adapter, new AXDynamicKnowledgeFormatter(promptRepository, promptLanguageProvider), runtimePolicy.dynamicFactTimeoutMillis());
-        AXSessionController sessionController = new AXSessionController(adapter);
+        AXSessionController sessionController = new AXSessionController(dialogueChannel);
         // The output layer resolves the player-visible wording of its own fallback sentences, so it gets
         // the same language source as the prompt side (both live in resources, never in Java).
         AXOutputProcessor outputProcessor = new AXOutputProcessor(
@@ -340,7 +342,7 @@ public final class AXModule implements TianshuManagedModule {
         }
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher,
                 this::flushHeldEventsBeforeUserTurn);
-        participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
+        participantRegistrar = new AXParticipantRegistrar(dialogueChannel, assistantSettings);
         participantRegistrar.register();
         publishGameEventService(context);
         if (moduleServices != null) {
@@ -553,17 +555,19 @@ public final class AXModule implements TianshuManagedModule {
         orchestrator.startTurn(AXTypedTurnEnvelope.selfEnvelope(input), input);
     }
 
-    private void handleDialogueDelivery(TianshuEnvelope envelope, ProtocolContext context) throws Exception {
+    /**
+     * A spoken turn, already translated by the bridge into this module's input type.
+     *
+     * <p>Whether the dialogue domain is installed is decided once, when the channel is chosen; this method
+     * runs only if it is, so it carries no optionality.</p>
+     */
+    private void handleDialogueInput(TianshuEnvelope envelope, AXDialogueInput input, ProtocolContext context)
+            throws Exception {
         AXDialogueGateway currentGateway = dialogueGateway;
         if (currentGateway == null) {
             context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX runtime is not prepared", null);
             return;
         }
-        if (!(envelope.payload() instanceof DialogueDeliveryPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX dialogue delivery payload is invalid", null);
-            return;
-        }
-        AXDialogueInput input = dialogueInputOf(payload);
         env.diagnostics().publish(DiagnosticEvent.now(
                 MODULE_ID,
                 "DIALOGUE_DELIVERY",
@@ -576,33 +580,6 @@ public final class AXModule implements TianshuManagedModule {
                 )
         ));
         currentGateway.handleDelivery(envelope, input, context);
-    }
-
-    /**
-     * The one place this module reads the intake side's delivery payload.
-     *
-     * <p>Past this method everything works on {@link AXDialogueInput}, which is what lets the gateway, the turn
-     * pipeline and the orchestrator stop depending on the intake module. A typed turn builds the same type with
-     * no payload involved and no object matches: nothing was recognized, so there is nothing the repair step
-     * could have resolved.</p>
-     */
-    private static AXDialogueInput dialogueInputOf(DialogueDeliveryPayload payload) {
-        return new AXDialogueInput(
-                payload.playerId(),
-                payload.sessionId(),
-                payload.turnId().isBlank() ? payload.requestId() : payload.turnId(),
-                payload.repairedText(),
-                payload.contextSnapshot(),
-                payload.interactionHints(),
-                payload.matchedEntityRefs(),
-                payload.displayNames(),
-                payload.objectMatches().stream()
-                        .map(match -> new AXMatchedObject(
-                                match.spokenWord(), match.registryId(), match.registryKind(), match.languageKey()))
-                        .filter(AXMatchedObject::isMeaningful)
-                        .toList(),
-                payload.expireAtMillis()
-        );
     }
 
     private void handlePresenceWorldEvent(TianshuEnvelope envelope, ProtocolContext context) {

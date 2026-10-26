@@ -6,8 +6,8 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -17,11 +17,11 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DialogueVoiceTriggerSynchronizerTest {
+class DialogueTriggerSynchronizerTest {
     @Test
     void bindUpdateAndUnbindOwnOnlyParticipantModuleRegistrations() {
-        VoiceTriggerRegistry resources = new VoiceTriggerRegistry();
-        DialogueVoiceTriggerSynchronizer synchronizer = new DialogueVoiceTriggerSynchronizer();
+        TriggerRegistry resources = new TriggerRegistry();
+        DialogueTriggerSynchronizer synchronizer = new DialogueTriggerSynchronizer();
 
         synchronizer.bind(resources, List.of(participant("酒狐", "farm")));
         assertEquals(List.of("酒狐", "farm"), resources.registeredWords());
@@ -35,9 +35,9 @@ class DialogueVoiceTriggerSynchronizerTest {
 
     @Test
     void rebindingRemovesRegistrationsFromPreviousRuntimeResources() {
-        VoiceTriggerRegistry previous = new VoiceTriggerRegistry();
-        VoiceTriggerRegistry current = new VoiceTriggerRegistry();
-        DialogueVoiceTriggerSynchronizer synchronizer = new DialogueVoiceTriggerSynchronizer();
+        TriggerRegistry previous = new TriggerRegistry();
+        TriggerRegistry current = new TriggerRegistry();
+        DialogueTriggerSynchronizer synchronizer = new DialogueTriggerSynchronizer();
         List<DialogueParticipantDescriptor> participants = List.of(participant("酒狐", "farm"));
 
         synchronizer.bind(previous, participants);
@@ -49,8 +49,8 @@ class DialogueVoiceTriggerSynchronizerTest {
 
     @Test
     void synchronizeAfterUnbindDoesNotRestoreStoppedRuntimeRegistrations() {
-        VoiceTriggerRegistry resources = new VoiceTriggerRegistry();
-        DialogueVoiceTriggerSynchronizer synchronizer = new DialogueVoiceTriggerSynchronizer();
+        TriggerRegistry resources = new TriggerRegistry();
+        DialogueTriggerSynchronizer synchronizer = new DialogueTriggerSynchronizer();
 
         synchronizer.bind(resources, List.of(participant("酒狐", "farm")));
         synchronizer.unbind();
@@ -70,7 +70,7 @@ class DialogueVoiceTriggerSynchronizerTest {
                         DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord(wakeWord)
                 )),
-                DialogueVoiceTriggerGroup.of(List.of(wakeWord), List.of(extraWord)),
+                DialogueTriggerGroup.of(List.of(wakeWord), List.of(extraWord)),
                 "MAID.DIALOGUE_INPUT",
                 DialogueTurnProcessingPolicy.DEFAULT
         );

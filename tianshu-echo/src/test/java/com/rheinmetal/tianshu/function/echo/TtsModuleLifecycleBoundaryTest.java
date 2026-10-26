@@ -10,7 +10,7 @@ import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntime;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,7 +35,7 @@ class TtsModuleLifecycleBoundaryTest {
         module.prepare(new ModuleRuntimeContext(
                 protocolRuntime,
                 services,
-                new VoiceTriggerRegistry(),
+                new TriggerRegistry(),
                 new ModuleRuntimeState()
         ));
 

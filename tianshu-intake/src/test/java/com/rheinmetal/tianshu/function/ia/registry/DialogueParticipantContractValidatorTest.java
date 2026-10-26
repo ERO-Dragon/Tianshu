@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.registry;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
@@ -88,7 +88,7 @@ class DialogueParticipantContractValidatorTest {
                 "maid",
                 10,
                 com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 capabilityId,
                 DialogueTurnProcessingPolicy.DEFAULT
         );

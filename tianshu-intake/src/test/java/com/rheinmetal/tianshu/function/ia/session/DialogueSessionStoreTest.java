@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.session;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
@@ -80,6 +80,6 @@ class DialogueSessionStoreTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, "owner", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", new DialogueTurnProcessingPolicy(1_000L, 2_000L, true));
+        return new DialogueParticipantDescriptor(participantId, moduleId, "owner", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE", new DialogueTurnProcessingPolicy(1_000L, 2_000L, true));
     }
 }

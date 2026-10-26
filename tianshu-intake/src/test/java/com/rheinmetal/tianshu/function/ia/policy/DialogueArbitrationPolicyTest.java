@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.policy;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionState;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
@@ -231,7 +231,7 @@ class DialogueArbitrationPolicyTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private DialogueParticipantDescriptor defaultOwner() {
@@ -241,7 +241,7 @@ class DialogueArbitrationPolicyTest {
                 "default",
                 0,
                 DialogueClaimProfile.DEFAULT_OWNER,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 "ROUTE",
                 DialogueTurnProcessingPolicy.DEFAULT,
                 "",

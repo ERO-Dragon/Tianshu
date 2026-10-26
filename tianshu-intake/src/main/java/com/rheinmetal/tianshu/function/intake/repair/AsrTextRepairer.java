@@ -15,8 +15,8 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
 
 import java.util.List;
 import java.util.Map;
@@ -45,13 +45,13 @@ public final class AsrTextRepairer {
     private final IrInputPreprocessor preprocessor;
     private final IrNamedObjectEnhancer namedObjectEnhancer;
     private final IrWakeWordEnhancer wakeWordEnhancer;
-    private final IrVoiceTriggerIndexer indexer;
-    private final IrVoiceTriggerMatcher matcher;
+    private final IrTriggerIndexer indexer;
+    private final IrTriggerMatcher matcher;
     private final Object indexLock = new Object();
 
-    private volatile List<VoiceTriggerRegistration> indexedRegistrations = List.of();
-    private volatile List<IrCompiledVoiceTrigger> voiceTriggerIndex = List.of();
-    private volatile VoiceTriggerRegistry voiceTriggers;
+    private volatile List<TriggerRegistration> indexedRegistrations = List.of();
+    private volatile List<IrCompiledTrigger> triggerIndex = List.of();
+    private volatile TriggerRegistry triggers;
     private volatile boolean acceptingInput;
     private volatile DiagnosticSink diagnostics = DiagnosticSink.NOOP;
 
@@ -60,16 +60,16 @@ public final class AsrTextRepairer {
         this.preprocessor = new IrInputPreprocessor();
         this.namedObjectEnhancer = namedObjectEnhancer == null ? IrNamedObjectEnhancer.noop() : namedObjectEnhancer;
         this.wakeWordEnhancer = new IrWakeWordEnhancer();
-        this.indexer = new IrVoiceTriggerIndexer();
-        this.matcher = new IrVoiceTriggerMatcher();
+        this.indexer = new IrTriggerIndexer();
+        this.matcher = new IrTriggerMatcher();
     }
 
     /** Binds the shared trigger registry and starts accepting repairs; called from the speech module's prepare. */
-    public void initialize(VoiceTriggerRegistry voiceTriggers, DiagnosticSink diagnostics) {
-        this.voiceTriggers = voiceTriggers;
+    public void initialize(TriggerRegistry triggers, DiagnosticSink diagnostics) {
+        this.triggers = triggers;
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
         this.acceptingInput = true;
-        refreshVoiceTriggerIndex(currentVoiceTriggerRegistrations());
+        refreshTriggerIndex(currentTriggerRegistrations());
     }
 
     public void stop() {
@@ -78,9 +78,9 @@ public final class AsrTextRepairer {
 
     public void destroy() {
         stop();
-        voiceTriggers = null;
+        triggers = null;
         indexedRegistrations = List.of();
-        voiceTriggerIndex = List.of();
+        triggerIndex = List.of();
         diagnostics = DiagnosticSink.NOOP;
     }
 
@@ -103,7 +103,7 @@ public final class AsrTextRepairer {
         }
         IrPreparedInput prepared = preprocessor.prepare(input);
         IrNamedObjectEnhancementResult namedObjectEnhancement = namedObjectEnhancer.enhance(prepared);
-        List<IrCompiledVoiceTrigger> index = ensureVoiceTriggerIndex();
+        List<IrCompiledTrigger> index = ensureTriggerIndex();
         IrInputText voiceInput = wakeWordEnhancer.enhance(inputWithNamedObjectRepair(prepared, namedObjectEnhancement), index);
         IrMatchBatch batch = matcher.match(voiceInput, index);
         List<IrObjectMatch> objectMatches = objectMatches(namedObjectEnhancement);
@@ -137,27 +137,27 @@ public final class AsrTextRepairer {
         return new IrInputText(repaired, voiceInput.rawText(), voiceInput.turnId(), voiceInput.sessionId(), voiceInput.source(), voiceInput.createdAt());
     }
 
-    private List<IrCompiledVoiceTrigger> ensureVoiceTriggerIndex() {
-        List<VoiceTriggerRegistration> registrations = currentVoiceTriggerRegistrations();
+    private List<IrCompiledTrigger> ensureTriggerIndex() {
+        List<TriggerRegistration> registrations = currentTriggerRegistrations();
         if (registrations.equals(indexedRegistrations)) {
-            return voiceTriggerIndex;
+            return triggerIndex;
         }
         synchronized (indexLock) {
             if (!registrations.equals(indexedRegistrations)) {
-                refreshVoiceTriggerIndex(registrations);
+                refreshTriggerIndex(registrations);
             }
-            return voiceTriggerIndex;
+            return triggerIndex;
         }
     }
 
-    private void refreshVoiceTriggerIndex(List<VoiceTriggerRegistration> registrations) {
+    private void refreshTriggerIndex(List<TriggerRegistration> registrations) {
         indexedRegistrations = registrations == null || registrations.isEmpty() ? List.of() : List.copyOf(registrations);
-        voiceTriggerIndex = indexer.compile(indexedRegistrations);
+        triggerIndex = indexer.compile(indexedRegistrations);
     }
 
-    private List<VoiceTriggerRegistration> currentVoiceTriggerRegistrations() {
-        VoiceTriggerRegistry triggers = voiceTriggers;
-        return triggers == null ? List.of() : triggers.registrations();
+    private List<TriggerRegistration> currentTriggerRegistrations() {
+        TriggerRegistry current = triggers;
+        return current == null ? List.of() : current.registrations();
     }
 
     /**

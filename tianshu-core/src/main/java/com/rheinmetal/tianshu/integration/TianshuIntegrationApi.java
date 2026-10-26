@@ -7,8 +7,8 @@ import com.rheinmetal.tianshu.protocol.integration.CoreCapabilityProbe;
 import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleDeclaration;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistrationResult;
 
 import java.util.List;
 
@@ -25,9 +25,9 @@ public interface TianshuIntegrationApi {
 
     void unregisterModule(String moduleId);
 
-    VoiceTriggerRegistrationResult registerVoiceTrigger(VoiceTriggerRegistration registration);
+    TriggerRegistrationResult registerTrigger(TriggerRegistration registration);
 
-    void unregisterVoiceTriggers(String moduleId);
+    void unregisterTriggers(String moduleId);
 
     void submitModuleStatus(ModuleStatus status);
 

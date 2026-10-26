@@ -32,7 +32,7 @@ import com.rheinmetal.tianshu.protocol.registry.TopicRegistry;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionRegistry;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -50,7 +50,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     private final CancellationRegistry cancellationRegistry = new CancellationRegistry(lifecycleStore);
     private final DeadLetterQueue deadLetterQueue;
     private final StormGuard stormGuard;
-    private final VoiceTriggerRegistry voiceTriggerRegistry;
+    private final TriggerRegistry triggerRegistry;
     private final IntegrationModuleRegistry integrationModuleRegistry = new IntegrationModuleRegistry();
     private final ModuleStatusCache moduleStatusCache = new ModuleStatusCache();
     private final ProtocolExecutorManager executorManager;
@@ -58,22 +58,22 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     private final ProtocolContext context;
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor) {
-        this(mainThreadExecutor, new VoiceTriggerRegistry());
+        this(mainThreadExecutor, new TriggerRegistry());
     }
 
-    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry) {
-        this(mainThreadExecutor, voiceTriggerRegistry, ProtocolRuntimePolicy.defaults());
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, TriggerRegistry triggerRegistry) {
+        this(mainThreadExecutor, triggerRegistry, ProtocolRuntimePolicy.defaults());
     }
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, ProtocolRuntimePolicy runtimePolicy) {
-        this(mainThreadExecutor, new VoiceTriggerRegistry(), runtimePolicy);
+        this(mainThreadExecutor, new TriggerRegistry(), runtimePolicy);
     }
 
-    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, TriggerRegistry triggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
         ProtocolRuntimePolicy effectivePolicy = runtimePolicy == null ? ProtocolRuntimePolicy.defaults() : runtimePolicy;
         this.deadLetterQueue = new DeadLetterQueue(effectivePolicy.deadLetterCapacity(), lifecycleStore);
         this.stormGuard = new StormGuard(effectivePolicy.defaultStormLimitPerSecond(), effectivePolicy.maxTraceDepth());
-        this.voiceTriggerRegistry = voiceTriggerRegistry == null ? new VoiceTriggerRegistry() : voiceTriggerRegistry;
+        this.triggerRegistry = triggerRegistry == null ? new TriggerRegistry() : triggerRegistry;
         this.executorManager = new ProtocolExecutorManager(mainThreadExecutor, effectivePolicy.executorPolicy());
         this.brokerRegistry = new BrokerRegistry(mainThreadExecutor, executorManager);
         this.context = new RuntimeContext();
@@ -111,7 +111,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         capabilityRegistry.unregisterModule(normalizedModuleId);
         responseHandlerRegistry.unregisterModule(normalizedModuleId);
         topicSubscriptionRegistry.unregisterModule(normalizedModuleId);
-        voiceTriggerRegistry.unregisterModule(normalizedModuleId);
+        triggerRegistry.unregisterModule(normalizedModuleId);
         moduleRegistry.unregisterModule(normalizedModuleId);
     }
 
@@ -314,7 +314,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     public ResponseHandlerRegistry responseHandlers() { return responseHandlerRegistry; }
     public TopicRegistry topics() { return topicRegistry; }
     public TopicSubscriptionRegistry topicSubscriptions() { return topicSubscriptionRegistry; }
-    public VoiceTriggerRegistry voiceTriggers() { return voiceTriggerRegistry; }
+    public TriggerRegistry triggers() { return triggerRegistry; }
     public IntegrationModuleRegistry integrationModules() { return integrationModuleRegistry; }
     public ModuleStatusCache moduleStatusCache() { return moduleStatusCache; }
     public ProtocolContext context() { return context; }

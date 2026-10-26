@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,7 +18,7 @@ public final class CoreModuleLifecycleCoordinator {
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
-    private final VoiceTriggerRegistry voiceTriggers;
+    private final TriggerRegistry triggers;
     private final ModuleRuntimeState runtimeState;
     private final RuntimeReadinessState readinessState;
     private final RuntimeInterruptionService interruptionService;
@@ -39,7 +39,7 @@ public final class CoreModuleLifecycleCoordinator {
             ProtocolRuntime protocolRuntime,
             TianshuModuleHost moduleHost,
             ModuleServiceRegistry moduleServices,
-            VoiceTriggerRegistry voiceTriggers,
+            TriggerRegistry triggers,
             ModuleRuntimeState runtimeState,
             RuntimeReadinessState readinessState,
             RuntimeInterruptionService interruptionService,
@@ -49,7 +49,7 @@ public final class CoreModuleLifecycleCoordinator {
         this.protocolRuntime = protocolRuntime;
         this.moduleHost = moduleHost;
         this.moduleServices = moduleServices;
-        this.voiceTriggers = voiceTriggers;
+        this.triggers = triggers;
         this.runtimeState = runtimeState;
         this.readinessState = readinessState;
         this.interruptionService = interruptionService;
@@ -199,7 +199,7 @@ public final class CoreModuleLifecycleCoordinator {
             }
 
 
-            ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, voiceTriggers, runtimeState, env.diagnostics());
+            ModuleRuntimeContext runtimeContext = new ModuleRuntimeContext(protocolRuntime, moduleServices, triggers, runtimeState, env.diagnostics());
             moduleHost.prepareAll(runtimeContext);
             moduleHost.startAll(runtimeContext);
 

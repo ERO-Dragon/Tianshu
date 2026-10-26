@@ -295,7 +295,7 @@ context.services().require(MyService.class);
 - 注册请求 response handler
 - submit envelope
 - 使用 `ModuleExecutionAccess.submit(...)` / `schedule(...)` 提交协议任务
-- 使用受控 `VoiceTriggerAccess` 注册自身触发词
+- 使用受控 `TriggerAccess` 注册自身触发词
 
 模块不应依赖协议中心内部对象，例如：
 
@@ -318,7 +318,7 @@ context.services().require(MyService.class);
 这个模块存在，并由 core 托管生命周期。
 ```
 
-语音触发注册发生在模块自己的协议适配器或语音适配逻辑中，用于告诉 `VoiceTriggerRegistry`：
+语音触发注册发生在模块自己的协议适配器或语音适配逻辑中，用于告诉 `TriggerRegistry`：
 
 ```text
 这些 wakeWords / extraWords 和我这个 moduleId 有关。
@@ -329,8 +329,8 @@ context.services().require(MyService.class);
 - 模块被 CoreManager 托管，不代表它自动有语音触发词。
 - 模块注册语音触发词，不代表 CoreManager 需要知道这些词。
 - 模块修改自己的热词配置后，应主动重新注册语音触发词。
-- `VoiceTriggerRegistry` 根据 `moduleId` 覆盖旧注册。
-- 如果模块已经通过 IA 的 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明 wakeWords / extraWords，就不要再用同一个 `moduleId` 直接注册第二份 `VoiceTriggerRegistration`；两者最终进入同一个共享注册表，后注册者会覆盖先注册者。
+- `TriggerRegistry` 根据 `moduleId` 覆盖旧注册。
+- 如果模块已经通过 IA 的 `DialogueParticipantDescriptor.triggerGroup` 声明 wakeWords / extraWords，就不要再用同一个 `moduleId` 直接注册第二份 `TriggerRegistration`；两者最终进入同一个共享注册表，后注册者会覆盖先注册者。
 - 后续热词文件物化由语音资源层处理。
 - ASR 引擎是否重载或重启由 ASR 模块负责。
 
@@ -339,9 +339,9 @@ context.services().require(MyService.class);
 ```text
 模块配置改变
     ↓
-模块重新注册 VoiceTriggerRegistration
+模块重新注册 TriggerRegistration
     ↓
-VoiceTriggerRegistry 更新对应 moduleId 的词表
+TriggerRegistry 更新对应 moduleId 的词表
     ↓
 语音资源层重新物化 hotwords.txt
     ↓

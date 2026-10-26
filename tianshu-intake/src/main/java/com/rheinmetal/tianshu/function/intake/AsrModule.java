@@ -149,7 +149,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             runtimeContext = context;
             runtimeState = context.runtimeState();
             engineStatus = null;
-                textRepairer.initialize(context.voiceTriggers(), context.diagnostics());
+                textRepairer.initialize(context.triggers(), context.diagnostics());
             AsrStateMachine stateMachine = new AsrStateMachine();
             AsrSessionManager sessionManager = new AsrSessionManager();
             audioCapture = new AudioCaptureService(audioBridge, env);

@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.intake.repair;
 
 import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,15 +14,15 @@ class IrWakeWordEnhancerTest {
 
     @Test
     void repairsHighConfidenceWakeWordBeforeMatching() {
-        IrVoiceTriggerIndexer indexer = new IrVoiceTriggerIndexer();
+        IrTriggerIndexer indexer = new IrTriggerIndexer();
         IrWakeWordEnhancer enhancer = new IrWakeWordEnhancer();
-        List<IrCompiledVoiceTrigger> index = indexer.compile(List.of(
-                new VoiceTriggerRegistration("module.maid", List.of("酒狐"), List.of())
+        List<IrCompiledTrigger> index = indexer.compile(List.of(
+                new TriggerRegistration("module.maid", List.of("酒狐"), List.of())
         ));
         IrInputText input = new IrInputText("九狐帮我种地", "九狐帮我种地", 1, 2L, "asr", 100L);
 
         IrInputText repaired = enhancer.enhance(input, index);
-        IrMatchBatch batch = new IrVoiceTriggerMatcher().match(repaired, index);
+        IrMatchBatch batch = new IrTriggerMatcher().match(repaired, index);
 
         assertEquals("酒狐帮我种地", repaired.text());
         assertEquals(List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")), batch.matches());
@@ -30,10 +30,10 @@ class IrWakeWordEnhancerTest {
 
     @Test
     void keepsTextWhenWakeWordCandidateIsTooWeak() {
-        IrVoiceTriggerIndexer indexer = new IrVoiceTriggerIndexer();
+        IrTriggerIndexer indexer = new IrTriggerIndexer();
         IrWakeWordEnhancer enhancer = new IrWakeWordEnhancer();
-        List<IrCompiledVoiceTrigger> index = indexer.compile(List.of(
-                new VoiceTriggerRegistration("module.maid", List.of("酒狐"), List.of())
+        List<IrCompiledTrigger> index = indexer.compile(List.of(
+                new TriggerRegistration("module.maid", List.of("酒狐"), List.of())
         ));
         IrInputText input = new IrInputText("帮我种地", "帮我种地", 1, 2L, "asr", 100L);
 
@@ -44,11 +44,11 @@ class IrWakeWordEnhancerTest {
 
     @Test
     void keepsTextWhenOverlappingCandidatesAreAmbiguous() {
-        IrVoiceTriggerIndexer indexer = new IrVoiceTriggerIndexer();
+        IrTriggerIndexer indexer = new IrTriggerIndexer();
         IrWakeWordEnhancer enhancer = new IrWakeWordEnhancer();
-        List<IrCompiledVoiceTrigger> index = indexer.compile(List.of(
-                new VoiceTriggerRegistration("module.left", List.of("酒狐"), List.of()),
-                new VoiceTriggerRegistration("module.right", List.of("九狐"), List.of())
+        List<IrCompiledTrigger> index = indexer.compile(List.of(
+                new TriggerRegistration("module.left", List.of("酒狐"), List.of()),
+                new TriggerRegistration("module.right", List.of("九狐"), List.of())
         ));
         IrInputText input = new IrInputText("久狐帮我种地", "久狐帮我种地", 1, 2L, "asr", 100L);
 
@@ -59,16 +59,16 @@ class IrWakeWordEnhancerTest {
 
     @Test
     void prefersLongestWakeWordWhenCandidatesContainEachOther() {
-        IrVoiceTriggerIndexer indexer = new IrVoiceTriggerIndexer();
+        IrTriggerIndexer indexer = new IrTriggerIndexer();
         IrWakeWordEnhancer enhancer = new IrWakeWordEnhancer();
-        List<IrCompiledVoiceTrigger> index = indexer.compile(List.of(
-                new VoiceTriggerRegistration("module.short", List.of("酒狐"), List.of()),
-                new VoiceTriggerRegistration("module.long", List.of("酒狐女仆"), List.of())
+        List<IrCompiledTrigger> index = indexer.compile(List.of(
+                new TriggerRegistration("module.short", List.of("酒狐"), List.of()),
+                new TriggerRegistration("module.long", List.of("酒狐女仆"), List.of())
         ));
         IrInputText input = new IrInputText("九狐女仆帮我种地", "九狐女仆帮我种地", 1, 2L, "asr", 100L);
 
         IrInputText repaired = enhancer.enhance(input, index);
-        IrMatchBatch batch = new IrVoiceTriggerMatcher().match(repaired, index);
+        IrMatchBatch batch = new IrTriggerMatcher().match(repaired, index);
 
         assertEquals("酒狐女仆帮我种地", repaired.text());
         assertTrue(batch.matches().stream()
@@ -78,16 +78,16 @@ class IrWakeWordEnhancerTest {
 
     @Test
     void repairsMultipleNonOverlappingWakeWordsConservatively() {
-        IrVoiceTriggerIndexer indexer = new IrVoiceTriggerIndexer();
+        IrTriggerIndexer indexer = new IrTriggerIndexer();
         IrWakeWordEnhancer enhancer = new IrWakeWordEnhancer();
-        List<IrCompiledVoiceTrigger> index = indexer.compile(List.of(
-                new VoiceTriggerRegistration("module.maid", List.of("酒狐"), List.of()),
-                new VoiceTriggerRegistration("module.create", List.of("机械动力"), List.of())
+        List<IrCompiledTrigger> index = indexer.compile(List.of(
+                new TriggerRegistration("module.maid", List.of("酒狐"), List.of()),
+                new TriggerRegistration("module.create", List.of("机械动力"), List.of())
         ));
         IrInputText input = new IrInputText("九狐和机械动利都在吗", "九狐和机械动利都在吗", 1, 2L, "asr", 100L);
 
         IrInputText repaired = enhancer.enhance(input, index);
-        IrMatchBatch batch = new IrVoiceTriggerMatcher().match(repaired, index);
+        IrMatchBatch batch = new IrTriggerMatcher().match(repaired, index);
 
         assertEquals("酒狐和机械动力都在吗", repaired.text());
         assertTrue(batch.matches().stream().map(IrModuleMatch::moduleId).toList().containsAll(List.of("module.maid", "module.create")));
@@ -95,10 +95,10 @@ class IrWakeWordEnhancerTest {
 
     @Test
     void doesNotUseExtraWordsAsRepairTargets() {
-        IrVoiceTriggerIndexer indexer = new IrVoiceTriggerIndexer();
+        IrTriggerIndexer indexer = new IrTriggerIndexer();
         IrWakeWordEnhancer enhancer = new IrWakeWordEnhancer();
-        List<IrCompiledVoiceTrigger> index = indexer.compile(List.of(
-                new VoiceTriggerRegistration("module.maid", List.of("酒狐"), List.of("种地"))
+        List<IrCompiledTrigger> index = indexer.compile(List.of(
+                new TriggerRegistration("module.maid", List.of("酒狐"), List.of("种地"))
         ));
         IrInputText input = new IrInputText("九狐帮我重地", "九狐帮我重地", 1, 2L, "asr", 100L);
 

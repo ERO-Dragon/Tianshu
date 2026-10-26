@@ -407,7 +407,7 @@ DialogueParticipantDescriptor(
     displayName,
     priority,
     claimProfile,
-    voiceTriggerGroup,
+    triggerGroup,
     routeCapability,
     turnProcessingPolicy,
     scoreCapability,
@@ -435,7 +435,7 @@ voice trigger group：模块启动或配置变化时注册，说明该 moduleId 
 - 参与方 ID
 - 显示名称
 - 兼容字段中的 wake word、实体类型、物品 ID
-- `voiceTriggerGroup` 中的 wakeWords / extraWords。wakeWords 可与 claim profile 的 `WAKE_WORD` 条件保持一致；extraWords 只用于 ASR 热词和 IR 辅助修复，不进入 IA 仲裁。
+- `triggerGroup` 中的 wakeWords / extraWords。wakeWords 可与 claim profile 的 `WAKE_WORD` 条件保持一致；extraWords 只用于 ASR 热词和 IR 辅助修复，不进入 IA 仲裁。
 - 基础优先级
 - route capability
 - 当前轮处理期限策略
@@ -476,7 +476,7 @@ DialogueClaimRule(
 
 claim profile 是 participant 对“什么情况下希望承接输入”的主观声明，`ANY` 相当于条件 OR，`ALL` 相当于条件 AND。IR 和 Presence 提供命中词、物品、实体、交互状态及 context fact 等客观输入，IA 只负责用这些客观输入计算 participant 声明的谓词，不替模块推断业务意图。
 
-IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `voiceTriggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `voiceTriggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 ASR/IR 对专有名词的识别和修复，但不会让该模块在 IA 中产生 claim。
+IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `triggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `triggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 ASR/IR 对专有名词的识别和修复，但不会让该模块在 IA 中产生 claim。
 
 `NEAREST_ENTITY_WITHIN` 由模块声明实体类型 ID 白名单和半径，例如 `DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")`。平台层只按所有参与方汇总出的实体类型白名单扫描，扫描结果只保留最近的白名单实体，并在 delivery 的 `matchedEntityRefs/contextSnapshot.entityRefs` 中返回结构化 `DialogueEntityRef`，其中包含实体 UUID/ref id、实体类型 ID、显示名和距离。NeoForge 侧不每 tick 全量扫描；白名单为空时不扫描，未命中时低频扫描，命中后按较短间隔刷新缓存，IA 冻结快照时只读取缓存。
 

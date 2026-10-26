@@ -4,19 +4,19 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public record DialogueVoiceTriggerGroup(
+public record DialogueTriggerGroup(
         List<String> wakeWords,
         List<String> extraWords
 ) {
-    public static final DialogueVoiceTriggerGroup EMPTY = new DialogueVoiceTriggerGroup(List.of(), List.of());
+    public static final DialogueTriggerGroup EMPTY = new DialogueTriggerGroup(List.of(), List.of());
 
-    public DialogueVoiceTriggerGroup {
+    public DialogueTriggerGroup {
         wakeWords = copyTextList(wakeWords);
         extraWords = copyTextList(extraWords);
     }
 
-    public static DialogueVoiceTriggerGroup of(List<String> wakeWords, List<String> extraWords) {
-        DialogueVoiceTriggerGroup group = new DialogueVoiceTriggerGroup(wakeWords, extraWords);
+    public static DialogueTriggerGroup of(List<String> wakeWords, List<String> extraWords) {
+        DialogueTriggerGroup group = new DialogueTriggerGroup(wakeWords, extraWords);
         return group.empty() ? EMPTY : group;
     }
 

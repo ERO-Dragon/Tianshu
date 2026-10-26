@@ -74,7 +74,7 @@ DialogueParticipantDescriptor(
     String displayName,
     int priority,
     DialogueClaimProfile claimProfile,
-    DialogueVoiceTriggerGroup voiceTriggerGroup,
+    DialogueTriggerGroup triggerGroup,
     String routeCapability,
     DialogueTurnProcessingPolicy turnProcessingPolicy,
     String scoreCapability,
@@ -91,13 +91,13 @@ DialogueParticipantDescriptor(
 | `displayName` | 面向 UI 或诊断的显示名。 |
 | `priority` | participant 基础优先级，只在多个 participant 的 claim strength 相同时参与比较。 |
 | `claimProfile` | 参与 IA 仲裁的硬命中规则。只有 `WAKE_WORD` 条件会作为仲裁 wake word；`extraWords` 不参与 IA claim。 |
-| `voiceTriggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
+| `triggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
 | `routeCapability` | IA 选中该 participant 后投递正文的 capability。能力名由模块自定义，但能力契约必须接收标准 `DialogueDeliveryPayload`。 |
 | `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理，不决定下一轮归属。默认初始窗口为 10 秒，默认绝对上限为 session 创建后 180 秒。 |
 | `scoreCapability` | 可选评分 capability。没有硬 claim 时，IA 用结构化仲裁上下文请求本 participant 的本轮动态值。 |
 | `fallbackScore` | 评分 provider 缺失、超时或未返回时使用的分值，范围为 `[0,1]`。AX 默认值为 `0.4`。 |
 
-如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.voiceTriggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `VoiceTriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `VoiceTriggerRegistration`。空 wake word 仍可注册 participant，但不会产生 wake-word claim，也不会注册空触发词。
+如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.triggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `TriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `TriggerRegistration`。空 wake word 仍可注册 participant，但不会产生 wake-word claim，也不会注册空触发词。
 
 ### 3.3 动态评分
 

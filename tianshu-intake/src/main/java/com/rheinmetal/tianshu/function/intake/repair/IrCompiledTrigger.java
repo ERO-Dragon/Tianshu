@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.function.intake.repair;
 
 import java.util.List;
 
-record IrCompiledVoiceTrigger(String moduleId, List<IrCompiledVoiceWord> wakeWords, List<IrCompiledVoiceWord> extraWords, int totalWords) {
-    IrCompiledVoiceTrigger {
+record IrCompiledTrigger(String moduleId, List<IrCompiledVoiceWord> wakeWords, List<IrCompiledVoiceWord> extraWords, int totalWords) {
+    IrCompiledTrigger {
         if (moduleId == null) moduleId = "";
         moduleId = moduleId.trim();
         wakeWords = wakeWords == null || wakeWords.isEmpty() ? List.of() : List.copyOf(wakeWords);

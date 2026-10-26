@@ -55,7 +55,7 @@ IrNamedObjectEnhancer
   ↓
 IrWakeWordEnhancer
   ↓
-IrVoiceTriggerMatcher
+IrTriggerMatcher
   └─ moduleMatches：每个命中触发词一条（匹配质量只用于排序）
   ↓
 IrResultPayload
@@ -72,7 +72,7 @@ IA
 - `IrInputMapper` / `IrInputPreprocessor`：输入映射和双文本视图构建。
 - `IrNamedObjectEnhancer`：自然语言名称修复和结构化物品、实体 ID 提取。
 - `IrWakeWordEnhancer`：只对已注册 wake word 做保守修复。
-- `IrVoiceTriggerIndexer` / `IrVoiceTriggerMatcher`：编译并匹配 wake/extra 词组。
+- `IrTriggerIndexer` / `IrTriggerMatcher`：编译并匹配 wake/extra 词组。
 - `IRCommandService` / `CommandParser` / `CommandCandidateRanker` / `CommandTextRepairer`：命名对象索引、候选评分和文本修复。
 
 IR 不再包含独立 routing policy，也不包含 IA request mapper。发布分析事实就是 IR 的处理终点。
@@ -111,9 +111,9 @@ IR 不再包含独立 routing policy，也不包含 IA request mapper。发布�
 
 ## 6. Wake Word 与 Extra Word
 
-IR 从共享 `VoiceTriggerRegistry` 读取各模块注册的词组。
+IR 从共享 `TriggerRegistry` 读取各模块注册的词组。
 
-`IrWakeWordEnhancer` 只修复 wake word，不修复 extra word。`IrVoiceTriggerMatcher` 对每个命中的触发词产出一条：
+`IrWakeWordEnhancer` 只修复 wake word，不修复 extra word。`IrTriggerMatcher` 对每个命中的触发词产出一条：
 
 ```text
 moduleId

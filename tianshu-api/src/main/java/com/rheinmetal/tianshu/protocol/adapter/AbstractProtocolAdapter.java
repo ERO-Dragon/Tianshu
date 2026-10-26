@@ -18,9 +18,9 @@ import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
-import com.rheinmetal.tianshu.protocol.voice.VoiceCommandCategory;
-import com.rheinmetal.tianshu.protocol.voice.VoiceCommandScope;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerCategory;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerScope;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -57,12 +57,12 @@ public abstract class AbstractProtocolAdapter {
         return defaults;
     }
 
-    protected final void registerVoiceTrigger(List<String> wakeWords, List<String> extraWords) {
-        registerVoiceTrigger(wakeWords, extraWords, VoiceCommandCategory.GENERAL, VoiceCommandScope.CLIENT, false);
+    protected final void registerTrigger(List<String> wakeWords, List<String> extraWords) {
+        registerTrigger(wakeWords, extraWords, TriggerCategory.GENERAL, TriggerScope.CLIENT, false);
     }
 
-    protected final void registerVoiceTrigger(List<String> wakeWords, List<String> commandWords, VoiceCommandCategory category, VoiceCommandScope scope, boolean dialogueEligible) {
-        runtime.voiceTriggers().register(new VoiceTriggerRegistration(moduleId, wakeWords, commandWords, category, scope, dialogueEligible));
+    protected final void registerTrigger(List<String> wakeWords, List<String> commandWords, TriggerCategory category, TriggerScope scope, boolean dialogueEligible) {
+        runtime.triggers().register(new TriggerRegistration(moduleId, wakeWords, commandWords, category, scope, dialogueEligible));
     }
 
     protected final ProtocolTaskHandle submitTask(ExecutionLane lane, Runnable task) {

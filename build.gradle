@@ -31,20 +31,20 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 //   optional — "integrate when present": compileOnly plus a runtime presence guard.
 //   none     — no relation at all: no Gradle dependency, no manifest entry, no gate permission. This is
 //              the default; an edge exists only because it is listed below.
-//   auxilium -> intake/weaving (required), echo (optional)
+//   auxilium -> weaving (required), intake/echo (optional)
 //   intake, weaving, echo are leaves
 // Dialogue is two-way (delivery flows down, participant and session control flow up) but all of its
 // vocabulary lives on the intake side: intake imports nothing from auxilium, so the dependency stays
 // one-directional and no cycle forms. That edge is required today because without intake nothing delivers
 // dialogue to auxilium at all; making it optional needs a bridge over the 12 files that use those types.
 def requiredFeatureEdges = [
-        'auxilium': ['intake', 'weaving'],
+        'auxilium': ['weaving'],
         'intake'  : [],
         'weaving' : [],
         'echo'    : [],
 ]
 def optionalFeatureEdges = [
-        'auxilium': ['echo'],
+        'auxilium': ['intake', 'echo'],
         'intake'  : [],
         'weaving' : [],
         'echo'    : [],

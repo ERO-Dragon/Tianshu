@@ -41,7 +41,7 @@ displayTest="IGNORE_SERVER_VERSION"
 
 [[dependencies.tianshu_auxilium]]
 modId="tianshu_intake"
-type="required"
+type="optional"
 versionRange="[${mod_version},)"
 ordering="NONE"
 side="CLIENT"

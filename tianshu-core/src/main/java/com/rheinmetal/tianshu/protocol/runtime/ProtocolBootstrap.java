@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
 public final class ProtocolBootstrap {
     private ProtocolBootstrap() {
@@ -22,14 +22,14 @@ public final class ProtocolBootstrap {
         return runtime;
     }
 
-    public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry) {
-        ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, voiceTriggerRegistry);
+    public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, TriggerRegistry triggerRegistry) {
+        ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, triggerRegistry);
         registerTopics(runtime);
         return runtime;
     }
 
-    public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, VoiceTriggerRegistry voiceTriggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
-        ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, voiceTriggerRegistry, runtimePolicy);
+    public static ProtocolRuntime create(MainThreadExecutor mainThreadExecutor, TriggerRegistry triggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
+        ProtocolRuntime runtime = new ProtocolRuntime(mainThreadExecutor, triggerRegistry, runtimePolicy);
         registerTopics(runtime);
         return runtime;
     }

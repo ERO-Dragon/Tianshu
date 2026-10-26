@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.registry;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import org.junit.jupiter.api.Test;
@@ -48,6 +48,6 @@ class DialogueParticipantRegistryTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String moduleId, String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 }

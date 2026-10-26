@@ -1,15 +1,15 @@
-package com.rheinmetal.tianshu.protocol.voice;
+package com.rheinmetal.tianshu.protocol.trigger;
 
-public record VoiceTriggerDeliveryTarget(String moduleId, String capabilityId) {
-    public VoiceTriggerDeliveryTarget {
+public record TriggerDeliveryTarget(String moduleId, String capabilityId) {
+    public TriggerDeliveryTarget {
         moduleId = requireText(moduleId, "moduleId");
         capabilityId = capabilityId == null || capabilityId.isBlank()
                 ? "VOICE_TRIGGER." + moduleId
                 : capabilityId.trim();
     }
 
-    public static VoiceTriggerDeliveryTarget defaultFor(String moduleId) {
-        return new VoiceTriggerDeliveryTarget(moduleId, "");
+    public static TriggerDeliveryTarget defaultFor(String moduleId) {
+        return new TriggerDeliveryTarget(moduleId, "");
     }
 
     private static String requireText(String value, String name) {

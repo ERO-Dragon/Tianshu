@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -11,7 +14,8 @@ import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class AXModuleLifecycleBoundaryTest {
     @TempDir
     Path tempDir;
+
+    @AfterEach
+    void clearPorts() {
+        TianshuRuntimePorts.clear();
+    }
 
     @Test
     void participantRegistrationHappensDuringPrepareNotRegister() {
@@ -49,6 +58,10 @@ class AXModuleLifecycleBoundaryTest {
                 AXChatOutputSink.NOOP
         );
 
+        // The dialogue domain is an optional partner: the channel is chosen when the module registers, which in
+        // a real installation happens long after the platform registered what is installed.
+        TianshuRuntimePorts.register(InstalledMods.class, ProtocolModuleIds.IA::equals);
+
         module.register(new ModuleRegistrationContext(runtime, services));
 
         await(() -> registered.get() != null, 150L);
@@ -57,12 +70,53 @@ class AXModuleLifecycleBoundaryTest {
         module.prepare(new ModuleRuntimeContext(
                 runtime,
                 services,
-                new VoiceTriggerRegistry(),
+                new TriggerRegistry(),
                 new ModuleRuntimeState()
         ));
 
         await(() -> registered.get() != null, 2_000L);
         assertEquals("天枢", registered.get().descriptor().displayName());
+    }
+
+    /**
+     * The other half of the optional-partner contract: with no dialogue domain installed the module must stay
+     * silent. Nothing throws, nothing is announced, and the typed input path keeps working — that is what makes
+     * the partner genuinely optional rather than merely guarded.
+     */
+    @Test
+    void nothingIsAnnouncedWhenTheDialogueDomainIsAbsent() {
+        FakeGameEnvironment env = new FakeGameEnvironment();
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        ModuleServiceRegistry services = new ModuleServiceRegistry();
+        AtomicReference<DialogueParticipantRegisterPayload> registered = new AtomicReference<>();
+        IaProtocolAdapter iaAdapter = new IaProtocolAdapter(runtime);
+        iaAdapter.registerParticipantCapability((envelope, context) -> {
+            registered.set((DialogueParticipantRegisterPayload) envelope.payload());
+            context.complete(envelope.envelopeId());
+        });
+        AXModule module = new AXModule(
+                env,
+                config,
+                runtime,
+                null,
+                null,
+                () -> "天枢",
+                AXRuntimePolicy.defaults(),
+                AuxiliumOutputSettings.DEFAULT,
+                AXChatOutputSink.NOOP
+        );
+
+        module.register(new ModuleRegistrationContext(runtime, services));
+        module.prepare(new ModuleRuntimeContext(
+                runtime,
+                services,
+                new TriggerRegistry(),
+                new ModuleRuntimeState()
+        ));
+
+        await(() -> registered.get() != null, 300L);
+        assertNull(registered.get(), "without the dialogue domain nothing is announced");
     }
 
     private static void await(java.util.function.BooleanSupplier condition, long timeoutMillis) {

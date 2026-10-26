@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.claim;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
@@ -368,7 +368,7 @@ class DialogueClaimEngineTest {
     }
 
     private DialogueParticipantDescriptor descriptor(String participantId, int priority, DialogueClaimProfile claimProfile) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, claimProfile, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, claimProfile, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private DialogueArbitrationInput request(List<String> triggerWords, List<IrObjectMatch> objectMatches, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {

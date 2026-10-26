@@ -1,24 +1,24 @@
 package com.rheinmetal.tianshu.function.intake.repair;
 
 import com.rheinmetal.tianshu.function.intake.repair.core.IRBaseUtils;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
 
 import java.util.ArrayList;
 import java.util.List;
 
-final class IrVoiceTriggerIndexer {
-    List<IrCompiledVoiceTrigger> compile(List<VoiceTriggerRegistration> registrations) {
+final class IrTriggerIndexer {
+    List<IrCompiledTrigger> compile(List<TriggerRegistration> registrations) {
         if (registrations == null || registrations.isEmpty()) {
             return List.of();
         }
-        List<IrCompiledVoiceTrigger> compiled = new ArrayList<>(registrations.size());
-        for (VoiceTriggerRegistration registration : registrations) {
+        List<IrCompiledTrigger> compiled = new ArrayList<>(registrations.size());
+        for (TriggerRegistration registration : registrations) {
             List<IrCompiledVoiceWord> wakeWords = compileWords(registration.wakeWords());
             List<IrCompiledVoiceWord> extraWords = compileWords(registration.extraWords());
             if (wakeWords.isEmpty() && extraWords.isEmpty()) {
                 continue;
             }
-            compiled.add(new IrCompiledVoiceTrigger(registration.moduleId(), wakeWords, extraWords, wakeWords.size() + extraWords.size()));
+            compiled.add(new IrCompiledTrigger(registration.moduleId(), wakeWords, extraWords, wakeWords.size() + extraWords.size()));
         }
         return List.copyOf(compiled);
     }

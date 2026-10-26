@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.session;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
@@ -45,7 +45,7 @@ class DialogueAttentionMemoryTest {
                 participantId,
                 1,
                 DialogueClaimProfile.DISABLED,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 "ROUTE." + participantId,
                 DialogueTurnProcessingPolicy.DEFAULT
         );

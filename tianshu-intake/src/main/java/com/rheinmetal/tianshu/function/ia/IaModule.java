@@ -37,7 +37,7 @@ import com.rheinmetal.tianshu.function.ia.policy.DialogueArbitrationPolicy;
 import com.rheinmetal.tianshu.function.ia.score.DialogueScoreCoordinator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
-import com.rheinmetal.tianshu.function.ia.runtime.DialogueVoiceTriggerSynchronizer;
+import com.rheinmetal.tianshu.function.ia.runtime.DialogueTriggerSynchronizer;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueLifecycleSweeper;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueParticipantLifecycleCoordinator;
 import com.rheinmetal.tianshu.function.ia.runtime.OwnerPreviewRefreshCoordinator;
@@ -92,7 +92,7 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueDiagnosticsView diagnosticsView;
     private final IaModuleService moduleService;
     private final Map<String, DialogueOwnerPreviewPayload> ownerPreviews = new ConcurrentHashMap<>();
-    private final DialogueVoiceTriggerSynchronizer voiceTriggerSynchronizer;
+    private final DialogueTriggerSynchronizer triggerSynchronizer;
     private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
     private final IrResultArbitrationMapper irResultMapper;
     private final AtomicLong runtimeGeneration = new AtomicLong(1L);
@@ -123,7 +123,7 @@ public final class IaModule implements TianshuManagedModule {
         this.presenceFactPlanner = new DialoguePresenceFactPlanner();
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
         this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
-        this.voiceTriggerSynchronizer = new DialogueVoiceTriggerSynchronizer();
+        this.triggerSynchronizer = new DialogueTriggerSynchronizer();
         this.irResultMapper = new IrResultArbitrationMapper();
         this.ownerPreviewRefreshCoordinator = new OwnerPreviewRefreshCoordinator(
                 (task, delay) -> runtime.schedule(
@@ -171,7 +171,7 @@ public final class IaModule implements TianshuManagedModule {
         runtimeContext = nextContext;
         runtimeAccepting = true;
         diagnostics = nextContext.diagnostics();
-        voiceTriggerSynchronizer.bind(nextContext.voiceTriggers(), participantRegistry.snapshot());
+        triggerSynchronizer.bind(nextContext.triggers(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         ownerPreviewRefreshCoordinator.start();
         adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
@@ -205,7 +205,7 @@ public final class IaModule implements TianshuManagedModule {
         runtimeGeneration.incrementAndGet();
         presenceContextClient.clear();
         ownerPreviewRefreshCoordinator.stop();
-        voiceTriggerSynchronizer.unbind();
+        triggerSynchronizer.unbind();
         if (runtimeContext != null) {
             runtimeContext.runtimeState().capabilities().remove(IaRuntimeCapabilities.ARBITRATION);
         }
@@ -489,7 +489,7 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleParticipantsChanged() {
-        voiceTriggerSynchronizer.synchronize(participantRegistry.snapshot());
+        triggerSynchronizer.synchronize(participantRegistry.snapshot());
     }
 
     private void requestPresenceContext(

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.ia.gateway;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
@@ -42,7 +42,7 @@ class DialogueMessageGatewayTest {
         RecordingPort port = new RecordingPort();
         DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
         DialogueSession session = session();
-        DialogueParticipantDescriptor owner = new DialogueParticipantDescriptor("other", "module.other", "other", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        DialogueParticipantDescriptor owner = new DialogueParticipantDescriptor("other", "module.other", "other", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
 
         DialogueAccessDecision decision = gateway.deliverToOwner(null, session, owner, request());
 
@@ -86,7 +86,7 @@ class DialogueMessageGatewayTest {
     }
 
     private DialogueParticipantDescriptor owner() {
-        return new DialogueParticipantDescriptor("participant.owner", "module.owner", "owner", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor("participant.owner", "module.owner", "owner", 1, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile.DISABLED, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private static final class DenyingPolicy implements DialogueAccessPolicy {

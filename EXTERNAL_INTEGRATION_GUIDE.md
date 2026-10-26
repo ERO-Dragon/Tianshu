@@ -8,7 +8,7 @@
 
 - 模块声明注册
 - 主干能力探测
-- VoiceTrigger 指令词注册
+- Trigger 指令词注册
 - Dialogue / IA 参与者接入
 - 模块状态提交与查询
 - GUI / 设置页绘制贡献
@@ -111,33 +111,33 @@ RuntimeCapabilityStatus status = api.capabilityStatus(LlmRuntimeCapabilities.TAS
 
 外部模组不要只依赖 core ready 判断具体功能是否可用。
 
-## VoiceTrigger 指令词注册
+## Trigger 指令词注册
 
 启动期注册热词和指令词：
 
 ```java
-VoiceTriggerRegistration registration = new VoiceTriggerRegistration(
+TriggerRegistration registration = new TriggerRegistration(
         "example_radar",
         List.of("雷达", "警戒"),
         List.of("扫描", "附近敌人"),
-        VoiceCommandCategory.INFORMATION,
-        VoiceCommandScope.CLIENT,
+        TriggerCategory.INFORMATION,
+        TriggerScope.CLIENT,
         true
 );
 
-VoiceTriggerRegistrationResult result = api.registerVoiceTrigger(registration);
+TriggerRegistrationResult result = api.registerTrigger(registration);
 ```
 
 注销某模块全部指令词：
 
 ```java
-api.unregisterVoiceTriggers("example_radar");
+api.unregisterTriggers("example_radar");
 ```
 
 注册结果中可能包含冲突信息：
 
 ```java
-for (VoiceTriggerConflict conflict : result.conflicts()) {
+for (TriggerConflict conflict : result.conflicts()) {
     String word = conflict.word();
     List<String> moduleIds = conflict.moduleIds();
 }
@@ -146,13 +146,13 @@ for (VoiceTriggerConflict conflict : result.conflicts()) {
 默认投递目标为：
 
 ```java
-VoiceTriggerDeliveryTarget.defaultFor(moduleId)
+TriggerDeliveryTarget.defaultFor(moduleId)
 ```
 
 也可以在注册时显式声明 capability：
 
 ```java
-new VoiceTriggerDeliveryTarget("example_radar", "EXAMPLE_RADAR.VOICE_TRIGGER")
+new TriggerDeliveryTarget("example_radar", "EXAMPLE_RADAR.VOICE_TRIGGER")
 ```
 
 该 capability 由外部模组自己注册和处理。
@@ -309,12 +309,12 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
             )
     ));
 
-    api.registerVoiceTrigger(new VoiceTriggerRegistration(
+    api.registerTrigger(new TriggerRegistration(
             "example_radar",
             List.of("雷达"),
             List.of("扫描"),
-            VoiceCommandCategory.INFORMATION,
-            VoiceCommandScope.CLIENT,
+            TriggerCategory.INFORMATION,
+            TriggerScope.CLIENT,
             true
     ));
 
@@ -341,7 +341,7 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 - `TianshuIntegrationApi`
 - `TianshuIntegrationAccess`
 - `IntegrationModuleDeclaration`
-- `VoiceTriggerRegistration`
+- `TriggerRegistration`
 - `ModuleStatus`
 - `ModuleStatusQuery`
 - `GuiContributionDescriptor`

@@ -34,10 +34,10 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistry;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistration;
-import com.rheinmetal.tianshu.protocol.voice.VoiceTriggerRegistrationResult;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistration;
+import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistrationResult;
 
 import java.util.List;
 import java.util.Optional;
@@ -50,7 +50,7 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
     private final ProtocolRuntime protocolRuntime;
     private final TianshuModuleHost moduleHost;
     private final ModuleServiceRegistry moduleServices;
-    private final VoiceTriggerRegistry voiceTriggers;
+    private final TriggerRegistry triggers;
     private final ModuleRuntimeState runtimeState;
     private final RuntimeReadinessState state;
     private final RuntimeInterruptionService interruptionService;
@@ -74,8 +74,8 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
         this.env = env;
         this.moduleHost = new TianshuModuleHost(env);
         this.moduleServices = new ModuleServiceRegistry();
-        this.voiceTriggers = new VoiceTriggerRegistry();
-        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread, voiceTriggers);
+        this.triggers = new TriggerRegistry();
+        this.protocolRuntime = ProtocolBootstrap.create(env::executeOnMainThread, triggers);
         this.runtimeState = new ModuleRuntimeState();
         this.state = runtimeState.readiness();
         this.interruptionService = new RuntimeInterruptionService(protocolRuntime.runtimeInterrupts());
@@ -96,7 +96,7 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
                 protocolRuntime,
                 moduleHost,
                 moduleServices,
-                voiceTriggers,
+                triggers,
                 runtimeState,
                 state,
                 interruptionService,
@@ -148,12 +148,12 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
         protocolRuntime.integrationModules().unregister(moduleId);
     }
 
-    public VoiceTriggerRegistrationResult registerVoiceTrigger(VoiceTriggerRegistration registration) {
-        return protocolRuntime.voiceTriggers().register(registration);
+    public TriggerRegistrationResult registerTrigger(TriggerRegistration registration) {
+        return protocolRuntime.triggers().register(registration);
     }
 
-    public void unregisterVoiceTriggers(String moduleId) {
-        protocolRuntime.voiceTriggers().unregisterModule(moduleId);
+    public void unregisterTriggers(String moduleId) {
+        protocolRuntime.triggers().unregisterModule(moduleId);
     }
 
     public void submitModuleStatus(ModuleStatus status) {

@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.voice;
+package com.rheinmetal.tianshu.protocol.trigger;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -9,15 +9,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
-    private final Map<String, VoiceTriggerRegistration> registrations = new LinkedHashMap<>();
+public final class TriggerRegistry implements TriggerAccess {
+    private final Map<String, TriggerRegistration> registrations = new LinkedHashMap<>();
     private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
-    public VoiceTriggerRegistrationResult register(VoiceTriggerRegistration registration) {
-        VoiceTriggerRegistrationResult result;
+    public TriggerRegistrationResult register(TriggerRegistration registration) {
+        TriggerRegistrationResult result;
         synchronized (this) {
             registrations.put(registration.moduleId(), registration);
-            result = VoiceTriggerRegistrationResult.accepted(registration.moduleId(), conflictsFor(registration));
+            result = TriggerRegistrationResult.accepted(registration.moduleId(), conflictsFor(registration));
         }
         notifyChanged();
         return result;
@@ -50,24 +50,24 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         addChangeListener(changeListener);
     }
 
-    public synchronized List<VoiceTriggerRegistration> registrations() {
+    public synchronized List<TriggerRegistration> registrations() {
         return List.copyOf(registrations.values());
     }
 
     public synchronized List<String> registeredWords() {
         Set<String> words = new LinkedHashSet<>();
-        for (VoiceTriggerRegistration registration : registrations.values()) {
+        for (TriggerRegistration registration : registrations.values()) {
             words.addAll(registration.wakeWords());
             words.addAll(registration.extraWords());
         }
         return List.copyOf(words);
     }
 
-    public synchronized List<VoiceTriggerConflict> conflicts() {
+    public synchronized List<TriggerConflict> conflicts() {
         return collectConflicts(registrations.values().stream().toList());
     }
 
-    private List<VoiceTriggerConflict> conflictsFor(VoiceTriggerRegistration registration) {
+    private List<TriggerConflict> conflictsFor(TriggerRegistration registration) {
         if (registration == null) {
             return List.of();
         }
@@ -76,7 +76,7 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
                 .toList());
     }
 
-    private boolean sharesWord(VoiceTriggerRegistration left, VoiceTriggerRegistration right) {
+    private boolean sharesWord(TriggerRegistration left, TriggerRegistration right) {
         Set<String> rightWords = new LinkedHashSet<>();
         rightWords.addAll(right.wakeWords());
         rightWords.addAll(right.extraWords());
@@ -89,9 +89,9 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         return false;
     }
 
-    private List<VoiceTriggerConflict> collectConflicts(List<VoiceTriggerRegistration> registrations) {
+    private List<TriggerConflict> collectConflicts(List<TriggerRegistration> registrations) {
         Map<String, List<String>> ownersByWord = new LinkedHashMap<>();
-        for (VoiceTriggerRegistration registration : registrations) {
+        for (TriggerRegistration registration : registrations) {
             Set<String> words = new LinkedHashSet<>();
             words.addAll(registration.wakeWords());
             words.addAll(registration.extraWords());
@@ -99,9 +99,9 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
                 ownersByWord.computeIfAbsent(word, ignored -> new ArrayList<>()).add(registration.moduleId());
             }
         }
-        List<VoiceTriggerConflict> conflicts = new ArrayList<>();
+        List<TriggerConflict> conflicts = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : ownersByWord.entrySet()) {
-            VoiceTriggerConflict conflict = new VoiceTriggerConflict(entry.getKey(), entry.getValue());
+            TriggerConflict conflict = new TriggerConflict(entry.getKey(), entry.getValue());
             if (conflict.valid()) {
                 conflicts.add(conflict);
             }
@@ -110,16 +110,16 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         return List.copyOf(conflicts);
     }
 
-    private List<VoiceTriggerConflict> collectContainmentConflicts(List<VoiceTriggerRegistration> registrations) {
+    private List<TriggerConflict> collectContainmentConflicts(List<TriggerRegistration> registrations) {
         if (registrations == null || registrations.size() < 2) {
             return List.of();
         }
-        List<VoiceTriggerConflict> conflicts = new ArrayList<>();
+        List<TriggerConflict> conflicts = new ArrayList<>();
         Set<String> emitted = new HashSet<>();
         for (int i = 0; i < registrations.size(); i++) {
-            VoiceTriggerRegistration left = registrations.get(i);
+            TriggerRegistration left = registrations.get(i);
             for (int j = i + 1; j < registrations.size(); j++) {
-                VoiceTriggerRegistration right = registrations.get(j);
+                TriggerRegistration right = registrations.get(j);
                 for (String leftWord : triggerWords(left)) {
                     for (String rightWord : triggerWords(right)) {
                         if (!containsEither(leftWord, rightWord) || sameNormalized(leftWord, rightWord)) {
@@ -128,7 +128,7 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
                         String label = conflictLabel(leftWord, rightWord);
                         String key = TextListNormalizer.normalizeText(label) + "|" + left.moduleId() + "|" + right.moduleId();
                         if (emitted.add(key)) {
-                            conflicts.add(new VoiceTriggerConflict(label, List.of(left.moduleId(), right.moduleId())));
+                            conflicts.add(new TriggerConflict(label, List.of(left.moduleId(), right.moduleId())));
                         }
                     }
                 }
@@ -137,7 +137,7 @@ public final class VoiceTriggerRegistry implements VoiceTriggerAccess {
         return conflicts;
     }
 
-    private static List<String> triggerWords(VoiceTriggerRegistration registration) {
+    private static List<String> triggerWords(TriggerRegistration registration) {
         if (registration == null) {
             return List.of();
         }

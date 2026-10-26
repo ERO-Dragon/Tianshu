@@ -12,7 +12,7 @@ final class IrWakeWordEnhancer {
     private static final double MIN_PINYIN_OVERLAP = 0.65D;
     private static final double AMBIGUITY_MARGIN = 0.08D;
 
-    IrInputText enhance(IrInputText input, List<IrCompiledVoiceTrigger> index) {
+    IrInputText enhance(IrInputText input, List<IrCompiledTrigger> index) {
         if (input == null || input.blank() || index == null || index.isEmpty()) {
             return input;
         }
@@ -31,9 +31,9 @@ final class IrWakeWordEnhancer {
         return new IrInputText(repaired, input.rawText(), input.turnId(), input.sessionId(), input.source(), input.createdAt());
     }
 
-    private List<Candidate> collectCandidates(String text, List<IrCompiledVoiceTrigger> index) {
+    private List<Candidate> collectCandidates(String text, List<IrCompiledTrigger> index) {
         List<Candidate> candidates = new ArrayList<>();
-        for (IrCompiledVoiceTrigger trigger : index) {
+        for (IrCompiledTrigger trigger : index) {
             if (trigger == null || trigger.wakeWords().isEmpty()) {
                 continue;
             }

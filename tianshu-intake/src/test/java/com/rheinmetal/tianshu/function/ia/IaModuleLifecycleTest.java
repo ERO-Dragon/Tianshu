@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.ia;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
@@ -79,7 +79,7 @@ class IaModuleLifecycleTest {
         first.destroy();
         assertTrue(firstServices.require(IaModuleService.class).snapshot().participants().isEmpty());
         assertTrue(firstServices.require(IaModuleService.class).snapshot().sessions().isEmpty());
-        runtime.voiceTriggers().unregisterModule(IaProtocolAdapter.MODULE_ID);
+        runtime.triggers().unregisterModule(IaProtocolAdapter.MODULE_ID);
 
         ModuleServiceRegistry nextServices = new ModuleServiceRegistry();
         IaModule next = registeredModule(nextServices);
@@ -137,7 +137,7 @@ class IaModuleLifecycleTest {
                 "AX",
                 0,
                 DialogueClaimProfile.DEFAULT_OWNER,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 "AX.DIALOGUE_INPUT",
                 DialogueTurnProcessingPolicy.DEFAULT
         ));
@@ -173,7 +173,7 @@ class IaModuleLifecycleTest {
                 "Maid",
                 10,
                 DialogueClaimProfile.DEFAULT_OWNER,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup.EMPTY,
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
                 "MAID.DIALOGUE_INPUT",
                 DialogueTurnProcessingPolicy.DEFAULT
         );

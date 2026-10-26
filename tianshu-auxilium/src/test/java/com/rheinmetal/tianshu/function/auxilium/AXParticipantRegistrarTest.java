@@ -1,12 +1,13 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.bridge.IaDialogueBridge;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueVoiceTriggerGroup;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
@@ -27,7 +28,7 @@ class AXParticipantRegistrarTest {
             registered.set((DialogueParticipantRegisterPayload) envelope.payload());
             context.complete(envelope.envelopeId());
         });
-        AXParticipantRegistrar registrar = new AXParticipantRegistrar(new AXProtocolAdapter(runtime), () -> "");
+        AXParticipantRegistrar registrar = new AXParticipantRegistrar(new IaDialogueBridge(new AXProtocolAdapter(runtime)), () -> "");
 
         registrar.register();
 
@@ -35,7 +36,7 @@ class AXParticipantRegistrarTest {
         DialogueParticipantRegisterPayload payload = registered.get();
         assertNotNull(payload);
         assertEquals(DialogueClaimMode.DEFAULT_OWNER, payload.descriptor().claimProfile().mode());
-        assertEquals(DialogueVoiceTriggerGroup.EMPTY, payload.descriptor().voiceTriggerGroup());
+        assertEquals(DialogueTriggerGroup.EMPTY, payload.descriptor().triggerGroup());
         assertEquals(0.4D, payload.descriptor().fallbackScore());
     }
 
@@ -53,7 +54,7 @@ class AXParticipantRegistrarTest {
             unregistered.set((DialogueParticipantUnregisterPayload) envelope.payload());
             context.complete(envelope.envelopeId());
         });
-        AXParticipantRegistrar registrar = new AXParticipantRegistrar(new AXProtocolAdapter(runtime), () -> "天枢");
+        AXParticipantRegistrar registrar = new AXParticipantRegistrar(new IaDialogueBridge(new AXProtocolAdapter(runtime)), () -> "天枢");
 
         registrar.register();
 

@@ -1,9 +1,9 @@
-package com.rheinmetal.tianshu.protocol.voice;
+package com.rheinmetal.tianshu.protocol.trigger;
 
 import java.util.List;
 
-public record VoiceTriggerConflict(String word, List<String> moduleIds) {
-    public VoiceTriggerConflict {
+public record TriggerConflict(String word, List<String> moduleIds) {
+    public TriggerConflict {
         if (word == null) word = "";
         word = word.trim();
         moduleIds = moduleIds == null || moduleIds.isEmpty()

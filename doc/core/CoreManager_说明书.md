@@ -291,4 +291,4 @@ NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一�
 | 具名对象索引 | 听澜自建、自持生命周期、缓存到 `<module>/asr/index`；内核只能通过 `NamedObjectIndex` 端口观测 |
 | 模型清单与读取器 | intake / weaving / echo 各自持有；`tianshu-core/model` 只留传输与状态机 |
 
-`VoiceResourceConfiguration` 与 `VoiceResourceManager` 已删除：内核只持有 `VoiceTriggerRegistry`，不再写热词文件、不再知道任何模组目录。热词加权链路整体移除（只对部分 ASR 模型有效），唤醒词与指令词改由 IR 的 trigger index 匹配。
+`VoiceResourceConfiguration` 与 `VoiceResourceManager` 已删除：内核只持有 `TriggerRegistry`，不再写热词文件、不再知道任何模组目录。热词加权链路整体移除（只对部分 ASR 模型有效），唤醒词与指令词改由 IR 的 trigger index 匹配。
