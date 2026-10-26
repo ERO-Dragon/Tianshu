@@ -21,7 +21,6 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayl
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
@@ -114,19 +113,6 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public void subscribePresenceChatMessages(EnvelopeHandler handler) {
-        subscribeTopic(
-                PresenceChatMessagePayload.TOPIC,
-                PayloadType.CUSTOM,
-                PresenceChatMessagePayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.EVENT),
-                Priority.LOW,
-                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
-                handler,
-                defaults()
-        );
-    }
 
     public TianshuEnvelope buildLlmRequest(LLMPromptRequestPayload payload) {
         return buildRequestCapability(ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);

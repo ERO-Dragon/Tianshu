@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
-import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 
 import java.util.List;
@@ -16,7 +15,6 @@ public final class PresenceEventCollector {
     private final PresenceStateStore stateStore;
     private final ClientGameContextProvider platform;
     private PresenceWorldEventSink worldEventSink = PresenceWorldEventSink.NOOP;
-    private PresenceChatMessageSink chatMessageSink = PresenceChatMessageSink.NOOP;
     private long lastKeyboardEventAtMillis;
     private long lastMouseEventAtMillis;
     private volatile boolean worldSessionActive = true;
@@ -28,10 +26,6 @@ public final class PresenceEventCollector {
 
     public void setWorldEventSink(PresenceWorldEventSink worldEventSink) {
         this.worldEventSink = worldEventSink == null ? PresenceWorldEventSink.NOOP : worldEventSink;
-    }
-
-    public void setChatMessageSink(PresenceChatMessageSink chatMessageSink) {
-        this.chatMessageSink = chatMessageSink == null ? PresenceChatMessageSink.NOOP : chatMessageSink;
     }
 
     public void recordScreenChanged() {
@@ -81,11 +75,8 @@ public final class PresenceEventCollector {
             return;
         }
         String sender = cleanSenderName(senderName);
-        chatMessageSink.publish(new PresenceChatMessagePayload(
-                senderId,
-                sender,
-                messageText
-        ));
+        // A chat line is one world event: the event type says what happened, the values carry who spoke.
+        worldEventSink.publish(PresenceWorldEventPayload.chatMessage(senderId, sender, messageText));
     }
 
     public void recordWorldEvents(List<PresenceWorldEventPayload> events) {

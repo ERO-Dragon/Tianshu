@@ -118,7 +118,7 @@ AX 提交模型请求前会先登记流式片段与结果的处理器，再提�
 | 来源 | 用途 |
 |---|---|
 | 世界事件 topic | 把允许的世界事件附加到当前作用域记忆 |
-| 聊天消息 topic | 把聊天消息写入当前作用域的近期对话（事件角色，带说话人） |
+| 聊天事件（`chat_message`） | 把聊天写入当前作用域的近期对话（事件角色，带说话人）——聊天是 WorldEvent 的一个类型，不是独立载荷 |
 
 这些是事件而不是 AX 请求入口。只有对应事实的所有者才应发布；其他模块不得伪造玩家身份、维度或聊天发送者。
 
@@ -236,5 +236,5 @@ AX 当前没有面向任意外部模块的公共"请求"能力。按需求选真
 |---|---|---|
 | `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY` | `INPUT.ASR_SPEECH_ACTIVITY` | 听澜的语音活动（判断玩家是否在说话） |
 | `PresenceWorldEventPayload.TOPIC` | 映迹 | 世界事件（统一渲染为 `<event>`） |
-| `PresenceChatMessagePayload.TOPIC` | 映迹 | 公屏聊天消息（同样进 `<event>`，带说话人） |
+| `PresenceWorldEventPayload.EVENT_CHAT_MESSAGE` | 映迹 | 公屏聊天：`PresenceWorldEventPayload` 的一个事件类型（同样进 `<event>`，带说话人） |
 | `ProtocolTopics.MODULE_STATUS` | `MODULE.STATUS` | 下游模块状态（用于判断能力是否可用） |

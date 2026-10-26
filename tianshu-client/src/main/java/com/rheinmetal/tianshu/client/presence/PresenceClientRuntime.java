@@ -60,7 +60,6 @@ public final class PresenceClientRuntime {
         PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(moduleRuntime);
         contextQueryCoordinator.bindAdapter(adapter);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
-        eventCollector.setChatMessageSink(adapter::publishChatMessage);
         return new PresenceModuleInstaller(adapter, stateStore, activityTracker, displayPolicy, contextFactMapper, contextQueryCoordinator);
     }
 

@@ -436,3 +436,17 @@ tianshu-neoforge/src/main/java/.../event/
 10. 设置页只控制显示策略，不影响采集、协议订阅和状态生成。
 11. shader / 动画参数属于具体 HUD 元素，不进入 Presence 协议和采集模型。
 12. 内测调试视图只读观察现有状态缓存，不新增协议能力、不记录历史流水。
+
+---
+
+## 修订：聊天已并入世界事件
+
+上文的「聊天消息独立 payload / topic」设计已被取代，据此实现的代码为：
+
+- 删除 PresenceChatMessagePayload、PresenceChatMessageSink 与 PRESENCE.CHAT_MESSAGE topic；
+- 聊天改为 PresenceWorldEventPayload 的 **EVENT_CHAT_MESSAGE（chat_message）事件类型**，
+  值与其它世界事件同形：VALUE_SENDER_ID / VALUE_SENDER_NAME / VALUE_TEXT；
+- 发布走世界事件 sink，消费方只按事件类型分支——消费侧（辅星）把 chat_message 送进近期对话，
+  其它事件送进记忆。
+
+理由：聊天本来就是"世界里发生了一件事"，独立的载荷让每个消费方都要在两套形状之间切换。

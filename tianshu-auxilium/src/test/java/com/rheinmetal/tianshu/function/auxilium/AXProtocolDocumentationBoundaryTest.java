@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
-import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import org.junit.jupiter.api.Test;
 
@@ -39,7 +38,7 @@ class AXProtocolDocumentationBoundaryTest {
                 "ProtocolCapabilities.TTS_CONTROL",
                 "ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY",
                 "PresenceWorldEventPayload.TOPIC",
-                "PresenceChatMessagePayload.TOPIC",
+                "PresenceWorldEventPayload.EVENT_CHAT_MESSAGE",
                 "ProtocolTopics.MODULE_STATUS"
         )) {
             assertTrue(guide.contains(symbol), () -> "AX protocol guide must document " + symbol);

@@ -74,7 +74,6 @@ import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannel;
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannels;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -233,7 +232,6 @@ public final class AXModule implements TianshuManagedModule {
         dialogueChannel.openInbound(this::handleDialogueInput);
         adapter.registerContextInputCapability(this::handleContextInput);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
-        adapter.subscribePresenceChatMessages(this::handlePresenceChatMessage);
     }
 
     @Override
@@ -587,25 +585,19 @@ public final class AXModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX presence world event payload is invalid", null);
             return;
         }
-        AXMemorySystem currentMemory = memorySystem;
         AXScopeProvider currentScopeProvider = scopeProvider;
-        if (currentMemory != null && currentScopeProvider != null) {
-            AXScope scope = currentScopeProvider.currentScope();
+        AXScope scope = currentScopeProvider == null ? null : currentScopeProvider.currentScope();
+        if (PresenceWorldEventPayload.EVENT_CHAT_MESSAGE.equals(payload.eventType())) {
+            // A chat line is something said, not something remembered: it belongs to the recent dialogue.
             if (scope != null && scope.writable()) {
-                currentMemory.appendAttachedWorldEvent(scope, worldEventMapper.map(scope, payload));
+                recordThirdPartyUtterance(scope, chatMessageMapper.map(scope, payload));
             }
-        }
-        context.complete(envelope.envelopeId());
-    }
-
-    private void handlePresenceChatMessage(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof PresenceChatMessagePayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX presence chat message payload is invalid", null);
+            context.complete(envelope.envelopeId());
             return;
         }
-        AXScope scope = currentWritableScope();
-        if (scope != null) {
-            recordThirdPartyUtterance(scope, chatMessageMapper.map(scope, payload));
+        AXMemorySystem currentMemory = memorySystem;
+        if (currentMemory != null && scope != null && scope.writable()) {
+            currentMemory.appendAttachedWorldEvent(scope, worldEventMapper.map(scope, payload));
         }
         context.complete(envelope.envelopeId());
     }
