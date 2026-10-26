@@ -17,7 +17,7 @@ import com.rheinmetal.tianshu.function.auxilium.settings.AuxiliumSettingsRegistr
 import com.rheinmetal.tianshu.function.auxilium.speech.AXProtocolSpeechOutlet;
 import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechBridge;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
-import com.rheinmetal.tianshu.protocol.voice.VoiceNotificationService;
+import com.rheinmetal.tianshu.function.auxilium.bridge.AXSpeechSinks;
 
 /**
  * Auxilium announces itself to the kernel.
@@ -53,7 +53,7 @@ public final class AuxiliumModuleProvider implements TianshuModuleProvider {
         ModGameEventTexts texts = new ModGameEventTexts(ports.texts());
         AXSpeechBridge speechBridge = new AXSpeechBridge(
                 new AXProtocolSpeechOutlet(
-                        new VoiceNotificationService(context.moduleRuntime()),
+                        AXSpeechSinks.forRuntime(context.moduleRuntime()),
                         texts,
                         config,
                         context.env().logs()),

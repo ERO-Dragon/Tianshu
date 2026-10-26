@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.protocol.payload;
+package com.rheinmetal.tianshu.function.echo.contract;
 
 public enum TtsPlaybackPlacement {
     DROP_IF_BUSY,

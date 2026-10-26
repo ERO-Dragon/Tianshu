@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
+import com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
@@ -36,7 +36,7 @@ class TtsRuntimeControlTest {
         TtsRuntime runtime = runtime(engine, new ArrayList<>());
         TtsOperationResult result = runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 true,
                 request("stream-1", "hello")
         );
@@ -53,7 +53,7 @@ class TtsRuntimeControlTest {
         prepareRuntime(runtime);
         TtsOperationResult result = runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 true,
                 null
         );
@@ -71,13 +71,13 @@ class TtsRuntimeControlTest {
 
         TtsOperationResult first = runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 false,
                 request("stream-1", "hello")
         );
         TtsOperationResult last = runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 true,
                 request("stream-1", " world")
         );
@@ -263,7 +263,7 @@ class TtsRuntimeControlTest {
 
         runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 false,
                 request("stream-1:part-a", "first sentence.")
         );
@@ -272,13 +272,13 @@ class TtsRuntimeControlTest {
         TtsControlResult stop = runtime.stopRequest("stream-1", "stop stream");
         TtsOperationResult ignored = runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 false,
                 request("stream-1", "second sentence.")
         );
         TtsOperationResult end = runtime.submitSpeech(
                 streamKey("stream-1"),
-                com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.RAW_TEXT_STREAM,
+                com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.RAW_TEXT_STREAM,
                 true,
                 request("stream-1", "")
         );

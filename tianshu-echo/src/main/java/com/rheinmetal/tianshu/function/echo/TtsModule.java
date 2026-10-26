@@ -29,12 +29,12 @@ import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioAckPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackState;
-import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsSpeakPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsSynthesisRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
+import com.rheinmetal.tianshu.function.echo.contract.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -301,11 +301,11 @@ public final class TtsModule implements TianshuManagedModule {
         }
         PacketType packetType = envelope.header().packetType();
         boolean streaming = packetType == PacketType.STREAM_CHUNK || packetType == PacketType.STREAM_END;
-        if (streaming && payload.inputMode() == com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.DOCUMENT) {
+        if (streaming && payload.inputMode() == com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.DOCUMENT) {
             context.fail(envelope.envelopeId(), "INVALID_TTS_INPUT_MODE", "TTS stream packets require a stream input mode", null);
             return;
         }
-        if (!streaming && payload.inputMode() != com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.DOCUMENT) {
+        if (!streaming && payload.inputMode() != com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.DOCUMENT) {
             context.fail(envelope.envelopeId(), "INVALID_TTS_INPUT_MODE", "TTS command packets require DOCUMENT input mode", null);
             return;
         }

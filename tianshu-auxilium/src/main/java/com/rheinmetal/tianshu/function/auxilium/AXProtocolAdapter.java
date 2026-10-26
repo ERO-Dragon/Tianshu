@@ -29,8 +29,6 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
-import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -53,6 +51,16 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public AXProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withSupportsStreaming(true));
+    }
+
+    /**
+     * The runtime this adapter speaks through.
+     *
+     * <p>Collaborators in this module that must submit on the same lane (the speech bridge) ask here
+     * instead of holding a second reference, so the two cannot drift apart.
+     */
+    public ModuleRuntimeAccess runtimeAccess() {
+        return runtime();
     }
 
     public void registerDialogueInputCapability(EnvelopeHandler handler) {
@@ -385,39 +393,6 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope unregisterDialogueParticipant(DialogueParticipantUnregisterPayload payload) {
         return commandCapability(ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER, PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER, payload);
-    }
-
-    public TianshuEnvelope speakTts(TtsSpeakPayload payload) {
-        return commandCapability(ProtocolCapabilities.TTS_SPEAK, PayloadType.TTS_TEXT, payload);
-    }
-
-    public TianshuEnvelope speakTts(TianshuEnvelope parent, TtsSpeakPayload payload) {
-        return commandCapability(parent, ProtocolCapabilities.TTS_SPEAK, PayloadType.TTS_TEXT, payload);
-    }
-
-    public TianshuEnvelope streamTtsSentence(TianshuEnvelope parent, TtsSpeakPayload payload) {
-        return parent == null
-                ? submitToCapability(ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_CHUNK, PayloadType.TTS_TEXT, payload)
-                : submitToCapability(parent, ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_CHUNK, PayloadType.TTS_TEXT, payload);
-    }
-
-    public TianshuEnvelope endTtsSession(TianshuEnvelope parent, TtsSpeakPayload payload) {
-        return parent == null
-                ? submitToCapability(ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_END, PayloadType.TTS_TEXT, payload)
-                : submitToCapability(parent, ProtocolCapabilities.TTS_SPEAK, PacketType.STREAM_END, PayloadType.TTS_TEXT, payload);
-    }
-
-    public TianshuEnvelope stopOwnTtsOutput(String reasonCode) {
-        return commandCapability(
-                ProtocolCapabilities.TTS_CONTROL,
-                PayloadType.CUSTOM,
-                new TtsControlPayload(
-                        TtsControlPayload.Action.STOP_SOURCE,
-                        "",
-                        SOURCE_ID,
-                        reasonCode == null ? "" : reasonCode
-                )
-        );
     }
 
     public TianshuEnvelope commandSessionControl(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload payload) {

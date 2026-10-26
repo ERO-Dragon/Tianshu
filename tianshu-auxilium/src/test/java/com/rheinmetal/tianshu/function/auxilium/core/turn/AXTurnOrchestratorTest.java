@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.function.auxilium.bridge.EchoSpeechBridge;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
@@ -49,8 +50,8 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
-import com.rheinmetal.tianshu.protocol.payload.TtsControlPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
+import com.rheinmetal.tianshu.function.echo.contract.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
@@ -112,7 +113,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -173,7 +174,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -219,7 +220,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -272,7 +273,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 recentDialogueSystem,
-                new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -319,7 +320,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 null,
                 null,
                 true,
@@ -363,7 +364,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 null,
                 statusPublisher,
                 agentRuns(),
@@ -443,7 +444,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 null,
                 null,
                 false,
@@ -588,7 +589,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -654,7 +655,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -698,7 +699,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 agentRuns(),
                 null
         );
@@ -933,7 +934,7 @@ class AXTurnOrchestratorTest {
                 new AXSessionController(adapter),
                 null,
                 RECENT_DIALOGUE_SYSTEM,
-                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS),
+                new AXOutputProcessor(adapter, outputSettings(), new RecordingChatSink(), REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                 null,
                 statusPublisher,
                 agentRuns(),
@@ -1193,7 +1194,7 @@ class AXTurnOrchestratorTest {
                     new AXSessionController(adapter),
                     null,
                     recent,
-                    new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS),
+                    new AXOutputProcessor(adapter, outputSettings(), chatSink, REPLY_TEXTS, new EchoSpeechBridge(adapter.runtimeAccess())),
                     null,
                     null,
                     true,

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
+import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.Priority;
 
 import java.util.ArrayDeque;

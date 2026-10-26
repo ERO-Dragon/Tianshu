@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
 import com.rheinmetal.tianshu.function.echo.text.TtsStreamBuffer;
-import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
+import com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode;
 import com.rheinmetal.tianshu.text.SentenceSegmenter;
 
 import java.util.ArrayList;

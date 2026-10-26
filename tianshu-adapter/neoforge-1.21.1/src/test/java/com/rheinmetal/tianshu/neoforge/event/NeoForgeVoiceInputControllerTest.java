@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
+import com.rheinmetal.tianshu.api.assembly.VoiceInputPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -39,7 +39,7 @@ final class NeoForgeVoiceInputControllerTest {
 
     private static final class Fixture {
         private final List<String> operations = new ArrayList<>();
-        private final RecordingAsrInputService service = new RecordingAsrInputService(operations);
+        private final RecordingVoiceInput service = new RecordingVoiceInput(operations);
         private final NeoForgeVoiceInputController controller;
         private int presenceInputs;
 
@@ -55,11 +55,11 @@ final class NeoForgeVoiceInputControllerTest {
         }
     }
 
-    private static final class RecordingAsrInputService implements AsrInputService {
+    private static final class RecordingVoiceInput implements VoiceInputPort {
         private final List<String> operations;
         private boolean accepting = true;
 
-        private RecordingAsrInputService(List<String> operations) {
+        private RecordingVoiceInput(List<String> operations) {
             this.operations = operations;
         }
 

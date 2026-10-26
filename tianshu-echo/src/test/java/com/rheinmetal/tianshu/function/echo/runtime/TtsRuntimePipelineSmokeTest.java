@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
+import com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackendType;
@@ -111,12 +111,12 @@ class TtsRuntimePipelineSmokeTest {
         prepareRuntime(runtime);
         TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.ax", 61L, 1, "context");
 
-        runtime.submitSpeech(key, com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.SENTENCE_STREAM, false,
+        runtime.submitSpeech(key, com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.SENTENCE_STREAM, false,
                 request("context", "第一句。"));
         assertTrue(engine.awaitText("第一句。"));
-        runtime.submitSpeech(key, com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.SENTENCE_STREAM, false,
+        runtime.submitSpeech(key, com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.SENTENCE_STREAM, false,
                 request("context", "第二句。"));
-        runtime.submitSpeech(key, com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode.SENTENCE_STREAM, true,
+        runtime.submitSpeech(key, com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.SENTENCE_STREAM, true,
                 request("context", "第三句。"));
         engine.releaseFirstSynthesis();
 

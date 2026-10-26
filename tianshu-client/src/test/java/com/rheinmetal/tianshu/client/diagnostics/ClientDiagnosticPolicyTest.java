@@ -1,11 +1,7 @@
 package com.rheinmetal.tianshu.client.diagnostics;
 
 import com.rheinmetal.tianshu.client.config.ClientDiagnosticsConfiguration;
-import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
-import com.rheinmetal.tianshu.function.auxilium.AXModule;
-import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,12 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ClientDiagnosticPolicyTest {
+    /** The pipeline ids the kernel names; identical to the adapters' MODULE_ID constants by construction. */
     private static final List<String> KNOWN_MODULES = List.of(
-            AsrProtocolAdapter.MODULE_ID,
-            IaProtocolAdapter.MODULE_ID,
-            AXModule.MODULE_ID,
-            LlmProtocolAdapter.MODULE_ID,
-            TtsProtocolAdapter.MODULE_ID
+            ProtocolModuleIds.ASR,
+            ProtocolModuleIds.IA,
+            ProtocolModuleIds.AX,
+            ProtocolModuleIds.LLM,
+            ProtocolModuleIds.TTS
     );
 
     @Test

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
+import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackPlacement;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

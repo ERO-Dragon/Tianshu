@@ -246,3 +246,18 @@ TtsControlPayload load = new TtsControlPayload(
 ## 11. 诊断
 
 TTS 诊断只进入宿主集中诊断服务。Debug 构建中由设置页右下角的全局 Debug 开关统一控制结构化诊断；普通运行日志和已启用的诊断事件统一写入独立的 `logs/tianshu-diagnostics.log`，backend 不创建私有日志文件或线程。正式包不运行 MOSS smoke，也不包含测试 WAV 和生成音频。
+
+## 9. 载荷位置与依赖（2026 修订）
+
+上表出现的载荷类——TtsSpeakPayload、TtsVoiceOptions、TtsTextInputMode、TtsPlaybackPlacement、
+TtsControlPayload，以及回响自己的内部类型（TtsAudioPayload、TtsAudioAckPayload、TtsPlaybackState、
+TtsPlaybackStatusPayload、TtsRequestStatus、TtsRequestStatusPayload、TtsSynthesisRequestPayload）——
+现在都在 com.rheinmetal.tianshu.function.echo.contract，随 	ianshu_echo 的 jar 发布。
+
+调用方按依赖性质二选一：
+
+- **必须有回响才能工作** → 声明前置依赖（硬依赖 + depend required），直接 import。
+- **有回响就多说一句** → 联动接入：compileOnly + mods.toml optional + InstalledMods.isLoaded("module.tts")
+  守卫 + 单一 bridge 类。完整配方见 doc/architecture/模块拆分工程方案.md §9.7 / §9.8。
+
+北辰（	ianshu-api / core / client / dapter）不再持有任何 TTS 载荷。

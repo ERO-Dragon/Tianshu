@@ -2,10 +2,8 @@ package com.rheinmetal.tianshu.function.auxilium.core.output;
 
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
-import com.rheinmetal.tianshu.protocol.payload.TtsSpeakPayload;
-import com.rheinmetal.tianshu.protocol.payload.TtsTextInputMode;
-import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
+import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechSink;
+import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechUtterance;
 
 import java.util.Objects;
 
@@ -14,6 +12,7 @@ public final class AXOutputProcessor {
     private final AuxiliumOutputSettings settings;
     private final AXChatOutputSink chatSink;
     private final AXReplyTextRepository replyTexts;
+    private final AXSpeechSink speechSink;
 
     public AXOutputProcessor(
             AXProtocolAdapter adapter,
@@ -21,10 +20,21 @@ public final class AXOutputProcessor {
             AXChatOutputSink chatSink,
             AXReplyTextRepository replyTexts
     ) {
+        this(adapter, settings, chatSink, replyTexts, AXSpeechSink.NONE);
+    }
+
+    public AXOutputProcessor(
+            AXProtocolAdapter adapter,
+            AuxiliumOutputSettings settings,
+            AXChatOutputSink chatSink,
+            AXReplyTextRepository replyTexts,
+            AXSpeechSink speechSink
+    ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.settings = settings == null ? AuxiliumOutputSettings.DEFAULT : settings;
         this.chatSink = chatSink == null ? AXChatOutputSink.NOOP : chatSink;
         this.replyTexts = Objects.requireNonNull(replyTexts, "replyTexts");
+        this.speechSink = speechSink == null ? AXSpeechSink.NONE : speechSink;
     }
 
     /**
@@ -47,7 +57,7 @@ public final class AXOutputProcessor {
 
     public void interrupt(String reasonCode) {
         if (settings.ttsEnabled()) {
-            adapter.stopOwnTtsOutput(reasonCode);
+            speechSink.stopSource(reasonCode);
         }
     }
 
@@ -129,22 +139,13 @@ public final class AXOutputProcessor {
 
         private void speak(String sentence) {
             firstTtsSubmission.run();
-            adapter.streamTtsSentence(parent, payload(sentence));
+            speechSink.speak(AXSpeechUtterance.streamChunk(
+                    sentence, context.ttsTurnId(), context.ttsSessionId(), settings.voiceProfile()));
         }
 
         private void endTtsSession() {
-            adapter.endTtsSession(parent, payload(""));
-        }
-
-        private TtsSpeakPayload payload(String sentence) {
-            return new TtsSpeakPayload(
-                    sentence,
-                    context.ttsTurnId(),
-                    context.ttsSessionId(),
-                    TtsPlaybackPlacement.QUEUE_AFTER_SESSION,
-                    TtsTextInputMode.SENTENCE_STREAM,
-                    settings.ttsVoiceOptions()
-            );
+            speechSink.speak(AXSpeechUtterance.streamEnd(
+                    context.ttsTurnId(), context.ttsSessionId(), settings.voiceProfile()));
         }
     }
 }

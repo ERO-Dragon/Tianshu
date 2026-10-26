@@ -58,6 +58,8 @@ import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDi
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptResourceRepository;
+import com.rheinmetal.tianshu.function.auxilium.bridge.AXSpeechSinks;
+import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeProvider;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
@@ -88,6 +90,7 @@ public final class AXModule implements TianshuManagedModule {
     private final AXRuntimePolicy runtimePolicy;
     private final AuxiliumOutputSettings outputSettings;
     private final AXChatOutputSink chatOutputSink;
+    private final AXSpeechSink speechSink;
     /** Voice channel for delegation lines; {@code null} means this host has no voice wiring. */
     private final AXDelegateDeliverySink delegateSpeech;
     /** Voice channel for game event sentences; {@code null} means this host has no voice wiring. */
@@ -201,6 +204,8 @@ public final class AXModule implements TianshuManagedModule {
         this.assistantSettings = assistantSettings == null ? AuxiliumAssistantSettings.DEFAULT : assistantSettings;
         this.runtimePolicy = runtimePolicy == null ? AXRuntimePolicy.defaults() : runtimePolicy;
         this.outputSettings = outputSettings == null ? AuxiliumOutputSettings.DEFAULT : outputSettings;
+        // Integrate with the speech module when it is installed, stay silent otherwise.
+        this.speechSink = AXSpeechSinks.forRuntime(runtime);
         this.chatOutputSink = chatOutputSink == null ? AXChatOutputSink.NOOP : chatOutputSink;
         this.delegateSpeech = delegateSpeech;
         this.eventSpeech = eventSpeech;
@@ -284,7 +289,8 @@ public final class AXModule implements TianshuManagedModule {
         // The output layer resolves the player-visible wording of its own fallback sentences, so it gets
         // the same language source as the prompt side (both live in resources, never in Java).
         AXOutputProcessor outputProcessor = new AXOutputProcessor(
-                adapter, outputSettings, chatOutputSink, new AXReplyTextRepository(promptLanguageProvider));
+                adapter, outputSettings, chatOutputSink, new AXReplyTextRepository(promptLanguageProvider),
+                speechSink);
         delegateService = new AXDelegateService(
                 llmClient::submitDetached,
                 new AXDelegateRegistry(),

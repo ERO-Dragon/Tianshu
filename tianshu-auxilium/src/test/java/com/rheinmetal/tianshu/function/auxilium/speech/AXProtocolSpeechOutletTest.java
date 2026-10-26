@@ -1,12 +1,10 @@
 package com.rheinmetal.tianshu.function.auxilium.speech;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputMode;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
-import com.rheinmetal.tianshu.protocol.voice.VoiceNotificationService;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.payload.TtsPlaybackPlacement;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -17,12 +15,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The voice implementation: resolve keyed lines on the platform side, submit on the existing TTS
- * capability, and never let a missing or switched-off voice channel escape as an exception.
+ * The voice outlet: resolve keyed lines on the platform side, hand the sentence to the speech sink, and
+ * never let a missing or switched-off voice channel escape as an exception.
+ *
+ * <p>The sink is the seam that keeps this module independent of the speech module: these tests record what
+ * the outlet submits, and the bridge is free to translate it into whatever the speech module accepts.</p>
  */
 class AXProtocolSpeechOutletTest {
 
-    /** Voice switched on: the mode the dialogue output needs to reach TTS at all. */
+    /** Voice switched on: the mode the dialogue output needs to reach speech at all. */
     private static final AuxiliumOutputSettings TTS_ON = () -> AuxiliumOutputMode.UI_AND_TTS;
 
     /** Voice switched off: everything must degrade to a diagnostic. */
@@ -37,7 +38,7 @@ class AXProtocolSpeechOutletTest {
                 AXSpeechSource.DELEGATE, AXSpeechPriority.HIGH, "Iron blocks need a stone pickaxe."));
 
         assertEquals(List.of("Iron blocks need a stone pickaxe."), voice.spoken);
-        assertEquals(TtsPlaybackPlacement.INSERT_AFTER_SENTENCE, voice.placements.get(0),
+        assertEquals(AXSpeechUtterance.Placement.AFTER_SENTENCE, voice.placements.get(0),
                 "a high priority line joins after the current sentence");
         assertEquals(Priority.HIGH, voice.priorities.get(0));
     }
@@ -52,7 +53,7 @@ class AXProtocolSpeechOutletTest {
                 AXSpeechSource.DELEGATE, AXSpeechPriority.NORMAL, "ax.runtime.delegate.ack", List.of()));
 
         assertEquals(List.of("Let me look that up."), voice.spoken);
-        assertEquals(TtsPlaybackPlacement.INSERT_AFTER_SESSION, voice.placements.get(0));
+        assertEquals(AXSpeechUtterance.Placement.AFTER_SESSION, voice.placements.get(0));
         assertEquals(Priority.NORMAL, voice.priorities.get(0));
     }
 
@@ -77,7 +78,7 @@ class AXProtocolSpeechOutletTest {
                 AXSpeechSource.DELEGATE, AXSpeechPriority.NORMAL, "ax.runtime.delegate.ack", List.of()));
         outlet.speak(AXSpeechLine.literal(AXSpeechSource.EVENT, AXSpeechPriority.HIGH, "You died"));
 
-        assertTrue(voice.spoken.isEmpty(), "TTS switched off is a diagnostic, not a delivery");
+        assertTrue(voice.spoken.isEmpty(), "voice switched off is a diagnostic, not a delivery");
     }
 
     @Test
@@ -94,10 +95,14 @@ class AXProtocolSpeechOutletTest {
 
     @Test
     void aBrokenVoiceChannelIsReportedInsteadOfThrown() {
-        VoiceNotificationService broken = new VoiceNotificationService(null) {
+        AXSpeechSink broken = new AXSpeechSink() {
             @Override
-            public void speakQueued(String text, TtsPlaybackPlacement placement, Priority priority) {
+            public void speak(AXSpeechUtterance utterance) {
                 throw new IllegalStateException("no audio device");
+            }
+
+            @Override
+            public void stopSource(String reasonCode) {
             }
         };
         AXProtocolSpeechOutlet outlet = new AXProtocolSpeechOutlet(
@@ -109,7 +114,7 @@ class AXProtocolSpeechOutletTest {
     // ---------------------------------------------------------------- fixtures
 
     private static AXProtocolSpeechOutlet outlet(
-            VoiceNotificationService voice,
+            AXSpeechSink voice,
             AuxiliumOutputSettings settings,
             Map<String, String> table) {
         return new AXProtocolSpeechOutlet(voice, provider(table), settings, LogSink.NOOP);
@@ -129,20 +134,20 @@ class AXProtocolSpeechOutletTest {
         };
     }
 
-    private static final class RecordingVoice extends VoiceNotificationService {
+    private static final class RecordingVoice implements AXSpeechSink {
         private final List<String> spoken = new ArrayList<>();
-        private final List<TtsPlaybackPlacement> placements = new ArrayList<>();
+        private final List<AXSpeechUtterance.Placement> placements = new ArrayList<>();
         private final List<Priority> priorities = new ArrayList<>();
 
-        private RecordingVoice() {
-            super(null);
+        @Override
+        public void speak(AXSpeechUtterance utterance) {
+            spoken.add(utterance.text());
+            placements.add(utterance.placement());
+            priorities.add(utterance.priority());
         }
 
         @Override
-        public void speakQueued(String text, TtsPlaybackPlacement placement, Priority priority) {
-            spoken.add(text);
-            placements.add(placement);
-            priorities.add(priority);
+        public void stopSource(String reasonCode) {
         }
     }
 }

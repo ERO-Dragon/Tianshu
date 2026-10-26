@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.echo.voice;
 
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailure;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
-import com.rheinmetal.tianshu.protocol.payload.TtsVoiceOptions;
+import com.rheinmetal.tianshu.function.echo.contract.TtsVoiceOptions;
 
 import java.util.Optional;
 import java.util.function.Predicate;

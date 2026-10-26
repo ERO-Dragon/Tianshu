@@ -29,17 +29,20 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 //   required — the consumer is not functional without it: a hard dependency, classes always visible,
 //              no optionality code at all.
 //   optional — "integrate when present": compileOnly plus a runtime presence guard.
-//   auxilium -> weaving (required), intake/echo (optional)
+//   auxilium -> intake/weaving (required), echo (optional)
 //   intake   -> weaving/echo (optional)
+// A two-way protocol cannot be split between two optional partners: exactly one module owns the
+// vocabulary and the other depends on it. Dialogue is two-way (delivery flows down, participant and
+// session control flow up), so intake owns it and auxilium requires intake.
 //   weaving, echo are leaves
 def requiredFeatureEdges = [
-        'auxilium': ['weaving'],
+        'auxilium': ['intake', 'weaving'],
         'intake'  : [],
         'weaving' : [],
         'echo'    : [],
 ]
 def optionalFeatureEdges = [
-        'auxilium': ['intake', 'echo'],
+        'auxilium': ['echo'],
         'intake'  : ['weaving', 'echo'],
         'weaving' : [],
         'echo'    : [],
@@ -49,7 +52,9 @@ featureModules.each { module ->
     def owner = module - 'tianshu-'
     allowedFeatureEdges[owner] = ((requiredFeatureEdges[owner] ?: []) + (optionalFeatureEdges[owner] ?: [])).unique()
 }
-def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit', 'tianshu-adapter']
+// Shipped kernel modules. tianshu-testkit is not one: it is a dev-only fixtures artifact that never enters
+// a mod jar, so it is allowed to speak the feature modules' vocabulary on purpose.
+def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-adapter']
 
 tasks.register('verifyFeatureIsolation') {
     group = 'verification'
@@ -143,9 +148,22 @@ tasks.register('verifyFeatureOptionalDependencies') {
 
 tasks.register('verifyHostHasNoFeatureDependency') {
     group = 'verification'
-    description = 'The kernel modules must never reference a feature module.'
+    description = 'The kernel modules must never reference or depend on a feature module.'
+    def hostBuildFiles = hostModules.collectMany { module ->
+        def dir = module == 'tianshu-adapter' ? 'tianshu-adapter/neoforge-1.21.1' : module
+        [file("${dir}/build.gradle")]
+    }
     inputs.files(files(hostModules.collect { "${it}/src/main/java" }))
+    inputs.files(hostBuildFiles)
     doLast { task ->
+        // A source-free build dependency is the same coupling in a different place: it is what makes the
+        // kernel fail to build when a feature jar is removed, even though no import says so.
+        hostBuildFiles.each { buildFile ->
+            if (!buildFile.exists()) return
+            (buildFile.text =~ /(api|implementation|compileOnly) project\(':tianshu-(intake|echo|weaving|auxilium)'\)/).each { match ->
+                throw new GradleException("${buildFile} declares a dependency on tianshu-${match[2]}; the kernel must not depend on a feature module")
+            }
+        }
         def violations = []
         task.inputs.files.files.each { source ->
             if (!source.path.endsWith('.java')) return
