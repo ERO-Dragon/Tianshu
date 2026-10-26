@@ -40,6 +40,6 @@ public final class AXAccessController {
         if (input.isExpired(System.currentTimeMillis())) {
             return false;
         }
-        return !input.sessionId().isBlank() && !input.requestId().isBlank();
+        return !input.sessionId().isBlank();
     }
 }

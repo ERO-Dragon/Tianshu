@@ -332,7 +332,7 @@ class AXTurnOrchestratorTest {
         orchestrator.startTurn(deliveryEnvelope(), delivery());
         await(() -> llmRequest.get() != null);
         orchestrator.startTurn(deliveryEnvelope(), new AXDialogueInput(
-                "session-2", "request-2", "player", "turn-2", "second delivery",
+                "player", "session-2", "turn-2", "second delivery",
                 DialogueContextSnapshot.empty("player"), DialogueInteractionHints.empty(),
                 List.of(), java.util.Map.of(), List.of(),
                 System.currentTimeMillis() + 30_000L
@@ -459,7 +459,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope firstRequest = llmRequest.get();
 
         orchestrator.startTurn(deliveryEnvelope(), new AXDialogueInput(
-                "session", "request-2", "player", "turn-2", "second delivery",
+                "player", "session", "turn-2", "second delivery",
                 DialogueContextSnapshot.empty("player"), DialogueInteractionHints.empty(),
                 List.of(), java.util.Map.of(), List.of(),
                 System.currentTimeMillis() + 30_000L
@@ -891,9 +891,8 @@ class AXTurnOrchestratorTest {
 
     private static AXDialogueInput delivery() {
         return new AXDialogueInput(
-                "session",
-                "request",
                 "player",
+                "session",
                 "turn",
                 "repaired player text",
                 DialogueContextSnapshot.empty("player"),

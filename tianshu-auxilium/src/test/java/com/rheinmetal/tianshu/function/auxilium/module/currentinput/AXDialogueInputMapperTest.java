@@ -49,9 +49,8 @@ class AXDialogueInputMapperTest {
     @Test
     void withoutDisplayNamesTheIdDegradesToReadableWords() {
         AXDialogueInput bare = new AXDialogueInput(
-                "session",
-                "request",
                 "player",
+                "session",
                 "turn",
                 "repaired player text",
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of(), Map.of("weather", "clear")),
@@ -97,9 +96,8 @@ class AXDialogueInputMapperTest {
 
     private static AXDialogueInput delivery(Map<String, String> displayNames) {
         return new AXDialogueInput(
-                "session",
-                "request",
                 "player",
+                "session",
                 "turn",
                 "repaired player text",
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of(), Map.of("weather", "clear")),

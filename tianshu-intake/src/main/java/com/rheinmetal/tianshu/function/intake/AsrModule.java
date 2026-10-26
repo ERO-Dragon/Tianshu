@@ -17,7 +17,11 @@ import com.rheinmetal.tianshu.function.intake.control.AsrController;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngine;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngineBootstrap;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngineBootstrapStatus;
+import com.rheinmetal.tianshu.api.assembly.InputSignals;
 import com.rheinmetal.tianshu.function.intake.input.AsrInputGateway;
+
+import java.util.ArrayList;
+import java.util.List;
 import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
 import com.rheinmetal.tianshu.function.intake.recognition.AsrRecognitionService;
 import com.rheinmetal.tianshu.function.intake.session.AsrSessionManager;
@@ -64,6 +68,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private final AsrTextRepairer textRepairer;
     private AsrController controller;
     private AsrInputGateway inputGateway;
+    private InputSignals.Subscription pushToTalkSubscription;
     private ModuleRuntimeState runtimeState;
     private ModuleRuntimeContext runtimeContext;
     private volatile AsrEngine engine;
@@ -130,6 +135,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         context.services().register(AsrModuleRuntimeControl.class, this);
         inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
         context.services().register(AsrInputService.class, inputGateway);
+        pushToTalkSubscription = subscribePushToTalk();
         adapter.subscribeRuntimeInterrupt(this::handleRuntimeInterrupt);
     }
 
@@ -174,6 +180,32 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
     }
 
+    /**
+     * The push-to-talk gesture arrives as an input signal now: the platform publishes, this module subscribes,
+     * and neither names the other.
+     *
+     * <p>The guard that used to sit on the platform's side moves here, where the answer lives — a module that
+     * cannot take input simply ignores the signal instead of the platform asking first.</p>
+     */
+    private InputSignals.Subscription subscribePushToTalk() {
+        List<InputSignals.Subscription> subscriptions = new ArrayList<>();
+        subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_DOWN,
+                ignored -> withAcceptableInput(AsrInputService::beginVoiceInput)));
+        subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_UP,
+                ignored -> withAcceptableInput(AsrInputService::endVoiceInput)));
+        subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_CANCEL,
+                ignored -> withAcceptableInput(AsrInputService::cancelVoiceInput)));
+        return () -> subscriptions.forEach(InputSignals.Subscription::close);
+    }
+
+    private void withAcceptableInput(java.util.function.Consumer<AsrInputService> action) {
+        AsrInputGateway gateway = inputGateway;
+        if (gateway == null || !gateway.canAcceptVoiceInput()) {
+            return;
+        }
+        action.accept(gateway);
+    }
+
     @Override
     public void stop() {
         // First, so no native read starts or continues into a session that is going away, and so a permit
@@ -205,6 +237,10 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
         controller = null;
         audioCapture = null;
+        if (pushToTalkSubscription != null) {
+            pushToTalkSubscription.close();
+            pushToTalkSubscription = null;
+        }
         if (inputGateway != null) {
             inputGateway.unbind();
             inputGateway = null;

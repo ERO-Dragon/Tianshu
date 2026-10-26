@@ -86,6 +86,8 @@ public final class NeoForgeClientBootstrap {
     private final Path gameDirectory;
     private final ClientConfig config;
     private KeyMapping voiceKey;
+    private KeyMapping textInputKey;
+    private final com.rheinmetal.tianshu.neoforge.event.NeoForgeKeyBindings keyBindings = new com.rheinmetal.tianshu.neoforge.event.NeoForgeKeyBindings();
     private AudioManager audioManager;
     private TianshuCoreManager coreManager;
 
@@ -225,6 +227,8 @@ public final class NeoForgeClientBootstrap {
                     presenceHudRenderer,
                     worldIdentityCapture,
                     () -> voiceKey,
+                () -> textInputKey,
+                    keyBindings,
                     diagnosticRouter
             );
             NeoForgeClientEvents currentEvents = events;
@@ -250,6 +254,11 @@ public final class NeoForgeClientBootstrap {
         }
     }
 
+    /** The registry a module declares its own key into. */
+    public com.rheinmetal.tianshu.neoforge.event.NeoForgeKeyBindings keyBindings() {
+        return keyBindings;
+    }
+
     public synchronized void registerKeyMappings(RegisterKeyMappingsEvent event) {
         voiceKey = new KeyMapping(
                 "key.tianshu.activate",
@@ -258,6 +267,16 @@ public final class NeoForgeClientBootstrap {
                 "key.categories.tianshu"
         );
         event.register(voiceKey);
+        // Always registered, so the player can rebind it from the controls screen; whether pressing it does
+        // anything is decided by whether a module is subscribed to TEXT_SUBMITTED, not by this registration.
+        textInputKey = new KeyMapping(
+                "key.tianshu.text_input",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_H,
+                "key.categories.tianshu"
+        );
+        event.register(textInputKey);
+        keyBindings.registerAll(event);
     }
 
     public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {

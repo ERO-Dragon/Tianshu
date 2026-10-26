@@ -24,12 +24,14 @@ public final class AuxiliumConfig implements AuxiliumAssistantSettings, Auxilium
     private static final String KEY_REPLY_SPEECH = "replySpeechEnabled";
     private static final String KEY_CHAT_THINKING = "chatThinkingEnabled";
     private static final String KEY_ALLOW_INTERRUPTION = "allowInterruption";
+    private static final String KEY_TEXT_INPUT = "textInputEnabled";
 
     private static final boolean DEFAULT_ENABLED = true;
     private static final String DEFAULT_WAKE_WORD = "";
     private static final boolean DEFAULT_REPLY_SPEECH = true;
     private static final boolean DEFAULT_CHAT_THINKING = false;
     private static final boolean DEFAULT_ALLOW_INTERRUPTION = true;
+    private static final boolean DEFAULT_TEXT_INPUT = true;
 
     private final ModuleConfigStore store;
     private final Path storageRoot;
@@ -95,8 +97,17 @@ public final class AuxiliumConfig implements AuxiliumAssistantSettings, Auxilium
     }
 
     @Override
-    public AuxiliumOutputMode outputMode() {
-        return isAxReplySpeechEnabled() ? AuxiliumOutputMode.TTS_ONLY : AuxiliumOutputMode.DISABLED;
+    public boolean textInputEnabled() {
+        return store.getBoolean(KEY_TEXT_INPUT, DEFAULT_TEXT_INPUT);
+    }
+
+    @Override
+    public void setAxTextInputEnabled(boolean enabled) {
+        store.setBoolean(KEY_TEXT_INPUT, enabled);
+    }
+
+    @Override
+    public AuxiliumOutputMode outputMode() {        return isAxReplySpeechEnabled() ? AuxiliumOutputMode.TTS_ONLY : AuxiliumOutputMode.DISABLED;
     }
 
     @Override

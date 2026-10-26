@@ -9,7 +9,9 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySo
 import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
+import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
 import com.rheinmetal.tianshu.api.assembly.ModuleRuntimeServices;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.function.auxilium.AXModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeRefreshReason;
 
@@ -49,7 +51,19 @@ public final class AuxiliumSettingsRegistrySource implements TianshuSettingsRegi
                         .toggle("ax.reply.speech", ax("option.reply_speech"), session.replySpeechEnabled, session.enabled::get))
                 .toggles("ax.behavior", ax("section.behavior"), session.enabled::get, toggles -> toggles
                         .toggle("ax.behavior.thinking", ax("option.chat_thinking"), session.chatThinkingEnabled, session.enabled::get)
-                        .toggle("ax.behavior.interrupt", ax("option.allow_interruption"), session.allowInterruption, session.enabled::get));
+                        .toggle("ax.behavior.interrupt", ax("option.allow_interruption"), session.allowInterruption, session.enabled::get))
+                .toggles("ax.input", ax("section.input"), session.enabled::get, toggles -> toggles
+                        .toggle("ax.input.text", ax("option.text_input"), session.textInputEnabled, session.enabled::get))
+                .actions("ax.input.key", ax("section.input_key"), session.enabled::get, actions -> actions
+                        .button("ax.input.rebind", ax("action.rebind"), () -> rebind(KEY_TEXT_INPUT_KEY), session.enabled::get));
+    }
+
+    /** {@code key.tianshu.text_input} is registered by the platform; the module only asks for its screen. */
+    private static final String KEY_TEXT_INPUT_KEY = "key.tianshu.text_input";
+
+    private static void rebind(String keyMappingName) {
+        TianshuRuntimePorts.find(ClientKeyBindings.class)
+                .ifPresent(bindings -> bindings.openRebindScreen(keyMappingName));
     }
 
     private static UiText ax(String key, Object... args) {
@@ -64,6 +78,7 @@ public final class AuxiliumSettingsRegistrySource implements TianshuSettingsRegi
         private final MutableSettingsValue<Boolean> replySpeechEnabled;
         private final MutableSettingsValue<Boolean> chatThinkingEnabled;
         private final MutableSettingsValue<Boolean> allowInterruption;
+        private final MutableSettingsValue<Boolean> textInputEnabled;
 
         private AXSettingsSession(AuxiliumSettingsAccess config, ModuleRuntimeServices services) {
             this.config = Objects.requireNonNull(config, "config");
@@ -73,6 +88,7 @@ public final class AuxiliumSettingsRegistrySource implements TianshuSettingsRegi
             this.replySpeechEnabled = new MutableSettingsValue<>(config::isAxReplySpeechEnabled, config::setAxReplySpeechEnabled);
             this.chatThinkingEnabled = new MutableSettingsValue<>(config::chatThinkingEnabled, config::setAxChatThinkingEnabled);
             this.allowInterruption = new MutableSettingsValue<>(config::allowInterruption, config::setAxAllowInterruption);
+            this.textInputEnabled = new MutableSettingsValue<>(config::textInputEnabled, config::setAxTextInputEnabled);
         }
 
         @Override
@@ -86,7 +102,8 @@ public final class AuxiliumSettingsRegistrySource implements TianshuSettingsRegi
                     || wakeWord.dirty()
                     || replySpeechEnabled.dirty()
                     || chatThinkingEnabled.dirty()
-                    || allowInterruption.dirty();
+                    || allowInterruption.dirty()
+                    || textInputEnabled.dirty();
         }
 
         @Override
@@ -95,8 +112,9 @@ public final class AuxiliumSettingsRegistrySource implements TianshuSettingsRegi
             if (!changed) {
                 return SettingsSaveResult.unchanged(ax("message.saved"));
             }
-            boolean runtimeRegistrationChanged = enabled.dirty() || wakeWord.dirty();
-            new SettingsSaveTransaction(enabled, wakeWord, replySpeechEnabled, chatThinkingEnabled, allowInterruption)
+            boolean runtimeRegistrationChanged = enabled.dirty() || wakeWord.dirty() || textInputEnabled.dirty();
+            new SettingsSaveTransaction(enabled, wakeWord, replySpeechEnabled, chatThinkingEnabled, allowInterruption,
+                    textInputEnabled)
                     .commit(config::save);
             if (runtimeRegistrationChanged) {
                 services.requestRefresh(RuntimeRefreshReason.RESOURCE_CHANGED);
@@ -111,6 +129,7 @@ public final class AuxiliumSettingsRegistrySource implements TianshuSettingsRegi
             replySpeechEnabled.reset();
             chatThinkingEnabled.reset();
             allowInterruption.reset();
+            textInputEnabled.reset();
         }
     }
 }

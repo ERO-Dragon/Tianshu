@@ -1,7 +1,10 @@
 package com.rheinmetal.tianshu.neoforge;
 
+import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.KeyBindings;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.neoforge.ui.NeoForgeClientKeyBindings;
 import com.rheinmetal.tianshu.neoforge.bootstrap.NeoForgeClientBootstrap;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import net.neoforged.bus.api.IEventBus;
@@ -22,6 +25,12 @@ public final class TianshuNeoForge {
         // "is it there?" has to come from here. Registered before any module assembles.
         TianshuRuntimePorts.register(InstalledMods.class,
                 modId -> modId != null && !modId.isBlank() && ModList.get().isLoaded(modId));
+        // A module's settings row may want to send the player to the controls screen; the binding is a
+        // Minecraft object, so opening that screen is a platform job offered through a port.
+        TianshuRuntimePorts.register(ClientKeyBindings.class, new NeoForgeClientKeyBindings());
+        // A module that wants a key declares it here while its jar loads; the platform registers it in the
+        // key-mapping event later, so the module never touches a KeyMapping.
+        TianshuRuntimePorts.register(KeyBindings.class, clientBootstrap.keyBindings());
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC);
         modEventBus.addListener(clientBootstrap::registerKeyMappings);
         modEventBus.addListener(clientBootstrap::registerReloadListeners);

@@ -68,6 +68,8 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.api.assembly.InputSignals;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTypedTurnEnvelope;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.auxilium.input.AXMatchedObject;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
@@ -112,7 +114,11 @@ public final class AXModule implements TianshuManagedModule {
     private AXMemorySystem memorySystem;
     private AXRecentDialogueSystem recentDialogueSystem;
     private AXDialogueGateway dialogueGateway;
+    /** How long a typed line stays worth answering, matching the spoken path's window. */
+    private static final long TYPED_TURN_TIMEOUT_MILLIS = 30_000L;
+
     private AXTurnOrchestrator turnOrchestrator;
+    private InputSignals.Subscription textInputSubscription;
     private AXDelegateService delegateService;
     private AXTurnStatusPublisher turnStatusPublisher;
     private AXGameEventService gameEventService;
@@ -327,6 +333,11 @@ public final class AXModule implements TianshuManagedModule {
                 adapter::submitAgentTurn,
                 delegateService
         );
+        // Subscribing is the switch: the platform opens the input bar only when something listens for a typed
+        // line, so a disabled feature means the key does nothing, not "a bar whose lines go nowhere".
+        if (assistantSettings.textInputEnabled()) {
+            textInputSubscription = InputSignals.subscribe(InputSignals.TEXT_SUBMITTED, this::handleTypedText);
+        }
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher,
                 this::flushHeldEventsBeforeUserTurn);
         participantRegistrar = new AXParticipantRegistrar(adapter, assistantSettings);
@@ -467,6 +478,10 @@ public final class AXModule implements TianshuManagedModule {
     public void stop() {
         // Events close first so a pending aggregate still lands in the window before the checkpoint.
         withdrawGameEventService();
+        if (textInputSubscription != null) {
+            textInputSubscription.close();
+            textInputSubscription = null;
+        }
         if (turnOrchestrator != null) {
             turnOrchestrator.stop();
         }
@@ -520,6 +535,24 @@ public final class AXModule implements TianshuManagedModule {
         turnStatusPublisher = null;
     }
 
+    /**
+     * A typed line: the player pressed the text key, wrote it, and submitted it.
+     *
+     * <p>Nothing recognized the words, so there are no object matches and no repaired form — the text is used
+     * exactly as written. The module collects the world itself when the turn runs, which is why the input is
+     * built without a context snapshot.</p>
+     */
+    private void handleTypedText(String text) {
+        AXTurnOrchestrator orchestrator = turnOrchestrator;
+        if (orchestrator == null || text == null || text.isBlank()) {
+            return;
+        }
+        AXScope scope = currentWritableScope();
+        AXDialogueInput input = AXDialogueInput.typed(
+                scope.sharedUserId(), text, System.currentTimeMillis() + TYPED_TURN_TIMEOUT_MILLIS);
+        orchestrator.startTurn(AXTypedTurnEnvelope.selfEnvelope(input), input);
+    }
+
     private void handleDialogueDelivery(TianshuEnvelope envelope, ProtocolContext context) throws Exception {
         AXDialogueGateway currentGateway = dialogueGateway;
         if (currentGateway == null) {
@@ -538,7 +571,7 @@ public final class AXModule implements TianshuManagedModule {
                 DiagnosticPrivacy.RAW_CONTENT,
                 Map.of(
                         "sessionId", input.sessionId(),
-                        "requestId", input.requestId(),
+                        "turnId", input.turnId(),
                         "text", input.text()
                 )
         ));
@@ -555,10 +588,9 @@ public final class AXModule implements TianshuManagedModule {
      */
     private static AXDialogueInput dialogueInputOf(DialogueDeliveryPayload payload) {
         return new AXDialogueInput(
-                payload.sessionId(),
-                payload.requestId(),
                 payload.playerId(),
-                payload.turnId(),
+                payload.sessionId(),
+                payload.turnId().isBlank() ? payload.requestId() : payload.turnId(),
                 payload.repairedText(),
                 payload.contextSnapshot(),
                 payload.interactionHints(),

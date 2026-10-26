@@ -51,8 +51,7 @@ final class AXTurnExecution {
     }
 
     String activityId() {
-        String turnIdentity = delivery.turnId().isBlank() ? delivery.requestId() : delivery.turnId();
-        return "ax.chat." + delivery.sessionId() + "." + turnIdentity;
+        return "ax.chat." + delivery.sessionId() + "." + delivery.turnId();
     }
 
     PresenceActivityType swapPresenceActivity(PresenceActivityType next) {

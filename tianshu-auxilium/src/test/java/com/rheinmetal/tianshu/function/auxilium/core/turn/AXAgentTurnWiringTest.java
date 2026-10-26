@@ -431,9 +431,8 @@ class AXAgentTurnWiringTest {
 
     private static AXDialogueInput delivery() {
         return new AXDialogueInput(
-                "session",
-                "request",
                 "player",
+                "session",
                 "turn",
                 "暮色森林怎么进？",
                 DialogueContextSnapshot.empty("player"),

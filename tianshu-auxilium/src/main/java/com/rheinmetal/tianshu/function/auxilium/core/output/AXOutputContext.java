@@ -19,11 +19,16 @@ public record AXOutputContext(
         startedAtMillis = Math.max(0L, startedAtMillis);
     }
 
+    public AXOutputContext(String sessionId, String turnId, String playerId, long startedAtMillis) {
+        // The four-field form is what callers have: a turn id is the only per-turn identity there is. The
+        // five-field record keeps a third slot for the numeric-id fallback and fills it with the same value.
+        this(sessionId, turnId, turnId, playerId, startedAtMillis);
+    }
+
     public static AXOutputContext from(AXDialogueInput input) {
         Objects.requireNonNull(input, "input");
         return new AXOutputContext(
                 input.sessionId(),
-                input.requestId(),
                 input.turnId(),
                 input.playerId(),
                 System.currentTimeMillis()

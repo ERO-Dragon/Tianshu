@@ -11,5 +11,7 @@ public interface AuxiliumSettingsAccess {
     void setAxChatThinkingEnabled(boolean enabled);
     boolean allowInterruption();
     void setAxAllowInterruption(boolean enabled);
+    boolean textInputEnabled();
+    void setAxTextInputEnabled(boolean enabled);
     void save();
 }

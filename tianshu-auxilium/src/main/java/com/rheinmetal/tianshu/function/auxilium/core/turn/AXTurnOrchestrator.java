@@ -351,7 +351,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 diagnostics,
                 System::nanoTime,
                 delivery.sessionId(),
-                delivery.requestId(),
+                delivery.turnId(),
                 delivery.turnId()
         ));
         execution.latencyTracker().mark(AXTurnLatencyStage.IA_DELIVERY);

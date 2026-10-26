@@ -1,10 +1,11 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.rheinmetal.tianshu.api.assembly.InputSignals;
+import com.rheinmetal.tianshu.neoforge.ui.TextDialogueScreen;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
-import com.rheinmetal.tianshu.api.assembly.VoiceInputPort;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
@@ -34,6 +35,8 @@ public final class NeoForgeClientEvents {
     private final PresenceHudRenderer presenceHudRenderer;
     private final NeoForgeWorldIdentityCapture worldIdentityCapture;
     private final Supplier<KeyMapping> voiceKeySupplier;
+    private final Supplier<KeyMapping> textInputKeySupplier;
+    private final NeoForgeKeyBindings keyBindings;
     private final NeoForgeVoiceInputController voiceInputController;
 
     public NeoForgeClientEvents(
@@ -44,6 +47,8 @@ public final class NeoForgeClientEvents {
             PresenceHudRenderer presenceHudRenderer,
             NeoForgeWorldIdentityCapture worldIdentityCapture,
             Supplier<KeyMapping> voiceKeySupplier,
+            Supplier<KeyMapping> textInputKeySupplier,
+            NeoForgeKeyBindings keyBindings,
             LogSink logSink
     ) {
         this.coreManager = Objects.requireNonNull(coreManager, "coreManager");
@@ -53,11 +58,10 @@ public final class NeoForgeClientEvents {
         this.presenceHudRenderer = Objects.requireNonNull(presenceHudRenderer, "presenceHudRenderer");
         this.worldIdentityCapture = Objects.requireNonNull(worldIdentityCapture, "worldIdentityCapture");
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
+        this.textInputKeySupplier = Objects.requireNonNull(textInputKeySupplier, "textInputKeySupplier");
+        this.keyBindings = Objects.requireNonNull(keyBindings, "keyBindings");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
-        this.voiceInputController = new NeoForgeVoiceInputController(
-                () -> coreManager.findService(VoiceInputPort.class),
-                presenceRuntime::recordVoiceKeyInput
-        );
+        this.voiceInputController = new NeoForgeVoiceInputController(presenceRuntime::recordVoiceKeyInput);
     }
 
     @SubscribeEvent
@@ -101,7 +105,28 @@ public final class NeoForgeClientEvents {
 
         KeyMapping voiceKey = voiceKeySupplier.get();
         voiceInputController.tick(voiceKey != null, voiceKey != null && voiceKey.isDown());
+        openTextDialogueIfListening();
+        keyBindings.publishPressed();
+    }
 
+    /**
+     * Opens the typed-dialogue bar, but only when something will answer it.
+     *
+     * <p>The question goes to the input bus rather than to a module: the module that answers a typed line
+     * subscribes only while it is enabled, so asking the bus is the same question — and the platform still
+     * knows no module by name.</p>
+     */
+    private void openTextDialogueIfListening() {
+        KeyMapping textKey = textInputKeySupplier.get();
+        Minecraft client = Minecraft.getInstance();
+        if (textKey == null || client == null || client.screen != null) {
+            return;
+        }
+        while (textKey.consumeClick()) {
+            if (InputSignals.hasSubscribers(InputSignals.TEXT_SUBMITTED)) {
+                client.setScreen(new TextDialogueScreen());
+            }
+        }
     }
 
     @SubscribeEvent

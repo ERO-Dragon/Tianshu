@@ -1,4 +1,7 @@
 {
   "key.categories.tianshu": "天枢AI",
-  "key.tianshu.activate": "语音开关 (按住说话)"
+  "key.tianshu.activate": "语音开关 (按住说话)",
+  "key.tianshu.text_input": "文字对话 (打开输入条)",
+  "ax.input.title": "与辅星对话",
+  "ax.input.hint": "输入要对辅星说的话，回车发送，Esc 取消"
 }
