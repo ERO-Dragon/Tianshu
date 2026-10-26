@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.contract.AXWorldEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
@@ -42,6 +43,8 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String SOURCE_ID = ProtocolModuleIds.AX;
     public static final String DIALOGUE_INPUT_CAPABILITY = ProtocolCapabilities.AX_DIALOGUE_INPUT;
     public static final String CONTEXT_INPUT_CAPABILITY = ProtocolCapabilities.AX_CONTEXT_INPUT;
+    /** 事件型入口：外部模块投递一句自己渲染好的世界事件，外加三档之一。 */
+    public static final String EVENT_INPUT_CAPABILITY = ProtocolCapabilities.AX_EVENT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
     private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
     /** Delegation backlog limit (design appendix A.2: broadcast queue limit 3, same order of magnitude). */
@@ -90,6 +93,24 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
                 CONTEXT_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_CONTEXT_INPUT,
                 DialogueContextInputPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
+    /**
+     * 事件型输入入口。外部模块投递一句自己已经渲染好的世界事件，加上三档之一；
+     * 本模块只做清洗、档位判定与落地，不渲染、不改写措辞。
+     */
+    public void registerEventInputCapability(EnvelopeHandler handler) {
+        registerCapability(
+                EVENT_INPUT_CAPABILITY,
+                PayloadType.AX_WORLD_EVENT,
+                AXWorldEventPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
                 Priority.LOW,

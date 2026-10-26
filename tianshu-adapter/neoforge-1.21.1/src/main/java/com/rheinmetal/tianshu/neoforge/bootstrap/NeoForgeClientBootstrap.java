@@ -29,7 +29,6 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySo
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.core.config.PropertyModuleConfigStores;
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
-import com.rheinmetal.tianshu.api.assembly.GameEventPort;
 import com.rheinmetal.tianshu.client.settings.registry.ModuleSettingsSourceRegistry;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
 import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
@@ -53,7 +52,6 @@ import com.rheinmetal.tianshu.neoforge.event.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientEvents;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientLifecycleAdapter;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeEventRegistration;
-import com.rheinmetal.tianshu.neoforge.event.NeoForgeGameEventHooks;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgePresenceHooks;
 import com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEvent;
 import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
@@ -203,13 +201,6 @@ public final class NeoForgeClientBootstrap {
 
             NeoForgePresenceHooks.bind(currentPresenceRuntime, diagnosticRouter);
             startingSession.own(() -> NeoForgePresenceHooks.clear(currentPresenceRuntime));
-            // The module that reads the player's situation registers the port on world start and drops it
-            // on world stop, so a stale hook cannot produce events outside a session.
-            NeoForgeGameEventHooks.bind(
-                    () -> assembledCoreManager.findService(GameEventPort.class).orElse(null),
-                    diagnosticRouter
-            );
-            startingSession.own(NeoForgeGameEventHooks::clear);
 
             externalSettingsContributors = new TianshuSettingsContributorRegistry();
             integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);

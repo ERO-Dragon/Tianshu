@@ -63,3 +63,4 @@ tianshu-common/src/main/resources/JavaLlamaServer/*.jar
 docs
 Agents.md
 .dsh-inspect
+.dsh-acl-recovery

@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventDispatcher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventHistorySink;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventPolicy;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventTexts;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventTierTable;
 import com.rheinmetal.tianshu.api.LogSink;
@@ -172,7 +173,44 @@ public final class AXGameEventService {
         if (closed || descriptor == null) {
             return;
         }
-        String sentence = sentenceOf(descriptor);
+        land(descriptor, sentenceOf(descriptor), nowMillis);
+    }
+
+    /** {@link #submitRendered(String, String, AXEventClass, String, long)} stamped with the wall clock. */
+    public void submitRendered(String sourceId, String kind, AXEventClass behavior, String text) {
+        submitRendered(sourceId, kind, behavior, text, System.currentTimeMillis());
+    }
+
+    /**
+     * Submits one event whose sentence the producer already rendered, under the behaviour it asked for.
+     *
+     * <p>Only the wording step differs from {@link #submit}: the sentence is sanitized here instead of being rendered
+     * from a template. Everything after that — the frequency step, the attention list, the class, both holding areas,
+     * the history line and the utterance — is the very path {@link #submit} takes, so a third-party event cannot
+     * acquire a second, differently behaved entry into the layer.</p>
+     *
+     * <p>A requested behaviour is a request, not a decision: {@link AXEventPolicy#tierFor} turns it into the one
+     * declaration the table needs, and the frequency gate plus the attention list keep the right to move the result
+     * down. {@link AXEventClass#DROP} is rejected outright, as is a malformed kind — the protocol edge turns both
+     * into a rejected envelope instead of letting them reach the decision path.</p>
+     *
+     * @param text the producer's own sentence; blank is ignored, exactly like an unrenderable template
+     */
+    public void submitRendered(String sourceId, String kind, AXEventClass behavior, String text, long nowMillis) {
+        if (closed) {
+            return;
+        }
+        String sentence = AXEventTexts.sanitize(text);
+        if (sentence.isBlank()) {
+            return;
+        }
+        AXEventDescriptor descriptor = AXEventDescriptor
+                .rendered(kind, AXEventPolicy.tierFor(behavior), sourceId)
+                .withHighlight(AXEventPolicy.highlightedFor(behavior));
+        land(descriptor, sentence, nowMillis);
+    }
+
+    private void land(AXEventDescriptor descriptor, String sentence, long nowMillis) {
         AXEventDecision decision = dispatcher.decide(descriptor, sentence, nowMillis);
         switch (decision.eventClass()) {
             case DROP -> {
@@ -206,7 +244,13 @@ public final class AXGameEventService {
             return;
         }
         drainFolds(nowMillis);
-        speakVoluntaryTurn(buffer.dueDeferred(nowMillis));
+        // The immediate queue only ever fills while a turn is running and the player does not allow interruptions,
+        // so "not busy" means the turn that blocked those lines has ended: they are said now, merged into one
+        // utterance, and each keeps its own history line. The deferred window is independent of this.
+        if (!settings.busy()) {
+            speakBatch("immediate_released", buffer.takeImmediate());
+        }
+        speakBatch("voluntary_turn", buffer.dueDeferred(nowMillis));
     }
 
     /**
@@ -282,8 +326,13 @@ public final class AXGameEventService {
                 + " queued=" + buffer.immediateSize());
     }
 
-    /** One voluntary turn: the deferred batch, spoken once, and the window re-drawn by the buffer. */
-    private void speakVoluntaryTurn(List<AXEventClassBuffer.Entry> batch) {
+    /**
+     * One batch spoken as a single utterance; every entry keeps its own history line.
+     *
+     * @param reason diagnostic name of the door the batch came through ({@code immediate_released} when the turn that
+     *               held it ended, {@code voluntary_turn} when the deferred window closed)
+     */
+    private void speakBatch(String reason, List<AXEventClassBuffer.Entry> batch) {
         if (batch.isEmpty()) {
             return;
         }
@@ -301,7 +350,7 @@ public final class AXGameEventService {
             return;
         }
         String kind = batch.get(0).kind() == null ? "" : batch.get(0).kind();
-        logSink.info("ax.event.voluntary_turn kind=" + kind + " merged=" + batch.size());
+        logSink.info("ax.event." + reason + " kind=" + kind + " merged=" + batch.size());
         speechSink.speak(kind, joined.toString());
         // Each occurrence was its own event even though it was said in one breath, so the history keeps them apart.
         for (AXEventClassBuffer.Entry entry : batch) {

@@ -75,7 +75,8 @@ class AXModuleLifecycleBoundaryTest {
         ));
 
         await(() -> registered.get() != null, 2_000L);
-        assertEquals("天枢", registered.get().descriptor().displayName());
+        assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, registered.get().descriptor().displayName(),
+                "the wake word stays a wake word; the shown name is UI text, and this fixture wires no language table");
     }
 
     /**

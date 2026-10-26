@@ -25,10 +25,9 @@ class AXGameEventLanguageSymmetryTest {
     private static final String DETAIL = "tianshu.ax.event.detail.";
     private static final String AGGREGATE = "tianshu.ax.event.aggregate.";
 
-    /** Kinds the built-in producer renders a single sentence for. */
+    /** Kinds this module currently renders a single sentence for: the world events it maps into the event layer. */
     private static final List<String> PRODUCED_KINDS = List.of(
-            "death", "respawn", "health_critical", "health_change",
-            "hunger_critical", "hunger_change", "dimension_enter", "biome_change"
+            "advancement", "item_crafted"
     );
 
     /** Kinds whose folded window is rendered from an aggregate sentence. */

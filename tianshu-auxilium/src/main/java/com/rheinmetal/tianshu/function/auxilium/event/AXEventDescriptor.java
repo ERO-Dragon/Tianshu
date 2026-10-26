@@ -81,4 +81,20 @@ public record AXEventDescriptor(
     public AXEventDescriptor withHighlight(boolean highlight) {
         return new AXEventDescriptor(kind, tier, suppress, highlight, payload, text, fold, sourceId);
     }
+
+    /**
+     * An event whose wording the producer rendered itself, so this module never renders it.
+     *
+     * <p>{@code text} is left blank on purpose: there is no template, and the sentence is passed
+     * straight to {@code AXGameEventService#submitRendered}, which only sanitizes it. A blank template
+     * also means there is nothing to fold, so {@code fold} is fixed at {@link AXEventFold#NONE} and
+     * every occurrence stays its own history line.</p>
+     *
+     * <p>Used by the event entry external modules submit to ({@code AX.EVENT_INPUT}): they own their own
+     * language files, and this module holds no wording of theirs.</p>
+     */
+    public static AXEventDescriptor rendered(String kind, AXEventTier tier, String sourceId) {
+        return new AXEventDescriptor(kind, tier, false, false, AXEventPayload.of(), AXEventText.of(""),
+                AXEventFold.NONE, sourceId);
+    }
 }

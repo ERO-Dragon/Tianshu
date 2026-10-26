@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.control;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.intake.audio.AudioCaptureService;
 import com.rheinmetal.tianshu.function.intake.recognition.AsrRecognitionResult;
@@ -39,6 +40,13 @@ public final class AsrController {
      * publishes recognisable text.</p>
      */
     private java.util.function.BiConsumer<AsrTextPayload, TianshuEnvelope> textRepair;
+    /**
+     * The speech turn the player can hear right now, or {@code 0} between turns.
+     *
+     * <p>One field, not two flags: the listening notice and the speech-activity signal always describe the
+     * same turn, and ending it twice must be impossible.</p>
+     */
+    private long listeningSessionId;
 
     public AsrController(
             IGameEnvironment env,
@@ -126,6 +134,7 @@ public final class AsrController {
     }
 
     public void stop() {
+        publishSpeechEnded();
         stateMachine.moveTo(AsrState.STOPPING);
         recognition.stopAll();
         audioCapture.stopAll();
@@ -162,17 +171,23 @@ public final class AsrController {
 
     private void stopActiveInput() {
         audioCapture.stopAll();
+        publishSpeechEnded();
     }
 
     private void beginPtt() {
         if (!stateMachine.canBeginCapture()) {
             return;
         }
+        // A previous turn that never reached its end path is closed here, so the listening notice cannot
+        // outlive the recording it described and a new turn always starts from a clean state.
+        publishSpeechEnded();
         long sessionId = interruptProcessing.getAsLong();
         sessionManager.beginRecognitionSession(sessionId);
         stateMachine.moveTo(AsrState.CAPTURING);
         env.info("asr.input.started sessionId=" + sessionId);
         audioCapture.startPttCapture(sessionId);
+        // Published after capture really started: the notice describes the microphone, not the key press.
+        publishSpeechStarted(sessionId);
     }
 
     private void endPtt() {
@@ -180,6 +195,7 @@ public final class AsrController {
             return;
         }
         byte[] audioData = audioCapture.stopPttCapture();
+        publishSpeechEnded();
         if (audioData == null || audioData.length == 0) {
             env.warn("asr.input.empty");
             stateMachine.reset();
@@ -210,6 +226,38 @@ public final class AsrController {
     /** Binds the speech-text repair lane; called by the module after both are constructed. */
     public void bindTextRepair(java.util.function.BiConsumer<AsrTextPayload, TianshuEnvelope> textRepair) {
         this.textRepair = textRepair;
+    }
+
+    /**
+     * Announces one speech turn to the two consumers that act on it.
+     *
+     * <p>IA freezes the world snapshot it will arbitrate with at the moment the player starts speaking, so the
+     * signal has to exist before recognition produces text; presence shows the listening flag for the same
+     * turn. Both are published from the one place that knows the microphone is really capturing.</p>
+     */
+    private synchronized void publishSpeechStarted(long sessionId) {
+        if (sessionId <= 0L) {
+            return;
+        }
+        listeningSessionId = sessionId;
+        adapter.publishSpeechActivity(AsrSpeechActivityPayload.speaking(sessionId));
+        adapter.publishListeningActivity(true, sessionId);
+    }
+
+    /**
+     * Ends the current speech turn, exactly once, whichever path stopped the microphone.
+     *
+     * <p>Cancel, runtime interrupt, module stop and an empty recording all reach this; the turn id is cleared
+     * first, so a second call publishes nothing.</p>
+     */
+    private synchronized void publishSpeechEnded() {
+        long sessionId = listeningSessionId;
+        if (sessionId <= 0L) {
+            return;
+        }
+        listeningSessionId = 0L;
+        adapter.publishSpeechActivity(AsrSpeechActivityPayload.silent(sessionId));
+        adapter.publishListeningActivity(false, sessionId);
     }
 
     private boolean canAcceptInput() {

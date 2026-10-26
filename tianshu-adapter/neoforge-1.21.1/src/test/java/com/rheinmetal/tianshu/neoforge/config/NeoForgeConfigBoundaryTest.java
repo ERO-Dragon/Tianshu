@@ -30,13 +30,18 @@ final class NeoForgeConfigBoundaryTest {
         assertFalse(config.contains("isAiEnabled"));
     }
 
+    /**
+     * The product is client-first with an optional server component, so the loader project must define exactly the
+     * three runs that shape needs: the client, the server component, and data generation. A game-test server is not
+     * part of it.
+     */
     @Test
-    void loaderProjectOnlyDefinesRunsThatMatchTheClientOnlyProduct() throws Exception {
+    void loaderProjectDefinesTheRunsTheTwoSidedProductNeeds() throws Exception {
         String build = Files.readString(Path.of("build.gradle"), StandardCharsets.UTF_8);
 
         assertTrue(build.contains("client {"));
+        assertTrue(build.contains("server {"), "the optional server component needs a development run");
         assertTrue(build.contains("data {"));
-        assertFalse(build.contains("server {"));
         assertFalse(build.contains("gameTestServer {"));
     }
 }

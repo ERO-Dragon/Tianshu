@@ -28,7 +28,11 @@ import java.util.EnumSet;
 public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = ProtocolModuleIds.ASR;
     public static final String SOURCE_ID = ProtocolModuleIds.ASR;
-    private static final long LISTENING_TTL_MILLIS = 8_000L;
+    /**
+     * Long enough for the longest sentence a player may hold the key through, because the turn always ends
+     * with an explicit {@code ENDED}: this TTL only matters when the client dies mid-turn.
+     */
+    private static final long LISTENING_TTL_MILLIS = 120_000L;
     private static final long RECOGNITION_TTL_MILLIS = 30_000L;
     private static final long MODEL_LOADING_TTL_MILLIS = 120_000L;
 

@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.api.assembly.GameEventPort;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
@@ -36,9 +35,12 @@ import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
 import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnOrchestrator;import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnStatusPublisher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventClass;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
-import com.rheinmetal.tianshu.function.auxilium.producer.AuxiliumGameEvents;
+import com.rheinmetal.tianshu.function.auxilium.producer.AXPresenceEventMapper;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventTextProvider;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXDialogueInputMapper;
 import com.rheinmetal.tianshu.function.auxilium.module.currentinput.AXInputNormalizer;
@@ -73,6 +75,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTypedTurnEnvelope;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannel;
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannels;
+import com.rheinmetal.tianshu.function.auxilium.contract.AXWorldEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -231,6 +234,7 @@ public final class AXModule implements TianshuManagedModule {
         dialogueChannel = AXDialogueChannels.forRuntime(adapter);
         dialogueChannel.openInbound(this::handleDialogueInput);
         adapter.registerContextInputCapability(this::handleContextInput);
+        adapter.registerEventInputCapability(this::handleEventInput);
         adapter.subscribePresenceWorldEvents(this::handlePresenceWorldEvent);
     }
 
@@ -340,12 +344,9 @@ public final class AXModule implements TianshuManagedModule {
         }
         dialogueGateway = new AXDialogueGateway(new AXAccessController(), turnOrchestrator, turnStatusPublisher,
                 this::flushHeldEventsBeforeUserTurn);
-        participantRegistrar = new AXParticipantRegistrar(dialogueChannel, assistantSettings);
+        participantRegistrar = new AXParticipantRegistrar(dialogueChannel, assistantSettings, this::participantDisplayName);
         participantRegistrar.register();
-        publishGameEventService(context);
-        if (moduleServices != null) {
-            moduleServices.register(AXDelegateService.class, delegateService);
-        }
+        publishModuleServices(context);
         adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
     }
 
@@ -370,17 +371,22 @@ public final class AXModule implements TianshuManagedModule {
     }
 
     /**
-     * Publishes the event pipeline as a module service so any module can submit events.
+     * Publishes everything this module offers the rest of the session, in one place so the same list can be
+     * withdrawn in one place.
      *
-     * <p>The service is registered under {@link AXGameEventService} for the whole session, so a managed
-     * module reaches it through {@code context.services().find(AXGameEventService.class)} and a
-     * platform layer through {@code coreManager.findService(AXGameEventService.class)}. It owns the
-     * only decision path (tiers, blacklist, speech gate, aggregation) and its history sink appends to
-     * the recent-dialogue window as a {@code world_event} turn, which is the same channel third-party
-     * utterances already use. The entry carries the sentence the producer rendered; this module never
-     * words one of its own. Speech goes to the injected voice channel next to the diagnostic log line.
+     * <ul>
+     *   <li>{@link AXGameEventService} — the event decision path (tiers, the attention list, the speech gate, both
+     *       holding areas) and the only one: a managed module reaches it through
+     *       {@code context.services().find(...)}, a platform layer through {@code coreManager.findService(...)}.
+     *       Its history sink appends to the recent-dialogue window as a {@code world_event} turn, the channel
+     *       third-party utterances already use. The entry carries the sentence the producer rendered; this module
+     *       never words one of its own.</li>
+     *   <li>{@link AXDelegateService} — this module's own delegation runs.</li>
+     * </ul>
+     *
+     * <p>Voicing is not a service here: it goes to the injected speech channel, next to the diagnostic log line.</p>
      */
-    private void publishGameEventService(ModuleRuntimeContext context) {
+    private void publishModuleServices(ModuleRuntimeContext context) {
         gameEventService = new AXGameEventService(
                 this::appendHistoryEvent,
                 eventSpeech == null ? AXEventSpeechSink.NOOP : eventSpeech,
@@ -390,9 +396,7 @@ public final class AXModule implements TianshuManagedModule {
         );
         moduleServices = context.services();
         moduleServices.register(AXGameEventService.class, gameEventService);
-        // The platform ticks this port with plain readings; the probe, the wording and the submission
-        // all stay on this side, so the adapter never names an auxilium type.
-        moduleServices.register(GameEventPort.class, new AuxiliumGameEvents(() -> gameEventService, env.logs()));
+        moduleServices.register(AXDelegateService.class, delegateService);
     }
 
     /**
@@ -444,17 +448,30 @@ public final class AXModule implements TianshuManagedModule {
         currentDialogue.append(scope, AXRawTurn.worldEvent(scope, content, System.currentTimeMillis()));
     }
 
-    private void withdrawGameEventService() {
-        AXGameEventService current = gameEventService;
+    /**
+     * Withdraws every service published by {@link #publishModuleServices}.
+     *
+     * <p>A stopped module must not stay reachable by type: an entry left behind makes
+     * {@code findService(...).isPresent()} answer "yes" for something that is no longer running, and the object
+     * behind it is a closed one. The event service is stopped here too, which is what turns its last held lines into
+     * history instead of dropping them.</p>
+     */
+    private void withdrawModuleServices() {
+        AXGameEventService currentEvents = gameEventService;
+        AXDelegateService currentDelegates = delegateService;
         ModuleServiceRegistry services = moduleServices;
         gameEventService = null;
         moduleServices = null;
-        if (current == null) {
-            return;
-        }
-        current.stop(System.currentTimeMillis());
         if (services != null) {
-            services.unregister(AXGameEventService.class, current);
+            if (currentDelegates != null) {
+                services.unregister(AXDelegateService.class, currentDelegates);
+            }
+            if (currentEvents != null) {
+                services.unregister(AXGameEventService.class, currentEvents);
+            }
+        }
+        if (currentEvents != null) {
+            currentEvents.stop(System.currentTimeMillis());
         }
     }
 
@@ -477,7 +494,7 @@ public final class AXModule implements TianshuManagedModule {
     @Override
     public void stop() {
         // Events close first so a pending aggregate still lands in the window before the checkpoint.
-        withdrawGameEventService();
+        withdrawModuleServices();
         if (textInputSubscription != null) {
             textInputSubscription.close();
             textInputSubscription = null;
@@ -595,6 +612,18 @@ public final class AXModule implements TianshuManagedModule {
             context.complete(envelope.envelopeId());
             return;
         }
+        // 一条事实只有一个落点：能翻成事件类型的走事件层（它自己写历史，并按档位决定出不出声），
+        // 其余类型作为记忆附件留给压缩链路。
+        java.util.Optional<AXEventDescriptor> mapped =
+                AXPresenceEventMapper.describe(payload, envelope.header().sourceId());
+        if (mapped.isPresent()) {
+            AXGameEventService currentEvents = gameEventService;
+            if (currentEvents != null && !currentEvents.closed()) {
+                currentEvents.submit(mapped.get());
+            }
+            context.complete(envelope.envelopeId());
+            return;
+        }
         AXMemorySystem currentMemory = memorySystem;
         if (currentMemory != null && scope != null && scope.writable()) {
             currentMemory.appendAttachedWorldEvent(scope, worldEventMapper.map(scope, payload));
@@ -612,13 +641,65 @@ public final class AXModule implements TianshuManagedModule {
             return;
         }
         AXScope scope = currentWritableScope();
-        if (scope != null && !payload.messageText().isBlank()) {
+        if (scope == null) {
+            // 没有可写作用域时不能"接受但不写"：静默成功会让投递方以为话语已经进了历史。
+            context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX context input has no writable scope", null);
+            return;
+        }
+        if (!payload.messageText().isBlank()) {
             recordThirdPartyUtterance(
                     scope,
                     contextInputMapper.map(scope, envelope.header().sourceId(), payload)
             );
         }
         context.complete(envelope.envelopeId());
+    }
+
+    /**
+     * 事件型投递处理：外部模块给一句自己渲染好的世界事件，加一个它希望的行为。
+     *
+     * <p>本模块不认这句话的措辞，只做清洗并把它交给事件层，因此它和内建事件走同一条判定路径：
+     * 行为先被翻译成档位声明，再由频率修正、名单与类别决定最终是立即出声 / 等冷却 / 只进历史 / 丢弃。
+     * 频率不对外暴露：只有内置采集层知道"这个 kind 多久一次"。</p>
+     *
+     * <p>没有运行中的事件层就拒绝，不静默接受：投递方必须知道这次没落地。</p>
+     */
+    private void handleEventInput(TianshuEnvelope envelope, ProtocolContext context) {
+        if (!(envelope.payload() instanceof AXWorldEventPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX world event payload is invalid", null);
+            return;
+        }
+        AXGameEventService service = gameEventService;
+        if (service == null || service.closed()) {
+            context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX event layer is not running", null);
+            return;
+        }
+        if (payload.behavior() == null || payload.behavior() == AXEventClass.DROP) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD",
+                    "AX world event behavior must be IMMEDIATE, DEFERRED or SILENT", null);
+            return;
+        }
+        if (payload.text().isBlank()) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX world event text is empty", null);
+            return;
+        }
+        try {
+            service.submitRendered(envelope.header().sourceId(), payload.kind(), payload.behavior(), payload.text());
+        } catch (IllegalArgumentException malformed) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", malformed.getMessage(), malformed);
+            return;
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    /**
+     * IA 显示这个 participant 用的名字，从语言表解析。
+     *
+     * <p>它以前拿的是唤醒词：玩家没配唤醒词时，UI 与诊断里就出现一个没有名字的 participant。
+     * 名字是界面文本，与其他界面文本一样来自语言分片。</p>
+     */
+    private String participantDisplayName() {
+        return eventTexts.render(AXEventText.of(AXParticipantRegistrar.DISPLAY_NAME_KEY));
     }
 
     private void recordThirdPartyUtterance(AXScope scope, AXRawTurn turn) {

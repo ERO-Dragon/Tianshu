@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.event;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * The policy matrix, expanded from the ladder rather than written as nine cases.
@@ -53,6 +54,30 @@ class AXEventPolicyTest {
         for (AXEventTier tier : AXEventTier.values()) {
             assertEquals(AXEventPolicy.baselineFor(tier), AXEventPolicy.classFor(tier, AXEventList.NEUTRAL));
         }
+    }
+
+    /**
+     * The event entry external modules submit to states a behaviour, not a frequency; the translation back into a
+     * declaration has to reproduce exactly that behaviour, otherwise a producer asking for "say it now" would get a
+     * counted history line instead.
+     */
+    @Test
+    void theInverseOfTheMatrixReproducesTheRequestedBehaviour() {
+        for (AXEventClass requested : AXEventClass.values()) {
+            if (requested == AXEventClass.DROP) {
+                continue;
+            }
+            AXEventList list = AXEventPolicy.highlightedFor(requested) ? AXEventList.WHITELIST : AXEventList.NEUTRAL;
+            assertEquals(requested, AXEventPolicy.classFor(AXEventPolicy.tierFor(requested), list),
+                    "a producer asking for " + requested + " must land on it");
+        }
+    }
+
+    /** "Nothing happens" is the absence of a submission, so it has no translation into the table. */
+    @Test
+    void nothingCanBeSubmittedAsDrop() {
+        assertThrows(IllegalArgumentException.class, () -> AXEventPolicy.tierFor(AXEventClass.DROP));
+        assertThrows(IllegalArgumentException.class, () -> AXEventPolicy.tierFor(null));
     }
 
     private static void assertClass(AXEventClass expected, AXEventTier tier, AXEventList list) {

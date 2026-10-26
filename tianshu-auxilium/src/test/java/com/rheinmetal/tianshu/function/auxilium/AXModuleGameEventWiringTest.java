@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
+import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumOutputSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
@@ -12,6 +13,7 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
+import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,7 +30,7 @@ class AXModuleGameEventWiringTest {
     Path tempDir;
 
     @Test
-    void eventServiceIsPublishedWhileTheSessionRunsAndWithdrawnWhenItStops() {
+    void moduleServicesArePublishedWhileTheSessionRunsAndWithdrawnWhenItStops() {
         FakeGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
@@ -46,6 +49,8 @@ class AXModuleGameEventWiringTest {
 
         module.register(new ModuleRegistrationContext(runtime, services));
         assertFalse(services.find(AXGameEventService.class).isPresent());
+        assertEquals(1, runtime.capabilityProviderCount(ProtocolCapabilities.AX_EVENT_INPUT),
+                "the event entry exists as soon as the module is registered, before the layer runs");
 
         module.prepare(new ModuleRuntimeContext(
                 runtime,
@@ -56,6 +61,7 @@ class AXModuleGameEventWiringTest {
 
         AXGameEventService service = services.find(AXGameEventService.class).orElseThrow();
         assertFalse(service.closed());
+        assertTrue(services.find(AXDelegateService.class).isPresent());
 
         // Any module that only holds the registry handle submits here; nothing marks a source as the
         // privileged one, so a third-party kind takes the same call as a built-in one.
@@ -69,5 +75,6 @@ class AXModuleGameEventWiringTest {
 
         assertTrue(service.closed());
         assertFalse(services.find(AXGameEventService.class).isPresent());
+        assertFalse(services.find(AXDelegateService.class).isPresent());
     }
 }

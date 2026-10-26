@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.producer;
 
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventAppend;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventClass;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventClassBuffer;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventDescriptor;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventFold;
@@ -61,10 +62,15 @@ class AXGameEventServiceTest {
 
     /** Busy and non-interrupting by default: the immediate queue is the case under test. */
     private AXGameEventService service(boolean busy, boolean allowInterruption) {
+        return service(() -> busy, allowInterruption);
+    }
+
+    /** Same wiring with a busy signal that can change mid-test, so "the turn ended" is expressible. */
+    private AXGameEventService service(java.util.function.BooleanSupplier busy, boolean allowInterruption) {
         AXEventSettings settings = new AXEventSettings() {
             @Override
             public boolean busy() {
-                return busy;
+                return busy.getAsBoolean();
             }
 
             @Override
@@ -132,10 +138,38 @@ class AXGameEventServiceTest {
 
         assertEquals(List.of("被岩浆怪杀死", "挖掉圆石"), texts(appended), "queued lines become history in order");
         assertEquals(0, service.queuedImmediateCount());
-        assertTrue(spoken.isEmpty());
+        assertTrue(spoken.isEmpty(), "the user already spoke: the moment for saying them has passed");
 
         service.beforeUserTurn(START + 3_000L);
         assertEquals(2, appended.size(), "the queue is empty after the first turn");
+    }
+
+    /**
+     * The other door out of the immediate queue: the turn that blocked it ends while the player still does not want to
+     * be interrupted mid-answer. The held lines are then said in one breath, and the history keeps them apart.
+     */
+    @Test
+    void aQueuedImmediateBatchIsSpokenAsOneUtteranceWhenTheTurnEnds() {
+        java.util.concurrent.atomic.AtomicBoolean busy = new java.util.concurrent.atomic.AtomicBoolean(true);
+        AXGameEventService service = service(busy::get, false);
+
+        service.submit(event("tianshu:death", "line.death").withHighlight(true), START);
+        service.submit(event("tianshu:death", "line.block").withHighlight(true), START + 1_000L);
+
+        assertEquals(2, service.queuedImmediateCount());
+        assertTrue(spoken.isEmpty());
+
+        busy.set(false);
+        service.tick(START + 2_000L);
+
+        assertEquals(List.of("被岩浆怪杀死" + '\n' + "挖掉圆石"), spoken,
+                "the queue is said as one utterance once the turn that held it is over");
+        assertEquals(List.of("被岩浆怪杀死", "挖掉圆石"), texts(appended),
+                "each occurrence still keeps its own history line");
+        assertEquals(0, service.queuedImmediateCount());
+
+        service.tick(START + 3_000L);
+        assertEquals(1, spoken.size(), "the queue is drained, so the next tick says nothing");
     }
 
     /**
@@ -243,6 +277,87 @@ class AXGameEventServiceTest {
     void anEventWithoutATemplateIsRefusedAtTheBoundary() {
         assertThrows(NullPointerException.class, () -> AXEventDescriptor.of(
                 "plugin:harvest", "plugin.farming", AXEventPayload.of(), null));
+    }
+
+    /** A sentence the producer rendered itself: same class decision, and no lookup in this module's table. */
+    @Test
+    void aRenderedSentenceTakesTheSameDecisionPath() {
+        AXGameEventService service = service(false, true);
+
+        service.submitRendered("plugin.farming", "plugin:harvest_home", AXEventClass.DEFERRED, "麦田熟了。", START);
+
+        assertEquals(1, service.bufferedDeferredCount(),
+                "a deferred request lands in the deferred batch, exactly like a template event");
+        assertTrue(spoken.isEmpty(), "and it is never spoken on arrival");
+
+        service.tick(START + COOLDOWN);
+
+        assertEquals(List.of("麦田熟了。"), spoken, "the producer's own sentence is what gets said");
+        assertEquals(List.of("麦田熟了。"), texts(appended), "and it is the line the history keeps");
+    }
+
+    /** An immediate request is the one behaviour a producer can ask for that speaks without waiting for a lull. */
+    @Test
+    void anImmediateRequestSpeaksOnArrivalEvenForAnUnknownKind() {
+        AXGameEventService service = service(false, true);
+
+        service.submitRendered("plugin.farming", "plugin:harvest_home", AXEventClass.IMMEDIATE, "麦田熟了。", START);
+
+        assertEquals(List.of("麦田熟了。"), spoken, "the request outranks the conservative unknown-kind fallback");
+        assertEquals(List.of("麦田熟了。"), texts(appended), "and the spoken line is also the history line");
+    }
+
+    @Test
+    void aSilentRequestOnlyReachesTheHistory() {
+        AXGameEventService service = service(false, true);
+
+        service.submitRendered("plugin.farming", "plugin:harvest_home", AXEventClass.SILENT, "麦田熟了。", START);
+
+        assertEquals(List.of("麦田熟了。"), texts(appended), "silent means readable to the model, not audible");
+        assertTrue(spoken.isEmpty());
+    }
+
+    @Test
+    void aRenderedSentenceIsSanitizedLikeATemplateResult() {
+        AXGameEventService service = service(false, true);
+
+        service.submitRendered("plugin.farming", "plugin:harvest_home", AXEventClass.DEFERRED,
+                "你在<主世界>完成仪式", START);
+        service.tick(START + COOLDOWN);
+
+        assertEquals(List.of("你在主世界完成仪式"), spoken,
+                "angle brackets cannot smuggle a prompt tag into the history");
+    }
+
+    @Test
+    void aBlankRenderedSentenceIsIgnored() {
+        AXGameEventService service = service(false, true);
+
+        service.submitRendered("plugin.farming", "plugin:harvest_home", AXEventClass.DEFERRED, "   ", START);
+
+        assertEquals(0, service.bufferedDeferredCount());
+        assertTrue(appended.isEmpty());
+        assertTrue(spoken.isEmpty());
+    }
+
+    @Test
+    void aMalformedKindIsRejectedBeforeAnythingIsRetained() {
+        AXGameEventService service = service(false, true);
+
+        assertThrows(IllegalArgumentException.class, () -> service.submitRendered(
+                "plugin.farming", "harvest_home", AXEventClass.DEFERRED, "麦田熟了。", START));
+        assertEquals(0, service.bufferedDeferredCount());
+    }
+
+    /** "Nothing happens" is expressed by not submitting: there is no behaviour to request for it. */
+    @Test
+    void aProducerCannotAskForDrop() {
+        AXGameEventService service = service(false, true);
+
+        assertThrows(IllegalArgumentException.class, () -> service.submitRendered(
+                "plugin.farming", "plugin:harvest_home", AXEventClass.DROP, "麦田熟了。", START));
+        assertTrue(appended.isEmpty());
+        assertTrue(spoken.isEmpty());
     }
 
     private static List<String> texts(List<AXEventAppend> appends) {

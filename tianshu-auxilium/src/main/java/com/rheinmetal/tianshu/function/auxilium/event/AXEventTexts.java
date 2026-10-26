@@ -16,6 +16,9 @@ public final class AXEventTexts {
     /** Fold template prefix; the kind segment follows, see {@link #kindSegment(String)}. */
     public static final String AGGREGATE_PREFIX = "tianshu.ax.event.aggregate.";
 
+    /** Prefix of the language key that words one event line; the kind segment follows the same rule. */
+    public static final String LINE_PREFIX = "tianshu.ax.event.line.";
+
     /**
      * Upper bound for a rendered sentence.
      *

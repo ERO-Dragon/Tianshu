@@ -11,9 +11,9 @@ import java.util.function.LongSupplier;
  * The two holding areas of the decision layer: the immediate queue and the deferred buffer.
  *
  * <p><b>Immediate queue</b> — an {@link AXEventClass#IMMEDIATE} event that arrived while the assistant was busy
- * and the player does not allow interruptions waits here. It is not spoken later on its own: the next thing that
- * happens is a user turn, and the queue is folded into the history just before that turn (see
- * {@link #takeForUserTurn()}).
+ * and the player does not allow interruptions waits here. It leaves by one of two doors: the assistant becomes free
+ * again ({@link #takeImmediate()} — the batch is said in one breath, each line still its own history entry), or the
+ * user speaks first ({@link #takeForUserTurn()} — the lines become history only, the moment for speaking has passed).
  *
  * <p><b>Deferred buffer</b> — {@link AXEventClass#DEFERRED} events collect here until the cooldown window closes,
  * then they are spoken together as one voluntary turn and the window is re-drawn. The length is
@@ -55,6 +55,20 @@ public final class AXEventClassBuffer {
     /** Queues an immediate event that may not be spoken now. */
     public void holdImmediate(String kind, String text, long nowMillis) {
         immediate.addLast(new Entry(kind, text, nowMillis, sequence++));
+    }
+
+    /**
+     * Everything in the immediate queue, in arrival order, and the queue cleared.
+     *
+     * <p>Called once the assistant is free again: the queue only fills while a turn is running and the player does
+     * not allow interruptions, so "free again" means exactly that the turn which blocked it has ended. The batch is
+     * spoken as one utterance; the history still receives one line per occurrence.</p>
+     */
+    public List<Entry> takeImmediate() {
+        List<Entry> drained = new ArrayList<>(immediate);
+        immediate.clear();
+        drained.sort(Comparator.comparingLong(Entry::sequence));
+        return drained;
     }
 
     /** Adds a deferred event; the first one starts the cooldown window. */

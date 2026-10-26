@@ -65,6 +65,41 @@ class LlmPresenceActivityTest {
         }
     }
 
+    @Test
+    void runtimeNoticesAreRetractedExactlyOnceWhenTheLaneRecovers() {
+        try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            List<PresenceActivityPayload> activities = captureActivities(runtime);
+            LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
+
+            adapter.publishRuntimeActivity(PresenceActivityType.ERROR, 12_000L);
+            adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+            adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+
+            awaitAction(activities, "llm.runtime.error", PresenceActivityAction.ENDED);
+            List<PresenceActivityPayload> errorActivities = activities.stream()
+                    .filter(activity -> "llm.runtime.error".equals(activity.activityId()))
+                    .toList();
+            // One notice, one retraction: the second clear has nothing to end, because the lane already
+            // reported recovery and the notice is no longer up.
+            assertEquals(2, errorActivities.size());
+            assertEquals(PresenceActivityAction.STARTED, errorActivities.getFirst().action());
+            assertEquals(PresenceActivityAction.ENDED, errorActivities.getLast().action());
+        }
+    }
+
+    @Test
+    void aLaneThatNeverReportedAFailureSendsNoEmptyRetraction() {
+        try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            List<PresenceActivityPayload> activities = captureActivities(runtime);
+            LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
+
+            adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
+            adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
+
+            assertEquals(0, activities.size(), "nothing was announced, so there is nothing to retract");
+        }
+    }
+
     private static LlmStatusPayload status(String taskId, String taskType, String eventType) {
         return new LlmStatusPayload(taskId, taskType, taskType, eventType, 0, "", 0, 0, "", System.currentTimeMillis());
     }

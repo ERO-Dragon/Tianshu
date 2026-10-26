@@ -1,0 +1,51 @@
+package com.rheinmetal.tianshu.neoforge.event;
+
+import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import net.neoforged.neoforge.client.event.CustomizeGuiOverlayEvent;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Turns "a boss bar appeared on screen" into a world event.
+ *
+ * <p>The boss bar is the only reliable client-side signal that a boss fight started — it is what the player sees, and
+ * it exists for every boss regardless of which mod implemented it. The overlay event fires every frame while a bar is
+ * visible, so the watch keeps the ids it has already reported and only speaks up the first time one appears; a bar
+ * that comes back after its id was dropped is a new fight.</p>
+ *
+ * <p>Client-only class: it is registered from the client branch of the mod entry point and never loaded on a server.</p>
+ */
+public final class NeoForgeBossEventWatch {
+
+    private static final Set<UUID> REPORTED = new LinkedHashSet<>();
+
+    private NeoForgeBossEventWatch() {
+    }
+
+    public static void onBossEventProgress(CustomizeGuiOverlayEvent.BossEventProgress event) {
+        if (event == null || event.getBossEvent() == null) {
+            return;
+        }
+        UUID id = event.getBossEvent().getId();
+        if (id == null || !REPORTED.add(id)) {
+            return;
+        }
+        PresenceWorldEventPayload payload = new PresenceWorldEventPayload(
+                null,
+                PresenceWorldEventPayload.EVENT_BOSS_ENGAGE,
+                "",
+                "",
+                System.currentTimeMillis(),
+                java.util.Map.of(PresenceWorldEventPayload.VALUE_ENTITY_NAME,
+                        event.getBossEvent().getName().getString())
+        );
+        NeoForgePresenceHooks.recordServerFact(payload);
+    }
+
+    /** Drops the reported ids: a new world must be able to report the same boss again. */
+    public static void reset() {
+        REPORTED.clear();
+    }
+}

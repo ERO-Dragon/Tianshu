@@ -508,6 +508,8 @@ public final class LlmModule implements TianshuManagedModule {
                 + " retries; reporting to presence");
         publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), failureKey));
         publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), failureKey, lifecycleStatusGeneration));
+        // Retrying stopped, so "reconnecting" is no longer true; the failure replaces it.
+        adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
         adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
     }
 
@@ -515,6 +517,9 @@ public final class LlmModule implements TianshuManagedModule {
     private void clearRuntimeRetry() {
         runtimeRetryAttempts.set(0);
         cancelPendingRuntimeRetry();
+        // The lane is up or gone: either way the ambient notices about the failed start are no longer true.
+        adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
+        adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
     }
 
     private void cancelPendingRuntimeRetry() {
@@ -538,6 +543,8 @@ public final class LlmModule implements TianshuManagedModule {
         }
         // A stopped module keeps no retry budget: the next start begins from the first attempt.
         clearRuntimeRetry();
+        // The embedding notice outlives neither the lane it describes nor a world restart.
+        adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
         synchronized (lifecycleLock) {
             if (modelService != null) {
                 modelService.stop();
@@ -585,10 +592,18 @@ public final class LlmModule implements TianshuManagedModule {
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
         switch (report.outcome()) {
-            case READY -> { }
-            case DEGRADED -> adapter.publishRuntimeActivity(PresenceActivityType.DEGRADED, RUNTIME_ERROR_TTL_MILLIS);
+            case READY -> {
+                // Whatever the previous load said about the embedding lane is no longer true.
+                adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
+                adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+            }
+            case DEGRADED -> {
+                adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+                adapter.publishRuntimeActivity(PresenceActivityType.DEGRADED, RUNTIME_ERROR_TTL_MILLIS);
+            }
             case UNAVAILABLE -> {
                 ragStorageService.bindEmbeddingService(engineProvider.embeddingService());
+                adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
                 adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }

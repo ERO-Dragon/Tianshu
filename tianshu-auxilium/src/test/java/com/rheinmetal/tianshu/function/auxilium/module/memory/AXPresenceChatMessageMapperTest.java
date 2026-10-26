@@ -45,8 +45,11 @@ class AXPresenceChatMessageMapperTest {
 
     @Test
     void theSameLineProjectsToTheSameIdentity() {
-        AXRawTurn first = mapper.map(SCOPE, PresenceWorldEventPayload.chatMessage("uuid-1", "甲", "在吗"));
-        AXRawTurn second = mapper.map(SCOPE, PresenceWorldEventPayload.chatMessage("uuid-1", "甲", "在吗"));
+        // A redelivery carries the event it is a redelivery of, timestamp included: two payloads built a
+        // millisecond apart are two events, not one repeated line.
+        PresenceWorldEventPayload line = PresenceWorldEventPayload.chatMessage("uuid-1", "甲", "在吗");
+        AXRawTurn first = mapper.map(SCOPE, line);
+        AXRawTurn second = mapper.map(SCOPE, line);
 
         assertEquals(first.id(), second.id(), "a redelivery of one line must not read as two");
     }

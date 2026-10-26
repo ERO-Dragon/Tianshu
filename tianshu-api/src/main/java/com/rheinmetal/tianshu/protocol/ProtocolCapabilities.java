@@ -17,6 +17,7 @@ public final class ProtocolCapabilities {
     public static final String DIALOGUE_SCORE = "DIALOGUE.SCORE";
     public static final String AX_DIALOGUE_INPUT = "AX.DIALOGUE_INPUT";
     public static final String AX_CONTEXT_INPUT = "AX.CONTEXT_INPUT";
+    public static final String AX_EVENT_INPUT = "AX.EVENT_INPUT";
 
     private ProtocolCapabilities() {
     }

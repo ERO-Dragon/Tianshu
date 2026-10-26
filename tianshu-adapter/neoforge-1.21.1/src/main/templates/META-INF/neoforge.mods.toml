@@ -19,18 +19,18 @@ displayTest="IGNORE_SERVER_VERSION"
     type="required"
     versionRange="[${neo_version},)"
     ordering="NONE"
-    side="CLIENT"
+    side="BOTH"
 
 [[dependencies.${mod_id}]]
     modId="minecraft"
     type="required"
     versionRange="${minecraft_version_range}"
     ordering="NONE"
-    side="CLIENT"
+    side="BOTH"
 
 [[dependencies.${mod_id}]]
     modId="tianshu_libs"
     type="required"
     versionRange="${tianshu_libs_version_range}"
     ordering="AFTER"
-    side="CLIENT"
+    side="BOTH"

@@ -13,16 +13,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AXEventTierTableTest {
 
     @Test
-    void builtinTableShipsTheFourtyFourDocumentedKinds() {
+    void builtinTableShipsTheDocumentedKinds() {
         AXEventTierTable table = AXEventTierTable.builtin();
 
-        assertEquals(44, table.size());
-        assertEquals(9, table.count(AXEventTier.RARE));
+        assertEquals(41, table.size(), "chat is a presence world event type, and biome change has no exact source");
+        assertEquals(8, table.count(AXEventTier.RARE));
         assertEquals(13, table.count(AXEventTier.NORMAL));
-        assertEquals(22, table.count(AXEventTier.FREQUENT));
-        assertEquals(15, table.count(AXEventList.BLACKLIST));
-        assertEquals(6, table.count(AXEventList.WHITELIST), "the shipped whitelist is the actionable warnings");
-        assertEquals(23, table.count(AXEventList.NEUTRAL));
+        assertEquals(20, table.count(AXEventTier.FREQUENT));
+        assertEquals(14, table.count(AXEventList.BLACKLIST));
+        assertEquals(5, table.count(AXEventList.WHITELIST), "the shipped whitelist is the actionable warnings");
+        assertEquals(22, table.count(AXEventList.NEUTRAL));
     }
 
     @Test

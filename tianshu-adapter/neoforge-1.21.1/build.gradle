@@ -19,12 +19,15 @@ def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecra
 // Running the NeoForge client from the Gradle panel is the development path,
 // so it defaults to the Debug channel. Artifact builds remain Release by
 // default. An explicit property always wins over the task-based default.
-def runClientRequested = gradle.startParameter.taskNames.any { taskName ->
-    taskName.tokenize(':').last() == 'runClient'
+// A server run is a development path too: it is how the optional server
+// component is exercised in the same debug channel.
+def devRunRequested = gradle.startParameter.taskNames.any { taskName ->
+    def name = taskName.tokenize(':').last()
+    name == 'runClient' || name == 'runServer'
 }
 def tianshuDebugBuild = providers.gradleProperty('tianshuDebugBuild')
         .map { it.toBoolean() }
-        .orElse(runClientRequested)
+        .orElse(devRunRequested)
 def tianshuBuildProfile = layout.buildDirectory.file('generated/resources/tianshu-build.properties')
 tasks.register('generateTianshuBuildProfile') {
     inputs.property('debugBuild', tianshuDebugBuild)
@@ -65,6 +68,10 @@ neoForge {
             }
         }
 
+        server {
+            server()
+        }
+
         data {
             data()
             programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
@@ -87,13 +94,15 @@ neoForge {
     def startedFrom = {
         def startParameter = gradle.startParameter
         def explicitFeature = startParameter.taskNames.findResult { name ->
-            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium)):runClient$/
+            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium)):run(Client|Server)$/
             match.find() ? match.group(2) : null
         }
         if (explicitFeature != null) {
             return explicitFeature
         }
-        if (startParameter.taskNames.any { it.endsWith('runClient') && it.contains('tianshu-adapter') }) {
+        if (startParameter.taskNames.any { name ->
+                    (name.endsWith('runClient') || name.endsWith('runServer')) && name.contains('tianshu-adapter')
+                }) {
             return 'adapter'
         }
         // A bare `runClient` carries no path: the directory it was typed in decides.
@@ -119,7 +128,9 @@ neoForge {
         // A feature run boots its required partners too: without them it cannot assemble at all.
         return ([startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])).unique()
     }()
-    if (gradle.startParameter.taskNames.any { it.endsWith('runClient') }) {
+    if (gradle.startParameter.taskNames.any { name ->
+                name.endsWith('runClient') || name.endsWith('runServer')
+            }) {
         logger.lifecycle("tianshu dev run: started from '${startedFrom}', installing " +
                 (devFeatureMods.isEmpty() ? 'the kernel alone' : devFeatureMods.join(', ')))
     }

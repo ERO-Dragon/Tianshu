@@ -49,4 +49,35 @@ public final class AXEventPolicy {
             case BLACKLIST -> baseline.downgraded();
         };
     }
+
+    /**
+     * The tier a neutral producer must declare so that {@link #classFor} lands on {@code requested} — the inverse of
+     * the table above, used by the event entry external modules submit to.
+     *
+     * <p>The inverse exists because a tier is this module's own vocabulary: it answers "how often does this happen",
+     * a question only the built-in capture layer can answer. A producer outside states the behaviour it wants, and
+     * this method translates that into the one declaration the table needs.</p>
+     *
+     * <p>The translation is not unique in general ({@code DEFERRED} is reachable three ways); it picks the plainest
+     * row so the frequency gate and the attention list keep room to move the result down later.</p>
+     *
+     * @throws IllegalArgumentException for {@link AXEventClass#DROP}, which has no inverse: a producer that wants
+     *         nothing to happen simply does not submit
+     */
+    public static AXEventTier tierFor(AXEventClass requested) {
+        if (requested == null || requested == AXEventClass.DROP) {
+            throw new IllegalArgumentException("DROP cannot be requested: do not submit the event instead");
+        }
+        return requested == AXEventClass.SILENT ? AXEventTier.NORMAL : AXEventTier.RARE;
+    }
+
+    /**
+     * Whether {@code requested} needs a per-occurrence highlight to reach that class on a neutral list.
+     *
+     * <p>Only {@link AXEventClass#IMMEDIATE} does: interrupting the player requires being one step above the rare
+     * baseline, and the highlight is the only per-occurrence way up. Everything else lands on a plain declaration.
+     */
+    public static boolean highlightedFor(AXEventClass requested) {
+        return requested == AXEventClass.IMMEDIATE;
+    }
 }

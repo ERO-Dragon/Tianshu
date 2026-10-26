@@ -24,7 +24,7 @@
 
 外部模组也不应要求天枢提供：
 
-- 服务端网络注册
+- 服务端网络注册（天枢自带的服务端组件只为自己采集事实，不向外部模组开放通道）
 - 服务端权限或零信任安全基座
 - 配置保存、加载、同步或校验
 - 环境、背包、玩家、聊天、实体、世界等运行时快照数据
@@ -64,6 +64,17 @@ if (TianshuIntegrationAccess.isAvailable()) {
 ```
 
 注意：推荐优先使用事件注册。静态访问仅适合延迟查询或兜底判断。宿主关闭或重载时静态入口会再次变为 unavailable，外部模组不得永久缓存一次 `isAvailable()` 的结果；需要长期持有 API 时，应跟随宿主注册/关闭生命周期更新引用。
+
+## 调用模块方法：硬性依赖或建桥
+
+跨模块的方法调用只有两条合法路线。两条都要求外部模组认识被调模块的契约类型，区别只在"什么时候把这份认识加载进来"：
+
+1. **硬性依赖**：把目标模块（例如 `tianshu-auxilium`）作为 `compileOnly` 依赖编译，直接引用它的 capability 常量、payload 记录和对外服务接口，运行时由天枢提供实现。没有天枢时这些类不存在，所以这个模组必须把依赖声明成软依赖（`mods.toml` / `fabric.mod.json` 里的 optional dependency），并在自己的入口做存在性判断。
+2. **联动桥**：外部模组只依赖 `tianshu-api`，把天枢那一侧的适配写成独立类，只在检测到天枢（或某模块）已加载时才实例化它。桥类被封在"没装天枢就不会被类加载"的位置，主逻辑因此保持零依赖。
+
+两条路线下对外可见的面只有三类：**能力名**（capability id）、**载荷记录**（payload）、以及**明确标注为对外契约的服务接口**。不属于契约的一律不调：`tick` / `flush` / `stop` 这类生命周期方法、内部编排、记忆与提示词实现都不能出现在外部调用里。
+
+`tianshu-api` 只承载跨模块稳定契约（协议常量、对话模型记录、装配端口），不承载某个模块的业务载荷：事件描述、记忆结构、提示词模板都由拥有它的模块自己发布。所以"想调某个模块的方法"的正确答案永远是"依赖那个模块"，而不是"把它的类型搬进 api"。
 
 ## 模块声明注册
 
@@ -291,6 +302,27 @@ api.queryModuleStatuses(query);
 
 这只是协议中心提交入口，不代表可以直接访问主干内部 runtime 实现，也不提供同步 envelope request 语义。
 
+### 提交一句世界事件（AX）
+
+外部模组可以把自己世界里刚发生的事交给 AX 说，或写进它的历史。这条路径要硬性依赖 `tianshu-auxilium`，才能拿到能力名与载荷类（桥的写法见"调用模块方法：硬性依赖或建桥"）：
+
+```java
+AXWorldEventPayload payload = new AXWorldEventPayload(
+        "example_radar:threat_spotted",   // 自己的命名空间；不得占用 tianshu:
+        AXEventClass.IMMEDIATE,           // IMMEDIATE / DEFERRED / SILENT 三选一
+        "雷达发现三名敌人接近。"           // 自己渲染好的整句
+);
+
+api.submit(EnvelopeBuilder.commandToCapability(
+        "example_radar",
+        AXProtocolAdapter.EVENT_INPUT_CAPABILITY,
+        PayloadType.AX_WORLD_EVENT,
+        payload
+).build());
+```
+
+行为决定落地方式：`IMMEDIATE` 到达即说、`DEFERRED` 冷却后主动说一句、`SILENT` 只进历史。频率（`RARE`/`NORMAL`/`FREQUENT`）是天枢内部概念，不进载荷；同一 kind 短时间反复发生仍会被内部降档。AX 不渲染这句话，文案与语言由外部模组自己维护。契约细节见《AX 协议中心》§4。
+
 ## 推荐接入流程
 
 ```java
@@ -328,12 +360,13 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 
 外部模组应遵守：
 
-1. 没有天枢时仍可独立运行。
-2. 有天枢时只通过 `TianshuIntegrationApi` 和协议 payload 联动。
-3. 不依赖主干内部类或 NeoForge provider 实现。
-4. 不把主干作为配置保存或服务端安全基座。
-5. 不要求主干理解外部模组业务语义。
-6. 使用 capability ready 判断具体能力是否可用。
+1. 没有天枢时仍可独立运行（硬性依赖写成软依赖，桥类只在检测到天枢时加载）。
+2. 有天枢时只通过 `TianshuIntegrationApi`、协议 capability/topic 与模块**发布出来**的契约类型联动。
+3. 不依赖主干内部类（`TianshuCoreManager`、`ProtocolRuntime`、broker / executor / dead letter / trace）或 NeoForge provider 实现。
+4. 不调不属于契约的生命周期方法，例如某个模块的 `tick` / `flush` / `stop`。
+5. 不把主干作为配置保存或服务端安全基座。
+6. 不要求主干理解外部模组业务语义。
+7. 使用 capability ready 判断具体能力是否可用，不要用 core ready 代替。
 
 ## 当前推荐的稳定入口
 
@@ -347,3 +380,4 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 - `GuiContributionDescriptor`
 - `CoreLifecycleEventPayload`
 - `ResourceReloadEventPayload`
+- `AXProtocolAdapter.EVENT_INPUT_CAPABILITY` + `AXWorldEventPayload`（AX 事件型入口，需硬性依赖 `tianshu-auxilium`）

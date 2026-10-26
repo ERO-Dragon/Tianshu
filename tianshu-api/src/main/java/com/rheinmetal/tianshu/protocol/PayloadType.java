@@ -57,6 +57,8 @@ public final class PayloadType {
     public static final PayloadType DIALOGUE_CONTEXT_INPUT = register("DIALOGUE_CONTEXT_INPUT");
     public static final PayloadType DIALOGUE_SCORE_REQUEST = register("DIALOGUE_SCORE_REQUEST");
     public static final PayloadType DIALOGUE_SCORE_RESPONSE = register("DIALOGUE_SCORE_RESPONSE");
+    /** One world event a producer already worded, handed to AX together with its tier. */
+    public static final PayloadType AX_WORLD_EVENT = register("AX_WORLD_EVENT");
     /** Escape hatch for module payloads that live outside the kernel's vocabulary. */
     public static final PayloadType CUSTOM = register("CUSTOM");
 

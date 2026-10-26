@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /**
  * Announces this participant to the dialogue domain.
@@ -22,14 +23,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class AXParticipantRegistrar {
     public static final String PARTICIPANT_ID = "tianshu.AX";
+    /** The name IA shows in UI and diagnostics: a language key, never a literal. */
+    public static final String DISPLAY_NAME_KEY = "tianshu.ax.participant.display_name";
 
     private final AXDialogueChannel channel;
     private final AuxiliumAssistantSettings settings;
+    private final Supplier<String> displayName;
     private final AtomicBoolean registered = new AtomicBoolean(false);
 
     public AXParticipantRegistrar(AXDialogueChannel channel, AuxiliumAssistantSettings settings) {
+        this(channel, settings, () -> "");
+    }
+
+    /**
+     * @param displayName resolves the participant's display name from the language table; a blank result
+     *                    falls back to {@link #PARTICIPANT_ID} so IA never shows a nameless participant
+     */
+    public AXParticipantRegistrar(AXDialogueChannel channel, AuxiliumAssistantSettings settings,
+                                  Supplier<String> displayName) {
         this.channel = Objects.requireNonNull(channel, "channel");
         this.settings = settings == null ? AuxiliumAssistantSettings.DEFAULT : settings;
+        this.displayName = displayName == null ? () -> "" : displayName;
     }
 
     public void register() {
@@ -43,7 +57,7 @@ public final class AXParticipantRegistrar {
         channel.registerParticipant(new DialogueParticipantDescriptor(
                 PARTICIPANT_ID,
                 AXModule.MODULE_ID,
-                settings.wakeWord(),
+                resolvedDisplayName(),
                 0,
                 claimProfile(wakeWords),
                 triggerGroup(wakeWords),
@@ -82,5 +96,10 @@ public final class AXParticipantRegistrar {
             return List.of();
         }
         return List.of(wakeWord.trim());
+    }
+
+    private String resolvedDisplayName() {
+        String name = displayName.get();
+        return name == null || name.isBlank() ? PARTICIPANT_ID : name.trim();
     }
 }

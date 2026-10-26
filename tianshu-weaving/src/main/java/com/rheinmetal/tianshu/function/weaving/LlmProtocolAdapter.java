@@ -35,6 +35,8 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
@@ -45,6 +47,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private volatile LLMService llmService;
     private volatile LlmRagStorageService ragStorageService;
     private volatile Supplier<LLMRuntimeSnapshotPayload> unavailableRuntimeSnapshotSupplier;
+    /** Runtime notices currently published, so recovery ends exactly the ones that are up. */
+    private final Set<PresenceActivityType> activeRuntimeActivities = ConcurrentHashMap.newKeySet();
     private final LlmTaskAdmissionController taskAdmissionController;
     private final LlmPromptPayloadMapper promptPayloadMapper;
     private final LlmPromptRequestHandler promptRequestHandler;
@@ -266,16 +270,40 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
      * or it kept working on a reduced backend.
      *
      * <p>This rides the same activity topic and the same payload as the thinking/responding states, so
-     * presence needs no separate path: the type decides the text and the TTL ends the notice by itself.
+     * presence needs no separate path: the type decides the text. The TTL is a backstop for a process that
+     * dies mid-notice; a lane that recovers or shuts down calls {@link #clearRuntimeActivity} instead of
+     * waiting for it.</p>
      */
     public TianshuEnvelope publishRuntimeActivity(PresenceActivityType type, long ttlMillis) {
+        String activityId = runtimeActivityId(type);
+        activeRuntimeActivities.add(type);
+        return publishPresenceActivity(PresenceActivityPayload.started(activityId, type, Math.max(1L, ttlMillis)));
+    }
+
+    /**
+     * Retracts one runtime notice.
+     *
+     * <p>Ambient lane conditions are true until they stop being true: a notice that only expires by TTL keeps
+     * telling the player the lane is broken long after it recovered, and could outlive the outage it
+     * describes. Recovery and shutdown therefore end the activity explicitly.</p>
+     *
+     * <p>Retracting a notice that was never published sends nothing: a lane that starts cleanly must not
+     * produce a pair of empty end events on every world load.</p>
+     */
+    public TianshuEnvelope clearRuntimeActivity(PresenceActivityType type) {
+        if (!activeRuntimeActivities.remove(type)) {
+            return null;
+        }
+        return publishPresenceActivity(PresenceActivityPayload.ended(runtimeActivityId(type), type));
+    }
+
+    private static String runtimeActivityId(PresenceActivityType type) {
         if (type != PresenceActivityType.RECONNECTING
                 && type != PresenceActivityType.ERROR
                 && type != PresenceActivityType.DEGRADED) {
             throw new IllegalArgumentException("runtime activity must be RECONNECTING, ERROR or DEGRADED");
         }
-        String activityId = "llm.runtime." + type.name().toLowerCase(java.util.Locale.ROOT);
-        return publishPresenceActivity(PresenceActivityPayload.started(activityId, type, Math.max(1L, ttlMillis)));
+        return "llm.runtime." + type.name().toLowerCase(java.util.Locale.ROOT);
     }
 
     private TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {

@@ -57,9 +57,8 @@ class AXEventDispatcherTest {
     }
 
     /**
-     * The shipped whitelist is the actionable warnings: a player can still act on a drowning or a boss fight, and
-     * someone mentioning the player by name is worth hearing at once. A respawn stays neutral on purpose — the death
-     * of that same moment was the line worth saying.
+     * The shipped whitelist is the actionable warnings: a player can still act on a drowning or a boss fight. A
+     * respawn stays neutral on purpose — the death of that same moment was the line worth saying.
      */
     @Test
     void theShippedWhitelistLiftsTheActionableWarnings() {
@@ -69,8 +68,6 @@ class AXEventDispatcherTest {
         assertEquals(AXEventClass.IMMEDIATE, decide(event("tianshu:drowning", "line.death"), START).eventClass());
         assertEquals(AXEventClass.IMMEDIATE, decide(event("tianshu:on_fire", "line.death"), START).eventClass());
         assertEquals(AXEventClass.IMMEDIATE, decide(event("tianshu:boss_engage", "line.death"), START).eventClass());
-        assertEquals(AXEventClass.IMMEDIATE,
-                decide(event("tianshu:chat_mentioned", "line.death"), START).eventClass());
 
         assertEquals(AXEventClass.SILENT, decide(event("tianshu:respawn", "line.death"), START).eventClass(),
                 "respawn follows the death that was already said, so it is only a counted history line");

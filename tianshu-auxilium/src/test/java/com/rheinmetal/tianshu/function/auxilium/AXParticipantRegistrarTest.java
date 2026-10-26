@@ -38,6 +38,8 @@ class AXParticipantRegistrarTest {
         assertEquals(DialogueClaimMode.DEFAULT_OWNER, payload.descriptor().claimProfile().mode());
         assertEquals(DialogueTriggerGroup.EMPTY, payload.descriptor().triggerGroup());
         assertEquals(0.4D, payload.descriptor().fallbackScore());
+        assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, payload.descriptor().displayName(),
+                "without a language entry the participant falls back to its id, never to an empty name");
     }
 
     @Test
@@ -62,7 +64,8 @@ class AXParticipantRegistrarTest {
         DialogueParticipantRegisterPayload registerPayload = registered.get();
         assertEquals(AXModule.MODULE_ID, registerPayload.descriptor().moduleId());
         assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, registerPayload.descriptor().participantId());
-        assertEquals("天枢", registerPayload.descriptor().displayName());
+        assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, registerPayload.descriptor().displayName(),
+                "the wake word is a wake word, not the name IA shows");
         assertEquals(AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY, registerPayload.descriptor().routeCapability());
         assertEquals(DialogueClaimProfile.defaultOwnerWithRules(
                 com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule.anyStrong(
@@ -78,6 +81,31 @@ class AXParticipantRegistrarTest {
         DialogueParticipantUnregisterPayload unregisterPayload = unregistered.get();
         assertEquals(AXModule.MODULE_ID, unregisterPayload.moduleId());
         assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, unregisterPayload.participantId());
+    }
+
+    @Test
+    void theDisplayNameComesFromTheLanguageTableAndNotFromTheWakeWord() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        AtomicReference<DialogueParticipantRegisterPayload> registered = new AtomicReference<>();
+        IaProtocolAdapter iaAdapter = new IaProtocolAdapter(runtime);
+        iaAdapter.registerParticipantCapability((envelope, context) -> {
+            registered.set((DialogueParticipantRegisterPayload) envelope.payload());
+            context.complete(envelope.envelopeId());
+        });
+        AXParticipantRegistrar registrar = new AXParticipantRegistrar(
+                new IaDialogueBridge(new AXProtocolAdapter(runtime)), () -> "天枢", () -> "辅星");
+
+        registrar.register();
+
+        await(() -> registered.get() != null);
+        DialogueParticipantRegisterPayload payload = registered.get();
+        assertEquals("辅星", payload.descriptor().displayName());
+        assertEquals(DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
+                        "ax.wake_word",
+                        DialogueAttentionDecay.SLOW,
+                        DialogueClaimCondition.wakeWord("天枢"))),
+                payload.descriptor().claimProfile(),
+                "the wake word still drives the claim; only the shown name moved to the language table");
     }
 
     private static void await(java.util.function.BooleanSupplier condition) {
