@@ -48,6 +48,7 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
@@ -114,7 +115,7 @@ class AXAgentTurnWiringTest {
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
         AXLlmClient llmClient = new AXLlmClient(adapter);
         AXScope scope = writableScope();
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         AXRecentDialogueSystem recent = emptyRecent();
         AXRequest request = AXRequest.fromNormalizedInput(NORMALIZER.normalize(MAPPER.map(delivery)));
         // The run builds its prompt before the user turn is appended, so the reference context and
@@ -150,7 +151,7 @@ class AXAgentTurnWiringTest {
         AXTurnOrchestrator orchestrator = orchestrator(
                 adapter, llmClient, recent, scope, sink, (taskId, task) -> RUNS.execute(task));
 
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
         await(() -> runtime.llmRequest.get() != null, 5_000L, "the CHAT request");
 
@@ -181,7 +182,7 @@ class AXAgentTurnWiringTest {
         AXTurnOrchestrator orchestrator = orchestrator(
                 adapter, llmClient, emptyRecent(), writableScope(), null, (taskId, task) -> gated.add(task));
 
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
         await(() -> gated.size() == 1, 5_000L, "the run to be handed to the submitter");
 
@@ -206,7 +207,7 @@ class AXAgentTurnWiringTest {
         AXTurnOrchestrator orchestrator = orchestrator(
                 adapter, llmClient, emptyRecent(), writableScope(), null, (taskId, task) -> RUNS.execute(task));
 
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
         await(() -> runtime.llmRequest.get() != null, 5_000L, "the CHAT request");
 
@@ -230,7 +231,7 @@ class AXAgentTurnWiringTest {
                 adapter, llmClient, emptyRecent(), writableScope(), null, (taskId, task) -> RUNS.execute(task));
 
         long startedAt = System.currentTimeMillis();
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
         await(() -> runtime.llmRequest.get() != null, 5_000L, "the CHAT request");
 
@@ -254,7 +255,7 @@ class AXAgentTurnWiringTest {
         AXTurnOrchestrator orchestrator = orchestrator(
                 adapter, llmClient, emptyRecent(), writableScope(), null, (taskId, task) -> RUNS.execute(task));
 
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
 
         await(() -> !runtime.sessionControls.isEmpty(), 5_000L, "a failing submit to release the turn");
@@ -276,7 +277,7 @@ class AXAgentTurnWiringTest {
                     throw new RejectedExecutionException("lane saturated");
                 });
 
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
 
         assertEquals(1, runtime.sessionControls.size(), "a rejected run retires the turn immediately");
@@ -313,7 +314,7 @@ class AXAgentTurnWiringTest {
                 (taskId, task) -> RUNS.execute(task), delegateService);
         String spokenSentence = "这个问题让我去查一下。";
 
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
         await(() -> runtime.llmRequest.get() != null, 5_000L, "the CHAT request");
 
@@ -428,29 +429,38 @@ class AXAgentTurnWiringTest {
         return new AXScope("player", "world", "World", AXScopeKind.LOCAL_WORLD, true);
     }
 
-    private static DialogueDeliveryPayload delivery() {
-        return new DialogueDeliveryPayload(
+    private static AXDialogueInput delivery() {
+        return new AXDialogueInput(
                 "session",
                 "request",
                 "player",
                 "turn",
                 "暮色森林怎么进？",
-                "",
-                List.of(),
-                DialogueInteractionHints.empty(),
                 DialogueContextSnapshot.empty("player"),
-                System.currentTimeMillis(),
+                DialogueInteractionHints.empty(),
+                List.of(),
+                java.util.Map.of(),
+                List.of(),
                 System.currentTimeMillis() + 30_000L
         );
     }
 
-    private static TianshuEnvelope deliveryEnvelope(DialogueDeliveryPayload delivery) {
+    private static TianshuEnvelope deliveryEnvelope(AXDialogueInput input) {
         return EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery
+                deliveryPayload()
         ).build();
+    }
+
+    /** The envelope still carries the intake payload; the turn itself only works on {@link AXDialogueInput}. */
+    private static DialogueDeliveryPayload deliveryPayload() {
+        return new DialogueDeliveryPayload(
+                "session", "request", "player", "turn", "暮色森林怎么进？", "",
+                List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
+                0L, Long.MAX_VALUE
+        );
     }
 
     private static void await(BooleanSupplier condition, long timeoutMillis, String what) {

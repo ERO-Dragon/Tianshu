@@ -2,23 +2,23 @@ package com.rheinmetal.tianshu.function.auxilium.module.currentinput;
 
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 
 public final class AXDialogueInputMapper {
-    public AXRequest map(DialogueDeliveryPayload delivery) {
+    public AXRequest map(AXDialogueInput delivery) {
         if (delivery == null) {
             return new AXRequest("AX.request", "", "", AXInputSource.FORWARDED);
         }
-        return new AXRequest(requestKey(delivery), delivery.repairedText(), deliverySnapshot(delivery), AXInputSource.FORWARDED);
+        return new AXRequest(requestKey(delivery), delivery.text(), deliverySnapshot(delivery), AXInputSource.FORWARDED);
     }
 
-    private String requestKey(DialogueDeliveryPayload delivery) {
+    private String requestKey(AXDialogueInput delivery) {
         String sessionId = delivery.sessionId() == null || delivery.sessionId().isBlank() ? "session" : delivery.sessionId();
         String turnId = delivery.turnId() == null || delivery.turnId().isBlank() ? "turn" : delivery.turnId();
         return "AX." + sessionId + "." + turnId;
     }
 
-    private String deliverySnapshot(DialogueDeliveryPayload delivery) {
+    private String deliverySnapshot(AXDialogueInput delivery) {
         StringBuilder builder = new StringBuilder();
         if (!delivery.playerId().isBlank()) {
             appendLine(builder, "playerId=" + delivery.playerId());
@@ -87,7 +87,7 @@ public final class AXDialogueInputMapper {
      * words. A raw {@code namespace:path} is never shown to the model: a player hears "diamond sword", so the model
      * should read the same thing.</p>
      */
-    private String readable(DialogueDeliveryPayload delivery, String id) {
+    private String readable(AXDialogueInput delivery, String id) {
         if (id == null || id.isBlank()) {
             return "";
         }
@@ -96,7 +96,7 @@ public final class AXDialogueInputMapper {
         return display.isBlank() ? readableId(trimmed) : display;
     }
 
-    private String displayName(DialogueDeliveryPayload delivery, String id) {
+    private String displayName(AXDialogueInput delivery, String id) {
         if (delivery.displayNames() == null) {
             return "";
         }
@@ -112,7 +112,7 @@ public final class AXDialogueInputMapper {
     }
 
     /** The words the player used for the matched objects, in match order and without repeats. */
-    private static String matchedObjectWords(DialogueDeliveryPayload delivery) {
+    private static String matchedObjectWords(AXDialogueInput delivery) {
         if (delivery == null || delivery.objectMatches() == null || delivery.objectMatches().isEmpty()) {
             return "";
         }
@@ -130,7 +130,7 @@ public final class AXDialogueInputMapper {
      * in the prompt is noise the model cannot use. When neither a display name nor a readable type id is available the
      * entry is dropped rather than filled with a machine identifier.</p>
      */
-    private String entitySummary(DialogueDeliveryPayload delivery, DialogueEntityRef ref) {
+    private String entitySummary(AXDialogueInput delivery, DialogueEntityRef ref) {
         if (ref == null) {
             return "";
         }

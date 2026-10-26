@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 
 import java.util.Objects;
@@ -14,7 +14,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 final class AXTurnExecution {
     private final long generation;
     private final TianshuEnvelope deliveryEnvelope;
-    private final DialogueDeliveryPayload delivery;
+    private final AXDialogueInput delivery;
     private final AXScope scope;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private final AtomicBoolean releaseRequested = new AtomicBoolean(false);
@@ -27,7 +27,7 @@ final class AXTurnExecution {
     private volatile AXTurnCancellation cancellation;
     private volatile AXTurnLatencyTracker latencyTracker;
 
-    AXTurnExecution(long generation, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope) {
+    AXTurnExecution(long generation, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope) {
         this.generation = generation;
         this.deliveryEnvelope = Objects.requireNonNull(deliveryEnvelope, "deliveryEnvelope");
         this.delivery = Objects.requireNonNull(delivery, "delivery");
@@ -42,7 +42,7 @@ final class AXTurnExecution {
         return deliveryEnvelope;
     }
 
-    DialogueDeliveryPayload delivery() {
+    AXDialogueInput delivery() {
         return delivery;
     }
 

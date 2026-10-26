@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 
@@ -18,7 +18,7 @@ public final class AXSessionController {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
     }
 
-    public void release(TianshuEnvelope parent, DialogueDeliveryPayload delivery, DialogueReleaseReason reason) {
+    public void release(TianshuEnvelope parent, AXDialogueInput delivery, DialogueReleaseReason reason) {
         if (parent == null || delivery == null || delivery.sessionId().isBlank()) {
             return;
         }
@@ -34,7 +34,7 @@ public final class AXSessionController {
         adapter.commandSessionControl(parent, payload);
     }
 
-    public void extend(TianshuEnvelope parent, DialogueDeliveryPayload delivery, long requestedProcessingMillis) {
+    public void extend(TianshuEnvelope parent, AXDialogueInput delivery, long requestedProcessingMillis) {
         if (parent == null || delivery == null || delivery.sessionId().isBlank() || requestedProcessingMillis <= 0L) {
             return;
         }

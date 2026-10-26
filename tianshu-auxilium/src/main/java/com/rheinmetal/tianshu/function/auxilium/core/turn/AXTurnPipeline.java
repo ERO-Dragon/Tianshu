@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 
 /**
@@ -12,5 +12,5 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
  * 输出收口和会话释放；不得绕过协议中心或自行仲裁对话所有权。
  */
 public interface AXTurnPipeline {
-    void startTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery);
+    void startTurn(TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery);
 }

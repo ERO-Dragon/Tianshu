@@ -76,6 +76,54 @@ neoForge {
         }
     }
 
+    // Which mods a development run installs is decided by where the run is started from:
+    //   repository root  -> every feature (the full assembly)
+    //   this adapter     -> the kernel alone, which is what a third-party integration sees
+    //   a feature module -> that feature plus the modules it requires, never its optional partners
+    // so launching `runClient` from echo installs kernel+echo, and launching it from auxilium installs
+    // kernel+auxilium+intake+weaving (its hard dependencies) but not echo (an optional integration).
+    // `-PfeatureMods=` overrides the whole thing: `-PfeatureMods=` is the kernel alone.
+    def runFeatureNames = ['intake', 'echo', 'weaving', 'auxilium']
+    def startedFrom = {
+        def startParameter = gradle.startParameter
+        def explicitFeature = startParameter.taskNames.findResult { name ->
+            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium)):runClient$/
+            match.find() ? match.group(2) : null
+        }
+        if (explicitFeature != null) {
+            return explicitFeature
+        }
+        if (startParameter.taskNames.any { it.endsWith('runClient') && it.contains('tianshu-adapter') }) {
+            return 'adapter'
+        }
+        // A bare `runClient` carries no path: the directory it was typed in decides.
+        def currentDir = startParameter.currentDir
+        def owner = ([project] + runFeatureNames.collect { rootProject.project(":tianshu-${it}") })
+                .find { it.projectDir == currentDir }
+        if (owner == null) {
+            return 'root'
+        }
+        return owner == project ? 'adapter' : (owner.name - 'tianshu-')
+    }()
+    def devFeatureMods = {
+        def explicit = findProperty('featureMods')
+        if (explicit != null) {
+            return explicit.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+        }
+        if (startedFrom == 'adapter') {
+            return []
+        }
+        if (startedFrom == 'root') {
+            return runFeatureNames
+        }
+        // A feature run boots its required partners too: without them it cannot assemble at all.
+        return ([startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])).unique()
+    }()
+    if (gradle.startParameter.taskNames.any { it.endsWith('runClient') }) {
+        logger.lifecycle("tianshu dev run: started from '${startedFrom}', installing " +
+                (devFeatureMods.isEmpty() ? 'the kernel alone' : devFeatureMods.join(', ')))
+    }
+
     mods {
         // One entry per mod id. The kernel mod owns the adapter plus every platform-neutral module
         // that carries no metadata of its own; each feature is a separate mod with its own manifest.
@@ -85,17 +133,33 @@ neoForge {
             sourceSet(project(':tianshu-core').sourceSets.main)
             sourceSet(project(':tianshu-api').sourceSets.main)
         }
-        tianshu_intake {
-            sourceSet(project(':tianshu-intake').sourceSets.main)
+        // A feature's entry source set is what makes it a mod at all. The @Mod class lives there, so a
+        // mod declared with only `main` is listed in game (its manifest is on the classpath) while no
+        // constructor ever runs — nothing registers, and its settings page never appears. Production jars
+        // carry the entry classes; the development run has to include that output explicitly.
+        if ('intake' in devFeatureMods) {
+            tianshu_intake {
+                sourceSet(project(':tianshu-intake').sourceSets.main)
+                sourceSet(project(':tianshu-intake').sourceSets.neoforgeEntry)
+            }
         }
-        tianshu_echo {
-            sourceSet(project(':tianshu-echo').sourceSets.main)
+        if ('echo' in devFeatureMods) {
+            tianshu_echo {
+                sourceSet(project(':tianshu-echo').sourceSets.main)
+                sourceSet(project(':tianshu-echo').sourceSets.neoforgeEntry)
+            }
         }
-        tianshu_weaving {
-            sourceSet(project(':tianshu-weaving').sourceSets.main)
+        if ('weaving' in devFeatureMods) {
+            tianshu_weaving {
+                sourceSet(project(':tianshu-weaving').sourceSets.main)
+                sourceSet(project(':tianshu-weaving').sourceSets.neoforgeEntry)
+            }
         }
-        tianshu_auxilium {
-            sourceSet(project(':tianshu-auxilium').sourceSets.main)
+        if ('auxilium' in devFeatureMods) {
+            tianshu_auxilium {
+                sourceSet(project(':tianshu-auxilium').sourceSets.main)
+                sourceSet(project(':tianshu-auxilium').sourceSets.neoforgeEntry)
+            }
         }
     }
 }

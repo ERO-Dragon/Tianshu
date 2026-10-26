@@ -35,7 +35,7 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemory
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetrievalResult;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
@@ -326,7 +326,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         );
     }
 
-    public void startTurn(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
+    public void startTurn(TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery) {
         if (!accepting) {
             release(deliveryEnvelope, delivery, DialogueReleaseReason.MODULE_UNLOADED);
             return;
@@ -376,7 +376,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         execution.dynamicFactRequestId(dynamicRequestId);
     }
 
-    private void continueTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts) {
+    private void continueTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts) {
         if (!isCurrent(execution)) {
             return;
         }
@@ -388,7 +388,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 continueTurnWithBudget(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, budget));
     }
 
-    private void continueTurnWithBudget(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXRuntimeLlmBudget runtimeBudget) {
+    private void continueTurnWithBudget(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXRuntimeLlmBudget runtimeBudget) {
         if (!isCurrent(execution)) {
             return;
         }
@@ -430,7 +430,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         recentDialogueSystem.applyWindowPolicy(memoryPolicy);
     }
 
-    private void submitLlmTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {
+    private void submitLlmTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {
         if (!isCurrent(execution)) {
             return;
         }
@@ -591,7 +591,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         return pollRescuedTurns.get();
     }
 
-    private void extendSessionIfNeeded(TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery) {
+    private void extendSessionIfNeeded(TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery) {
         long expireAt = delivery == null ? 0L : delivery.expireAtMillis();
         if (expireAt > 0L && expireAt - System.currentTimeMillis() < 3_000L) {
             sessionController.extend(deliveryEnvelope, delivery, 10_000L);
@@ -667,7 +667,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
 
     private void release(
             TianshuEnvelope deliveryEnvelope,
-            DialogueDeliveryPayload delivery,
+            AXDialogueInput delivery,
             DialogueReleaseReason reason
     ) {
         sessionController.release(deliveryEnvelope, delivery, reason);
@@ -698,7 +698,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         if (text == null || text.isBlank() || !execution.markAssistantPersisted()) {
             return;
         }
-        DialogueDeliveryPayload delivery = execution.delivery();
+        AXDialogueInput delivery = execution.delivery();
         appendTurn(execution.scope(), "assistant", text, delivery.sessionId(), delivery.turnId());
     }
 
@@ -717,7 +717,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private final class PendingTurn implements AXLlmRequestHandler {
         private final AXTurnExecution execution;
         private final TianshuEnvelope deliveryEnvelope;
-        private final DialogueDeliveryPayload delivery;
+        private final AXDialogueInput delivery;
         private final AXScope scope;
         private final AXOutputProcessor.AXOutputTurn outputTurn;
         private final AXStepSignal<LLMPromptResultPayload> step;
@@ -733,7 +733,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         /** 是否已经向输出层交出过内容：决定收尾时要不要补写 displayedText（中断后历史里要有已念出的话）。 */
         private boolean outputStarted;
 
-        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, DialogueDeliveryPayload delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn, AXStepSignal<LLMPromptResultPayload> step) {
+        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn, AXStepSignal<LLMPromptResultPayload> step) {
             this.execution = execution;
             this.deliveryEnvelope = deliveryEnvelope;
             this.delivery = delivery;

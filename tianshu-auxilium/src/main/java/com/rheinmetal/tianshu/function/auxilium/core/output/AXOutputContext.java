@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.output;
 
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 
 import java.util.Objects;
 
@@ -19,13 +19,13 @@ public record AXOutputContext(
         startedAtMillis = Math.max(0L, startedAtMillis);
     }
 
-    public static AXOutputContext from(DialogueDeliveryPayload delivery) {
-        Objects.requireNonNull(delivery, "delivery");
+    public static AXOutputContext from(AXDialogueInput input) {
+        Objects.requireNonNull(input, "input");
         return new AXOutputContext(
-                delivery.sessionId(),
-                delivery.requestId(),
-                delivery.turnId(),
-                delivery.playerId(),
+                input.sessionId(),
+                input.requestId(),
+                input.turnId(),
+                input.playerId(),
                 System.currentTimeMillis()
         );
     }

@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.gamecontext;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
@@ -30,7 +30,7 @@ public final class AXDynamicFactClient {
 
     public String request(
             TianshuEnvelope parent,
-            DialogueDeliveryPayload delivery,
+            AXDialogueInput delivery,
             AXScope scope,
             AXRequest request,
             Completion completion
@@ -155,7 +155,7 @@ public final class AXDynamicFactClient {
         query.completion().complete(List.of());
     }
 
-    private List<String> focusIds(DialogueDeliveryPayload delivery) {
+    private List<String> focusIds(AXDialogueInput delivery) {
         if (delivery == null) {
             return List.of();
         }

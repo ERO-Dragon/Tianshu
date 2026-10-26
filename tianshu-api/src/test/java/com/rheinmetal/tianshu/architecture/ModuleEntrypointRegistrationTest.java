@@ -144,6 +144,33 @@ class ModuleEntrypointRegistrationTest {
                 "every feature module ships both shells; a missing one is a loader silently unsupported");
     }
 
+    /**
+     * The development runs are assembled from source sets, and a feature declared there without its entry
+     * output is a mod with no {@code @Mod} class: it appears in the mod list, no constructor ever runs,
+     * nothing registers, and its settings page never appears. Production jars carry the entry classes, so
+     * this only bites {@code runClient} — which is exactly where the registration path gets exercised by hand.
+     */
+    @Test
+    void theDevelopmentRunDeclaresEveryEntrySourceSet() throws Exception {
+        String adapterBuild = read(REPOSITORY_ROOT.resolve("tianshu-adapter/neoforge-1.21.1/build.gradle"));
+
+        List<String> offenders = new ArrayList<>();
+        for (Path module : featureModules()) {
+            if (!Files.isDirectory(module.resolve("src/neoforgeEntry"))) {
+                continue;
+            }
+            String expected = "project(':" + module.getFileName() + "').sourceSets.neoforgeEntry";
+            if (!adapterBuild.contains(expected)) {
+                offenders.add(module.getFileName() + " is declared for development without " + expected);
+            }
+        }
+
+        assertTrue(offenders.isEmpty(),
+                () -> "a feature mod declared without its entry source set is listed in game but never "
+                        + "registers, so its module and settings page are missing:\n"
+                        + String.join("\n", offenders));
+    }
+
     // ---------------------------------------------------------------- discovery
 
     /**

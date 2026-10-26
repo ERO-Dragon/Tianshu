@@ -4,7 +4,8 @@ import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
+import com.rheinmetal.tianshu.function.auxilium.input.AXMatchedObject;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import org.junit.jupiter.api.Test;
@@ -47,17 +48,17 @@ class AXDialogueInputMapperTest {
     /** No display name anywhere: the id degrades to its own words, still without the namespace. */
     @Test
     void withoutDisplayNamesTheIdDegradesToReadableWords() {
-        DialogueDeliveryPayload bare = new DialogueDeliveryPayload(
+        AXDialogueInput bare = new AXDialogueInput(
                 "session",
                 "request",
                 "player",
                 "turn",
                 "repaired player text",
-                "normalized text should not be used",
-                List.of(new DialogueEntityRef("entity-uuid", "minecraft:villager", "", 3.0D, false)),
-                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D, List.of()),
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of(), Map.of("weather", "clear")),
-                100L,
+                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D, List.of()),
+                List.of(new DialogueEntityRef("entity-uuid", "minecraft:villager", "", 3.0D, false)),
+                Map.of(),
+                List.of(),
                 1_000L
         );
 
@@ -94,25 +95,22 @@ class AXDialogueInputMapperTest {
         assertFalse(request.deliverySnapshot().contains("weather=clear"), request.deliverySnapshot());
     }
 
-    private static DialogueDeliveryPayload delivery(Map<String, String> displayNames) {
-        return new DialogueDeliveryPayload(
+    private static AXDialogueInput delivery(Map<String, String> displayNames) {
+        return new AXDialogueInput(
                 "session",
                 "request",
                 "player",
                 "turn",
                 "repaired player text",
-                "normalized text should not be used",
-                List.of(new DialogueEntityRef("entity-uuid", "minecraft:villager", "村民", 3.0D, false)),
-                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D, List.of()),
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of(), Map.of("weather", "clear")),
-                100L,
-                1_000L,
+                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D, List.of()),
+                List.of(new DialogueEntityRef("entity-uuid", "minecraft:villager", "村民", 3.0D, false)),
                 displayNames,
                 List.of(
-                        new IrObjectMatch("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe"),
-                        new IrObjectMatch("女仆", "touhou_little_maid:maid", "entity", "entity.touhou_little_maid.maid")
+                        new AXMatchedObject("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe"),
+                        new AXMatchedObject("女仆", "touhou_little_maid:maid", "entity", "entity.touhou_little_maid.maid")
                 ),
-                List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐"))
+                1_000L
         );
     }
 }

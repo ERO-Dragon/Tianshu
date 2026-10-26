@@ -33,9 +33,10 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 //              the default; an edge exists only because it is listed below.
 //   auxilium -> intake/weaving (required), echo (optional)
 //   intake, weaving, echo are leaves
-// A two-way protocol cannot be split between two optional partners: exactly one module owns the
-// vocabulary and the other depends on it. Dialogue is two-way (delivery flows down, participant and
-// session control flow up), so intake owns it and auxilium requires intake.
+// Dialogue is two-way (delivery flows down, participant and session control flow up) but all of its
+// vocabulary lives on the intake side: intake imports nothing from auxilium, so the dependency stays
+// one-directional and no cycle forms. That edge is required today because without intake nothing delivers
+// dialogue to auxilium at all; making it optional needs a bridge over the 12 files that use those types.
 def requiredFeatureEdges = [
         'auxilium': ['intake', 'weaving'],
         'intake'  : [],
@@ -53,6 +54,10 @@ featureModules.each { module ->
     def owner = module - 'tianshu-'
     allowedFeatureEdges[owner] = ((requiredFeatureEdges[owner] ?: []) + (optionalFeatureEdges[owner] ?: [])).unique()
 }
+// The adapter reads this same matrix when it decides what a development run installs, so the run set and
+// the dependency truth cannot drift apart.
+ext.requiredFeatureEdges = requiredFeatureEdges
+ext.optionalFeatureEdges = optionalFeatureEdges
 // Shipped kernel modules. tianshu-testkit is not one: it is a dev-only fixtures artifact that never enters
 // a mod jar, so it is allowed to speak the feature modules' vocabulary on purpose.
 def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-adapter']
@@ -336,5 +341,30 @@ allprojects {
         // The suites drive threads and audio stubs, not large heaps. The JVM default (a quarter of physical
         // RAM) reserves far more than they use and can fail to start on a machine with little free commit.
         maxHeapSize = '1g'
+    }
+}
+
+// ---------------------------------------------------------------- development runs
+// "Where the run is started from" is the whole answer to "which modules are installed":
+//   repository root   -> every feature (the full assembly)
+//   a feature module  -> that feature plus the modules it requires, never its optional partners
+//   the adapter       -> the kernel alone, which is what a third-party integration sees
+// The launch itself stays in the adapter; these tasks only delegate to it, and the adapter works out the
+// module set from where the invocation came from.
+tasks.register('runClient') {
+    group = 'tianshu'
+    description = 'Runs the development client with every feature module installed.'
+    dependsOn ':tianshu-adapter:neoforge-1.21.1:runClient'
+}
+
+subprojects {
+    plugins.withType(JavaPlugin).configureEach {
+        if (name in featureModules) {
+            tasks.register('runClient') {
+                group = 'tianshu'
+                description = "Runs the development client with ${name} and the modules it requires."
+                dependsOn ':tianshu-adapter:neoforge-1.21.1:runClient'
+            }
+        }
     }
 }

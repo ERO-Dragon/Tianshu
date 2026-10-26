@@ -68,6 +68,8 @@ import com.rheinmetal.tianshu.function.auxilium.storage.AXJsonStore;
 import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
 import com.rheinmetal.tianshu.function.auxilium.storage.AXStorageLayout;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
+import com.rheinmetal.tianshu.function.auxilium.input.AXMatchedObject;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceChatMessagePayload;
@@ -524,21 +526,51 @@ public final class AXModule implements TianshuManagedModule {
             context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX runtime is not prepared", null);
             return;
         }
-        if (envelope.payload() instanceof DialogueDeliveryPayload payload) {
-            env.diagnostics().publish(DiagnosticEvent.now(
-                    MODULE_ID,
-                    "DIALOGUE_DELIVERY",
-                    DiagnosticSeverity.INFO,
-                    DiagnosticPrivacy.RAW_CONTENT,
-                    Map.of(
-                            "sessionId", payload.sessionId(),
-                            "requestId", payload.requestId(),
-                            "repairedText", payload.repairedText(),
-                            "normalizedText", payload.normalizedText()
-                    )
-            ));
+        if (!(envelope.payload() instanceof DialogueDeliveryPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "AX dialogue delivery payload is invalid", null);
+            return;
         }
-        currentGateway.handleDelivery(envelope, context);
+        AXDialogueInput input = dialogueInputOf(payload);
+        env.diagnostics().publish(DiagnosticEvent.now(
+                MODULE_ID,
+                "DIALOGUE_DELIVERY",
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT,
+                Map.of(
+                        "sessionId", input.sessionId(),
+                        "requestId", input.requestId(),
+                        "text", input.text()
+                )
+        ));
+        currentGateway.handleDelivery(envelope, input, context);
+    }
+
+    /**
+     * The one place this module reads the intake side's delivery payload.
+     *
+     * <p>Past this method everything works on {@link AXDialogueInput}, which is what lets the gateway, the turn
+     * pipeline and the orchestrator stop depending on the intake module. A typed turn builds the same type with
+     * no payload involved and no object matches: nothing was recognized, so there is nothing the repair step
+     * could have resolved.</p>
+     */
+    private static AXDialogueInput dialogueInputOf(DialogueDeliveryPayload payload) {
+        return new AXDialogueInput(
+                payload.sessionId(),
+                payload.requestId(),
+                payload.playerId(),
+                payload.turnId(),
+                payload.repairedText(),
+                payload.contextSnapshot(),
+                payload.interactionHints(),
+                payload.matchedEntityRefs(),
+                payload.displayNames(),
+                payload.objectMatches().stream()
+                        .map(match -> new AXMatchedObject(
+                                match.spokenWord(), match.registryId(), match.registryKind(), match.languageKey()))
+                        .filter(AXMatchedObject::isMeaningful)
+                        .toList(),
+                payload.expireAtMillis()
+        );
     }
 
     private void handlePresenceWorldEvent(TianshuEnvelope envelope, ProtocolContext context) {

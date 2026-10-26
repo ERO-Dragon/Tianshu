@@ -28,6 +28,7 @@ import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
@@ -117,12 +118,12 @@ class AXTurnOrchestratorTest {
                 agentRuns(),
                 null
         );
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery
+                deliveryPayload()
         ).build();
 
         orchestrator.startTurn(deliveryEnvelope, delivery);
@@ -330,10 +331,11 @@ class AXTurnOrchestratorTest {
 
         orchestrator.startTurn(deliveryEnvelope(), delivery());
         await(() -> llmRequest.get() != null);
-        orchestrator.startTurn(deliveryEnvelope(), new DialogueDeliveryPayload(
-                "session-2", "request-2", "player", "turn-2", "second delivery", "", List.of(),
-                DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
-                System.currentTimeMillis(), System.currentTimeMillis() + 30_000L
+        orchestrator.startTurn(deliveryEnvelope(), new AXDialogueInput(
+                "session-2", "request-2", "player", "turn-2", "second delivery",
+                DialogueContextSnapshot.empty("player"), DialogueInteractionHints.empty(),
+                List.of(), java.util.Map.of(), List.of(),
+                System.currentTimeMillis() + 30_000L
         ));
 
         assertNotNull(ttsControl.get());
@@ -370,12 +372,12 @@ class AXTurnOrchestratorTest {
                 agentRuns(),
                 null
         );
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery
+                deliveryPayload()
         ).build();
 
         orchestrator.startTurn(deliveryEnvelope, delivery);
@@ -456,10 +458,11 @@ class AXTurnOrchestratorTest {
         await(() -> llmRequest.get() != null);
         TianshuEnvelope firstRequest = llmRequest.get();
 
-        orchestrator.startTurn(deliveryEnvelope(), new DialogueDeliveryPayload(
-                "session", "request-2", "player", "turn-2", "second delivery", "", List.of(),
-                DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
-                System.currentTimeMillis(), System.currentTimeMillis() + 30_000L
+        orchestrator.startTurn(deliveryEnvelope(), new AXDialogueInput(
+                "session", "request-2", "player", "turn-2", "second delivery",
+                DialogueContextSnapshot.empty("player"), DialogueInteractionHints.empty(),
+                List.of(), java.util.Map.of(), List.of(),
+                System.currentTimeMillis() + 30_000L
         ));
 
         assertEquals(firstRequest, llmRequest.get());
@@ -593,12 +596,12 @@ class AXTurnOrchestratorTest {
                 agentRuns(),
                 null
         );
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery
+                deliveryPayload()
         ).build();
 
         orchestrator.startTurn(deliveryEnvelope, delivery);
@@ -659,12 +662,12 @@ class AXTurnOrchestratorTest {
                 agentRuns(),
                 null
         );
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery
+                deliveryPayload()
         ).build();
 
         orchestrator.startTurn(deliveryEnvelope, delivery);
@@ -703,12 +706,12 @@ class AXTurnOrchestratorTest {
                 agentRuns(),
                 null
         );
-        DialogueDeliveryPayload delivery = delivery();
+        AXDialogueInput delivery = delivery();
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery
+                deliveryPayload()
         ).build();
 
         orchestrator.startTurn(deliveryEnvelope, delivery);
@@ -886,18 +889,18 @@ class AXTurnOrchestratorTest {
         );
     }
 
-    private static DialogueDeliveryPayload delivery() {
-        return new DialogueDeliveryPayload(
+    private static AXDialogueInput delivery() {
+        return new AXDialogueInput(
                 "session",
                 "request",
                 "player",
                 "turn",
                 "repaired player text",
-                "normalized text should not be used",
-                List.of(),
-                DialogueInteractionHints.empty(),
                 DialogueContextSnapshot.empty("player"),
-                System.currentTimeMillis(),
+                DialogueInteractionHints.empty(),
+                List.of(),
+                java.util.Map.of(),
+                List.of(),
                 System.currentTimeMillis() + 30_000L
         );
     }
@@ -907,8 +910,17 @@ class AXTurnOrchestratorTest {
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.DIALOGUE_DELIVERY,
-                delivery()
+                deliveryPayload()
         ).build();
+    }
+
+    /** The envelope still carries the intake payload; the turn itself only works on {@link AXDialogueInput}. */
+    private static DialogueDeliveryPayload deliveryPayload() {
+        return new DialogueDeliveryPayload(
+                "session", "request", "player", "turn", "repaired player text", "",
+                List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"),
+                0L, Long.MAX_VALUE
+        );
     }
 
     private static AXScope writableScope() {

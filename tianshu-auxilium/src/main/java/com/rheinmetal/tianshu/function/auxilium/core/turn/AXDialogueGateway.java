@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
-import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
@@ -33,12 +33,12 @@ public final class AXDialogueGateway {
         this.onUserTurnStart = onUserTurnStart;
     }
 
-    public void handleDelivery(TianshuEnvelope envelope, ProtocolContext context) {
-        if (!(envelope.payload() instanceof DialogueDeliveryPayload payload)) {
-            fail(context, envelope, "INVALID_PAYLOAD", "AX dialogue delivery payload is invalid", null);
+    public void handleDelivery(TianshuEnvelope envelope, AXDialogueInput input, ProtocolContext context) {
+        if (input == null) {
+            fail(context, envelope, "INVALID_PAYLOAD", "AX dialogue input is invalid", null);
             return;
         }
-        if (!accessController.canAcceptDelivery(envelope, payload)) {
+        if (!accessController.canAcceptDelivery(envelope, input)) {
             fail(context, envelope, "AX_DELIVERY_REJECTED", "AX dialogue delivery is not authorized", null);
             return;
         }
@@ -48,7 +48,7 @@ public final class AXDialogueGateway {
             if (onUserTurnStart != null) {
                 onUserTurnStart.run();
             }
-            orchestrator.startTurn(envelope, payload);
+            orchestrator.startTurn(envelope, input);
             complete(context, envelope);
         } catch (Exception e) {
             if (statusPublisher != null) {
