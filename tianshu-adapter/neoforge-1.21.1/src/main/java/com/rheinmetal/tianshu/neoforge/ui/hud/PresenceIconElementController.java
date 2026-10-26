@@ -5,17 +5,29 @@ import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 
 import java.util.Optional;
 
+/**
+ * The icon element: visible whenever the HUD is on, animated by {@link PresenceHudVisualTransition}.
+ *
+ * <p>The resolved layout is cached and re-resolved only when the screen size, the icon size or the configured
+ * position changes, so a steady frame builds no objects at all: the transition returns the same parameter
+ * instance and this controller returns a frame that carries it.</p>
+ */
 public final class PresenceIconElementController implements PresenceHudElementController {
     public static final String ELEMENT_ID = "presence.icon";
+    private static final long TRANSITION_MILLIS = 240L;
 
     private final PresenceHudSettings settings;
-    private final PresenceHudVisualTransition visualTransition;
-    private PresenceHudElementState state = PresenceHudElementState.HIDDEN;
-    private long stateEnteredAtMillis;
+    private final PresenceHudVisualTransition visualTransition = new PresenceHudVisualTransition(TRANSITION_MILLIS);
+    private final PresenceHudElementStateTracker elementState = new PresenceHudElementStateTracker();
+    private PresenceHudLayout cachedLayout;
+    private int cachedScreenWidth = -1;
+    private int cachedScreenHeight = -1;
+    private double cachedIconSize = -1.0D;
+    private double cachedPositionX = Double.NaN;
+    private double cachedPositionY = Double.NaN;
 
     public PresenceIconElementController(PresenceHudSettings settings) {
         this.settings = settings == null ? PresenceHudSettings.ENABLED : settings;
-        this.visualTransition = new PresenceHudVisualTransition(240L);
     }
 
     @Override
@@ -26,42 +38,50 @@ public final class PresenceIconElementController implements PresenceHudElementCo
         long nowMillis = context.nowMillis();
         PresenceHudDisplay display = context.display();
         if (!visible(display)) {
-            enter(PresenceHudElementState.HIDDEN, nowMillis);
+            elementState.enter(PresenceHudElementState.HIDDEN, nowMillis);
             visualTransition.reset();
             return Optional.empty();
         }
-        enter(PresenceHudElementState.ACTIVE, nowMillis);
-        PresenceHudLayout layout = PresenceHudLayout.resolve(
-                settings,
-                context.screenWidth(),
-                context.screenHeight()
-        );
+        elementState.enter(PresenceHudElementState.ACTIVE, nowMillis);
+        PresenceHudLayout layout = layoutFor(context);
         visualTransition.accept(display.visualState(), display.listening(), nowMillis, layout);
-        PresenceHudVisualParameters visualParameters = visualTransition.sample(nowMillis, layout);
         return Optional.of(new PresenceHudElementFrame(
                 ELEMENT_ID,
                 PresenceHudElementType.ICON,
-                state,
+                elementState.state(),
                 display,
-                new PresenceHudElementTiming(nowMillis, stateEnteredAtMillis),
-                visualParameters
+                new PresenceHudElementTiming(nowMillis, elementState.enteredAtMillis()),
+                visualTransition.sample(nowMillis)
         ));
     }
 
     @Override
     public void reset() {
-        state = PresenceHudElementState.HIDDEN;
-        stateEnteredAtMillis = 0L;
+        elementState.reset();
         visualTransition.reset();
+        cachedLayout = null;
     }
 
-    private void enter(PresenceHudElementState nextState, long nowMillis) {
-        if (state != nextState) {
-            state = nextState;
-            stateEnteredAtMillis = nowMillis;
-        } else if (stateEnteredAtMillis <= 0L) {
-            stateEnteredAtMillis = nowMillis;
+    private PresenceHudLayout layoutFor(PresenceHudElementUpdateContext context) {
+        int screenWidth = context.screenWidth();
+        int screenHeight = context.screenHeight();
+        double iconSize = settings.iconSizePixels();
+        double positionX = settings.iconPositionX();
+        double positionY = settings.iconPositionY();
+        if (cachedLayout == null
+                || cachedScreenWidth != screenWidth
+                || cachedScreenHeight != screenHeight
+                || cachedIconSize != iconSize
+                || cachedPositionX != positionX
+                || cachedPositionY != positionY) {
+            cachedLayout = PresenceHudLayout.resolve(settings, screenWidth, screenHeight);
+            cachedScreenWidth = screenWidth;
+            cachedScreenHeight = screenHeight;
+            cachedIconSize = iconSize;
+            cachedPositionX = positionX;
+            cachedPositionY = positionY;
         }
+        return cachedLayout;
     }
 
     private boolean visible(PresenceHudDisplay display) {

@@ -377,7 +377,13 @@ public final class NeoForgeClientBootstrap {
         NeoForgePresenceTextProvider presenceTextProvider = new NeoForgePresenceTextProvider();
         PresenceHudPositionEditorOpener positionEditorOpener = (positionX, positionY, apply) -> {
             Minecraft minecraft = Minecraft.getInstance();
-            minecraft.setScreen(new PresenceHudPositionEditorScreen(minecraft.screen, positionX, positionY, apply));
+            minecraft.setScreen(new PresenceHudPositionEditorScreen(
+                    minecraft.screen,
+                    new ClientConfigPresenceHudSettings(config),
+                    positionX,
+                    positionY,
+                    apply
+            ));
         };
         TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(
                 config, coreManager, presenceTextProvider, config::isDebugEnabled, positionEditorOpener

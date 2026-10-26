@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -78,14 +77,12 @@ public final class PresenceActivityTracker {
             }
             return cachedSnapshot;
         }
-        if (!snapshotDirty && (cachedSnapshotExpiryAtMillis <= 0L || now < cachedSnapshotExpiryAtMillis)) {
+        if (!snapshotDirty && !cacheExpired(now)) {
             return cachedSnapshot;
         }
-        boolean expired = activities.values().removeIf(activity -> activity.expired(now));
-        snapshotDirty |= expired;
-        if (!snapshotDirty && (cachedSnapshotExpiryAtMillis <= 0L || now < cachedSnapshotExpiryAtMillis)) {
-            return cachedSnapshot;
-        }
+        // The cache expires exactly at the earliest activity expiry, so reaching this point always means
+        // "recompute": either an event changed the table or at least one activity has just expired.
+        activities.values().removeIf(activity -> activity.expired(now));
         boolean listening = activities.values().stream()
                 .anyMatch(activity -> activity.key().activityType() == PresenceActivityType.LISTENING);
         ActiveActivity primary = null;
@@ -112,6 +109,10 @@ public final class PresenceActivityTracker {
         return cachedSnapshot;
     }
 
+    private boolean cacheExpired(long nowMillis) {
+        return cachedSnapshotExpiryAtMillis > 0L && nowMillis >= cachedSnapshotExpiryAtMillis;
+    }
+
     private long nextExpiryAtMillis() {
         long next = 0L;
         for (ActiveActivity activity : activities.values()) {
@@ -123,35 +124,23 @@ public final class PresenceActivityTracker {
         return next;
     }
 
+    /**
+     * Whether the publisher owns this activity type. The rule comes from the contract, so this aggregator
+     * never names a feature module: {@code LOADING} and {@code PROCESSING_TASK} are open to everyone,
+     * everything else belongs to exactly one module.
+     */
     private boolean sourceAllowed(String sourceId, PresenceActivityType type) {
-        return switch (type) {
-            case THINKING, RESPONDING -> ProtocolModuleIds.AX.equals(sourceId);
-            case LISTENING -> ProtocolModuleIds.ASR.equals(sourceId);
-            case RECONNECTING, ERROR, DEGRADED -> ProtocolModuleIds.LLM.equals(sourceId);
-            case LOADING, PROCESSING_TASK -> true;
-        };
+        String owner = type.publisherModuleId();
+        return owner.isEmpty() || owner.equals(sourceId);
     }
 
     private boolean higherPriority(ActiveActivity candidate, ActiveActivity current) {
-        int candidatePriority = priority(candidate.key().activityType());
-        int currentPriority = priority(current.key().activityType());
+        int candidatePriority = candidate.key().activityType().priority();
+        int currentPriority = current.key().activityType().priority();
         if (candidatePriority != currentPriority) {
             return candidatePriority > currentPriority;
         }
         return candidate.occurredAtMillis() >= current.occurredAtMillis();
-    }
-
-    private int priority(PresenceActivityType type) {
-        return switch (type) {
-            case ERROR -> 60;
-            case DEGRADED -> 55;
-            case RESPONDING -> 50;
-            case THINKING -> 40;
-            case RECONNECTING -> 35;
-            case PROCESSING_TASK -> 30;
-            case LOADING -> 20;
-            case LISTENING -> 0;
-        };
     }
 
     private PresencePrimaryState primaryState(PresenceActivityType type) {

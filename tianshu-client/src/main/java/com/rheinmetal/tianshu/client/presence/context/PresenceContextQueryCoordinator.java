@@ -1,38 +1,48 @@
 package com.rheinmetal.tianshu.client.presence.context;
 
-import com.rheinmetal.tianshu.client.presence.PresenceProtocolAdapter;
-import com.rheinmetal.tianshu.client.presence.PresenceStateStore;
-import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
+import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 
+/**
+ * Answers {@code PRESENCE.QUERY_CONTEXT} on the client thread, one bounded batch per tick.
+ *
+ * <p>The context is captured when a request is answered, not on a timer and not on every input event: nothing
+ * is read until somebody asks, and what is read is exactly the union of the groups the drained requests asked
+ * for. Requests drained in the same tick therefore share one platform capture, which is the only sharing this
+ * module needs.</p>
+ *
+ * <p>A capture that throws fails the drained requests instead of escaping into the client tick: a broken
+ * platform read must degrade the answer, not the game loop.</p>
+ */
 public final class PresenceContextQueryCoordinator {
     private static final int MAX_PENDING_QUERIES = 64;
     private static final int MAX_QUERIES_PER_TICK = 8;
+
     private final Queue<PendingContextQuery> pendingQueries = new ArrayBlockingQueue<>(MAX_PENDING_QUERIES);
     private final Object lifecycleMonitor = new Object();
-    private final PresenceStateStore stateStore;
+    private final ClientGameContextProvider platform;
     private final PresenceContextFactMapper factMapper;
-    private volatile PresenceProtocolAdapter adapter;
-    private volatile boolean worldSessionActive = true;
+    private volatile PresenceContextResponder responder;
+    private boolean worldSessionActive;
     private long worldGeneration;
 
-    public PresenceContextQueryCoordinator(PresenceStateStore stateStore, PresenceContextFactMapper factMapper) {
-        this.stateStore = stateStore;
+    public PresenceContextQueryCoordinator(ClientGameContextProvider platform, PresenceContextFactMapper factMapper) {
+        this.platform = Objects.requireNonNull(platform, "platform");
         this.factMapper = factMapper == null ? new PresenceContextFactMapper() : factMapper;
     }
 
-    public void bindAdapter(PresenceProtocolAdapter adapter) {
-        this.adapter = adapter;
+    public void bindResponder(PresenceContextResponder responder) {
+        this.responder = responder;
     }
 
     public void startWorldSession() {
@@ -47,48 +57,33 @@ public final class PresenceContextQueryCoordinator {
         synchronized (lifecycleMonitor) {
             worldSessionActive = false;
             worldGeneration++;
-            cancelled = drainPending(Integer.MAX_VALUE);
+            cancelled = drainLocked(Integer.MAX_VALUE);
         }
-        for (PendingContextQuery pending : cancelled) {
-            fail(pending, "PRESENCE_WORLD_STOPPED", "Presence world session stopped");
-        }
+        failAll(cancelled, "PRESENCE_WORLD_STOPPED", "Presence world session stopped");
     }
 
     public void handleQuery(TianshuEnvelope envelope, ProtocolContext context, PresenceContextQueryPayload payload) {
-        long requestGeneration;
+        EnumSet<PresenceContextGroup> groups = PresenceContextGroup.fromFactIds(payload.requestedFactIds());
         synchronized (lifecycleMonitor) {
             if (!worldSessionActive) {
                 context.fail(envelope.envelopeId(), "PRESENCE_NOT_READY", "Presence world session is not ready", null);
                 return;
             }
-            requestGeneration = worldGeneration;
-        }
-        EnumSet<PresenceContextGroup> groups = PresenceContextGroup.fromFactIds(payload.requestedFactIds());
-        if (groups.isEmpty()) {
-            boolean active;
-            synchronized (lifecycleMonitor) {
-                active = worldSessionActive && requestGeneration == worldGeneration;
-            }
-            if (!active) {
-                context.fail(envelope.envelopeId(), "PRESENCE_NOT_READY", "Presence world session is not ready", null);
-                return;
-            }
-            respond(envelope, context, payload, stateStore.contextSnapshot());
-            return;
-        }
-        synchronized (lifecycleMonitor) {
-            if (!worldSessionActive || requestGeneration != worldGeneration) {
-                context.fail(envelope.envelopeId(), "PRESENCE_NOT_READY", "Presence world session is not ready", null);
-                return;
-            }
-            if (!pendingQueries.offer(new PendingContextQuery(envelope, context, payload, groups, requestGeneration))) {
+            if (!pendingQueries.offer(new PendingContextQuery(envelope, context, payload, groups, worldGeneration))) {
                 context.fail(envelope.envelopeId(), "PRESENCE_BUSY", "Presence context queue is full", null);
             }
         }
     }
 
-    public void processPending(PresenceEventCollector collector) {
-        List<PendingContextQuery> drained = drainPending(MAX_QUERIES_PER_TICK);
+    /**
+     * Answers at most {@link #MAX_QUERIES_PER_TICK} requests with one capture.
+     *
+     * <p>Requests that outlive their world session are failed rather than answered from the next world: the
+     * caller's own timeout and world-session handling then see a definite end instead of a late answer about a
+     * world that no longer exists.</p>
+     */
+    public void processPending() {
+        List<PendingContextQuery> drained = drain(MAX_QUERIES_PER_TICK);
         if (drained.isEmpty()) {
             return;
         }
@@ -96,38 +91,49 @@ public final class PresenceContextQueryCoordinator {
         synchronized (lifecycleMonitor) {
             activeGeneration = worldSessionActive ? worldGeneration : -1L;
         }
-        EnumSet<PresenceContextGroup> refreshGroups = EnumSet.noneOf(PresenceContextGroup.class);
-        for (PendingContextQuery pending : drained) {
-            refreshGroups.addAll(stateStore.groupsNeedingRefresh(pending.groups()));
+        if (!isActiveGeneration(activeGeneration)) {
+            failAll(drained, "PRESENCE_WORLD_STOPPED", "Presence world session stopped");
+            return;
         }
-        if (!refreshGroups.isEmpty() && isActiveGeneration(activeGeneration)) {
-            PresenceContextSnapshot captured = collector.captureGroups(refreshGroups);
-            stateStore.updateGroups(captured, refreshGroups);
-        }
+        EnumSet<PresenceContextGroup> requestedGroups = EnumSet.noneOf(PresenceContextGroup.class);
         for (PendingContextQuery pending : drained) {
-            boolean active;
-            synchronized (lifecycleMonitor) {
-                active = activeGeneration >= 0L
-                        && pending.worldGeneration() == worldGeneration
-                        && worldSessionActive;
+            requestedGroups.addAll(pending.groups());
+        }
+        PresenceContextSnapshot captured;
+        if (requestedGroups.isEmpty()) {
+            // A request that names no fact group gets an answer that carries no fact: it asked for nothing.
+            captured = PresenceContextSnapshot.empty();
+        } else {
+            try {
+                captured = platform.captureContext(requestedGroups);
+            } catch (RuntimeException failure) {
+                failAll(drained, "PRESENCE_CAPTURE_FAILED",
+                        "Presence context capture failed: " + failure.getMessage());
+                return;
             }
-            if (!active) {
+        }
+        for (PendingContextQuery pending : drained) {
+            if (!isActiveGeneration(activeGeneration) || pending.worldGeneration() != activeGeneration) {
                 fail(pending, "PRESENCE_WORLD_STOPPED", "Presence world session stopped");
                 continue;
             }
-            respond(pending.envelope(), pending.context(), pending.payload(), stateStore.contextSnapshot());
+            respond(pending, captured);
         }
     }
 
-    private List<PendingContextQuery> drainPending(int limit) {
+    private List<PendingContextQuery> drain(int limit) {
         synchronized (lifecycleMonitor) {
-            List<PendingContextQuery> drained = new ArrayList<>();
-            PendingContextQuery pending;
-            while (drained.size() < limit && (pending = pendingQueries.poll()) != null) {
-                drained.add(pending);
-            }
-            return drained;
+            return drainLocked(limit);
         }
+    }
+
+    private List<PendingContextQuery> drainLocked(int limit) {
+        List<PendingContextQuery> drained = new ArrayList<>();
+        PendingContextQuery pending;
+        while (drained.size() < limit && (pending = pendingQueries.poll()) != null) {
+            drained.add(pending);
+        }
+        return drained;
     }
 
     private boolean isActiveGeneration(long generation) {
@@ -136,22 +142,24 @@ public final class PresenceContextQueryCoordinator {
         }
     }
 
-    private void respond(
-            TianshuEnvelope envelope,
-            ProtocolContext context,
-            PresenceContextQueryPayload query,
-            PresenceContextSnapshot snapshot
-    ) {
-        PresenceProtocolAdapter currentAdapter = adapter;
-        if (currentAdapter == null) {
-            context.fail(envelope.envelopeId(), "PRESENCE_NOT_READY", "Presence protocol adapter is not ready", null);
+    private void respond(PendingContextQuery pending, PresenceContextSnapshot snapshot) {
+        PresenceContextResponder currentResponder = responder;
+        if (currentResponder == null) {
+            fail(pending, "PRESENCE_NOT_READY", "Presence protocol adapter is not ready");
             return;
         }
-        currentAdapter.respondContext(envelope, PresenceContextSnapshotPayload.success(
-                query.requestId(),
-                factMapper.factsFrom(snapshot, query.requestedFactIds())
-        ));
-        context.complete(envelope.envelopeId());
+        currentResponder.respond(
+                pending.envelope(),
+                pending.payload().requestId(),
+                factMapper.factsFrom(snapshot, pending.payload().requestedFactIds()),
+                pending.context()
+        );
+    }
+
+    private void failAll(List<PendingContextQuery> pendingQueries, String reasonCode, String message) {
+        for (PendingContextQuery pending : pendingQueries) {
+            fail(pending, reasonCode, message);
+        }
     }
 
     private void fail(PendingContextQuery pending, String reasonCode, String message) {

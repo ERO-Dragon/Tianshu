@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.ui.hud;
 
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudSettings;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualPreset;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Renderable;
@@ -10,13 +12,22 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
-/** Full-screen, reversible editor for the normalized Presence icon position. */
+/**
+ * Full-screen, reversible editor for the normalized Presence icon position.
+ *
+ * <p>It draws the icon through the same {@link PresenceHudLayout} the HUD uses, with the draft position and the
+ * saved size, so the preview cannot disagree with the real element: dragging to a place the layout would clamp
+ * shows the clamped result here too. The saved coordinate stays normalized, and the "not moved yet" case keeps
+ * the default experience-bar anchor instead of freezing today's pixel position.</p>
+ */
 public final class PresenceHudPositionEditorScreen extends Screen {
-    private static final int ICON_RADIUS = 14;
+    private static final int ICON_HIT_PADDING = 8;
     private static final int GRID_COLOR = 0x553F6470;
+    private static final int CANVAS_COLOR = 0x660B1115;
     private static final int ICON_COLOR = 0xFF7DEBFF;
 
     private final Screen parent;
+    private final PresenceHudSettings settings;
     private final BiConsumer<Double, Double> applyPosition;
     private final boolean initialDefaultAnchor;
     private double positionX;
@@ -26,19 +37,21 @@ public final class PresenceHudPositionEditorScreen extends Screen {
 
     public PresenceHudPositionEditorScreen(
             Screen parent,
+            PresenceHudSettings settings,
             Supplier<Double> positionXSupplier,
             Supplier<Double> positionYSupplier,
             BiConsumer<Double, Double> applyPosition
     ) {
         super(Component.translatable("tianshu.gui.presence.position_editor.title"));
         this.parent = parent;
+        this.settings = settings == null ? PresenceHudSettings.ENABLED : settings;
         Objects.requireNonNull(positionXSupplier, "positionXSupplier");
         Objects.requireNonNull(positionYSupplier, "positionYSupplier");
         this.applyPosition = Objects.requireNonNull(applyPosition, "applyPosition");
         this.positionX = clamp(positionXSupplier.get(), 0.5D);
         Double configuredY = positionYSupplier.get();
         this.initialDefaultAnchor = configuredY == null || !Double.isFinite(configuredY) || configuredY < 0.0D;
-        this.positionY = normalizedY(configuredY);
+        this.positionY = initialDefaultAnchor ? -1.0D : clamp(configuredY, 0.5D);
     }
 
     @Override
@@ -55,7 +68,7 @@ public final class PresenceHudPositionEditorScreen extends Screen {
         addRenderableWidget(Button.builder(
                 Component.translatable("tianshu.gui.settings.action.save"),
                 button -> {
-                    applyPosition.accept(positionX, positionChanged || !initialDefaultAnchor ? positionY : -1.0D);
+                    applyPosition.accept(positionX, savedPositionY());
                     returnToParent();
                 }
         ).pos(left + buttonWidth + gap, top).size(buttonWidth, buttonHeight).build());
@@ -64,26 +77,19 @@ public final class PresenceHudPositionEditorScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderTransparentBackground(graphics);
-        int canvasLeft = 16;
-        int canvasTop = 28;
-        int canvasRight = width - 16;
-        int canvasBottom = height - 52;
-        graphics.fill(canvasLeft, canvasTop, canvasRight, canvasBottom, 0xAA0B1115);
-        for (int x = canvasLeft; x <= canvasRight; x += Math.max(1, (canvasRight - canvasLeft) / 8)) {
-            graphics.fill(x, canvasTop, x + 1, canvasBottom, GRID_COLOR);
-        }
-        for (int y = canvasTop; y <= canvasBottom; y += Math.max(1, (canvasBottom - canvasTop) / 6)) {
-            graphics.fill(canvasLeft, y, canvasRight, y + 1, GRID_COLOR);
-        }
+        graphics.fill(0, 0, width, height, CANVAS_COLOR);
+        drawGrid(graphics);
         graphics.drawCenteredString(font, title, width / 2, 8, 0xFFFFFFFF);
         graphics.drawCenteredString(font,
                 Component.translatable("tianshu.gui.presence.position_editor.description"),
-                width / 2, canvasTop + 8, 0xFFB9D5DE);
+                width / 2, 22, 0xFFB9D5DE);
 
-        int iconX = canvasX(canvasLeft, canvasRight, positionX);
-        int iconY = canvasY(canvasTop, canvasBottom, positionY);
-        graphics.fill(iconX - ICON_RADIUS, iconY - ICON_RADIUS, iconX + ICON_RADIUS + 1, iconY + ICON_RADIUS + 1, ICON_COLOR);
-        graphics.renderOutline(iconX - ICON_RADIUS - 2, iconY - ICON_RADIUS - 2, ICON_RADIUS * 2 + 5, ICON_RADIUS * 2 + 5, 0xFFFFFFFF);
+        PresenceHudLayout layout = layout();
+        int halfSize = Math.max(1, Math.round(layout.sizePixels() / 2.0F));
+        int iconX = Math.round(layout.centerX());
+        int iconY = Math.round(layout.centerY());
+        graphics.fill(iconX - halfSize, iconY - halfSize, iconX + halfSize + 1, iconY + halfSize + 1, ICON_COLOR);
+        graphics.renderOutline(iconX - halfSize - 2, iconY - halfSize - 2, halfSize * 2 + 5, halfSize * 2 + 5, 0xFFFFFFFF);
         for (Renderable renderable : renderables) {
             renderable.render(graphics, mouseX, mouseY, partialTick);
         }
@@ -91,12 +97,15 @@ public final class PresenceHudPositionEditorScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
         if (button == 0 && isNearIcon(mouseX, mouseY)) {
             dragging = true;
             updatePosition(mouseX, mouseY);
             return true;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return false;
     }
 
     @Override
@@ -123,40 +132,84 @@ public final class PresenceHudPositionEditorScreen extends Screen {
         returnToParent();
     }
 
+    private void drawGrid(GuiGraphics graphics) {
+        for (int column = 1; column < 4; column++) {
+            int x = width * column / 4;
+            graphics.fill(x, 36, x + 1, height - 44, GRID_COLOR);
+        }
+        for (int row = 1; row < 4; row++) {
+            int y = 36 + (height - 80) * row / 4;
+            graphics.fill(0, y, width, y + 1, GRID_COLOR);
+        }
+    }
+
+    /** Exactly what the HUD would draw for the draft position: same resolver, same clamping. */
+    private PresenceHudLayout layout() {
+        return PresenceHudLayout.resolve(draftSettings(), width, height);
+    }
+
+    private PresenceHudSettings draftSettings() {
+        return new PresenceHudSettings() {
+            @Override
+            public boolean hudEnabled() {
+                return settings.hudEnabled();
+            }
+
+            @Override
+            public boolean statusTextEnabled() {
+                return settings.statusTextEnabled();
+            }
+
+            @Override
+            public boolean iconEnabled() {
+                return settings.iconEnabled();
+            }
+
+            @Override
+            public double iconSizePixels() {
+                return settings.iconSizePixels();
+            }
+
+            @Override
+            public PresenceHudVisualPreset visualPreset() {
+                return settings.visualPreset();
+            }
+
+            @Override
+            public double iconPositionX() {
+                return positionX;
+            }
+
+            @Override
+            public double iconPositionY() {
+                return positionY;
+            }
+        };
+    }
+
     private void updatePosition(double mouseX, double mouseY) {
-        int canvasLeft = 16;
-        int canvasTop = 28;
-        int canvasRight = width - 16;
-        int canvasBottom = height - 52;
-        positionX = clamp((mouseX - canvasLeft) / Math.max(1.0D, canvasRight - canvasLeft), positionX);
-        positionY = clamp((mouseY - canvasTop) / Math.max(1.0D, canvasBottom - canvasTop), positionY);
+        positionX = clamp(mouseX / Math.max(1.0D, width), positionX);
+        positionY = clamp(mouseY / Math.max(1.0D, height), positionY);
         positionChanged = true;
     }
 
     private boolean isNearIcon(double mouseX, double mouseY) {
-        int canvasLeft = 16;
-        int canvasTop = 28;
-        int canvasRight = width - 16;
-        int canvasBottom = height - 52;
-        double dx = mouseX - canvasX(canvasLeft, canvasRight, positionX);
-        double dy = mouseY - canvasY(canvasTop, canvasBottom, positionY);
-        return dx * dx + dy * dy <= (ICON_RADIUS + 8) * (ICON_RADIUS + 8);
+        PresenceHudLayout layout = layout();
+        double reach = layout.sizePixels() / 2.0D + ICON_HIT_PADDING;
+        double dx = mouseX - layout.centerX();
+        double dy = mouseY - layout.centerY();
+        return dx * dx + dy * dy <= reach * reach;
     }
 
-    private int canvasX(int left, int right, double normalized) {
-        return left + (int) Math.round(clamp(normalized, 0.5D) * (right - left));
-    }
-
-    private int canvasY(int top, int bottom, double normalized) {
-        return top + (int) Math.round(clamp(normalized, 0.82D) * (bottom - top));
+    private double savedPositionY() {
+        if (positionChanged || !initialDefaultAnchor) {
+            return clamp(positionY, 0.5D);
+        }
+        return -1.0D;
     }
 
     private void returnToParent() {
         minecraft.setScreen(parent);
-    }
-
-    private static double normalizedY(Double value) {
-        return value == null || !Double.isFinite(value) || value < 0.0D ? 0.82D : clamp(value, 0.82D);
     }
 
     private static double clamp(Double value, double fallback) {

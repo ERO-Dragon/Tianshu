@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The platform states what happened and stops there: it does not look up a service and does not ask whether
- * anything can consume the gesture. Every published signal is also a presence input, which is the only thing
- * the platform still owns here.
+ * anything can consume the gesture. The signals are the only thing the platform owns here; presence is no
+ * longer fed from this path.
  */
 final class NeoForgeVoiceInputControllerTest {
 
@@ -25,8 +25,7 @@ final class NeoForgeVoiceInputControllerTest {
     void pushToTalkPublishesDownOncePerPressAndUpOnRelease() {
         List<String> published = new ArrayList<>();
         subscribeAll(published);
-        int[] presenceInputs = {0};
-        NeoForgeVoiceInputController controller = new NeoForgeVoiceInputController(() -> presenceInputs[0]++);
+        NeoForgeVoiceInputController controller = new NeoForgeVoiceInputController();
 
         controller.tick(true, false);
         controller.tick(true, true);
@@ -35,15 +34,13 @@ final class NeoForgeVoiceInputControllerTest {
 
         assertEquals(List.of(InputSignals.PUSH_TO_TALK_DOWN, InputSignals.PUSH_TO_TALK_UP), published,
                 "a held key is one press, not one per tick");
-        assertEquals(2, presenceInputs[0], "press and release each count as presence input");
     }
 
     @Test
     void anUnavailableKeyDropsStaleStateInsteadOfPublishing() {
         List<String> published = new ArrayList<>();
         subscribeAll(published);
-        NeoForgeVoiceInputController controller = new NeoForgeVoiceInputController(() -> {
-        });
+        NeoForgeVoiceInputController controller = new NeoForgeVoiceInputController();
 
         controller.tick(true, true);
         controller.tick(false, true);

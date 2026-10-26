@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresenceEquipment;
-import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
 import com.rheinmetal.tianshu.client.presence.model.PresenceInventoryItem;
 import com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus;
 import com.rheinmetal.tianshu.client.presence.model.PresencePotionEffect;
@@ -31,7 +30,6 @@ import net.minecraft.world.phys.HitResult;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public final class NeoForgePresencePlatform implements ClientGameContextProvider {
@@ -49,7 +47,7 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
     }
 
     @Override
-    public PresenceContextSnapshot captureContext(Set<PresenceContextGroup> groups, PresenceInputKind inputKind) {
+    public PresenceContextSnapshot captureContext(Set<PresenceContextGroup> groups) {
         Minecraft minecraft = Minecraft.getInstance();
         Player player = minecraft.player;
         if (player == null || minecraft.level == null) {
@@ -76,7 +74,6 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                         BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()), languageCode)
                 : "";
         List<String> equippedItems = live ? equippedItemIds(player) : List.of();
-        Map<String, String> facts = live ? facts(screenKind) : Map.of();
         PresenceEquipment equipment = requested.contains(PresenceContextGroup.PLAYER_EQUIPMENT)
                 ? equipment(player, languageCode)
                 : PresenceEquipment.empty();
@@ -86,7 +83,6 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 dimensionId,
                 dimensionDisplayName,
                 screenKind,
-                screen == null ? "" : screen.getClass().getSimpleName(),
                 heldItemId,
                 heldItemDisplayName,
                 equippedItems,
@@ -94,22 +90,13 @@ public final class NeoForgePresencePlatform implements ClientGameContextProvider
                 live && minecraft.options.keyUse.isDown(),
                 live && minecraft.options.keyAttack.isDown(),
                 live && player.isShiftKeyDown(),
-                inputKind == null ? PresenceInputKind.NONE : inputKind,
                 requested.contains(PresenceContextGroup.PLAYER_STATUS) ? playerStatus(player) : PresencePlayerStatus.empty(),
                 requested.contains(PresenceContextGroup.WORLD_ENVIRONMENT) ? worldEnvironment(minecraft.level, player, languageCode) : PresenceWorldEnvironment.empty(),
                 requested.contains(PresenceContextGroup.PLAYER_INVENTORY) ? inventoryItems(player, languageCode) : List.of(),
                 equipment,
                 requested.contains(PresenceContextGroup.PLAYER_ACTIVE_EFFECTS) ? activeEffects(player, languageCode) : List.of(),
-                live ? facts : Map.of(),
                 System.currentTimeMillis()
         );
-    }
-
-    private Map<String, String> facts(PresenceScreenKind screenKind) {
-        if (screenKind == PresenceScreenKind.NONE) {
-            return Map.of();
-        }
-        return Map.of("screen", screenKind.name().toLowerCase(java.util.Locale.ROOT));
     }
 
     private List<String> equippedItemIds(Player player) {

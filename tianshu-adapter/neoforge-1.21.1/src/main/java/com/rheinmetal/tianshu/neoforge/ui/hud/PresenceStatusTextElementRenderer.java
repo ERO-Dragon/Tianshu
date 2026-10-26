@@ -8,6 +8,12 @@ public final class PresenceStatusTextElementRenderer implements PresenceHudEleme
     private static final int PANEL_BACKGROUND = 0x8A071116;
     private static final int TEXT_COLOR = 0xFFEAF7FF;
     private static final int ACTIVE_ACCENT = 0xD0A7F3FF;
+    private static final int MIN_PANEL_WIDTH = 88;
+    private static final int PANEL_HORIZONTAL_PADDING = 9;
+
+    /** The last measured line; a steady frame does not re-shape the same string through the font. */
+    private String measuredText = "";
+    private int measuredWidth;
 
     @Override
     public PresenceHudElementType type() {
@@ -24,8 +30,8 @@ public final class PresenceStatusTextElementRenderer implements PresenceHudEleme
             return;
         }
 
-        int textWidth = font.width(display.text());
-        int panelWidth = Math.max(88, textWidth + 18);
+        int textWidth = widthOf(font, display.text());
+        int panelWidth = Math.max(MIN_PANEL_WIDTH, textWidth + PANEL_HORIZONTAL_PADDING * 2);
         int panelHeight = font.lineHeight + 10;
         int left = 12;
         int top = graphics.guiHeight() - panelHeight - 18;
@@ -34,6 +40,14 @@ public final class PresenceStatusTextElementRenderer implements PresenceHudEleme
 
         graphics.fill(left, top, right, bottom, PANEL_BACKGROUND);
         graphics.fill(left, bottom - 1, right, bottom, ACTIVE_ACCENT);
-        graphics.drawString(font, display.text(), left + 9, top + 5, TEXT_COLOR, true);
+        graphics.drawString(font, display.text(), left + PANEL_HORIZONTAL_PADDING, top + 5, TEXT_COLOR, true);
+    }
+
+    private int widthOf(Font font, String text) {
+        if (!text.equals(measuredText)) {
+            measuredText = text;
+            measuredWidth = font.width(text);
+        }
+        return measuredWidth;
     }
 }

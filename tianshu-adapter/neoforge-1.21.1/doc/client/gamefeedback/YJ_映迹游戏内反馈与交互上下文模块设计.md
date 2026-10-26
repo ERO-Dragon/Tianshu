@@ -88,16 +88,17 @@ module.presence
 已完成：
 
 - `PRESENCE.QUERY_CONTEXT` capability 已接通
-- `PRESENCE.WORLD_EVENT` / `PRESENCE.CHAT_MESSAGE` topic 已收敛
+- `PRESENCE.WORLD_EVENT` 已收敛（聊天作为事件类型并入，见文末修订）
 - 旧的同步上下文桥已移除
-- IA / IR / AX 已切到 Presence 请求链路
+- IA / AX 已切到 Presence 请求链路；IR 不再查询（见 §7）
 - 空 fact 请求不再隐式返回默认上下文
 
 当前规则：
 
-- 交互上下文由事件驱动并保留短期快照。
-- 玩家状态、背包、药水效果和世界环境等动态事实在收到请求时读取当前世界，不长期复用旧数据。
+- 所有字段组（含交互上下文）都在请求被回答的那一刻采集，没有“事件保温”路径。
+- 玩家状态、背包、装备、药水效果和世界环境等动态事实每次请求都重新读取当前世界。
 - 同一 client tick 中的多个请求共享一次平台快照，避免重复读取 Minecraft 对象。
+- 采集抛异常时只让这一批请求失败，不能把异常抛进客户端 tick。
 
 二期原则：
 
@@ -107,13 +108,14 @@ module.presence
 - 交互快照失效只影响下次按需读取，不主动触发扫描
 - 请求方必须显式传 `requestedFactIds`
 
-动态事实按请求捕获；`dirty` 只作为交互快照或平台事件的失效提示，不会触发后台轮询。
+动态事实按请求捕获，没有 dirty 标记：没人请求就不读，请求一次读一次。
 
 当前字段组：
 
 ```text
 INTERACTION_CONTEXT
 PLAYER_INVENTORY
+PLAYER_EQUIPMENT
 PLAYER_ACTIVE_EFFECTS
 PLAYER_STATUS
 WORLD_ENVIRONMENT
@@ -187,11 +189,10 @@ WORLD_ENVIRONMENT
 映迹只做这些：
 
 - 通过 platform 端口采集客户端状态
-- 维护 `PresenceStateStore`
+- 在请求被回答时按字段组采集，同一 tick 合并成一次平台抓取
 - 聚合 `PRESENCE.ACTIVITY` 并输出 `PresenceActivitySnapshot`
 - 处理 `PRESENCE.QUERY_CONTEXT`
-- 发布 `PRESENCE.WORLD_EVENT`
-- 发布 `PRESENCE.CHAT_MESSAGE`
+- 发布 `PRESENCE.WORLD_EVENT`（聊天是其中的 `chat_message` 事件类型）
 - 输出本地 HUD 显示状态
 
 映迹不做这些：
@@ -252,16 +253,23 @@ PRESENCE.CHAT_MESSAGE
 - `PROCESSING_TASK`：任意模块正在执行真实任务，包括外部模组任务和 AX 记忆维护。
 - `THINKING`：AX 已收到 IA 判定给 AX 的 delivery，正在获取上下文、检索、组装 Prompt 或生成首段输出。
 - `RESPONDING`：AX 已产生首段可见输出，正在继续展示或播报本轮回复。
+- `RECONNECTING`：某条能力通道启动失败后正在退避重连，恢复后自动结束。
+- `ERROR`：某条能力通道已确定不可用，需要玩家处理（配置、凭据、模型文件）。
+- `DEGRADED`：能力可用但跑在降级后端上，例如向量检索退回 CPU。
+
+每种主状态的所有者声明在 `PresenceActivityType` 上（`publisherModuleId`）：思考与回复只接受 `module.ax`，聆听只接受 `module.asr`，三种运行时状况只接受 `module.llm`；加载与任务任何模块可发布。聚合器不再列举模块名。
 
 主状态优先级为：
 
 ```text
-RESPONDING > THINKING > PROCESSING_TASK > LOADING > IDLE
+RESPONDING > THINKING > ERROR > PROCESSING_TASK > LOADING > RECONNECTING > DEGRADED > IDLE
 ```
 
-`LISTENING` 是独立前景状态，只表示 ASR 在处理后音频中检测到真实说话活动。它可以与任意主状态同时存在，不创建大量组合枚举，也不触发或打断 AX。聆听结束后，HUD 恢复仍然有效的主状态。
+排序按玩家注意力分三层：前台对话永远在上；需要玩家行动的失败压过正在跑的后台任务；最后才是进度与自恢复状况。这样一次云端故障既不会盖住正在播报的回复，也不会被一条长任务挤掉。
 
-模块名、任务编号、队列长度、细分加载阶段、模型缺失和异常代码不进入产品状态；需要调试时只在设置页调试区域、诊断或日志查看。未来 shader 只消费 `primaryState`、`listening` 和状态持续时间，视觉参数不进入协议 payload。
+`LISTENING` 是独立前景状态，表示玩家正在说话：从麦克风开始采集到本轮录音结束（按住说话的开始与结束各一条活动）。它可以与任意主状态同时存在，不创建大量组合枚举，也不触发或打断 AX。聆听结束后，HUD 恢复仍然有效的主状态。
+
+三种运行时状况只表达“这条能力现在能不能用、是不是降级”：`RECONNECTING`、`DEGRADED` 在通道恢复或模块停止时显式撤回，`ERROR` 在重试耗尽或加载失败时发布、在恢复时撤回，TTL 只是进程崩溃时的兜底。错误码、堆栈、队列长度、细分加载阶段和下载进度仍不进入产品状态；需要调试时只在设置页调试区域、诊断或日志查看。未来 shader 只消费 `primaryState`、`listening` 和状态持续时间，视觉参数不进入协议 payload。
 
 ## 6. 交互上下文
 
@@ -271,9 +279,10 @@ RESPONDING > THINKING > PROCESSING_TASK > LOADING > IDLE
 
 - `playerId`
 - `dimensionId`
+- `dimensionDisplayName`
 - `screenKind`
-- `screenClassName`
 - `heldItemId`
+- `heldItemDisplayName`
 - `equippedItemIds`
 - `crosshairTarget`
 - `interactionKeyDown`
@@ -282,18 +291,17 @@ RESPONDING > THINKING > PROCESSING_TASK > LOADING > IDLE
 - `playerStatus`
 - `worldEnvironment`
 - `inventoryItems`
+- `equipment`
 - `activeEffects`
-- `facts`
 - `capturedAtMillis`
 
 ### 6.1 采集策略
 
 | 策略 | 适用字段 | 说明 |
 |---|---|---|
-| 事件驱动 | screen、聊天、世界事件、输入 | 事件发生时更新轻量状态 |
-| 请求捕获 | `INTERACTION_CONTEXT` | 请求到达后，下一次 client tick 捕获 |
-| 请求刷新 | 背包、药水、玩家状态、世界环境 | 每次只捕获本次明确请求的动态字段组 |
-| Dirty 标记 | 交互快照 | dirty 不主动扫描，没人请求不刷新 |
+| 请求捕获 | 全部字段组 | 请求被回答的那一刻读取一次，没有保温或后台扫描 |
+| 同 tick 合并 | 一次抓取的并集 | 同一 client tick 内排队的请求共享一次平台采集 |
+| 降级 | 任意字段组 | 采集抛异常时这一批请求失败（`PRESENCE_CAPTURE_FAILED`），不抛进客户端 tick |
 
 第一版明确不做：
 
@@ -301,6 +309,7 @@ RESPONDING > THINKING > PROCESSING_TASK > LOADING > IDLE
 - 不常态扫描附近实体
 - 不做固定间隔保鲜
 - 不做 request interest
+- 不用按键 / 鼠标 / 屏幕事件保温上下文（查询时现采即可）
 
 ## 7. IA / IR 的关系
 
@@ -311,16 +320,16 @@ IA / IR 的调用方式：
 ```text
 业务模块
   -> 请求 PRESENCE.QUERY_CONTEXT
-  -> 映迹下一次 client tick 捕获 / 刷新
+  -> 映迹下一次 client tick 采集并回答
  -> 返回不可变快照
  -> 业务模块继续处理
 
 世界退出后，旧查询不会延迟到新世界继续完成；排队请求会以世界会话结束失败，业务模块应按自身生命周期处理该结果。
 ```
 
-IA 使用快照做 owner 仲裁。
+IA 在玩家开始说话时请求一次，并按 sessionId 冻结这份快照做 owner 仲裁。
 
-IR 使用快照中的物品上下文做命名物体增强。
+IR 不再查询映迹：命名物体增强改为在辅星侧自采（`AsrTextRepairer` 的注释说明了代价——代词不再解析到手持物，其余不变）。
 
 ## 8. 当前 NeoForge 结构
 
@@ -330,24 +339,24 @@ tianshu-client/src/main/java/.../client/presence/
   PresenceModule
   PresenceModuleInstaller
   PresenceProtocolAdapter
-  PresenceStateStore
   PresenceTextProvider
 
 tianshu-client/src/main/java/.../client/presence/capture/
-  PresenceChatMessageSink
   PresenceEventCollector
-  PresenceRefreshPolicy
   PresenceWorldEventSink
 
 tianshu-client/src/main/java/.../client/presence/context/
   PresenceContextFactMapper
-  PresenceContextGroup
   PresenceContextQueryCoordinator
+  PresenceContextResponder
 
-tianshu-client/src/main/java/.../client/presence/model/
+tianshu-api/src/main/java/.../client/presence/context/
+  PresenceContextGroup
+
+tianshu-api/src/main/java/.../client/presence/model/
   PresenceActivitySnapshot
   PresenceContextSnapshot
-  PresenceInputKind
+  PresenceEquipment
   PresenceInventoryItem
   PresencePlayerStatus
   PresencePotionEffect
@@ -363,15 +372,26 @@ tianshu-client/src/main/java/.../client/presence/status/
 
 tianshu-client/src/main/java/.../client/presence/hud/
   PresenceHudSettings
+  PresenceHudVisualPreset
+  PresenceHudVisualState
 
-tianshu-neoforge/src/main/java/.../ui/hud/
+tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
   PresenceHudRenderer
   PresenceHudElementController
   PresenceHudElementFrame
   PresenceHudElementRenderer
   PresenceHudElementState
+  PresenceHudElementStateTracker
   PresenceHudElementTiming
   PresenceHudElementType
+  PresenceHudElementUpdateContext
+  PresenceHudLayout
+  PresenceHudPositionEditorScreen
+  PresenceHudShaderRegistry
+  PresenceHudVisualParameters
+  PresenceHudVisualTransition
+  PresenceIconElementController
+  PresenceIconElementRenderer
   PresenceStatusTextElementController
   PresenceStatusTextElementRenderer
 
@@ -380,19 +400,21 @@ tianshu-client/src/main/java/.../client/presence/diagnostics/
 
 tianshu-client/src/main/java/.../client/settings/module/presence/
   PresenceSettingsRegistrySource
+  PresenceSettingsAccess
+  PresenceHudPositionEditorOpener
 
-tianshu-client/src/main/java/.../client/host/
+tianshu-api/src/main/java/.../client/host/
   ClientGameContextProvider
 
-tianshu-neoforge/src/main/java/.../adapter/
+tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/adapter/
   NeoForgePresencePlatform
   NeoForgePresenceScreenClassifier
   NeoForgePresenceTextProvider
 
-tianshu-neoforge/src/main/java/.../config/
+tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/config/
   ClientConfigPresenceHudSettings
 
-tianshu-neoforge/src/main/java/.../event/
+tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
   NeoForgePresenceHooks
   NeoForgePresenceAdvancementTracker
 
@@ -406,13 +428,14 @@ tianshu-neoforge/src/main/java/.../event/
 - HUD 状态展示
 - Presence topic
 - Presence capability
-- IA / IR / AX 接入 Presence 查询
+- IA / AX 接入 Presence 查询（IR 已退出这条链路）
 - 旧的同步上下文桥已移除
-- 世界事件 topic 已纳入 Presence 一期/二期范围
-- HUD 绘制位于 `tianshu-neoforge` 的 `ui/hud`
+- 世界事件 topic 已纳入 Presence 一期/二期范围（聊天作为事件类型并入）
+- HUD 绘制位于 `tianshu-adapter` 的 `neoforge/ui/hud`
 - 映迹核心只输出 `PresenceHudDisplay`
-- 世界退出会清空旧快照、状态和排队查询，重新进入后建立新世界会话
-- 产品状态机只呈现显式活动；加载细节、模块错误和调试信息不进入产品状态
+- 世界退出会清空旧状态和排队查询，重新进入后建立新世界会话
+- 上下文只在查询被回答时采集；同一 tick 的请求共享一次平台抓取
+- 产品状态机只呈现显式活动；错误码、加载细节和调试信息不进入产品状态，运行时状况只表达能力可用性，并在恢复时撤回
 - 设置页只控制 HUD 总开关和状态文本，不过滤真实产品活动来源
 - 内测调试页已可查看 ASR / IA / AX / LLM / TTS / Presence 最新模块状态
 
@@ -426,7 +449,7 @@ tianshu-neoforge/src/main/java/.../event/
 
 1. 映迹核心位于 `tianshu-client`，NeoForge 只提供 Minecraft 状态读取和 HUD 绘制适配。
 2. 玩家可见状态要克制，优先轻量、短 TTL、可降级。
-3. IA / IR 只使用映迹提供的快照。
+3. IA 只使用映迹提供的快照；IR 与辅星按需自采，不向映迹要第二次。
 4. payload 只承载 DTO，不携带 Minecraft 活对象。
 5. 业务 topic 由业务模块拥有，映迹只订阅或发布自己拥有的 topic。
 6. 动态详细字段按请求捕获，没人请求不读取，不进行固定保鲜扫描。

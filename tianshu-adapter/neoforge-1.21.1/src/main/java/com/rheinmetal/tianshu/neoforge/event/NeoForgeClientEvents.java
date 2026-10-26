@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.api.assembly.InputSignals;
 import com.rheinmetal.tianshu.neoforge.ui.TextDialogueScreen;
 import com.rheinmetal.tianshu.api.LogSink;
@@ -20,7 +19,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import java.util.Objects;
@@ -61,7 +59,7 @@ public final class NeoForgeClientEvents {
         this.textInputKeySupplier = Objects.requireNonNull(textInputKeySupplier, "textInputKeySupplier");
         this.keyBindings = Objects.requireNonNull(keyBindings, "keyBindings");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
-        this.voiceInputController = new NeoForgeVoiceInputController(presenceRuntime::recordVoiceKeyInput);
+        this.voiceInputController = new NeoForgeVoiceInputController();
     }
 
     @SubscribeEvent
@@ -132,7 +130,6 @@ public final class NeoForgeClientEvents {
     @SubscribeEvent
     public void onScreenInit(ScreenEvent.Init.Post event) {
         Screen screen = event.getScreen();
-        presenceRuntime.recordScreenChanged();
         if (!(screen instanceof PauseScreen)) {
             return;
         }
@@ -166,25 +163,6 @@ public final class NeoForgeClientEvents {
                     playerChatSenderName(event)
             );
         }
-    }
-
-    @SubscribeEvent
-    public void onKeyboardInput(InputEvent.Key event) {
-        if (event.getAction() != InputConstants.RELEASE) {
-            presenceRuntime.recordKeyboardInput();
-        }
-    }
-
-    @SubscribeEvent
-    public void onMouseButtonInput(InputEvent.MouseButton.Post event) {
-        if (event.getAction() == InputConstants.PRESS) {
-            presenceRuntime.recordMouseInput();
-        }
-    }
-
-    @SubscribeEvent
-    public void onMouseScrollInput(InputEvent.MouseScrollingEvent event) {
-        presenceRuntime.recordMouseInput();
     }
 
     public void resetVoiceInputState() {

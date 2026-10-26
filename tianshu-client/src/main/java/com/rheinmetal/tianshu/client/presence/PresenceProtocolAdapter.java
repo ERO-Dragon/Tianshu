@@ -21,9 +21,11 @@ import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
 import java.util.EnumSet;
+import java.util.List;
 
 public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = ProtocolModuleIds.PRESENCE;
@@ -76,8 +78,21 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public TianshuEnvelope respondContext(TianshuEnvelope parent, PresenceContextSnapshotPayload payload) {
-        return respondTo(parent, PayloadType.PRESENCE_CONTEXT_SNAPSHOT, payload);
+    /**
+     * Sends the facts of one answered query as the response payload and closes the request.
+     *
+     * <p>The coordinator hands over values, not an envelope: choosing the payload type and completing the
+     * request belongs to the protocol side, exactly like every other response this adapter sends.</p>
+     */
+    public void respondContextFacts(
+            TianshuEnvelope parent,
+            String requestId,
+            List<PresenceContextSnapshotPayload.FactPayload> facts,
+            ProtocolContext context
+    ) {
+        respondTo(parent, PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresenceContextSnapshotPayload.success(requestId, facts));
+        context.complete(parent.envelopeId());
     }
 
     public TianshuEnvelope publishWorldEvent(PresenceWorldEventPayload payload) {

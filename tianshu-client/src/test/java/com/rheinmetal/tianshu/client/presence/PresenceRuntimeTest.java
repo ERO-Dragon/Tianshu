@@ -1,15 +1,12 @@
 package com.rheinmetal.tianshu.client.presence;
 
-import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
+import com.rheinmetal.tianshu.client.presence.context.PresenceContextResponder;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
-import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
-import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
+import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
+import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import com.rheinmetal.tianshu.protocol.AckPolicy;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
@@ -23,6 +20,7 @@ import com.rheinmetal.tianshu.protocol.TargetMode;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import org.junit.jupiter.api.Test;
@@ -32,7 +30,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,159 +39,153 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceRuntimeTest {
     @Test
-    void collectorCapturesOnlyPortableContextSnapshots() {
-        AtomicReference<Set<PresenceContextGroup>> requestedGroups = new AtomicReference<>();
-        ClientGameContextProvider provider = (groups, inputKind) -> {
-            requestedGroups.set(Set.copyOf(groups));
-            return snapshot("player", inputKind);
-        };
-        PresenceStateStore stateStore = new PresenceStateStore();
-        PresenceEventCollector collector = new PresenceEventCollector(stateStore, provider);
+    void chatLinesArePublishedAsWorldEventsOnlyInsideASession() {
+        PresenceEventCollector collector = new PresenceEventCollector();
+        List<PresenceWorldEventPayload> published = new ArrayList<>();
+        collector.setWorldEventSink(published::add);
 
-        collector.recordScreenChanged();
+        collector.recordPlayerChatMessage("outside", "uuid-player", "Player");
+        assertTrue(published.isEmpty());
 
-        assertEquals(EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT), requestedGroups.get());
-        assertEquals("player", stateStore.contextSnapshot().playerId());
-        assertEquals(PresenceInputKind.NONE, stateStore.contextSnapshot().recentInputKind());
+        collector.startWorldSession();
+        collector.recordPlayerChatMessage("inside", "uuid-player", "Player");
+        collector.recordPlayerChatMessage("   ", "uuid-player", "Player");
+        collector.recordPlayerChatMessage("inside", "", "Player");
+
+        assertEquals(1, published.size());
+        assertEquals(PresenceWorldEventPayload.EVENT_CHAT_MESSAGE, published.get(0).eventType());
+        assertEquals("inside", published.get(0).values().get(PresenceWorldEventPayload.VALUE_TEXT));
     }
 
     @Test
-    void advancementPayloadsReachWorldSinkWithoutNativePackets() {
-        PresenceStateStore stateStore = new PresenceStateStore();
-        PresenceEventCollector collector = new PresenceEventCollector(stateStore, (groups, inputKind) -> PresenceContextSnapshot.empty());
+    void worldEventsStopWithTheSession() {
+        PresenceEventCollector collector = new PresenceEventCollector();
         List<PresenceWorldEventPayload> published = new ArrayList<>();
         collector.setWorldEventSink(published::add);
         PresenceWorldEventPayload first = worldEvent("first");
-        PresenceWorldEventPayload second = worldEvent("second");
 
-        collector.recordWorldEvents(List.of(first, second));
+        collector.recordWorldEvents(List.of(first));
+        collector.startWorldSession();
+        collector.recordWorldEvents(java.util.Arrays.asList(first, null));
+        collector.stopWorldSession();
+        collector.recordWorldEvents(List.of(worldEvent("second")));
 
-        assertEquals(List.of(first, second), published);
+        assertEquals(List.of(first), published);
     }
 
     @Test
-    void stateStoreRefreshesOnlyDirtyOrUnavailableGroups() {
-        PresenceStateStore store = new PresenceStateStore();
-        store.updateGroups(snapshot("player", PresenceInputKind.NONE), EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT));
+    void oneCaptureServesEveryQueryDrainedInTheSameTick() {
+        List<Set<PresenceContextGroup>> captures = new ArrayList<>();
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
+            captures.add(Set.copyOf(groups));
+            return snapshot("player");
+        }, null);
+        RecordingResponder responder = new RecordingResponder();
+        coordinator.bindResponder(responder);
+        coordinator.startWorldSession();
 
-        assertTrue(store.groupsNeedingRefresh(EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT)).isEmpty());
+        coordinator.handleQuery(envelope(query("request-1", PresenceContextFactIds.PLAYER_INVENTORY)),
+                new RecordingProtocolContext(), query("request-1", PresenceContextFactIds.PLAYER_INVENTORY));
+        coordinator.handleQuery(envelope(query("request-2", PresenceContextFactIds.PLAYER_STATUS)),
+                new RecordingProtocolContext(), query("request-2", PresenceContextFactIds.PLAYER_STATUS));
 
-        store.markDirty(PresenceContextGroup.INTERACTION_CONTEXT);
+        coordinator.processPending();
 
+        assertEquals(1, captures.size());
         assertEquals(
-                EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT),
-                store.groupsNeedingRefresh(EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT))
+                EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY, PresenceContextGroup.PLAYER_STATUS),
+                captures.get(0)
         );
+        assertEquals(List.of("request-1", "request-2"), responder.requestIds);
+        assertTrue(responder.factsByRequest.get(0).isEmpty(), "an empty capture contributes no fact");
     }
 
     @Test
-    void dynamicContextGroupsAreRefreshedForEachRequest() {
-        PresenceStateStore store = new PresenceStateStore();
-        store.updateGroups(snapshot("player", PresenceInputKind.NONE), EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY));
+    void requestWithoutFactGroupsAnswersWithoutReadingTheGame() {
+        List<PresenceContextGroup> captured = new ArrayList<>();
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
+            captured.addAll(groups);
+            return snapshot("player");
+        }, null);
+        RecordingResponder responder = new RecordingResponder();
+        coordinator.bindResponder(responder);
+        coordinator.startWorldSession();
+        PresenceContextQueryPayload payload = query("request-empty");
+        RecordingProtocolContext context = new RecordingProtocolContext();
 
-        assertEquals(
-                EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY),
-                store.groupsNeedingRefresh(EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY))
-        );
+        coordinator.handleQuery(envelope(payload), context, payload);
+        coordinator.processPending();
+
+        assertTrue(captured.isEmpty());
+        assertEquals(0, context.failureCodes.size());
+        assertEquals(List.of("request-empty"), responder.requestIds);
+        assertTrue(responder.factsByRequest.get(0).isEmpty());
     }
 
     @Test
-    void worldResetDropsContextFromPreviousWorld() {
-        PresenceStateStore store = new PresenceStateStore();
-        store.updateGroups(snapshot("world-a", PresenceInputKind.NONE), EnumSet.of(
-                PresenceContextGroup.INTERACTION_CONTEXT,
-                PresenceContextGroup.PLAYER_INVENTORY
-        ));
+    void captureFailureFailsTheRequestInsteadOfEscapingTheTick() {
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
+            throw new IllegalStateException("boom");
+        }, null);
+        coordinator.startWorldSession();
+        PresenceContextQueryPayload payload = query("request-1", PresenceContextFactIds.PLAYER_STATUS);
+        RecordingProtocolContext context = new RecordingProtocolContext();
 
-        store.resetWorldState();
+        coordinator.handleQuery(envelope(payload), context, payload);
+        coordinator.processPending();
 
-        assertEquals("", store.contextSnapshot().playerId());
-        assertFalse(store.groupsNeedingRefresh(EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY)).isEmpty());
+        assertEquals(List.of("PRESENCE_CAPTURE_FAILED"), context.failureCodes);
     }
 
     @Test
     void queuedQueryIsFailedWhenWorldStopsAndCannotContinueAfterRestart() {
-        PresenceStateStore store = new PresenceStateStore();
-        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(store, new PresenceContextFactMapper());
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(
+                groups -> snapshot("world-b"), null);
         coordinator.startWorldSession();
-        PresenceContextQueryPayload payload = new PresenceContextQueryPayload(
-                "request-1", "session-1", "turn-1", "player", "world-a", "minecraft:overworld", "", List.of(),
-                System.currentTimeMillis(), List.of(PresenceContextFactIds.PLAYER_INVENTORY)
-        );
+        PresenceContextQueryPayload payload = query("request-1", PresenceContextFactIds.PLAYER_INVENTORY);
         RecordingProtocolContext context = new RecordingProtocolContext();
 
         coordinator.handleQuery(envelope(payload), context, payload);
         coordinator.stopWorldSession();
         coordinator.startWorldSession();
-        coordinator.processPending(new PresenceEventCollector(store, (groups, inputKind) -> snapshot("world-b", inputKind)));
+        coordinator.processPending();
 
-        assertEquals("PRESENCE_WORLD_STOPPED", context.failureCode);
+        assertEquals(List.of("PRESENCE_WORLD_STOPPED"), context.failureCodes);
         assertEquals(0, context.completedCount);
         assertTrue(context.responseSubmissions.isEmpty());
     }
 
     @Test
-    void pendingContextResponsesAreBoundedPerClientTick() {
-        PresenceStateStore store = new PresenceStateStore();
-        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(store, new PresenceContextFactMapper());
+    void pendingQueriesAreBoundedAndTheRemainderIsAnsweredOnTheNextTick() {
+        List<Set<PresenceContextGroup>> captures = new ArrayList<>();
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
+            captures.add(Set.copyOf(groups));
+            return snapshot("player");
+        }, null);
         coordinator.startWorldSession();
-        List<RecordingProtocolContext> contexts = new ArrayList<>();
         for (int index = 0; index < 9; index++) {
-            PresenceContextQueryPayload payload = new PresenceContextQueryPayload(
-                    "request-" + index, "session", "turn", "player", "world", "minecraft:overworld", "", List.of(),
-                    System.currentTimeMillis(), List.of(PresenceContextFactIds.PLAYER_INVENTORY)
-            );
-            RecordingProtocolContext context = new RecordingProtocolContext();
-            contexts.add(context);
-            coordinator.handleQuery(envelope(payload), context, payload);
+            PresenceContextQueryPayload payload = query("request-" + index, PresenceContextFactIds.PLAYER_INVENTORY);
+            coordinator.handleQuery(envelope(payload), new RecordingProtocolContext(), payload);
         }
 
-        PresenceEventCollector collector = new PresenceEventCollector(store, (groups, inputKind) -> snapshot("player", inputKind));
-        coordinator.processPending(collector);
+        coordinator.processPending();
+        assertEquals(1, captures.size());
 
-        assertEquals(8L, contexts.stream().filter(context -> !context.failureCode.isBlank()).count());
-
-        coordinator.processPending(collector);
-
-        assertEquals(9L, contexts.stream().filter(context -> !context.failureCode.isBlank()).count());
-    }
-
-    @Test
-    void productStatusUsesClientTranslationKeysInsteadOfTechnicalFallbacks() {
-        com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy policy =
-                new com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy(new PresenceTextProvider() {
-                    @Override
-                    public boolean exists(String key) {
-                        return "tianshu.presence.status.responding".equals(key);
-                    }
-
-                    @Override
-                    public String text(String key, Object... args) {
-                        return "localized-responding";
-                    }
-                });
-
-        var display = policy.hudDisplay(new PresenceActivitySnapshot(
-                PresencePrimaryState.RESPONDING,
-                false,
-                "module.ax",
-                System.currentTimeMillis()
-        ));
-
-        assertEquals("localized-responding", display.text());
+        coordinator.processPending();
+        assertEquals(2, captures.size());
     }
 
     @Test
     void hudIsHiddenOutsideAnActiveWorldSession() {
         PresenceClientRuntime runtime = new PresenceClientRuntime(
-                (groups, inputKind) -> PresenceContextSnapshot.empty(),
+                groups -> PresenceContextSnapshot.empty(),
                 PresenceTextProvider.NOOP
         );
 
         assertFalse(runtime.currentHudDisplay().visible());
 
         runtime.startWorldSession();
-        var firstDisplay = runtime.currentHudDisplay();
+        PresenceHudDisplay firstDisplay = runtime.currentHudDisplay();
         assertTrue(firstDisplay.visible());
         assertSame(firstDisplay, runtime.currentHudDisplay());
 
@@ -202,47 +193,98 @@ class PresenceRuntimeTest {
         assertFalse(runtime.currentHudDisplay().visible());
     }
 
+    @Test
+    void activityTrackerStartsIdleForAnUnknownSession() {
+        PresenceActivityTracker tracker = new PresenceActivityTracker();
+        assertEquals(
+                com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState.IDLE,
+                tracker.snapshot().primaryState()
+        );
+    }
+
     private static PresenceWorldEventPayload worldEvent(String id) {
         return new PresenceWorldEventPayload(id, "test", "player", "dimension", 1L, Map.of("id", id));
     }
 
-    private static PresenceContextSnapshot snapshot(String playerId, PresenceInputKind inputKind) {
-        PresenceContextSnapshot empty = PresenceContextSnapshot.empty();
+    private static PresenceContextSnapshot snapshot(String playerId) {
         return new PresenceContextSnapshot(
                 playerId,
                 "minecraft:overworld",
-                PresenceScreenKind.NONE,
+                "",
+                com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind.NONE,
                 "",
                 "",
                 List.of(),
-                empty.crosshairTarget(),
+                com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot.empty(),
                 false,
                 false,
                 false,
-                inputKind,
-                empty.playerStatus(),
-                empty.worldEnvironment(),
+                com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus.empty(),
+                com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment.empty(),
                 List.of(),
-                empty.equipment(),
+                com.rheinmetal.tianshu.client.presence.model.PresenceEquipment.empty(),
                 List.of(),
-                Map.of(),
                 1L
+        );
+    }
+
+    private static PresenceContextQueryPayload query(String requestId, String... factIds) {
+        return new PresenceContextQueryPayload(
+                requestId,
+                "session-1",
+                "turn-1",
+                "player",
+                "world-a",
+                "minecraft:overworld",
+                "",
+                List.of(),
+                System.currentTimeMillis(),
+                List.of(factIds)
         );
     }
 
     private static TianshuEnvelope envelope(PresenceContextQueryPayload payload) {
         long now = System.currentTimeMillis();
         return new TianshuEnvelope(new EnvelopeHeader(
-                "envelope-1", "trace-1", "", "module.test", TargetMode.CAPABILITY,
-                "PRESENCE.QUERY_CONTEXT", DeliveryPolicy.WAIT_IN_QUEUE, PacketType.REQUEST,
-                PayloadType.PRESENCE_CONTEXT_QUERY, AckPolicy.EXPECT_SUCCESS_OR_FAILURE, Priority.NORMAL,
-                ThreadPolicy.ASYNC_WORKER, now, now + 10_000L, now + 10_000L,
-                CancellationScope.SELF_ONLY, FailurePolicy.PROPAGATE_CANCEL
+                "envelope-" + payload.requestId(),
+                "trace-1",
+                "",
+                "module.test",
+                TargetMode.CAPABILITY,
+                "PRESENCE.QUERY_CONTEXT",
+                DeliveryPolicy.WAIT_IN_QUEUE,
+                PacketType.REQUEST,
+                PayloadType.PRESENCE_CONTEXT_QUERY,
+                AckPolicy.EXPECT_SUCCESS_OR_FAILURE,
+                Priority.NORMAL,
+                ThreadPolicy.ASYNC_WORKER,
+                now,
+                now + 10_000L,
+                now + 10_000L,
+                CancellationScope.SELF_ONLY,
+                FailurePolicy.PROPAGATE_CANCEL
         ), payload);
     }
 
+    private static final class RecordingResponder implements PresenceContextResponder {
+        private final List<String> requestIds = new ArrayList<>();
+        private final List<List<PresenceContextSnapshotPayload.FactPayload>> factsByRequest = new ArrayList<>();
+
+        @Override
+        public void respond(
+                TianshuEnvelope request,
+                String requestId,
+                List<PresenceContextSnapshotPayload.FactPayload> facts,
+                ProtocolContext context
+        ) {
+            requestIds.add(requestId);
+            factsByRequest.add(List.copyOf(facts));
+            context.complete(request.envelopeId());
+        }
+    }
+
     private static final class RecordingProtocolContext implements ProtocolContext {
-        private String failureCode = "";
+        private final List<String> failureCodes = new ArrayList<>();
         private int completedCount;
         private final List<TianshuEnvelope> responseSubmissions = new ArrayList<>();
 
@@ -258,7 +300,7 @@ class PresenceRuntimeTest {
 
         @Override
         public void fail(String envelopeId, String reasonCode, String message, Throwable throwable) {
-            failureCode = reasonCode;
+            failureCodes.add(reasonCode);
         }
 
         @Override

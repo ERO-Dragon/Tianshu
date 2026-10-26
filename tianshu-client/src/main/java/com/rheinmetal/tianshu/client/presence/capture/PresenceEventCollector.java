@@ -1,72 +1,30 @@
 package com.rheinmetal.tianshu.client.presence.capture;
 
-import com.rheinmetal.tianshu.client.presence.PresenceStateStore;
-import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
-import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceInputKind;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
 
+/**
+ * Publishes the low-frequency client events presence owns, and nothing else.
+ *
+ * <p>It is deliberately not a capture path: game context is read when a query is answered, so there is no
+ * per-input or per-screen state to keep warm here. Draining events after the world session ended is
+ * suppressed rather than published into the next world.</p>
+ */
 public final class PresenceEventCollector {
-    private final PresenceStateStore stateStore;
-    private final ClientGameContextProvider platform;
     private PresenceWorldEventSink worldEventSink = PresenceWorldEventSink.NOOP;
-    private long lastKeyboardEventAtMillis;
-    private long lastMouseEventAtMillis;
-    private volatile boolean worldSessionActive = true;
-
-    public PresenceEventCollector(PresenceStateStore stateStore, ClientGameContextProvider platform) {
-        this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
-        this.platform = Objects.requireNonNull(platform, "platform");
-    }
+    private volatile boolean worldSessionActive;
 
     public void setWorldEventSink(PresenceWorldEventSink worldEventSink) {
         this.worldEventSink = worldEventSink == null ? PresenceWorldEventSink.NOOP : worldEventSink;
     }
 
-    public void recordScreenChanged() {
-        if (!worldSessionActive) {
-            return;
-        }
-        stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.NONE));
-        stateStore.markDirty(PresenceContextGroup.PLAYER_INVENTORY);
-    }
-
-    public void recordKeyboardInput() {
-        if (!worldSessionActive) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now - lastKeyboardEventAtMillis < PresenceRefreshPolicy.INPUT_EVENT_MIN_INTERVAL_MILLIS) {
-            return;
-        }
-        lastKeyboardEventAtMillis = now;
-        stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.KEYBOARD));
-    }
-
-    public void recordMouseInput() {
-        if (!worldSessionActive) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now - lastMouseEventAtMillis < PresenceRefreshPolicy.INPUT_EVENT_MIN_INTERVAL_MILLIS) {
-            return;
-        }
-        lastMouseEventAtMillis = now;
-        stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.MOUSE));
-    }
-
-    public void recordVoiceKeyInput() {
-        if (!worldSessionActive) {
-            return;
-        }
-        stateStore.updateContext(captureLiveSnapshot(PresenceInputKind.VOICE_KEY));
-    }
-
+    /**
+     * One chat line, published as a world event with a speaker.
+     *
+     * <p>Chat used to have its own payload and its own topic; it is an event kind now, so consumers still
+     * switch on one topic and one payload shape.</p>
+     */
     public void recordPlayerChatMessage(String messageText, String senderId, String senderName) {
         if (!worldSessionActive) {
             return;
@@ -74,9 +32,11 @@ public final class PresenceEventCollector {
         if (messageText == null || messageText.isBlank() || senderId == null || senderId.isBlank()) {
             return;
         }
-        String sender = cleanSenderName(senderName);
-        // A chat line is one world event: the event type says what happened, the values carry who spoke.
-        worldEventSink.publish(PresenceWorldEventPayload.chatMessage(senderId, sender, messageText));
+        worldEventSink.publish(PresenceWorldEventPayload.chatMessage(
+                senderId,
+                cleanSenderName(senderName),
+                messageText
+        ));
     }
 
     public void recordWorldEvents(List<PresenceWorldEventPayload> events) {
@@ -93,35 +53,15 @@ public final class PresenceEventCollector {
         }
     }
 
-    private PresenceContextSnapshot captureLiveSnapshot(PresenceInputKind inputKind) {
-        return captureGroups(Set.of(PresenceContextGroup.INTERACTION_CONTEXT), inputKind);
-    }
-
-    public PresenceContextSnapshot captureGroups(Set<PresenceContextGroup> groups) {
-        if (!worldSessionActive) {
-            return PresenceContextSnapshot.empty();
-        }
-        return captureGroups(groups, PresenceInputKind.NONE);
-    }
-
     public void startWorldSession() {
         worldSessionActive = true;
-        lastKeyboardEventAtMillis = 0L;
-        lastMouseEventAtMillis = 0L;
     }
 
     public void stopWorldSession() {
         worldSessionActive = false;
-        lastKeyboardEventAtMillis = 0L;
-        lastMouseEventAtMillis = 0L;
-    }
-
-    private PresenceContextSnapshot captureGroups(Set<PresenceContextGroup> groups, PresenceInputKind inputKind) {
-        return platform.captureContext(groups, inputKind);
     }
 
     private String cleanSenderName(String senderName) {
         return senderName == null ? "" : senderName.trim();
     }
-
 }

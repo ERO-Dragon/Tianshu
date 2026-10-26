@@ -1,47 +1,43 @@
 package com.rheinmetal.tianshu.client.presence;
 
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
-import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
-import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * The protocol face of presence: the module that owns {@code PRESENCE.QUERY_CONTEXT}, the
+ * {@code PRESENCE.ACTIVITY} subscription and the presence world-event topic.
+ *
+ * <p>It owns no world state of its own. Everything it touches is created and owned by
+ * {@link PresenceClientRuntime}, because a world restart must not destroy the aggregator or the capture path:
+ * only their session boundary moves.</p>
+ */
 public final class PresenceModule implements TianshuManagedModule {
-    private final PresenceStateStore stateStore;
-    private final PresenceActivityTracker activityTracker;
-    private final PresenceDisplayPolicy displayPolicy;
-    private final PresenceContextFactMapper contextFactMapper;
-    private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final PresenceProtocolAdapter adapter;
+    private final PresenceActivityTracker activityTracker;
+    private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile boolean lifecycleActive;
 
     public PresenceModule(
             PresenceProtocolAdapter adapter,
-            PresenceStateStore stateStore,
             PresenceActivityTracker activityTracker,
-            PresenceDisplayPolicy displayPolicy,
-            PresenceContextFactMapper contextFactMapper,
             PresenceContextQueryCoordinator contextQueryCoordinator
     ) {
-        this.stateStore = stateStore;
-        this.activityTracker = activityTracker;
-        this.displayPolicy = displayPolicy;
-        this.contextFactMapper = contextFactMapper == null ? new PresenceContextFactMapper() : contextFactMapper;
-        this.contextQueryCoordinator = contextQueryCoordinator == null
-                ? new PresenceContextQueryCoordinator(stateStore, this.contextFactMapper)
-                : contextQueryCoordinator;
-        this.contextQueryCoordinator.bindAdapter(adapter);
-        this.adapter = adapter;
+        this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.activityTracker = Objects.requireNonNull(activityTracker, "activityTracker");
+        this.contextQueryCoordinator = Objects.requireNonNull(contextQueryCoordinator, "contextQueryCoordinator");
+        this.contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
     }
 
     @Override
@@ -72,7 +68,7 @@ public final class PresenceModule implements TianshuManagedModule {
         stop();
     }
 
-    private void publishLifecycle(com.rheinmetal.tianshu.protocol.status.ModuleStatus status) {
+    private void publishLifecycle(ModuleStatus status) {
         adapter.publishModuleStatus(status);
     }
 
@@ -91,4 +87,3 @@ public final class PresenceModule implements TianshuManagedModule {
         context.complete(envelope.envelopeId());
     }
 }
-
