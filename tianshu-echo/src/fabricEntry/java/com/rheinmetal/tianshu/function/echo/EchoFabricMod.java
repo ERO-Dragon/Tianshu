@@ -3,14 +3,16 @@ package com.rheinmetal.tianshu.function.echo;
 import net.fabricmc.api.ModInitializer;
 
 /**
- * Fabric entrypoint for the echo feature.
+ * Fabric shell for the echo feature.
  *
- * <p>It exists for one reason: a loader needs a class to call before it considers the mod real.
- * All behaviour lives in the platform-neutral module; this class never grows logic.</p>
+ * <p>The counterpart of {@code EchoNeoForgeMod}: both call {@link EchoModuleRegistration#announce()}, the
+ * single list of what this module contributes. A loader needs a class to call before it considers the mod
+ * real, and that is all this class is.</p>
  */
 public final class EchoFabricMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        EchoModuleRegistration.announce();
     }
 }

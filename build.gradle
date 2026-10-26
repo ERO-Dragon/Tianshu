@@ -14,7 +14,7 @@ tasks.withType(JavaCompile).configureEach {
 // ---------------------------------------------------------------- boundary gates
 // These rules span modules, so they live at the root instead of inside one of them.
 //
-// Payload/dependency rule (full text: doc/architecture/模块拆分工程方案.md §9.7):
+// Payload/dependency rule (full text: doc/architecture/模块架构.md §5):
 //   1. a payload class belongs to the module that produces it (protocol base payloads: tianshu-api);
 //   2. a REQUIRED partner -> hard dependency, plain import, no guard;
 //   3. an OPTIONAL partner -> compileOnly, and the partner's classes may only be touched from a `bridge`
@@ -25,16 +25,17 @@ tasks.withType(JavaCompile).configureEach {
 def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
-// Feature modules relate to each other in exactly two ways, and the difference is a product statement:
+// A pair of feature modules is in exactly one of three states, and the difference is a product statement:
 //   required — the consumer is not functional without it: a hard dependency, classes always visible,
 //              no optionality code at all.
 //   optional — "integrate when present": compileOnly plus a runtime presence guard.
+//   none     — no relation at all: no Gradle dependency, no manifest entry, no gate permission. This is
+//              the default; an edge exists only because it is listed below.
 //   auxilium -> intake/weaving (required), echo (optional)
-//   intake   -> weaving/echo (optional)
+//   intake, weaving, echo are leaves
 // A two-way protocol cannot be split between two optional partners: exactly one module owns the
 // vocabulary and the other depends on it. Dialogue is two-way (delivery flows down, participant and
 // session control flow up), so intake owns it and auxilium requires intake.
-//   weaving, echo are leaves
 def requiredFeatureEdges = [
         'auxilium': ['intake', 'weaving'],
         'intake'  : [],
@@ -43,7 +44,7 @@ def requiredFeatureEdges = [
 ]
 def optionalFeatureEdges = [
         'auxilium': ['echo'],
-        'intake'  : ['weaving', 'echo'],
+        'intake'  : [],
         'weaving' : [],
         'echo'    : [],
 ]
@@ -86,7 +87,7 @@ tasks.register('verifyFeatureIsolation') {
 
 tasks.register('verifyFeatureOptionalDependencies') {
     group = 'verification'
-    description = 'Required edges are hard dependencies, optional edges are compileOnly, and nothing else exists.'
+    description = 'The matrix is the whole truth: every listed edge is declared in Gradle and both manifests, every edge is used, and nothing undeclared exists.'
     def buildFiles = featureModules.collectEntries { module ->
         [(module): file("${module}/build.gradle")]
     }
@@ -96,11 +97,23 @@ tasks.register('verifyFeatureOptionalDependencies') {
     def modsTomlByModule = featureModules.collectEntries { module ->
         [(module): fileTree("${module}/src") { include '**/neoforge.mods.toml' }.files]
     }
+    def fabricManifestByModule = featureModules.collectEntries { module ->
+        [(module): file("${module}/src/main/resources/fabric.mod.json")]
+    }
+    // The package roots each module owns, read from where its sources live. Package name and module name do
+    // not always match: the arbitration module ships inside intake as `function.ia`, so usage has to be
+    // detected against what the target module actually owns.
+    def packagesByModule = featureModules.collectEntries { module ->
+        def root = file("${module}/src/main/java/com/rheinmetal/tianshu/function")
+        [(module): root.isDirectory() ? root.listFiles().findAll { it.isDirectory() }*.name : []]
+    }
     inputs.files(buildFiles.values())
     inputs.files(sourcesByModule.values().flatten())
     inputs.files(modsTomlByModule.values().flatten())
+    inputs.files(fabricManifestByModule.values())
     doLast {
         def violations = []
+        def shortNames = featureModules.collect { it - 'tianshu-' } as Set
         featureModules.each { module ->
             def owner = module - 'tianshu-'
             def buildFile = buildFiles[module]
@@ -108,12 +121,30 @@ tasks.register('verifyFeatureOptionalDependencies') {
             def text = buildFile.text
             def sources = sourcesByModule[module]
             def tomlText = (modsTomlByModule[module] ?: []).collect { it.text }.join('\n')
+            def fabricManifest = fabricManifestByModule[module]
+            def fabricText = fabricManifest != null && fabricManifest.exists() ? fabricManifest.text : ''
+            // Parsed rather than pattern-matched: the version placeholders are ordinary JSON strings, and a
+            // regex over the object body trips on the brace inside ${mod_version}.
+            def fabricJson = fabricText ? new groovy.json.JsonSlurper().parseText(fabricText) : [:]
             def required = requiredFeatureEdges[owner] ?: []
             def optional = optionalFeatureEdges[owner] ?: []
+            def allowed = ((required + optional).unique()) as Set
             (required + optional).each { target ->
-                def marker = "import com.rheinmetal.tianshu.function.${target}."
-                def used = sources.any { candidate -> candidate.text.contains(marker) }
-                if (!used) return
+                // Usage is detected against the packages the target module actually owns: package name and
+                // module name are not the same thing (the arbitration module ships inside intake as
+                // `function.ia`), so matching on the module name alone would misreport auxilium -> intake.
+                // The key is coerced to String because an interpolated Groovy string is a GString, whose
+                // hashCode differs from String's and therefore never matches a map key.
+                def used = packagesByModule[("tianshu-" + target)].any { pkg ->
+                    def importPrefix = "import com.rheinmetal.tianshu.function.${pkg}."
+                    sources.any { candidate -> candidate.text.contains(importPrefix) }
+                }
+                // An edge nobody uses is a promise the code does not keep. The matrix has to describe
+                // relations that exist, not relations that were once planned.
+                if (!used) {
+                    violations << "${module} lists an edge to tianshu-${target}, but none of its sources uses that module"
+                    return
+                }
                 def hardDeclaration = text.contains("api project(':tianshu-${target}')")
                         || text.contains("implementation project(':tianshu-${target}')")
                 def optionalDeclaration = text.contains("compileOnly project(':tianshu-${target}')")
@@ -126,17 +157,51 @@ tasks.register('verifyFeatureOptionalDependencies') {
                 }
                 // The loader has to know the same thing the build does, or load order and the "missing mod"
                 // message disagree with what the code actually assumes.
-                def modId = "tianshu_${target}"
+                // Coerced to String deliberately: an interpolated Groovy string is a GString, whose hashCode
+                // differs from String's, so using one as a map key silently never matches a parsed key.
+                def modId = "tianshu_${target}".toString()
                 def declared = tomlText =~ /modId\s*=\s*"${modId}"\s*\n\s*type\s*=\s*"(\w+)"/
                 if (!declared.find()) {
                     violations << "${module} does not declare ${modId} in neoforge.mods.toml"
                 } else if (declared.group(1) != expectedType) {
                     violations << "${module} declares ${modId} as ${declared.group(1)} but it is ${expectedType}"
                 }
+                // The module jars are universal: one artifact carries both manifests, so the same edge has
+                // to be told to Fabric too. A missing required declaration there installs a module whose
+                // hard dependency is absent, and the only symptom is a NoClassDefFoundError at runtime.
+                def fabricRequired = (fabricJson.depends ?: [:]).containsKey(modId)
+                def fabricSuggested = (fabricJson.suggests ?: [:]).containsKey(modId)
+                if (expectedType == 'required' && !fabricRequired) {
+                    violations << "${module} does not require ${modId} in fabric.mod.json"
+                }
+                if (expectedType == 'required' && fabricSuggested) {
+                    violations << "${module} lists ${modId} as merely suggested in fabric.mod.json"
+                }
+                if (expectedType == 'optional' && !fabricSuggested) {
+                    violations << "${module} does not suggest ${modId} in fabric.mod.json"
+                }
+                if (expectedType == 'optional' && fabricRequired) {
+                    violations << "${module} requires ${modId} in fabric.mod.json, but that edge is an optional integration"
+                }
             }
-            (text =~ /(api|implementation) project\(':tianshu-(intake|echo|weaving|auxilium)'\)/).each { match ->
-                if (!(match[2] in required)) {
-                    violations << "${module} declares a hard dependency on tianshu-${match[2]}, which is only an optional integration"
+            // The other direction: a declaration that the matrix does not contain. Left unchecked, a stale
+            // dependency outlives the relationship it was written for and keeps telling loaders about it.
+            (text =~ /(api|implementation|compileOnly)\s+project\(':tianshu-([a-z]+)'\)/).each { match ->
+                def dependency = match[2]
+                if (dependency in shortNames && dependency != owner && !(dependency in allowed)) {
+                    violations << "${module} declares a Gradle dependency on tianshu-${dependency}, which is not an edge in the matrix"
+                }
+            }
+            (tomlText =~ /modId\s*=\s*"tianshu_([a-z]+)"/).each { match ->
+                def dependency = match[1]
+                if (dependency in shortNames && dependency != owner && !(dependency in allowed)) {
+                    violations << "${module} declares tianshu_${dependency} in neoforge.mods.toml, which is not an edge in the matrix"
+                }
+            }
+            ((fabricJson.depends ?: [:]).keySet() + (fabricJson.suggests ?: [:]).keySet()).each { key ->
+                def dependency = key.toString() - 'tianshu_'
+                if (dependency in shortNames && dependency != owner && !(dependency in allowed)) {
+                    violations << "${module} declares ${key} in fabric.mod.json, which is not an edge in the matrix"
                 }
             }
         }
@@ -196,11 +261,62 @@ tasks.register('verifyNoPlatformImport') {
     }
 }
 
+// ---------------------------------------------------------------- universal artifacts
+// The feature jars are universal: one file is discovered by both loaders. That only holds if the jar
+// actually carries both shells and both manifests. Losing one of them still compiles and still passes every
+// source-level gate above, and the symptom is a mod that loads and does nothing on one of the two loaders.
+tasks.register('verifyUniversalModuleJars') {
+    group = 'verification'
+    description = 'Each feature jar must carry both loader shells and both loader manifests.'
+    def jarsByModule = featureModules.collectEntries { module ->
+        def jarTask = project(":${module}").tasks.named('jar')
+        [(module): jarTask.flatMap { it.archiveFile }]
+    }
+    inputs.files(jarsByModule.values())
+
+    doLast {
+        def violations = []
+        jarsByModule.each { module, archive ->
+            def jarFile = archive.get().asFile
+            // Walked explicitly rather than collected: ZipFile.entries() is an Enumeration, and relying on
+            // an implicit conversion here is how a check starts silently seeing fewer entries than exist.
+            def entries = new java.util.zip.ZipFile(jarFile).withCloseable { zip ->
+                def names = new HashSet<String>()
+                for (def e = zip.entries(); e.hasMoreElements();) {
+                    names.add(e.nextElement().name)
+                }
+                names
+            }
+            def feature = module - 'tianshu-'
+            def shell = feature.capitalize()
+            def packagePath = "com/rheinmetal/tianshu/function/${feature}"
+            // Normalised to String: interpolated Groovy strings are GStrings, and a GString's hashCode is not
+            // a String's, so Set.contains would report every interpolated entry as missing.
+            def expected = [
+                    'META-INF/neoforge.mods.toml',
+                    'fabric.mod.json',
+                    "${packagePath}/${shell}NeoForgeMod.class",
+                    "${packagePath}/${shell}FabricMod.class",
+                    "${packagePath}/${shell}ModuleRegistration.class",
+            ].collect { it.toString() }
+            expected.each { entry ->
+                if (!entries.contains(entry)) {
+                    violations << "${jarFile.name} is missing ${entry}"
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Feature jars are not universal:\n" + violations.join('\n'))
+        }
+    }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
     dependsOn tasks.named('verifyFeatureOptionalDependencies')
     dependsOn tasks.named('verifyHostHasNoFeatureDependency')
     dependsOn tasks.named('verifyNoPlatformImport')
+    dependsOn tasks.named('verifyUniversalModuleJars')
 }
 
 // ---------------------------------------------------------------- test concurrency
@@ -217,5 +333,8 @@ allprojects {
     tasks.withType(Test).configureEach {
         usesService(testSerialService)
         maxParallelForks = 1
+        // The suites drive threads and audio stubs, not large heaps. The JVM default (a quarter of physical
+        // RAM) reserves far more than they use and can fail to start on a machine with little free commit.
+        maxHeapSize = '1g'
     }
 }

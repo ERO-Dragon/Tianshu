@@ -258,6 +258,6 @@ TtsPlaybackStatusPayload、TtsRequestStatus、TtsRequestStatusPayload、TtsSynth
 
 - **必须有回响才能工作** → 声明前置依赖（硬依赖 + depend required），直接 import。
 - **有回响就多说一句** → 联动接入：compileOnly + mods.toml optional + InstalledMods.isLoaded("module.tts")
-  守卫 + 单一 bridge 类。完整配方见 doc/architecture/模块拆分工程方案.md §9.7 / §9.8。
+  守卫 + 单一 bridge 类。完整配方见 doc/architecture/模块架构.md §5 / §8。
 
 北辰（	ianshu-api / core / client / dapter）不再持有任何 TTS 载荷。
