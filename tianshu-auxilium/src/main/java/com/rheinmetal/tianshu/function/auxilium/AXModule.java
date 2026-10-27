@@ -127,6 +127,13 @@ public final class AXModule implements TianshuManagedModule {
     /** How long a typed line stays worth answering, matching the spoken path's window. */
     private static final long TYPED_TURN_TIMEOUT_MILLIS = 30_000L;
 
+    /**
+     * 装配失败时那条模块状态的语言键。
+     *
+     * <p>它只说"辅星没起来"，不指路：指路的话（检查密钥/模型）只对织言成立，对辅星是误导。</p>
+     */
+    private static final String STARTUP_FAILED_KEY = "tianshu.presence.module.ax.startup_failed";
+
     private AXTurnOrchestrator turnOrchestrator;
     private InputSignals.Subscription textInputSubscription;
     private AXDelegateService delegateService;
@@ -256,6 +263,32 @@ public final class AXModule implements TianshuManagedModule {
         if (dialogueGateway != null) {
             return;
         }
+        // 两条腿各说各的：模块状态说的是"辅星的健康与生命周期"，这条产品活动说的是"玩家现在能不能用"。
+        // 映迹不从模块状态反推画面，所以"准备中"必须由这里显式发出去。
+        adapter.publishLoadingActivity(true);
+        try {
+            prepareRuntime(context);
+        } catch (RuntimeException failure) {
+            // 装配失败只留观察用的模块状态，不发产品状态：映迹的 ERROR 只有一句"检查密钥/服务地址/向量模型"，
+            // 用在这里会把玩家指向无关的东西；而且装配抛异常的模块不会进"已准备"列表，stop()/destroy()
+            // 永远不会被调，那条提示也就收不回来，只能等 TTL 到期。
+            adapter.publishModuleStatus(ModuleStatuses.lifecycleFailed(
+                    moduleId(), STARTUP_FAILED_KEY, lifecycleStatusGeneration));
+            throw failure;
+        } finally {
+            // LinkageError 不经过上面的 catch，但两种情况下装配都已经结束：LOADING 必须收起，
+            // 否则它要挂到 TTL 到期——模块不在已准备列表里，停机时没人替它收尾。
+            adapter.publishLoadingActivity(false);
+        }
+    }
+
+    /**
+     * 真正的装配。
+     *
+     * <p>抽出来只为让 {@link #prepare} 能把"准备中/已就绪/起不来"三条产品状态收在同一处：
+     * 装配路径上任何一个异常都不该让画面停在"准备中"。</p>
+     */
+    private void prepareRuntime(ModuleRuntimeContext context) {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
         adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
@@ -643,6 +676,8 @@ public final class AXModule implements TianshuManagedModule {
             lifecycleActive = false;
             adapter.publishModuleStatus(ModuleStatuses.lifecycleStopped(moduleId(), lifecycleStatusGeneration));
         }
+        // 停机不留尾巴：一条没被收起的"准备中"会跟着玩家离开这个世界。
+        adapter.publishLoadingActivity(false);
     }
 
     @Override

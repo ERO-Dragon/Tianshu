@@ -315,4 +315,26 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 | 符号 | 值/来源 | 用途 |
 |---|---|---|
 | `ProtocolTopics.MODULE_STATUS` | `MODULE.STATUS` | AX 自身的健康与诊断状态；订阅方按 `module.ax` 过滤 |
-| `ProtocolTopics.PRESENCE_ACTIVITY` | `PRESENCE.ACTIVITY` | 思考/回答与记忆维护活动，不含正文 |
+| `ProtocolTopics.PRESENCE_ACTIVITY` | `PRESENCE.ACTIVITY` | 准备中/起不来 + 思考/回答与记忆维护活动，不含正文 |
+
+`PRESENCE.ACTIVITY` 上的三条活动，语义各不相同：
+
+| 活动 id | 类型 | 什么时候发 | 什么时候收 |
+|---|---|---|---|
+| `ax.module.load` | `LOADING` | 模块开始装配（`prepare` 入口） | 装配结束就收起（成功与失败都收，`finally` 里收） |
+| `<activityId>` | `THINKING` / `RESPONDING` | 收到一轮投递 / 收到模型第一个可播分片 | 该轮结束、被打断或失败 |
+| `ax.memory.maintenance.*` | `PROCESSING_TASK` | 记忆维护开始 | 维护结束 |
+
+`LOADING` 只表示"辅星还没装配完，现在叫不应"，**不表示在加载模型**——模型是织言的，它自己发 `llm.model.load`。
+辅星装配是同步构造，这条活动通常一闪而过，它的价值在于"装配结束时一定被收起"，而不是提示时长。
+
+**装配失败不发 `PRESENCE.ACTIVITY`**，只发模块状态（`runtime.lifecycle`，`CRITICAL`，键
+`tianshu.presence.module.ax.startup_failed`）。三条理由：映迹的 `ERROR` 只有一句"检查 API Key、服务地址或
+向量模型文件"，辅星装配失败与它们无关，会把玩家指向无关的东西；装配抛异常的模块不会进"已准备"列表，
+运行时不会对它调 `stop()` / `destroy()`，那条提示收不回来，只能等 TTL；而且装配失败不是玩家能操作的事，
+不该占用"需要你动手"的 ERROR 位。
+
+两条"能不能用"的活动和模块状态是**两条腿**，不可互相替代：模块状态回答"这个模块的健康与生命周期"，
+归设置、诊断与日志；产品活动回答"玩家现在能不能用它"，归映迹的画面。映迹不从 `MODULE.STATUS`
+反推画面状态，所以辅星要出现在画面上，就得自己发 `PRESENCE.ACTIVITY`。同优先级时映迹按"后到的赢"聚合，
+所以辅星的准备中与织言的模型加载可以同时为真，互不遮挡。

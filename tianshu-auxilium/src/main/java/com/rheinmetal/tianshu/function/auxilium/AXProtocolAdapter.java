@@ -38,6 +38,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.EnumSet;
 import java.util.Set;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
@@ -48,6 +49,11 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String EVENT_INPUT_CAPABILITY = ProtocolCapabilities.AX_EVENT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
     private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
+    /** 准备中的活动 id；与织言的 {@code llm.model.load} 并列而不是共用，两者可以同时为真。 */
+    private static final String LOADING_ACTIVITY_ID = "ax.module.load";
+    /** 准备窗口的兜底寿命：正常路径由 ready 收起，这个 TTL 只防"进程在准备途中没了"。 */
+    private static final long LOADING_ACTIVITY_TTL_MILLIS = 300_000L;
+    private final AtomicBoolean loadingPublished = new AtomicBoolean(false);
     /** Delegation backlog limit (design appendix A.2: broadcast queue limit 3, same order of magnitude). */
     private static final int DELEGATE_RUN_QUEUE_CAPACITY = 3;
 
@@ -418,6 +424,33 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return publishPresenceActivity(active
                 ? PresenceActivityPayload.started(activityId, PresenceActivityType.PROCESSING_TASK, MAINTENANCE_ACTIVITY_TTL_MILLIS)
                 : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
+    }
+
+    /**
+     * 打开或收起"辅星正在准备"的产品活动。
+     *
+     * <p>它和模块状态是两条腿，不能互相替代：模块状态说的是"这个模块的健康与生命周期"，归设置、诊断和日志；
+     * 产品活动说的是"玩家现在能不能用它"，归映迹的画面。映迹明确不从 {@code MODULE.STATUS} 反推画面状态，
+     * 所以辅星要出现在画面上，就得自己发这一条。</p>
+     *
+     * <p>收起一条从未打开过的通知不发包：干净启动不该在每次进世界时产生一对空的结束事件。</p>
+     */
+    public TianshuEnvelope publishLoadingActivity(boolean loading) {
+        if (loading) {
+            loadingPublished.set(true);
+            return publishPresenceActivity(PresenceActivityPayload.started(
+                    LOADING_ACTIVITY_ID,
+                    PresenceActivityType.LOADING,
+                    LOADING_ACTIVITY_TTL_MILLIS
+            ));
+        }
+        if (!loadingPublished.compareAndSet(true, false)) {
+            return null;
+        }
+        return publishPresenceActivity(PresenceActivityPayload.ended(
+                LOADING_ACTIVITY_ID,
+                PresenceActivityType.LOADING
+        ));
     }
 
     public int dialogueParticipantRegistrationProviderCount() {

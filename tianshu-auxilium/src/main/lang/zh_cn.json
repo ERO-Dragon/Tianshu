@@ -29,6 +29,7 @@
   "tianshu.presence.module.ax.starting": "辅星正在启动",
   "tianshu.presence.module.ax.ready": "辅星已就绪",
   "tianshu.presence.module.ax.stopped": "辅星已停止",
+  "tianshu.presence.module.ax.startup_failed": "辅星没能启动",
   "tianshu.ax.event.line.tianshu.death": "玩家死亡：%s",
   "tianshu.ax.event.line.tianshu.health_critical": "血量危急，%s",
   "tianshu.ax.event.line.tianshu.on_fire": "你着火了：%s",

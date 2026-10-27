@@ -29,6 +29,7 @@
   "tianshu.presence.module.ax.starting": "Auxilium starting",
   "tianshu.presence.module.ax.ready": "Auxilium ready",
   "tianshu.presence.module.ax.stopped": "Auxilium stopped",
+  "tianshu.presence.module.ax.startup_failed": "Auxilium failed to start",
   "tianshu.ax.event.line.tianshu.death": "Player died: %s",
   "tianshu.ax.event.line.tianshu.health_critical": "Health critical, %s",
   "tianshu.ax.event.line.tianshu.on_fire": "You are on fire: %s",
