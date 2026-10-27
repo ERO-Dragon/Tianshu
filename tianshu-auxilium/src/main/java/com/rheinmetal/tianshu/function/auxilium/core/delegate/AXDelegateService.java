@@ -50,7 +50,7 @@ public final class AXDelegateService {
     public static final int DELEGATE_TASK_PRIORITY = 500;
 
     /** Complex run 的信封车道：§3.2 规定 Complex 跑在 {@code TASK}。 */
-    public static final String DELEGATE_LANE = "TASK";
+    public static final String DELEGATE_LANE = "COMPLEX";
 
     private static final String REQUEST_ID_PREFIX = "ax.delegate.";
     private static final String REASON_RESULT_FAILED = "delegate.result_failed";

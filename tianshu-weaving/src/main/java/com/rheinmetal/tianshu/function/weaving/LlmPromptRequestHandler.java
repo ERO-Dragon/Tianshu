@@ -66,7 +66,7 @@ final class LlmPromptRequestHandler {
         try {
             LLMRequest request = payloadMapper.toRequest(payload);
             boolean stream = Boolean.TRUE.equals(payload.stream());
-            boolean task = "TASK".equalsIgnoreCase(payload.lane());
+            boolean task = "COMPLEX".equalsIgnoreCase(payload.lane());
             if (task) {
                 admitTaskRequest(service, envelope, request, payload, context, stream, usage);
             } else if (stream) {

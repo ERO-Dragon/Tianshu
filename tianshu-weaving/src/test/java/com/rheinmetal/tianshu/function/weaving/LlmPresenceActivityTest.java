@@ -43,10 +43,10 @@ class LlmPresenceActivityTest {
                     runtime
             );
 
-            module.publishInferenceStatus(status("task-1", "TASK", LlmStatusPayload.STARTED));
-            module.publishInferenceStatus(status("chat-1", "CHAT", LlmStatusPayload.STARTED));
-            module.publishInferenceStatus(status("chat-1", "CHAT", LlmStatusPayload.COMPLETED));
-            module.publishInferenceStatus(status("task-1", "TASK", LlmStatusPayload.COMPLETED));
+            module.publishInferenceStatus(status("task-1", "COMPLEX", LlmStatusPayload.STARTED));
+            module.publishInferenceStatus(status("chat-1", "SIMPLE", LlmStatusPayload.STARTED));
+            module.publishInferenceStatus(status("chat-1", "SIMPLE", LlmStatusPayload.COMPLETED));
+            module.publishInferenceStatus(status("task-1", "COMPLEX", LlmStatusPayload.COMPLETED));
 
             awaitAction(activities, "llm.task.task-1", PresenceActivityAction.STARTED);
             awaitAction(activities, "llm.task.task-1", PresenceActivityAction.ENDED);

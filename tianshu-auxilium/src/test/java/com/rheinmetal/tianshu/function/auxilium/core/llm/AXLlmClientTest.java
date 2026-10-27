@@ -48,8 +48,8 @@ class AXLlmClientTest {
                 LLMPromptRequestPayload.EMPTY
         ).build();
 
-        TianshuEnvelope chatEnvelope = client.submit(parent, request("chat", "CHAT"), chat);
-        TianshuEnvelope taskEnvelope = client.submitDetached(request("task", "TASK"), task);
+        TianshuEnvelope chatEnvelope = client.submit(parent, request("chat", "SIMPLE"), chat);
+        TianshuEnvelope taskEnvelope = client.submitDetached(request("task", "COMPLEX"), task);
 
         client.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
 
@@ -77,8 +77,8 @@ class AXLlmClientTest {
         RecordingHandler first = new RecordingHandler();
         RecordingHandler second = new RecordingHandler();
 
-        TianshuEnvelope firstEnvelope = client.submitDetached(request("first", "CHAT"), first);
-        TianshuEnvelope secondEnvelope = client.submitDetached(request("second", "CHAT"), second);
+        TianshuEnvelope firstEnvelope = client.submitDetached(request("first", "SIMPLE"), first);
+        TianshuEnvelope secondEnvelope = client.submitDetached(request("second", "SIMPLE"), second);
 
         assertTrue(client.cancelRequestAwaitTerminal(
                 firstEnvelope.envelopeId(),
@@ -111,8 +111,8 @@ class AXLlmClientTest {
         RecordingHandler chat = new RecordingHandler();
         RecordingHandler task = new RecordingHandler();
 
-        client.submitDetached(request("chat", "CHAT"), chat);
-        client.submitDetached(request("task", "TASK"), task);
+        client.submitDetached(request("chat", "SIMPLE"), chat);
+        client.submitDetached(request("task", "COMPLEX"), task);
         nowMillis.addAndGet(120_000L);
         client.sweepExpired();
 

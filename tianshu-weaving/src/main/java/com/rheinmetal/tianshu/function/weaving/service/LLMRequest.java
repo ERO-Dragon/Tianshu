@@ -24,7 +24,7 @@ public class LLMRequest {
     private Boolean captureThinkingContent = false;
     private String toolsJson = "";
 
-    private String lane = "CHAT";
+    private String lane = "SIMPLE";
     private Integer taskPriority = 0;
     private Boolean taskPreemptible = false;
 
@@ -172,7 +172,7 @@ public class LLMRequest {
     }
 
     public void setLane(String lane) {
-        this.lane = lane != null ? lane : "CHAT";
+        this.lane = lane != null ? lane : "SIMPLE";
     }
 
     public void setTaskPriority(Integer taskPriority) {
@@ -212,7 +212,7 @@ public class LLMRequest {
     }
 
     public boolean isTaskLane() {
-        return "TASK".equalsIgnoreCase(lane);
+        return "COMPLEX".equalsIgnoreCase(lane);
     }
 
     public List<MessageItem> extractMessages() {

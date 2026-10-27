@@ -313,7 +313,7 @@ public class LLMService {
                 DiagnosticSeverity.DEBUG,
                 DiagnosticPrivacy.REDACTED,
                 Map.of(
-                        "lane", request != null && request.isTaskLane() ? "TASK" : "CHAT",
+                        "lane", request != null && request.isTaskLane() ? "COMPLEX" : "SIMPLE",
                         "thinking", Boolean.toString(Boolean.TRUE.equals(prepared.sampler().getEnableThinking())),
                         "captureThinkingContent", Boolean.toString(prepared.options().captureThinkingContent()),
                         "maxTokens", Integer.toString(prepared.maxTokens()),

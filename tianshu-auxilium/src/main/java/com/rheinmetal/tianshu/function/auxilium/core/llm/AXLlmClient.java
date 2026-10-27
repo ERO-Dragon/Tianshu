@@ -179,7 +179,7 @@ public final class AXLlmClient {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         handlers.entrySet().removeIf(entry -> {
             PendingRequest request = entry.getValue();
-            if (request == null || !"CHAT".equals(request.lane())) {
+            if (request == null || !"SIMPLE".equals(request.lane())) {
                 return false;
             }
             cancelAndAwaitTerminalResult(request, effective);
@@ -226,7 +226,7 @@ public final class AXLlmClient {
         if (envelope != null && envelope.payload() instanceof LLMPromptRequestPayload payload) {
             return payload.lane();
         }
-        return "CHAT";
+        return "SIMPLE";
     }
 
     private static final class PendingRequest {
@@ -243,7 +243,7 @@ public final class AXLlmClient {
             this.envelope = envelope;
             this.handler = handler;
             this.expireAtMillis = expireAtMillis;
-            this.lane = lane == null || lane.isBlank() ? "CHAT" : lane.trim().toUpperCase();
+            this.lane = lane == null || lane.isBlank() ? "SIMPLE" : lane.trim().toUpperCase();
         }
 
         private TianshuEnvelope envelope() {
@@ -273,7 +273,7 @@ public final class AXLlmClient {
         }
 
         private boolean expired(long nowMillis) {
-            if ("TASK".equals(lane)) {
+            if ("COMPLEX".equals(lane)) {
                 return false;
             }
             return expireAtMillis > 0L && expireAtMillis < nowMillis;

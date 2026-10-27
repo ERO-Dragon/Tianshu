@@ -184,7 +184,7 @@ class LlmUsageWiringTest {
                         ProtocolCapabilities.LLM_REQUEST,
                         PayloadType.LLM_PROMPT_REQUEST,
                         new LLMPromptRequestPayload(
-                                requestId, 0, 0.7f, stream, false, false, "TASK", 0, false,
+                                requestId, 0, 0.7f, stream, false, false, "COMPLEX", 0, false,
                                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                                 ))

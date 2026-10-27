@@ -32,7 +32,7 @@ public record LlmStatusPayload(
     public LlmStatusPayload {
         taskId = taskId == null ? "" : taskId.trim();
         taskType = taskType == null ? "" : taskType.trim().toUpperCase(Locale.ROOT);
-        lane = lane == null || lane.isBlank() ? "CHAT" : lane.trim().toUpperCase(Locale.ROOT);
+        lane = lane == null || lane.isBlank() ? "SIMPLE" : lane.trim().toUpperCase(Locale.ROOT);
         eventType = normalizeEventType(eventType);
         priority = Math.max(0, priority);
         message = message == null ? "" : message.trim();

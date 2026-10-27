@@ -105,7 +105,7 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 - 已完成待 ACK 请求进入有界交付队列。队列满时不再启动新的纯合成，待执行请求保持排队；ACK、STOP、TTL、模块停止和真实失败会释放相应请求槽位。
 - 等待外部 ACK 不阻塞 TTS backend lane，其他可执行的播放工作仍可获得模型资源。
 
-这与 LLM 的 CHAT/TASK 双链路相同：共享执行资源，不共享业务取消语义。
+这与 LLM 的 SIMPLE/COMPLEX 双链路相同：共享执行资源，不共享业务取消语义。
 
 ## 5. 状态边界
 

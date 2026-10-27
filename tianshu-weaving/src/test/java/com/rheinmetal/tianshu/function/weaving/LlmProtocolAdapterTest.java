@@ -74,7 +74,7 @@ class LlmProtocolAdapterTest {
                         ProtocolCapabilities.LLM_REQUEST,
                         PayloadType.LLM_PROMPT_REQUEST,
                         new LLMPromptRequestPayload(
-                                "request-1", 0, 0.7f, false, false, "TASK", 0, false,
+                                "request-1", 0, 0.7f, false, false, "COMPLEX", 0, false,
                                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                                 ))
@@ -270,7 +270,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-think-hidden", 0, 0.7f, false, true, "TASK", 0, false,
+                "request-think-hidden", 0, 0.7f, false, true, "COMPLEX", 0, false,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -298,7 +298,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-think-visible", 0, 0.7f, false, true, true, "TASK", 0, false,
+                "request-think-visible", 0, 0.7f, false, true, true, "COMPLEX", 0, false,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -325,7 +325,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-think-stream-hidden", 0, 0.7f, true, true, "TASK", 0, false,
+                "request-think-stream-hidden", 0, 0.7f, true, true, "COMPLEX", 0, false,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -361,7 +361,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-think-stream-capture", 0, 0.7f, true, true, true, "TASK", 0, false,
+                "request-think-stream-capture", 0, 0.7f, true, true, true, "COMPLEX", 0, false,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -405,7 +405,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-task-suspend", 0, 0.7f, true, false, "TASK", 0, true,
+                "request-task-suspend", 0, 0.7f, true, false, "COMPLEX", 0, true,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -447,7 +447,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-task-cancel", 0, 0.7f, true, false, "TASK", 0, true,
+                "request-task-cancel", 0, 0.7f, true, false, "COMPLEX", 0, true,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -484,7 +484,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-task-rag-cancel", 0, 0.7f, true, false, "TASK", 0, true,
+                "request-task-rag-cancel", 0, 0.7f, true, false, "COMPLEX", 0, true,
                 List.of(
                         LLMPromptRequestPayload.ChunkPayload.message(
                                 List.of(LLMPromptRequestPayload.MessageItemPayload.user("remembered fact"))
@@ -528,7 +528,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "request-task-cancel-non-stream", 0, 0.7f, false, false, "TASK", 0, true,
+                "request-task-cancel-non-stream", 0, 0.7f, false, false, "COMPLEX", 0, true,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -555,7 +555,7 @@ class LlmProtocolAdapterTest {
         adapter.publishInferenceStatus(new LlmStatusPayload(
                 "task-1",
                 "STREAM_COMPLETION",
-                "TASK",
+                "COMPLEX",
                 "COLD_RESUME_STARTED",
                 7,
                 "replaying",
@@ -569,7 +569,7 @@ class LlmProtocolAdapterTest {
         assertEquals(1, statuses.size());
         LlmStatusPayload status = statuses.get(0);
         assertEquals("task-1", status.taskId());
-        assertEquals("TASK", status.lane());
+        assertEquals("COMPLEX", status.lane());
         assertEquals("COLD_RESUME_STARTED", status.eventType());
         assertEquals(123, status.replayCharacters());
         assertEquals(45, status.generatedTokens());
@@ -715,7 +715,7 @@ class LlmProtocolAdapterTest {
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, service);
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = llmEnvelope(new LLMPromptRequestPayload(
-                "task-stream-usage", 0, 0.7f, true, false, "TASK", 0, false,
+                "task-stream-usage", 0, 0.7f, true, false, "COMPLEX", 0, false,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))
@@ -769,7 +769,7 @@ class LlmProtocolAdapterTest {
 
     private LLMPromptRequestPayload taskPayload(String requestId, int priority, boolean preemptible) {
         return new LLMPromptRequestPayload(
-                requestId, 0, 0.7f, false, false, "TASK", priority, preemptible,
+                requestId, 0, 0.7f, false, false, "COMPLEX", priority, preemptible,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
                         List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))
                 ))

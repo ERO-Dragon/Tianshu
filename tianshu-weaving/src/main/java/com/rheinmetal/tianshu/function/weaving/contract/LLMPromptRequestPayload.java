@@ -33,7 +33,7 @@ public record LLMPromptRequestPayload(
     public static final int MAX_TASK_PRIORITY = 1000;
 
     public static final LLMPromptRequestPayload EMPTY = new LLMPromptRequestPayload(
-            "llm.request", 0, null, false, false, "CHAT", 0, false, List.of()
+            "llm.request", 0, null, false, false, "SIMPLE", 0, false, List.of()
     );
 
     public LLMPromptRequestPayload(
@@ -132,7 +132,7 @@ public record LLMPromptRequestPayload(
         toolsJson = toolsJson == null || toolsJson.isBlank() ? "" : toolsJson.trim();
     }
 
-    public LLMPromptRequestPayload withDialogueAuthorization(String sessionId, String moduleId, String participantId, String turnId) {
+    public LLMPromptRequestPayload withDialogueIdentity(String sessionId, String moduleId, String participantId, String turnId) {
         return new LLMPromptRequestPayload(
                 requestId,
                 maxTokens,
@@ -287,7 +287,7 @@ public record LLMPromptRequestPayload(
 
     private static String normalizeLane(String value) {
         String normalized = value == null ? "" : value.trim().toUpperCase();
-        return "TASK".equals(normalized) ? "TASK" : "CHAT";
+        return "COMPLEX".equals(normalized) ? "COMPLEX" : "SIMPLE";
     }
 
     private static Integer clampPriority(Integer value) {

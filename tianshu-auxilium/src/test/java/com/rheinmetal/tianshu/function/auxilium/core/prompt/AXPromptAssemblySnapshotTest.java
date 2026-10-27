@@ -143,7 +143,7 @@ class AXPromptAssemblySnapshotTest {
 
         assertTrue(payload.thinking());
         assertTrue(!payload.captureThinkingContent());
-        assertEquals("CHAT", payload.lane());
+        assertEquals("SIMPLE", payload.lane());
     }
 
     @Test

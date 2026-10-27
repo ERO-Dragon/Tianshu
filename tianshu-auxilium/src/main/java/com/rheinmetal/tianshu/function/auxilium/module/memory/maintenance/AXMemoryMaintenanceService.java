@@ -365,7 +365,7 @@ public final class AXMemoryMaintenanceService {
                 false,
                 true,
                 false,
-                "TASK",
+                "COMPLEX",
                 COMPACT_TASK_PRIORITY,
                 true,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(messages))

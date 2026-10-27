@@ -9,8 +9,8 @@ class LlmStatusPayloadTest {
     void unknownInferenceEventTypeDoesNotBecomeFailure() {
         LlmStatusPayload payload = new LlmStatusPayload(
                 "task-1",
-                "task",
-                "task",
+                "complex",
+                "complex",
                 "future_event",
                 -1,
                 null,
@@ -21,8 +21,8 @@ class LlmStatusPayloadTest {
         );
 
         assertEquals(LlmStatusPayload.UNKNOWN, payload.eventType());
-        assertEquals("TASK", payload.taskType());
-        assertEquals("TASK", payload.lane());
+        assertEquals("COMPLEX", payload.taskType());
+        assertEquals("COMPLEX", payload.lane());
         assertEquals(0, payload.priority());
         assertEquals(0, payload.replayCharacters());
         assertEquals(0, payload.generatedTokens());

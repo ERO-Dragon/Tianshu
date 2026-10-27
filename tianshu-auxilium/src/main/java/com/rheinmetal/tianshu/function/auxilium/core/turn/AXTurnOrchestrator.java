@@ -445,7 +445,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             );
         }
         LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context, contextBudget)
-                .withDialogueAuthorization(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
+                .withDialogueIdentity(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
         execution.latencyTracker().mark(AXTurnLatencyStage.PROMPT_READY);
         extendSessionIfNeeded(deliveryEnvelope, delivery);
         appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
@@ -711,7 +711,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     }
 
     private boolean isChatLane(LLMPromptRequestPayload payload) {
-        return payload != null && "CHAT".equalsIgnoreCase(payload.lane());
+        return payload != null && "SIMPLE".equalsIgnoreCase(payload.lane());
     }
 
     private final class PendingTurn implements AXLlmRequestHandler {

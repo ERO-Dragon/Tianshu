@@ -24,7 +24,7 @@ class LLMPromptRequestPayloadTest {
                 0.7f,
                 false,
                 false,
-                "TASK",
+                "COMPLEX",
                 priority,
                 false,
                 List.of(LLMPromptRequestPayload.ChunkPayload.message(

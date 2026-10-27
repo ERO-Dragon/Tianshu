@@ -34,7 +34,7 @@ public final class AXLlmPromptRequestBuilder {
                 null,
                 true,
                 assistantSettings.chatThinkingEnabled(),
-                "CHAT",
+                "SIMPLE",
                 0,
                 false,
                 chunks

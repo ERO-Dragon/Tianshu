@@ -60,17 +60,17 @@ LLM 模块对外提供三个协议能力：
 - `LlmRuntimeInspector`：提供 readiness、队列、MTP、context budget、embedding metadata 和 runtime snapshot。
 - `LlmEmbeddingServiceAdapter`：隔离 embedding 调用边界。
 
-`LlmProtocolAdapter` 只保留 capability/topic 注册、协议 transport 和稳定 public API。协议 payload 映射由 `LlmPromptPayloadMapper` 完成，CHAT/TASK 准入、执行、取消和错误分类由 `LlmPromptRequestHandler` 完成，流式累计状态由 `LlmStreamState` 同步维护。
+`LlmProtocolAdapter` 只保留 capability/topic 注册、协议 transport 和稳定 public API。协议 payload 映射由 `LlmPromptPayloadMapper` 完成，SIMPLE/COMPLEX 准入、执行、取消和错误分类由 `LlmPromptRequestHandler` 完成，流式累计状态由 `LlmStreamState` 同步维护。
 
 这些拆分不改变 chat/task、stream、thinking、usage、finish、取消、MTP 或 RAG 协议语义。模型推理、embedding、RAG 检索、持久化和模型下载都必须在受管后台执行 lane 中运行，不得占用 Minecraft 主线程。
 
-能力就绪按实际归属判断，而不是由单一 generation 模型状态覆盖全部能力：`CHAT`/`TASK` 依赖 generation backend；`EMBED` 依赖本地 embedding；RAG storage、library 管理和 BM25 属于 LLM 基础设施；`STATUS` 始终可查询。`TOKEN_COUNT` 只在当前 generation backend 提供 tokenizer 时可用，不使用 embedding token 数代替。
+能力就绪按实际归属判断，而不是由单一 generation 模型状态覆盖全部能力：`SIMPLE`/`COMPLEX` 依赖 generation backend；`EMBED` 依赖本地 embedding；RAG storage、library 管理和 BM25 属于 LLM 基础设施；`STATUS` 始终可查询。`TOKEN_COUNT` 只在当前 generation backend 提供 tokenizer 时可用，不使用 embedding token 数代替。
 
 因此模型未加载时，library 注册、条目查询/删除/清空、提供 vector 的写入、BM25 检索和 inline BM25 检索仍可用；需要 embedding 的写入和向量检索会在 embedding 不可用时明确降级或失败。
 
 进入世界后，LLM 先完成世界 session 初始化，再由受管调度器延迟启动模型加载。`MODULE_STATUS` 通知健康、就绪或失败；模型加载工作线程真正开始后，LLM 同时以 `llm.model.load / LOADING` 发布 `PRESENCE.ACTIVITY`，并在成功、失败或取消时结束。
 
-LLM 只把实际执行的 `lane=TASK` 任务公开为 `llm.task.<taskId> / PROCESSING_TASK`，终态为 `COMPLETED`、`CANCELLED` 或 `FAILED` 时结束。`lane=CHAT` 不发布 `THINKING` 或 `RESPONDING`，避免外部 CHAT 调用冒充辅星产品交互；AX 会在自己的对话回合中发布这两个状态。
+LLM 只把实际执行的 `lane=COMPLEX` 任务公开为 `llm.task.<taskId> / PROCESSING_TASK`，终态为 `COMPLETED`、`CANCELLED` 或 `FAILED` 时结束。`lane=SIMPLE` 不发布 `THINKING` 或 `RESPONDING`，避免外部 CHAT 调用冒充辅星产品交互；AX 会在自己的对话回合中发布这两个状态。
 
 ---
 
@@ -175,9 +175,9 @@ protocolRuntime.submit(envelope);
 | `stream` | `false` | 是否流式返回。`true` 时会先收到若干 `LLM_PROMPT_STREAM_CHUNK`，最后收到 `LLM_PROMPT_RESULT`。 |
 | `thinking` | `false` | 是否允许模型生成 thinking 内容。 |
 | `captureThinkingContent` | `false` | 是否把底层识别出的 COT/thinking 内容写入结构化 `thinkingContent` 通道；正文 `text` 始终只包含正式回答。 |
-| `lane` | `"CHAT"` | 执行通道：`CHAT` 或 `TASK`。非法值按 `CHAT` 处理。 |
-| `taskPriority` | `0` | TASK 优先级，范围 `0..1000`；仅 `lane=TASK` 时参与调度。 |
-| `taskPreemptible` | `false` | 当前 TASK 是否允许被更高优先级 TASK 抢占；仅 `lane=TASK` 时有效。 |
+| `lane` | `"CHAT"` | 执行通道：`SIMPLE` 或 `COMPLEX`。非法值按 `SIMPLE` 处理。 |
+| `taskPriority` | `0` | TASK 优先级，范围 `0..1000`；仅 `lane=COMPLEX` 时参与调度。 |
+| `taskPreemptible` | `false` | 当前 TASK 是否允许被更高优先级 TASK 抢占；仅 `lane=COMPLEX` 时有效。 |
 | `chunks` | 空列表 | 请求内容，按数组顺序处理。支持 `message` 和 `rag` 两类 chunk。 |
 | `dialogueSessionId` | 空字符串 | CHAT 请求的对话会话 ID；用于关联本轮对话。 |
 | `requesterModuleId` | 空字符串 | 请求方模块 ID，必须与协议 envelope 的 source module 一致。 |
@@ -320,8 +320,8 @@ RAG 组装规则：
 
 | lane | 用途 | 调度行为 |
 |------|------|----------|
-| `CHAT` | 对话即时响应 | 不进入 TASK admission 队列；带本轮对话身份用于关联。 |
-| `TASK` | 后台任务、记忆压缩、长文本整理 | 进入 TASK admission 队列，按优先级调度。 |
+| `SIMPLE` | 对话即时响应 | 不进入 TASK admission 队列；带本轮对话身份用于关联。 |
+| `COMPLEX` | 后台任务、记忆压缩、长文本整理 | 进入 TASK admission 队列，按优先级调度。 |
 
 TASK 调度规则：
 - 默认只有一个 active TASK，其余进入等待队列。

@@ -161,7 +161,7 @@ ASR 发布最终文本
 
 | 能力 | 用途 |
 |---|---|
-| `LLM_REQUEST` | 当前 owner 轮次的对话请求；后台维护与委派走 TASK 车道 |
+| `LLM_REQUEST` | 当前 owner 轮次的对话请求；后台维护与委派走 COMPLEX 车道 |
 | `LLM_PRIMITIVE_QUERY` | token 计数、嵌入与运行时原语 |
 | `LLM_CACHE_MANAGE` | 记忆检索（RAG 查询）与缓存管理 |
 | `PRESENCE_QUERY_CONTEXT` | 获取允许的动态事实快照 |

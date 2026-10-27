@@ -625,7 +625,7 @@ public final class LlmModule implements TianshuManagedModule {
             return;
         }
         adapter.publishInferenceStatus(status);
-        if (!"TASK".equals(status.taskType()) || status.taskId().isBlank()) {
+        if (!"COMPLEX".equals(status.taskType()) || status.taskId().isBlank()) {
             return;
         }
         if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.STARTED.equals(status.eventType())) {
