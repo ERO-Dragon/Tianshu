@@ -39,6 +39,7 @@ public final class PayloadType {
     public static final PayloadType PRESENCE_CONTEXT_QUERY = register("PRESENCE_CONTEXT_QUERY");
     public static final PayloadType PRESENCE_CONTEXT_SNAPSHOT = register("PRESENCE_CONTEXT_SNAPSHOT");
     public static final PayloadType PRESENCE_ACTIVITY = register("PRESENCE_ACTIVITY");
+    public static final PayloadType PRESENCE_INTERACTION_CONTEXT = register("PRESENCE_INTERACTION_CONTEXT");
     public static final PayloadType TTS_TEXT = register("TTS_TEXT");
     public static final PayloadType TTS_PLAYBACK_STATUS = register("TTS_PLAYBACK_STATUS");
     public static final PayloadType TTS_REQUEST_STATUS = register("TTS_REQUEST_STATUS");
@@ -55,8 +56,6 @@ public final class PayloadType {
     public static final PayloadType DIALOGUE_OWNER_PREVIEW = register("DIALOGUE_OWNER_PREVIEW");
     public static final PayloadType DIALOGUE_DELIVERY = register("DIALOGUE_DELIVERY");
     public static final PayloadType DIALOGUE_CONTEXT_INPUT = register("DIALOGUE_CONTEXT_INPUT");
-    public static final PayloadType DIALOGUE_SCORE_REQUEST = register("DIALOGUE_SCORE_REQUEST");
-    public static final PayloadType DIALOGUE_SCORE_RESPONSE = register("DIALOGUE_SCORE_RESPONSE");
     /** One world event a producer already worded, handed to AX together with its tier. */
     public static final PayloadType AX_WORLD_EVENT = register("AX_WORLD_EVENT");
     /** Escape hatch for module payloads that live outside the kernel's vocabulary. */

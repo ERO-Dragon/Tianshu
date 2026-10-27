@@ -11,8 +11,6 @@ import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPa
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueScoreRequestPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueScoreResponsePayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -102,63 +100,6 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
                 handler,
                 defaults()
         );
-    }
-
-    public void registerScoreCapability(String capabilityId, EnvelopeHandler handler) {
-        registerCapability(
-                capabilityId,
-                PayloadType.DIALOGUE_SCORE_REQUEST,
-                DialogueScoreRequestPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.REQUEST),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
-    public TianshuEnvelope buildScoreRequest(TianshuEnvelope parent, String capabilityId, DialogueScoreRequestPayload payload) {
-        return buildRequestCapability(parent, capabilityId, PayloadType.DIALOGUE_SCORE_REQUEST, payload);
-    }
-
-    public TianshuEnvelope submitScoreRequest(TianshuEnvelope envelope) {
-        return submitPrepared(envelope);
-    }
-
-    public TianshuEnvelope respondScore(TianshuEnvelope parent, DialogueScoreResponsePayload payload) {
-        return respondTo(parent, PayloadType.DIALOGUE_SCORE_RESPONSE, payload);
-    }
-
-    public ProtocolTaskHandle scheduleScoreTimeout(String requestEnvelopeId, Runnable task, Duration delay) {
-        return runtime().schedule(
-                ProtocolTaskSpec.builder()
-                        .moduleId(MODULE_ID)
-                        .lane(ExecutionLane.SCHEDULED)
-                        .taskId("ia.score-timeout." + requestEnvelopeId)
-                        .envelopeId(requestEnvelopeId)
-                        .build(),
-                task,
-                delay
-        );
-    }
-
-    public void registerScoreResponse(String requestEnvelopeId, EnvelopeHandler handler) {
-        registerResponseHandler(
-                requestEnvelopeId,
-                PayloadType.DIALOGUE_SCORE_RESPONSE,
-                DialogueScoreResponsePayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.RESPONSE),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
-    public void unregisterScoreResponses(String requestEnvelopeId) {
-        unregisterResponseHandlers(requestEnvelopeId);
     }
 
     public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {

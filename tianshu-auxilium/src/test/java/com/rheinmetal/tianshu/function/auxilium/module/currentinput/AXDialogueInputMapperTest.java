@@ -54,7 +54,7 @@ class AXDialogueInputMapperTest {
                 "turn",
                 "repaired player text",
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of(), Map.of("weather", "clear")),
-                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D, List.of()),
+                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D),
                 List.of(new DialogueEntityRef("entity-uuid", "minecraft:villager", "", 3.0D, false)),
                 Map.of(),
                 List.of(),
@@ -101,7 +101,7 @@ class AXDialogueInputMapperTest {
                 "turn",
                 "repaired player text",
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of(), Map.of("weather", "clear")),
-                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D, List.of()),
+                new DialogueInteractionHints("minecraft:stick", true, true, false, 2.5D),
                 List.of(new DialogueEntityRef("entity-uuid", "minecraft:villager", "村民", 3.0D, false)),
                 displayNames,
                 List.of(

@@ -6,10 +6,18 @@ public enum DialogueClaimConditionType {
     EQUIPPED_ITEM,
     MENTIONED_ENTITY,
     CROSSHAIR_ENTITY,
-    NEAREST_ENTITY_WITHIN,
-    CROSSHAIR_HIT,
     INTERACTION_KEY,
-    SNEAKING,
-    INTERACTION_TAG,
-    CONTEXT_FACT
+    SNEAKING;
+
+    /**
+     * Whether matching this condition counts as a context claim or an utterance claim.
+     *
+     * <p>Only the two conditions that read the sentence itself belong to {@link DialogueClaimSource#UTTERANCE};
+     * everything else reads the state of the game world right now.</p>
+     */
+    public DialogueClaimSource source() {
+        return this == WAKE_WORD || this == MENTIONED_ENTITY
+                ? DialogueClaimSource.UTTERANCE
+                : DialogueClaimSource.CONTEXT;
+    }
 }

@@ -13,8 +13,6 @@ public final class ProtocolCapabilities {
     public static final String DIALOGUE_PARTICIPANT_REGISTER = "DIALOGUE.PARTICIPANT_REGISTER";
     public static final String DIALOGUE_PARTICIPANT_UNREGISTER = "DIALOGUE.PARTICIPANT_UNREGISTER";
     public static final String DIALOGUE_SESSION_CONTROL = "DIALOGUE.SESSION_CONTROL";
-    public static final String DIALOGUE_LLM_USAGE_AUTHORIZE = "DIALOGUE.LLM_USAGE_AUTHORIZE";
-    public static final String DIALOGUE_SCORE = "DIALOGUE.SCORE";
     public static final String AX_DIALOGUE_INPUT = "AX.DIALOGUE_INPUT";
     public static final String AX_CONTEXT_INPUT = "AX.CONTEXT_INPUT";
     public static final String AX_EVENT_INPUT = "AX.EVENT_INPUT";

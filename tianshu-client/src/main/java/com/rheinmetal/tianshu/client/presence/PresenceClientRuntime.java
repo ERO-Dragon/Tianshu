@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
+import com.rheinmetal.tianshu.client.presence.context.PresenceInteractionContextWatcher;
 import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
@@ -28,6 +29,7 @@ public final class PresenceClientRuntime {
     private final PresenceActivityTracker activityTracker = new PresenceActivityTracker();
     private final PresenceDisplayPolicy displayPolicy;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
+    private final PresenceInteractionContextWatcher interactionContextWatcher;
     private final PresenceEventCollector eventCollector;
     private volatile PresenceActivitySnapshot displayedActivitySnapshot;
     private volatile PresenceHudDisplay cachedHudDisplay = PresenceHudDisplay.HIDDEN;
@@ -43,6 +45,7 @@ public final class PresenceClientRuntime {
                 Objects.requireNonNull(platform, "platform"),
                 new PresenceContextFactMapper()
         );
+        this.interactionContextWatcher = new PresenceInteractionContextWatcher(platform);
         this.eventCollector = new PresenceEventCollector(logSink);
     }
 
@@ -50,12 +53,14 @@ public final class PresenceClientRuntime {
         worldSessionActive = true;
         activityTracker.startWorldSession();
         contextQueryCoordinator.startWorldSession();
+        interactionContextWatcher.reset();
         eventCollector.startWorldSession();
     }
 
     public void stopWorldSession() {
         worldSessionActive = false;
         contextQueryCoordinator.stopWorldSession();
+        interactionContextWatcher.reset();
         eventCollector.stopWorldSession();
         activityTracker.stopWorldSession();
     }
@@ -63,6 +68,7 @@ public final class PresenceClientRuntime {
     public TianshuModuleInstaller moduleInstaller(ModuleRuntimeAccess moduleRuntime) {
         PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(moduleRuntime);
         contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
+        interactionContextWatcher.setSink(adapter::publishInteractionContext);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
         return new PresenceModuleInstaller(adapter, activityTracker, contextQueryCoordinator);
     }
@@ -70,6 +76,7 @@ public final class PresenceClientRuntime {
     public void tick() {
         if (worldSessionActive) {
             contextQueryCoordinator.processPending();
+            interactionContextWatcher.poll();
             eventCollector.flushWorldEvents();
         }
     }

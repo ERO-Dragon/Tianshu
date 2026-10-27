@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.bridge.IaDialogueBridge;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
@@ -37,7 +37,7 @@ class AXParticipantRegistrarTest {
         assertNotNull(payload);
         assertEquals(DialogueClaimMode.DEFAULT_OWNER, payload.descriptor().claimProfile().mode());
         assertEquals(DialogueTriggerGroup.EMPTY, payload.descriptor().triggerGroup());
-        assertEquals(0.4D, payload.descriptor().fallbackScore());
+        assertEquals(DialogueHoldTier.TEN_SECONDS, payload.descriptor().holdTier());
         assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, payload.descriptor().displayName(),
                 "without a language entry the participant falls back to its id, never to an empty name");
     }
@@ -68,9 +68,8 @@ class AXParticipantRegistrarTest {
                 "the wake word is a wake word, not the name IA shows");
         assertEquals(AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY, registerPayload.descriptor().routeCapability());
         assertEquals(DialogueClaimProfile.defaultOwnerWithRules(
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule.anyStrong(
+                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule.any(
                         "ax.wake_word",
-                        com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay.SLOW,
                         com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition.wakeWord("天枢")
                 )
         ), registerPayload.descriptor().claimProfile());
@@ -100,9 +99,8 @@ class AXParticipantRegistrarTest {
         await(() -> registered.get() != null);
         DialogueParticipantRegisterPayload payload = registered.get();
         assertEquals("辅星", payload.descriptor().displayName());
-        assertEquals(DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
+        assertEquals(DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.any(
                         "ax.wake_word",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("天枢"))),
                 payload.descriptor().claimProfile(),
                 "the wake word still drives the claim; only the shown name moved to the language table");

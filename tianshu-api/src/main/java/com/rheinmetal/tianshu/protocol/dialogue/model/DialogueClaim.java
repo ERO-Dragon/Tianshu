@@ -2,8 +2,7 @@ package com.rheinmetal.tianshu.protocol.dialogue.model;
 
 public record DialogueClaim(
         String participantId,
-        DialogueClaimStrength strength,
-        DialogueAttentionDecay decay,
+        DialogueClaimSource source,
         int priority,
         String reason
 ) {
@@ -12,12 +11,7 @@ public record DialogueClaim(
             throw new IllegalArgumentException("participantId cannot be blank");
         }
         participantId = participantId.trim();
-        strength = strength == null ? DialogueClaimStrength.NORMAL : strength;
-        decay = decay == null ? DialogueAttentionDecay.FAST : decay;
+        source = source == null ? DialogueClaimSource.UTTERANCE : source;
         reason = reason == null ? "" : reason.trim();
-    }
-
-    public double attention() {
-        return strength.attention();
     }
 }

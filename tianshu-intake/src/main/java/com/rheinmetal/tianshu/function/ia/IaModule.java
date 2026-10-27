@@ -9,9 +9,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.ia.claim.DialogueClaimEngine;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueScoringContext;
 import com.rheinmetal.tianshu.function.ia.context.DialoguePresenceContextClient;
-import com.rheinmetal.tianshu.function.ia.context.DialoguePresenceFactPlanner;
 import com.rheinmetal.tianshu.function.ia.control.DialogueSessionControlDecision;
 import com.rheinmetal.tianshu.function.ia.control.DialogueSessionControlPolicy;
 import com.rheinmetal.tianshu.function.ia.diagnostics.DialogueDiagnosticsView;
@@ -20,9 +18,8 @@ import com.rheinmetal.tianshu.function.ia.event.DialogueEventPublisher;
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueMessageGateway;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionState;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantScore;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
@@ -34,26 +31,22 @@ import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPa
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.function.ia.policy.DialogueArbitrationPolicy;
-import com.rheinmetal.tianshu.function.ia.score.DialogueScoreCoordinator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueTriggerSynchronizer;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueLifecycleSweeper;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueParticipantLifecycleCoordinator;
-import com.rheinmetal.tianshu.function.ia.runtime.OwnerPreviewRefreshCoordinator;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
-import com.rheinmetal.tianshu.function.ia.session.DialogueAttentionMemory;
 import com.rheinmetal.tianshu.function.ia.session.DialogueContextFreezeStore;
 import com.rheinmetal.tianshu.function.ia.session.DialogueSessionStore;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
@@ -63,22 +56,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class IaModule implements TianshuManagedModule {
-    private static final Duration OWNER_PREVIEW_REFRESH_INTERVAL = Duration.ofMillis(500L);
     private static final Duration SPEECH_CONTEXT_RETENTION = Duration.ofSeconds(30L);
 
     private final IaProtocolAdapter adapter;
     private final DialogueParticipantRegistry participantRegistry;
     private final DialogueSessionStore sessionStore;
-    private final DialogueAttentionMemory attentionMemory;
     private final DialogueContextFreezeStore contextFreezeStore;
     private final DialogueClaimEngine claimEngine;
     private final DialogueArbitrationPolicy arbitrationPolicy;
-    private final DialogueScoreCoordinator scoreCoordinator;
     private final DialogueSessionControlPolicy sessionControlPolicy;
     private final DialogueAccessController accessController;
     private final DialogueEventPublisher eventPublisher;
@@ -88,12 +77,10 @@ public final class IaModule implements TianshuManagedModule {
     private final DialogueParticipantLifecycleCoordinator participantLifecycleCoordinator;
     private final DialogueParticipantContractValidator participantContractValidator;
     private final DialoguePresenceContextClient presenceContextClient;
-    private final DialoguePresenceFactPlanner presenceFactPlanner;
     private final DialogueDiagnosticsView diagnosticsView;
     private final IaModuleService moduleService;
     private final Map<String, DialogueOwnerPreviewPayload> ownerPreviews = new ConcurrentHashMap<>();
     private final DialogueTriggerSynchronizer triggerSynchronizer;
-    private final OwnerPreviewRefreshCoordinator ownerPreviewRefreshCoordinator;
     private final IrResultArbitrationMapper irResultMapper;
     private final AtomicLong runtimeGeneration = new AtomicLong(1L);
     private ModuleRuntimeContext runtimeContext;
@@ -106,11 +93,9 @@ public final class IaModule implements TianshuManagedModule {
         this.adapter = new IaProtocolAdapter(runtime);
         this.participantRegistry = new DialogueParticipantRegistry();
         this.sessionStore = new DialogueSessionStore();
-        this.attentionMemory = new DialogueAttentionMemory();
         this.contextFreezeStore = new DialogueContextFreezeStore(SPEECH_CONTEXT_RETENTION);
         this.claimEngine = new DialogueClaimEngine();
         this.arbitrationPolicy = new DialogueArbitrationPolicy();
-        this.scoreCoordinator = new DialogueScoreCoordinator(adapter, 120L, runtimeGeneration::get);
         this.sessionControlPolicy = new DialogueSessionControlPolicy();
         this.accessController = new DialogueAccessController();
         this.eventPublisher = new DialogueEventPublisher(adapter, accessController);
@@ -120,24 +105,10 @@ public final class IaModule implements TianshuManagedModule {
         this.participantLifecycleCoordinator = new DialogueParticipantLifecycleCoordinator(participantRegistry, sessionStore, eventPublisher);
         this.participantContractValidator = new DialogueParticipantContractValidator(runtime);
         this.presenceContextClient = new DialoguePresenceContextClient(adapter);
-        this.presenceFactPlanner = new DialoguePresenceFactPlanner();
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
         this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
         this.triggerSynchronizer = new DialogueTriggerSynchronizer();
         this.irResultMapper = new IrResultArbitrationMapper();
-        this.ownerPreviewRefreshCoordinator = new OwnerPreviewRefreshCoordinator(
-                (task, delay) -> runtime.schedule(
-                        ProtocolTaskSpec.builder()
-                                .moduleId(moduleId())
-                                .lane(ExecutionLane.SCHEDULED)
-                                .taskId("ia.owner-preview-refresh")
-                                .build(),
-                        task,
-                        delay
-                ),
-                OWNER_PREVIEW_REFRESH_INTERVAL,
-                this::refreshOwnerPreviewState
-        );
     }
 
     @Override
@@ -173,7 +144,6 @@ public final class IaModule implements TianshuManagedModule {
         diagnostics = nextContext.diagnostics();
         triggerSynchronizer.bind(nextContext.triggers(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
-        ownerPreviewRefreshCoordinator.start();
         adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
     }
 
@@ -193,7 +163,6 @@ public final class IaModule implements TianshuManagedModule {
         deactivateRuntime();
         participantRegistry.clear();
         sessionStore.clear();
-        attentionMemory.clear();
         contextFreezeStore.clear();
         presenceContextClient.clear();
         ownerPreviews.clear();
@@ -204,7 +173,6 @@ public final class IaModule implements TianshuManagedModule {
         runtimeAccepting = false;
         runtimeGeneration.incrementAndGet();
         presenceContextClient.clear();
-        ownerPreviewRefreshCoordinator.stop();
         triggerSynchronizer.unbind();
         if (runtimeContext != null) {
             runtimeContext.runtimeState().capabilities().remove(IaRuntimeCapabilities.ARBITRATION);
@@ -324,7 +292,6 @@ public final class IaModule implements TianshuManagedModule {
                 payload.turnId(),
                 payload.playerId(),
                 payload.repairedText(),
-                participants,
                 frame -> {
                     if (!isRuntimeGenerationActive(generation)) {
                         context.complete(envelope.envelopeId());
@@ -368,42 +335,15 @@ public final class IaModule implements TianshuManagedModule {
                     input,
                     List.of(),
                     Optional.empty(),
-                    Optional.empty(),
                     List.of(),
-                    Map.of(),
                     now
             );
             return;
         }
         Optional<DialogueSession> activeSession = sessionStore.activeForPlayer(payload.playerId(), now);
-        Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(payload.playerId(), participants, now);
         DialogueArbitrationInput input = DialogueArbitrationInput.from(payload, withPlayerId(contextFrame, payload.playerId()));
-        List<com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim> hardClaims = claimEngine.collectLocalClaims(participants, input);
-        if (hardClaims.isEmpty()) {
-            long generation = runtimeGeneration.get();
-            DialogueScoringContext scoringContext = new DialogueScoringContext(
-                    payload.requestId(),
-                    payload.playerId(),
-                    payload.turnId(),
-                    payload.objectMatches(),
-                    payload.moduleMatches(),
-                    input.interactionHints(),
-                    input.contextSnapshot(),
-                    payload.timestampMillis(),
-                    payload.expireAtMillis()
-            );
-            scoreCoordinator.collect(envelope, scoringContext, participants, generation, result -> {
-                if (result.stale() || !isRuntimeGenerationActive(generation)) {
-                    context.complete(envelope.envelopeId());
-                    return;
-                }
-                completeArbitration(envelope, context, payload, input, participants, activeSession, attentionState,
-                        hardClaims, result.scores(), System.currentTimeMillis());
-            });
-            return;
-        }
-        completeArbitration(envelope, context, payload, input, participants, activeSession, attentionState,
-                hardClaims, Map.of(), now);
+        List<DialogueClaim> hardClaims = claimEngine.collectLocalClaims(participants, input);
+        completeArbitration(envelope, context, payload, input, participants, activeSession, hardClaims, now);
     }
 
     private void completeArbitration(
@@ -413,12 +353,10 @@ public final class IaModule implements TianshuManagedModule {
             DialogueArbitrationInput input,
             List<DialogueParticipantDescriptor> participants,
             Optional<DialogueSession> activeSession,
-            Optional<DialogueAttentionState> attentionState,
-            List<com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim> hardClaims,
-            Map<String, DialogueParticipantScore> dynamicScores,
+            List<DialogueClaim> hardClaims,
             long now
     ) {
-        DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, hardClaims, dynamicScores, attentionState, now);
+        DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, hardClaims);
         diagnostics.publish(DiagnosticEvent.now(
                 moduleId(),
                 decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
@@ -440,7 +378,6 @@ public final class IaModule implements TianshuManagedModule {
             context.complete(envelope.envelopeId());
             return;
         }
-        rememberAttentionForDecision(payload.playerId(), decision, now);
         publishOwnerPreviewIfChanged(envelope, previewFor(payload.playerId(), decision.owner(), now));
         DialogueSession session = claimSession(payload, decision.owner(), now);
         releasePreviousTurnIfPresent(envelope, activeSession, session, now);
@@ -468,7 +405,6 @@ public final class IaModule implements TianshuManagedModule {
         }
         long now = payload.occurredAtMillis() > 0L ? payload.occurredAtMillis() : System.currentTimeMillis();
         if (payload.speaking()) {
-            List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
             long generation = runtimeGeneration.get();
             requestPresenceContext(
                     envelope,
@@ -477,7 +413,6 @@ public final class IaModule implements TianshuManagedModule {
                     "",
                     "",
                     "",
-                    participants,
                     frame -> {
                         if (isRuntimeGenerationActive(generation)) {
                             contextFreezeStore.freeze(payload.sessionId(), frame, now);
@@ -509,7 +444,6 @@ public final class IaModule implements TianshuManagedModule {
             String turnId,
             String playerId,
             String userText,
-            List<DialogueParticipantDescriptor> participants,
             DialoguePresenceContextClient.Completion completion,
             Runnable cancelled
     ) {
@@ -520,7 +454,7 @@ public final class IaModule implements TianshuManagedModule {
                 turnId,
                 playerId,
                 userText,
-                presenceFactPlanner.plan(participants),
+                List.of(PresenceContextFactIds.INTERACTION_CONTEXT),
                 completion,
                 cancelled
         );
@@ -561,14 +495,6 @@ public final class IaModule implements TianshuManagedModule {
         }
     }
 
-    private void rememberAttentionForDecision(String playerId, DialogueArbitrationDecision decision, long now) {
-        if (decision.claim() != null) {
-            attentionMemory.remember(playerId, decision.owner(), decision.claim(), now);
-        } else if ("DEFAULT_OWNER".equals(decision.reason()) || !decision.accepted()) {
-            attentionMemory.clearPlayer(playerId);
-        }
-    }
-
     private void publishOwnerPreviewIfChanged(TianshuEnvelope parent, DialogueOwnerPreviewPayload preview) {
         if (preview == null || preview.playerId().isBlank()) {
             return;
@@ -594,25 +520,14 @@ public final class IaModule implements TianshuManagedModule {
 
     private void refreshOwnerPreviews(TianshuEnvelope parent, long now) {
         List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
-        Set<String> playerIds = new HashSet<>(ownerPreviews.keySet());
-        playerIds.addAll(attentionMemory.playerIds());
-        for (String playerId : playerIds) {
-            Optional<DialogueAttentionState> attentionState = attentionMemory.activeForPlayer(playerId, participants, now);
-            DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, List.of(), attentionState);
+        for (String playerId : new HashSet<>(ownerPreviews.keySet())) {
+            DialogueArbitrationDecision decision = arbitrationPolicy.decide(participants, List.of());
             if (decision.accepted()) {
-                rememberAttentionForDecision(playerId, decision, now);
                 publishOwnerPreviewIfChanged(parent, previewFor(playerId, decision.owner(), now));
             } else {
-                attentionMemory.clearPlayer(playerId);
                 publishOwnerPreviewIfChanged(parent, emptyPreview(playerId, now));
             }
         }
-    }
-
-    private void refreshOwnerPreviewState() {
-        long now = System.currentTimeMillis();
-        contextFreezeStore.sweep(now);
-        refreshOwnerPreviews(null, now);
     }
 
     private void handleSessionControl(TianshuEnvelope envelope, ProtocolContext context) {

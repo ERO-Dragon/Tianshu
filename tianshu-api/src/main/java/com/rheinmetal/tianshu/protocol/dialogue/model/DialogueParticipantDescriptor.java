@@ -9,8 +9,8 @@ public record DialogueParticipantDescriptor(
         DialogueTriggerGroup triggerGroup,
         String routeCapability,
         DialogueTurnProcessingPolicy turnProcessingPolicy,
-        String scoreCapability,
-        double fallbackScore
+        String icon,
+        DialogueHoldTier holdTier
 ) {
     public DialogueParticipantDescriptor(
             String participantId,
@@ -23,7 +23,7 @@ public record DialogueParticipantDescriptor(
             DialogueTurnProcessingPolicy turnProcessingPolicy
     ) {
         this(participantId, moduleId, displayName, priority, claimProfile, triggerGroup, routeCapability,
-                turnProcessingPolicy, "", 0.0D);
+                turnProcessingPolicy, "", DialogueHoldTier.NONE);
     }
 
     public DialogueParticipantDescriptor {
@@ -34,8 +34,13 @@ public record DialogueParticipantDescriptor(
         triggerGroup = triggerGroup == null ? DialogueTriggerGroup.EMPTY : triggerGroup;
         routeCapability = requireText(routeCapability, "routeCapability");
         turnProcessingPolicy = turnProcessingPolicy == null ? DialogueTurnProcessingPolicy.DEFAULT : turnProcessingPolicy;
-        scoreCapability = sanitize(scoreCapability);
-        fallbackScore = clamp(fallbackScore);
+        icon = sanitize(icon);
+        holdTier = holdTier == null ? DialogueHoldTier.NONE : holdTier;
+    }
+
+    /** Whether the partner marker has something to draw; the default owner never draws one. */
+    public boolean hasPartnerIcon() {
+        return !icon.isBlank();
     }
 
     private static String requireText(String value, String name) {
@@ -47,12 +52,5 @@ public record DialogueParticipantDescriptor(
 
     private static String sanitize(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private static double clamp(double value) {
-        if (!Double.isFinite(value)) {
-            return 0.0D;
-        }
-        return Math.max(0.0D, Math.min(1.0D, value));
     }
 }

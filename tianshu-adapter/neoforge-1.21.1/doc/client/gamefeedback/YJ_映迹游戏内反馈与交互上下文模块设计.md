@@ -242,10 +242,11 @@ PRESENCE.INTERACTION_CONTEXT
 
 `PRESENCE.INTERACTION_CONTEXT` 是"玩家此刻在跟什么交互"的摘要，供思衡维护预中标人（§5.4）：
 
-- 只含仲裁条件能读到的上下文：准星命中与目标实体、主手与装备物品 id、潜行、交互键、tags、最近白名单实体、屏幕类型；
+- 只含仲裁条件能读到的上下文：准星命中与目标实体（ref id + 类型 id）、主手与装备物品 id、潜行、交互键、屏幕类型、维度；
 - 在 `PresenceClientRuntime.tick()` 里比较这些值，**变了才发**，topic 用 `LATEST_ONLY`；
-- 读的都是现成数据（`hitResult`、主手栈、当前 Screen、已有的白名单实体缓存）：不额外做 raycast、不扫背包、实体只带 ref id、类型 id 与距离，不带 NBT；
-- 它不保温 §6 的查询快照——查询仍然现采，两条路互不共享缓存。
+- 读的都是现成数据（`hitResult`、主手栈、当前 Screen）：不额外做 raycast、不扫背包、不带 NBT；
+- 它不保温 §6 的查询快照——查询仍然现采，两条路互不共享缓存；
+- 摘要是 claim 条件能读到的全部字段——契约里没有、摘要里也不会有的东西不再留位置。原先的四条条件（`NEAREST_ENTITY_WITHIN`、`INTERACTION_TAG`、`CROSSHAIR_HIT`、`CONTEXT_FACT`）已因缺少产出者或与 `CROSSHAIR_ENTITY` 空参重复而从契约删除。
 
 ### 5.3 产品状态图标
 
@@ -311,9 +312,9 @@ RESPONDING > THINKING > ERROR > RECONNECTING > LOADING > IDLE
 - 租期只属于中标人：预中标人没有租期，指针移开就没了，不存在"倒数到一半"的预中标。
 - 聆听期间屏幕上显示的就是预中标人——它在开口之前就已经在了，和之后的真实仲裁用的是同一份上下文，不会出现"预览说酒狐、结果给辅星"。
 
-#### 5.4.2 契约：`DIALOGUE.OWNER_PREVIEW`
+#### 5.4.2 契约：`PRESENCE.PARTNER`
 
-载荷放到 `tianshu-api`（映迹作为宿主需要引用），主题保持 `LATEST_ONLY`，只在变化时发布。
+这条广播归映迹所有，和 `PRESENCE.ACTIVITY` 同一套办法：主题 `PRESENCE.PARTNER`、载荷 `PresencePartnerPayload` 都由映迹定义，类放在 `tianshu-api` 的 presence payload 区，与 `PresenceActivityPayload`、`PresenceContextSnapshotPayload` 并列。写入方是算得出这个结果的模块（当前只有听澜），映迹订阅并渲染；主题用 `LATEST_ONLY`，只在变化时发布。
 
 | 字段 | 语义 |
 |---|---|
@@ -323,12 +324,12 @@ RESPONDING > THINKING > ERROR > RECONNECTING > LOADING > IDLE
 | `defaultOwner` | 是否为默认承接者（辅星）。默认承接者不画伙伴图标 |
 | `holdUntilMillis` | 中标租期的截止时间；`0` 表示没有租期（预中标，或 `0s` 档） |
 | `holdDurationMillis` | 该参与者的档位时长，倒计时环据此换算进度；预中标时为 `0` |
-| `updatedAtMillis` | 这次预览的生成时间 |
+| `updatedAtMillis` | 这次广播的生成时间 |
 
 - **不包含显示名**：HUD 不显示任何文字，伙伴身份只靠图标/效果表达；显示名仍留在参与者描述里供思衡诊断使用。
 - 发布时机只有三种：**预中标人变化**、**中标（含续租）**、**租期到期回默认**；另外参与者注销、模块停止、世界退出时清空。没有固定刷新周期，没有事件就没有流量。
 - 去重按"显示状态"比较，键里必须包含 `holdUntilMillis`：同一个人续租时截止时间变了，不重发一次环就不会重走。
-- 世界退出后清空；没有承接者时发布空预览，映迹隐藏标记。
+- 世界退出后清空；没有承接者时写一条空广播，映迹隐藏标记。
 
 #### 5.4.3 渲染
 
@@ -430,6 +431,7 @@ tianshu-client/src/main/java/.../client/presence/capture/
 tianshu-client/src/main/java/.../client/presence/context/
   PresenceContextFactMapper
   PresenceContextQueryCoordinator
+  PresenceInteractionContextWatcher      §5.2 的摘要变化检测与推送
   PresenceContextResponder
 
 tianshu-api/src/main/java/.../client/presence/context/
@@ -505,10 +507,8 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 规划新增（伙伴标记，尚未实现）：
 
 ```text
-tianshu-client/src/main/java/.../client/presence/context/
-  PresenceInteractionContextWatcher      §5.2 的摘要变化检测与推送
-tianshu-client/src/main/java/.../client/presence/owner/
-  PresenceOwnerPreviewStore              §5.4.2 的最新预览快照
+tianshu-client/src/main/java/.../client/presence/partner/
+  PresencePartnerStore                   §5.4.2 伙伴广播的最新快照与租期截止时间
 tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
   PresencePartnerIconRenderer            §5.4.3 的伙伴图标、倒计时环与旋转淡入淡出
 ```
@@ -527,15 +527,15 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
 - HUD 绘制位于 `tianshu-adapter` 的 `neoforge/ui/hud`
 - 映迹核心只输出 `PresenceHudDisplay`
 - 世界退出会清空旧状态和排队查询，重新进入后建立新世界会话
-- 上下文只在查询被回答时采集；同一 tick 的请求共享一次平台抓取；交互上下文摘要另走变化推送，不参与查询快照（§5.2）
+- 上下文只在查询被回答时采集；同一 tick 的请求共享一次平台抓取；交互上下文摘要另走变化推送（`PresenceInteractionContextWatcher` + `PRESENCE.INTERACTION_CONTEXT`），不参与查询快照（§5.2）
 - 产品状态机只呈现显式活动；错误码、加载细节和调试信息不进入产品状态，运行时状况只表达能力可用性，并在恢复时撤回
 - 设置页只控制 HUD 总开关和状态文本，不过滤真实产品活动来源
 - 内测调试页已可查看 ASR / IA / AX / LLM / TTS / Presence 最新模块状态
 
 待实现（伙伴标记）：
 
-- §5.2 的交互上下文摘要推送
-- §5.4 的预中标人/中标人状态机，以及 `DIALOGUE.OWNER_PREVIEW` 载荷迁到 `tianshu-api`
+- IA 订阅 §5.2 的摘要并维护预中标人
+- §5.4 的中标租期状态机，以及 `PRESENCE.PARTNER` 广播（载荷 `PresencePartnerPayload` 归映迹，放在 `tianshu-api`）
 - §5.4.3 的伙伴图标、倒计时环与旋转淡入淡出
 
 待继续观察：
@@ -582,5 +582,6 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
 
 - 预中标人由上下文变化驱动（§5.2 的摘要），随时可变，没有租期、没有倒计时；
 - 中标人由每轮仲裁驱动，按注册档位开租期，倒计时环走的是它；
+- 广播归映迹所有：`PRESENCE.PARTNER` 取代对话域的 `DIALOGUE.OWNER_PREVIEW`，载荷 `PresencePartnerPayload` 由映迹定义，不进入对话契约；写它的仍然是听澜；
 - 随之删除：500ms 轮询、打分等待、开口时的上下文补抓，以及"聆听开始"和"仲裁出结果"两次预览发布——后者本来也不该另发一次，中标会改写预中标状态，走的是同一条"变了才发"；
 - 租期到期只排一次到期任务，且只在当前没有预中标人显示时才需要排。

@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -46,6 +47,12 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
                 PayloadType.CUSTOM,
                 DeliveryPolicy.WAIT_IN_QUEUE,
                 40
+        ));
+        protocol.registerTopic(new TopicDescriptor(
+                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
+                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                DeliveryPolicy.LATEST_ONLY,
+                20
         ));
         ownedTopicsRegistered = true;
     }
@@ -97,6 +104,20 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope publishWorldEvent(PresenceWorldEventPayload payload) {
         return publishTopic(PresenceWorldEventPayload.TOPIC, PayloadType.CUSTOM, payload);
+    }
+
+    /**
+     * Publishes the claim-relevant interaction change the watcher detected.
+     *
+     * <p>The topic is registered by this module (see {@link #registerOwnedTopics}); the payload carries no
+     * narrative and no inventory, only what a claim condition can read.</p>
+     */
+    public TianshuEnvelope publishInteractionContext(PresenceInteractionContextPayload payload) {
+        return publishTopic(
+                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
+                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                payload
+        );
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

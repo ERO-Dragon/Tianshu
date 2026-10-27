@@ -26,7 +26,7 @@
 
 - 对外状态
 
-  - IA 发布 owner preview（预中标人或中标人，中标时带租期截止时间），以及会话开始、结束和 owner 变化等状态。
+  - IA 写入映迹的伙伴广播 `PRESENCE.PARTNER`（预中标人或中标人，中标时带租期截止时间），以及发布会话开始、结束和 owner 变化等状态。
   - 这些公共状态只表达仲裁结果，不携带玩家正文；正文只进入最终 owner 的定向投递。
 
 ## 1. 模块定位
@@ -219,7 +219,6 @@ PayloadType.DIALOGUE_ARBITRATION_RESULT
 PayloadType.DIALOGUE_PARTICIPANT_REGISTER
 PayloadType.DIALOGUE_SESSION_CONTROL
 PayloadType.DIALOGUE_SESSION_EVENT
-PayloadType.DIALOGUE_OWNER_PREVIEW
 ```
 
 ### 5.3 topic
@@ -230,10 +229,9 @@ PayloadType.DIALOGUE_OWNER_PREVIEW
 
 ```text
 ProtocolTopics.DIALOGUE_SESSION_EVENTS
-ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 ```
 
-`DIALOGUE_SESSION_EVENTS` 只发布会话状态事件，不发布对话正文。`DIALOGUE_OWNER_PREVIEW` 只发布“当前预中标人，或中标人及其租期截止时间”，不发布正文、上下文细节或内部权重。
+`DIALOGUE_SESSION_EVENTS` 只发布会话状态事件，不发布对话正文。伙伴标记不走 IA 的 topic：那条广播是映迹自己的 `PRESENCE.PARTNER`，IA 只是它的写入方（见 §5.4），载荷也由映迹定义。
 
 允许发布的事件包括：
 
@@ -246,9 +244,9 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 - `conversation.rejected`
 - `conversation.expired`
 
-`DIALOGUE_OWNER_PREVIEW` 只在显示状态变化时发布：预中标人变化、中标（含续租）、租期到期回默认。没有固定刷新周期，没有事件就没有流量。
+写 `PRESENCE.PARTNER` 时只在显示状态变化时写：预中标人变化、中标（含续租）、租期到期回默认。没有固定刷新周期，没有事件就没有流量。
 
-IA 同时订阅映迹的 `PRESENCE.INTERACTION_CONTEXT`（交互上下文摘要），它是预中标人的唯一驱动：摘要一变就重算预中标人，变了才发 preview。开口时冻结最近一次摘要做本轮仲裁，不再现抓一次完整快照。完整上下文仍可在决议之后随 delivery 附带，它不拖慢仲裁。
+IA 同时订阅映迹的 `PRESENCE.INTERACTION_CONTEXT`（交互上下文摘要），它是预中标人的唯一驱动（订阅与预中标状态机在下一步实现）：摘要一变就重算预中标人，变了才写伙伴广播。开口时冻结最近一次摘要做本轮仲裁，不再现抓一次完整快照。完整上下文仍可在决议之后随 delivery 附带，它不拖慢仲裁。
 
 ## 6. 广播策略
 
@@ -472,15 +470,15 @@ DialogueClaimRule(
 | 字段 | 含义 |
 |---|---|
 | `operator` | `ANY` 或 `ALL`，由外部模组决定多个条件的组合方式。 |
-| `conditions` | `WAKE_WORD`、`HELD_ITEM`、`EQUIPPED_ITEM`、`CROSSHAIR_ENTITY`、`NEAREST_ENTITY_WITHIN`、`CROSSHAIR_HIT`、`INTERACTION_KEY`、`SNEAKING`、`INTERACTION_TAG`、`CONTEXT_FACT`。 |
+| `conditions` | `WAKE_WORD`、`HELD_ITEM`、`EQUIPPED_ITEM`、`MENTIONED_ENTITY`、`CROSSHAIR_ENTITY`、`INTERACTION_KEY`、`SNEAKING`。 |
 
-claim 的来源档由**实际命中的条件**决定，不由规则声明：`WAKE_WORD`、`MENTIONED_ENTITY` 属于醒词档（说的是什么）；准星、主手、装备、最近实体、交互键、潜行、tags、context fact 属于上下文档（现在的事实）。命中的条件里只要有一个上下文条件，这条 claim 就按上下文档排序；上下文档高于醒词档——被指着的人有预约，醒词没有。
+claim 的来源档由**实际命中的条件**决定，不由规则声明：`WAKE_WORD`、`MENTIONED_ENTITY` 属于醒词档（说的是什么）；准星、主手、装备、交互键、潜行属于上下文档（现在的事实）。命中的条件里只要有一个上下文条件，这条 claim 就按上下文档排序；上下文档高于醒词档——被指着的人有预约，醒词没有。
 
-claim profile 是 participant 对“什么情况下希望承接输入”的主观声明，`ANY` 相当于条件 OR，`ALL` 相当于条件 AND。IR 和 Presence 提供命中词、物品、实体、交互状态及 context fact 等客观输入，IA 只负责用这些客观输入计算 participant 声明的谓词，不替模块推断业务意图。
+claim profile 是 participant 对“什么情况下希望承接输入”的主观声明，`ANY` 相当于条件 OR，`ALL` 相当于条件 AND。IR 和 Presence 提供命中词、物品、实体、交互状态等客观输入，IA 只负责用这些客观输入计算 participant 声明的谓词，不替模块推断业务意图。
 
 IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `triggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `triggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 ASR/IR 对专有名词的识别和修复，但不会让该模块在 IA 中产生 claim。
 
-`NEAREST_ENTITY_WITHIN` 由模块声明实体类型 ID 白名单和半径，例如 `DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")`。平台层只按所有参与方汇总出的实体类型白名单扫描，扫描结果只保留最近的白名单实体，并在 delivery 的 `matchedEntityRefs/contextSnapshot.entityRefs` 中返回结构化 `DialogueEntityRef`，其中包含实体 UUID/ref id、实体类型 ID、显示名和距离。NeoForge 侧不每 tick 全量扫描；白名单为空时不扫描，未命中时低频扫描，命中后按较短间隔刷新缓存，IA 冻结快照时只读取缓存。
+原本还有四条条件：`NEAREST_ENTITY_WITHIN`（附近白名单实体）、`INTERACTION_TAG`（交互 tag）、`CROSSHAIR_HIT`（准星命中任意实体）、`CONTEXT_FACT`（平台 fact）。前两条映迹没有产出者；`CROSSHAIR_HIT` 与 `CROSSHAIR_ENTITY` 空参重复；`CONTEXT_FACT` 没有生产模块使用。四条都已从契约删除——不再保留“声明了但永远不命中”的条件；将来要加，连同产出者和文档一起加。
 
 ## 10. 会话所有权
 
@@ -546,7 +544,7 @@ session 可以因为以下原因释放：
 
 两个直接效果：
 
-- **预中标人不需要玩家说话**：指针移到酒狐、主手换成对讲机、屏幕打开，预中标人就会变，并立刻发布 owner preview。
+- **预中标人不需要玩家说话**：指针移到酒狐、主手换成对讲机、屏幕打开，预中标人就会变，并立刻写入伙伴广播。
 - **中标人负责多轮连续性**：某一轮中标后，在租期之内再说话时，只要没有新的硬 claim，就仍然归它，租期从这一轮重新计时；租期过了才回到默认。
 
 核心维度：
@@ -567,7 +565,7 @@ session 可以因为以下原因释放：
 5. 当前轮 processing deadline 默认是 10 秒，owner 可按实际异步处理需要续期，但绝对截止时间固定为 session 创建时间后 180 秒，反复续期不能绕过该上限。
 6. 租期与 processing deadline 是两件事：租期决定“下一轮说话归谁”，processing deadline 只保护本轮异步处理。
 
-预中标人和租期都不向玩家暴露数值；对外只有 owner preview（预中标人或中标人，中标时带租期截止时间）。
+预中标人和租期都不向玩家暴露数值；对外只有映迹的伙伴广播（`PRESENCE.PARTNER`：预中标人或中标人，中标时带租期截止时间）。
 
 ## 12. 线程与调度策略
 
@@ -585,7 +583,7 @@ session 可以因为以下原因释放：
 | LLM 调用 | `IO` | 由 LLM 模块自身管理。 |
 | TTS 调用 | `AUDIO_IO` / `IO` | 由 TTS 模块自身管理。 |
 | UI 状态展示 | `MAIN` | 只投递状态，不做重逻辑。 |
-| 租期到期任务 | `SCHEDULED` | 到点时发一次 owner preview 并回默认；只在当前没有预中标人显示时才需要排。 |
+| 租期到期任务 | `SCHEDULED` | 到点时写一次伙伴广播并回默认；只在当前没有预中标人显示时才需要排。 |
 | Presence query timeout | `SCHEDULED` | 由协议中心持有可取消的超时任务；响应、stop 或 destroy 时取消。 |
 
 仲裁机关只表达任务意图和边界，不直接控制底层线程。IA 内部需要延迟或定时执行时，也应使用 `ModuleExecutionAccess.schedule(...)` 这类协议中心受控执行入口，不能自建私有线程池或绕开模块宿主生命周期。
@@ -601,7 +599,7 @@ IA 的 runtime 资源遵循以下边界：
 - `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、激活新的 runtime generation、标记仲裁能力 ready，并订阅交互上下文摘要。ready 表示 IA 服务可以接收并给出仲裁结论，不要求当前已经存在 owner；participant 为空时直接以 `NO_PARTICIPANT` 拒绝，不查询 Presence、不创建 active session，也不触发 delivery、LLM 或 TTS。IA 可以保留终态 `REJECTED` 审计记录。
 - 重复 `prepare` 不重复订阅摘要；若 runtime context 发生替换，先解绑旧 voice registry 和旧 capability 状态。
 - `stop` 先关闭当前 runtime generation，取消 pending 到期任务与 Presence 请求，再解绑 voice trigger 并撤销 `ARBITRATION` ready 状态。
-- `destroy` 可重复执行，并清空 participant、session、租期、冻结上下文、Presence pending 请求和 owner preview。
+- `destroy` 可重复执行，并清空 participant、session、租期、冻结上下文、Presence pending 请求和已写入的伙伴广播去重状态。
 - Protocol 已关闭时，`stop` / `destroy` 仍只做幂等资源释放，不尝试创建替代线程或兼容分支。
 
 Core 在世界退出时按 `stop -> destroy -> unregister` 清理模块，再次进入世界时重新运行 assembler 并创建新的 IA 实例。因此 participant、owner、session、租期和 preview 都不跨世界继承；各功能模块或外部模组必须在新世界会话重新注册 participant。
@@ -738,7 +736,7 @@ DialogueArbiterModule
 ```text
 映迹发布 PRESENCE.INTERACTION_CONTEXT（交互上下文摘要）
   ↓
-IA 重算预中标人，变了才发布 owner preview
+IA 重算预中标人，变了才写伙伴广播
   ↓
 IR 发布 IrResultPayload
   ↓

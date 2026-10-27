@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.ia.runtime;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
@@ -65,9 +64,8 @@ class DialogueTriggerSynchronizerTest {
                 "module.maid",
                 "Maid",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
                         "maid.wake",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord(wakeWord)
                 )),
                 DialogueTriggerGroup.of(List.of(wakeWord), List.of(extraWord)),

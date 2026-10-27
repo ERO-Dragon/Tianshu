@@ -17,7 +17,7 @@ class DialogueContextFreezeStoreTest {
     void endedSpeechContextStaysAvailableForFinalText() {
         DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
         DialogueContextFrame frame = new DialogueContextFrame(
-                new DialogueInteractionHints("create:wrench", true, false, false, 3.0D, List.of()),
+                new DialogueInteractionHints("create:wrench", true, false, false, 3.0D),
                 new DialogueContextSnapshot("player", "minecraft:overworld", List.of(), List.of("mod:helmet"), Map.of())
         );
 

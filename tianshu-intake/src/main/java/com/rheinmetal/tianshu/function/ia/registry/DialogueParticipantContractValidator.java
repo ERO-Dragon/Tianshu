@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.ia.registry;
 
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -11,8 +12,12 @@ import com.rheinmetal.tianshu.protocol.runtime.CapabilityRegistrationView;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 public final class DialogueParticipantContractValidator {
+    /** A namespaced texture path, matching how the client resolves resource locations. */
+    private static final Pattern ICON_PATTERN = Pattern.compile("[a-z0-9_.\\-]+:[a-z0-9_./\\-]+");
+
     private final CapabilityRegistrationView registrationView;
 
     public DialogueParticipantContractValidator(CapabilityRegistrationView registrationView) {
@@ -22,6 +27,12 @@ public final class DialogueParticipantContractValidator {
     public ValidationResult validate(DialogueParticipantDescriptor descriptor) {
         if (descriptor == null) {
             return ValidationResult.reject("PARTICIPANT_DESCRIPTOR_MISSING", "Dialogue participant descriptor is required");
+        }
+        if (descriptor.claimProfile().mode() == DialogueClaimMode.RULES && !descriptor.hasPartnerIcon()) {
+            return ValidationResult.reject("PARTICIPANT_ICON_MISSING", "A participant that can own a turn must declare a partner icon");
+        }
+        if (descriptor.hasPartnerIcon() && !ICON_PATTERN.matcher(descriptor.icon()).matches()) {
+            return ValidationResult.reject("PARTICIPANT_ICON_INVALID", "Participant icon must be a namespaced texture path: " + descriptor.icon());
         }
         List<ProtocolCapabilityRegistration> registrations = registrationView.capabilityRegistrations(descriptor.routeCapability());
         if (registrations.isEmpty()) {

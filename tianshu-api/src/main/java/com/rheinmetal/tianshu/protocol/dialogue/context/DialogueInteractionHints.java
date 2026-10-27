@@ -1,16 +1,19 @@
 package com.rheinmetal.tianshu.protocol.dialogue.context;
 
-import java.util.List;
-
-public record DialogueInteractionHints(String heldItemId, boolean crosshairHit, boolean interactionKeyDown, boolean sneaking, double targetDistance, List<String> tags) {
+public record DialogueInteractionHints(
+        String heldItemId,
+        boolean crosshairHit,
+        boolean interactionKeyDown,
+        boolean sneaking,
+        double targetDistance
+) {
     public DialogueInteractionHints {
         heldItemId = sanitize(heldItemId);
         targetDistance = Math.max(0.0D, targetDistance);
-        tags = tags == null ? List.of() : List.copyOf(tags.stream().filter(value -> value != null && !value.isBlank()).map(String::trim).toList());
     }
 
     public static DialogueInteractionHints empty() {
-        return new DialogueInteractionHints("", false, false, false, 0.0D, List.of());
+        return new DialogueInteractionHints("", false, false, false, 0.0D);
     }
 
     private static String sanitize(String value) {

@@ -24,8 +24,8 @@ import java.util.Map;
  * presence rows have always used.
  *
  * <p>{@code DialogueContextSnapshot.facts} stays keyed by fact id; its value is the fact's field summary
- * ({@code name=value;name=value}), which is what a {@code CONTEXT_FACT} claim condition matches against. It is
- * not a rendered sentence — presence does not render any more.
+ * ({@code name=value;name=value}). Claims no longer read it (the fact condition was removed), but the delivery
+ * snapshot keeps it for consumers that display which facts were part of the turn.
  */
 public final class DialoguePresenceContextMapper {
     public DialogueContextFrame toFrame(String playerId, PresenceContextSnapshotPayload payload) {
@@ -54,8 +54,7 @@ public final class DialoguePresenceContextMapper {
                 crosshairRef != null,
                 booleanValue(fieldValues, "interactionKeyDown"),
                 booleanValue(fieldValues, "sneaking"),
-                doubleValue(fieldValues, "crosshairTargetDistance"),
-                List.of()
+                doubleValue(fieldValues, "crosshairTargetDistance")
         );
         DialogueContextSnapshot snapshot = new DialogueContextSnapshot(
                 effectivePlayerId,

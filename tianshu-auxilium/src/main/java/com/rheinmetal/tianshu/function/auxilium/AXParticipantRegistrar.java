@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannel;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
@@ -64,7 +64,7 @@ public final class AXParticipantRegistrar {
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 DialogueTurnProcessingPolicy.DEFAULT,
                 "",
-                settings.fallbackScore()
+                DialogueHoldTier.TEN_SECONDS
         ));
     }
 
@@ -79,9 +79,8 @@ public final class AXParticipantRegistrar {
         if (wakeWords.isEmpty()) {
             return DialogueClaimProfile.DEFAULT_OWNER;
         }
-        return DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
+        return DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.any(
                 "ax.wake_word",
-                DialogueAttentionDecay.SLOW,
                 wakeWords.stream().map(DialogueClaimCondition::wakeWord).toArray(DialogueClaimCondition[]::new)
         ));
     }

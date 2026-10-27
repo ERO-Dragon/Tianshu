@@ -341,14 +341,14 @@ PayloadType.DIALOGUE_SESSION_EVENT
 
 状态事件不能作为获取对话正文的通道。
 
-如果 UI 只需要展示“玩家此刻说话会被谁承接”，可以订阅：
+如果 UI 只需要展示“玩家此刻说话会被谁承接”，可以订阅映迹的伙伴广播：
 
 ```text
-ProtocolTopics.DIALOGUE_OWNER_PREVIEW
-PayloadType.DIALOGUE_OWNER_PREVIEW
+ProtocolTopics.PRESENCE_PARTNER
+PayloadType.PRESENCE_PARTNER
 ```
 
-该 topic 发布 `DialogueOwnerPreviewPayload(playerId, moduleId, participantId, icon, defaultOwner, holdUntilMillis, holdDurationMillis, updatedAtMillis)`，不包含正文、prompt、上下文细节或仲裁原因：
+该 topic 的载荷是映迹自己的 `PresencePartnerPayload`（不归对话契约），发布 `(playerId, moduleId, participantId, icon, defaultOwner, holdUntilMillis, holdDurationMillis, updatedAtMillis)`，不包含正文、prompt、上下文细节或仲裁原因：
 
 - `icon` 是参与者注册时提供的伙伴标记贴图；
 - `defaultOwner` 表示当前轮到默认承接者（辅星），UI 不画伙伴图标；
@@ -390,7 +390,7 @@ IA 只在显示状态变化时发布：预中标人变化、中标（含续租�
 
 ### 10.4 退出世界后再次进入
 
-IA 的 participant、owner、session、租期和 owner preview 都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。IA stop 会先关闭当前 runtime generation 并取消 pending 到期任务与 Presence 请求，因此旧世界响应不能在新世界继续仲裁或投递正文。
+IA 的 participant、owner、session、租期和伙伴广播的去重状态都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。IA stop 会先关闭当前 runtime generation 并取消 pending 到期任务与 Presence 请求，因此旧世界响应不能在新世界继续仲裁或投递正文。
 
 因此外部模组必须把 participant 注册视为世界会话启动步骤：
 
@@ -404,7 +404,7 @@ IA 的 participant、owner、session、租期和 owner preview 都属于当前�
 重新注册 delivery capability 对应的 participant
 ```
 
-不要缓存旧 `sessionId`、旧 owner preview 或“已经注册”的本地标记并跨世界复用。重新注册仍使用原有 `DIALOGUE_PARTICIPANT_REGISTER` 契约，不存在额外的恢复接口或兼容入口。
+不要缓存旧 `sessionId`、旧伙伴广播或“已经注册”的本地标记并跨世界复用。重新注册仍使用原有 `DIALOGUE_PARTICIPANT_REGISTER` 契约，不存在额外的恢复接口或兼容入口。
 
 ## 11. 不允许的接入方式
 

@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimOperator;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimSource;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
@@ -18,7 +19,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.StringJoiner;
 
 public final class DialogueClaimEngine {
@@ -41,33 +41,52 @@ public final class DialogueClaimEngine {
     }
 
     private java.util.Optional<DialogueClaim> collectClaim(DialogueParticipantDescriptor participant, DialogueClaimProfile profile, DialogueArbitrationInput input) {
-        List<DialogueClaimRule> matchedRules = new ArrayList<>();
+        DialogueClaimSource source = null;
         StringJoiner reason = new StringJoiner(",");
         for (DialogueClaimRule rule : profile.rules()) {
-            if (!matchesRule(rule, input)) {
+            List<DialogueClaimCondition> matched = matchedConditions(rule, input);
+            if (matched.isEmpty()) {
                 continue;
             }
-            matchedRules.add(rule);
             if (!rule.ruleId().isBlank()) {
                 reason.add(rule.ruleId());
             }
+            DialogueClaimSource ruleSource = strongestSource(matched);
+            if (source == null || ruleSource.ordinal() > source.ordinal()) {
+                source = ruleSource;
+            }
         }
-        if (matchedRules.isEmpty()) {
+        if (source == null) {
             return java.util.Optional.empty();
         }
-        DialogueClaimRule bestRule = matchedRules.stream().max(ruleComparator()).orElseThrow();
         String reasonText = reason.length() == 0 ? "hard_claim" : "hard_claim:" + reason;
-        return java.util.Optional.of(new DialogueClaim(participant.participantId(), bestRule.strength(), bestRule.decay(), participant.priority(), reasonText));
+        return java.util.Optional.of(new DialogueClaim(participant.participantId(), source, participant.priority(), reasonText));
     }
 
-    private boolean matchesRule(DialogueClaimRule rule, DialogueArbitrationInput input) {
+    /**
+     * The conditions a rule actually matched.
+     *
+     * <p>{@code ANY} keeps the subset that matched, because the claim's source depends on which of them did:
+     * {@code wakeWord OR crosshairEntity} is an utterance claim when only the wake word matched. {@code ALL}
+     * either matches every condition or none.</p>
+     */
+    private List<DialogueClaimCondition> matchedConditions(DialogueClaimRule rule, DialogueArbitrationInput input) {
         if (rule.conditions().isEmpty()) {
-            return false;
+            return List.of();
         }
         if (rule.operator() == DialogueClaimOperator.ANY) {
-            return rule.conditions().stream().anyMatch(condition -> matchesCondition(condition, input));
+            return rule.conditions().stream().filter(condition -> matchesCondition(condition, input)).toList();
         }
-        return rule.conditions().stream().allMatch(condition -> matchesCondition(condition, input));
+        return rule.conditions().stream().allMatch(condition -> matchesCondition(condition, input))
+                ? rule.conditions()
+                : List.of();
+    }
+
+    private static DialogueClaimSource strongestSource(List<DialogueClaimCondition> matched) {
+        return matched.stream()
+                .map(condition -> condition.type().source())
+                .max(Comparator.comparingInt(Enum::ordinal))
+                .orElse(DialogueClaimSource.UTTERANCE);
     }
 
     private boolean matchesCondition(DialogueClaimCondition condition, DialogueArbitrationInput input) {
@@ -79,12 +98,8 @@ public final class DialogueClaimEngine {
             case EQUIPPED_ITEM -> matchesAny(condition.values(), context.equippedItemIds());
             case MENTIONED_ENTITY -> matchesAny(condition.values(), mentionedEntityTypeIds(input));
             case CROSSHAIR_ENTITY -> matchesAny(condition.values(), crosshairEntityTypes(context));
-            case NEAREST_ENTITY_WITHIN -> matchesNearestEntityWithin(condition, context);
-            case CROSSHAIR_HIT -> hints.crosshairHit();
             case INTERACTION_KEY -> hints.interactionKeyDown();
             case SNEAKING -> hints.sneaking();
-            case INTERACTION_TAG -> matchesAny(condition.values(), hints.tags());
-            case CONTEXT_FACT -> matchesContextFact(condition, context.facts());
         };
     }
 
@@ -128,43 +143,6 @@ public final class DialogueClaimEngine {
                 .toList();
     }
 
-    private static boolean matchesNearestEntityWithin(DialogueClaimCondition condition, DialogueContextSnapshot context) {
-        if (condition.maxDistance() <= 0.0D || condition.values().isEmpty()) {
-            return false;
-        }
-        return context.entityRefs().stream()
-                .filter(ref -> ref.distance() <= condition.maxDistance())
-                .anyMatch(ref -> matchesAny(condition.values(), List.of(ref.entityTypeId())));
-    }
-
-    /**
-     * A {@code CONTEXT_FACT} condition matches the fact's <em>field values</em>.
-     *
-     * <p>The map value is the fact's field summary ({@code name=value;name=value}) as the IA context mapper
-     * built it; presence stopped rendering sentences, so a condition can no longer compare against prose. Empty
-     * {@code values} means "the fact is present"; otherwise the expected values are compared against every field
-     * value in the summary (the summary itself is included so a wildcard can span the whole fact).
-     */
-    private static boolean matchesContextFact(DialogueClaimCondition condition, Map<String, String> facts) {
-        if (condition.factKey().isBlank() || facts == null || facts.isEmpty()) {
-            return false;
-        }
-        String summary = facts.get(condition.factKey());
-        if (summary == null || summary.isBlank()) {
-            return false;
-        }
-        if (condition.values().isEmpty()) {
-            return true;
-        }
-        List<String> candidates = new ArrayList<>();
-        candidates.add(summary);
-        for (String field : summary.split(";")) {
-            int separator = field.indexOf('=');
-            candidates.add(separator >= 0 ? field.substring(separator + 1) : field);
-        }
-        return matchesAny(condition.values(), candidates);
-    }
-
     private static boolean matchesAny(List<String> expected, List<String> actual) {
         if (actual == null || actual.isEmpty()) {
             return false;
@@ -192,9 +170,5 @@ public final class DialogueClaimEngine {
 
     private static String normalize(String value) {
         return value.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private static Comparator<DialogueClaimRule> ruleComparator() {
-        return Comparator.comparing(DialogueClaimRule::strength);
     }
 }

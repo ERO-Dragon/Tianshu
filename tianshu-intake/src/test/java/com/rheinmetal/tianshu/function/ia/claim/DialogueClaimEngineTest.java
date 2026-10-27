@@ -1,18 +1,17 @@
 package com.rheinmetal.tianshu.function.ia.claim;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
 import com.rheinmetal.tianshu.function.ia.model.DialogueArbitrationInput;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimStrength;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimSource;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
@@ -27,10 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueClaimEngineTest {
     @Test
-    void wakeWordCreatesStrongSlowHardClaim() {
+    void wakeWordCreatesAnUtteranceHardClaim() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor participant = descriptor("maid", 7, DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
-                "maid.wake_word", DialogueAttentionDecay.SLOW, DialogueClaimCondition.wakeWord("酒狐")
+        DialogueParticipantDescriptor participant = descriptor("maid", 7, DialogueClaimProfile.rules(DialogueClaimRule.any(
+                "maid.wake_word", DialogueClaimCondition.wakeWord("酒狐")
         )));
 
         // The condition names the word the player says; the word the module registered is a different string here on
@@ -44,8 +43,7 @@ class DialogueClaimEngineTest {
         assertEquals(1, claims.size());
         DialogueClaim claim = claims.get(0);
         assertEquals("maid", claim.participantId());
-        assertEquals(DialogueClaimStrength.STRONG, claim.strength());
-        assertEquals(DialogueAttentionDecay.SLOW, claim.decay());
+        assertEquals(DialogueClaimSource.UTTERANCE, claim.source());
         assertEquals(7, claim.priority());
         assertEquals("hard_claim:maid.wake_word", claim.reason());
     }
@@ -53,19 +51,18 @@ class DialogueClaimEngineTest {
     @Test
     void mentionedItemNeverCountsAsAHeldOrEquippedState() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor machine = descriptor("machine", 3, DialogueClaimProfile.rules(DialogueClaimRule.anyNormal(
+        DialogueParticipantDescriptor machine = descriptor("machine", 3, DialogueClaimProfile.rules(DialogueClaimRule.any(
                 "machine.item",
                 DialogueClaimCondition.heldItem("mod:wrench"),
                 DialogueClaimCondition.equippedItem("mod:wrench")
         )));
 
         List<DialogueClaim> textOnlyClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of(new IrObjectMatch("扳手", "mod:wrench", "item", "item.mod.wrench")), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player")));
-        List<DialogueClaim> heldClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of(), new DialogueInteractionHints("mod:wrench", false, false, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player")));
+        List<DialogueClaim> heldClaims = engine.collectLocalClaims(List.of(machine), request(List.of(), List.of(), new DialogueInteractionHints("mod:wrench", false, false, false, 0.0D), DialogueContextSnapshot.empty("player")));
 
         assertTrue(textOnlyClaims.isEmpty());
         assertEquals(1, heldClaims.size());
-        assertEquals(DialogueClaimStrength.NORMAL, heldClaims.get(0).strength());
-        assertEquals(DialogueAttentionDecay.FAST, heldClaims.get(0).decay());
+        assertEquals(DialogueClaimSource.CONTEXT, heldClaims.get(0).source());
         assertEquals("hard_claim:machine.item", heldClaims.get(0).reason());
     }
 
@@ -85,9 +82,8 @@ class DialogueClaimEngineTest {
         DialogueParticipantDescriptor participant = descriptor(
                 "assistant",
                 1,
-                DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.any(
                         "assistant.wake_word",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("天枢")
                 ))
         );
@@ -100,58 +96,35 @@ class DialogueClaimEngineTest {
     }
 
     @Test
-    void choosesStrongestMatchedRuleForParticipant() {
+    void oneClaimKeepsEveryMatchedRuleInDeclarationOrder() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
         DialogueParticipantDescriptor create = descriptor(
                 "create",
                 2,
                 DialogueClaimProfile.rules(
-                        DialogueClaimRule.anyNormal("create.held_tool", DialogueClaimCondition.heldItem("create:wrench", "create:*")),
-                        DialogueClaimRule.allStrong("create.active_tool", DialogueAttentionDecay.FAST, DialogueClaimCondition.heldItem("create:wrench"), DialogueClaimCondition.interactionKey())
+                        DialogueClaimRule.any("create.held_tool", DialogueClaimCondition.heldItem("create:wrench", "create:*")),
+                        DialogueClaimRule.all("create.active_tool", DialogueClaimCondition.heldItem("create:wrench"), DialogueClaimCondition.interactionKey())
                 )
         );
 
         List<DialogueClaim> claims = engine.collectLocalClaims(
                 List.of(create),
-                request(List.of(), List.of(), new DialogueInteractionHints("create:wrench", false, true, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player"))
+                request(List.of(), List.of(), new DialogueInteractionHints("create:wrench", false, true, false, 0.0D), DialogueContextSnapshot.empty("player"))
         );
 
         assertEquals(1, claims.size());
-        assertEquals(DialogueClaimStrength.STRONG, claims.get(0).strength());
-        assertEquals(DialogueAttentionDecay.FAST, claims.get(0).decay());
+        assertEquals(DialogueClaimSource.CONTEXT, claims.get(0).source());
         assertEquals("hard_claim:create.held_tool,create.active_tool", claims.get(0).reason());
     }
 
     @Test
-    void equalStrengthRulesKeepDeclarationOrderInsteadOfUsingAttentionDecay() {
-        DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor participant = descriptor(
-                "assistant",
-                1,
-                DialogueClaimProfile.rules(
-                        DialogueClaimRule.any("first", DialogueClaimStrength.NORMAL, DialogueAttentionDecay.FAST, DialogueClaimCondition.interactionKey()),
-                        DialogueClaimRule.any("second", DialogueClaimStrength.NORMAL, DialogueAttentionDecay.SLOW, DialogueClaimCondition.interactionKey())
-                )
-        );
-
-        List<DialogueClaim> claims = engine.collectLocalClaims(
-                List.of(participant),
-                request(List.of(), List.of(), new DialogueInteractionHints("", false, true, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player"))
-        );
-
-        assertEquals(1, claims.size());
-        assertEquals(DialogueAttentionDecay.FAST, claims.get(0).decay());
-    }
-
-    @Test
-    void allRuleCanCombineCrosshairEntityAndWakeWord() {
+    void aRuleThatAlsoMatchedAContextConditionRanksAsContextEvenWhenTheWakeWordDidToo() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
         DialogueParticipantDescriptor maid = descriptor(
                 "maid",
                 2,
-                DialogueClaimProfile.rules(DialogueClaimRule.allStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.all(
                         "maid.crosshair_wake",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid"),
                         DialogueClaimCondition.wakeWord("酒狐")
                 ))
@@ -166,12 +139,41 @@ class DialogueClaimEngineTest {
 
         List<DialogueClaim> claims = engine.collectLocalClaims(
                 List.of(maid),
-                request(List.of("酒狐"), List.of(), new DialogueInteractionHints("", true, false, false, 2.0D, List.of()), context)
+                request(List.of("酒狐"), List.of(), new DialogueInteractionHints("", true, false, false, 2.0D), context)
         );
 
         assertEquals(1, claims.size());
-        assertEquals(DialogueClaimStrength.STRONG, claims.get(0).strength());
-        assertEquals(DialogueAttentionDecay.SLOW, claims.get(0).decay());
+        assertEquals(DialogueClaimSource.CONTEXT, claims.get(0).source());
+        assertEquals("hard_claim:maid.crosshair_wake", claims.get(0).reason());
+    }
+
+    @Test
+    void anAnyRuleKeepsTheSourceOfTheConditionsThatActuallyMatched() {
+        DialogueClaimEngine engine = new DialogueClaimEngine();
+        DialogueParticipantDescriptor maid = descriptor(
+                "maid",
+                2,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "maid.either",
+                        DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid"),
+                        DialogueClaimCondition.wakeWord("酒狐")
+                ))
+        );
+
+        List<DialogueClaim> spoken = engine.collectLocalClaims(
+                List.of(maid),
+                request(List.of("酒狐"), List.of(), DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"))
+        );
+        List<DialogueClaim> aimed = engine.collectLocalClaims(
+                List.of(maid),
+                request(List.of(), List.of(), new DialogueInteractionHints("", true, false, false, 2.0D),
+                        new DialogueContextSnapshot("player", "minecraft:overworld",
+                                List.of(new DialogueEntityRef("1", "touhou_little_maid:maid", "maid", 2.0D, true)),
+                                List.of(), java.util.Map.of()))
+        );
+
+        assertEquals(DialogueClaimSource.UTTERANCE, spoken.get(0).source());
+        assertEquals(DialogueClaimSource.CONTEXT, aimed.get(0).source());
     }
 
     @Test
@@ -180,7 +182,7 @@ class DialogueClaimEngineTest {
         DialogueParticipantDescriptor armorModule = descriptor(
                 "armor",
                 2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("armor.equipped", DialogueClaimCondition.equippedItem("mod:signal_helmet")))
+                DialogueClaimProfile.rules(DialogueClaimRule.any("armor.equipped", DialogueClaimCondition.equippedItem("mod:signal_helmet")))
         );
         DialogueContextSnapshot context = new DialogueContextSnapshot(
                 "player",
@@ -194,33 +196,33 @@ class DialogueClaimEngineTest {
 
         assertEquals(1, claims.size());
         assertEquals("armor", claims.get(0).participantId());
-        assertEquals(DialogueClaimStrength.NORMAL, claims.get(0).strength());
+        assertEquals(DialogueClaimSource.CONTEXT, claims.get(0).source());
     }
 
     @Test
-    void nearestEntityWithinClaimsByEntityTypeAndKeepsEntityReferenceForDelivery() {
+    void crosshairEntityClaimsByTypeAndKeepsTheEntityReferenceForDelivery() {
         DialogueClaimEngine engine = new DialogueClaimEngine();
         DialogueParticipantDescriptor maid = descriptor(
                 "maid",
                 2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("maid.nearest", DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")))
+                DialogueClaimProfile.rules(DialogueClaimRule.any("maid.crosshair", DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")))
         );
-        DialogueEntityRef nearestMaid = new DialogueEntityRef("maid-uuid", "touhou_little_maid:maid", "酒狐", 4.0D, false);
+        DialogueEntityRef aimedMaid = new DialogueEntityRef("maid-uuid", "touhou_little_maid:maid", "酒狐", 4.0D, true);
         DialogueContextSnapshot context = new DialogueContextSnapshot(
                 "player",
                 "minecraft:overworld",
-                List.of(nearestMaid),
+                List.of(aimedMaid),
                 List.of(),
                 java.util.Map.of()
         );
-        DialogueArbitrationInput input = request(List.of(), List.of(), DialogueInteractionHints.empty(), context);
+        DialogueArbitrationInput input = request(List.of(), List.of(), new DialogueInteractionHints("", true, false, false, 4.0D), context);
 
         List<DialogueClaim> claims = engine.collectLocalClaims(List.of(maid), input);
         DialogueDeliveryPayload delivery = DialogueDeliveryPayload.from("session", input);
 
         assertEquals(1, claims.size());
         assertEquals("maid", claims.get(0).participantId());
-        assertEquals("hard_claim:maid.nearest", claims.get(0).reason());
+        assertEquals("hard_claim:maid.crosshair", claims.get(0).reason());
         assertEquals(1, delivery.matchedEntityRefs().size());
         assertEquals("maid-uuid", delivery.matchedEntityRefs().get(0).entityId());
         assertEquals("touhou_little_maid:maid", delivery.matchedEntityRefs().get(0).entityTypeId());
@@ -232,7 +234,7 @@ class DialogueClaimEngineTest {
         DialogueParticipantDescriptor villagerModule = descriptor(
                 "villager",
                 2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("villager.mentioned", DialogueClaimCondition.mentionedEntity("minecraft:villager")))
+                DialogueClaimProfile.rules(DialogueClaimRule.any("villager.mentioned", DialogueClaimCondition.mentionedEntity("minecraft:villager")))
         );
         DialogueArbitrationRequestPayload request = new DialogueArbitrationRequestPayload(
                 "request",
@@ -255,6 +257,7 @@ class DialogueClaimEngineTest {
 
         assertEquals(1, claims.size());
         assertEquals("villager", claims.get(0).participantId());
+        assertEquals(DialogueClaimSource.UTTERANCE, claims.get(0).source());
         assertEquals("hard_claim:villager.mentioned", claims.get(0).reason());
     }
 
@@ -270,7 +273,7 @@ class DialogueClaimEngineTest {
         DialogueParticipantDescriptor minecartModule = descriptor(
                 "minecart",
                 2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("minecart.mentioned", DialogueClaimCondition.mentionedEntity("minecraft:minecart")))
+                DialogueClaimProfile.rules(DialogueClaimRule.any("minecart.mentioned", DialogueClaimCondition.mentionedEntity("minecraft:minecart")))
         );
         DialogueArbitrationRequestPayload itemMention = new DialogueArbitrationRequestPayload(
                 "request", "module.ir", "player", "turn", 9L,
@@ -298,77 +301,24 @@ class DialogueClaimEngineTest {
         DialogueParticipantDescriptor create = descriptor(
                 "create",
                 2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("create.namespace", DialogueClaimCondition.heldItem("create:*")))
+                DialogueClaimProfile.rules(DialogueClaimRule.any("create.namespace", DialogueClaimCondition.heldItem("create:*")))
         );
 
         List<DialogueClaim> matching = engine.collectLocalClaims(
                 List.of(create),
-                request(List.of(), List.of(), new DialogueInteractionHints("create:wrench", false, false, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player"))
+                request(List.of(), List.of(), new DialogueInteractionHints("create:wrench", false, false, false, 0.0D), DialogueContextSnapshot.empty("player"))
         );
         List<DialogueClaim> nonMatching = engine.collectLocalClaims(
                 List.of(create),
-                request(List.of(), List.of(), new DialogueInteractionHints("minecraft:stick", false, false, false, 0.0D, List.of()), DialogueContextSnapshot.empty("player"))
+                request(List.of(), List.of(), new DialogueInteractionHints("minecraft:stick", false, false, false, 0.0D), DialogueContextSnapshot.empty("player"))
         );
 
         assertEquals(1, matching.size());
         assertTrue(nonMatching.isEmpty());
     }
 
-    @Test
-    void nearestEntityWithinRespectsDistanceBoundary() {
-        DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor maid = descriptor(
-                "maid",
-                2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("maid.nearest", DialogueClaimCondition.nearestEntityWithin(8.0D, "touhou_little_maid:maid")))
-        );
-        DialogueContextSnapshot tooFar = new DialogueContextSnapshot(
-                "player",
-                "minecraft:overworld",
-                List.of(new DialogueEntityRef("maid-uuid", "touhou_little_maid:maid", "maid", 8.1D, false)),
-                List.of(),
-                java.util.Map.of()
-        );
-        DialogueContextSnapshot onBoundary = new DialogueContextSnapshot(
-                "player",
-                "minecraft:overworld",
-                List.of(new DialogueEntityRef("maid-uuid", "touhou_little_maid:maid", "maid", 8.0D, false)),
-                List.of(),
-                java.util.Map.of()
-        );
-
-        assertTrue(engine.collectLocalClaims(List.of(maid), request(List.of(), List.of(), DialogueInteractionHints.empty(), tooFar)).isEmpty());
-        assertEquals(1, engine.collectLocalClaims(List.of(maid), request(List.of(), List.of(), DialogueInteractionHints.empty(), onBoundary)).size());
-    }
-
-    @Test
-    void contextFactCanRequireOnlyKeyOrExactValue() {
-        DialogueClaimEngine engine = new DialogueClaimEngine();
-        DialogueParticipantDescriptor keyOnly = descriptor(
-                "key",
-                2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("fact.key", DialogueClaimCondition.contextFact("screen_open")))
-        );
-        DialogueParticipantDescriptor valueExact = descriptor(
-                "value",
-                2,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyNormal("fact.value", DialogueClaimCondition.contextFact("screen_open", "create:belt")))
-        );
-        DialogueContextSnapshot context = new DialogueContextSnapshot(
-                "player",
-                "minecraft:overworld",
-                List.of(),
-                List.of(),
-                java.util.Map.of("screen_open", "create:belt")
-        );
-
-        List<DialogueClaim> claims = engine.collectLocalClaims(List.of(keyOnly, valueExact), request(List.of(), List.of(), DialogueInteractionHints.empty(), context));
-
-        assertEquals(List.of("key", "value"), claims.stream().map(DialogueClaim::participantId).sorted().toList());
-    }
-
     private DialogueParticipantDescriptor descriptor(String participantId, int priority, DialogueClaimProfile claimProfile) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, claimProfile, com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
+        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, claimProfile, DialogueTriggerGroup.EMPTY, "ROUTE." + participantId, DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private DialogueArbitrationInput request(List<String> triggerWords, List<IrObjectMatch> objectMatches, DialogueInteractionHints interactionHints, DialogueContextSnapshot contextSnapshot) {

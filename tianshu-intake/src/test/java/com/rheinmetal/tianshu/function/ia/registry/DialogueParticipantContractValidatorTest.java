@@ -81,6 +81,51 @@ class DialogueParticipantContractValidatorTest {
         assertEquals("DIALOGUE_INPUT_MODULE_MISMATCH", result.code());
     }
 
+    @Test
+    void rejectsARulesParticipantWithoutAPartnerIcon() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registerCapability(registry, "module.maid", new CapabilityDescriptor(
+                "MAID.DIALOGUE_INPUT",
+                PayloadType.DIALOGUE_DELIVERY,
+                DialogueDeliveryPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW
+        ));
+        DialogueParticipantDescriptor descriptor = new DialogueParticipantDescriptor(
+                "maid.default", "module.maid", "maid", 10,
+                DialogueClaimProfile.rules(java.util.List.of()), DialogueTriggerGroup.EMPTY,
+                "MAID.DIALOGUE_INPUT", DialogueTurnProcessingPolicy.DEFAULT
+        );
+
+        ValidationResult result = new DialogueParticipantContractValidator(view(registry)).validate(descriptor);
+
+        assertEquals("PARTICIPANT_ICON_MISSING", result.code());
+    }
+
+    @Test
+    void rejectsAPartnerIconThatIsNotANamespacedTexturePath() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registerCapability(registry, "module.maid", new CapabilityDescriptor(
+                "MAID.DIALOGUE_INPUT",
+                PayloadType.DIALOGUE_DELIVERY,
+                DialogueDeliveryPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW
+        ));
+        DialogueParticipantDescriptor descriptor = new DialogueParticipantDescriptor(
+                "maid.default", "module.maid", "maid", 10,
+                DialogueClaimProfile.rules(java.util.List.of()), DialogueTriggerGroup.EMPTY,
+                "MAID.DIALOGUE_INPUT", DialogueTurnProcessingPolicy.DEFAULT,
+                "maid_icon", com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier.TEN_SECONDS
+        );
+
+        ValidationResult result = new DialogueParticipantContractValidator(view(registry)).validate(descriptor);
+
+        assertEquals("PARTICIPANT_ICON_INVALID", result.code());
+    }
+
     private static DialogueParticipantDescriptor descriptor(String moduleId, String capabilityId) {
         return new DialogueParticipantDescriptor(
                 "maid.default",

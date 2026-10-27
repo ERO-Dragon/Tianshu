@@ -1,16 +1,13 @@
 package com.rheinmetal.tianshu.protocol.dialogue;
 
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
-import org.junit.jupiter.api.Test;
-import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
-import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueScoringContext;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimConditionType;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimSource;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueScoreResponsePayload;
-import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
-import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
+import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,9 +15,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueContractBoundaryTest {
     private static final List<String> CONSUMER_MODULES = List.of(
@@ -73,51 +70,51 @@ class DialogueContractBoundaryTest {
     }
 
     @Test
-    void participantDescriptorRetainsCompatibilityAndNormalizesFallbackScore() {
-        DialogueParticipantDescriptor legacy = new DialogueParticipantDescriptor(
-                "legacy", "module.legacy", "Legacy", 1,
-                DialogueClaimProfile.DISABLED,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
-                "LEGACY.ROUTE", DialogueTurnProcessingPolicy.DEFAULT
-        );
-        DialogueParticipantDescriptor scored = new DialogueParticipantDescriptor(
-                "scored", "module.scored", "Scored", 1,
-                DialogueClaimProfile.DISABLED,
-                com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
-                "SCORE.ROUTE", DialogueTurnProcessingPolicy.DEFAULT,
-                "SCORE.CAPABILITY", 2.0D
+    void participantDescriptorRequiresIdentityAndNormalizesOptionalText() {
+        DialogueParticipantDescriptor descriptor = new DialogueParticipantDescriptor(
+                "  maid.default  ", "module.maid", "  酒狐  ", 5,
+                DialogueClaimProfile.DISABLED, DialogueTriggerGroup.EMPTY,
+                " MAID.DIALOGUE_INPUT ", null
         );
 
-        assertEquals("", legacy.scoreCapability());
-        assertEquals(0.0D, legacy.fallbackScore());
-        assertEquals("SCORE.CAPABILITY", scored.scoreCapability());
-        assertEquals(1.0D, scored.fallbackScore());
+        assertEquals("maid.default", descriptor.participantId());
+        assertEquals("module.maid", descriptor.moduleId());
+        assertEquals("酒狐", descriptor.displayName());
+        assertEquals("MAID.DIALOGUE_INPUT", descriptor.routeCapability());
+        assertEquals(DialogueClaimProfile.DISABLED, descriptor.claimProfile());
+        assertEquals(DialogueTriggerGroup.EMPTY, descriptor.triggerGroup());
+        assertEquals(DialogueTurnProcessingPolicy.DEFAULT, descriptor.turnProcessingPolicy());
+        assertEquals("", descriptor.icon());
+        assertEquals(DialogueHoldTier.NONE, descriptor.holdTier());
+        assertFalse(descriptor.hasPartnerIcon());
     }
 
     @Test
-    void scoringContextContainsOnlyStructuredDialogueContext() {
-        DialogueScoringContext context = new DialogueScoringContext(
-                "request", "player", "turn",
-                List.of(new IrObjectMatch("钻石锄", "minecraft:diamond_hoe", "item", "item.minecraft.diamond_hoe")),
-                List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")),
-                DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("player"), 10L, 20L
+    void partnerIconAndHoldTierAreOptionalButNormalizedWhenDeclared() {
+        DialogueParticipantDescriptor descriptor = new DialogueParticipantDescriptor(
+                "maid", "module.maid", "酒狐", 5,
+                DialogueClaimProfile.rules(java.util.List.of()), DialogueTriggerGroup.EMPTY,
+                "MAID.DIALOGUE_INPUT", DialogueTurnProcessingPolicy.DEFAULT,
+                "  tianshu:textures/gui/partner/maid.png  ", DialogueHoldTier.FIVE_SECONDS
         );
 
-        List<String> components = Stream.of(context.getClass().getRecordComponents())
-                .map(component -> component.getName())
-                .toList();
-        assertTrue(components.stream().noneMatch(name -> List.of("repairedText", "normalizedText", "prompt", "rawText").contains(name)));
-        assertTrue(components.contains("objectMatches"));
-        assertTrue(components.contains("moduleMatches"));
-        assertEquals(1, context.objectMatches().size());
-        assertEquals("minecraft:diamond_hoe", context.objectMatches().get(0).registryId());
-        assertEquals(1, context.moduleMatches().size());
+        assertEquals("tianshu:textures/gui/partner/maid.png", descriptor.icon());
+        assertTrue(descriptor.hasPartnerIcon());
+        assertEquals(DialogueHoldTier.FIVE_SECONDS, descriptor.holdTier());
+        assertEquals(5_000L, descriptor.holdTier().durationMillis());
+        assertTrue(descriptor.holdTier().holdsTurn());
+        assertFalse(DialogueHoldTier.NONE.holdsTurn());
     }
 
     @Test
-    void scoreResponseRejectsNonFiniteScore() {
-        assertThrows(IllegalArgumentException.class, () -> new DialogueScoreResponsePayload(
-                "request", "participant", Double.NaN, 10L, true
-        ));
+    void onlyTheTwoSentenceConditionsCountAsUtteranceClaims() {
+        assertEquals(DialogueClaimSource.UTTERANCE, DialogueClaimConditionType.WAKE_WORD.source());
+        assertEquals(DialogueClaimSource.UTTERANCE, DialogueClaimConditionType.MENTIONED_ENTITY.source());
+        for (DialogueClaimConditionType type : DialogueClaimConditionType.values()) {
+            if (type == DialogueClaimConditionType.WAKE_WORD || type == DialogueClaimConditionType.MENTIONED_ENTITY) {
+                continue;
+            }
+            assertEquals(DialogueClaimSource.CONTEXT, type.source(), type + " reads the world, not the sentence");
+        }
     }
 }

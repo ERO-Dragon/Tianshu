@@ -8,7 +8,7 @@ import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueAttentionDecay;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
@@ -86,9 +86,8 @@ class IaModuleProtocolFlowTest {
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
                         "maid.wake",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("酒狐")
                 ))
         ));
@@ -116,9 +115,8 @@ class IaModuleProtocolFlowTest {
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
                         "maid.wake",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("酒狐")
                 ))
         ));
@@ -129,9 +127,8 @@ class IaModuleProtocolFlowTest {
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
                         "maid.wake.updated",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("女仆")
                 ))
         ));
@@ -163,9 +160,8 @@ class IaModuleProtocolFlowTest {
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
                         "maid.wake",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("maid")
                 )),
                 DialogueTriggerGroup.of(List.of("maid"), List.of("farm"))
@@ -212,9 +208,8 @@ class IaModuleProtocolFlowTest {
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.anyStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
                         "maid.wake",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("酒狐")
                 ))
         ));
@@ -242,9 +237,8 @@ class IaModuleProtocolFlowTest {
                 "module.maid",
                 "MAID.DIALOGUE_INPUT",
                 10,
-                DialogueClaimProfile.rules(DialogueClaimRule.allStrong(
+                DialogueClaimProfile.rules(DialogueClaimRule.all(
                         "maid.frozen_crosshair",
-                        DialogueAttentionDecay.SLOW,
                         DialogueClaimCondition.wakeWord("酒狐"),
                         DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
                 ))
@@ -392,7 +386,9 @@ class IaModuleProtocolFlowTest {
                 profile,
                 DialogueTriggerGroup.EMPTY,
                 routeCapability,
-                DialogueTurnProcessingPolicy.DEFAULT
+                DialogueTurnProcessingPolicy.DEFAULT,
+                partnerIcon(participantId),
+                DialogueHoldTier.TEN_SECONDS
         );
     }
 
@@ -405,8 +401,14 @@ class IaModuleProtocolFlowTest {
                 profile,
                 triggerGroup,
                 routeCapability,
-                DialogueTurnProcessingPolicy.DEFAULT
+                DialogueTurnProcessingPolicy.DEFAULT,
+                partnerIcon(participantId),
+                DialogueHoldTier.TEN_SECONDS
         );
+    }
+
+    private static String partnerIcon(String participantId) {
+        return "tianshu:textures/gui/partner/" + participantId + ".png";
     }
 
     private void registerDelivery(String moduleId, String capabilityId, RecordingHandler handler) {
