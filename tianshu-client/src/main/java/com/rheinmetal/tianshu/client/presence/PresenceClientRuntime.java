@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.presence;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
@@ -26,17 +27,22 @@ public final class PresenceClientRuntime {
     private final PresenceActivityTracker activityTracker = new PresenceActivityTracker();
     private final PresenceDisplayPolicy displayPolicy;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
-    private final PresenceEventCollector eventCollector = new PresenceEventCollector();
+    private final PresenceEventCollector eventCollector;
     private volatile PresenceActivitySnapshot displayedActivitySnapshot;
     private volatile PresenceHudDisplay cachedHudDisplay = PresenceHudDisplay.HIDDEN;
     private volatile boolean worldSessionActive;
 
     public PresenceClientRuntime(ClientGameContextProvider platform, PresenceTextProvider textProvider) {
+        this(platform, textProvider, LogSink.NOOP);
+    }
+
+    public PresenceClientRuntime(ClientGameContextProvider platform, PresenceTextProvider textProvider, LogSink logSink) {
         this.displayPolicy = new PresenceDisplayPolicy(textProvider);
         this.contextQueryCoordinator = new PresenceContextQueryCoordinator(
                 Objects.requireNonNull(platform, "platform"),
                 new PresenceContextFactMapper()
         );
+        this.eventCollector = new PresenceEventCollector(logSink);
     }
 
     public void startWorldSession() {
@@ -63,6 +69,7 @@ public final class PresenceClientRuntime {
     public void tick() {
         if (worldSessionActive) {
             contextQueryCoordinator.processPending();
+            eventCollector.flushWorldEvents();
         }
     }
 

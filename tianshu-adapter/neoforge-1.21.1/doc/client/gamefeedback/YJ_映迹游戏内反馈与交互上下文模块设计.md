@@ -225,22 +225,16 @@ PRESENCE.QUERY_CONTEXT
 
 ```text
 PRESENCE.WORLD_EVENT
-PRESENCE.CHAT_MESSAGE
 ```
 
-`PRESENCE.WORLD_EVENT`：
+`PRESENCE.WORLD_EVENT` 是映迹自己的世界事实通道，**一条 payload 描述一个 kind 在 1 秒窗口里的全部发生**：
 
-- 玩家获得成就
-- 玩家死亡
-- 作为映迹自己的世界事件广播通道
-- 供 AX / 其他订阅方消费低频世界变化
-- 不写入聊天历史，不伪装成玩家聊天
+- `occurrences` 是分组列表：相同 `values` 发生 N 次合成一组 `Occurrence(N, values)`；一秒内 20 个泥土 + 60 个石头是同一条 payload 的两组；
+- `values()` 返回第一组、`totalCount()` 返回总次数——旧代码按单条事实读也能跑，只是看到第一组；
+- 每种 kind 每秒最多一条 payload；每 kind 每窗口最多 32 组不同值，超出部分计数并写一条 `presence.world_event_capped` 诊断（只记 kind 与条数）；
+- 发布在 `PresenceClientRuntime.tick()` 里结算，窗口满 1 秒才发；换世界直接丢弃未结算窗口，不带进新世界。
 
-`PRESENCE.CHAT_MESSAGE`：
-
-- 只广播玩家聊天消息
-- 不计入指令、成就、死亡、系统消息
-- payload 保持克制，只包含说话人 UUID、说话人名称和消息文本
+聊天不再有独立 topic：它是 `chat_message` 这个 kind（见文末修订）。
 
 ### 5.3 产品状态图标
 

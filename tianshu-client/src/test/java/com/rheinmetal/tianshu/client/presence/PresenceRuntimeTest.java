@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.presence;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
@@ -30,6 +31,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,10 +41,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceRuntimeTest {
     @Test
-    void chatLinesArePublishedAsWorldEventsOnlyInsideASession() {
-        PresenceEventCollector collector = new PresenceEventCollector();
+    void chatLinesArePublishedAsOneWindowedWorldEventOnlyInsideASession() {
+        AtomicLong now = new AtomicLong(1_000L);
         List<PresenceWorldEventPayload> published = new ArrayList<>();
-        collector.setWorldEventSink(published::add);
+        PresenceEventCollector collector = collectorWithClock(now, published);
 
         collector.recordPlayerChatMessage("outside", "uuid-player", "Player");
         assertTrue(published.isEmpty());
@@ -51,26 +53,41 @@ class PresenceRuntimeTest {
         collector.recordPlayerChatMessage("inside", "uuid-player", "Player");
         collector.recordPlayerChatMessage("   ", "uuid-player", "Player");
         collector.recordPlayerChatMessage("inside", "", "Player");
+        collector.flushWorldEvents();
+        assertTrue(published.isEmpty(), "a window is only published once its second has elapsed");
+
+        now.set(2_000L);
+        collector.flushWorldEvents();
 
         assertEquals(1, published.size());
         assertEquals(PresenceWorldEventPayload.EVENT_CHAT_MESSAGE, published.get(0).eventType());
         assertEquals("inside", published.get(0).values().get(PresenceWorldEventPayload.VALUE_TEXT));
+        assertEquals(1, published.get(0).totalCount());
     }
 
     @Test
     void worldEventsStopWithTheSession() {
-        PresenceEventCollector collector = new PresenceEventCollector();
+        AtomicLong now = new AtomicLong(1_000L);
         List<PresenceWorldEventPayload> published = new ArrayList<>();
-        collector.setWorldEventSink(published::add);
+        PresenceEventCollector collector = collectorWithClock(now, published);
         PresenceWorldEventPayload first = worldEvent("first");
 
         collector.recordWorldEvents(List.of(first));
         collector.startWorldSession();
         collector.recordWorldEvents(java.util.Arrays.asList(first, null));
         collector.stopWorldSession();
-        collector.recordWorldEvents(List.of(worldEvent("second")));
+        now.set(2_000L);
+        collector.flushWorldEvents();
+        assertTrue(published.isEmpty(), "a window that ended with its world is dropped, never published late");
 
-        assertEquals(List.of(first), published);
+        collector.startWorldSession();
+        collector.recordWorldEvents(List.of(first));
+        now.set(3_000L);
+        collector.flushWorldEvents();
+
+        assertEquals(1, published.size());
+        assertEquals("first", published.get(0).values().get("id"));
+        assertEquals(1, published.get(0).totalCount());
     }
 
     @Test
@@ -200,6 +217,18 @@ class PresenceRuntimeTest {
                 com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState.IDLE,
                 tracker.snapshot().primaryState()
         );
+    }
+
+    private static PresenceEventCollector collectorWithClock(
+            AtomicLong now,
+            List<PresenceWorldEventPayload> published
+    ) {
+        PresenceEventCollector collector = new PresenceEventCollector(
+                LogSink.NOOP,
+                new com.rheinmetal.tianshu.client.presence.capture.PresenceWorldEventAggregator(now::get)
+        );
+        collector.setWorldEventSink(published::add);
+        return collector;
     }
 
     private static PresenceWorldEventPayload worldEvent(String id) {

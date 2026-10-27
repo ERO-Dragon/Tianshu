@@ -141,7 +141,11 @@ public final class NeoForgeClientBootstrap {
             // owns the index, its cache and its lifetime.
             createNamedObjectDictionary();
             refreshNamedObjectSnapshot();
-            presenceRuntime = new PresenceClientRuntime(new NeoForgePresencePlatform(languageSnapshot, diagnosticRouter), new NeoForgePresenceTextProvider());
+            presenceRuntime = new PresenceClientRuntime(
+                    new NeoForgePresencePlatform(languageSnapshot, diagnosticRouter),
+                    new NeoForgePresenceTextProvider(),
+                    diagnosticRouter
+            );
             PresenceClientRuntime currentPresenceRuntime = presenceRuntime;
             ClientConfigPresenceHudSettings presenceHudSettings = new ClientConfigPresenceHudSettings(config);
             PresenceHudRenderer presenceHudRenderer = new PresenceHudRenderer(
