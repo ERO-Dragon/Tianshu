@@ -71,7 +71,7 @@ LLM / TTS / 游戏动作
 - 会话 owner 管理
 - 每轮仲裁、处理期限延长、释放
 - 会话状态事件发布
-- 对话内容的授权定向投递
+- 对话内容的定向投递
 
 两者不是合并关系。
 
@@ -186,7 +186,6 @@ TTS 是输出能力，不是仲裁方。
 ProtocolCapabilities.DIALOGUE_ARBITRATE
 ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER
 ProtocolCapabilities.DIALOGUE_SESSION_CONTROL
-ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE
 ```
 
 语义：
@@ -196,7 +195,6 @@ ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE
 | `DIALOGUE_ARBITRATE` | 受信模块显式请求仲裁机关对一次对话输入进行 owner 仲裁；标准 IR 链路不使用该 capability。 |
 | `DIALOGUE_PARTICIPANT_REGISTER` | 模块注册自己为可参与对话的候选方。 |
 | `DIALOGUE_SESSION_CONTROL` | 当前 owner 对会话进行处理期限延长、释放、打断确认等控制。 |
-| `DIALOGUE_LLM_USAGE_AUTHORIZE` | LLM 模块查询某个 requester 是否有权基于当前 dialogue session 发起对话型 LLM 使用。仲裁机关只返回允许或拒绝结论，不代理、不转发、不排队任何 LLM 请求。 |
 
 标准语音链路由 IA 订阅 `ProtocolTopics.IR_RESULT` 接收 `IrResultPayload`。IR 发布后即完成职责；IA 负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。
 
@@ -205,7 +203,7 @@ ProtocolCapabilities.DIALOGUE_LLM_USAGE_AUTHORIZE
 - `COMMAND` 用于无需同步结论的显式仲裁调用。
 - `REQUEST` 用于确实需要同步获知仲裁结论的诊断、测试或受信模块查询场景。调用方必须为原请求 `envelopeId` 注册 `DIALOGUE_ARBITRATION_RESULT` 响应处理器，并在最终响应、过期、取消或模块停止时清理。
 
-仲裁机关的对外协议不应追求“先能跑”的临时收敛，而应从一开始建立稳定边界：仲裁、参与方注册、会话控制、状态事件、权限校验都属于同一套体系。即使某些能力在代码实现中分阶段完成，协议模型也应按成熟形态设计，避免后续反复破坏 payload、capability 和 session 语义。
+仲裁机关的对外协议不应追求“先能跑”的临时收敛，而应从一开始建立稳定边界：仲裁、参与方注册、会话控制、状态事件、归属校验都属于同一套体系。即使某些能力在代码实现中分阶段完成，协议模型也应按成熟形态设计，避免后续反复破坏 payload、capability 和 session 语义。
 
 ### 5.2 payload type
 
@@ -218,8 +216,6 @@ PayloadType.DIALOGUE_PARTICIPANT_REGISTER
 PayloadType.DIALOGUE_SESSION_CONTROL
 PayloadType.DIALOGUE_SESSION_EVENT
 PayloadType.DIALOGUE_OWNER_PREVIEW
-PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_REQUEST
-PayloadType.DIALOGUE_LLM_USAGE_AUTHORIZATION_RESULT
 ```
 
 ### 5.3 topic
@@ -303,7 +299,7 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 - IA 结构化诊断默认关闭；Debug 构建中由设置页右下角的全局 Debug 开关统一控制，关闭时不记录玩家正文。
 - 用户开启全局 Debug 后，`repairedText` / `normalizedText` 可以作为 `RAW_CONTENT` 进入宿主集中管理的异步诊断落盘链路。普通日志和公共 session event 始终不携带正文；诊断文件为独立的 `logs/tianshu-diagnostics.log`。
 
-换句话说，仲裁机关本身就是授权边界。只要消息准备离开仲裁机关内部、发给参与方、UI、日志、诊断或公共 topic，就必须先经过仲裁机关的授权判断。
+换句话说，仲裁机关本身就是归属边界。只要消息准备离开仲裁机关内部、发给参与方、UI、日志、诊断或公共 topic，就必须先经过仲裁机关的归属判断。
 
 ## 7. 输入契约
 
@@ -668,11 +664,11 @@ common DTO 可以表达：
 - 只有 owner 可以接收本 session 的正文。
 - 非 owner 只能接收状态事件。
 - 状态事件不携带敏感正文和完整上下文。
-- 外部模块请求 LLM 必须走 LLM 模块的外部模块线或授权 capability。
-- 对话型 LLM 请求必须携带 dialogue session 授权上下文，由 LLM 模块在入口向仲裁机关查询 `DIALOGUE_LLM_USAGE_AUTHORIZE` 或等价服务；只有当前 session owner、session 处于可用状态且 processing deadline 未过期时才能放行。
-- 推荐采用直接 session owner 校验，而不是随机 key 或 token 授权。LLM 模块提交对话型请求时携带 `sessionId`、`requesterModuleId`、`requesterParticipantId` 和 `turnId`，仲裁机关根据 Session Store 与 Access Control 返回允许或拒绝。该校验是普通内存状态查询，性能开销低，且不会引入 token 泄露、缓存失效和撤销复杂度。
-- 仲裁机关只校验对话型 LLM 使用权限，不代理 LLM 请求，不生成 prompt，不管理 LLM server 内部队列。
-- 外部模块请求 TTS 必须走 TTS 模块的授权 capability。
+- 外部模块请求 LLM 走 LLM 模块的公共能力。
+- 对话型 LLM 请求不再由 IA 授权：LLM 模块不向 IA 查询使用权限，IA 也不校验 LLM 请求。
+- 对话正文的边界由 IA 的定向投递保证：只有当前 owner 收到本轮正文，非 owner 只收到状态事件。
+- IA 不代理、不转发、不排队 LLM 请求，不生成 prompt，也不管理 LLM 内部队列。
+- 外部模块请求 TTS 走 TTS 模块的公共能力；TTS 不反向向 IA 查询授权。
 - 模块内部不得把完整内部消息直接作为公共 payload、日志或诊断输出。
 - 内部消息只在需要它的组件之间流转，不为了调试或方便而全局扩散。
 
@@ -688,8 +684,8 @@ common DTO 可以表达：
 | Claim Engine | 根据 participant 的 claim profile 和当前输入快照收集硬 claim。 |
 | Arbitration Policy | 先按硬 claim strength、participant priority 和稳定 ID 处理硬 claim；无硬 claim 时按 participant 动态值、fallback score 与 attention 合并值决定 owner；decay 不参与排序。 |
 | Session Store | 维护 session 状态、owner、turn、processing deadline、释放原因和审计信息。 |
-| Access Control | 校验模块是否有权读取正文、控制 session、调用 LLM/TTS 或接收事件。 |
-| Message Gateway | 对入站和出站正文消息做授权检查和定向投递，拒绝旁路访问。 |
+| Access Control | 校验模块是否有权读取正文、控制 session 或接收事件。 |
+| Message Gateway | 对入站和出站正文消息做归属检查和定向投递，拒绝旁路访问。 |
 | Event Publisher | 发布不含正文的会话状态事件。 |
 | Lifecycle Sweeper | 只回收 processing deadline 已过期的 active session；participant/module 注销由 Participant Lifecycle Coordinator 处理，世界切换由 Core 的 stop/destroy 生命周期处理。 |
 | Diagnostics Snapshot | 提供仅调试可见的脱敏快照，不暴露正文和完整上下文。 |
@@ -760,6 +756,6 @@ owner 释放或 session 超时
 5. **common 主体不依赖 Minecraft 活对象。**
 6. **外部模组自定义交互方式，但统一适配为 participant / claim。**
 7. **LLM 和 TTS 是 owner 可调用的能力，不是仲裁机关内部硬编码步骤。**
-8. **默认拒绝旁路访问，所有正文链路必须定向授权。**
+8. **默认拒绝旁路访问，所有正文链路必须定向投递。**
 9. **内部消息不做无关扩散，只在需要它的组件之间流转。**
 10. **对外状态事件只表达状态变化，不携带正文和完整上下文。**

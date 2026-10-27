@@ -1,18 +1,20 @@
 # LLM 协议接口设计
 
+> **当前实现**：对话推理走云端 OpenAI 兼容端点（默认 DeepSeek），本地只运行 embedding / RAG；本文中仍保留的本地 chat 模型、chat GGUF、MTP、保帧率等描述属于旧本地引擎的兼容说明，不代表当前行为。
+
 ### 快速摘要
 
 - 文本生成
 
   - LLM 为 AX 和其他功能提供语言模型推理，支持即时对话和后台任务两条链路。
-  - CHAT 面向玩家当前对话，获得有效 IA 会话授权后直接处理；TASK 面向记忆压缩、整理和其他后台工作，可以等待和按任务优先级调度。
+  - CHAT 面向玩家当前对话，直接处理；TASK 面向记忆压缩、整理和其他后台工作，可以等待和按任务优先级调度。
   - 请求可以只返回完整结果，也可以边生成边返回正文；结束时会给出最终状态、已经生成的文本和 token 使用情况。
 
-- 本地模型能力
+- 模型能力
 
-  - 对话生成模型和 embedding 模型分别管理：生成模型负责回答和 token 计数，本地 embedding 模型负责文本向量化。
-  - `STATUS` 始终可以查询当前模型、队列和可用能力；生成模型未就绪时，CHAT 和 TASK 会明确不可用。
-  - `TOKEN_COUNT` 只使用当前生成模型自己的 tokenizer，不使用 embedding 模型近似代替。
+  - 对话生成走云端 OpenAI 兼容端点（默认 DeepSeek），本地只运行 embedding 模型负责文本向量化；两者分开管理。
+  - `STATUS` 始终可以查询当前端点、模型和可用能力；端点 / Key / 模型未就绪时，CHAT 和 TASK 会明确不可用。
+  - 云端不提供精确 tokenizer：`TOKEN_COUNT` 按本地估算口径给出，并用 provider 返回的用量校准；不使用 embedding 的计数代替。
 
 - RAG 与知识库
 
@@ -22,7 +24,7 @@
 
 - 加载与状态
 
-  - 进入世界后先建立运行会话，再等待游戏进入稳定状态后自动加载已选择的模型，避免拖慢进入世界过程。
+  - 进入世界后先建立运行会话，再等待游戏进入稳定状态后自动加载本地向量模型，避免拖慢进入世界过程。
   - 模块健康和失败继续通过模块状态公开；真实加载和 TASK 执行另外通过产品活动公开。
   - CHAT 不直接控制映迹的“思考/回复”，这两个状态由获得 IA delivery 的 AX 负责。
 
@@ -58,7 +60,7 @@ LLM 模块对外提供三个协议能力：
 - `LlmRuntimeInspector`：提供 readiness、队列、MTP、context budget、embedding metadata 和 runtime snapshot。
 - `LlmEmbeddingServiceAdapter`：隔离 embedding 调用边界。
 
-`LlmProtocolAdapter` 只保留 capability/topic 注册、协议 transport 和稳定 public API。协议 payload 映射由 `LlmPromptPayloadMapper` 完成，CHAT/TASK 授权、admission、执行、取消和错误分类由 `LlmPromptRequestHandler` 完成，流式累计状态由 `LlmStreamState` 同步维护。
+`LlmProtocolAdapter` 只保留 capability/topic 注册、协议 transport 和稳定 public API。协议 payload 映射由 `LlmPromptPayloadMapper` 完成，CHAT/TASK 准入、执行、取消和错误分类由 `LlmPromptRequestHandler` 完成，流式累计状态由 `LlmStreamState` 同步维护。
 
 这些拆分不改变 chat/task、stream、thinking、usage、finish、取消、MTP 或 RAG 协议语义。模型推理、embedding、RAG 检索、持久化和模型下载都必须在受管后台执行 lane 中运行，不得占用 Minecraft 主线程。
 
@@ -68,7 +70,7 @@ LLM 模块对外提供三个协议能力：
 
 进入世界后，LLM 先完成世界 session 初始化，再由受管调度器延迟启动模型加载。`MODULE_STATUS` 通知健康、就绪或失败；模型加载工作线程真正开始后，LLM 同时以 `llm.model.load / LOADING` 发布 `PRESENCE.ACTIVITY`，并在成功、失败或取消时结束。
 
-LLM 只把实际执行的 `lane=TASK` 任务公开为 `llm.task.<taskId> / PROCESSING_TASK`，终态为 `COMPLETED`、`CANCELLED` 或 `FAILED` 时结束。`lane=CHAT` 不发布 `THINKING` 或 `RESPONDING`，避免外部 CHAT 调用冒充辅星产品交互；AX 会在自己的 IA 授权回合中发布这两个状态。
+LLM 只把实际执行的 `lane=TASK` 任务公开为 `llm.task.<taskId> / PROCESSING_TASK`，终态为 `COMPLETED`、`CANCELLED` 或 `FAILED` 时结束。`lane=CHAT` 不发布 `THINKING` 或 `RESPONDING`，避免外部 CHAT 调用冒充辅星产品交互；AX 会在自己的对话回合中发布这两个状态。
 
 ---
 
@@ -111,9 +113,11 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 
 ## 7. 配置与模型解析边界
 
-LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoForge 的 `config/tianshu-client.toml`；setter 和保存不进入 common。`LlmModelPathResolver` 根据所选模型标识、LLM 模块根和内置 catalog 解析 chat/embedding GGUF，并拒绝越过模型根目录的选择。catalog 指定文件优先，其次才是目录内按文件名确定性排序的 GGUF。
+> 现状：对话推理走云端 OpenAI 兼容端点，不加载本地 chat GGUF；本节其余内容只适用于本地 embedding 模型与设置页的模型清单。
 
-模型 context size、prompt token budget 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有推理 builder、GPU device、MTP、frame guard 或协议请求语义。
+LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoForge 的 `config/tianshu-client.toml`；setter 和保存不进入 common。`LlmModelPathResolver` 根据所选模型标识、LLM 模块根和内置 catalog 解析 embedding GGUF，并拒绝越过模型根目录的选择。catalog 指定文件优先，其次才是目录内按文件名确定性排序的 GGUF。
+
+模型 context size、prompt token budget 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有 embedding 推理 builder、GPU device 或协议请求语义；对话侧采样与预算由云端端点约束。
 
 例外只有一个：embedding 的**运行时窗口**。catalog 里的 `contextSize` 是模型被训练出的上限（bge-m3 为 8192），而引擎实际使用的窗口是"本构建愿意为原生内存付多少"的选择，与 `embeddingGpuLayers` 属于同一类运行预算，因此进配置；`LlmEngineProvider` 取 `min(catalog 上限, 配置预算)`。把 catalog 值直接当窗口用过一次，结果是用 8K 窗口处理几百字的输入。
 
@@ -175,16 +179,16 @@ protocolRuntime.submit(envelope);
 | `taskPriority` | `0` | TASK 优先级，范围 `0..1000`；仅 `lane=TASK` 时参与调度。 |
 | `taskPreemptible` | `false` | 当前 TASK 是否允许被更高优先级 TASK 抢占；仅 `lane=TASK` 时有效。 |
 | `chunks` | 空列表 | 请求内容，按数组顺序处理。支持 `message` 和 `rag` 两类 chunk。 |
-| `dialogueSessionId` | 空字符串 | CHAT 请求的对话会话 ID；用于 IA 授权。 |
+| `dialogueSessionId` | 空字符串 | CHAT 请求的对话会话 ID；用于关联本轮对话。 |
 | `requesterModuleId` | 空字符串 | 请求方模块 ID，必须与协议 envelope 的 source module 一致。 |
-| `requesterParticipantId` | 空字符串 | 请求方参与者 ID；用于 IA 授权。 |
+| `requesterParticipantId` | 空字符串 | 请求方参与者 ID；用于关联请求方。 |
 | `dialogueTurnId` | 空字符串 | 对话轮次 ID，用于追踪一次对话回合。 |
 | `inferencePolicy` | 跟随全局 | 请求级推理策略覆盖项。 |
 | `toolsJson` | 空字符串 | OpenAI-style function tools JSON；LLM 模块只透传给底层模板，不解析输出、不执行工具。 |
 
-CHAT 请求需要带对话授权上下文：`dialogueSessionId`、`requesterModuleId`、`requesterParticipantId`。LLM 模块会通过 IA 授权能力确认该调用方是否允许使用 CHAT LLM。
+CHAT 请求会带对话会话与请求方身份，用于把流式分片和结果关联到本轮对话；LLM 模块不再向 IA 查询使用授权。
 
-TASK 请求不走 CHAT 的 IA 授权，但会进入 LLM 模块的 TASK admission 队列。
+TASK 请求不走 CHAT 的即时通道，但会进入 LLM 模块的 TASK admission 队列。
 
 采样参数的优先级是：底层 `SamplerConfig.defaults()` -> 当前模型 JSON 中按 `thinking` 选择的 `sampling.standard` / `sampling.thinking` -> 本次请求中非 null 的采样覆盖字段。覆盖是逐字段的，不会因为调用方传了一个采样参数就替换整套采样配置。
 
@@ -275,13 +279,10 @@ RAG 组装规则：
 | `ragHits` | 空列表 | 本次请求所有 RAG chunk 的命中结果；`COMPLETED`、`CANCELLED`、`FAILED` 都可能携带。 |
 | `usage` | 空 usage | 本次实际 token 统计：`promptTokens`、`completionTokens`、`thinkingTokens`、`outputTokens`、`totalTokens`。 |
 
-`usage.promptTokens` 来自底层真实 chat template prompt token 计数。`usage.completionTokens` 只统计正式正文 token；`thinkingTokens` 统计被识别到结构化 thinking 通道的 token；`outputTokens = completionTokens + thinkingTokens`。
+`usage.promptTokens` / `usage.completionTokens` 来自 provider 返回的真实用量；`thinkingTokens` 统计被识别到结构化 thinking 通道的 token；`outputTokens = completionTokens + thinkingTokens`。
 
 常见错误码：
 - `LLM_SERVICE_NOT_READY`：LLM 服务尚未就绪。
-- `DIALOGUE_AUTH_CONTEXT_MISSING`：CHAT 请求缺少 IA 授权上下文。
-- `DIALOGUE_AUTH_REQUESTER_MISMATCH`：payload 里的 requester module 与 envelope source 不一致。
-- `DIALOGUE_AUTH_UNAVAILABLE` / `DIALOGUE_AUTH_DENIED`：IA 授权能力不可用或拒绝。
 - `LLM_TASK_QUEUE_FULL`：TASK admission 队列已满且请求未被接收。
 - `LLM_INFERENCE_FAILED`：底层推理失败。
 - `LLM_REQUEST_FAILED`：请求转换或处理过程失败。
@@ -319,7 +320,7 @@ RAG 组装规则：
 
 | lane | 用途 | 调度行为 |
 |------|------|----------|
-| `CHAT` | 对话即时响应 | 不进入 TASK admission 队列；需要 IA 授权上下文。 |
+| `CHAT` | 对话即时响应 | 不进入 TASK admission 队列；带本轮对话身份用于关联。 |
 | `TASK` | 后台任务、记忆压缩、长文本整理 | 进入 TASK admission 队列，按优先级调度。 |
 
 TASK 调度规则：

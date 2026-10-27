@@ -235,6 +235,8 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 );
 ```
 
+`withDialogueAuthorization` 是现有 API 的名字，当前只补齐会话与轮次身份，不触发任何授权校验。
+
 提交方式：
 
 ```text
@@ -258,9 +260,9 @@ LLMPromptResultPayload
 - `ProtocolCapabilities.LLM_REQUEST` 是当前 LLM 的公共能力入口。
 - `LLM_PROMPT_REQUEST` 是当前 LLM 的公共请求 payload 类型。
 - `CHAT` / `TASK` 是 `LLMPromptRequestPayload.lane`，不是 IA owner 判定。
-- `lane=CHAT` 是对话型 LLM 请求，必须携带 `dialogueSessionId / requesterModuleId / requesterParticipantId / dialogueTurnId`。推荐使用 `withDialogueAuthorization(delivery.sessionId(), ownerModuleId, ownerParticipantId, delivery.turnId())` 从 IA delivery 补齐。
+- `lane=CHAT` 是对话型 LLM 请求，会携带 `dialogueSessionId / requesterModuleId / requesterParticipantId / dialogueTurnId`，用于把请求关联到本轮对话；从 IA delivery 补齐这些身份。
 - `requesterModuleId` 必须和提交 `LLM_REQUEST` 的 envelope `sourceId` 一致；owner 模块只能代表自己提交对话型 LLM 请求，不能冒用其他 owner 身份。
-- LLM 模块在执行 `lane=CHAT` 前会向 IA 的 `DIALOGUE_LLM_USAGE_AUTHORIZE` 查询授权；只有当前 session owner、turn 匹配且 session 仍 active 时才会放行。
+- LLM 模块不再向 IA 查询使用授权；对话型请求只按自身的会话与轮次身份关联。
 - IA 不把 owner 或处理期限作为 LLM payload 字段传入；owner 归属由 IA 在 delivery 前完成。
 - 外部模组不要恢复或依赖旧的任务式 LLM 接入口。
 
@@ -282,7 +284,7 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 );
 ```
 
-`TASK` 请求不代表 IA 对话 owner，也不能用于接管当前玩家对话。凡是来自 IA dialogue delivery 并用于回答本轮玩家对话的请求，都应使用 `lane=CHAT`，由当前 owner 模块提交，并携带本轮 delivery 的 dialogue 授权上下文。
+`TASK` 请求不代表 IA 对话 owner，也不能用于接管当前玩家对话。凡是来自 IA dialogue delivery 并用于回答本轮玩家对话的请求，都应使用 `lane=CHAT`，由当前 owner 模块提交，并携带本轮 delivery 的会话与轮次身份。
 
 ## 8. 控制 session
 

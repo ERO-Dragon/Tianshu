@@ -94,7 +94,7 @@ public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
 | `sessionId` | `long` | 对应的输入 session。 |
 | `occurredAtMillis` | `long` | 状态变化时间；传入非正值时 payload 会使用当前时间。 |
 
-该事件用于描述经过音频处理后的说话活动状态，不表示按键按下、麦克风刚启动或最终文本已经产生。当前客户端只使用 PTT（按键说话），不会启用 VAD 或发布该事件；保留该协议符号是为了兼容已有协议消费者。需要识别结果时应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
+该事件在 PTT 链路中随按键边界发布：按下开始采集时 `speaking=true`，松开、取消或停止时 `speaking=false`；它用于让思衡在开口时冻结世界情境，不代表最终文本已经产生，也不代表启用 VAD 自动分段。需要识别结果时应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
 
 ## 5. 订阅 ASR 模块状态
 
@@ -120,7 +120,7 @@ if (!AsrProtocolAdapter.MODULE_ID.equals(status.moduleId())) {
 | `asr.model.load` | `LOADING` | `AsrEngine.initialize()` 真正开始至成功、失败或取消。禁用、未配置或未安装模型不伪报加载。 |
 | `asr.recognition.<sessionId>` | `PROCESSING_TASK` | PTT 完整识别真正执行期间。 |
 
-当前 PTT 链路不发布 `asr.speech.<sessionId>`；该活动 ID 仅为旧协议消费者保留兼容语义。
+PTT 链路会发布 `asr.speech.<sessionId>`（`LISTENING`）：按下开始采集时 STARTED，松开、取消或停止时 ENDED。
 
 `LISTENING` 是客观前景状态，不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动；ASR 自身仍会在成功、失败、取消和停止路径配对结束活动。
 

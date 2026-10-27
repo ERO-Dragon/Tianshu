@@ -88,7 +88,6 @@ public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
 - `LLM.REQUEST`
 - `LLM.CACHE_MANAGE`
 - `TTS_SYNTHESIZE`
-- `DIALOGUE.LLM_USAGE_AUTHORIZE`
 
 `TTS_SYNTHESIZE` 用于“只合成音频，不由 TTS 本地播放”的场景。调用方发送 `TtsSynthesisRequestPayload` 后，接收一次完整的 `TtsAudioPayload / TTS_AUDIO` 响应包；调用方随后自行决定如何消费这份 PCM。协议不暴露 MOSS 或其他后端的内部分片。调用方接管后发送 `TTS_AUDIO_ACK`，ACK 表示完成音频所有权交接。需要在交付前取消时，使用 `TTS_CONTROL` 的 `STOP + targetRequestId`。
 

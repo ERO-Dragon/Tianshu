@@ -31,7 +31,7 @@ AX 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的
 | Broker | `BOUNDED_QUEUE` |
 | 完成策略 | `MANUAL_COMPLETE` |
 
-这是 IA 选中 AX 为当前 owner 之后的定向投递入口，**不是**通用 prompt 接口。外部模块直接向它发送正文会绕过 participant 声明、会话 owner、轮次、时效与 LLM 授权边界。
+这是 IA 选中 AX 为当前 owner 之后的定向投递入口，**不是**通用 prompt 接口。外部模块直接向它发送正文会绕过 participant 声明、会话 owner、轮次与时效边界。
 
 ### 2.1 载荷字段
 
@@ -233,7 +233,7 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 | 让第三方话语进入 AX 上下文但不回答 | 上下文型入口 + 上下文载荷 |
 | 让 AX 播报一句自己世界里刚发生的事 | 事件型入口 + 世界事件载荷（§4） |
 | 自己成为对话 owner | IA participant 注册 |
-| 直接调用模型 | LLM 公共能力，并遵守 IA 的对话授权 |
+| 直接调用模型 | LLM 公共能力，并带本轮对话身份用于关联 |
 | 播放或合成语音 | TTS 公共能力 |
 | 观察 AX 健康与诊断 | 模块状态 topic，过滤 `module.ax` |
 | 观察玩家可感知的 AX 活动 | 活动 topic；思考/回答类型只接受 `module.ax` |
