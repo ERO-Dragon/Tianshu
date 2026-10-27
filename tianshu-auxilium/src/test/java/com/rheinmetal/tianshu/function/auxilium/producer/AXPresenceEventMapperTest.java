@@ -32,13 +32,16 @@ class AXPresenceEventMapperTest {
     }
 
     @Test
-    void aMissingTitleHasNothingToWord() {
+    void aMissingDetailFallsBackToTheWholeSentence() {
         PresenceWorldEventPayload payload = new PresenceWorldEventPayload(null,
                 PresenceWorldEventPayload.EVENT_ADVANCEMENT_UNLOCKED,
                 "player", "minecraft:overworld", 1L, Map.of());
 
-        assertTrue(AXPresenceEventMapper.batch(payload).isEmpty(),
-                "a group without a detail cannot word a counted fragment");
+        AXPresenceEventMapper.Batch batch = batch(payload);
+
+        assertTrue(batch.parts().isEmpty(), "no detail means the kind words itself as a whole sentence");
+        assertEquals(1, batch.totalCount(), "the occurrence still counts");
+        assertEquals("tianshu.ax.event.line.tianshu.advancement", batch.lineKey());
     }
 
     /** The facts the optional server component reports: each one lands on its own kind and detail. */
@@ -139,7 +142,10 @@ class AXPresenceEventMapperTest {
         return ((AXEventText.Arg.Value) part.args().get(0)).text();
     }
 
+    /** A counted part is (count, name); a once-only part is just (name). */
     private static String detailOf(AXEventText part) {
-        return ((AXEventText.Arg.Value) part.args().get(1)).text();
+        return part.args().size() == 1
+                ? ((AXEventText.Arg.Value) part.args().get(0)).text()
+                : ((AXEventText.Arg.Value) part.args().get(1)).text();
     }
 }

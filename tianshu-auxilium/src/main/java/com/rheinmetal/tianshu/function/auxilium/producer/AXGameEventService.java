@@ -62,6 +62,9 @@ public final class AXGameEventService {
     /** Language key of the separator between two occurrence groups inside one batch line. */
     private static final String BATCH_JOIN_KEY = "tianshu.ax.event.batch.join";
 
+    /** How many characters one batch line may spend before it is shortened with a "more" suffix. */
+    private static final int MAX_BATCH_CHARS = 50;
+
     private final AXEventDispatcher dispatcher;
     private final AXEventHistorySink historySink;
     private final AXEventSpeechSink speechSink;
@@ -181,16 +184,36 @@ public final class AXGameEventService {
         if (closed || batch == null) {
             return false;
         }
+        if (batch.parts().isEmpty()) {
+            // A detail-less kind ("opened a container", "respawned"): the kind's own template is the whole sentence.
+            String line = AXEventTexts.sanitize(texts.text(batch.lineKey()));
+            if (line.isBlank()) {
+                return false;
+            }
+            land(AXEventDescriptor.of(batch.kind(), sourceId,
+                    AXEventPayload.of(batch.totalCount(), null), AXEventText.of(batch.lineKey())), line, nowMillis);
+            return true;
+        }
+        String separator = texts.text(BATCH_JOIN_KEY);
         StringBuilder joined = new StringBuilder();
+        boolean shortened = false;
         for (AXEventText part : batch.parts()) {
             String fragment = AXEventTexts.sanitize(texts.render(part));
             if (fragment.isBlank()) {
                 continue;
             }
-            if (joined.length() > 0) {
-                joined.append(texts.text(BATCH_JOIN_KEY));
+            String candidate = joined.length() == 0 ? fragment : joined + separator + fragment;
+            if (candidate.length() > MAX_BATCH_CHARS) {
+                // Shorten here rather than letting the sanitizer cut mid-sentence later: the suffix says out loud
+                // that more happened, which a silent cut never does.
+                shortened = true;
+                break;
             }
-            joined.append(fragment);
+            joined.setLength(0);
+            joined.append(candidate);
+        }
+        if (shortened) {
+            joined.append(texts.text(batch.moreKey()));
         }
         if (joined.length() == 0) {
             return false;

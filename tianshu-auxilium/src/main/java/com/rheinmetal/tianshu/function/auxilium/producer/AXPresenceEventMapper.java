@@ -28,6 +28,9 @@ public final class AXPresenceEventMapper {
     /** Language key of one "count + name" fragment inside a batch line. */
     private static final String BATCH_ENTRY_KEY = "tianshu.ax.event.batch.entry";
 
+    /** Fragment template used when an occurrence happened exactly once: a count of one is noise. */
+    private static final String BATCH_ENTRY_PLAIN_KEY = "tianshu.ax.event.batch.entry.plain";
+
     /** Presence event type to the kind it becomes and the values the sentence may take, first non-blank wins. */
     private static final Map<String, Rule> RULES = Map.ofEntries(
             Map.entry(PresenceWorldEventPayload.EVENT_ADVANCEMENT_UNLOCKED,
@@ -101,8 +104,21 @@ public final class AXPresenceEventMapper {
     private AXPresenceEventMapper() {
     }
 
-    /** One payload as one line: the kind's template, one "count + name" fragment per group, and the summed count. */
-    public record Batch(String kind, String lineKey, List<AXEventText> parts, int totalCount) {
+    /** One payload as one line: the kind's template, one fragment per group, the summed count and the "more" suffix. */
+    public record Batch(String kind, String lineKey, List<AXEventText> parts, int totalCount, String moreKey) {
+    }
+
+    /** The suffix a shortened batch ends with, chosen by what the kind talks about. */
+    private static String moreKeyFor(String kind) {
+        return switch (kind) {
+            case "tianshu:advancement" -> "tianshu.ax.event.batch.more.achievement";
+            case "tianshu:item_crafted", "tianshu:pickup", "tianshu:trade", "tianshu:fishing_catch" ->
+                    "tianshu.ax.event.batch.more.item";
+            case "tianshu:block_break", "tianshu:block_place" -> "tianshu.ax.event.batch.more.block";
+            case "tianshu:mob_killed", "tianshu:tamed", "tianshu:mount", "tianshu:dismount", "tianshu:boss_engage" ->
+                    "tianshu.ax.event.batch.more.entity";
+            default -> "tianshu.ax.event.batch.more.other";
+        };
     }
 
     /** {@link Batch} for this payload, or empty when its event type is not an event of its own. */
@@ -124,16 +140,18 @@ public final class AXPresenceEventMapper {
                     .map(String::trim)
                     .findFirst()
                     .orElse("");
+            total += occurrence.count();
             if (detail.isEmpty()) {
+                // A kind with no detail words itself as a whole sentence ("opened a container"); its groups add up to
+                // one line with the total count instead of a fragment each.
                 continue;
             }
-            parts.add(AXEventText.of(BATCH_ENTRY_KEY, Integer.toString(occurrence.count()), detail));
-            total += occurrence.count();
+            // A count of one is not worth saying ("1 个 探险时间"); it only appears once something repeated.
+            parts.add(occurrence.count() > 1
+                    ? AXEventText.of(BATCH_ENTRY_KEY, Integer.toString(occurrence.count()), detail)
+                    : AXEventText.of(BATCH_ENTRY_PLAIN_KEY, detail));
         }
-        if (parts.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(new Batch(rule.kind(), lineKey, parts, total));
+        return Optional.of(new Batch(rule.kind(), lineKey, parts, total, moreKeyFor(rule.kind())));
     }
 
     /** One row of the table: the kind, and which values of the event may word the line, in preference order. */
