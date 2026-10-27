@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.function.auxilium.contract.AXWorldEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
@@ -141,6 +142,29 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope buildLlmRequest(TianshuEnvelope parent, LLMPromptRequestPayload payload) {
         return buildRequestCapability(parent, ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
+    }
+
+    /**
+     * 同一逻辑请求的又一封：trace 与父链都沿用首发那一封，只有 envelopeId 是新的。
+     *
+     * <p>重投不能接在上一遍之后。信封的 trace 深度是一层层数出来的，接一层深一层：一条重投五次的路由会在
+     * 追踪图里看起来像六层派生，而它其实只是一次请求。所以又一封是首发那一封的兄弟，不是它的孩子。
+     *
+     * @param traceId  首发那一封的 traceId
+     * @param parentId 首发那一封的 parentId；首发是游离请求时传 {@code null}
+     */
+    public TianshuEnvelope buildLlmRetry(String traceId, String parentId, LLMPromptRequestPayload payload) {
+        return build(
+                EnvelopeBuilder.requestCapability(
+                                sourceId(),
+                                ProtocolCapabilities.LLM_REQUEST,
+                                PayloadType.LLM_PROMPT_REQUEST,
+                                payload
+                        )
+                        .traceId(traceId)
+                        .parentId(parentId),
+                defaults()
+        );
     }
 
     public TianshuEnvelope submitLlmRequest(TianshuEnvelope envelope) {

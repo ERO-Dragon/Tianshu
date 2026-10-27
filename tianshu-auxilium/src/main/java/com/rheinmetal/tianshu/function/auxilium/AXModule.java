@@ -246,7 +246,8 @@ public final class AXModule implements TianshuManagedModule {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
         adapter.publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
-        llmClient = new AXLlmClient(adapter);
+        // 重投是这一层的事，诊断也跟着走这里：谁在重投、投第几遍、等多久，必须能从日志看出来。
+        llmClient = new AXLlmClient(adapter, env == null ? null : env.diagnostics());
         turnStatusPublisher = new AXTurnStatusPublisher(adapter);
         retrievalPrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.retrievalPrimitiveTimeoutMillis());
         maintenancePrimitiveClient = new AXLlmPrimitiveClient(adapter, runtimePolicy.maintenancePrimitiveTimeoutMillis());

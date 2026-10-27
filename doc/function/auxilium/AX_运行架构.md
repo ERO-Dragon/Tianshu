@@ -61,6 +61,7 @@ echo：TTS 合成与播放（播报不调模型）
 |---|---|
 | AX 模块装配与对外服务 | `tianshu-auxilium/.../auxilium/AXModule.java`、`AXProtocolAdapter.java`、`AXParticipantRegistrar.java` |
 | 一轮对话 | `auxilium/core/turn/AXTurnOrchestrator.java`、`AXReplyContract.java`、`AXDialogueGateway.java` |
+| 模型请求的重投 | `auxilium/core/llm/AXLlmClient.java`、`AXLlmRetryPolicy.java` |
 | 提示词装配 | `auxilium/core/prompt/AXPromptOrchestrator.java`、`AXPromptAssemblyBuilder.java`、`module/system/AXSystemPromptContributor.java`、其余 `*PromptContributor` |
 | 预算与窗口 | `auxilium/core/context/AXContextBudget.java`、`AXMemoryWindowPolicy.java` |
 | 记忆 | `auxilium/module/memory/AXMemorySystem.java`、`module/recentdialogue/AXRawTurnWindow.java`、`module/memory/{compression,retrieval,summary,preference}` |
@@ -94,6 +95,28 @@ echo：TTS 合成与播放（播报不调模型）
 | C4 | **记忆检索产物只进尾部块**，不写回 system、不改写历史 | 引入"每轮改写历史"的记忆方案会永久破坏前缀 |
 | C5 | **正文与标签分离**：模型输出的正文是唯一播报内容，标签只表达意图 | 标签漏进 TTS 会被逐字朗读 |
 | C6 | **不可信输入一律清洗**：模板渲染结果剥离尖括号、NFC 归一、按边界截断 | 防止提示词标签注入与不可复现字节 |
+
+### 2.3 失败与重投
+
+一次逻辑请求最多投五遍，退避 0.5 / 1 / 2 / 4 秒。判定在 `AXLlmRetryPolicy`，生命周期在 `AXLlmClient`。
+
+| 类型 | 例子 | 处理 |
+|---|---|---|
+| 暂时性失败 | 429、5xx、流超时、传输中断、认不出来的失败 | 退避后重投 |
+| 参数与凭证错误 | 400 / 401 / 403 / 404 / 422、`invalid`、`unauthorized` | 不重投：请求本身错了，重发只会再得到同一张错误单 |
+| 上下文超限 | `context_length`、`too long`、`token limit` | 不重投：窗口不会因重发变大，压缩才是修法 |
+| 内容拒绝 | `content_filter`、`moderation`、`safety`、`refusal` | 不重投：这是服务端的策略结论 |
+
+四条配套约束：
+
+| ID | 不变量 | 理由 |
+|---|---|---|
+| R1 | **终态只有一次**：发起方只会收到一个 `onResult` | 上层不该为"重投几次"写分支；失败的含义保持不变 |
+| R2 | **重投是兄弟不是孩子**：各遍共用首发的 trace 与父链 | 接一层深一层，五次重投会在追踪图里看起来像六层派生 |
+| R3 | **退避期间仍可取消**：逻辑请求留在册上，排期的那一遍由 `beginAttempt` 挡掉 | 玩家打断之后半秒还飞出一个没人要的请求，是最难查的一类 bug |
+| R4 | **判定看正文不看错误码**：`LLM_INFERENCE_FAILED` 压住了所有推理失败 | 真正的因果（HTTP 429、传输中断、流超时）只出现在错误正文里 |
+
+代价是显式的：一次重投会把这一轮往后推最多 7.5 秒，轮次期限不加豁免——超时就按超时收尾。
 
 ## 3. 前缀缓存友好
 
@@ -195,6 +218,7 @@ echo：TTS 合成与播放（播报不调模型）
 | 花了多少 | 估算 token、provider usage、缓存命中/未命中 token |
 | 为什么这么裁 | 各槽位预算、裁剪动作、被丢弃的候选 |
 | 发生了什么 | 轮次状态、标签、委派票据、事件落点 |
+| 重投了几次、为什么 | `ax.llm.retry` 诊断：`attempt`、`delayMs`、`reason`（错误码，不含正文） |
 
 验收口径：
 

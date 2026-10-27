@@ -481,15 +481,20 @@ class AXTurnOrchestratorTest {
 
         failedOrchestrator.startTurn(deliveryEnvelope(), delivery());
         await(() -> failedLlmRequest.get() != null);
+        // 凭证被拒是终态失败：客户端不会重投它（重发只会再被拒一次），所以这一轮立刻拿到终态。
         LLMPromptRequestPayload failedRequestPayload = (LLMPromptRequestPayload) failedLlmRequest.get().payload();
         failedLlmClient.handleResult(
                 failedLlmRequest.get().envelopeId(),
-                LLMPromptResultPayload.failed(failedRequestPayload.requestId(), "TEST_FAILURE", "test failure")
+                LLMPromptResultPayload.failed(
+                        failedRequestPayload.requestId(),
+                        "LLM_INFERENCE_FAILED",
+                        "REMOTE_LLM_HTTP_STATUS status=401 invalid api key"
+                )
         );
 
         ModuleStatus failed = assertStatusKey(failedRuntime, AXTurnStatusPublisher.TYPE_FAILED, AXTurnStatusPublisher.KEY_FAILED);
         assertEquals("failed", failed.tags().get("axPipelineStage"));
-        assertEquals("llm.TEST_FAILURE", failed.tags().get("reasonCode"));
+        assertEquals("llm.LLM_INFERENCE_FAILED", failed.tags().get("reasonCode"));
 
         ProtocolRuntime interruptedRuntime = ProtocolBootstrap.create(Runnable::run);
         AtomicReference<TianshuEnvelope> interruptedLlmRequest = new AtomicReference<>();
