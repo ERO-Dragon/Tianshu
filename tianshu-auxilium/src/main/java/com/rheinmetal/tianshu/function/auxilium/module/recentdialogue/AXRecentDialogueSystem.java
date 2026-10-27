@@ -53,9 +53,73 @@ public final class AXRecentDialogueSystem {
         rawTurnWindow.applyPolicy(policy);
     }
 
+    /**
+     * 一轮进历史，并且立刻落盘。
+     *
+     * <p>落盘时机是这一层的要害之一：以前只有模块停止和换世界时才写盘，于是进程被强杀会丢掉最后一整段
+     * 对话——而"玩家刚才说了什么"恰恰是崩溃之后唯一能重建的东西。所以每一轮都追加一行到检查点文件末尾，
+     * 玩家那句话因此在他开口之后、请求发出之前就已经在盘上了。</p>
+     *
+     * <p>窗口挤掉旧轮次时改成整份重写：那一刻文件里多出了窗口已经没有的轮次，不重写就会在下次启动时把
+     * 淘汰过的原文读回来。</p>
+     */
     public void append(AXScope scope, AXRawTurn turn) {
         restoreIfNeeded(scope);
-        rawTurnWindow.append(scope, withTokenCount(scope, turn));
+        AXRawTurn normalized = withTokenCount(scope, turn);
+        if (rawTurnWindow.append(scope, normalized)) {
+            checkpoint(scope);
+            return;
+        }
+        checkpointAppend(scope, normalized);
+    }
+
+    /**
+     * 记一个水位：这一轮之后写进历史的东西都归它，一个字都没答出来时可以整段撤掉。
+     *
+     * <p>水位只是长度，取在追加用户轮之前。</p>
+     */
+    public int mark(AXScope scope) {
+        restoreIfNeeded(scope);
+        return rawTurnWindow.size(scope);
+    }
+
+    /**
+     * 回滚到水位：本轮追加的用户/助手轮次一起撤掉，期间的游戏事件保留。
+     *
+     * <p>为什么这是"撤回"而不是"打上失败标记"：一句没被回答的提问留在历史里，下一轮模型会把它当成对话
+     * 的一部分接着说下去；删掉它，历史才与玩家真正经历过的对话一致。</p>
+     *
+     * @return 实际移出的轮次数
+     */
+    public int rollbackTo(AXScope scope, int mark) {
+        restoreIfNeeded(scope);
+        int removed = rawTurnWindow.truncateFrom(scope, mark, true);
+        if (removed > 0) {
+            checkpoint(scope);
+        }
+        return removed;
+    }
+
+    /**
+     * 启动清理：最后一轮若是一句没人答的提问，它属于一次没有完成的轮次，撤掉。
+     *
+     * <p>崩溃时来不及回滚（进程直接没了），但玩家那句话已经落盘。所以恢复的判据不是账本，而是历史本身：
+     * 一次完成的轮次总以答句或游戏事件结尾，以提问结尾就意味着那一轮没走完。</p>
+     *
+     * @return 是否清理了
+     */
+    public boolean pruneUnansweredTail(AXScope scope) {
+        restoreIfNeeded(scope);
+        AXRawTurn last = rawTurnWindow.lastTurn(scope);
+        if (last == null || last.assistantRole() || last.worldEventRole()) {
+            return false;
+        }
+        int removed = rawTurnWindow.truncateFrom(scope, rawTurnWindow.size(scope) - 1, false);
+        if (removed <= 0) {
+            return false;
+        }
+        checkpoint(scope);
+        return true;
     }
 
     public AXRecentDialogueSnapshot snapshot(AXScope scope) {
@@ -157,6 +221,14 @@ public final class AXRecentDialogueSystem {
             return;
         }
         checkpointStore.write(scope, rawTurnWindow.snapshot(scope));
+    }
+
+    /** 写前落盘的单行追加：逐轮调用，所以它必须是 O(1) 的。 */
+    private void checkpointAppend(AXScope scope, AXRawTurn turn) {
+        if (checkpointStore == null || scope == null || !scope.writable()) {
+            return;
+        }
+        checkpointStore.append(scope, turn);
     }
 
     public void checkpointAll() {

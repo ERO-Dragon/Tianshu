@@ -135,7 +135,7 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
 | `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期和健康状态，供设置、诊断和日志观察。 |
-| `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态和独立聆听状态。 |
+| `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态与两个并行标记（聆听、后台任务）。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前如果说话将被哪个 IA owner 承接。 |
 
@@ -143,7 +143,7 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 
 `MODULE_STATUS` 使用 `ModuleStatusPayload`。它是观察性状态，不替代 `RuntimeCapabilityRegistry` 的请求准入判断。模块应在真实生命周期边界发布已有的 waiting/starting/ready/failed 状态：模型下载完成但运行时尚未初始化或预热时仍发布 waiting，只有对应 capability 已可用后才能发布 ready。状态中的 `messageKey` 由订阅者本地化；common 不依赖具体 HUD 或 GUI。
 
-`PRESENCE.ACTIVITY` 使用 `PresenceActivityPayload`，由活动实际拥有者配对发布 `STARTED/ENDED`。外部模块可发布 `LOADING` 和 `PROCESSING_TASK`；`THINKING/RESPONDING` 只接受 `module.ax`，`LISTENING` 只接受 `module.asr`。完整接入规则见 [Presence产品活动协议使用文档.md](Presence产品活动协议使用文档.md)。
+`PRESENCE.ACTIVITY` 使用 `PresenceActivityPayload`，由活动实际拥有者配对发布 `STARTED/ENDED`。`ERROR`、`RECONNECTING`、`LOADING` 和 `PROCESSING_TASK` 任何模块可发布；`THINKING` / `RESPONDING` 只接受 `module.ax`。`LISTENING` 是回合级活动：`module.asr` 按下说话键时开始，由解析这一轮的模块（`module.ia`）在仲裁给出结果时结束——这是唯一允许非所有者结束的类型。`PROCESSING_TASK` 与 `LISTENING` 是并行标记，不参与主状态排序。完整接入规则见 [Presence产品活动协议使用文档.md](Presence产品活动协议使用文档.md)。
 
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 

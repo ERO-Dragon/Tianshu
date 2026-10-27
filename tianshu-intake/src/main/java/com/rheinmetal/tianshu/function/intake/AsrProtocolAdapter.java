@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.protocol.PresenceActivityIds;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
@@ -67,7 +68,7 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishListeningActivity(boolean speaking, long sessionId) {
-        String activityId = "asr.speech." + sessionId;
+        String activityId = PresenceActivityIds.listening(sessionId);
         return publishPresenceActivity(speaking
                 ? PresenceActivityPayload.started(activityId, PresenceActivityType.LISTENING, LISTENING_TTL_MILLIS)
                 : PresenceActivityPayload.ended(activityId, PresenceActivityType.LISTENING));

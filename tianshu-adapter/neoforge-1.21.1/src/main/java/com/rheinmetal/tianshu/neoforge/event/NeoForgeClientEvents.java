@@ -100,10 +100,30 @@ public final class NeoForgeClientEvents {
         com.rheinmetal.tianshu.api.assembly.TickSignals.publish(
                 com.rheinmetal.tianshu.api.assembly.TickSignals.TICK, System.currentTimeMillis());
 
+        boolean moduleInputAvailable = moduleInputAvailable();
         KeyMapping voiceKey = voiceKeySupplier.get();
-        voiceInputController.tick(voiceKey != null, voiceKey != null && voiceKey.isDown());
-        openTextDialogueIfListening();
-        keyBindings.publishPressed();
+        voiceInputController.tick(
+                voiceKey != null,
+                voiceKey != null && voiceKey.isDown(),
+                moduleInputAvailable
+        );
+        // The click queues are drained in both cases: a press swallowed during startup must not fire later.
+        openTextDialogueIfListening(moduleInputAvailable);
+        keyBindings.publishPressed(moduleInputAvailable);
+    }
+
+    /**
+     * Whether module key input may be dispatched right now.
+     *
+     * <p>Two gates, one reading: the core must be running the session, and presence must not be reporting "loading".
+     * Presence is the aggregated product state, so this is the same answer the HUD shows — the platform never
+     * inspects an individual module's capabilities, and a module that is loading necessarily published its loading
+     * activity for the HUD anyway.</p>
+     */
+    private boolean moduleInputAvailable() {
+        return coreManager.isInitialized()
+                && coreManager.runtimeReadyForRequests()
+                && !presenceRuntime.isLoading();
     }
 
     /**
@@ -112,15 +132,18 @@ public final class NeoForgeClientEvents {
      * <p>The question goes to the input bus rather than to a module: the module that answers a typed line
      * subscribes only while it is enabled, so asking the bus is the same question — and the platform still
      * knows no module by name.</p>
+     *
+     * <p>{@code openAllowed} is the session gate. The click queue is drained either way, so a press swallowed during
+     * startup does not open the bar later, after the player already gave up on it.</p>
      */
-    private void openTextDialogueIfListening() {
+    private void openTextDialogueIfListening(boolean openAllowed) {
         KeyMapping textKey = textInputKeySupplier.get();
         Minecraft client = Minecraft.getInstance();
         if (textKey == null || client == null || client.screen != null) {
             return;
         }
         while (textKey.consumeClick()) {
-            if (InputSignals.hasSubscribers(InputSignals.TEXT_SUBMITTED)) {
+            if (openAllowed && InputSignals.hasSubscribers(InputSignals.TEXT_SUBMITTED)) {
                 client.setScreen(new TextDialogueScreen());
             }
         }

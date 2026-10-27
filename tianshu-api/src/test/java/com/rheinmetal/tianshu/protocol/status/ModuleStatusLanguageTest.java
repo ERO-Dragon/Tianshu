@@ -49,9 +49,7 @@ class ModuleStatusLanguageTest {
             "tianshu.presence.status.listening",
             "tianshu.presence.status.thinking",
             "tianshu.presence.status.responding",
-            "tianshu.presence.status.processing_task",
             "tianshu.presence.status.loading",
-            "tianshu.presence.status.degraded",
             "tianshu.presence.status.error",
             "tianshu.presence.status.reconnecting"
     );

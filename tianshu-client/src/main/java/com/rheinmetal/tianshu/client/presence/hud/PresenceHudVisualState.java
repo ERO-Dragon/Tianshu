@@ -16,13 +16,12 @@ public enum PresenceHudVisualState {
     public static PresenceHudVisualState from(PresencePrimaryState state) {
         return switch (state == null ? PresencePrimaryState.IDLE : state) {
             case LOADING -> LOADING;
-            case PROCESSING_TASK -> TASK;
             case THINKING -> CHAT_THINKING;
             case RESPONDING -> CHAT;
-            // The two runtime states have no visual of their own on purpose: the HUD text carries the
-            // meaning, and reusing the existing visuals keeps the icon shaders unchanged.
+            // A failed capability has no animation of its own: the status text carries the meaning, and reusing the
+            // task visual keeps the shader set unchanged. Reconnecting looks like loading for the same reason.
             case RECONNECTING -> LOADING;
-            case ERROR, DEGRADED -> TASK;
+            case ERROR -> TASK;
             case IDLE -> IDLE;
         };
     }

@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
+import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
@@ -71,6 +72,16 @@ public final class PresenceClientRuntime {
             contextQueryCoordinator.processPending();
             eventCollector.flushWorldEvents();
         }
+    }
+
+    /**
+     * Whether the player-visible state is "loading": some module is really starting up and cannot serve yet.
+     *
+     * <p>The platform reads this to keep module keys unavailable during startup, so the gate and the HUD can never
+     * disagree — both come from the same aggregated state.</p>
+     */
+    public boolean isLoading() {
+        return worldSessionActive && activityTracker.snapshot().primaryState() == PresencePrimaryState.LOADING;
     }
 
     public void recordPlayerChatMessage(String messageText, String senderId, String senderName) {

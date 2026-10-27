@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.ia;
 
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.protocol.PresenceActivityIds;
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
@@ -24,6 +25,8 @@ import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
@@ -188,6 +191,23 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public TianshuEnvelope respondArbitrationResult(TianshuEnvelope parent, DialogueArbitrationResultPayload payload) {
         return respondTo(parent, PayloadType.DIALOGUE_ARBITRATION_RESULT, payload);
+    }
+
+    /**
+     * Closes the listening mark of one speech turn.
+     *
+     * <p>The speech module opens the mark; this module is the one that knows the turn's outcome, so it is the one
+     * allowed to end it. The id comes from {@link PresenceActivityIds} so the opener and the closer cannot drift.</p>
+     */
+    public TianshuEnvelope publishListeningEnded(long sourceSessionId) {
+        return publishTopic(
+                ProtocolTopics.PRESENCE_ACTIVITY,
+                PayloadType.PRESENCE_ACTIVITY,
+                PresenceActivityPayload.ended(
+                        PresenceActivityIds.listening(sourceSessionId),
+                        PresenceActivityType.LISTENING
+                )
+        );
     }
 
     public TianshuEnvelope buildPresenceContextQuery(TianshuEnvelope parent, PresenceContextQueryPayload payload) {

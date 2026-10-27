@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceActivityTrackerTest {
     @Test
-    void listeningIsAnIndependentForegroundOverThinking() {
+    void listeningIsAParallelMarkNextToThePrimaryState() {
         AtomicLong now = new AtomicLong(1_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
@@ -27,6 +27,7 @@ class PresenceActivityTrackerTest {
         PresenceActivitySnapshot listening = tracker.snapshot();
         assertEquals(PresencePrimaryState.THINKING, listening.primaryState());
         assertTrue(listening.listening());
+        assertFalse(listening.backgroundTask());
 
         tracker.accept("module.asr", ended("asr.speech.7", PresenceActivityType.LISTENING, now.get()));
 
@@ -36,13 +37,56 @@ class PresenceActivityTrackerTest {
     }
 
     @Test
-    void primaryStateUsesProductPriorityWithoutCancellingLowerActivities() {
+    void theTurnResolverMayCloseTheListeningMarkItDidNotOpen() {
+        AtomicLong now = new AtomicLong(1_500L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+        tracker.accept("module.asr", started("asr.speech.7", PresenceActivityType.LISTENING, now.get(), 120_000L));
+
+        tracker.accept("module.ia", ended("asr.speech.7", PresenceActivityType.LISTENING, now.get()));
+
+        assertFalse(tracker.snapshot().listening(),
+                "the arbiter resolves the turn, so it closes the mark the speech module opened");
+    }
+
+    @Test
+    void aTurnScopedMarkCannotBeOpenedByAnotherModule() {
+        AtomicLong now = new AtomicLong(1_600L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+
+        tracker.accept("module.ia", started("asr.speech.7", PresenceActivityType.LISTENING, now.get(), 30_000L));
+
+        assertFalse(tracker.snapshot().listening(), "only the speech module may open the mark");
+    }
+
+    @Test
+    void backgroundTaskRunsNextToThePrimaryStateInsteadOfCompeting() {
         AtomicLong now = new AtomicLong(2_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
         tracker.accept("module.llm", started("llm.model.load", PresenceActivityType.LOADING, now.get(), 30_000L));
-        tracker.accept("external.tasks", started("external.task.1", PresenceActivityType.PROCESSING_TASK, now.get(), 30_000L));
+        tracker.accept("module.ax", started("ax.memory.maintenance", PresenceActivityType.PROCESSING_TASK, now.get(), 30_000L));
+
+        PresenceActivitySnapshot loading = tracker.snapshot();
+        assertEquals(PresencePrimaryState.LOADING, loading.primaryState());
+        assertTrue(loading.backgroundTask());
+
+        tracker.accept("module.llm", ended("llm.model.load", PresenceActivityType.LOADING, now.get()));
+
+        PresenceActivitySnapshot idle = tracker.snapshot();
+        assertEquals(PresencePrimaryState.IDLE, idle.primaryState());
+        assertTrue(idle.backgroundTask(), "the background task keeps running after the load finished");
+    }
+
+    @Test
+    void primaryStateUsesProductPriorityWithoutCancellingLowerActivities() {
+        AtomicLong now = new AtomicLong(3_000L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+
+        tracker.accept("module.llm", started("llm.model.load", PresenceActivityType.LOADING, now.get(), 30_000L));
         tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
         tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.RESPONDING, now.get(), 30_000L));
 
@@ -52,12 +96,44 @@ class PresenceActivityTrackerTest {
         assertEquals(PresencePrimaryState.THINKING, tracker.snapshot().primaryState());
 
         tracker.accept("module.ax", ended("ax.chat.1", PresenceActivityType.THINKING, now.get()));
-        assertEquals(PresencePrimaryState.PROCESSING_TASK, tracker.snapshot().primaryState());
+        assertEquals(PresencePrimaryState.LOADING, tracker.snapshot().primaryState());
     }
 
     @Test
-    void reservedStatesRejectUntrustedSources() {
-        AtomicLong now = new AtomicLong(3_000L);
+    void anErrorDoesNotInterruptAConversationThatIsStillRunning() {
+        AtomicLong now = new AtomicLong(3_500L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+
+        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
+        tracker.accept("module.weaving", started("llm.runtime.error", PresenceActivityType.ERROR, now.get(), 12_000L));
+
+        assertEquals(PresencePrimaryState.THINKING, tracker.snapshot().primaryState(),
+                "a failure from another module never hides the turn the player is in");
+
+        tracker.accept("module.ax", ended("ax.chat.1", PresenceActivityType.THINKING, now.get()));
+
+        assertEquals(PresencePrimaryState.ERROR, tracker.snapshot().primaryState(),
+                "once the turn ends, the failure is what the player has to see");
+    }
+
+    @Test
+    void errorAndReconnectingAreOpenToEveryModule() {
+        AtomicLong now = new AtomicLong(3_800L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+
+        tracker.accept("external.mod", started("external.error", PresenceActivityType.ERROR, now.get(), 5_000L));
+        assertEquals(PresencePrimaryState.ERROR, tracker.snapshot().primaryState());
+
+        tracker.accept("external.mod", ended("external.error", PresenceActivityType.ERROR, now.get()));
+        tracker.accept("external.mod", started("external.retry", PresenceActivityType.RECONNECTING, now.get(), 5_000L));
+        assertEquals(PresencePrimaryState.RECONNECTING, tracker.snapshot().primaryState());
+    }
+
+    @Test
+    void reservedConversationStatesRejectUntrustedSources() {
+        AtomicLong now = new AtomicLong(4_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
@@ -71,8 +147,8 @@ class PresenceActivityTrackerTest {
     }
 
     @Test
-    void concurrentTasksEndIndependentlyAndExpireAsFallback() {
-        AtomicLong now = new AtomicLong(4_000L);
+    void concurrentBackgroundTasksEndIndependentlyAndExpireAsFallback() {
+        AtomicLong now = new AtomicLong(5_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
@@ -80,10 +156,13 @@ class PresenceActivityTrackerTest {
         tracker.accept("module.ax", started("task.b", PresenceActivityType.PROCESSING_TASK, now.get(), 2_000L));
         tracker.accept("module.ax", ended("task.a", PresenceActivityType.PROCESSING_TASK, now.get()));
 
-        assertEquals(PresencePrimaryState.PROCESSING_TASK, tracker.snapshot().primaryState());
-
-        now.set(6_001L);
         assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState());
+        assertTrue(tracker.snapshot().backgroundTask());
+
+        now.set(7_001L);
+        PresenceActivitySnapshot expired = tracker.snapshot();
+        assertEquals(PresencePrimaryState.IDLE, expired.primaryState());
+        assertFalse(expired.backgroundTask());
     }
 
     @Test
@@ -99,6 +178,7 @@ class PresenceActivityTrackerTest {
         tracker.accept("module.ax", started("late.old.task", PresenceActivityType.PROCESSING_TASK, 15_000L, 30_000L));
 
         assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState());
+        assertFalse(tracker.snapshot().backgroundTask());
     }
 
     @Test

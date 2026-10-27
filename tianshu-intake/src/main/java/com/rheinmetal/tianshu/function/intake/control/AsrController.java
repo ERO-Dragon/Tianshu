@@ -195,22 +195,32 @@ public final class AsrController {
             return;
         }
         byte[] audioData = audioCapture.stopPttCapture();
-        publishSpeechEnded();
         if (audioData == null || audioData.length == 0) {
+            // Nothing was recorded, so no turn exists for the arbiter to resolve: the mark ends here.
+            publishSpeechEnded();
             env.warn("asr.input.empty");
             stateMachine.reset();
             return;
         }
         long sessionId = sessionManager.activeRecognitionSession();
         stateMachine.moveTo(AsrState.RECOGNIZING);
-        recognition.recognizeComplete(audioData, sessionId, "push_to_talk", this::publishIfCurrent, stateMachine::reset);
+        recognition.recognizeComplete(audioData, sessionId, "push_to_talk", this::publishIfCurrent, this::endAfterRecognitionFailure);
     }
 
+    /**
+     * The listening mark stays open until the arbiter resolves the turn.
+     *
+     * <p>Recognition and arbitration are part of the same speech turn from the player's point of view, so closing the
+     * mark at key release would flash "idle" while the turn is still in flight. The arbiter ends it when it publishes
+     * the outcome; only a turn that produces no text has to end it here.</p>
+     */
     private void publishIfCurrent(AsrRecognitionResult result) {
         if (result == null || !result.hasText()) {
+            publishSpeechEnded();
             return;
         }
         if (!sessionManager.isActive(result.sessionId())) {
+            publishSpeechEnded();
             env.info("asr.result.stale_discarded sessionId=" + result.sessionId() + " activeSessionId=" + sessionManager.activeRecognitionSession());
             return;
         }
@@ -221,6 +231,12 @@ public final class AsrController {
             textRepair.accept(payload, published);
         }
         env.info("asr.result.completed turnId=" + turnId + " sessionId=" + result.sessionId());
+    }
+
+    /** Recognition failed, so no arbiter will see this turn: close the mark here. */
+    private void endAfterRecognitionFailure() {
+        publishSpeechEnded();
+        stateMachine.reset();
     }
 
     /** Binds the speech-text repair lane; called by the module after both are constructed. */

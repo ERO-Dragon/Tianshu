@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.function.auxilium.bridge.IaDialogueBridge;
 import com.rheinmetal.tianshu.function.auxilium.bridge.EchoSpeechBridge;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXFailureCause;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
@@ -492,9 +493,15 @@ class AXTurnOrchestratorTest {
                 )
         );
 
-        ModuleStatus failed = assertStatusKey(failedRuntime, AXTurnStatusPublisher.TYPE_FAILED, AXTurnStatusPublisher.KEY_FAILED);
+        // 玩家看到的是"分类后的原因"，不是通用的"处理失败"：凭证被拒属于参数类。
+        ModuleStatus failed = assertStatusKey(
+                failedRuntime,
+                AXTurnStatusPublisher.TYPE_FAILED,
+                AXFailureCause.PARAMETER.messageKey()
+        );
         assertEquals("failed", failed.tags().get("axPipelineStage"));
         assertEquals("llm.LLM_INFERENCE_FAILED", failed.tags().get("reasonCode"));
+        assertEquals(AXFailureCause.PARAMETER.code(), failed.tags().get("failureCause"));
 
         ProtocolRuntime interruptedRuntime = ProtocolBootstrap.create(Runnable::run);
         AtomicReference<TianshuEnvelope> interruptedLlmRequest = new AtomicReference<>();

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceDisplayPolicyTest {
@@ -21,6 +22,7 @@ class PresenceDisplayPolicyTest {
         var display = policy.hudDisplay(new PresenceActivitySnapshot(
                 PresencePrimaryState.RESPONDING,
                 true,
+                false,
                 "module.ax",
                 1_000L
         ));
@@ -33,18 +35,38 @@ class PresenceDisplayPolicyTest {
     @Test
     void primaryStateUsesStableLocalizedKey() {
         PresenceDisplayPolicy policy = new PresenceDisplayPolicy(texts(Map.of(
-                "tianshu.presence.status.processing_task", "正在处理任务"
+                "tianshu.presence.status.loading", "正在加载"
         )));
 
         var display = policy.hudDisplay(new PresenceActivitySnapshot(
-                PresencePrimaryState.PROCESSING_TASK,
+                PresencePrimaryState.LOADING,
                 false,
-                "external.mod",
+                false,
+                "module.llm",
                 1_000L
         ));
 
-        assertEquals("正在处理任务", display.text());
-        assertEquals(PresencePrimaryState.PROCESSING_TASK, display.primaryState());
+        assertEquals("正在加载", display.text());
+        assertEquals(PresencePrimaryState.LOADING, display.primaryState());
+    }
+
+    @Test
+    void backgroundWorkIsCarriedAsAParallelMarkNotAsWords() {
+        PresenceDisplayPolicy policy = new PresenceDisplayPolicy(texts(Map.of(
+                "tianshu.presence.status.thinking", "正在思考"
+        )));
+
+        var display = policy.hudDisplay(new PresenceActivitySnapshot(
+                PresencePrimaryState.THINKING,
+                false,
+                true,
+                "module.ax",
+                1_000L
+        ));
+
+        assertEquals("正在思考", display.text());
+        assertTrue(display.backgroundTask());
+        assertFalse(display.listening());
     }
 
     private static PresenceTextProvider texts(Map<String, String> values) {

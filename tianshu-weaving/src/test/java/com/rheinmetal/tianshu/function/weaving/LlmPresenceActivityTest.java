@@ -94,9 +94,31 @@ class LlmPresenceActivityTest {
             LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
 
             adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
-            adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
+            adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
 
             assertEquals(0, activities.size(), "nothing was announced, so there is nothing to retract");
+        }
+    }
+
+    @Test
+    void theCloudLaneStartPublishesOneLoadingNoticeAndRetractsItOnce() {
+        try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            List<PresenceActivityPayload> activities = captureActivities(runtime);
+            LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
+
+            adapter.publishLoadingActivity(true);
+            adapter.publishLoadingActivity(false);
+            adapter.publishLoadingActivity(false);
+
+            awaitAction(activities, "llm.model.load", PresenceActivityAction.ENDED);
+            List<PresenceActivityPayload> loading = activities.stream()
+                    .filter(activity -> "llm.model.load".equals(activity.activityId()))
+                    .toList();
+
+            assertEquals(2, loading.size(), "one start and one retraction; retracting again sends nothing");
+            assertEquals(PresenceActivityAction.STARTED, loading.getFirst().action());
+            assertEquals(PresenceActivityAction.ENDED, loading.getLast().action());
+            assertTrue(loading.stream().allMatch(activity -> activity.activityType() == PresenceActivityType.LOADING));
         }
     }
 

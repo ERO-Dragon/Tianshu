@@ -262,11 +262,15 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleIrResult(TianshuEnvelope envelope, ProtocolContext context) {
-        if (rejectWhenInactive(envelope, context)) {
-            return;
-        }
         if (!(envelope.payload() instanceof IrResultPayload payload)) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "IR result payload is invalid", null);
+            return;
+        }
+        // Reaching this handler means the turn now has an outcome, whatever it is: the arbiter is the one that
+        // closes the listening mark the speech module opened, so the player is never marked as still speaking after
+        // the turn has been resolved (or rejected, or dropped because this module is not running).
+        endListeningTurn(payload.sessionId());
+        if (rejectWhenInactive(envelope, context)) {
             return;
         }
         if (payload.repairedText().isBlank() && payload.normalizedText().isBlank()) {
@@ -274,6 +278,12 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         processArbitration(envelope, context, irResultMapper.map(envelope, payload));
+    }
+
+    private void endListeningTurn(long sourceSessionId) {
+        if (sourceSessionId > 0L) {
+            adapter.publishListeningEnded(sourceSessionId);
+        }
     }
 
     private void processArbitration(TianshuEnvelope envelope, ProtocolContext context, DialogueArbitrationRequestPayload payload) {

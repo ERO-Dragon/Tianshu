@@ -118,11 +118,11 @@ if (!AsrProtocolAdapter.MODULE_ID.equals(status.moduleId())) {
 | 活动 ID | 类型 | 边界 |
 | --- | --- | --- |
 | `asr.model.load` | `LOADING` | `AsrEngine.initialize()` 真正开始至成功、失败或取消。禁用、未配置或未安装模型不伪报加载。 |
-| `asr.recognition.<sessionId>` | `PROCESSING_TASK` | PTT 完整识别真正执行期间。 |
+| `asr.recognition.<sessionId>` | `PROCESSING_TASK` | PTT 完整识别真正执行期间；并行标记，不改变主状态。 |
 
-PTT 链路会发布 `asr.speech.<sessionId>`（`LISTENING`）：按下开始采集时 STARTED，松开、取消或停止时 ENDED。
+PTT 链路会发布 `asr.speech.<sessionId>`（`LISTENING`）：按下开始采集时 STARTED。它会一直保持到这一轮有了仲裁结果——识别、文本修复、仲裁都属于同一轮语音，由思衡在仲裁给出结果时结束（`LISTENING` 是回合级活动，允许解析方结束）。ASR 只在自己的路径上提前结束：没录到音频、识别失败、取消、运行时打断、模块停止。
 
-`LISTENING` 是客观前景状态，不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动；ASR 自身仍会在成功、失败、取消和停止路径配对结束活动。
+`LISTENING` 是并行标记：不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动。
 
 ## 6. 运行时中断
 

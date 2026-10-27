@@ -98,6 +98,19 @@ public final class AXStorageLayout {
         return worldRoot(scope).resolve("events");
     }
 
+    public Path retryRoot(AXScope scope) {
+        return worldRoot(scope).resolve("retry");
+    }
+
+    /**
+     * 失败账本：还没办成、玩家可能还想再来一次的后台工作。
+     *
+     * <p>放在世界目录下而不是共享目录：一条失败的对话轮属于它发生的那个世界，换世界不该在另一个世界里
+     * 看到它。</p>
+     */
+    public Path retryLedgerFile(AXScope scope) {
+        return retryRoot(scope).resolve("pending_retries.jsonl");
+    }
     public Path eventsFile(AXScope scope) {
         return eventsRoot(scope).resolve("events.jsonl");
     }

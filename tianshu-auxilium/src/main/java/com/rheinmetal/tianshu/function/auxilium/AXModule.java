@@ -56,6 +56,13 @@ import com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance.AXMemo
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRetriever;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurnCheckpointStore;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRawTurn;
+import com.rheinmetal.tianshu.function.auxilium.activity.AXActivityLog;
+import com.rheinmetal.tianshu.function.auxilium.core.turn.AXTurnActivityRecorder;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXFailureCause;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXRetryEntry;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXRetryLedger;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXRetryLedgerStore;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXRetryService;
 import com.rheinmetal.tianshu.function.auxilium.module.recentdialogue.AXRecentDialogueSystem;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
@@ -126,6 +133,12 @@ public final class AXModule implements TianshuManagedModule {
     private AXTurnStatusPublisher turnStatusPublisher;
     private AXGameEventService gameEventService;
     private ModuleServiceRegistry moduleServices;
+    /** 失败账本：还没办成、玩家还可能想再来一次的后台工作。 */
+    private AXRetryLedger retryLedger;
+    /** 账本对外的服务面（设置页读它、重试也走它）。 */
+    private AXRetryService retryService;
+    /** 界面上那半栏日志：只有这一局发生的事，重启重来一份。 */
+    private AXActivityLog activityLog;
     private long lifecycleStatusGeneration;
     private boolean lifecycleActive;
     private final AXPresenceChatMessageMapper chatMessageMapper = new AXPresenceChatMessageMapper();
@@ -254,6 +267,10 @@ public final class AXModule implements TianshuManagedModule {
         ragClient = new AXLlmRagClient(adapter, runtimePolicy.ragTimeoutMillis());
         storageLayout = new AXStorageLayout(storageConfiguration);
         AXJsonStore jsonStore = new AXJsonStore(env);
+        // 失败账本要早于它的记账点建好：记忆维护会往里记；轮次只写日志、不记账。
+        retryLedger = new AXRetryLedger(new AXRetryLedgerStore(storageLayout, jsonStore));
+        activityLog = new AXActivityLog();
+        turnStatusPublisher.observeFailures(new AXTurnActivityRecorder(activityLog));
         // Construction-time fallback only. The real budget is resolved per turn
         // (AXTurnOrchestrator -> AXRuntimeLlmBudgetResolver.resolveContextBudget -> fromSnapshot ->
         // AXMemoryWindowPolicy.fromBudget) and overrides this value for everything a turn touches.
@@ -282,6 +299,25 @@ public final class AXModule implements TianshuManagedModule {
                 memoryTaskPromptRepository
         );
         maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(memoryMaintenanceService);
+        memoryMaintenanceService.observeFailures(new AXMemoryMaintenanceService.MaintenanceObserver() {
+            @Override
+            public void onMaintenanceFailed(AXFailureCause cause) {
+                recordFailedMaintenance(cause);
+            }
+
+            @Override
+            public void onMaintenanceCompleted() {
+                AXScope scope = currentWritableScope();
+                AXRetryLedger ledger = retryLedger;
+                if (ledger != null && scope != null) {
+                    ledger.resolve(scope);
+                }
+                AXActivityLog log = activityLog;
+                if (log != null) {
+                    log.add("memory_completed", "");
+                }
+            }
+        });
         AXMemoryRetriever memoryRetriever = new AXMemoryRetriever(memorySystem, ragClient);
         AXContextCollector contextCollector = new AXContextCollector(memorySystem, recentDialogueSystem);
         AXPromptResourceRepository promptRepository = new AXPromptResourceRepository(storageLayout, jsonStore);
@@ -398,6 +434,68 @@ public final class AXModule implements TianshuManagedModule {
         moduleServices = context.services();
         moduleServices.register(AXGameEventService.class, gameEventService);
         moduleServices.register(AXDelegateService.class, delegateService);
+        retryService = new AXRetryService(retryLedger, scopeProvider, retryAction());
+        moduleServices.register(AXRetryService.class, retryService);
+        moduleServices.register(AXActivityLog.class, activityLog);
+    }
+
+    /**
+     * 后台工作唯一的重试方式：再触发一次记忆维护。
+     *
+     * <p>对话不在这张表里——问一次没成，玩家自己会再问一次，那才是新的对话；给它一个"重放上一问"的按钮，
+     * 等于让天枢替玩家决定该问什么。</p>
+     */
+    private AXRetryService.AXRetryAction retryAction() {
+        return entry -> {
+            AXRuntimeMaintenanceCoordinator current = maintenanceCoordinator;
+            AXScope scope = currentWritableScope();
+            if (current == null || scope == null) {
+                return false;
+            }
+            boolean accepted = current.requestMaintenanceNow(scope);
+            AXActivityLog log = activityLog;
+            if (accepted && log != null) {
+                log.add("retry_retried", entry == null ? "" : entry.cause().code());
+            }
+            return accepted;
+        };
+    }
+
+    /** 记忆维护失败了：记进账本；重试它就是再触发一次维护。 */
+    private void recordFailedMaintenance(AXFailureCause cause) {
+        AXRetryLedger ledger = retryLedger;
+        AXScope scope = currentWritableScope();
+        AXActivityLog log = activityLog;
+        if (cause == null || cause == AXFailureCause.CANCELLED) {
+            return;
+        }
+        if (log != null) {
+            log.add("memory_failed", cause.code());
+        }
+        if (ledger == null || scope == null) {
+            return;
+        }
+        ledger.record(scope, AXRetryEntry.memoryMaintenance(scope, cause, cause.code(), System.currentTimeMillis()));
+    }
+
+    /**
+     * 启动清理：最后一轮若是一句没人答的提问，撤掉它。
+     *
+     * <p>崩溃时来不及回滚（进程直接没了），但那句话已经落盘。所以判据不是账本，而是历史自己：完成的轮次
+     * 总以答句或游戏事件结尾，以提问结尾就意味着那一轮没走完——它不该成为下一轮对话的开头。</p>
+     */
+    private void pruneUnansweredTail() {
+        AXRecentDialogueSystem dialogue = recentDialogueSystem;
+        AXScope scope = currentWritableScope();
+        if (dialogue == null || scope == null) {
+            return;
+        }
+        if (dialogue.pruneUnansweredTail(scope)) {
+            AXActivityLog log = activityLog;
+            if (log != null) {
+                log.add("history_pruned", "");
+            }
+        }
     }
 
     /**
@@ -460,10 +558,19 @@ public final class AXModule implements TianshuManagedModule {
     private void withdrawModuleServices() {
         AXGameEventService currentEvents = gameEventService;
         AXDelegateService currentDelegates = delegateService;
+        AXRetryService currentRetries = retryService;
+        AXActivityLog currentLog = activityLog;
         ModuleServiceRegistry services = moduleServices;
         gameEventService = null;
+        retryService = null;
         moduleServices = null;
         if (services != null) {
+            if (currentLog != null) {
+                services.unregister(AXActivityLog.class, currentLog);
+            }
+            if (currentRetries != null) {
+                services.unregister(AXRetryService.class, currentRetries);
+            }
             if (currentDelegates != null) {
                 services.unregister(AXDelegateService.class, currentDelegates);
             }
@@ -490,6 +597,8 @@ public final class AXModule implements TianshuManagedModule {
         if (ragClient != null) {
             ragClient.sweepExpired();
         }
+        // 上一次退出或崩溃留下的最后一问：没人答就撤掉，否则它会成为下一轮对话的开头。
+        pruneUnansweredTail();
     }
 
     @Override
@@ -551,6 +660,9 @@ public final class AXModule implements TianshuManagedModule {
         memorySystem = null;
         dialogueGateway = null;
         turnStatusPublisher = null;
+        retryLedger = null;
+        retryService = null;
+        activityLog = null;
     }
 
     /**

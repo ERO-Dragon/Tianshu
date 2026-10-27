@@ -6,6 +6,12 @@ import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 
 import java.util.Locale;
 
+/**
+ * Maps one aggregated snapshot to the words the HUD shows.
+ *
+ * <p>Only the primary state is worded: listening and background work are parallel marks, not sentences. A state
+ * without a translation renders no text, which hides the status line instead of leaking a key.</p>
+ */
 public final class PresenceDisplayPolicy {
     private static final String STATUS_KEY_PREFIX = "tianshu.presence.status.";
     private final PresenceTextProvider textProvider;
@@ -31,6 +37,7 @@ public final class PresenceDisplayPolicy {
                 text,
                 effective.primaryState(),
                 effective.listening(),
+                effective.backgroundTask(),
                 effective.primarySourceId()
         );
     }

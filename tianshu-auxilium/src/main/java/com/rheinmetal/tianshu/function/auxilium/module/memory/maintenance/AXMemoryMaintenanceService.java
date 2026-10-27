@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRagClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXFailureCause;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.compression.AXMemoryCompressedEvent;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.compression.AXMemoryCompressedPreference;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.compression.AXMemoryCompressionParser;
@@ -64,6 +65,30 @@ public final class AXMemoryMaintenanceService {
     private static final String STATUS_KEY_STARTED = "tianshu.presence.module.ax.memory_maintenance_started";
     private static final String STATUS_KEY_COMPLETE = "tianshu.presence.module.ax.memory_maintenance_complete";
     private static final String STATUS_KEY_FAILED = "tianshu.presence.module.ax.memory_maintenance_failed";
+
+    private volatile MaintenanceObserver maintenanceObserver = MaintenanceObserver.NONE;
+
+    /**
+     * 记忆维护的成败对外说一次：失败账本挂在这里。
+     *
+     * <p>维护是后台工作，玩家看见的只有一条状态；没有这个观察点，"记忆维护因为限流失败了"这件事在
+     * 玩家那边就等于什么也没发生——而它恰恰是唯一能靠再点一次救回来的那种失败。</p>
+     */
+    public interface MaintenanceObserver {
+        MaintenanceObserver NONE = new MaintenanceObserver() {
+        };
+
+        default void onMaintenanceFailed(AXFailureCause cause) {
+        }
+
+        default void onMaintenanceCompleted() {
+        }
+    }
+
+    /** 接上成败观察者；传 {@code null} 等于不观察。 */
+    public void observeFailures(MaintenanceObserver observer) {
+        this.maintenanceObserver = observer == null ? MaintenanceObserver.NONE : observer;
+    }
 
     /** 一段式压缩的输出预算：三要素共用（摘要无长度上限，事件链受它约束）。 */
     private static final int COMPACT_MAX_TOKENS = 4096;
@@ -145,6 +170,7 @@ public final class AXMemoryMaintenanceService {
                 run(scope, generation);
             } catch (RuntimeException exception) {
                 if (isCurrent(generation)) {
+                    reportFailure(AXFailureCause.UNKNOWN);
                     publishFailedStatus();
                 }
                 throw exception;
@@ -222,6 +248,33 @@ public final class AXMemoryMaintenanceService {
         if (isCurrent(generation)
                 && (compressed || swapped || rebuiltVectors > 0 || projectedEntries > 0 || (derivedResult.ran() && derivedResult.stmChainRewritten()))) {
             publishCompleteStatus();
+        }
+        if (isCurrent(generation)) {
+            reportCompleted();
+        }
+    }
+
+    private void reportFailure(AXFailureCause cause) {
+        MaintenanceObserver current = maintenanceObserver;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onMaintenanceFailed(cause == null ? AXFailureCause.UNKNOWN : cause);
+        } catch (RuntimeException ignored) {
+            // 记账是本轮旁路：它坏了，维护该发的状态仍然要出去。
+        }
+    }
+
+    private void reportCompleted() {
+        MaintenanceObserver current = maintenanceObserver;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onMaintenanceCompleted();
+        } catch (RuntimeException ignored) {
+            // 同上：观察者不许影响维护本身。
         }
     }
 
@@ -322,6 +375,11 @@ public final class AXMemoryMaintenanceService {
             public void onResult(LLMPromptResultPayload payload) {
                 String text = cleanModelTaskText(payload == null ? "" : payload.text());
                 if (payload == null || !payload.isCompleted() || text.isBlank()) {
+                    // 把"为什么没成"交给词表：记忆维护失败的原因和对话失败是同一套原因。
+                    reportFailure(AXFailureCause.classify(
+                            payload == null ? null : payload.errorCode(),
+                            payload == null ? null : payload.errorMessage()
+                    ));
                     future.complete(null);
                     return;
                 }

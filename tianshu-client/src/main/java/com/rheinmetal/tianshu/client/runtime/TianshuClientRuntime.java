@@ -133,6 +133,10 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.WORLD_STARTING;
             requestGeneration = generation.incrementAndGet();
         }
+        // The presence session opens with the world, not with the core's completion: modules publish "loading"
+        // while they prepare, and a session that starts after that would drop exactly the events the HUD and the
+        // input gate need during startup.
+        startPresenceWorldSession.run();
         core.start().whenComplete((running, failure) -> completeWorldStart(requestGeneration, running, failure));
     }
 
@@ -200,10 +204,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             }
         }
         if (failure != null || !Boolean.TRUE.equals(running)) {
+            // The session that was opened with the request must not outlive the failed start.
+            stopPresenceWorldSession.run();
             onWorldFailure.accept(failure == null ? new IllegalStateException("CORE_SESSION_NOT_RUNNING") : failure);
             return;
         }
-        startPresenceWorldSession.run();
         onWorldReady.run();
     }
 

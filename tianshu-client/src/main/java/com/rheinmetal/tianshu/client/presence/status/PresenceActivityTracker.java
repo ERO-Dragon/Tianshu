@@ -6,11 +6,20 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
+/**
+ * Turns the stream of module activities into the one thing the HUD draws: a primary state plus parallel marks.
+ *
+ * <p>Primary activities (thinking, responding, error, reconnecting, loading) compete by the priority declared on
+ * the activity type; parallel activities (listening, background work) never compete, they only flip a boolean.
+ * The result is cached and recomputed only when an activity changed or the earliest activity expired, so the render
+ * thread reads an immutable snapshot instead of scanning a table.</p>
+ */
 public final class PresenceActivityTracker {
     private final LongSupplier clock;
     private final Map<ActivityKey, ActiveActivity> activities = new LinkedHashMap<>();
@@ -48,16 +57,26 @@ public final class PresenceActivityTracker {
 
     public synchronized void accept(String sourceId, PresenceActivityPayload payload) {
         String source = normalize(sourceId);
-        if (!worldSessionActive || source.isEmpty() || payload == null || !sourceAllowed(source, payload.activityType())) {
+        if (!worldSessionActive || source.isEmpty() || payload == null) {
             return;
         }
-        if (payload.occurredAtMillis() < worldSessionStartedAtMillis) {
-            return;
-        }
-        ActivityKey key = new ActivityKey(source, payload.activityId(), payload.activityType());
+        PresenceActivityType type = payload.activityType();
+        ActivityKey key = new ActivityKey(source, payload.activityId(), type);
         if (payload.action() == PresenceActivityAction.ENDED) {
+            // A turn-scoped activity is closed by whoever resolves the turn, not necessarily by the module that
+            // opened it, so its id and type are what identify it here.
+            if (endListeningByAnyPublisher(type, payload.activityId())) {
+                snapshotDirty = true;
+                return;
+            }
+            if (!sourceAllowed(source, type)) {
+                return;
+            }
             activities.remove(key);
             snapshotDirty = true;
+            return;
+        }
+        if (!sourceAllowed(source, type) || payload.occurredAtMillis() < worldSessionStartedAtMillis) {
             return;
         }
         activities.put(key, new ActiveActivity(
@@ -83,11 +102,17 @@ public final class PresenceActivityTracker {
         // The cache expires exactly at the earliest activity expiry, so reaching this point always means
         // "recompute": either an event changed the table or at least one activity has just expired.
         activities.values().removeIf(activity -> activity.expired(now));
-        boolean listening = activities.values().stream()
-                .anyMatch(activity -> activity.key().activityType() == PresenceActivityType.LISTENING);
+        boolean listening = false;
+        boolean backgroundTask = false;
         ActiveActivity primary = null;
         for (ActiveActivity activity : activities.values()) {
-            if (activity.key().activityType() == PresenceActivityType.LISTENING) {
+            PresenceActivityType type = activity.key().activityType();
+            if (type == PresenceActivityType.LISTENING) {
+                listening = true;
+                continue;
+            }
+            if (!type.primary()) {
+                backgroundTask = true;
                 continue;
             }
             if (primary == null || higherPriority(activity, primary)) {
@@ -95,11 +120,12 @@ public final class PresenceActivityTracker {
             }
         }
         if (primary == null) {
-            cachedSnapshot = new PresenceActivitySnapshot(PresencePrimaryState.IDLE, listening, "", now);
+            cachedSnapshot = new PresenceActivitySnapshot(PresencePrimaryState.IDLE, listening, backgroundTask, "", now);
         } else {
             cachedSnapshot = new PresenceActivitySnapshot(
                     primaryState(primary.key().activityType()),
                     listening,
+                    backgroundTask,
                     primary.key().sourceId(),
                     Math.max(now, primary.occurredAtMillis())
             );
@@ -125,9 +151,29 @@ public final class PresenceActivityTracker {
     }
 
     /**
+     * Removes a turn-scoped activity by identity, whichever module ended it.
+     *
+     * @return true when this end was handled here
+     */
+    private boolean endListeningByAnyPublisher(PresenceActivityType type, String activityId) {
+        if (!type.endableByAnyModule()) {
+            return false;
+        }
+        Iterator<Map.Entry<ActivityKey, ActiveActivity>> iterator = activities.entrySet().iterator();
+        while (iterator.hasNext()) {
+            ActivityKey key = iterator.next().getKey();
+            if (key.activityType() == type && key.activityId().equals(activityId)) {
+                iterator.remove();
+                return true;
+            }
+        }
+        // Ending something that never started is not an error: the opener may have been torn down first.
+        return true;
+    }
+
+    /**
      * Whether the publisher owns this activity type. The rule comes from the contract, so this aggregator
-     * never names a feature module: {@code LOADING} and {@code PROCESSING_TASK} are open to everyone,
-     * everything else belongs to exactly one module.
+     * never names a feature module: an empty owner means any module may publish it.
      */
     private boolean sourceAllowed(String sourceId, PresenceActivityType type) {
         String owner = type.publisherModuleId();
@@ -146,13 +192,11 @@ public final class PresenceActivityTracker {
     private PresencePrimaryState primaryState(PresenceActivityType type) {
         return switch (type) {
             case LOADING -> PresencePrimaryState.LOADING;
-            case PROCESSING_TASK -> PresencePrimaryState.PROCESSING_TASK;
             case THINKING -> PresencePrimaryState.THINKING;
             case RESPONDING -> PresencePrimaryState.RESPONDING;
             case RECONNECTING -> PresencePrimaryState.RECONNECTING;
             case ERROR -> PresencePrimaryState.ERROR;
-            case DEGRADED -> PresencePrimaryState.DEGRADED;
-            case LISTENING -> PresencePrimaryState.IDLE;
+            case PROCESSING_TASK, LISTENING -> PresencePrimaryState.IDLE;
         };
     }
 

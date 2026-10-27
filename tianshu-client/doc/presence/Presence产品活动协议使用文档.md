@@ -2,10 +2,10 @@
 
 ## 快速摘要
 
-- `PRESENCE.ACTIVITY` 用于公开玩家能够感知的当前活动：前台交互（思考、回复、任务、加载）和影响能力可用性的运行时状况（云端不可达、重连中、检索降级）走同一条通道。
-- 主状态按 `RESPONDING > THINKING > ERROR > PROCESSING_TASK > LOADING > RECONNECTING > DEGRADED > IDLE` 选择；`LISTENING` 独立叠加，不改变主状态。排序表达的是“玩家现在该看到什么”，不是“有多严重”，因此前台对话永远压过运行时状况。
-- 各状态的所有者声明在 `PresenceActivityType` 上（`publisherModuleId`）：`THINKING` / `RESPONDING` 仅 `module.ax`，`LISTENING` 仅 `module.asr`，三种运行时状况仅 `module.llm`；`LOADING` 和 `PROCESSING_TASK` 任何模块可发布。映迹不硬编码任何模块名。
-- 每个 `STARTED` 都必须在条件结束、任务终态或模块停止时发送对应 `ENDED`；TTL 只是发布方异常退出时的兜底。运行时状况恢复后必须显式撤回，不能等 TTL 自然过期。
+- `PRESENCE.ACTIVITY` 用于公开玩家能够感知的当前状态：主状态（思考、回复、加载、错误、重连）和两个并行标记（聆听、后台任务）走同一条通道。
+- 主状态按 `RESPONDING > THINKING > ERROR > RECONNECTING > LOADING > IDLE` 选择；`LISTENING` 和 `PROCESSING_TASK`（后台任务）是**并行标记**，可以和任意主状态同时存在，不参与排序。
+- 主状态的所有者声明在 `PresenceActivityType` 上（`publisherModuleId`）：`THINKING` / `RESPONDING` 仅 `module.ax`，`LISTENING` 由 `module.asr` 开始；`ERROR`、`RECONNECTING`、`LOADING`、`PROCESSING_TASK` 任何模块可发布。映迹不硬编码任何模块名。
+- 每个 `STARTED` 都必须在条件结束、任务终态或模块停止时发送对应 `ENDED`；TTL 只是发布方异常退出时的兜底。`LISTENING` 是回合级活动，由解析这一轮的模块（仲裁方）结束。错误/重连恢复后必须显式撤回，不能等 TTL。
 - 退出世界会清空全部活动；重新进入世界后不会继承旧世界的 HUD 状态。
 - 上下文查询在请求被回答的那一刻采集：没有定时扫描，也不靠输入事件保温。
 
@@ -26,27 +26,26 @@ Presence 活动快照不是“每 tick 快照”。活动聚合只在协议活�
 | 字段 | 语义 |
 | --- | --- |
 | `activityId` | 发布来源内稳定的活动身份。一次活动从开始到结束必须保持不变。 |
-| `activityType` | `LOADING`、`PROCESSING_TASK`、`THINKING`、`RESPONDING`、`LISTENING`、`RECONNECTING`、`ERROR` 或 `DEGRADED`。 |
+| `activityType` | `LOADING`、`PROCESSING_TASK`、`THINKING`、`RESPONDING`、`LISTENING`、`RECONNECTING` 或 `ERROR`。 |
 | `action` | `STARTED` 或 `ENDED`。 |
 | `occurredAtMillis` | 事件发生时间。旧于当前世界会话开始时间的事件会被忽略。 |
 | `ttlMillis` | `STARTED` 的失效兜底时间，必须大于零；`ENDED` 固定为零。 |
 
-来源身份取自信封 `EnvelopeHeader.sourceId()`，不放进 payload。映迹按 `(sourceId, activityId, activityType)` 精确记录和结束活动，因此同一个模块可以同时公开多个任务；结束一个任务不会清除其他任务。
+来源身份取自信封 `EnvelopeHeader.sourceId()`，不放进 payload。映迹按 `(sourceId, activityId, activityType)` 精确记录和结束活动，因此同一个模块可以同时公开多个任务；结束一个任务不会清除其他任务。唯一的例外是回合级活动（`LISTENING`）：它按 `(activityId, activityType)` 结束，开始仍只允许所有者，结束可以由解析这一轮的模块发出。
 
 ## 2. 产品状态语义
 
 | 类型 | 产品语义 | 发布边界 |
 | --- | --- | --- |
-| `LOADING` | 模型或服务正在真实加载、预热，暂时还不能提供对应能力。 | 任何模块可发布。未配置、未安装或已经失败不属于加载中。 |
-| `PROCESSING_TASK` | 正在执行玩家或外部模块可感知的任务，也包括真实运行中的内部维护工作。 | 任何模块可发布。排队但尚未开始的任务不应伪报运行。 |
-| `THINKING` | 辅星已收到 IA 投递，正在获取上下文、检索记忆、组装 Prompt 或生成首段可见回复。 | 仅 `module.ax`。 |
+| `LOADING` | 模型或服务正在真实加载、预热，暂时还不能提供对应能力。 | 任何模块可发布。未配置、未安装或已经失败不属于加载中。平台在加载期间不派发模块按键（按键门读的是同一个产品状态），因此"正在加载"和"按键不可用"永远一致。 |
+| `THINKING` | 辅星已收到 IA 投递，正在获取上下文、检索记忆、组装 Prompt 或生成首段可见回复。 | 仅 `module.ax`。起点是 IA 决定这一轮交给辅星，不是按下说话键。 |
 | `RESPONDING` | 辅星已经产生首段可见输出，正在继续展示或播报本轮回复。 | 仅 `module.ax`。 |
-| `LISTENING` | 玩家正在说话：从麦克风开始采集到本轮录音结束。 | 仅 `module.asr`。它不触发或打断 AX。 |
-| `RECONNECTING` | 某条能力通道启动失败后正在按退避重连，通道恢复会自动结束。 | 仅 `module.llm`。恢复或停止时必须发 `ENDED`。 |
-| `ERROR` | 某条能力通道已确定不可用，需要玩家处理（配置、凭据、模型文件）。 | 仅 `module.llm`。重试耗尽或加载失败时发布；恢复后必须发 `ENDED`。 |
-| `DEGRADED` | 能力可用但跑在降级后端上（例如向量检索退回 CPU）。 | 仅 `module.llm`。恢复满血或模块停止时必须发 `ENDED`。 |
+| `ERROR` | 某条能力已确定不可用，需要玩家处理（配置、凭据、模型文件）。 | 任何模块可发布。进入前先结束自己正在跑的阶段活动，否则会被更高优先级的对话状态盖住。 |
+| `RECONNECTING` | 某条能力通道启动失败后正在按退避重连，通道恢复会自动结束。 | 任何模块可发布。恢复或停止时必须发 `ENDED`。 |
+| `LISTENING` | 玩家这一轮语音正在处理：按下说话键开始，直到仲裁给出结果。 | 由 `module.asr` 开始；由解析这一轮的模块（思衡）结束。它不触发或打断 AX。 |
+| `PROCESSING_TASK` | 后台任务正在执行，包括内部维护工作。 | 任何模块可发布。它是**并行标记**，不参与主状态排序，表示"现在还在忙"。 |
 
-运行时状况只表达“这条能力现在能不能用、是不是降级”这一层可执行信息；错误码、堆栈、排队长度、模型内部阶段和下载进度仍然不进入产品状态，继续通过模块状态、设置页、诊断和日志观察。
+这一层只表达"这条能力现在能不能用、是不是在跑"；错误码、堆栈、排队长度、模型内部阶段和下载进度仍然不进入产品状态，继续通过模块状态、设置页、诊断和日志观察。纯性能细节（例如向量模型退回 CPU 但检索仍可用）同样不属于产品状态。
 
 ## 3. 发布规则
 
@@ -90,12 +89,14 @@ public TianshuEnvelope publishTaskEnded(String taskId) {
 映迹允许多个活动并存，主状态固定按以下顺序选择：
 
 ```text
-RESPONDING > THINKING > ERROR > PROCESSING_TASK > LOADING > RECONNECTING > DEGRADED > IDLE
+RESPONDING > THINKING > ERROR > RECONNECTING > LOADING > IDLE
 ```
 
-同一优先级存在多个活动时，最近开始或刷新的活动成为主来源。`LISTENING` 单独计算：它可以与任意主状态同时为真，HUD 或未来 shader 可以临时突出聆听反馈；聆听结束后恢复仍然有效的主状态，不创建组合枚举。
+同一优先级存在多个活动时，最近开始或刷新的活动成为主来源。`LISTENING` 与 `PROCESSING_TASK` 单独计算：它们可以和任意主状态同时为真，HUD 在主状态旁边画一个标记（聆听波纹 / 后台工作小点），不创建组合枚举；标记消失后恢复主状态。
 
-排序是按玩家注意力分的三层：前台对话（`RESPONDING` / `THINKING`）永远在上；需要玩家行动的失败（`ERROR`）压过正在跑的后台任务；最后才是进度与自恢复状况（`LOADING` / `RECONNECTING` / `DEGRADED`）。这样一次云端故障不会盖住正在播报的回复，而故障本身也不会被一条 15 分钟的任务活动挤掉。
+排序按玩家注意力分层：前台对话（`RESPONDING` / `THINKING`）永远在上；没有对话在跑时，需要玩家处理的失败（`ERROR`）压过自恢复的重连和加载；最后是待机。失败不打断正在进行的对话——一个模块出错时先结束自己的阶段活动，错误才会露出来；正在播报的回复不会被别的模块的故障盖掉。
+
+后台任务（`PROCESSING_TASK`）不进这条排序：它只是"还在忙"的标记，无论主状态是什么都能同时显示。这也是它和加载的区别——加载会阻止能力使用，后台任务不会。
 
 ## 5. 世界和生命周期边界
 
@@ -121,9 +122,9 @@ TTL 使用墙上时钟是为了让跨模块协议事件可以比较；动画使�
 
 | 模块 | 活动 |
 | --- | --- |
-| ASR | `asr.model.load`、`asr.recognition.<sessionId>`、`asr.speech.<sessionId>`（每次按住说话的起止各一条） |
+| ASR | `asr.model.load`、`asr.recognition.<sessionId>`、`asr.speech.<sessionId>`（按下说话键开始，由思衡在仲裁出结果时结束） |
 | AX | `ax.chat.<sessionId>.<turnId/requestId>`、`ax.memory.maintenance.<worldSafeId>` |
-| LLM | `llm.runtime.reconnecting`、`llm.runtime.error`、`llm.runtime.degraded`；三者都在恢复或停止时撤回。`llm.task.<taskId>` 的能力已实现但当前没有发布方，先按未接线看待 |
+| LLM | `llm.model.load`（云端通道启动期间）、`llm.runtime.reconnecting`、`llm.runtime.error`；三者都在就绪、恢复或停止时撤回。`llm.task.<taskId>` 的能力已实现但当前没有发布方，先按未接线看待 |
 | TTS | `tts.model.load`、`tts.request.<requestId>`；非 AX 播放和纯合成任务共用请求活动，`module.ax` 不重复覆盖 AX 自己的回复状态 |
 
 `MODULE.STATUS`、`LLM.STATUS`、`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 仍有各自诊断或业务用途，但映迹不会从这些 topic 推断产品 HUD 状态。

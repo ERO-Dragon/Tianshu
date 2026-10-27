@@ -324,6 +324,9 @@ public final class LlmModule implements TianshuManagedModule {
         }
 
         publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting"));
+        // From the player's side the cloud lane is loading until its request capability is usable; the notice also
+        // keeps module keys unavailable while the start is in flight.
+        adapter.publishLoadingActivity(true);
         // Cloud is the only chat lane. There is no local fallback: an unconfigured cloud endpoint
         // fails the lane and tells the player what to fill in, instead of quietly loading a GGUF.
         startRemoteRuntime(generation);
@@ -390,6 +393,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
         publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
         publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
+        adapter.publishLoadingActivity(false);
         clearRuntimeRetry();
     }
 
@@ -449,6 +453,7 @@ public final class LlmModule implements TianshuManagedModule {
             moduleService.markFailed(statusKey);
         }
         lastFailureStatusKey = statusKey;
+        adapter.publishLoadingActivity(false);
         scheduleRuntimeRetry();
     }
 
@@ -509,6 +514,7 @@ public final class LlmModule implements TianshuManagedModule {
         publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), failureKey));
         publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), failureKey, lifecycleStatusGeneration));
         // Retrying stopped, so "reconnecting" is no longer true; the failure replaces it.
+        adapter.publishLoadingActivity(false);
         adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
         adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
     }
@@ -543,8 +549,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
         // A stopped module keeps no retry budget: the next start begins from the first attempt.
         clearRuntimeRetry();
-        // The embedding notice outlives neither the lane it describes nor a world restart.
-        adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
+        adapter.publishLoadingActivity(false);
         synchronized (lifecycleLock) {
             if (modelService != null) {
                 modelService.stop();
@@ -582,28 +587,22 @@ public final class LlmModule implements TianshuManagedModule {
     }
 
     /**
-     * The embedding lane settled, on the model-load lane: the card worked, the card failed and the CPU
-     * carried it (degraded, and presence says so once), or neither could embed.
+     * The embedding lane settled, on the model-load lane: the card worked, the card failed and the CPU carried it,
+     * or neither could embed.
      *
-     * <p>A lane that cannot embed is unbound here rather than left in place: the RAG storage then
-     * reports "no vector lane" instead of handing every write to a service that already knows it cannot
-     * answer. The presence notice uses the same runtime activity channel as the reconnect and error
-     * states, so neither outcome is silent.
+     * <p>A lane that cannot embed is unbound here rather than left in place: the RAG storage then reports "no
+     * vector lane" instead of handing every write to a service that already knows it cannot answer.</p>
+     *
+     * <p>Only "cannot embed at all" is a product state. Running on the CPU instead of the GPU is a performance
+     * detail the player cannot act on, so it is logged and left to module status and diagnostics; the ERROR notice
+     * is retracted when a later load succeeds.</p>
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
         switch (report.outcome()) {
-            case READY -> {
-                // Whatever the previous load said about the embedding lane is no longer true.
-                adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
-                adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
-            }
-            case DEGRADED -> {
-                adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
-                adapter.publishRuntimeActivity(PresenceActivityType.DEGRADED, RUNTIME_ERROR_TTL_MILLIS);
-            }
+            case READY -> adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+            case DEGRADED -> env.warn("[LLM] Embedding lane runs on the CPU; retrieval continues on the reduced backend");
             case UNAVAILABLE -> {
                 ragStorageService.bindEmbeddingService(engineProvider.embeddingService());
-                adapter.clearRuntimeActivity(PresenceActivityType.DEGRADED);
                 adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }

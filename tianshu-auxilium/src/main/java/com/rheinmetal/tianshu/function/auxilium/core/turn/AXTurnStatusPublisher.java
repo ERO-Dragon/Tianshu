@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXFailureCause;
 
 public final class AXTurnStatusPublisher {
     public static final String TYPE_TURN_ACCEPTED = "turn.accepted";
@@ -25,6 +26,7 @@ public final class AXTurnStatusPublisher {
     public static final String KEY_LLM_THINKING = "tianshu.presence.module.ax.thinking";
     public static final String KEY_RESPONDING = "tianshu.presence.module.ax.responding";
     public static final String KEY_INTERRUPTED = "tianshu.presence.module.ax.interrupted";
+    /** 失败状态的语言键；认不出原因时就是这一句。词表是唯一出处，这里不留第二份字面量。 */
     public static final String KEY_FAILED = "tianshu.presence.module.ax.failed";
     public static final String KEY_TURN_IDLE = "tianshu.presence.module.ax.idle";
 
@@ -33,6 +35,30 @@ public final class AXTurnStatusPublisher {
     private static final long FAILURE_TTL_MILLIS = 8_000L;
 
     private final AXProtocolAdapter adapter;
+    private volatile FailureObserver failureObserver = FailureObserver.NONE;
+
+    /**
+     * 一轮的结局只在这里对外发生一次：失败，或者办成。
+     *
+     * <p>失败账本挂在这两个点上，而不是去猜轮次状态——轮次有没有办成，状态发布器本来就最先知道。
+     * 观察者不许抛异常：一次记账失败不能让一轮对话跟着失败。</p>
+     */
+    public interface FailureObserver {
+        FailureObserver NONE = new FailureObserver() {
+        };
+
+        /** 这一轮失败了。原因已经归好类，观察者不必再解析机器码。 */
+        default void onTurnFailed(AXTurnExecution execution, AXFailureCause cause, String reasonCode) {
+        }
+
+        /** 这一轮被中断（玩家打断、过期、换代）。中断不是失败：它可能已经答出了一部分。 */
+        default void onTurnInterrupted(AXTurnExecution execution) {
+        }
+
+        /** 这一轮真的答出来了：账本里同轮次的待办该撤了。 */
+        default void onTurnResolved(AXTurnExecution execution) {
+        }
+    }
 
     public AXTurnStatusPublisher(AXProtocolAdapter adapter) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
@@ -92,17 +118,66 @@ public final class AXTurnStatusPublisher {
                 )
         );
         transition(execution, null);
+        // 这一轮办成了：账本里同轮次的待办到此为止。只在"确实答出来了"时撤账——
+        // 中断、淘汰、过期都不是办成，那些轮次该留在账本里等玩家决定。
+        if (reason == com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason.OWNER_COMPLETED) {
+            FailureObserver current = failureObserver;
+            if (current != null) {
+                current.onTurnResolved(execution);
+            }
+        }
     }
 
     public void interrupted() {
+        interrupted(null);
+    }
+
+    /** 中断了某一轮：状态照旧，日志也知道这是哪一轮。 */
+    public void interrupted(AXTurnExecution execution) {
         publish(TYPE_INTERRUPTED, KEY_INTERRUPTED, ModuleStatusSeverity.NOTICE, SHORT_TTL_MILLIS, "interrupted", null);
+        FailureObserver current = failureObserver;
+        if (current != null && execution != null) {
+            try {
+                current.onTurnInterrupted(execution);
+            } catch (RuntimeException ignored) {
+                // 观察者是旁路：它坏了，玩家该看到的中断提示仍然要出去。
+            }
+        }
     }
 
     public void failed(String reasonCode) {
-        Map<String, String> extraTags = sanitizeReason(reasonCode).isBlank()
-                ? null
-                : Map.of("reasonCode", sanitizeReason(reasonCode));
-        publish(TYPE_FAILED, KEY_FAILED, ModuleStatusSeverity.CRITICAL, FAILURE_TTL_MILLIS, "failed", extraTags);
+        failed(reasonCode, AXFailureCause.UNKNOWN);
+    }
+
+    public void observeFailures(FailureObserver observer) {
+        this.failureObserver = observer == null ? FailureObserver.NONE : observer;
+    }
+
+    /** 失败了，而且知道是哪一轮、哪一类失败：状态与账本都从这里走。 */
+    public void failed(AXTurnExecution execution, String reasonCode, AXFailureCause cause) {
+        failed(reasonCode, cause);
+        FailureObserver current = failureObserver;
+        if (current != null && execution != null) {
+            try {
+                current.onTurnFailed(execution, cause == null ? AXFailureCause.UNKNOWN : cause, reasonCode);
+            } catch (RuntimeException ignored) {
+                // 记账是本轮的旁路：它坏了，玩家该看到的那句失败提示仍然要出去。
+            }
+        }
+    }
+
+    /**
+     * 失败了，而且知道是哪一类失败。
+     *
+     * <p>玩家看到的那句话按失败类别选：把"服务商这会儿不行"和"你的密钥不对"说成同一句"AX 处理失败"，
+     * 等于让玩家自己去猜该重试还是该改设置。原始机器码仍然作为标签带着，那是给诊断看的，不进正文。</p>
+     */
+    public void failed(String reasonCode, AXFailureCause cause) {
+        AXFailureCause effective = cause == null ? AXFailureCause.UNKNOWN : cause;
+        Map<String, String> extraTags = new LinkedHashMap<>();
+        extraTags.put("reasonCode", sanitizeReason(reasonCode));
+        extraTags.put("failureCause", effective.code());
+        publish(TYPE_FAILED, effective.messageKey(), ModuleStatusSeverity.CRITICAL, FAILURE_TTL_MILLIS, "failed", extraTags);
     }
 
     private void publish(

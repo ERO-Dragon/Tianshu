@@ -41,6 +41,8 @@ import java.util.function.Supplier;
 
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private static final long TASK_ACTIVITY_TTL_MILLIS = 900_000L;
+    /** Backstop for a crash mid-load; a real start ends the notice explicitly. */
+    private static final long MODEL_LOADING_TTL_MILLIS = 120_000L;
     public static final String MODULE_ID = ProtocolModuleIds.LLM;
     public static final String SOURCE_ID = ProtocolModuleIds.LLM;
 
@@ -49,6 +51,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private volatile Supplier<LLMRuntimeSnapshotPayload> unavailableRuntimeSnapshotSupplier;
     /** Runtime notices currently published, so recovery ends exactly the ones that are up. */
     private final Set<PresenceActivityType> activeRuntimeActivities = ConcurrentHashMap.newKeySet();
+    /** Whether the startup notice is up; a clean start never sends an empty retraction. */
+    private final java.util.concurrent.atomic.AtomicBoolean loadingPublished = new java.util.concurrent.atomic.AtomicBoolean();
     private final LlmTaskAdmissionController taskAdmissionController;
     private final LlmPromptPayloadMapper promptPayloadMapper;
     private final LlmPromptRequestHandler promptRequestHandler;
@@ -258,6 +262,34 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         return publishTopic(ProtocolTopics.LLM_STATUS, PayloadType.LLM_STATUS, status);
     }
 
+    /**
+     * Opens or closes the "starting up" notice of the cloud lane.
+     *
+     * <p>The lane has no model file to mmap, but from the player's side it is loading all the same: the request
+     * capability is not usable until the client is built and the embedding engine is brought up. Presence shows it
+     * as {@code LOADING}, and the platform keeps module keys unavailable while it is up.</p>
+     *
+     * <p>Retracting a notice that was never opened sends nothing, so a clean start cannot produce a stray end.</p>
+     */
+    public TianshuEnvelope publishLoadingActivity(boolean loading) {
+        String activityId = "llm.model.load";
+        if (loading) {
+            loadingPublished.set(true);
+            return publishPresenceActivity(PresenceActivityPayload.started(
+                    activityId,
+                    PresenceActivityType.LOADING,
+                    MODEL_LOADING_TTL_MILLIS
+            ));
+        }
+        if (!loadingPublished.compareAndSet(true, false)) {
+            return null;
+        }
+        return publishPresenceActivity(PresenceActivityPayload.ended(
+                activityId,
+                PresenceActivityType.LOADING
+        ));
+    }
+
     public TianshuEnvelope publishTaskActivity(String taskId, boolean active) {
         String activityId = "llm.task." + taskId;
         return publishPresenceActivity(active
@@ -298,10 +330,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     private static String runtimeActivityId(PresenceActivityType type) {
-        if (type != PresenceActivityType.RECONNECTING
-                && type != PresenceActivityType.ERROR
-                && type != PresenceActivityType.DEGRADED) {
-            throw new IllegalArgumentException("runtime activity must be RECONNECTING, ERROR or DEGRADED");
+        if (type != PresenceActivityType.RECONNECTING && type != PresenceActivityType.ERROR) {
+            throw new IllegalArgumentException("runtime activity must be RECONNECTING or ERROR");
         }
         return "llm.runtime." + type.name().toLowerCase(java.util.Locale.ROOT);
     }

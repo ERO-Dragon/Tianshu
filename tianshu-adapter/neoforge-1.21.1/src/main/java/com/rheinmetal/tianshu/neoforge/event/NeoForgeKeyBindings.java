@@ -80,12 +80,19 @@ public final class NeoForgeKeyBindings implements KeyBindings {
         }
     }
 
-    /** Turns this tick's presses into signals; called once per client tick. */
-    public synchronized void publishPressed() {
+    /**
+     * Turns this tick's presses into signals; called once per client tick.
+     *
+     * <p>The click queues are drained even while {@code publish} is false, so a press made during startup cannot
+     * fire later, after the player already forgot about it; only publishing is suppressed.</p>
+     */
+    public synchronized void publishPressed(boolean publish) {
         for (Map.Entry<String, KeyMapping> entry : mappings.entrySet()) {
             KeyMapping mapping = entry.getValue();
             while (mapping.consumeClick()) {
-                InputSignals.publish(InputSignals.keyChannel(entry.getKey()), "");
+                if (publish) {
+                    InputSignals.publish(InputSignals.keyChannel(entry.getKey()), "");
+                }
             }
         }
     }

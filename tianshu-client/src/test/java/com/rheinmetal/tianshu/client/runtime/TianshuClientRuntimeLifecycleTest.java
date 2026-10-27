@@ -101,7 +101,7 @@ class TianshuClientRuntimeLifecycleTest {
     }
 
     @Test
-    void presenceWorldSessionFollowsAcceptedCoreLifecycle() {
+    void presenceWorldSessionOpensWithTheRequestSoLoadingNoticesAreNotDropped() {
         FakeCore core = new FakeCore();
         AtomicInteger presenceStarts = new AtomicInteger();
         AtomicInteger presenceStops = new AtomicInteger();
@@ -121,13 +121,43 @@ class TianshuClientRuntimeLifecycleTest {
 
         runtime.startClient();
         runtime.startWorldSession();
-        assertEquals(0, presenceStarts.get());
+        assertEquals(1, presenceStarts.get(),
+                "modules publish their loading notices while the core prepares, so the session has to be open");
 
         core.start.complete(true);
-        assertEquals(1, presenceStarts.get());
+        assertEquals(1, presenceStarts.get(), "an accepted start must not open a second session");
 
         runtime.stopWorldSession();
         assertEquals(1, presenceStops.get());
+    }
+
+    @Test
+    void aFailedWorldStartClosesThePresenceSessionItOpened() {
+        FakeCore core = new FakeCore();
+        AtomicInteger presenceStarts = new AtomicInteger();
+        AtomicInteger presenceStops = new AtomicInteger();
+        TianshuClientRuntime runtime = new TianshuClientRuntime(
+                core,
+                () -> { },
+                () -> { },
+                () -> { },
+                () -> { },
+                () -> { },
+                () -> { },
+                presenceStarts::incrementAndGet,
+                presenceStops::incrementAndGet,
+                () -> { },
+                ignored -> { }
+        );
+
+        runtime.startClient();
+        runtime.startWorldSession();
+        assertEquals(1, presenceStarts.get());
+
+        core.start.completeExceptionally(new IllegalStateException("boom"));
+
+        assertEquals(1, presenceStops.get(), "the session that was opened with the request must not outlive a failed start");
+        assertEquals(ClientSessionState.CLIENT_READY, runtime.state());
     }
 
     private static TianshuClientRuntime runtime(FakeCore core, AtomicInteger releaseCapture, AtomicInteger closedResources) {

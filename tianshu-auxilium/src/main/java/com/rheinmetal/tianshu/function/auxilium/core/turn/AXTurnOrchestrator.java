@@ -56,6 +56,7 @@ import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
+import com.rheinmetal.tianshu.function.auxilium.failure.AXFailureCause;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
@@ -424,10 +425,17 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
      * history follow the real context size.</p>
      */
     private void applyWindowPolicy(AXMemoryWindowPolicy memoryPolicy) {
-        if (recentDialogueSystem == null || memoryPolicy == null) {
+        if (memoryPolicy == null) {
             return;
         }
-        recentDialogueSystem.applyWindowPolicy(memoryPolicy);
+        if (recentDialogueSystem != null) {
+            recentDialogueSystem.applyWindowPolicy(memoryPolicy);
+        }
+        // 摘要块容量也是这份策略的一部分：不换，它就永远停在构造期兜底档（COMPACT），
+        // 大窗口拿不到更大的摘要块，档位降下来时也不会跟着缩。
+        if (memorySystem != null) {
+            memorySystem.applyWindowPolicy(memoryPolicy);
+        }
     }
 
     private void submitLlmTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXRequest request, List<AXDynamicFact> dynamicFacts, AXMemoryRetrievalResult memoryRetrieval, AXContextBudget contextBudget) {
@@ -448,6 +456,9 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 .withDialogueIdentity(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
         execution.latencyTracker().mark(AXTurnLatencyStage.PROMPT_READY);
         extendSessionIfNeeded(deliveryEnvelope, delivery);
+        // 水位取在这一行之前：本轮写进历史的东西（玩家的话，以及除游戏事件外的一切）都归这一轮，
+        // 一个字都没答出来时整段撤掉。见 PendingTurn#rollbackHistory。
+        int historyMark = recentDialogueSystem == null ? -1 : recentDialogueSystem.mark(scope);
         appendTurn(scope, "user", request.userText(), delivery.sessionId(), delivery.turnId());
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(
                 deliveryEnvelope,
@@ -463,7 +474,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         // and only signal the step at their last line; this method therefore does not block. The wait
         // for the envelope happens on the submitter's long-running thread, never on the caller's lane.
         AXStepSignal<LLMPromptResultPayload> step = new AXStepSignal<>();
-        PendingTurn pending = new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn, step);
+        PendingTurn pending = new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn, step, historyMark);
         // Clear first so a stale id from a previous turn can never be cancelled (§12.2).
         execution.llmRequestId("");
         try {
@@ -656,7 +667,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), cancellation);
         }
         if (statusPublisher != null && activeExecution.get() == execution) {
-            statusPublisher.interrupted();
+            statusPublisher.interrupted(execution);
             statusPublisher.terminal(execution, cancellation.releaseReason());
         }
         if (execution.requestRelease()) {
@@ -721,6 +732,8 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         private final AXScope scope;
         private final AXOutputProcessor.AXOutputTurn outputTurn;
         private final AXStepSignal<LLMPromptResultPayload> step;
+        /** 本轮开始前的历史水位；一个字都没答出来时，撤回到这里。 */
+        private final int historyMark;
         private final StringBuilder streamed = new StringBuilder();
         /**
          * 分片闸：只放行"确定不是标签"的字符（设计 §4.1）。
@@ -733,13 +746,38 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         /** 是否已经向输出层交出过内容：决定收尾时要不要补写 displayedText（中断后历史里要有已念出的话）。 */
         private boolean outputStarted;
 
-        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn, AXStepSignal<LLMPromptResultPayload> step) {
+        private PendingTurn(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope, AXDialogueInput delivery, AXScope scope, AXOutputProcessor.AXOutputTurn outputTurn, AXStepSignal<LLMPromptResultPayload> step, int historyMark) {
             this.execution = execution;
             this.deliveryEnvelope = deliveryEnvelope;
             this.delivery = delivery;
             this.scope = scope;
             this.outputTurn = outputTurn;
             this.step = step;
+            this.historyMark = historyMark;
+        }
+
+        /**
+         * 这一轮连一个字都没答出来时，把它写进历史的东西撤掉。
+         *
+         * <p>判据是<b>云端有没有给出内容</b>，不是错误类别：429、503、余额不足、连不上、内容被拒都属于
+         * "这一问从来没被回答"，它不该变成对话的一部分；而已经答出内容的失败（中途断流、后面的环节坏了）
+         * 属于"说过的话"，撤掉等于把玩家听到的东西从记忆里抹掉。</p>
+         *
+         * <p>回滚范围是本轮水位之后的一切，唯独保留期间落进来的游戏事件：那些是世界自己发生的事，
+         * 与这一问成不成功无关。</p>
+         */
+        private void rollbackHistory() {
+            if (recentDialogueSystem == null || historyMark < 0) {
+                return;
+            }
+            recentDialogueSystem.rollbackTo(scope, historyMark);
+        }
+
+        /** 云端到底有没有给出内容：流式吐过、念出过、或者终值带正文，三者之一即算答过。 */
+        private boolean answeredAnything(LLMPromptResultPayload payload) {
+            return !streamed.isEmpty()
+                    || !execution.displayedText().isBlank()
+                    || (payload != null && payload.text() != null && !payload.text().isBlank());
         }
 
         /**
@@ -793,11 +831,16 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                 emitAnswer(spokenAnswer(reply.spoken()), payload);
                 return;
             }
-            if (!execution.displayedText().isBlank()) {
-                appendAssistantVisibleText(execution.displayedText(), payload);
+            if (answeredAnything(payload)) {
+                if (!execution.displayedText().isBlank()) {
+                    appendAssistantVisibleText(execution.displayedText(), payload);
+                }
+            } else {
+                // 一个字都没答出来：这一问与它带来的东西都不属于这段对话。
+                rollbackHistory();
             }
             if (statusPublisher != null) {
-                statusPublisher.failed(resultFailureReason(payload));
+                statusPublisher.failed(execution, resultFailureReason(payload), causeOf(payload));
             }
             failOutput(payload == null ? "LLM returned no result" : payload.errorMessage(), "output.failure_notice_failed");
             finish(execution, DialogueReleaseReason.OWNER_FAILED);
@@ -822,11 +865,19 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXTurnCancellation effective = cancellation == null
                     ? AXTurnCancellation.playerInterrupted("AX turn cancelled")
                     : cancellation;
+            if (!answeredAnything(null)) {
+                // 打断发生在答出来之前：这一问没有留下任何内容，历史里也不该留下它。
+                rollbackHistory();
+            }
             if (statusPublisher != null) {
                 if (effective.releaseReason() == DialogueReleaseReason.PLAYER_CANCELLED) {
-                    statusPublisher.interrupted();
+                    statusPublisher.interrupted(execution);
                 } else {
-                    statusPublisher.failed("cancelled." + effective.releaseReason().name());
+                    statusPublisher.failed(
+                            execution,
+                            "cancelled." + effective.releaseReason().name(),
+                            AXFailureCause.CANCELLED
+                    );
                 }
             }
             failOutput(effective.message(), "output.cancel_notice_failed");
@@ -1026,8 +1077,17 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
 
         private void publishOutputFailed(String reasonCode) {
             if (statusPublisher != null && isCurrent(execution)) {
-                statusPublisher.failed(reasonCode);
+                // 输出通道坏了不是模型失败，分类留给词表按机器码认；认不出就是未知。
+                statusPublisher.failed(execution, reasonCode, AXFailureCause.classify(reasonCode, ""));
             }
+        }
+
+        /** 这一次失败的类别：玩家看到的原因与账本里记的原因都从这一处取。 */
+        private AXFailureCause causeOf(LLMPromptResultPayload payload) {
+            if (payload == null) {
+                return AXFailureCause.UNKNOWN;
+            }
+            return AXFailureCause.classify(payload.errorCode(), payload.errorMessage());
         }
     }
 }

@@ -69,6 +69,28 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
                     : parameters.state();
             renderFluidLayer(graphics, layout, parameters, fluidState, time, centerX, centerY, size, fluidOpacity);
         }
+        if (frame.display().backgroundTask()) {
+            renderBackgroundTaskMark(graphics, centerX, centerY, size, time);
+        }
+    }
+
+    /**
+     * The parallel background-work mark: a small pulsing dot on the icon, never a different icon.
+     *
+     * <p>Background work runs next to whatever the player is doing, so it is drawn beside the primary visual instead
+     * of replacing it. It costs three {@code fill} calls per frame and reads only the immutable frame.</p>
+     */
+    private static void renderBackgroundTaskMark(GuiGraphics graphics, int centerX, int centerY, float size, float time) {
+        float pulse = 0.55F + 0.45F * (float) Math.sin(time * 4.0F);
+        float offset = size * 0.34F;
+        drawDisc(
+                graphics,
+                centerX + offset,
+                centerY + offset,
+                Math.max(1.5F, size * 0.09F),
+                0xFFEAF7FF,
+                0.45F + 0.45F * pulse
+        );
     }
 
     private void renderLoadingLayer(

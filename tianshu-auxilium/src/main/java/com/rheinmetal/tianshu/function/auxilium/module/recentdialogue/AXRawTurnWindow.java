@@ -41,14 +41,97 @@ public final class AXRawTurnWindow {
         }
     }
 
-    public void append(AXScope scope, AXRawTurn turn) {
+    /**
+     * 追加一轮，返回"这次追加是否挤掉了旧轮次"。
+     *
+     * <p>返回值不是诊断，而是落盘的判据：写前落盘（每一轮追加一行）只在<b>没有</b>挤掉旧轮次时才与窗口内容
+     * 逐条一致；一旦挤掉，文件里就多出了窗口里已经没有的轮次，必须整份重写把它们清掉，否则重启会把淘汰过的
+     * 原文读回来——历史被"复活"比丢掉它更糟。</p>
+     */
+    public boolean append(AXScope scope, AXRawTurn turn) {
         if (!writable(scope) || turn == null || turn.isEmpty()) {
-            return;
+            return false;
         }
         Deque<AXRawTurn> turns = turnsByWorld.computeIfAbsent(scope.worldId(), ignored -> new ArrayDeque<>());
         synchronized (turns) {
+            int before = turns.size();
             turns.addLast(turn);
             trim(scope, turns);
+            return turns.size() != before + 1;
+        }
+    }
+
+    /** 最近一轮（含世界事件与助手答句）；恢复时用它判断"最后一问有没有答"。 */
+    public AXRawTurn lastTurn(AXScope scope) {
+        if (!writable(scope)) {
+            return null;
+        }
+        Deque<AXRawTurn> turns = turnsByWorld.get(scope.worldId());
+        if (turns == null) {
+            return null;
+        }
+        synchronized (turns) {
+            return turns.peekLast();
+        }
+    }
+
+    /**
+     * 当前窗口里有几轮：调用方拿它当"这一段历史之后的东西都归某一轮"的水位。
+     *
+     * <p>它只是长度，不是内容；回滚靠它加 {@link #truncateFrom} 完成。</p>
+     */
+    public int size(AXScope scope) {
+        if (!writable(scope)) {
+            return 0;
+        }
+        Deque<AXRawTurn> turns = turnsByWorld.get(scope.worldId());
+        if (turns == null) {
+            return 0;
+        }
+        synchronized (turns) {
+            return turns.size();
+        }
+    }
+
+    /**
+     * 撤回到水位：把 {@code mark} 之后追加的轮次丢掉，游戏事件例外。
+     *
+     * <p>为什么要保留游戏事件：它们写的是世界自己发生的事（谁死了、钓到了什么），与某一问成不成功无关；
+     * 一次失败的提问不该顺带把这期间的"事实"一起抹掉。</p>
+     *
+     * @param mark            之前 {@link #size} 的值；小于 0 表示这一轮没有水位，什么也不做
+     * @param keepWorldEvents 是否保留被撤回区间里的游戏事件
+     * @return 实际移出的轮次数
+     */
+    public int truncateFrom(AXScope scope, int mark, boolean keepWorldEvents) {
+        if (!writable(scope) || mark < 0) {
+            return 0;
+        }
+        Deque<AXRawTurn> turns = turnsByWorld.get(scope.worldId());
+        if (turns == null) {
+            return 0;
+        }
+        synchronized (turns) {
+            List<AXRawTurn> snapshot = new ArrayList<>(turns);
+            if (mark >= snapshot.size()) {
+                return 0;
+            }
+            List<AXRawTurn> kept = new ArrayList<>(snapshot.subList(0, mark));
+            int removed = 0;
+            for (int index = mark; index < snapshot.size(); index++) {
+                AXRawTurn turn = snapshot.get(index);
+                if (keepWorldEvents && turn.worldEventRole()) {
+                    kept.add(turn);
+                } else {
+                    removed++;
+                }
+            }
+            if (removed == 0) {
+                return 0;
+            }
+            turns.clear();
+            turns.addAll(kept);
+            return removed;
         }
     }
 
