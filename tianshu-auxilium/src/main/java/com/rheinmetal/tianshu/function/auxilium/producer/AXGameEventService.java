@@ -9,7 +9,9 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventDispatcher;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventHistorySink;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSettings;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventSpeechSink;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventPolicy;
+import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventTexts;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventTierTable;
 import com.rheinmetal.tianshu.api.LogSink;
@@ -56,6 +58,9 @@ public final class AXGameEventService {
 
     /** Separator between the sentences of one voluntary turn; the layer holds no wording of its own. */
     private static final String VOLUNTARY_TURN_SEPARATOR = "\n";
+
+    /** Language key of the separator between two occurrence groups inside one batch line. */
+    private static final String BATCH_JOIN_KEY = "tianshu.ax.event.batch.join";
 
     private final AXEventDispatcher dispatcher;
     private final AXEventHistorySink historySink;
@@ -160,6 +165,43 @@ public final class AXGameEventService {
         this.settings = settings == null ? AXEventSettings.DEFAULT : settings;
         this.buffer = buffer == null ? new AXEventClassBuffer(this.settings) : buffer;
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
+    }
+
+    /**
+     * One aggregated payload as one line: every group's "count + name" joined by the language's separator, then
+     * wrapped by the kind's own template.
+     *
+     * <p>The join happens here rather than in a template because a nested template chain would run into the renderer's
+     * depth cap ("20 dirt and 60 stone" is already two levels). Rendering each group at depth one and joining the
+     * results keeps the wording in the language table without ever nesting deeper.</p>
+     *
+     * @return {@code false} when nothing could be worded, so the caller can fall back to its own diagnostics
+     */
+    public boolean submitBatch(String sourceId, AXPresenceEventMapper.Batch batch, long nowMillis) {
+        if (closed || batch == null) {
+            return false;
+        }
+        StringBuilder joined = new StringBuilder();
+        for (AXEventText part : batch.parts()) {
+            String fragment = AXEventTexts.sanitize(texts.render(part));
+            if (fragment.isBlank()) {
+                continue;
+            }
+            if (joined.length() > 0) {
+                joined.append(texts.text(BATCH_JOIN_KEY));
+            }
+            joined.append(fragment);
+        }
+        if (joined.length() == 0) {
+            return false;
+        }
+        String sentence = AXEventTexts.sanitize(texts.text(batch.lineKey(), joined.toString()));
+        if (sentence.isBlank()) {
+            return false;
+        }
+        land(AXEventDescriptor.of(batch.kind(), sourceId,
+                AXEventPayload.of(batch.totalCount(), null), AXEventText.of(batch.lineKey())), sentence, nowMillis);
+        return true;
     }
 
     /** Submits one event stamped with the wall clock; the call any module makes. */

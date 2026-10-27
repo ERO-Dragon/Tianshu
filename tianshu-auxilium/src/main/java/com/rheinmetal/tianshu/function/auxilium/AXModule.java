@@ -613,13 +613,12 @@ public final class AXModule implements TianshuManagedModule {
             return;
         }
         // 一条事实只有一个落点：能翻成事件类型的走事件层（它自己写历史，并按档位决定出不出声），
-        // 其余类型作为记忆附件留给压缩链路。
-        java.util.Optional<AXEventDescriptor> mapped =
-                AXPresenceEventMapper.describe(payload, envelope.header().sourceId());
-        if (mapped.isPresent()) {
+        // 其余类型作为记忆附件留给压缩链路。一个载荷带一秒窗口的多组出现，合成一行提交。
+        java.util.Optional<AXPresenceEventMapper.Batch> batch = AXPresenceEventMapper.batch(payload);
+        if (batch.isPresent()) {
             AXGameEventService currentEvents = gameEventService;
             if (currentEvents != null && !currentEvents.closed()) {
-                currentEvents.submit(mapped.get());
+                currentEvents.submitBatch(envelope.header().sourceId(), batch.get(), System.currentTimeMillis());
             }
             context.complete(envelope.envelopeId());
             return;

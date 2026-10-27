@@ -42,6 +42,8 @@
   "tianshu.ax.event.line.tianshu.respawn": "你已复活：%s",
   "tianshu.ax.event.line.tianshu.damage_taken": "你受伤了：%s",
   "tianshu.ax.event.line.tianshu.effect_gained": "获得状态效果：%s",
+  "tianshu.ax.event.batch.entry": "%1$s 个 %2$s",
+  "tianshu.ax.event.batch.join": "、",
   "tianshu.ax.event.line.tianshu.effect_expired": "状态效果结束：%s",
   "tianshu.ax.event.line.tianshu.exp_level": "等级变化：%s",
   "tianshu.ax.event.line.tianshu.fall_damage": "你摔伤了：%s",

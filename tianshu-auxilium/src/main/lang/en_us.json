@@ -42,6 +42,8 @@
   "tianshu.ax.event.line.tianshu.respawn": "You respawned: %s",
   "tianshu.ax.event.line.tianshu.damage_taken": "You took damage: %s",
   "tianshu.ax.event.line.tianshu.effect_gained": "Effect gained: %s",
+  "tianshu.ax.event.batch.entry": "%1$s x %2$s",
+  "tianshu.ax.event.batch.join": ", ",
   "tianshu.ax.event.line.tianshu.effect_expired": "Effect ended: %s",
   "tianshu.ax.event.line.tianshu.exp_level": "Level changed: %s",
   "tianshu.ax.event.line.tianshu.fall_damage": "You took fall damage: %s",
