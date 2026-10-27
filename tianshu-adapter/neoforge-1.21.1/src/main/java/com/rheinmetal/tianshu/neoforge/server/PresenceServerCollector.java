@@ -3,8 +3,6 @@ package com.rheinmetal.tianshu.neoforge.server;
 import com.rheinmetal.tianshu.neoforge.network.PresenceFactPacket;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -77,11 +75,20 @@ public final class PresenceServerCollector {
         if (!(event.getPlayer() instanceof ServerPlayer player)) {
             return;
         }
-        ItemStack picked = event.getCurrentStack();
-        if (picked == null || picked.isEmpty()) {
+        // The event reports the stack *left on the ground*, not the one that was picked up. A whole stack leaves
+        // nothing behind, which is the common case, so the amount has to be the difference; using the remainder
+        // directly would report every full pickup as "nothing happened".
+        ItemStack original = event.getOriginalStack();
+        ItemStack remaining = event.getCurrentStack();
+        int originalCount = original == null ? 0 : original.getCount();
+        int remainingCount = remaining == null ? 0 : remaining.getCount();
+        int pickedCount = originalCount - remainingCount;
+        if (original == null || original.isEmpty() || pickedCount <= 0) {
             return;
         }
-        send(player, PresenceWorldEventPayload.EVENT_ITEM_PICKUP, itemValues(picked));
+        Map<String, String> values = itemValues(original);
+        values.put(PresenceWorldEventPayload.VALUE_COUNT, Integer.toString(pickedCount));
+        send(player, PresenceWorldEventPayload.EVENT_ITEM_PICKUP, values);
     }
 
     public void onTrade(TradeWithVillagerEvent event) {
@@ -280,12 +287,5 @@ public final class PresenceServerCollector {
 
     private static String dimensionId(Level level) {
         return level == null ? "" : level.dimension().location().toString();
-    }
-
-    private static String dimensionName(ResourceKey<Level> dimension) {
-        if (dimension == null) {
-            return "";
-        }
-        return Component.translatable(dimension.location().toLanguageKey("dimension")).getString();
     }
 }

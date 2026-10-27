@@ -44,12 +44,13 @@ public final class NeoForgePresenceHooks {
     }
 
     /**
-     * One fact that came from the optional server component over the network.
+     * One fact presence observed itself, from either side.
      *
-     * <p>It is deliberately indistinguishable from a client-observed event once it arrives: the same payload shape and
-     * the same runtime entry, so every consumer reads one fact stream and never asks where a fact was born.</p>
+     * <p>Facts born on the client (a level rebuild, a boss bar) and facts that arrived from the optional server
+     * component take the same entry and the same payload shape, so every consumer reads one fact stream and never
+     * asks where a fact was born.</p>
      */
-    public static void recordServerFact(PresenceWorldEventPayload event) {
+    public static void recordFact(PresenceWorldEventPayload event) {
         Binding current = binding.get();
         if (current != null && event != null) {
             current.runtime().recordWorldEvents(List.of(event));

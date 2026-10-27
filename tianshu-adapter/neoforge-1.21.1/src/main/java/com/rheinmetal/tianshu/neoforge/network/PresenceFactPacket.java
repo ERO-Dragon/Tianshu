@@ -77,6 +77,6 @@ public record PresenceFactPacket(
     /** Runs on the client thread: the presence runtime is a client-side object. */
     static void handle(PresenceFactPacket packet, IPayloadContext context) {
         PresenceWorldEventPayload event = packet.toWorldEvent();
-        context.enqueueWork(() -> NeoForgePresenceHooks.recordServerFact(event));
+        context.enqueueWork(() -> NeoForgePresenceHooks.recordFact(event));
     }
 }

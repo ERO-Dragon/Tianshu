@@ -152,6 +152,9 @@ public final class AXGameEventService {
             LogSink logSink) {
         this.dispatcher = dispatcher == null ? new AXEventDispatcher() : dispatcher;
         this.historySink = historySink;
+        // The platform advances this layer through the clock; without it the deferred window and the immediate
+        // queue would only drain when the player speaks again.
+        AXEventClock.install(this);
         this.speechSink = speechSink == null ? AXEventSpeechSink.NOOP : speechSink;
         this.texts = texts == null ? AXGameEventTextProvider.NONE : texts;
         this.settings = settings == null ? AXEventSettings.DEFAULT : settings;
@@ -296,6 +299,7 @@ public final class AXGameEventService {
         // last few events of a world silently disappear.
         beforeUserTurn(nowMillis);
         closed = true;
+        AXEventClock.clear(this);
     }
 
     public boolean closed() {

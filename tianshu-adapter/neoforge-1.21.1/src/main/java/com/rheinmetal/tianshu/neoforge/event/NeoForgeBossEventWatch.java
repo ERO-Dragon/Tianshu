@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.CustomizeGuiOverlayEvent;
 
 import java.util.LinkedHashSet;
@@ -24,6 +26,12 @@ public final class NeoForgeBossEventWatch {
     private NeoForgeBossEventWatch() {
     }
 
+    public static void register(IEventBus gameBus) {
+        gameBus.addListener(NeoForgeBossEventWatch::onBossEventProgress);
+        // Bars belong to one session: the next world must be able to report the same boss again.
+        gameBus.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> reset());
+    }
+
     public static void onBossEventProgress(CustomizeGuiOverlayEvent.BossEventProgress event) {
         if (event == null || event.getBossEvent() == null) {
             return;
@@ -41,7 +49,7 @@ public final class NeoForgeBossEventWatch {
                 java.util.Map.of(PresenceWorldEventPayload.VALUE_ENTITY_NAME,
                         event.getBossEvent().getName().getString())
         );
-        NeoForgePresenceHooks.recordServerFact(payload);
+        NeoForgePresenceHooks.recordFact(payload);
     }
 
     /** Drops the reported ids: a new world must be able to report the same boss again. */

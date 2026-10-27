@@ -95,6 +95,10 @@ public final class NeoForgeClientEvents {
             worldIdentityCapture.refresh();
         }
         lifecycleAdapter.onClientTick();
+        // The event layer owns two time-based doors (the deferred window and the immediate queue); this is the clock
+        // that opens them. It carries no facts, so it stays even though the sampling port is gone.
+        com.rheinmetal.tianshu.api.assembly.TickSignals.publish(
+                com.rheinmetal.tianshu.api.assembly.TickSignals.TICK, System.currentTimeMillis());
 
         KeyMapping voiceKey = voiceKeySupplier.get();
         voiceInputController.tick(voiceKey != null, voiceKey != null && voiceKey.isDown());

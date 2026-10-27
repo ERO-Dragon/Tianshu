@@ -35,7 +35,13 @@ public final class TianshuNeoForge {
     /** {@code null} on a dedicated server: every client subsystem is constructed only on the client. */
     private final NeoForgeClientBootstrap clientBootstrap;
 
-    /** {@code null} on a client: the server component only exists where authoritative server events exist. */
+    /**
+     * The optional server component, present on every distribution.
+     *
+     * <p>A dedicated server always has it; a client has it because single player runs an integrated server in the
+     * same process, and the same packet path has to feed those facts. Listeners only act on {@code ServerPlayer}, so
+     * on a client connected to a remote server they simply never fire.</p>
+     */
     private final PresenceServerCollector serverCollector;
 
     public TianshuNeoForge(IEventBus modEventBus, ModContainer modContainer) {
@@ -46,9 +52,13 @@ public final class TianshuNeoForge {
         // The one network channel is registered on both sides: whoever hosts the server component still has to know
         // how a fact is shaped, and a client has to know how to receive it.
         modEventBus.addListener(TianshuNetwork::register);
+        // The collector is registered on both distributions: in single player the integrated server lives in this
+        // same process, and "single player takes the same packet path" is a stated requirement. Its listeners only
+        // act on {@code ServerPlayer}, so on a client connected to a remote server they simply never fire.
+        serverCollector = new PresenceServerCollector();
+        serverCollector.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             clientBootstrap = new NeoForgeClientBootstrap();
-            serverCollector = null;
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
             TianshuRuntimePorts.register(ClientKeyBindings.class, new NeoForgeClientKeyBindings());
@@ -61,14 +71,11 @@ public final class TianshuNeoForge {
             modEventBus.addListener(clientBootstrap::registerShaders);
             modEventBus.addListener(this::clientSetup);
             // A boss bar is the player's own signal that a fight started; the client is where it is visible.
-            NeoForge.EVENT_BUS.addListener(NeoForgeBossEventWatch::onBossEventProgress);
+            NeoForgeBossEventWatch.register(NeoForge.EVENT_BUS);
             // Facts the client observes exactly on its own: level rebuilds, respawn, opening a container.
             new NeoForgeClientFactWatch().register(NeoForge.EVENT_BUS);
         } else {
             clientBootstrap = null;
-            // The optional server component: collect authoritative facts for the acting player, nothing else.
-            serverCollector = new PresenceServerCollector();
-            serverCollector.register(NeoForge.EVENT_BUS);
         }
         NeoForge.EVENT_BUS.addListener(this::gameShuttingDown);
     }
