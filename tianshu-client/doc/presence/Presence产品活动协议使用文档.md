@@ -7,7 +7,7 @@
 - 主状态的所有者声明在 `PresenceActivityType` 上（`publisherModuleId`）：`THINKING` / `RESPONDING` 仅 `module.ax`，`LISTENING` 由 `module.asr` 开始；`ERROR`、`RECONNECTING`、`LOADING`、`PROCESSING_TASK` 任何模块可发布。映迹不硬编码任何模块名。
 - 每个 `STARTED` 都必须在条件结束、任务终态或模块停止时发送对应 `ENDED`；TTL 只是发布方异常退出时的兜底。`LISTENING` 是回合级活动，由解析这一轮的模块（仲裁方）结束。错误/重连恢复后必须显式撤回，不能等 TTL。
 - 退出世界会清空全部活动；重新进入世界后不会继承旧世界的 HUD 状态。
-- 上下文查询在请求被回答的那一刻采集：没有定时扫描，也不靠输入事件保温。
+- 上下文查询在请求被回答的那一刻采集：没有定时扫描，也不靠输入事件保温；仲裁用的交互上下文摘要另走变化推送（`PRESENCE.INTERACTION_CONTEXT`），两者不共享缓存。
 
 Presence 活动快照不是“每 tick 快照”。活动聚合只在协议活动事件、世界会话边界或自然时间 TTL 过期后的下一次快照读取时发生；活动未变化且未到期时，读取返回同一个不可变快照对象。渲染帧只消费这个快照，不重新扫描活动表或重新判断产品状态。
 

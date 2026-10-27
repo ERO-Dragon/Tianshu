@@ -36,7 +36,7 @@ PayloadType.IR_RESULT
 IrResultPayload
 ```
 
-IA 订阅该 topic，并结合 participant claim、Presence 上下文、attention 和 participant priority 决定 owner。IR 不选择 owner，不调用 IA 仲裁 capability，也不向 AX、LLM、TTS 或其他业务模块投递正文。
+IA 订阅该 topic，并结合 participant claim、开口时冻结的交互上下文摘要和 participant priority 决定 owner。IR 不选择 owner，不调用 IA 仲裁 capability，也不向 AX、LLM、TTS 或其他业务模块投递正文。
 
 ## 2. 当前执行链路
 
@@ -67,8 +67,8 @@ IA
 
 ## 3. 模块组成
 
-- `IrModule`：处理流程编排和异步 Presence 查询。
-- `IrProtocolAdapter`：订阅 ASR final text、发布 IR result、查询 Presence。
+- `AsrTextRepairer`：在识别调用栈内执行一次文本修复（原 IR 模块的入口）。
+- `AsrProtocolAdapter`：在识别后发布 `IR_RESULT`，修复结果随 ASR 调用栈发出。
 - `IrInputMapper` / `IrInputPreprocessor`：输入映射和双文本视图构建。
 - `IrNamedObjectEnhancer`：自然语言名称修复和结构化物品、实体 ID 提取。
 - `IrWakeWordEnhancer`：只对已注册 wake word 做保守修复。
@@ -121,7 +121,7 @@ spokenWord
 registeredWord
 ```
 
-一个模块命中多个词就是多条。匹配质量（命中词数 / 注册词数）只用于给多条命中排序——命中更多的模块排在前面——不进入 payload，也不替代 IA 的 claim strength 或 participant priority。
+一个模块命中多个词就是多条。匹配质量（命中词数 / 注册词数）只用于给多条命中排序——命中更多的模块排在前面——不进入 payload，也不替代 IA 的 claim 来源档或 participant priority。
 
 语义边界：
 
@@ -145,27 +145,19 @@ registeredWord
 
 该事件是 IA 的标准业务输入，不是调试摘要，也不是 owner 授权结果。外部观察者可以订阅，但不能根据 `moduleId` 绕过 IA 直投正文。
 
-## 8. Presence 与异步边界
+## 8. Presence 与异步边界（已退出）
 
-IR 可请求：
+IR 不再向映迹查询上下文：命名对象增强改为在辅星侧自采，`AsrTextRepairer` 的注释说明了代价——裸指代词（“用这个”）不再结合手持消歧，其余不变。
 
-```text
-ProtocolCapabilities.PRESENCE_QUERY_CONTEXT
-INTERACTION_CONTEXT
-PLAYER_INVENTORY
-```
+因此 IR 的解析全程不等待外部上下文，`IR_RESULT` 的发布时间只取决于识别与本地解析。仲裁所需的上下文由映迹通过 `PRESENCE.INTERACTION_CONTEXT` 推送、由 IA 消费（见 IA 文档）。
 
-Presence 查询超时为 300ms。超时、失败或没有 provider 时，IR 使用空上下文继续分析。查询等待和后续解析运行在协议执行路径，不占用 Minecraft 主线程。
-
-模块 stop/destroy 时会先停止接收输入，注销并丢弃尚未完成的 Presence 查询，不会在退出世界期间继续发布过期 `IR_RESULT`。同一实例重新 prepare 时恢复接收；重新装配实例时只处理新的 ASR 输入。
-
-IR 使用 Presence 只增强命名对象识别；IA 会按自身 participant claim 重新规划并获取仲裁所需上下文。
+模块 stop/destroy 时会先停止接收输入，不会在退出世界期间继续发布过期 `IR_RESULT`。同一实例重新 prepare 时恢复接收；重新装配实例时只处理新的 ASR 输入。
 
 ## 9. 边界总结
 
 - ASR 负责产生 final text。
 - IR 负责文本修复和结构化事实提取。
-- IA 负责 claim、attention、priority、owner 和 session。
+- IA 负责预中标人、claim、租期、priority、owner 和 session。
 - Protocol Center 负责 topic、capability、线程调度和投递。
 - 目标功能模块只接收 IA 授权后的 `DialogueDeliveryPayload`。
 

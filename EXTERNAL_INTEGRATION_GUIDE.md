@@ -252,6 +252,8 @@ GUI action 类型包括：
 new DialogueParticipantRegisterPayload(descriptor, "处理雷达威胁查询", System.currentTimeMillis());
 ```
 
+`DialogueParticipantDescriptor` 要求提供 `icon`（伙伴标记贴图）与 `holdTier`（中标后的租期档位：20s / 10s / 5s / 0s），完整字段与仲裁规则见 `doc/function/ia/IA_外部模组仲裁接入说明.md`。
+
 Dialogue / IA 接入是可选能力。外部模组不接入也应能独立运行。
 
 ## 生命周期与资源刷新事件

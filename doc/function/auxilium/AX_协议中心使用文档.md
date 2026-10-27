@@ -16,7 +16,7 @@ AX 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的
 
 注册 / 注销分别使用 `DIALOGUE_PARTICIPANT_REGISTER` / `DIALOGUE_PARTICIPANT_UNREGISTER`，并把自己的路由能力、唤醒词声明与语音触发组一并交给 IA。
 
-**唤醒词**：AX 没有内置默认唤醒词。空唤醒词不改变"是否参加仲裁"：AX 照常注册 participant，只是不登记 wakeword、不产生 IA 的唤醒硬 claim，改由 `DEFAULT_OWNER` 档位与 fallback 分参与比较（AX 的 fallback 为 0.4，其他 participant 必须严格更高才能替代）。玩家配置非空词后才额外多一条 wakeword claim。其他模块不得冒用 `module.ax` / `tianshu.AX` 注册、注销或提交请求。
+**唤醒词**：AX 没有内置默认唤醒词。空唤醒词不改变"是否参加仲裁"：AX 照常注册 participant，只是不登记 wakeword、不产生 IA 的唤醒硬 claim；它是默认承接者，没有任何硬 claim、也没有别的中标人租期时才轮到它。玩家配置非空词后才额外多一条 wakeword claim。其他模块不得冒用 `module.ax` / `tianshu.AX` 注册、注销或提交请求。
 
 接入前提：调用方应作为天枢托管模块完成装配，在装配阶段通过模块运行时创建一个自己的协议 adapter。不要从核心管理器取完整协议运行时，也不要直接持有 AX 的编排、记忆或提示词实现。
 

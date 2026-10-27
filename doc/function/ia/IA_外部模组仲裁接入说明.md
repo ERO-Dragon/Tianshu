@@ -33,12 +33,13 @@ owner 释放 session 或延长当前轮处理期限
 IA 负责：
 
 - 管理 dialogue participant 注册表。
-- 有硬 claim 时根据 claim strength、priority 和稳定 participant ID 选择本轮 owner；没有硬 claim 时比较每个 participant 的动态值、fallback score 和其 owner 的衰减 attention。AX 当前通过注册契约提供 0.4 的默认 fallback，其他 participant 必须严格更高才能替代。attention decay 只决定历史 attention 的持续时间，不单独绕过本轮比较。
+- 依 claim 来源档、priority 和稳定 participant ID 选择本轮 owner：上下文条件（准星、主手、装备、交互状态）高于醒词。
+- 没有硬 claim 时，上一轮中标人的租期未过期就继续归它，否则归默认承接者（辅星）。不做动态评分，也不向参与方索取分值。
 - 创建和维护 dialogue session。
 - 记录 session owner、turn、processing deadline、状态和释放原因。
 - 将对话正文定向投递给当前 owner。
 - 发布不含正文的 session 状态事件。
-- 校验对话型 LLM 使用权限。
+- 校验 session 归属（非 owner 不能控制会话或获取正文）。
 
 ### 2.2 外部模组负责
 
@@ -77,8 +78,8 @@ DialogueParticipantDescriptor(
     DialogueTriggerGroup triggerGroup,
     String routeCapability,
     DialogueTurnProcessingPolicy turnProcessingPolicy,
-    String scoreCapability,
-    double fallbackScore
+    String icon,
+    DialogueHoldTier holdTier
 )
 ```
 
@@ -88,22 +89,16 @@ DialogueParticipantDescriptor(
 |---|---|
 | `participantId` | 模组内部稳定参与方 ID，例如 `maid.default`、`npc.villager_chat`。 |
 | `moduleId` | 模组 ID，必须和后续 LLM 请求中的 requester module 一致。 |
-| `displayName` | 面向 UI 或诊断的显示名。 |
-| `priority` | participant 基础优先级，只在多个 participant 的 claim strength 相同时参与比较。 |
+| `displayName` | 面向诊断的显示名；HUD 不显示它，伙伴标记只画图标。 |
+| `priority` | participant 基础优先级，只在同一 claim 来源档内参与比较。 |
 | `claimProfile` | 参与 IA 仲裁的硬命中规则。只有 `WAKE_WORD` 条件会作为仲裁 wake word；`extraWords` 不参与 IA claim。 |
 | `triggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
 | `routeCapability` | IA 选中该 participant 后投递正文的 capability。能力名由模块自定义，但能力契约必须接收标准 `DialogueDeliveryPayload`。 |
 | `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理，不决定下一轮归属。默认初始窗口为 10 秒，默认绝对上限为 session 创建后 180 秒。 |
-| `scoreCapability` | 可选评分 capability。没有硬 claim 时，IA 用结构化仲裁上下文请求本 participant 的本轮动态值。 |
-| `fallbackScore` | 评分 provider 缺失、超时或未返回时使用的分值，范围为 `[0,1]`。AX 默认值为 `0.4`。 |
+| `icon` | 伙伴标记贴图（`namespace:textures/...`）。非默认承接者必须提供；映迹只渲染合法 `ResourceLocation`，资源包缺图只记诊断、不画破图。 |
+| `holdTier` | 中标租期档位：`20s` / `10s` / `5s` / `0s`。中标后这段租期内、且没有新硬 claim 时，下一轮仍归本 participant；`0s` 表示不持有，每轮都必须靠硬 claim。 |
 
 如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.triggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `TriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `TriggerRegistration`。空 wake word 仍可注册 participant，但不会产生 wake-word claim，也不会注册空触发词。
-
-### 3.3 动态评分
-
-没有硬 claim 时，IA 会按 participant 分别发送 `DialogueScoreRequestPayload`。同一个 capability 可以服务多个 participant，但每个 participant 都有独立的 `participantId` 和响应，不能用一个值代表整个模块。评分请求只携带 `DialogueScoringContext` 中已有的结构化目标、物品、交互和上下文快照，不携带识别正文、prompt 或 LLM 内容。
-
-IA 在同一轮截止时间内收集已返回的有限 `[0,1]` 分值。provider 不存在、超时、异常或返回非法值时，使用注册的 `fallbackScore`；所有 participant 的有效值都参与最高值比较。历史 attention 只与其 owner 的本轮值取较高者。平分时按 priority 和稳定 participant ID 决胜。
 
 ### 3.1 通过协议 capability 注册
 
@@ -178,7 +173,7 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 
 非 owner 不会收到该 payload。
 
-其中 `repairedText`、`normalizedText`、`objectMatches`、`moduleMatches` 来自 IR 的文本侧结果：`objectMatches` 每个命中对象一条，`moduleMatches` 每个命中触发词一条。`displayNames`、`matchedEntityRefs`、`interactionHints`、`contextSnapshot` 来自 IA 通过 `PRESENCE.QUERY_CONTEXT` 获取的仲裁快照；`displayNames` 只包含世界侧名字（维度、手持、实体），`matchedEntityRefs` 使用 `DialogueEntityRef`，会同时包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。语音输入场景下，IA 会优先使用 ASR `speaking=true` 时冻结的快照，而不是 ASR final 后的状态。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
+其中 `repairedText`、`normalizedText`、`objectMatches`、`moduleMatches` 来自 IR 的文本侧结果：`objectMatches` 每个命中对象一条，`moduleMatches` 每个命中触发词一条。`matchedEntityRefs`、`interactionHints` 来自 IA 在开口时冻结的交互上下文摘要（映迹 `PRESENCE.INTERACTION_CONTEXT` 的最近一次推送），所以仲裁本身不等待上下文；`contextSnapshot`、`displayNames` 是 IA 在决议之后补取的完整快照，不阻塞仲裁。`matchedEntityRefs` 使用 `DialogueEntityRef`，包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
 
 ## 5. 处理 delivery
 
@@ -353,7 +348,14 @@ ProtocolTopics.DIALOGUE_OWNER_PREVIEW
 PayloadType.DIALOGUE_OWNER_PREVIEW
 ```
 
-该 topic 只发布 `DialogueOwnerPreviewPayload(playerId, moduleId, participantId, displayName, updatedAtMillis)`，不包含正文、prompt、上下文细节或仲裁原因。IA 只在 preview owner 发生变化时发布一次，并通过协议中心 `SCHEDULED` lane 定期刷新 attention 衰减后的最新归属，因此订阅方可以把它视为“当前 owner 预览”的最新态。
+该 topic 发布 `DialogueOwnerPreviewPayload(playerId, moduleId, participantId, icon, defaultOwner, holdUntilMillis, holdDurationMillis, updatedAtMillis)`，不包含正文、prompt、上下文细节或仲裁原因：
+
+- `icon` 是参与者注册时提供的伙伴标记贴图；
+- `defaultOwner` 表示当前轮到默认承接者（辅星），UI 不画伙伴图标；
+- `holdUntilMillis > 0` 表示此人正处在中标租期内，`holdDurationMillis` 是它的档位时长，倒计时环按这两者换算；
+- `holdUntilMillis = 0` 表示这是预中标（上下文命中但还没中标），没有租期，也不画环。
+
+IA 只在显示状态变化时发布：预中标人变化、中标（含续租）、租期到期回默认；没有固定刷新周期。
 
 ## 10. 参与仲裁的推荐流程
 
@@ -388,7 +390,7 @@ PayloadType.DIALOGUE_OWNER_PREVIEW
 
 ### 10.4 退出世界后再次进入
 
-IA 的 participant、owner、session、attention 和 owner preview 都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。IA stop 会先关闭当前 runtime generation 并取消 pending Presence/preview 任务，因此旧世界响应不能在新世界继续仲裁或投递正文。
+IA 的 participant、owner、session、租期和 owner preview 都属于当前世界会话内存状态，不跨世界保留。Core 在退出世界时销毁当前 IA 实例，再次进入世界时装配新的实例。IA stop 会先关闭当前 runtime generation 并取消 pending 到期任务与 Presence 请求，因此旧世界响应不能在新世界继续仲裁或投递正文。
 
 因此外部模组必须把 participant 注册视为世界会话启动步骤：
 
@@ -426,6 +428,7 @@ IA 的 participant、owner、session、attention 和 owner preview 都属于当�
 - [ ] 有稳定 `moduleId`。
 - [ ] 有稳定 `participantId`。
 - [ ] 注册了接收 `DIALOGUE_DELIVERY` 的 capability。
+- [ ] 提供了伙伴标记用的 `icon`（非默认承接者必须），并声明了 `holdTier`。
 - [ ] `DialogueParticipantDescriptor.routeCapability` 指向该 capability。
 - [ ] `routeCapability` 对应能力已经注册，且接收 `DialogueDeliveryPayload` 和 `COMMAND`。
 - [ ] 能在模块停止时注销 participant。

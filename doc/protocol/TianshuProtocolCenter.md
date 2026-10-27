@@ -136,14 +136,19 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
 | `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期和健康状态，供设置、诊断和日志观察。 |
 | `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态与两个并行标记（聆听、后台任务）。 |
+| `PRESENCE.INTERACTION_CONTEXT` | `PRESENCE_INTERACTION_CONTEXT` | 交互上下文摘要（规划中）；映迹在准星、主手、装备、屏幕变化时推送，IA 据它维护预中标人。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
-| `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前如果说话将被哪个 IA owner 承接。 |
+| `DIALOGUE.OWNER_PREVIEW` | `DIALOGUE_OWNER_PREVIEW` | 当前预中标人，或中标人及其租期截止时间。 |
 
 `LLM.STATUS` 只发布 libs `inferenceEventListener` 回调产生的真实推理事件，例如 `QUEUED`、`STARTED`、`PREFILL_STARTED`、`GENERATION_STARTED`、`SUSPENDED`、`COLD_RESUME_STARTED`、`COMPLETED`、`CANCELLED`、`FAILED`。协议层请求接收、admission 排队和响应完成状态由 response payload 与 envelope lifecycle 表达，不混入该 topic。
 
 `MODULE_STATUS` 使用 `ModuleStatusPayload`。它是观察性状态，不替代 `RuntimeCapabilityRegistry` 的请求准入判断。模块应在真实生命周期边界发布已有的 waiting/starting/ready/failed 状态：模型下载完成但运行时尚未初始化或预热时仍发布 waiting，只有对应 capability 已可用后才能发布 ready。状态中的 `messageKey` 由订阅者本地化；common 不依赖具体 HUD 或 GUI。
 
 `PRESENCE.ACTIVITY` 使用 `PresenceActivityPayload`，由活动实际拥有者配对发布 `STARTED/ENDED`。`ERROR`、`RECONNECTING`、`LOADING` 和 `PROCESSING_TASK` 任何模块可发布；`THINKING` / `RESPONDING` 只接受 `module.ax`。`LISTENING` 是回合级活动：`module.asr` 按下说话键时开始，由解析这一轮的模块（`module.ia`）在仲裁给出结果时结束——这是唯一允许非所有者结束的类型。`PROCESSING_TASK` 与 `LISTENING` 是并行标记，不参与主状态排序。完整接入规则见 [Presence产品活动协议使用文档.md](Presence产品活动协议使用文档.md)。
+
+`PRESENCE.INTERACTION_CONTEXT` 使用 `PresenceInteractionContextPayload`（规划中），字段是仲裁条件能读到的上下文子集：准星命中与目标实体、主手与装备物品 id、潜行、交互键、tags、最近白名单实体、屏幕类型。映迹在客户端 tick 里比较这些值，变化才发，topic 用 `LATEST_ONLY`；它不保温 `PRESENCE.QUERY_CONTEXT` 的查询快照。
+
+`DIALOGUE.OWNER_PREVIEW` 使用 `DialogueOwnerPreviewPayload`，只在三种时机发布：预中标人变化、中标（含续租）、租期到期回默认。`holdUntilMillis = 0` 表示预中标（没有租期），`> 0` 表示中标租期的截止时间；没有固定刷新周期。
 
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 
