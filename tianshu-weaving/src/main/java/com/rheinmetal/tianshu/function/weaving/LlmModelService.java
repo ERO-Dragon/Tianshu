@@ -130,12 +130,12 @@ public final class LlmModelService {
         }
         DownloadTask task = new DownloadTask(info.name, modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.llm.download_busy");
+            publishFailed("tianshu.runtime.module.llm.download_busy");
             if (callback != null) callback.onError(ERROR_DOWNLOAD_BUSY_KEY);
             return;
         }
         updateDownload(true, false, false, info.name, ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, STATUS_DOWNLOADING_KEY), "");
-        publishWaiting("tianshu.presence.module.llm.download_started");
+        publishWaiting("tianshu.runtime.module.llm.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(ProtocolModuleIds.LLM)
@@ -157,7 +157,7 @@ public final class LlmModelService {
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             updateDownload(false, false, false, info.name, ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"), ERROR_DOWNLOAD_QUEUE_FULL_KEY);
-            publishFailed("tianshu.presence.module.llm.download_queue_full");
+            publishFailed("tianshu.runtime.module.llm.download_queue_full");
             if (callback != null) callback.onError(ERROR_DOWNLOAD_QUEUE_FULL_KEY);
         }
     }
@@ -344,7 +344,7 @@ public final class LlmModelService {
         }
         availabilityRefresher.refreshNow();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, STATUS_DOWNLOAD_COMPLETE_KEY), "");
-        publishWaiting("tianshu.presence.module.llm.download_complete");
+        publishWaiting("tianshu.runtime.module.llm.download_complete");
         if (callback != null) callback.onComplete();
     }
 
@@ -357,7 +357,7 @@ public final class LlmModelService {
         }
         availabilityRefresher.refreshNow();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, downloadSnapshot.get().progress().percent(), STATUS_CANCELLED_KEY), "");
-        publishWaiting("tianshu.presence.module.llm.download_cancelled");
+        publishWaiting("tianshu.runtime.module.llm.download_cancelled");
         if (callback != null) callback.onCancelled();
     }
 
@@ -370,7 +370,7 @@ public final class LlmModelService {
             env.warn("LLM model download failed: " + message);
         }
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, downloadSnapshot.get().progress().percent(), STATUS_DOWNLOAD_FAILED_KEY), ERROR_DOWNLOAD_FAILED_KEY);
-        publishFailed("tianshu.presence.module.llm.download_failed");
+        publishFailed("tianshu.runtime.module.llm.download_failed");
         if (callback != null) callback.onError(ERROR_DOWNLOAD_FAILED_KEY);
     }
 

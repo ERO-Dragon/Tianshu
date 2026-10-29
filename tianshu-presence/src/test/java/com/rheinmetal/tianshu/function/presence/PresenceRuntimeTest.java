@@ -1,11 +1,13 @@
 package com.rheinmetal.tianshu.function.presence;
 
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.function.presence.capture.PresenceEventCollector;
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
+import com.rheinmetal.tianshu.function.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.function.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.function.presence.context.PresenceContextResponder;
-import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.function.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.function.presence.status.PresenceHudDisplay;
 import com.rheinmetal.tianshu.protocol.AckPolicy;
@@ -15,14 +17,14 @@ import com.rheinmetal.tianshu.protocol.EnvelopeHeader;
 import com.rheinmetal.tianshu.protocol.FailurePolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TargetMode;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import org.junit.jupiter.api.Test;
@@ -201,7 +203,7 @@ class PresenceRuntimeTest {
     void activityTrackerStartsIdleForAnUnknownSession() {
         PresenceActivityTracker tracker = new PresenceActivityTracker();
         assertEquals(
-                com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState.IDLE,
+                com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState.IDLE,
                 tracker.snapshot().primaryState()
         );
     }
@@ -252,7 +254,7 @@ class PresenceRuntimeTest {
                 "PRESENCE.QUERY_CONTEXT",
                 DeliveryPolicy.WAIT_IN_QUEUE,
                 PacketType.REQUEST,
-                PayloadType.PRESENCE_CONTEXT_QUERY,
+                PresencePayloadTypes.CONTEXT_QUERY,
                 AckPolicy.EXPECT_SUCCESS_OR_FAILURE,
                 Priority.NORMAL,
                 ThreadPolicy.ASYNC_WORKER,

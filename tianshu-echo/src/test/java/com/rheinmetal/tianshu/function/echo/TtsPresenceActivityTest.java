@@ -1,5 +1,12 @@
 package com.rheinmetal.tianshu.function.echo;
 
+import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
@@ -10,9 +17,9 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatus;
 import com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -38,6 +45,7 @@ class TtsPresenceActivityTest {
     @Test
     void nonAxRequestPublishesTaskActivityAndAxRequestDoesNotDuplicateChatState() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            installPresence(runtime);
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             TtsModule module = new TtsModule(
                     new NoopAudioBridge(), runtime, new FakeGameEnvironment(),
@@ -66,6 +74,7 @@ class TtsPresenceActivityTest {
     @Test
     void destroyEndsAnyRemainingProductActivities() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            installPresence(runtime);
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             TtsModule module = new TtsModule(
                     new NoopAudioBridge(), runtime, new FakeGameEnvironment(),
@@ -103,6 +112,11 @@ class TtsPresenceActivityTest {
      * 列表里的先后就不再等于发布先后。单并发沿用 {@code BrokerTask} 的派发顺序，也让"重复上报不该失败"
      * 这条宽容度原样保留（这里不断言条数）。</p>
      */
+    /** Registers the presence side of the contract: its topics and its installed-mod guard. */
+    private static void installPresence(ProtocolRuntime runtime) {
+        TianshuRuntimePorts.register(InstalledMods.class, id -> "tianshu_presence".equals(id));
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
+    }
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
         List<PresenceActivityPayload> activities = new java.util.concurrent.CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -113,7 +127,7 @@ class TtsPresenceActivityTest {
                         defaults.supportsStreaming(), 1, defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, PresenceActivityPayload.class,
+                        PresenceTopics.ACTIVITY, PresencePayloadTypes.ACTIVITY, PresenceActivityPayload.class,
                         BrokerType.BOUNDED_QUEUE, EnumSet.of(PacketType.EVENT), Priority.LOW,
                         CompletionPolicy.AUTO_COMPLETE_ON_RETURN
                 ),

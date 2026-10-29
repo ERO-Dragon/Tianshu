@@ -47,7 +47,7 @@ class AXFailureCauseTest {
 
     @Test
     void everyCauseNamesItsOwnSentence() {
-        assertEquals("tianshu.presence.module.ax.failed.rate_limited", AXFailureCause.RATE_LIMITED.messageKey());
+        assertEquals("tianshu.runtime.module.ax.failed.rate_limited", AXFailureCause.RATE_LIMITED.messageKey());
         assertEquals(AXFailureCause.STATUS_KEY_UNKNOWN, AXFailureCause.UNKNOWN.messageKey());
         assertNotEquals(AXFailureCause.PARAMETER.messageKey(), AXFailureCause.PROVIDER_ERROR.messageKey());
         for (AXFailureCause value : AXFailureCause.values()) {

@@ -5,8 +5,8 @@ import com.rheinmetal.tianshu.function.auxilium.AXRequest;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 

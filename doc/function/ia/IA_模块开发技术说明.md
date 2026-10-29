@@ -246,7 +246,7 @@ ProtocolTopics.DIALOGUE_SESSION_EVENTS
 
 写 `PRESENCE.PARTNER` 时只在显示状态变化时写：预中标人变化、中标（含续租）、租期到期回默认。没有固定刷新周期，没有事件就没有流量。
 
-载荷 `PresencePartnerPayload` 的字段：`playerId` / `moduleId` / `participantId` / `icon` / `defaultOwner` / `holdUntilMillis` / `holdDurationMillis` / `updatedAtMillis`。`holdUntilMillis > 0` 表示中标租期（`holdDurationMillis` 是那一档的时长），`0` 表示预中标或默认承接者；主题由协议中心注册（`LATEST_ONLY`），听澜是写入方。
+载荷 `PresencePartnerPayload` 的字段：`playerId` / `moduleId` / `participantId` / `icon` / `defaultOwner` / `holdUntilMillis` / `holdDurationMillis` / `updatedAtMillis`。`holdUntilMillis > 0` 表示中标租期（`holdDurationMillis` 是那一档的时长），`0` 表示预中标或默认承接者；topic 由映迹自注册（`LATEST_ONLY`），听澜是写入方。
 
 IA 订阅映迹的 `PRESENCE.INTERACTION_CONTEXT`（交互上下文摘要）：摘要一变就重算预中标人，变了才写伙伴广播。仲裁用的就是同一份摘要——开口那一刻把它按 sessionId 冻结，同一帧也随 delivery 交给承接者，所以画面上的预中标人与实际拿到这一轮的人不会错开，仲裁也不再有上下文等待。
 

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 
 import java.util.ArrayList;

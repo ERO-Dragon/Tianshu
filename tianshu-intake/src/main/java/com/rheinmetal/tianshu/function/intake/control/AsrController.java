@@ -290,7 +290,7 @@ public final class AsrController {
         ModuleStatus reason = notReadyStatus == null ? null : notReadyStatus.get();
         moduleStatusSink.accept(reason != null
                 ? reason
-                : ModuleStatuses.waitingKeyed(AsrProtocolAdapter.MODULE_ID, "tianshu.presence.module.asr.waking"));
+                : ModuleStatuses.waitingKeyed(AsrProtocolAdapter.MODULE_ID, "tianshu.runtime.module.asr.waking"));
     }
 }
 

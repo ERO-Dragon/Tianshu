@@ -1,15 +1,16 @@
 package com.rheinmetal.tianshu.protocol;
 
 /**
- * The protocol identity of every module that ships with Tianshu.
+ * The protocol identities the kernel and the modules it composes by default share.
  *
  * <p>These strings appear in envelope {@code sourceId}s, task specs, module status, diagnostics and
- * capability ownership. They are collected here so a module id exists exactly once: a front that
+ * capability ownership. They are collected here so an id exists exactly once: a front that
  * spells it out locally drifts the moment the id changes, and the drift is invisible until a status
  * row silently disappears.</p>
  *
- * <p>External modules are not listed here — their ids are their own business, and the protocol only
- * requires them to be non-blank.</p>
+ * <p>A module extracted into its own optional artifact owns its id itself and is <em>not</em> listed here:
+ * presence is the first such module ({@code PresenceProtocolAdapter.MODULE_ID}). External modules were never
+ * listed — their ids are their own business, and the protocol only requires them to be non-blank.</p>
  */
 public final class ProtocolModuleIds {
 
@@ -19,7 +20,6 @@ public final class ProtocolModuleIds {
     public static final String AX = "module.ax";
     public static final String IA = "module.ia";
     public static final String IR = "module.ir";
-    public static final String PRESENCE = "module.presence";
 
     /** Optional platform module that loads the ONNX native runtime before any speech front uses it. */
     public static final String PLATFORM_ONNX_RUNTIME = "module.platform.onnx_runtime";

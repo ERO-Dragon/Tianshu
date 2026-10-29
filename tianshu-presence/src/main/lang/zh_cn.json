@@ -46,7 +46,7 @@
 "tianshu.presence.status.error": "天枢启动失败：请检查 API Key、服务地址或向量模型文件",
 "tianshu.presence.status.reconnecting": "云端 LLM 未就绪，正在重连…",
 "tianshu.presence.status.idle": "",
-"tianshu.presence.module.presence.starting": "映迹正在启动",
-"tianshu.presence.module.presence.ready": "映迹已就绪",
-"tianshu.presence.module.presence.stopped": "映迹已停止"
+"tianshu.runtime.module.presence.starting": "映迹正在启动",
+"tianshu.runtime.module.presence.ready": "映迹已就绪",
+"tianshu.runtime.module.presence.stopped": "映迹已停止"
 }

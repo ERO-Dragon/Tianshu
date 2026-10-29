@@ -1,5 +1,13 @@
 package com.rheinmetal.tianshu.function.weaving;
 
+import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+import com.rheinmetal.tianshu.function.weaving.bridge.LlmPresenceActivityBridge;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -10,9 +18,9 @@ import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
@@ -36,6 +44,7 @@ class LlmPresenceActivityTest {
     @Test
     void taskInferencePublishesProcessingButChatDoesNotPublishThinking() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            installPresence(runtime);
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             LlmModule module = new LlmModule(
                     new FakeGameEnvironment(),
@@ -68,12 +77,13 @@ class LlmPresenceActivityTest {
     @Test
     void runtimeNoticesAreRetractedExactlyOnceWhenTheLaneRecovers() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            installPresence(runtime);
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
 
-            adapter.publishRuntimeActivity(PresenceActivityType.ERROR, 12_000L);
-            adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
-            adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+            adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, 12_000L);
+            adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
+            adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
 
             awaitAction(activities, "llm.runtime.error", PresenceActivityAction.ENDED);
             List<PresenceActivityPayload> errorActivities = activities.stream()
@@ -90,11 +100,12 @@ class LlmPresenceActivityTest {
     @Test
     void aLaneThatNeverReportedAFailureSendsNoEmptyRetraction() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            installPresence(runtime);
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
 
-            adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
-            adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+            adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.RECONNECTING);
+            adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
 
             assertEquals(0, activities.size(), "nothing was announced, so there is nothing to retract");
         }
@@ -103,6 +114,7 @@ class LlmPresenceActivityTest {
     @Test
     void theCloudLaneStartPublishesOneLoadingNoticeAndRetractsItOnce() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            installPresence(runtime);
             List<PresenceActivityPayload> activities = captureActivities(runtime);
             LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
 
@@ -133,6 +145,11 @@ class LlmPresenceActivityTest {
      * {@code AdapterDefaults.standard()} runs {@code maxConcurrency} handlers in parallel, which lets the pair
      * land inverted; one lane keeps the dispatch order of {@code BrokerTask} observable.</p>
      */
+    /** Registers the presence side of the contract: its topics and its installed-mod guard. */
+    private static void installPresence(ProtocolRuntime runtime) {
+        TianshuRuntimePorts.register(InstalledMods.class, id -> "tianshu_presence".equals(id));
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
+    }
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
         List<PresenceActivityPayload> activities = new java.util.concurrent.CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
@@ -143,7 +160,7 @@ class LlmPresenceActivityTest {
                         defaults.supportsStreaming(), 1, defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, PresenceActivityPayload.class,
+                        PresenceTopics.ACTIVITY, PresencePayloadTypes.ACTIVITY, PresenceActivityPayload.class,
                         BrokerType.BOUNDED_QUEUE, EnumSet.of(PacketType.EVENT), Priority.LOW,
                         CompletionPolicy.AUTO_COMPLETE_ON_RETURN
                 ),

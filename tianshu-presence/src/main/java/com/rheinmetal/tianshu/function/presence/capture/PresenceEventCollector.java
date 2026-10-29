@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.presence.capture;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 
 import java.util.Objects;

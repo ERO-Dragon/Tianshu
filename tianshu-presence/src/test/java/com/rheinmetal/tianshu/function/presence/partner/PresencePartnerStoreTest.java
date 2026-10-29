@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.partner;
 
-import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresencePartnerPayload;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

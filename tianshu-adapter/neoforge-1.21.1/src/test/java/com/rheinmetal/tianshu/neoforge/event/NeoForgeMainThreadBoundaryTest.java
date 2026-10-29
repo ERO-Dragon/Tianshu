@@ -178,7 +178,7 @@ final class NeoForgeMainThreadBoundaryTest {
                 StandardCharsets.UTF_8
         );
 
-        String registration = methodBody(bootstrap, "private static void registerShader");
+        String registration = methodBody(bootstrap, "private void registerShader");
         assertTrue(registration.contains("event.registerShader("));
         assertFalse(registration.contains("throw new IllegalStateException"));
     }

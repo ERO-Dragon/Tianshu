@@ -78,7 +78,7 @@ IA 会结合：
 
 ## 5. Presence 查询（已退出）
 
-IR 不再请求 `ProtocolCapabilities.PRESENCE_QUERY_CONTEXT`，也不再消费 `PresenceContextSnapshotPayload`。命名对象增强已由辅星侧自采，`IrNamedObjectEnhancer` 只使用本地索引；代价是裸指代词（"用这个"）不再结合手持物消歧，其余不变。
+IR 不再请求 `PresenceCapabilities.QUERY_CONTEXT`，也不再消费 `PresenceContextSnapshotPayload`。命名对象增强已由辅星侧自采，`IrNamedObjectEnhancer` 只使用本地索引；代价是裸指代词（"用这个"）不再结合手持物消歧，其余不变。
 
 因此 IR 的解析不等待任何外部上下文，Presence 缺失也不会影响它发布文本分析结果。仲裁所需的交互上下文由映迹推送、IA 订阅（`PRESENCE.INTERACTION_CONTEXT`）。
 

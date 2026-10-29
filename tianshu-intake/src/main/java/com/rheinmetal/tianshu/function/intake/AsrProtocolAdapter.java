@@ -1,12 +1,16 @@
 package com.rheinmetal.tianshu.function.intake;
 
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.PresenceActivityIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceActivityIds;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
@@ -14,8 +18,8 @@ import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -64,7 +68,7 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
-        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
+        return publishTopic(PresenceTopics.ACTIVITY, PresencePayloadTypes.ACTIVITY, payload);
     }
 
     public TianshuEnvelope publishListeningActivity(boolean speaking, long sessionId) {

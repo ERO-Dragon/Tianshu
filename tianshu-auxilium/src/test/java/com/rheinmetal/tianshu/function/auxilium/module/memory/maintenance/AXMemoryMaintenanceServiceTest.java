@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium.module.memory.maintenance;
 
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
@@ -32,9 +38,9 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
@@ -377,6 +383,8 @@ class AXMemoryMaintenanceServiceTest {
      * 钉成单并发后顺序重新可断言（与 {@code AsrPresenceActivityTest} 同一个做法）。</p>
      */
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
+        // Presence owns its topics now; the kernel no longer registers them.
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
         List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.subscribeTopic(
@@ -393,8 +401,8 @@ class AXMemoryMaintenanceServiceTest {
                         defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
-                        com.rheinmetal.tianshu.protocol.ProtocolTopics.PRESENCE_ACTIVITY,
-                        PayloadType.PRESENCE_ACTIVITY,
+                        PresenceTopics.ACTIVITY,
+                        PresencePayloadTypes.ACTIVITY,
                         PresenceActivityPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),

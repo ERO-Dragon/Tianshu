@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.presence.context;
 
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
+import com.rheinmetal.tianshu.function.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.function.presence.capture.PresenceContextSnapshotAssembler;
-import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
 import java.util.ArrayList;

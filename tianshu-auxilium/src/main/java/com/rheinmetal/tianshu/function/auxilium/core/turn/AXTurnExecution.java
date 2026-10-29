@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 
 final class AXTurnExecution {
     private final long generation;

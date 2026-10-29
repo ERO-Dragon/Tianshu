@@ -378,14 +378,14 @@ public class TtsModelService {
         }
         DownloadTask task = new DownloadTask(safeModelName(info), modelDir, hasModelContent(info), downloadCoordinator.newSession());
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.tts.download_busy");
+            publishFailed("tianshu.runtime.module.tts.download_busy");
             if (callback != null) {
                 callback.onError("tianshu.gui.tts.failure.download_busy");
             }
             return;
         }
         updateDownload(true, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare"));
-        publishWaiting("tianshu.presence.module.tts.download_started");
+        publishWaiting("tianshu.runtime.module.tts.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(ProtocolModuleIds.TTS)
@@ -407,7 +407,7 @@ public class TtsModelService {
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
             updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"));
-            publishFailed("tianshu.presence.module.tts.download_queue_full");
+            publishFailed("tianshu.runtime.module.tts.download_queue_full");
             if (callback != null) {
                 callback.onError("tianshu.gui.tts.failure.download_queue_full");
             }
@@ -431,7 +431,7 @@ public class TtsModelService {
         }
         task.session().pause();
         updateDownload(true, true, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.PAUSED));
-        publishWaiting("tianshu.presence.module.tts.download_paused");
+        publishWaiting("tianshu.runtime.module.tts.download_paused");
     }
 
     public void resumeDownload() {
@@ -442,7 +442,7 @@ public class TtsModelService {
         }
         task.session().resume();
         updateDownload(true, false, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.DOWNLOADING));
-        publishWaiting("tianshu.presence.module.tts.download_resumed");
+        publishWaiting("tianshu.runtime.module.tts.download_resumed");
     }
 
     public void cancelDownload() {
@@ -457,7 +457,7 @@ public class TtsModelService {
             handle.cancel("model_download_cancelled");
         }
         updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING));
-        publishWaiting("tianshu.presence.module.tts.download_cancelling");
+        publishWaiting("tianshu.runtime.module.tts.download_cancelling");
     }
 
     /** Cancels an in-flight model transfer when the owning module stops. */
@@ -761,7 +761,7 @@ public class TtsModelService {
         }
         availabilityRefresher.refreshNow();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "download.completed"));
-        publishWaiting("tianshu.presence.module.tts.download_complete");
+        publishWaiting("tianshu.runtime.module.tts.download_complete");
         if (callback != null) {
             callback.onComplete();
         }
@@ -777,7 +777,7 @@ public class TtsModelService {
         availabilityRefresher.refreshNow();
         int progress = downloadStatus.get().progress().percent();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.cancelled"));
-        publishWaiting("tianshu.presence.module.tts.download_cancelled");
+        publishWaiting("tianshu.runtime.module.tts.download_cancelled");
         if (callback != null) {
             callback.onCancelled();
         }
@@ -790,7 +790,7 @@ public class TtsModelService {
         availabilityRefresher.refreshNow();
         int progress = downloadStatus.get().progress().percent();
         updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.failed"));
-        publishFailed("tianshu.presence.module.tts.download_failed");
+        publishFailed("tianshu.runtime.module.tts.download_failed");
         if (callback != null) {
             callback.onError(message);
         }

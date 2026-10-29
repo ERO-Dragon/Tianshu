@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.client.host.game.GameInteractionContext;
 import com.rheinmetal.tianshu.client.host.game.GameScreenKind;
 import com.rheinmetal.tianshu.client.host.game.GameTarget;
 import com.rheinmetal.tianshu.function.presence.FakeGameContextPort;
-import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceInteractionContextPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

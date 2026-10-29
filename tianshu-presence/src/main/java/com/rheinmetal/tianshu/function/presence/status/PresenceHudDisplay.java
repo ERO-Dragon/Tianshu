@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.status;
 
-import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.function.presence.hud.PresenceHudVisualState;
 
 /**

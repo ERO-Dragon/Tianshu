@@ -42,7 +42,7 @@ import java.util.Set;
  * <p>Nothing is cached: a capture is what the game looks like at this instant.</p>
  */
 public final class NeoForgeGameContextPort implements ClientGameContextPort {
-    private final NeoForgePresenceScreenClassifier screenClassifier = new NeoForgePresenceScreenClassifier();
+    private final NeoForgeGameScreenClassifier screenClassifier = new NeoForgeGameScreenClassifier();
     private final ClientLanguageSnapshot languageSnapshot;
     private final LogSink logSink;
 
@@ -74,7 +74,7 @@ public final class NeoForgeGameContextPort implements ClientGameContextPort {
                 minecraft.level.dimension().location().toString(),
                 ClientLanguagePolicy.registryDisplayName(
                         minecraft.level.dimension().location(), "dimension", languageCode),
-                screenKind(screen),
+                screenClassifier.classify(screen),
                 itemId(player.getMainHandItem()),
                 ClientLanguagePolicy.itemDisplayName(player.getMainHandItem(),
                         BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()), languageCode),
@@ -196,18 +196,6 @@ public final class NeoForgeGameContextPort implements ClientGameContextPort {
     private Player player() {
         Minecraft minecraft = Minecraft.getInstance();
         return minecraft == null ? null : minecraft.player;
-    }
-
-    private GameScreenKind screenKind(Screen screen) {
-        return switch (screenClassifier.classify(screen)) {
-            case NONE -> GameScreenKind.NONE;
-            case PAUSE -> GameScreenKind.PAUSE;
-            case CHAT -> GameScreenKind.CHAT;
-            case INVENTORY -> GameScreenKind.INVENTORY;
-            case CONTAINER -> GameScreenKind.CONTAINER;
-            case SETTINGS -> GameScreenKind.SETTINGS;
-            case OTHER -> GameScreenKind.OTHER;
-        };
     }
 
     private List<String> equippedItemIds(Player player) {

@@ -1,5 +1,5 @@
 {
-  "tianshu.presence.module.ia.starting": "Intent starting",
-  "tianshu.presence.module.ia.ready": "Intent ready",
-  "tianshu.presence.module.ia.stopped": "Intent stopped"
+  "tianshu.runtime.module.ia.starting": "Intent starting",
+  "tianshu.runtime.module.ia.ready": "Intent ready",
+  "tianshu.runtime.module.ia.stopped": "Intent stopped"
 }

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving;
 
+import com.rheinmetal.tianshu.function.weaving.bridge.LlmPresenceActivityBridge;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
@@ -26,8 +27,6 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayl
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -50,7 +49,9 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private volatile LlmRagStorageService ragStorageService;
     private volatile Supplier<LLMRuntimeSnapshotPayload> unavailableRuntimeSnapshotSupplier;
     /** Runtime notices currently published, so recovery ends exactly the ones that are up. */
-    private final Set<PresenceActivityType> activeRuntimeActivities = ConcurrentHashMap.newKeySet();
+    private final Set<LlmPresenceActivityBridge.Kind> activeRuntimeActivities = ConcurrentHashMap.newKeySet();
+    /** The optional HUD integration; a no-op when presence is not installed. */
+    private final LlmPresenceActivityBridge presenceActivity;
     /** Whether the startup notice is up; a clean start never sends an empty retraction. */
     private final java.util.concurrent.atomic.AtomicBoolean loadingPublished = new java.util.concurrent.atomic.AtomicBoolean();
     private final LlmTaskAdmissionController taskAdmissionController;
@@ -90,6 +91,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                         .withSupportsStreaming(true)
         );
         this.llmService = llmService;
+        this.presenceActivity = LlmPresenceActivityBridge.of(runtime, SOURCE_ID);
         this.taskAdmissionController = taskAdmissionController == null
                 ? new LlmTaskAdmissionController(0)
                 : taskAdmissionController;
@@ -275,26 +277,26 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         String activityId = "llm.model.load";
         if (loading) {
             loadingPublished.set(true);
-            return publishPresenceActivity(PresenceActivityPayload.started(
+            return presenceActivity.publish(
                     activityId,
-                    PresenceActivityType.LOADING,
+                    LlmPresenceActivityBridge.Kind.LOADING,
+                    true,
                     MODEL_LOADING_TTL_MILLIS
-            ));
+            );
         }
         if (!loadingPublished.compareAndSet(true, false)) {
             return null;
         }
-        return publishPresenceActivity(PresenceActivityPayload.ended(
-                activityId,
-                PresenceActivityType.LOADING
-        ));
+        return presenceActivity.publish(activityId, LlmPresenceActivityBridge.Kind.LOADING, false, 0L);
     }
 
     public TianshuEnvelope publishTaskActivity(String taskId, boolean active) {
-        String activityId = "llm.task." + taskId;
-        return publishPresenceActivity(active
-                ? PresenceActivityPayload.started(activityId, PresenceActivityType.PROCESSING_TASK, TASK_ACTIVITY_TTL_MILLIS)
-                : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
+        return presenceActivity.publish(
+                "llm.task." + taskId,
+                LlmPresenceActivityBridge.Kind.PROCESSING_TASK,
+                active,
+                TASK_ACTIVITY_TTL_MILLIS
+        );
     }
 
     /**
@@ -306,10 +308,10 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
      * dies mid-notice; a lane that recovers or shuts down calls {@link #clearRuntimeActivity} instead of
      * waiting for it.</p>
      */
-    public TianshuEnvelope publishRuntimeActivity(PresenceActivityType type, long ttlMillis) {
-        String activityId = runtimeActivityId(type);
+    public TianshuEnvelope publishRuntimeActivity(LlmPresenceActivityBridge.Kind type, long ttlMillis) {
+        String activityId = LlmPresenceActivityBridge.runtimeActivityId(type);
         activeRuntimeActivities.add(type);
-        return publishPresenceActivity(PresenceActivityPayload.started(activityId, type, Math.max(1L, ttlMillis)));
+        return presenceActivity.publish(activityId, type, true, Math.max(1L, ttlMillis));
     }
 
     /**
@@ -322,22 +324,11 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
      * <p>Retracting a notice that was never published sends nothing: a lane that starts cleanly must not
      * produce a pair of empty end events on every world load.</p>
      */
-    public TianshuEnvelope clearRuntimeActivity(PresenceActivityType type) {
+    public TianshuEnvelope clearRuntimeActivity(LlmPresenceActivityBridge.Kind type) {
         if (!activeRuntimeActivities.remove(type)) {
             return null;
         }
-        return publishPresenceActivity(PresenceActivityPayload.ended(runtimeActivityId(type), type));
-    }
-
-    private static String runtimeActivityId(PresenceActivityType type) {
-        if (type != PresenceActivityType.RECONNECTING && type != PresenceActivityType.ERROR) {
-            throw new IllegalArgumentException("runtime activity must be RECONNECTING or ERROR");
-        }
-        return "llm.runtime." + type.name().toLowerCase(java.util.Locale.ROOT);
-    }
-
-    private TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
-        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
+        return presenceActivity.publish(LlmPresenceActivityBridge.runtimeActivityId(type), type, false, 0L);
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

@@ -1,7 +1,11 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
-import com.rheinmetal.tianshu.protocol.PresenceActivityIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceActivityIds;
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
@@ -22,11 +26,11 @@ import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresencePartnerPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
@@ -137,8 +141,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
      */
     public TianshuEnvelope publishListeningEnded(long sourceSessionId) {
         return publishTopic(
-                ProtocolTopics.PRESENCE_ACTIVITY,
-                PayloadType.PRESENCE_ACTIVITY,
+                PresenceTopics.ACTIVITY,
+                PresencePayloadTypes.ACTIVITY,
                 PresenceActivityPayload.ended(
                         PresenceActivityIds.listening(sourceSessionId),
                         PresenceActivityType.LISTENING
@@ -164,13 +168,13 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
      * product broadcast, not a reply to anything.</p>
      */
     public TianshuEnvelope publishPartner(PresencePartnerPayload payload) {
-        return publishTopic(ProtocolTopics.PRESENCE_PARTNER, PayloadType.PRESENCE_PARTNER, payload);
+        return publishTopic(PresenceTopics.PARTNER, PresencePayloadTypes.PARTNER, payload);
     }
 
     public void subscribeInteractionContext(EnvelopeHandler handler) {
         subscribeTopic(
-                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
-                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                PresenceTopics.INTERACTION_CONTEXT,
+                PresencePayloadTypes.INTERACTION_CONTEXT,
                 PresenceInteractionContextPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.EVENT),

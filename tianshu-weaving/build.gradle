@@ -13,10 +13,12 @@ repositories {
 
 dependencies {
     api project(':tianshu-core')
+    compileOnly project(':tianshu-presence')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation project(':tianshu-testkit')
+    testImplementation project(':tianshu-presence')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testImplementation 'org.apache.commons:commons-compress:1.26.0'

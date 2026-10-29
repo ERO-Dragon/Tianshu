@@ -13,16 +13,14 @@ import com.rheinmetal.tianshu.function.presence.context.PresenceContextQueryCoor
 import com.rheinmetal.tianshu.function.presence.context.PresenceInteractionContextWatcher;
 import com.rheinmetal.tianshu.function.presence.hud.PresenceHudLayer;
 import com.rheinmetal.tianshu.function.presence.hud.PresenceHudSettings;
-import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.function.presence.model.PresenceActivitySnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.function.presence.partner.PresencePartnerSnapshot;
 import com.rheinmetal.tianshu.function.presence.partner.PresencePartnerStore;
 import com.rheinmetal.tianshu.function.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.function.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.function.presence.status.PresenceHudDisplay;
-import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
-import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
-import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 
 import java.util.Objects;
 
@@ -102,15 +100,16 @@ public final class PresenceClientRuntime {
     /**
      * The module as the platform installs it.
      *
-     * <p>The installer also owns the HUD layer's lifetime: the layer appears when the module registers and disappears
-     * when it stops, so a disabled module costs the render loop nothing at all.</p>
+     * <p>The adapter is built by the provider, because presence registers its own protocol vocabulary (topics and
+     * payload kinds) while the session is assembled, before any module can publish. The installer still owns the HUD
+     * layer's lifetime: the layer appears when the module registers and disappears when it stops, so a disabled module
+     * costs the render loop nothing at all.</p>
      */
     public TianshuModuleInstaller moduleInstaller(
-            ModuleRuntimeAccess moduleRuntime,
+            PresenceProtocolAdapter adapter,
             HudHost hud,
             PresenceHudSettings settings
     ) {
-        PresenceProtocolAdapter adapter = new PresenceProtocolAdapter(moduleRuntime);
         contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
         interactionContextWatcher.setSink(adapter::publishInteractionContext);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);

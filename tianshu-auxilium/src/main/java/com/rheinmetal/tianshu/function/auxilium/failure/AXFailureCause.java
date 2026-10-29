@@ -37,7 +37,7 @@ public enum AXFailureCause {
     /** 认不出来的失败。缺省选择重试：对方此刻不行比"请求本身不行"更常见。 */
     UNKNOWN(true);
 
-    private static final String STATUS_KEY_PREFIX = "tianshu.presence.module.ax.failed";
+    private static final String STATUS_KEY_PREFIX = "tianshu.runtime.module.ax.failed";
     /** 认不出原因时用通用那一句；{@code AXTurnStatusPublisher.KEY_FAILED} 指向同一个键。 */
     public static final String STATUS_KEY_UNKNOWN = STATUS_KEY_PREFIX;
 

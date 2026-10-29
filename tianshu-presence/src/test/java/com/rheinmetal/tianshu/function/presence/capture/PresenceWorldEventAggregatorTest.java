@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.capture;
 
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

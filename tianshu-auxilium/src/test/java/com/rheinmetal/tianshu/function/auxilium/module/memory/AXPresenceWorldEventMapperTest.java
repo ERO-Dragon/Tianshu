@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScopeKind;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

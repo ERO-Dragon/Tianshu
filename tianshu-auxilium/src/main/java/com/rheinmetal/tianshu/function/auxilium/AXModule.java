@@ -84,7 +84,7 @@ import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannel;
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXDialogueChannels;
 import com.rheinmetal.tianshu.function.auxilium.contract.AXWorldEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
@@ -132,7 +132,7 @@ public final class AXModule implements TianshuManagedModule {
      *
      * <p>它只说"辅星没起来"，不指路：指路的话（检查密钥/模型）只对织言成立，对辅星是误导。</p>
      */
-    private static final String STARTUP_FAILED_KEY = "tianshu.presence.module.ax.startup_failed";
+    private static final String STARTUP_FAILED_KEY = "tianshu.runtime.module.ax.startup_failed";
 
     private AXTurnOrchestrator turnOrchestrator;
     private InputSignals.Subscription textInputSubscription;

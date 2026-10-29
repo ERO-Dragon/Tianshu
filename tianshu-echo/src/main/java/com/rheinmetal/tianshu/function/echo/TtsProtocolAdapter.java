@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.echo;
 
+import com.rheinmetal.tianshu.function.echo.bridge.TtsPresenceActivityBridge;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
@@ -20,8 +21,6 @@ import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackStatusPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatusPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsSpeakPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsSynthesisRequestPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
@@ -34,8 +33,11 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
     private static final long MODEL_LOADING_TTL_MILLIS = 300_000L;
     private static final long REQUEST_ACTIVITY_TTL_MILLIS = 900_000L;
 
+    private final TtsPresenceActivityBridge presenceActivity;
+
     public TtsProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withThreadPolicy(ThreadPolicy.IO_BLOCKING).withConcurrency(1, 64));
+        this.presenceActivity = TtsPresenceActivityBridge.of(runtime, SOURCE_ID);
     }
 
     public void registerSpeakCapability(EnvelopeHandler handler) {
@@ -103,20 +105,21 @@ public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishLoadingActivity(boolean loading) {
-        return publishPresenceActivity(loading
-                ? PresenceActivityPayload.started("tts.model.load", PresenceActivityType.LOADING, MODEL_LOADING_TTL_MILLIS)
-                : PresenceActivityPayload.ended("tts.model.load", PresenceActivityType.LOADING));
+        return presenceActivity.publish(
+                "tts.model.load",
+                TtsPresenceActivityBridge.Kind.LOADING,
+                loading,
+                MODEL_LOADING_TTL_MILLIS
+        );
     }
 
     public TianshuEnvelope publishRequestActivity(String requestId, boolean active) {
-        String activityId = "tts.request." + requestId;
-        return publishPresenceActivity(active
-                ? PresenceActivityPayload.started(activityId, PresenceActivityType.PROCESSING_TASK, REQUEST_ACTIVITY_TTL_MILLIS)
-                : PresenceActivityPayload.ended(activityId, PresenceActivityType.PROCESSING_TASK));
-    }
-
-    private TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
-        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
+        return presenceActivity.publish(
+                "tts.request." + requestId,
+                TtsPresenceActivityBridge.Kind.PROCESSING_TASK,
+                active,
+                REQUEST_ACTIVITY_TTL_MILLIS
+        );
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

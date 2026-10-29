@@ -9,7 +9,7 @@ import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
-import com.rheinmetal.tianshu.neoforge.server.PresenceServerCollector;
+import com.rheinmetal.tianshu.neoforge.server.GameFactCollector;
 import com.rheinmetal.tianshu.neoforge.ui.NeoForgeClientKeyBindings;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -42,7 +42,7 @@ public final class TianshuNeoForge {
      * same process, and the same packet path has to feed those facts. Listeners only act on {@code ServerPlayer}, so
      * on a client connected to a remote server they simply never fire.</p>
      */
-    private final PresenceServerCollector serverCollector;
+    private final GameFactCollector serverCollector;
 
     public TianshuNeoForge(IEventBus modEventBus, ModContainer modContainer) {
         // Modules are platform-free: when they integrate with an optional partner, the only sane answer to
@@ -55,7 +55,7 @@ public final class TianshuNeoForge {
         // The collector is registered on both distributions: in single player the integrated server lives in this
         // same process, and "single player takes the same packet path" is a stated requirement. Its listeners only
         // act on {@code ServerPlayer}, so on a client connected to a remote server they simply never fire.
-        serverCollector = new PresenceServerCollector();
+        serverCollector = new GameFactCollector();
         serverCollector.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             clientBootstrap = new NeoForgeClientBootstrap();

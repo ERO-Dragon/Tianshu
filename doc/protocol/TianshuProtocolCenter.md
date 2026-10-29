@@ -150,6 +150,11 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 
 `PRESENCE.PARTNER` 使用 `PresencePartnerPayload`（归映迹所有，写入方是听澜），只在三种时机发布：预中标人变化、中标（含续租）、租期到期回默认。`holdUntilMillis = 0` 表示预中标（没有租期），`> 0` 表示中标租期的截止时间；没有固定刷新周期。
 
+映迹已拆成独立功能模组 `tianshu-presence`：上下文查询/快照、产品活动、伙伴、交互上下文、世界事件窗口这些载荷都在
+`com.rheinmetal.tianshu.function.presence.payload`，载荷类型、能力名与 topic 也由映迹注册（`PresencePayloadTypes` /
+`PresenceCapabilities` / `PresenceTopics`）。听澜/辅星以前置依赖引用它们；回响/织言只通过各自的 `bridge` 报告 HUD
+活动，映迹缺席时 bridge 为 NOOP、活动不发布。
+
 高频主题必须节流，优先使用 `LATEST_ONLY`、`COALESCE` 或短生命周期默认值。协议中心不是帧级 UI RenderBus，模块私有高频 UI 状态应由模块内部维护快照。
 
 ### 3.3 协议响应 Response

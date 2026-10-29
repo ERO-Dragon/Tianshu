@@ -175,7 +175,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             // the MODEL capability and the status channel, exactly like the speech backend of TTS.
             requestEngineLoad(context);
         } catch (RuntimeException | Error failure) {
-            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.presence.module.asr.failed", lifecycleStatusGeneration));
+            publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.runtime.module.asr.failed", lifecycleStatusGeneration));
             throw failure;
         }
     }
@@ -310,17 +310,17 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private ModuleStatus notReadyStatus() {
         ModuleRuntimeState state = runtimeState;
         if (state == null || !state.capabilities().isReady(AsrRuntimeCapabilities.INPUT)) {
-            return ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.waking");
+            return ModuleStatuses.waitingKeyed(moduleId(), "tianshu.runtime.module.asr.waking");
         }
         if (engineLoadInFlight.get()) {
             // The model is queued or being read right now. Reporting "not installed" here would send the
             // player off to re-download a model that is already there.
-            return ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.loading");
+            return ModuleStatuses.waitingKeyed(moduleId(), "tianshu.runtime.module.asr.loading");
         }
         ModuleStatus last = engineStatus;
         return last != null
                 ? last
-                : ModuleStatuses.waitingKeyed(moduleId(), "tianshu.presence.module.asr.not_installed");
+                : ModuleStatuses.waitingKeyed(moduleId(), "tianshu.runtime.module.asr.not_installed");
     }
 
     private boolean canAcceptVoiceInput() {
@@ -409,7 +409,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             engine = loaded;
         } catch (RuntimeException | LinkageError failure) {
             env.error("asr.engine.load_failed", failure);
-            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.exception"));
+            publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.asr.exception"));
         } finally {
             engineLoadInFlight.set(false);
             adapter.publishLoadingActivity(false);
@@ -427,7 +427,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             state.capabilities().install(AsrRuntimeCapabilities.MODEL, moduleId());
             state.capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId());
         }
-        engineStatus = ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.asr.ready");
+        engineStatus = ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.asr.ready");
     }
 
     private void shutdownQuietly(AsrEngine target) {
@@ -457,7 +457,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (state != null) {
             state.capabilities().markFailed(AsrRuntimeCapabilities.MODEL, moduleId(), detail);
         }
-        ModuleStatus failed = ModuleStatuses.failedKeyed(moduleId(), "tianshu.presence.module.asr.load_rejected");
+        ModuleStatus failed = ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.asr.load_rejected");
         engineStatus = failed;
         publishModuleStatus(failed);
     }

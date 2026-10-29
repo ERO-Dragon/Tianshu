@@ -164,7 +164,7 @@ ASR 发布最终文本
 | `LLM_REQUEST` | 当前 owner 轮次的对话请求；后台维护与委派走 COMPLEX 车道 |
 | `LLM_PRIMITIVE_QUERY` | token 计数、嵌入与运行时原语 |
 | `LLM_CACHE_MANAGE` | 记忆检索（RAG 查询）与缓存管理 |
-| `PRESENCE_QUERY_CONTEXT` | 获取允许的动态事实快照 |
+| `QUERY_CONTEXT` | 获取允许的动态事实快照 |
 | `TTS_SPEAK` | 播放 AX 可见回复 |
 | `TTS_CONTROL` | 新一轮投递到达时停止 AX 自己的播报 |
 | `DIALOGUE_SESSION_CONTROL` | 延长、释放或确认中断当前会话 |
@@ -294,7 +294,7 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 | `ProtocolCapabilities.LLM_REQUEST` | `LLM.REQUEST` | 一次对话生成 |
 | `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLM.PRIMITIVE_QUERY` | 原语查询（向量/计算类） |
 | `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLM.CACHE_MANAGE` | 缓存管理 |
-| `ProtocolCapabilities.PRESENCE_QUERY_CONTEXT` | `PRESENCE.QUERY_CONTEXT` | 向映迹索取上下文事实 |
+| `PresenceCapabilities.QUERY_CONTEXT` | `PRESENCE.QUERY_CONTEXT` | 向映迹索取上下文事实 |
 | `ProtocolCapabilities.TTS_SPEAK` | `TTS_SPEAK` | 让回响说话 |
 | `ProtocolCapabilities.TTS_CONTROL` | `TTS_CONTROL` | 播报控制（停止/状态等） |
 | `ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER` | `DIALOGUE.PARTICIPANT_REGISTER` | 以参与者身份登记（唤醒词） |
@@ -315,7 +315,7 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 | 符号 | 值/来源 | 用途 |
 |---|---|---|
 | `ProtocolTopics.MODULE_STATUS` | `MODULE.STATUS` | AX 自身的健康与诊断状态；订阅方按 `module.ax` 过滤 |
-| `ProtocolTopics.PRESENCE_ACTIVITY` | `PRESENCE.ACTIVITY` | 准备中/起不来 + 思考/回答与记忆维护活动，不含正文 |
+| `PresenceTopics.ACTIVITY` | `PRESENCE.ACTIVITY` | 准备中/起不来 + 思考/回答与记忆维护活动，不含正文 |
 
 `PRESENCE.ACTIVITY` 上的三条活动，语义各不相同：
 
@@ -329,7 +329,7 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 辅星装配是同步构造，这条活动通常一闪而过，它的价值在于"装配结束时一定被收起"，而不是提示时长。
 
 **装配失败不发 `PRESENCE.ACTIVITY`**，只发模块状态（`runtime.lifecycle`，`CRITICAL`，键
-`tianshu.presence.module.ax.startup_failed`）。三条理由：映迹的 `ERROR` 只有一句"检查 API Key、服务地址或
+`tianshu.runtime.module.ax.startup_failed`）。三条理由：映迹的 `ERROR` 只有一句"检查 API Key、服务地址或
 向量模型文件"，辅星装配失败与它们无关，会把玩家指向无关的东西；装配抛异常的模块不会进"已准备"列表，
 运行时不会对它调 `stop()` / `destroy()`，那条提示收不回来，只能等 TTL；而且装配失败不是玩家能操作的事，
 不该占用"需要你动手"的 ERROR 位。

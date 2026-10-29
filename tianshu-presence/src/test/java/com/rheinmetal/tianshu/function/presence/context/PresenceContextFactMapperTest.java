@@ -1,16 +1,16 @@
 package com.rheinmetal.tianshu.function.presence.context;
 
-import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceEquipment;
-import com.rheinmetal.tianshu.client.presence.model.PresenceInventoryItem;
-import com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus;
-import com.rheinmetal.tianshu.client.presence.model.PresencePotionEffect;
-import com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment;
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.function.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresenceEquipment;
+import com.rheinmetal.tianshu.function.presence.model.PresenceInventoryItem;
+import com.rheinmetal.tianshu.function.presence.model.PresencePlayerStatus;
+import com.rheinmetal.tianshu.function.presence.model.PresencePotionEffect;
+import com.rheinmetal.tianshu.function.presence.model.PresenceTargetSnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresenceWorldEnvironment;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.payload.FactField;
 import com.rheinmetal.tianshu.protocol.payload.FactValue;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -73,7 +73,7 @@ class PresenceContextFactMapperTest {
                 "player-uuid",
                 "minecraft:overworld",
                 "主世界",
-                com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind.NONE,
+                com.rheinmetal.tianshu.function.presence.model.PresenceScreenKind.NONE,
                 "",
                 "",
                 List.of(),
@@ -145,7 +145,7 @@ class PresenceContextFactMapperTest {
                 "player-uuid",
                 "minecraft:overworld",
                 "主世界",
-                com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind.NONE,
+                com.rheinmetal.tianshu.function.presence.model.PresenceScreenKind.NONE,
                 "minecraft:iron_sword",
                 "Iron Sword",
                 List.of("minecraft:iron_helmet"),

@@ -62,9 +62,9 @@ public final class AXMemoryMaintenanceService {
     private static final int VECTOR_BATCH_SIZE = 64;
     private static final long TASK_STAGE_TIMEOUT_SECONDS = 120L;
     private static final long WORLD_EVENT_ATTACHMENT_GRACE_MILLIS = 30_000L;
-    private static final String STATUS_KEY_STARTED = "tianshu.presence.module.ax.memory_maintenance_started";
-    private static final String STATUS_KEY_COMPLETE = "tianshu.presence.module.ax.memory_maintenance_complete";
-    private static final String STATUS_KEY_FAILED = "tianshu.presence.module.ax.memory_maintenance_failed";
+    private static final String STATUS_KEY_STARTED = "tianshu.runtime.module.ax.memory_maintenance_started";
+    private static final String STATUS_KEY_COMPLETE = "tianshu.runtime.module.ax.memory_maintenance_complete";
+    private static final String STATUS_KEY_FAILED = "tianshu.runtime.module.ax.memory_maintenance_failed";
 
     private volatile MaintenanceObserver maintenanceObserver = MaintenanceObserver.NONE;
 

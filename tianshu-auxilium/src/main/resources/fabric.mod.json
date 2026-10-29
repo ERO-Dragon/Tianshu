@@ -15,7 +15,8 @@
     "minecraft": ">=1.21 <1.22",
     "tianshu": ">=${mod_version}",
     "tianshu_libs": ">=1.0.0",
-    "tianshu_weaving": ">=${mod_version}"
+    "tianshu_weaving": ">=${mod_version}",
+    "tianshu_presence": ">=${mod_version}"
   },
   "suggests": {
     "tianshu_intake": ">=${mod_version}",

@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.function.presence.context;
 
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
-import com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup;
+import com.rheinmetal.tianshu.function.presence.context.PresenceContextGroup;
 import com.rheinmetal.tianshu.function.presence.capture.PresenceContextSnapshotAssembler;
-import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.function.presence.model.PresenceContextSnapshot;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceInteractionContextPayload;
 
 import java.util.EnumSet;
 import java.util.Objects;
@@ -12,7 +12,7 @@ import java.util.Objects;
 /**
  * Publishes {@code PRESENCE.INTERACTION_CONTEXT} whenever the claim-relevant interaction changes.
  *
- * <p>It captures only the {@link com.rheinmetal.tianshu.client.presence.context.PresenceContextGroup#INTERACTION_CONTEXT}
+ * <p>It captures only the {@link com.rheinmetal.tianshu.function.presence.context.PresenceContextGroup#INTERACTION_CONTEXT}
  * group — the crosshair target, held and equipped items, interaction keys and the open screen. Every other
  * group (inventory, effects, environment) stays out of this path, so the per-tick cost is reading values the
  * client already has, and a push only leaves when the comparison says the situation really changed.</p>

@@ -38,8 +38,8 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 // one-directional and no cycle forms. That edge is required today because without intake nothing delivers
 // dialogue to auxilium at all; making it optional needs a bridge over the 12 files that use those types.
 def requiredFeatureEdges = [
-        'auxilium': ['weaving'],
-        'intake'  : [],
+        'auxilium': ['weaving', 'presence'],
+        'intake'  : ['presence'],
         'weaving' : [],
         'echo'    : [],
         'presence': [],
@@ -47,8 +47,8 @@ def requiredFeatureEdges = [
 def optionalFeatureEdges = [
         'auxilium': ['intake', 'echo'],
         'intake'  : [],
-        'weaving' : [],
-        'echo'    : [],
+        'weaving' : ['presence'],
+        'echo'    : ['presence'],
         'presence': [],
 ]
 def allowedFeatureEdges = [:]

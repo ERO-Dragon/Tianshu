@@ -1,25 +1,26 @@
 package com.rheinmetal.tianshu.function.presence;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
-import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
@@ -31,8 +32,9 @@ import java.util.EnumSet;
 import java.util.List;
 
 public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
-    public static final String MODULE_ID = ProtocolModuleIds.PRESENCE;
-    public static final String SOURCE_ID = ProtocolModuleIds.PRESENCE;
+    /** Presence's protocol identity; the module owns this name instead of the kernel's id table. */
+    public static final String MODULE_ID = "module.presence";
+    public static final String SOURCE_ID = MODULE_ID;
 
     private boolean ownedTopicsRegistered;
 
@@ -40,29 +42,48 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard());
     }
 
+    /**
+     * Registers every topic presence owns.
+     *
+     * <p>It is called while the session is assembled, before any module's {@code register()} runs, which is what lets
+     * the activity and partner topics exist by the time their producers publish. The kernel registers no presence
+     * topic at all, so removing this module removes them.</p>
+     */
     public synchronized void registerOwnedTopics(ModuleProtocolAccess protocol) {
         if (ownedTopicsRegistered) {
             return;
         }
         protocol.registerTopic(new TopicDescriptor(
-                PresenceWorldEventPayload.TOPIC,
+                PresenceTopics.ACTIVITY,
+                PresencePayloadTypes.ACTIVITY,
+                DeliveryPolicy.WAIT_IN_QUEUE,
+                80
+        ));
+        protocol.registerTopic(new TopicDescriptor(
+                PresenceTopics.WORLD_EVENT,
                 PayloadType.CUSTOM,
                 DeliveryPolicy.WAIT_IN_QUEUE,
                 40
         ));
         protocol.registerTopic(new TopicDescriptor(
-                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
-                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                PresenceTopics.INTERACTION_CONTEXT,
+                PresencePayloadTypes.INTERACTION_CONTEXT,
                 DeliveryPolicy.LATEST_ONLY,
                 20
+        ));
+        protocol.registerTopic(new TopicDescriptor(
+                PresenceTopics.PARTNER,
+                PresencePayloadTypes.PARTNER,
+                DeliveryPolicy.LATEST_ONLY,
+                10
         ));
         ownedTopicsRegistered = true;
     }
 
     public void registerQueryContextCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
-                PayloadType.PRESENCE_CONTEXT_QUERY,
+                PresenceCapabilities.QUERY_CONTEXT,
+                PresencePayloadTypes.CONTEXT_QUERY,
                 PresenceContextQueryPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.REQUEST),
@@ -75,8 +96,8 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
 
     public void subscribePresenceActivity(EnvelopeHandler handler) {
         subscribeTopic(
-                ProtocolTopics.PRESENCE_ACTIVITY,
-                PayloadType.PRESENCE_ACTIVITY,
+                PresenceTopics.ACTIVITY,
+                PresencePayloadTypes.ACTIVITY,
                 PresenceActivityPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.EVENT),
@@ -95,8 +116,8 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
      */
     public void subscribePartner(EnvelopeHandler handler) {
         subscribeTopic(
-                ProtocolTopics.PRESENCE_PARTNER,
-                PayloadType.PRESENCE_PARTNER,
+                PresenceTopics.PARTNER,
+                PresencePayloadTypes.PARTNER,
                 PresencePartnerPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.EVENT),
@@ -139,13 +160,13 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
             List<PresenceContextSnapshotPayload.FactPayload> facts,
             ProtocolContext context
     ) {
-        respondTo(parent, PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+        respondTo(parent, PresencePayloadTypes.CONTEXT_SNAPSHOT,
                 PresenceContextSnapshotPayload.success(requestId, facts));
         context.complete(parent.envelopeId());
     }
 
     public TianshuEnvelope publishWorldEvent(PresenceWorldEventPayload payload) {
-        return publishTopic(PresenceWorldEventPayload.TOPIC, PayloadType.CUSTOM, payload);
+        return publishTopic(PresenceTopics.WORLD_EVENT, PayloadType.CUSTOM, payload);
     }
 
     /**
@@ -156,8 +177,8 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
      */
     public TianshuEnvelope publishInteractionContext(PresenceInteractionContextPayload payload) {
         return publishTopic(
-                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
-                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                PresenceTopics.INTERACTION_CONTEXT,
+                PresencePayloadTypes.INTERACTION_CONTEXT,
                 payload
         );
     }
@@ -169,6 +190,4 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
                 new ModuleStatusPayload(status)
         );
     }
-
 }
-

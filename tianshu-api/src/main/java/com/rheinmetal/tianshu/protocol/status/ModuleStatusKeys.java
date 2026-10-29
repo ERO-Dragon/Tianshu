@@ -22,18 +22,22 @@ import java.util.Set;
  */
 public final class ModuleStatusKeys {
 
-    /** The key family every presence row lives in. */
-    private static final String PREFIX = "tianshu.presence.";
+    /** The neutral key family every module's lifecycle row lives in. */
+    private static final String PREFIX = "tianshu.runtime.";
 
     private static final String STARTING = ".starting";
     private static final String READY = ".ready";
     private static final String STOPPED = ".stopped";
 
-    /** Every module whose lifecycle this build publishes, in the order the rows are listed. */
+    /**
+     * Modules whose lifecycle rows this build's language test sweeps, in the order the rows are listed.
+     *
+     * <p>The key itself is derived from any module id, so a module that owns its id itself (presence) still gets a
+     * correct row at runtime; it checks its own language entries in its own test instead of being listed here.</p>
+     */
     private static final List<String> LIFECYCLE_MODULES = List.of(
             ProtocolModuleIds.AX,
             ProtocolModuleIds.IA,
-            ProtocolModuleIds.PRESENCE,
             ProtocolModuleIds.LLM,
             ProtocolModuleIds.ASR,
             ProtocolModuleIds.TTS
@@ -70,7 +74,7 @@ public final class ModuleStatusKeys {
         return keys;
     }
 
-    /** {@code module.llm} → {@code tianshu.presence.module.llm.ready}: no id rewriting, the id is the path. */
+    /** {@code module.llm} → {@code tianshu.runtime.module.llm.ready}: no id rewriting, the id is the path. */
     private static String lifecycleKey(String moduleId, String phase) {
         return PREFIX + moduleId + phase;
     }

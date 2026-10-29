@@ -319,7 +319,7 @@ RESPONDING > THINKING > ERROR > RECONNECTING > LOADING > IDLE
 
 #### 5.4.2 契约：`PRESENCE.PARTNER`
 
-这条广播归映迹所有，和 `PRESENCE.ACTIVITY` 同一套办法：主题 `PRESENCE.PARTNER`、载荷 `PresencePartnerPayload` 都由映迹定义，类放在 `tianshu-api` 的 presence payload 区，与 `PresenceActivityPayload`、`PresenceContextSnapshotPayload` 并列。写入方是算得出这个结果的模块（当前只有听澜），映迹订阅并渲染；主题用 `LATEST_ONLY`，只在变化时发布。
+这条广播归映迹所有，和 `PRESENCE.ACTIVITY` 同一套办法：主题 `PRESENCE.PARTNER`、载荷 `PresencePartnerPayload` 都由映迹定义，类放在 `tianshu-presence` 的 `function.presence.payload` 区，与 `PresenceActivityPayload`、`PresenceContextSnapshotPayload` 并列。写入方是算得出这个结果的模块（当前只有听澜），映迹订阅并渲染；主题用 `LATEST_ONLY`，只在变化时发布。
 
 | 字段 | 语义 |
 |---|---|
@@ -462,10 +462,10 @@ tianshu-presence/src/main/java/.../function/presence/context/
   PresenceInteractionContextWatcher      §5.2 的摘要变化检测与推送
   PresenceContextResponder
 
-tianshu-api/src/main/java/.../client/presence/context/
+tianshu-presence/src/main/java/.../function/presence/context/
   PresenceContextGroup
 
-tianshu-api/src/main/java/.../client/presence/model/
+tianshu-presence/src/main/java/.../function/presence/model/
   PresenceActivitySnapshot
   PresenceContextSnapshot
   PresenceEquipment
@@ -476,6 +476,19 @@ tianshu-api/src/main/java/.../client/presence/model/
   PresencePrimaryState
   PresenceTargetSnapshot
   PresenceWorldEnvironment
+
+tianshu-presence/src/main/java/.../function/presence/payload/
+  PresenceActivityAction
+  PresenceActivityPayload
+  PresenceActivityType
+  PresenceContextQueryPayload
+  PresenceContextSnapshotPayload
+  PresenceInteractionContextPayload
+  PresencePartnerPayload
+  PresenceWorldEventPayload
+
+tianshu-presence/src/main/java/.../function/presence/protocol/
+  PresenceContextFactIds
 
 tianshu-presence/src/main/java/.../function/presence/status/
   PresenceActivityTracker
@@ -510,6 +523,13 @@ tianshu-presence/src/main/java/.../function/presence/
   PresenceModuleRegistration
   PresenceModuleProvider
   PresenceModuleConfig
+  PresenceHudShaders
+
+tianshu-presence/src/main/resources/assets/tianshu_presence/shaders/core/
+  presence_loading.json / presence_loading.fsh
+  presence_preset_one.json / presence_preset_one.fsh
+  presence_preset_two.json / presence_preset_two.fsh
+  presence_icon.vsh
 
 tianshu-api/src/main/java/.../api/client/host/hud/
   HudSurface
@@ -518,6 +538,7 @@ tianshu-api/src/main/java/.../api/client/host/hud/
   HudFrameContext
   HudProgram
   HudShaderParams
+  HudShaderCatalog
   HudAnchorEditor
   HudAnchorView
   HudAnchorPoint
@@ -536,7 +557,6 @@ tianshu-api/src/main/java/.../api/client/host/game/
 tianshu-api/src/main/java/.../protocol/payload/
   WorldEventPayload
   WorldEventTypes
-  PresenceWorldEventPayload
 
 tianshu-presence/src/main/java/.../function/presence/partner/
   PresencePartnerStore
@@ -557,7 +577,13 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
 
 tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/adapter/
   NeoForgeGameContextPort
-  NeoForgePresenceScreenClassifier
+  NeoForgeGameScreenClassifier
+
+tianshu-echo/src/main/java/.../function/echo/bridge/
+  TtsPresenceActivityBridge
+
+tianshu-weaving/src/main/java/.../function/weaving/bridge/
+  LlmPresenceActivityBridge
 
 tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
   NeoForgeWorldEventHooks
@@ -572,6 +598,9 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 - 模块骨架
 - 已拆成独立 universal 功能模组 `tianshu-presence`（两份清单 + 两个加载器入口）；内核 jar 不再包含映迹类，
   宿主代码对映迹零引用（`ClientPorts` + provider 自注册）
+- 载荷、活动词汇与采集模型全部随模组走（`function.presence.payload` / `.model` / `.protocol` / `.context`）；
+  载荷类型、能力名、topic 与 module id 也由映迹注册，内核只留机制。听澜/辅星以前置依赖引用；回响/织言只报告
+  HUD 活动，走 `compileOnly` + `bridge` + `InstalledMods` 的联动边，映迹缺席时 bridge 为 NOOP
 - HUD 状态展示
 - Presence topic
 - Presence capability
@@ -582,6 +611,8 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
   （`NeoForgeHudSurface` / `NeoForgeHudHost` 只处理渲染状态、门控、时钟与异常熔断）
 - 映迹核心只输出 `PresenceHudDisplay`，并把它组合成 `HudLayer` 交给平台
 - 映迹配置（HUD 开关/元素/尺寸/预设/位置）持久化在 `module.presence.properties`
+- HUD shader 资源随映迹（`assets/tianshu_presence/shaders/core`），由 `PresenceHudShaders` 在模组入口向
+  `HudShaderCatalog` 声明家族；宿主只创建 `ShaderInstance`，自身不保留 shader 文件，缺失时回退 Java 绘制
 - 世界退出会清空旧状态和排队查询，重新进入后建立新世界会话
 - 上下文只在查询被回答时采集；同一 tick 的请求共享一次平台抓取；交互上下文摘要另走变化推送（`PresenceInteractionContextWatcher` + `PRESENCE.INTERACTION_CONTEXT`），不参与查询快照（§5.2）
 - 预中标人与中标租期由听澜算出并通过 `PRESENCE.PARTNER` 写出（预中标人变化 / 中标含续租 / 租期到期三种时机），映迹只消费

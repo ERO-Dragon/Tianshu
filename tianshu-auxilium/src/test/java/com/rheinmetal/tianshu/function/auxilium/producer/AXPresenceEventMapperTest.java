@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium.producer;
 
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

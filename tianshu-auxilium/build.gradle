@@ -14,6 +14,7 @@ repositories {
 dependencies {
     api project(':tianshu-core')
     api project(':tianshu-weaving')
+    api project(':tianshu-presence')
     compileOnly project(':tianshu-intake')
     compileOnly project(':tianshu-echo')
     compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }

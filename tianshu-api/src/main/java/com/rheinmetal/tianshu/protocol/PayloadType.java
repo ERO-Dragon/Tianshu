@@ -36,11 +36,6 @@ public final class PayloadType {
     public static final PayloadType LLM_STATUS = register("LLM_STATUS");
     public static final PayloadType LLM_CACHE_MANAGE = register("LLM_CACHE_MANAGE");
     public static final PayloadType LLM_CACHE_MANAGE_RESULT = register("LLM_CACHE_MANAGE_RESULT");
-    public static final PayloadType PRESENCE_CONTEXT_QUERY = register("PRESENCE_CONTEXT_QUERY");
-    public static final PayloadType PRESENCE_CONTEXT_SNAPSHOT = register("PRESENCE_CONTEXT_SNAPSHOT");
-    public static final PayloadType PRESENCE_ACTIVITY = register("PRESENCE_ACTIVITY");
-    public static final PayloadType PRESENCE_INTERACTION_CONTEXT = register("PRESENCE_INTERACTION_CONTEXT");
-    public static final PayloadType PRESENCE_PARTNER = register("PRESENCE_PARTNER");
     public static final PayloadType TTS_TEXT = register("TTS_TEXT");
     public static final PayloadType TTS_PLAYBACK_STATUS = register("TTS_PLAYBACK_STATUS");
     public static final PayloadType TTS_REQUEST_STATUS = register("TTS_REQUEST_STATUS");

@@ -80,7 +80,7 @@ class AXSpeechSinkSelectionTest {
 
     @Test
     void anotherModuleBeingInstalledDoesNotEnableTheBridge() {
-        TianshuRuntimePorts.register(InstalledMods.class, ProtocolModuleIds.LLM::equals);
+        TianshuRuntimePorts.register(InstalledMods.class, "tianshu_weaving"::equals);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
 
         assertSame(AXSpeechSink.NONE, AXSpeechSinks.forRuntime(runtime),
@@ -89,7 +89,7 @@ class AXSpeechSinkSelectionTest {
 
     @Test
     void anInstalledSpeechModuleIsReachedThroughTheBridge() {
-        TianshuRuntimePorts.register(InstalledMods.class, ProtocolModuleIds.TTS::equals);
+        TianshuRuntimePorts.register(InstalledMods.class, "tianshu_echo"::equals);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         List<String> spoken = new CopyOnWriteArrayList<>();
         registerSpeechSink(runtime, spoken);
@@ -129,7 +129,7 @@ class AXSpeechSinkSelectionTest {
 
         TianshuRuntimePorts.register(InstalledMods.class, modId -> false);
         AXSpeechSink absent = AXSpeechSinks.forRuntime(runtime);
-        TianshuRuntimePorts.register(InstalledMods.class, ProtocolModuleIds.TTS::equals);
+        TianshuRuntimePorts.register(InstalledMods.class, "tianshu_echo"::equals);
         AXSpeechSink present = AXSpeechSinks.forRuntime(runtime);
 
         assertDoesNotThrow(() -> {

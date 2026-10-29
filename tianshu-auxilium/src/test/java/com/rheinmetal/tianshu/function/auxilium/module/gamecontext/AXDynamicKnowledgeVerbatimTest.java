@@ -2,10 +2,10 @@ package com.rheinmetal.tianshu.function.auxilium.module.gamecontext;
 
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguage;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.payload.FactField;
 import com.rheinmetal.tianshu.protocol.payload.FactValue;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

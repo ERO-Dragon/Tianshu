@@ -60,7 +60,7 @@ class AXModuleLifecycleBoundaryTest {
 
         // The dialogue domain is an optional partner: the channel is chosen when the module registers, which in
         // a real installation happens long after the platform registered what is installed.
-        TianshuRuntimePorts.register(InstalledMods.class, ProtocolModuleIds.IA::equals);
+        TianshuRuntimePorts.register(InstalledMods.class, "tianshu_intake"::equals);
 
         module.register(new ModuleRegistrationContext(runtime, services));
 

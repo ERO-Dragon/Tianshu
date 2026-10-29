@@ -35,8 +35,8 @@ class ModuleStatusLanguageTest {
 
     private static final Path REPO = LangShards.repositoryRoot();
 
-    /** Presence-row keys and settings-page keys are the two families a module status can carry. */
-    private static final Pattern KEY_LITERAL = Pattern.compile("\"(tianshu\\.(?:presence|gui)\\.[a-zA-Z0-9_.]+)\"");
+    /** Module status keys and settings-page keys are the families a module row can carry. */
+    private static final Pattern KEY_LITERAL = Pattern.compile("\"(tianshu\\.(?:runtime|presence|gui)\\.[a-zA-Z0-9_.]+)\"");
 
     /**
      * Keys assembled with {@code "prefix" + suffix} at runtime, so no complete literal exists in the

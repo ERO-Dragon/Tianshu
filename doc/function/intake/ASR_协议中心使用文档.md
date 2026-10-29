@@ -11,7 +11,7 @@ ASR 当前通过协议中心公开四个事件 topic，不提供公共请求 cap
 | ASR 发布 | `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY` | `ASR_SPEECH_ACTIVITY` | `AsrSpeechActivityPayload` | 处理后音频中的说话活动状态变化。 |
 | ASR 发布 | `ProtocolTopics.INPUT_ASR_FINAL_TEXT` | `ASR_TEXT` | `AsrTextPayload` | 已完成且仍属于当前 session 的识别文本。 |
 | ASR 发布 | `ProtocolTopics.MODULE_STATUS` | `MODULE_STATUS` | `ModuleStatusPayload` | `module.asr` 的准备、下载、重载和失败状态。 |
-| ASR 发布 | `ProtocolTopics.PRESENCE_ACTIVITY` | `PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载、识别任务和真实说话活动的产品状态。 |
+| ASR 发布 | `PresenceTopics.ACTIVITY` | `PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载、识别任务和真实说话活动的产品状态。 |
 | ASR 订阅 | `ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT` | `CUSTOM` | `RuntimeInterruptPayload` | 运行时会话中断；不是普通录音控制入口。 |
 
 topic 的信封类型均为 `PacketType.EVENT`。ASR 不通过公共 topic 接收 `BEGIN / END / COMMIT / CANCEL`，也没有可供外部模块发送 `REQUEST` 的 ASR capability。

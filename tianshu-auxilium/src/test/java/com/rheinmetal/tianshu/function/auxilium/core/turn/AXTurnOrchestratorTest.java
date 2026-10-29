@@ -1,5 +1,13 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.function.auxilium.bridge.IaDialogueBridge;
 import com.rheinmetal.tianshu.function.auxilium.bridge.EchoSpeechBridge;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
@@ -40,19 +48,19 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.FactField;
 import com.rheinmetal.tianshu.protocol.payload.FactValue;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsSpeakPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
@@ -624,7 +632,7 @@ class AXTurnOrchestratorTest {
         runtime.submit(EnvelopeBuilder.responseTo(
                 "module.presence.test",
                 contextQuery.get(),
-                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresencePayloadTypes.CONTEXT_SNAPSHOT,
                 PresenceContextSnapshotPayload.success(
                         ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
                         List.of(new PresenceContextSnapshotPayload.FactPayload(
@@ -734,7 +742,7 @@ class AXTurnOrchestratorTest {
         runtime.submit(EnvelopeBuilder.responseTo(
                 "module.presence.test",
                 contextQuery.get(),
-                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresencePayloadTypes.CONTEXT_SNAPSHOT,
                 PresenceContextSnapshotPayload.failed(
                         ((PresenceContextQueryPayload) contextQuery.get().payload()).requestId(),
                         "TEST_FAILURE",
@@ -1045,6 +1053,8 @@ class AXTurnOrchestratorTest {
     }
 
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
+        // Presence owns its topics now; the kernel no longer registers them.
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
         List<PresenceActivityPayload> activities = java.util.Collections.synchronizedList(new ArrayList<>());
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.subscribeTopic(
@@ -1061,8 +1071,8 @@ class AXTurnOrchestratorTest {
                         defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.PRESENCE_ACTIVITY,
-                        PayloadType.PRESENCE_ACTIVITY,
+                        PresenceTopics.ACTIVITY,
+                        PresencePayloadTypes.ACTIVITY,
                         PresenceActivityPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),
@@ -1079,8 +1089,8 @@ class AXTurnOrchestratorTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.presence.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
-                        PayloadType.PRESENCE_CONTEXT_QUERY,
+                        PresenceCapabilities.QUERY_CONTEXT,
+                        PresencePayloadTypes.CONTEXT_QUERY,
                         PresenceContextQueryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),

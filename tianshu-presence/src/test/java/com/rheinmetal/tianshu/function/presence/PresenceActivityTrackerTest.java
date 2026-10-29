@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.function.presence;
 
-import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.function.presence.model.PresenceActivitySnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.function.presence.status.PresenceActivityTracker;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicLong;

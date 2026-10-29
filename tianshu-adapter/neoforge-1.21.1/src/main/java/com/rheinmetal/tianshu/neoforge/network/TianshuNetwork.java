@@ -20,6 +20,6 @@ public final class TianshuNetwork {
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
-        registrar.playToClient(PresenceFactPacket.TYPE, PresenceFactPacket.STREAM_CODEC, PresenceFactPacket::handle);
+        registrar.playToClient(GameFactPacket.TYPE, GameFactPacket.STREAM_CODEC, GameFactPacket::handle);
     }
 }

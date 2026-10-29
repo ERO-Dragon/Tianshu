@@ -345,8 +345,8 @@ PayloadType.DIALOGUE_SESSION_EVENT
 如果 UI 只需要展示“玩家此刻说话会被谁承接”，可以订阅映迹的伙伴广播：
 
 ```text
-ProtocolTopics.PRESENCE_PARTNER
-PayloadType.PRESENCE_PARTNER
+PresenceTopics.PARTNER
+PresencePayloadTypes.PARTNER
 ```
 
 该 topic 的载荷是映迹自己的 `PresencePartnerPayload`（不归对话契约），发布 `(playerId, moduleId, participantId, icon, defaultOwner, holdUntilMillis, holdDurationMillis, updatedAtMillis)`，不包含正文、prompt、上下文细节或仲裁原因：

@@ -8,11 +8,11 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The HUD shader handles, one per program family, as supplied by NeoForge's shader lifecycle.
+ * The HUD shader handles, one per program family, as created from the features' declarations.
  *
- * <p>Registration happens once per client start; a program that failed to compile is simply absent, and the surface
- * draws its Java fallback without asking why. The map is concurrent because a shutdown can clear it while a frame is
- * being drawn.</p>
+ * <p>Registration happens once per client start from {@code HudShaderCatalog}; a program that failed to compile is
+ * simply absent, and the surface draws its Java fallback without asking why. The map is concurrent because a shutdown
+ * can clear it while a frame is being drawn.</p>
  */
 public final class HudShaderPrograms {
     private static final Map<HudProgram, ShaderInstance> PROGRAMS = new ConcurrentHashMap<>();

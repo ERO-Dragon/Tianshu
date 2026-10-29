@@ -1,0 +1,291 @@
+package com.rheinmetal.tianshu.neoforge.server;
+
+import com.rheinmetal.tianshu.neoforge.network.GameFactPacket;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.event.entity.EntityMountEvent;
+import net.neoforged.neoforge.event.entity.living.AnimalTameEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.entity.living.MobEffectEvent;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
+import net.neoforged.neoforge.event.entity.player.ItemFishedEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
+import net.neoforged.neoforge.event.entity.player.TradeWithVillagerEvent;
+import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * The optional server component: it turns authoritative server events into facts for the acting player.
+ *
+ * <p>Nothing else runs on a dedicated server — no kernel, no modules, no assistant. Every listener answers one
+ * question: "did something exact happen to this player?" and hands the fact to {@link #send}, the only place that
+ * talks to the network.</p>
+ *
+ * <p>Scope discipline: a fact is only sent to the player it happened to. Facts about other players, containers or
+ * inventories are not shipped, because the client has no use for them and the server has no business broadcasting
+ * them. There is no "forward events?" switch: whether this component is installed <em>is</em> the switch.</p>
+ *
+ * <p>Every fact below is one a client cannot observe on its own. Facts the client already sees (advancement packets,
+ * chat) are not duplicated here.</p>
+ */
+public final class GameFactCollector {
+
+    /** Subscribing is the whole registration; {@link #send} is the only network path. */
+    public void register(IEventBus gameBus) {
+        gameBus.addListener(this::onLivingDeath);
+        gameBus.addListener(this::onItemCrafted);
+        gameBus.addListener(this::onItemFished);
+        gameBus.addListener(this::onTamed);
+        gameBus.addListener(this::onBlockBreak);
+        gameBus.addListener(this::onBlockPlace);
+        gameBus.addListener(this::onMount);
+        gameBus.addListener(this::onEffectAdded);
+        gameBus.addListener(this::onEffectExpired);
+        gameBus.addListener(this::onXpLevelChange);
+        gameBus.addListener(this::onPlayerJoin);
+        gameBus.addListener(this::onPlayerLeave);
+        gameBus.addListener(this::onLivingDamage);
+        gameBus.addListener(this::onItemPickup);
+        gameBus.addListener(this::onTrade);
+    }
+
+    public void onLivingDamage(LivingDamageEvent.Post event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || event.getNewDamage() <= 0.0F) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_AMOUNT, Integer.toString(Math.round(event.getNewDamage())));
+        send(player, WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
+    }
+
+    public void onItemPickup(ItemEntityPickupEvent.Post event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) {
+            return;
+        }
+        // The event reports the stack *left on the ground*, not the one that was picked up. A whole stack leaves
+        // nothing behind, which is the common case, so the amount has to be the difference; using the remainder
+        // directly would report every full pickup as "nothing happened".
+        ItemStack original = event.getOriginalStack();
+        ItemStack remaining = event.getCurrentStack();
+        int originalCount = original == null ? 0 : original.getCount();
+        int remainingCount = remaining == null ? 0 : remaining.getCount();
+        int pickedCount = originalCount - remainingCount;
+        if (original == null || original.isEmpty() || pickedCount <= 0) {
+            return;
+        }
+        Map<String, String> values = itemValues(original);
+        values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(pickedCount));
+        send(player, WorldEventTypes.EVENT_ITEM_PICKUP, values);
+    }
+
+    public void onTrade(TradeWithVillagerEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || event.getMerchantOffer() == null) {
+            return;
+        }
+        ItemStack result = event.getMerchantOffer().getResult();
+        if (result == null || result.isEmpty()) {
+            return;
+        }
+        send(player, WorldEventTypes.EVENT_TRADE, itemValues(result));
+    }
+
+    public void onEffectExpired(MobEffectEvent.Expired event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        if (event.getEffectInstance() != null) {
+            values.put(WorldEventTypes.VALUE_EFFECT_NAME,
+                    event.getEffectInstance().getEffect().value().getDisplayName().getString());
+        }
+        send(player, WorldEventTypes.EVENT_EFFECT_EXPIRED, values);
+    }
+
+    public void onXpLevelChange(PlayerXpEvent.LevelChange event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_LEVEL, Integer.toString(player.experienceLevel));
+        send(player, WorldEventTypes.EVENT_EXP_LEVEL, values);
+    }
+
+    /** A friend joining is visible in chat anyway; the fact goes to the other players, never to the joiner. */
+    public void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer joining) || joining.getServer() == null) {
+            return;
+        }
+        String name = joining.getGameProfile().getName();
+        for (ServerPlayer other : joining.getServer().getPlayerList().getPlayers()) {
+            if (other != joining) {
+                send(other, WorldEventTypes.EVENT_FRIEND_JOIN, Map.of(
+                        WorldEventTypes.VALUE_PLAYER_NAME, name));
+            }
+        }
+    }
+
+    public void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer leaving) || leaving.getServer() == null) {
+            return;
+        }
+        String name = leaving.getGameProfile().getName();
+        for (ServerPlayer other : leaving.getServer().getPlayerList().getPlayers()) {
+            if (other != leaving) {
+                send(other, WorldEventTypes.EVENT_FRIEND_LEAVE, Map.of(
+                        WorldEventTypes.VALUE_PLAYER_NAME, name));
+            }
+        }
+    }
+
+    public void onEffectAdded(MobEffectEvent.Added event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || event.getEffectInstance() == null) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_EFFECT_NAME,
+                event.getEffectInstance().getEffect().value().getDisplayName().getString());
+        send(player, WorldEventTypes.EVENT_EFFECT_GAINED, values);
+    }
+
+    /** Two facts, one event: the player's own death, and a kill the player made. */
+    public void onLivingDeath(LivingDeathEvent event) {
+        LivingEntity dying = event.getEntity();
+        if (dying == null) {
+            return;
+        }
+        if (dying instanceof ServerPlayer player) {
+            Map<String, String> values = new HashMap<>();
+            values.put(WorldEventTypes.VALUE_DEATH_MESSAGE,
+                    player.getCombatTracker().getDeathMessage().getString());
+            values.put(WorldEventTypes.VALUE_DIMENSION, dimensionId(player.level()));
+            send(player, WorldEventTypes.EVENT_PLAYER_DEATH, values);
+            return;
+        }
+        if (event.getSource() != null && event.getSource().getEntity() instanceof ServerPlayer killer) {
+            Map<String, String> values = new HashMap<>();
+            values.put(WorldEventTypes.VALUE_ENTITY_ID, entityId(dying));
+            values.put(WorldEventTypes.VALUE_ENTITY_NAME, dying.getType().getDescription().getString());
+            values.put(WorldEventTypes.VALUE_COUNT, "1");
+            send(killer, WorldEventTypes.EVENT_MOB_KILLED, values);
+        }
+    }
+
+    public void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        ItemStack crafted = event.getCrafting();
+        if (crafted == null || crafted.isEmpty()) {
+            return;
+        }
+        send(player, WorldEventTypes.EVENT_ITEM_CRAFTED, itemValues(crafted));
+    }
+
+    public void onItemFished(ItemFishedEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        List<ItemStack> drops = event.getDrops();
+        if (drops == null || drops.isEmpty()) {
+            return;
+        }
+        send(player, WorldEventTypes.EVENT_FISHING_CATCH, itemValues(drops.get(0)));
+    }
+
+    public void onTamed(AnimalTameEvent event) {
+        if (!(event.getTamer() instanceof ServerPlayer player) || event.getEntity() == null) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_ENTITY_ID, entityId(event.getEntity()));
+        values.put(WorldEventTypes.VALUE_ENTITY_NAME,
+                event.getEntity().getType().getDescription().getString());
+        send(player, WorldEventTypes.EVENT_TAMED, values);
+    }
+
+    public void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) {
+            return;
+        }
+        send(player, WorldEventTypes.EVENT_BLOCK_BROKEN, blockValues(event.getState()));
+    }
+
+    public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        send(player, WorldEventTypes.EVENT_BLOCK_PLACED, blockValues(event.getPlacedBlock()));
+    }
+
+    public void onMount(EntityMountEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || event.getEntityBeingMounted() == null) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_ENTITY_ID,
+                Objects.requireNonNull(BuiltInRegistries.ENTITY_TYPE.getKey(
+                        event.getEntityBeingMounted().getType())).toString());
+        values.put(WorldEventTypes.VALUE_ENTITY_NAME,
+                event.getEntityBeingMounted().getType().getDescription().getString());
+        send(player, event.isMounting()
+                ? WorldEventTypes.EVENT_MOUNT
+                : WorldEventTypes.EVENT_DISMOUNT, values);
+    }
+
+    /** The one place that talks to the network; a client without the channel simply gets nothing. */
+    private void send(ServerPlayer player, String factId, Map<String, String> values) {
+        if (player == null || player.connection == null) {
+            return;
+        }
+        if (!player.connection.hasChannel(GameFactPacket.TYPE)) {
+            return;
+        }
+        PacketDistributor.sendToPlayer(player, new GameFactPacket(
+                factId,
+                dimensionId(player.level()),
+                System.currentTimeMillis(),
+                values));
+    }
+
+    private static Map<String, String> itemValues(ItemStack stack) {
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_ITEM_ID, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        // The name is resolved server-side, which is right in single player and may follow the server's language on a
+        // dedicated one; the id travels next to it so a client can re-resolve it later.
+        values.put(WorldEventTypes.VALUE_ITEM_NAME, stack.getHoverName().getString());
+        values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(stack.getCount()));
+        return values;
+    }
+
+    private static Map<String, String> blockValues(BlockState state) {
+        if (state == null) {
+            return Map.of();
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_BLOCK_ID,
+                BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+        values.put(WorldEventTypes.VALUE_BLOCK_NAME, state.getBlock().getName().getString());
+        return values;
+    }
+
+    private static String entityId(LivingEntity entity) {
+        return Objects.requireNonNull(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType())).toString();
+    }
+
+    private static String dimensionId(Level level) {
+        return level == null ? "" : level.dimension().location().toString();
+    }
+}

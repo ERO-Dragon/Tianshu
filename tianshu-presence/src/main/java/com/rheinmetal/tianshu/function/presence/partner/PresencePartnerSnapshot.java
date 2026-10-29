@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.partner;
 
-import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresencePartnerPayload;
 
 /**
  * What the partner marker should draw right now, resolved from the last {@code PRESENCE.PARTNER} push.

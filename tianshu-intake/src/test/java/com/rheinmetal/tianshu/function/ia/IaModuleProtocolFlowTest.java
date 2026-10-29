@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -32,9 +38,9 @@ import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
 import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerSettings;
-import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
-import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.function.presence.model.PresenceScreenKind;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresencePartnerPayload;
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
@@ -73,6 +79,7 @@ class IaModuleProtocolFlowTest {
         
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
+        installPresence(runtime);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -100,6 +107,7 @@ class IaModuleProtocolFlowTest {
     void triggersFollowRuntimeParticipantUpdatesAndUnregisters() {
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
+        installPresence(runtime);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -141,6 +149,7 @@ class IaModuleProtocolFlowTest {
     void aTriggerWordThatIsNotTheParticipantsWakeWordLeavesTheClaimToTheDefaultOwner() {
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
+        installPresence(runtime);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -194,6 +203,7 @@ class IaModuleProtocolFlowTest {
     void participantRegistrationPublishesWakeWordsToSharedVoiceResources() {
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
+        installPresence(runtime);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -219,6 +229,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void hardClaimUsesFrozenSpeechStartContextAndDeliversOnlyToOwner() {
         runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
         registerInteractionContextTopic();
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
@@ -290,6 +301,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void defaultOwnerReceivesDeliveryWhenNoHardClaimAndRequestGetsResultResponse() {
         runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler axDelivery = new RecordingHandler();
@@ -320,6 +332,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void aTurnWithNoClaimIsRejectedWhenTheDefaultOwnerSettingIsOff() {
         runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
         IaModule ia = new IaModule(runtime, new IaDefaultOwnerSettings() {
             @Override
             public boolean isDisabled() {
@@ -357,6 +370,7 @@ class IaModuleProtocolFlowTest {
     void readyArbitrationWithoutParticipantsRejectsSilently() {
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
+        installPresence(runtime);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -491,8 +505,8 @@ class IaModuleProtocolFlowTest {
 
     private void registerInteractionContextTopic() {
         runtime.registerTopic(new TopicDescriptor(
-                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
-                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                PresenceTopics.INTERACTION_CONTEXT,
+                PresencePayloadTypes.INTERACTION_CONTEXT,
                 DeliveryPolicy.LATEST_ONLY,
                 20
         ));
@@ -510,8 +524,8 @@ class IaModuleProtocolFlowTest {
     ) {
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.presence",
-                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
-                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                PresenceTopics.INTERACTION_CONTEXT,
+                PresencePayloadTypes.INTERACTION_CONTEXT,
                 new PresenceInteractionContextPayload(
                         playerId,
                         dimensionId,
@@ -535,6 +549,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void aPushedInteractionChangeMakesTheAimedParticipantThePreWinner() {
         runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         registerInteractionContextTopic();
@@ -566,6 +581,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void aTurnWithoutAFrozenSpeechContextArbitratesAgainstTheNewestDigest() {
         runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
         registerInteractionContextTopic();
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
@@ -598,11 +614,15 @@ class IaModuleProtocolFlowTest {
         assertEquals("酒狐", delivery.matchedEntityRefs().get(0).displayName());
     }
 
+    /** Presence owns its topics now; the kernel no longer registers them. */
+    private static void installPresence(ProtocolRuntime runtime) {
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
+    }
     private void subscribePartner(RecordingHandler handler) {        runtime.subscribeTopic(
                 descriptor("test.partner", List.of()),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.PRESENCE_PARTNER,
-                        PayloadType.PRESENCE_PARTNER,
+                        PresenceTopics.PARTNER,
+                        PresencePayloadTypes.PARTNER,
                         PresencePartnerPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),

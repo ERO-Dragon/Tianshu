@@ -1,19 +1,25 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.PresenceActivityIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceActivityIds;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
 import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.FailurePolicy;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
@@ -53,6 +59,8 @@ class IaPresenceActivityTest {
     }
 
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
+        // Presence owns its topics now; the kernel no longer registers them.
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
         List<PresenceActivityPayload> activities = new ArrayList<>();
         runtime.subscribeTopic(
                 new ModuleDescriptor(
@@ -68,8 +76,8 @@ class IaPresenceActivityTest {
                         32
                 ),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.PRESENCE_ACTIVITY,
-                        PayloadType.PRESENCE_ACTIVITY,
+                        PresenceTopics.ACTIVITY,
+                        PresencePayloadTypes.ACTIVITY,
                         PresenceActivityPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),

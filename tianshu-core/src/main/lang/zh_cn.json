@@ -1,5 +1,5 @@
 {
-  "tianshu.presence.module.ia.starting": "思衡正在启动",
-  "tianshu.presence.module.ia.ready": "思衡已就绪",
-  "tianshu.presence.module.ia.stopped": "思衡已停止"
+  "tianshu.runtime.module.ia.starting": "思衡正在启动",
+  "tianshu.runtime.module.ia.ready": "思衡已就绪",
+  "tianshu.runtime.module.ia.stopped": "思衡已停止"
 }

@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueEntityRef;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints;
-import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceInteractionContextPayload;
 
 import java.util.LinkedHashMap;
 import java.util.List;

@@ -46,7 +46,7 @@
 "tianshu.presence.status.error": "Tianshu failed to start: check the API key, the service address, or the vector model file",
 "tianshu.presence.status.reconnecting": "Cloud LLM is not ready; reconnecting…",
 "tianshu.presence.status.idle": "",
-"tianshu.presence.module.presence.starting": "Presence starting",
-"tianshu.presence.module.presence.ready": "Presence ready",
-"tianshu.presence.module.presence.stopped": "Presence stopped"
+"tianshu.runtime.module.presence.starting": "Presence starting",
+"tianshu.runtime.module.presence.ready": "Presence ready",
+"tianshu.runtime.module.presence.stopped": "Presence stopped"
 }

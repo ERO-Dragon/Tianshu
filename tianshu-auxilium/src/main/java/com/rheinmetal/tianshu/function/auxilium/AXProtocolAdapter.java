@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.function.auxilium.contract.AXWorldEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -23,11 +29,11 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayl
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -259,7 +265,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope buildPresenceContextQuery(TianshuEnvelope parent, PresenceContextQueryPayload payload) {
-        return buildRequestCapability(parent, ProtocolCapabilities.PRESENCE_QUERY_CONTEXT, PayloadType.PRESENCE_CONTEXT_QUERY, payload);
+        return buildRequestCapability(parent, PresenceCapabilities.QUERY_CONTEXT, PresencePayloadTypes.CONTEXT_QUERY, payload);
     }
 
     public TianshuEnvelope submitPresenceContextQuery(TianshuEnvelope envelope) {
@@ -271,13 +277,13 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int presenceContextProviderCount() {
-        return runtime().capabilityProviderCount(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT);
+        return runtime().capabilityProviderCount(PresenceCapabilities.QUERY_CONTEXT);
     }
 
     public void registerPresenceContextSnapshotResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
-                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
+                PresencePayloadTypes.CONTEXT_SNAPSHOT,
                 PresenceContextSnapshotPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -408,7 +414,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
-        return publishTopic(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, payload);
+        return publishTopic(PresenceTopics.ACTIVITY, PresencePayloadTypes.ACTIVITY, payload);
     }
 
     public TianshuEnvelope publishChatActivity(String activityId, PresenceActivityType type, boolean active) {

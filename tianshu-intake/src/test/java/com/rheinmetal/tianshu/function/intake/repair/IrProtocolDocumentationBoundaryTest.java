@@ -1,8 +1,10 @@
 package com.rheinmetal.tianshu.function.intake.repair;
 
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
+
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -29,7 +31,7 @@ class IrProtocolDocumentationBoundaryTest {
                 "IrObjectMatch",
                 "IrModuleMatch",
                 "ProtocolCapabilities.DIALOGUE_ARBITRATE",
-                "ProtocolCapabilities.PRESENCE_QUERY_CONTEXT",
+                "PresenceCapabilities.QUERY_CONTEXT",
                 "PresenceContextSnapshotPayload"
         )) {
             assertTrue(guide.contains(symbol), () -> "IR protocol guide must document " + symbol);

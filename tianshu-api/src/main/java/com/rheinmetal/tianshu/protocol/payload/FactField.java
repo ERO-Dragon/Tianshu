@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.protocol.payload;
 import java.util.Objects;
 
 /**
- * One typed field of a {@link PresenceContextSnapshotPayload.FactPayload}.
+ * One typed field of a presence context fact.
  *
  * <p>Facts are data, not speech: this type carries a name and a {@link FactValue}, and nothing else. It never
  * holds a rendered sentence — wording belongs to whichever consumer needs it, in that consumer's own language

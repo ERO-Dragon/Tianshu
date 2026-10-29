@@ -219,12 +219,12 @@ public class AsrModelService {
                 downloadCoordinator.newSession()
         );
         if (!activeDownload.compareAndSet(null, task)) {
-            publishFailed("tianshu.presence.module.asr.download_busy");
+            publishFailed("tianshu.runtime.module.asr.download_busy");
             notifyDownloadError(callback, "ASR model download is already running");
             return;
         }
         task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare")));
-        publishWaiting("tianshu.presence.module.asr.download_started");
+        publishWaiting("tianshu.runtime.module.asr.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(ProtocolModuleIds.ASR)
@@ -253,7 +253,7 @@ public class AsrModelService {
                                     return;
                                 }
                                 availabilityRefresher.refreshNow();
-                                publishWaiting("tianshu.presence.module.asr.download_complete");
+                                publishWaiting("tianshu.runtime.module.asr.download_complete");
                                 if (callback != null) {
                                     callback.onComplete();
                                 }
@@ -269,10 +269,10 @@ public class AsrModelService {
                                     return;
                                 }
                                 if (task.session().isCancelled()) {
-                                    publishWaiting("tianshu.presence.module.asr.download_cancelled");
+                                    publishWaiting("tianshu.runtime.module.asr.download_cancelled");
                                     callback.onCancelled();
                                 } else {
-                                    publishFailed("tianshu.presence.module.asr.download_failed");
+                                    publishFailed("tianshu.runtime.module.asr.download_failed");
                                     callback.onError(message);
                                 }
                             }
@@ -286,10 +286,10 @@ public class AsrModelService {
                             return;
                         }
                         if (task.session().isCancelled()) {
-                            publishWaiting("tianshu.presence.module.asr.download_cancelled");
+                            publishWaiting("tianshu.runtime.module.asr.download_cancelled");
                             callback.onCancelled();
                         } else {
-                            publishFailed("tianshu.presence.module.asr.download_failed");
+                            publishFailed("tianshu.runtime.module.asr.download_failed");
                             callback.onError("tianshu.gui.asr.error.download_failed");
                         }
                     }
@@ -305,7 +305,7 @@ public class AsrModelService {
         }
         if (handle.state() == ProtocolTaskState.REJECTED) {
             activeDownload.compareAndSet(task, null);
-            publishFailed("tianshu.presence.module.asr.download_queue_full");
+            publishFailed("tianshu.runtime.module.asr.download_queue_full");
             notifyDownloadError(callback, "ASR model download queue is full");
         }
     }
@@ -347,7 +347,7 @@ public class AsrModelService {
         task.session().pause();
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, true, false, task.modelKey(), withStage(current.progress(), ModelDownloadStage.PAUSED)));
-        publishWaiting("tianshu.presence.module.asr.download_paused");
+        publishWaiting("tianshu.runtime.module.asr.download_paused");
     }
 
     public boolean pauseDownload(String modelKey) {
@@ -366,7 +366,7 @@ public class AsrModelService {
         task.session().resume();
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), withStage(current.progress(), ModelDownloadStage.DOWNLOADING)));
-        publishWaiting("tianshu.presence.module.asr.download_resumed");
+        publishWaiting("tianshu.runtime.module.asr.download_resumed");
     }
 
     public boolean resumeDownload(String modelKey) {
@@ -389,7 +389,7 @@ public class AsrModelService {
         }
         DownloadStatus current = task.status();
         task.updateStatus(new DownloadStatus(true, false, true, task.modelKey(), withStage(current.progress(), ModelDownloadStage.CANCELLING)));
-        publishWaiting("tianshu.presence.module.asr.download_cancelling");
+        publishWaiting("tianshu.runtime.module.asr.download_cancelling");
     }
 
     public boolean cancelDownload(String modelKey) {

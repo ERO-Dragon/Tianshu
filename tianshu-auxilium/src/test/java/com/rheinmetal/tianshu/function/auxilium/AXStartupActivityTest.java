@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
+
+import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
+
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
@@ -12,9 +18,9 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityAction;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityAction;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityType;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
@@ -106,10 +112,12 @@ class AXStartupActivityTest {
         );
         Optional<ModuleStatus> failed = runtime.moduleStatusCache().latest(AXModule.MODULE_ID, ModuleStatuses.TYPE_LIFECYCLE);
         assertTrue(failed.isPresent(), "装配失败要留下一条模块状态");
-        assertEquals("tianshu.presence.module.ax.startup_failed", failed.get().messageKey());
+        assertEquals("tianshu.runtime.module.ax.startup_failed", failed.get().messageKey());
     }
 
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {
+        // Presence owns its topics now; the kernel no longer registers them.
+        new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
         List<PresenceActivityPayload> activities = Collections.synchronizedList(new ArrayList<>());
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.subscribeTopic(
@@ -126,8 +134,8 @@ class AXStartupActivityTest {
                         defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.PRESENCE_ACTIVITY,
-                        PayloadType.PRESENCE_ACTIVITY,
+                        PresenceTopics.ACTIVITY,
+                        PresencePayloadTypes.ACTIVITY,
                         PresenceActivityPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),

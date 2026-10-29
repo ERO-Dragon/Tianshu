@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.presence;
 
-import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.function.presence.model.PresenceActivitySnapshot;
+import com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.function.presence.status.PresenceDisplayPolicy;
 import org.junit.jupiter.api.Test;
 

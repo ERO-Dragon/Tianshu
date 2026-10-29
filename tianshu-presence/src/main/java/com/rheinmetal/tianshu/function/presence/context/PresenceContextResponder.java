@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.presence.context;
 
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
 import java.util.List;

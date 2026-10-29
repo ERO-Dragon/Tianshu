@@ -79,27 +79,16 @@ final class PresenceHudPresentationBoundaryTest {
     }
 
     @Test
-    void everyPresenceShaderDeclaresAlphaBlending() throws Exception {
-        for (String shader : new String[]{
-                "presence_loading.json",
-                "presence_preset_one.json",
-                "presence_preset_two.json"
-        }) {
-            String source = read(
-                    Path.of("src/main/resources/assets/tianshu/shaders/core/" + shader)
-            );
-            assertTrue(source.contains("\"srcrgb\": \"srcalpha\""), shader);
-            assertTrue(source.contains("\"dstrgb\": \"1-srcalpha\""), shader);
-        }
-    }
-
-    @Test
-    void shaderRegistrationUsesExplicitNamespacedLocations() throws Exception {
+    void shaderProgramsComeFromFeatureDeclarationsNotFromTheKernel() throws Exception {
         String source = read(Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"));
 
-        assertTrue(source.contains("ResourceLocation.fromNamespaceAndPath(TianshuNeoForge.MOD_ID, path)"));
+        assertTrue(source.contains("HudShaderCatalog.declarations()"),
+                "the platform registers what features declared, instead of naming their files");
+        assertTrue(source.contains("ResourceLocation.tryParse(shaderId)"),
+                "a declared id is a namespaced resource location, not a path under the kernel namespace");
         assertTrue(source.contains("new ShaderInstance(event.getResourceProvider(), shaderLocation"));
-        assertFalse(source.contains("new ShaderInstance(event.getResourceProvider(), name"));
+        assertFalse(source.contains("fromNamespaceAndPath"), "the kernel must not build a feature's asset path");
+        assertFalse(source.contains("hud_loading"), "no shader file name is hard-coded in the platform");
     }
 
     @Test

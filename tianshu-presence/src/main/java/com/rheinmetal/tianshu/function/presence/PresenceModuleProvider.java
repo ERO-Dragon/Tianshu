@@ -42,8 +42,12 @@ public final class PresenceModuleProvider implements TianshuModuleProvider {
         PresenceModuleConfig config = PresenceModuleConfig.create(ports.configStores());
         PresenceTextProvider texts = PresenceTextProvider.of(ports.texts());
         PresenceClientRuntime runtime = new PresenceClientRuntime(ports.gameContext(), texts, logs());
+        // Presence owns its part of the routing table: the topics are registered here, while the session is being
+        // assembled, so they exist before any module (including this one) publishes its first activity.
+        PresenceProtocolAdapter protocol = new PresenceProtocolAdapter(context.moduleRuntime());
+        protocol.registerOwnedTopics(context.moduleRuntime());
         runtime.startWorldSession();
-        registrar.addModule(runtime.moduleInstaller(context.moduleRuntime(), ports.hud(), config));
+        registrar.addModule(runtime.moduleInstaller(protocol, ports.hud(), config));
         registrar.addSettings(new PresenceSettingsRegistrySource(
                 config,
                 context.services(),

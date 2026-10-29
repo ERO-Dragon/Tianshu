@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
+
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -36,7 +38,7 @@ class AXProtocolDocumentationBoundaryTest {
                 "ProtocolCapabilities.LLM_REQUEST",
                 "ProtocolCapabilities.LLM_PRIMITIVE_QUERY",
                 "ProtocolCapabilities.LLM_CACHE_MANAGE",
-                "ProtocolCapabilities.PRESENCE_QUERY_CONTEXT",
+                "PresenceCapabilities.QUERY_CONTEXT",
                 "ProtocolCapabilities.TTS_SPEAK",
                 "ProtocolCapabilities.TTS_CONTROL",
                 "PresenceWorldEventPayload.TOPIC",

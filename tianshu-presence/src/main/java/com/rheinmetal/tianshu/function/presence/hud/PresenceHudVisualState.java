@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.hud;
 
-import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState;
 
 /**
  * Product-level visual states. Protocol activity types remain separate from this presentation

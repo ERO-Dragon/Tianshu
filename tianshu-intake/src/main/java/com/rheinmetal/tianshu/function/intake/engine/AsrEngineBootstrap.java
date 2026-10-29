@@ -48,13 +48,13 @@ public final class AsrEngineBootstrap {
         Path modelPath = config.getAsrModelPath();
         if (modelPath == null || modelPath.getFileName() == null || modelPath.getFileName().toString().isBlank()) {
             markFailed(context, moduleId, "ASR model is not configured");
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.not_configured"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.not_configured"));
             return null;
         }
         if (modelPath == null || !Files.isDirectory(modelPath)) {
             markFailed(context, moduleId, "ASR model is not installed");
             env.info("asr.model.directory_missing");
-            publishStatus(AsrEngineBootstrapStatus.waiting("tianshu.presence.module.asr.not_installed"));
+            publishStatus(AsrEngineBootstrapStatus.waiting("tianshu.runtime.module.asr.not_installed"));
             return null;
         }
 
@@ -63,19 +63,19 @@ public final class AsrEngineBootstrap {
             if (initializeEngine(engine, context, modelPath)) {
                 context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId);
                 env.info("asr.engine.initialized");
-                publishStatus(AsrEngineBootstrapStatus.ready("tianshu.presence.module.asr.ready"));
+                publishStatus(AsrEngineBootstrapStatus.ready("tianshu.runtime.module.asr.ready"));
                 return engine;
             }
             markFailed(context, moduleId, "ASR 引擎初始化失败");
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.failed"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.failed"));
         } catch (ModelFilesMissingException e) {
             markFailed(context, moduleId, "ASR 模型文件缺失: " + e.getMessage());
             env.error("asr.model.files_missing", e);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.model_files_missing"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.model_files_missing"));
         } catch (RuntimeException | LinkageError failure) {
             markFailed(context, moduleId, "ASR 引擎初始化异常: " + failure.getMessage());
             env.error("asr.engine.initialization_failed", failure);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.exception"));
+            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.exception"));
         }
         engine.shutdown();
         return null;
@@ -102,7 +102,7 @@ public final class AsrEngineBootstrap {
         }
         if (!initialized) {
             env.error("asr.model.unsupported", null);
-        publishStatus(AsrEngineBootstrapStatus.failed("tianshu.presence.module.asr.unsupported_model"));
+        publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.unsupported_model"));
         }
         return initialized;
     }

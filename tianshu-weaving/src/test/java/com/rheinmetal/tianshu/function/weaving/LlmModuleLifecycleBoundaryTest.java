@@ -76,7 +76,7 @@ class LlmModuleLifecycleBoundaryTest {
         // The failure carries a resource key so the settings page can tell the player what to fill in,
         // and no local chat model is loaded as a fallback.
         assertEquals(LlmRuntimeState.FAILED, service.snapshot().state());
-        assertEquals("tianshu.presence.module.llm.missing_api_key", service.snapshot().failureMessage());
+        assertEquals("tianshu.runtime.module.llm.missing_api_key", service.snapshot().failureMessage());
         assertTrue(services.find(LLMService.class).isEmpty());
     }
 

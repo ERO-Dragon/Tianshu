@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.producer;
 
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventTexts;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
 
 import java.util.ArrayList;
 import java.util.List;

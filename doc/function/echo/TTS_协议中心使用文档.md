@@ -12,7 +12,7 @@
 | `ProtocolCapabilities.TTS_CONTROL` | `TtsControlPayload` | 停止、重载和音色管理。 |
 | `ProtocolTopics.TTS_PLAYBACK` | `TtsPlaybackStatusPayload` | 模块级播放状态。 |
 | `ProtocolTopics.TTS_REQUEST_STATUS` | `TtsRequestStatusPayload` | 单个播放 Session 的状态。 |
-| `ProtocolTopics.PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载及非 AX 播放、纯合成任务的产品活动。 |
+| `PresenceTopics.ACTIVITY` | `PresenceActivityPayload` | 模型加载及非 AX 播放、纯合成任务的产品活动。 |
 
 ## 1.1 能力状态与外部模块边界
 

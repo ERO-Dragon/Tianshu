@@ -23,7 +23,7 @@ class ModuleStatusPublicationBoundaryTest {
             path = Path.of("..", relativePath);
         }
         String source = Files.readString(path, StandardCharsets.UTF_8);
-        String messagePrefix = "tianshu.presence." + moduleId + ".download_complete";
+        String messagePrefix = "tianshu.runtime." + moduleId + ".download_complete";
         assertTrue(source.contains("publishWaiting(\"" + messagePrefix), relativePath);
         assertFalse(source.contains("publishReady(\"" + messagePrefix), relativePath);
     }

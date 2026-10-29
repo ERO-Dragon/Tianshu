@@ -127,15 +127,19 @@ GPU 设备发现和占用采样使用最后一次完整快照。打开设置页�
 
 固定显示文本必须通过资源 key。client 使用 `UiText`，只有 NeoForge adapter 能转换成 Minecraft 文本组件。
 
-HUD core shader 遵循 Minecraft 的资源约定：
+HUD core shader 遵循 Minecraft 的资源约定，但文件属于声明它的功能模组，不在北辰里：
 
 ```text
-assets/tianshu/shaders/core/<program>.json
-assets/tianshu/shaders/core/<vertex>.vsh
-assets/tianshu/shaders/core/<fragment>.fsh
+assets/<feature_modid>/shaders/core/<program>.json
+assets/<feature_modid>/shaders/core/<vertex>.vsh
+assets/<feature_modid>/shaders/core/<fragment>.fsh
 ```
 
-程序 JSON 通过 `vertex` 和 `fragment` 的基础名称关联两个阶段；`ShaderInstance` 注册 `tianshu:<program>` 后由资源系统加载这三个文件。`.fsh` 是 fragment shader 的标准后缀，不是把 Shadertoy 源码机械改名。`libs/ShaderToy/*.glsl` 只作为视觉参考和移植输入，不能直接作为 Minecraft core shader 运行资源；移植后的代码必须使用 Minecraft 的 GLSL 150 阶段输入输出约定。
+功能模组在自身入口里调用 api 的 `HudShaderCatalog.declare(HudProgram, "namespace:program")`；平台的
+`RegisterShadersEvent` 只遍历这些声明并创建 `ShaderInstance`，程序缺失或编译失败时静默落到该图层的 Java 回退。
+程序 JSON 通过 `vertex` 和 `fragment` 的基础名称关联两个阶段。`.fsh` 是 fragment shader 的标准后缀，不是把
+Shadertoy 源码机械改名。`libs/ShaderToy/*.glsl` 只作为视觉参考和移植输入，不能直接作为 Minecraft core shader
+运行资源；移植后的代码必须使用 Minecraft 的 GLSL 150 阶段输入输出约定。
 
 ## 7. 外部接入
 

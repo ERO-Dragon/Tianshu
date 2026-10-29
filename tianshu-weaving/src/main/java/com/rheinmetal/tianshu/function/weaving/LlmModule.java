@@ -30,7 +30,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
+import com.rheinmetal.tianshu.function.weaving.bridge.LlmPresenceActivityBridge;
 
 import java.time.Duration;
 import java.util.List;
@@ -47,8 +47,8 @@ public final class LlmModule implements TianshuManagedModule {
     private static final String REMOTE_SETTING_API_KEY = "remoteApiKey";
     private static final String REMOTE_SETTING_BASE_URL = "remoteBaseUrl";
     private static final String REMOTE_SETTING_MODEL = "remoteModel";
-    private static final String STATUS_KEY_MISSING_API_KEY = "tianshu.presence.module.llm.missing_api_key";
-    private static final String STATUS_KEY_REMOTE_INCOMPLETE = "tianshu.presence.module.llm.remote_incomplete";
+    private static final String STATUS_KEY_MISSING_API_KEY = "tianshu.runtime.module.llm.missing_api_key";
+    private static final String STATUS_KEY_REMOTE_INCOMPLETE = "tianshu.runtime.module.llm.remote_incomplete";
     /** How long the reconnect line stays up past the wait it announces. */
     private static final long RETRY_STATUS_TAIL_MILLIS = 2_000L;
     /** How long presence keeps the failure line, so a player who looks up still sees it. */
@@ -145,7 +145,7 @@ public final class LlmModule implements TianshuManagedModule {
                 publishStoppedStatus();
             } else if (state == com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState.FAILED) {
                 publishModuleStatus(ModuleStatuses.lifecycleFailed(
-                        moduleId(), "tianshu.presence.module.llm.failed", lifecycleStatusGeneration));
+                        moduleId(), "tianshu.runtime.module.llm.failed", lifecycleStatusGeneration));
             }
         });
         moduleService.bindRuntimeController(new LlmModuleService.RuntimeController() {
@@ -323,7 +323,7 @@ public final class LlmModule implements TianshuManagedModule {
             }
         }
 
-        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.presence.module.llm.starting"));
+        publishModuleStatus(ModuleStatuses.startingKeyed(moduleId(), "tianshu.runtime.module.llm.starting"));
         // From the player's side the cloud lane is loading until its request capability is usable; the notice also
         // keeps module keys unavailable while the start is in flight.
         adapter.publishLoadingActivity(true);
@@ -391,7 +391,7 @@ public final class LlmModule implements TianshuManagedModule {
             markCapabilitiesReady();
             moduleService.markReady();
         }
-        publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.presence.module.llm.ready"));
+        publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.llm.ready"));
         publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
         adapter.publishLoadingActivity(false);
         clearRuntimeRetry();
@@ -475,7 +475,7 @@ public final class LlmModule implements TianshuManagedModule {
         long generation = lifecycleGeneration.get();
         env.warn("[LLM] Cloud lane start failed; retry " + attempt + "/" + LlmRuntimeRetryPolicy.MAX_ATTEMPTS
                 + " in " + delayMillis + "ms");
-        adapter.publishRuntimeActivity(PresenceActivityType.RECONNECTING, delayMillis + RETRY_STATUS_TAIL_MILLIS);
+        adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.RECONNECTING, delayMillis + RETRY_STATUS_TAIL_MILLIS);
         cancelPendingRuntimeRetry();
         pendingRuntimeRetry = runtime.schedule(
                 ProtocolTaskSpec.builder()
@@ -515,8 +515,8 @@ public final class LlmModule implements TianshuManagedModule {
         publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), failureKey, lifecycleStatusGeneration));
         // Retrying stopped, so "reconnecting" is no longer true; the failure replaces it.
         adapter.publishLoadingActivity(false);
-        adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
-        adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
+        adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.RECONNECTING);
+        adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, RUNTIME_ERROR_TTL_MILLIS);
     }
 
     /** A lane that came up clears the retry budget, so the next failure starts from the first attempt. */
@@ -524,8 +524,8 @@ public final class LlmModule implements TianshuManagedModule {
         runtimeRetryAttempts.set(0);
         cancelPendingRuntimeRetry();
         // The lane is up or gone: either way the ambient notices about the failed start are no longer true.
-        adapter.clearRuntimeActivity(PresenceActivityType.RECONNECTING);
-        adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+        adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.RECONNECTING);
+        adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
     }
 
     private void cancelPendingRuntimeRetry() {
@@ -599,11 +599,11 @@ public final class LlmModule implements TianshuManagedModule {
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
         switch (report.outcome()) {
-            case READY -> adapter.clearRuntimeActivity(PresenceActivityType.ERROR);
+            case READY -> adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
             case DEGRADED -> env.warn("[LLM] Embedding lane runs on the CPU; retrieval continues on the reduced backend");
             case UNAVAILABLE -> {
                 ragStorageService.bindEmbeddingService(engineProvider.embeddingService());
-                adapter.publishRuntimeActivity(PresenceActivityType.ERROR, RUNTIME_ERROR_TTL_MILLIS);
+                adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }
     }

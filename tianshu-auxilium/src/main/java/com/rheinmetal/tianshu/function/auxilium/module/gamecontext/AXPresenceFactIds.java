@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.module.gamecontext;
 
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceContextFactIds;
 
 import java.util.List;
 

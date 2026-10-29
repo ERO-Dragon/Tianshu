@@ -10,13 +10,13 @@ import com.rheinmetal.tianshu.client.audio.AudioManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
+import com.rheinmetal.tianshu.api.client.host.hud.HudShaderCatalog;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
 import com.rheinmetal.tianshu.client.runtime.TianshuClientRuntime;
 import com.rheinmetal.tianshu.client.runtime.module.ClientOnnxRuntimeModuleInstaller;
 import com.rheinmetal.tianshu.client.runtime.module.ClientTianshuModuleAssembler;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
-import com.rheinmetal.tianshu.neoforge.TianshuNeoForge;
 import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
 import com.rheinmetal.tianshu.client.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.registry.ExternalSettingsRegistrySource;
@@ -289,14 +289,28 @@ public final class NeoForgeClientBootstrap {
         }
     }
 
+    /**
+     * Creates the HUD programs features declared.
+     *
+     * <p>The platform owns the {@code ShaderInstance} lifecycle and the failure fallback; the features own the files,
+     * their uniforms and their look. Nothing here names a feature: an absent one declares nothing, its family simply
+     * has no program, and the layer keeps drawing its Java fallback.</p>
+     */
     public void registerShaders(RegisterShadersEvent event) {
-        registerShader(event, HudProgram.LOADING, "presence_loading");
-        registerShader(event, HudProgram.PRESET_ONE, "presence_preset_one");
-        registerShader(event, HudProgram.PRESET_TWO, "presence_preset_two");
+        for (java.util.Map.Entry<HudProgram, String> declaration : HudShaderCatalog.declarations().entrySet()) {
+            registerShader(event, declaration.getKey(), declaration.getValue());
+        }
     }
 
-    private void registerShader(RegisterShadersEvent event, HudProgram program, String path) {
-        ResourceLocation shaderLocation = ResourceLocation.fromNamespaceAndPath(TianshuNeoForge.MOD_ID, path);
+    private void registerShader(RegisterShadersEvent event, HudProgram program, String shaderId) {
+        ResourceLocation shaderLocation = ResourceLocation.tryParse(shaderId);
+        if (shaderLocation == null) {
+            HudShaderPrograms.register(program, null);
+            if (diagnosticRouter != null) {
+                diagnosticRouter.warn("neoforge.hud.shader_declaration_invalid id=" + shaderId);
+            }
+            return;
+        }
         try {
             event.registerShader(
                     new ShaderInstance(event.getResourceProvider(), shaderLocation, DefaultVertexFormat.POSITION_TEX),
