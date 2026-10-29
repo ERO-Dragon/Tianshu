@@ -64,7 +64,10 @@ public final class AXParticipantRegistrar {
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 DialogueTurnProcessingPolicy.DEFAULT,
                 "",
-                DialogueHoldTier.TEN_SECONDS
+                DialogueHoldTier.TEN_SECONDS,
+                // The host's own assistant is the answer a fresh install falls back to: with no default owner
+                // picked yet, a turn that nothing claimed still belongs here.
+                true
         ));
     }
 

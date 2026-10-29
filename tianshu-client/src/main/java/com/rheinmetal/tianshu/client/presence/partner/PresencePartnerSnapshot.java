@@ -50,11 +50,13 @@ public record PresencePartnerSnapshot(
     /**
      * Whether the partner icon itself is drawn.
      *
-     * <p>The default owner is expressed by the main icon's own shader, so it never draws a partner icon; a
-     * participant without a usable icon is only diagnosable, never a broken picture.</p>
+     * <p>Only the icon decides this. A default owner that registered an icon is a partner like any other and is
+     * drawn like one — the player picked it, so it should be visible. The host's own assistant registers no icon,
+     * which is exactly why the main icon's shader speaks for it; a participant without a usable icon is only
+     * diagnosable, never a broken picture.</p>
      */
     public boolean showIcon() {
-        return present && !defaultOwner && !icon.isBlank();
+        return present && !icon.isBlank();
     }
 
     public boolean hasLease() {

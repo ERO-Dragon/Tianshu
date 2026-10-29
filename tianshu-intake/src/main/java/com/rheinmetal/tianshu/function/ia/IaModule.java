@@ -31,6 +31,7 @@ import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPa
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.function.ia.policy.DialogueArbitrationPolicy;
+import com.rheinmetal.tianshu.function.ia.policy.DialogueDefaultOwnerResolver;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantContractValidator;
 import com.rheinmetal.tianshu.function.ia.registry.DialogueParticipantRegistry;
 import com.rheinmetal.tianshu.function.ia.runtime.DialogueTriggerSynchronizer;
@@ -40,6 +41,7 @@ import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
 import com.rheinmetal.tianshu.function.ia.session.DialogueContextFreezeStore;
 import com.rheinmetal.tianshu.function.ia.session.DialogueSessionStore;
+import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerSettings;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
@@ -85,6 +87,8 @@ public final class IaModule implements TianshuManagedModule {
     private final Map<String, PresencePartnerPayload> partnerPayloads = new ConcurrentHashMap<>();
     private final DialogueInteractionContextMapper interactionContextMapper = new DialogueInteractionContextMapper();
     private final DialoguePartnerTracker partnerTracker = new DialoguePartnerTracker();
+    private final IaDefaultOwnerSettings defaultOwnerSettings;
+    private final DialogueDefaultOwnerResolver defaultOwnerResolver;
     private final ModuleRuntimeAccess runtime;
     private final DialogueTriggerSynchronizer triggerSynchronizer;
     private final IrResultArbitrationMapper irResultMapper;
@@ -106,7 +110,13 @@ public final class IaModule implements TianshuManagedModule {
     private com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
 
     public IaModule(ModuleRuntimeAccess runtime) {
+        this(runtime, IaDefaultOwnerSettings.UNCONFIGURED);
+    }
+
+    public IaModule(ModuleRuntimeAccess runtime, IaDefaultOwnerSettings defaultOwnerSettings) {
         this.runtime = runtime;
+        this.defaultOwnerSettings = defaultOwnerSettings == null ? IaDefaultOwnerSettings.UNCONFIGURED : defaultOwnerSettings;
+        this.defaultOwnerResolver = new DialogueDefaultOwnerResolver();
         this.adapter = new IaProtocolAdapter(runtime);
         this.participantRegistry = new DialogueParticipantRegistry();
         this.sessionStore = new DialogueSessionStore();
@@ -122,7 +132,8 @@ public final class IaModule implements TianshuManagedModule {
         this.participantLifecycleCoordinator = new DialogueParticipantLifecycleCoordinator(participantRegistry, sessionStore, eventPublisher);
         this.participantContractValidator = new DialogueParticipantContractValidator(runtime);
         this.diagnosticsView = new DialogueDiagnosticsView(participantRegistry, sessionStore);
-        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator, this::handleParticipantsChanged);
+        this.moduleService = new IaModuleService(participantRegistry, diagnosticsView, participantLifecycleCoordinator, participantContractValidator,
+                this::handleParticipantsChanged, this::refreshPartnersOnDefaultOwnerChange);
         this.triggerSynchronizer = new DialogueTriggerSynchronizer();
         this.irResultMapper = new IrResultArbitrationMapper();
     }
@@ -359,7 +370,7 @@ public final class IaModule implements TianshuManagedModule {
             long now
     ) {
         DialogueArbitrationDecision decision = arbitrationPolicy.decide(
-                participants, hardClaims, partnerTracker.holderParticipantId(now));
+                participants, hardClaims, partnerTracker.holderParticipantId(now), resolveDefaultOwner(participants));
         diagnostics.publish(DiagnosticEvent.now(
                 moduleId(),
                 decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
@@ -507,7 +518,8 @@ public final class IaModule implements TianshuManagedModule {
                 : DialogueContextFrame.empty(playerId);
         List<DialogueClaim> contextClaims = claimEngine.collectLocalClaims(
                 participants, frame.interactionHints(), frame.contextSnapshot());
-        DialogueArbitrationDecision contextDecision = arbitrationPolicy.decide(participants, contextClaims);
+        Optional<DialogueParticipantDescriptor> defaultOwner = resolveDefaultOwner(participants);
+        DialogueArbitrationDecision contextDecision = arbitrationPolicy.decide(participants, contextClaims, defaultOwner);
         if (contextDecision.accepted() && contextDecision.claim() != null) {
             publishPartner(partnerFor(playerId, contextDecision.owner(), false, now));
             schedulePartnerExpiry(playerId, now);
@@ -519,7 +531,7 @@ public final class IaModule implements TianshuManagedModule {
             schedulePartnerExpiry(playerId, now);
             return;
         }
-        DialogueArbitrationDecision fallback = arbitrationPolicy.decide(participants, List.of());
+        DialogueArbitrationDecision fallback = arbitrationPolicy.decide(participants, List.of(), defaultOwner);
         publishPartner(fallback.accepted()
                 ? partnerFor(playerId, fallback.owner(), true, now)
                 : PresencePartnerPayload.empty(playerId, now));
@@ -583,6 +595,26 @@ public final class IaModule implements TianshuManagedModule {
         for (String playerId : playerIds) {
             refreshPartner(playerId, now);
         }
+    }
+
+    /**
+     * Recomputes the marker after the player changed the default owner.
+     *
+     * <p>Nothing else in the marker depends on that setting, so a single refresh is enough: the arbitration reads
+     * the setting on its own when the next turn arrives.</p>
+     */
+    private void refreshPartnersOnDefaultOwnerChange() {
+        refreshPartners(System.currentTimeMillis());
+    }
+
+    /**
+     * Who owns a turn that no claim and no lease selected, according to the player's setting.
+     *
+     * <p>Resolved on every decision instead of cached: the setting can change while a world is open, and a cached
+     * answer would keep sending turns to the module the player just replaced.</p>
+     */
+    private Optional<DialogueParticipantDescriptor> resolveDefaultOwner(List<DialogueParticipantDescriptor> participants) {
+        return defaultOwnerResolver.resolve(participants, defaultOwnerSettings);
     }
 
     private void schedulePartnerExpiry(String playerId, long now) {

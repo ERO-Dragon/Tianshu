@@ -26,6 +26,11 @@ import com.rheinmetal.tianshu.function.intake.settings.IntakeSettingsApplier;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeSettingsRuntimeActions;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeSettingsSnapshot;
 import com.rheinmetal.tianshu.function.intake.model.AsrModelInfo;
+import com.rheinmetal.tianshu.function.ia.IaModuleService;
+import com.rheinmetal.tianshu.function.ia.policy.DialogueDefaultOwnerResolver;
+import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerConfig;
+import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerSettings;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
@@ -39,6 +44,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
@@ -80,24 +86,32 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private final ClientTextProvider textProvider;
     private final ClientAudioDeviceCatalog audioDeviceCatalog;
     private final Supplier<UiText> voiceKeyDisplay;
+    private final IaDefaultOwnerConfig defaultOwnerConfig;
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider) {
         this(services, config, audioBridge, scheduler, uiHost, textProvider,
                 audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null,
-                () -> UiText.key("key.tianshu.activate"));
+                () -> UiText.key("key.tianshu.activate"), null);
     }
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
                                      ClientAudioDeviceCatalog audioDeviceCatalog) {
         this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                () -> UiText.key("key.tianshu.activate"));
+                () -> UiText.key("key.tianshu.activate"), null);
     }
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
                                      ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay) {
+        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, voiceKeyDisplay, null);
+    }
+
+    public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
+                                     ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
+                                     IaDefaultOwnerConfig defaultOwnerConfig) {
         this.services = services;
         this.config = config;
         this.audioBridge = audioBridge;
@@ -106,6 +120,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         this.textProvider = textProvider == null ? ClientTextProvider.NOOP : textProvider;
         this.audioDeviceCatalog = audioDeviceCatalog;
         this.voiceKeyDisplay = voiceKeyDisplay == null ? () -> UiText.key("key.tianshu.activate") : voiceKeyDisplay;
+        this.defaultOwnerConfig = defaultOwnerConfig;
     }
 
     @Override
@@ -120,7 +135,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         }
         AsrSettingsDraft draft = new AsrSettingsDraft(
                 config, audioBridge, services, context, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                voiceKeyDisplay
+                voiceKeyDisplay, defaultOwnerConfig
         );
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
@@ -139,8 +154,13 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
-                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, draft::buildMainStatus)
-                .toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
+                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, draft::buildMainStatus);
+        // The arbiter owns this setting; the page only renders it. With no candidate registered there is nothing
+        // to choose, so the group disappears instead of showing a one-option control.
+        if (draft.hasDefaultOwnerCandidates()) {
+            panel.options("ia.default_owner", asr("section.default_owner"), draft::buildDefaultOwnerOptions);
+        }
+        panel.toggles("asr.processing", asr("section.processing"), draft.enabled::get, group -> group
                         .toggle("asr.high_pass", asr("option.high_pass"), draft.highPassFilterEnabled, draft.enabled::get))
                 .actions("asr.preview", asr("section.preview"), actions -> actions
                         .button("asr.preview.start", asr("action.preview_start"), () -> draft.startPreview(context), () -> draft.enabled.get() && draft.canPreview())
@@ -164,6 +184,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private static final class AsrSettingsDraft implements com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSession {
         private static final String ALL = "__all__";
         private static final String DEFAULT_MIC = "__default__";
+        /** The "nobody" value of the default-owner choice; a blank participant id never names a participant. */
+        private static final String NOBODY = "";
 
         private final IntakeSettingsAccess config;
         private final IAudioBridge audioBridge;
@@ -182,6 +204,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private final MutableSettingsValue<SortDirection> performanceDirection;
         private final MutableSettingsValue<SortDirection> qualityDirection;
         private final MutableSettingsValue<SortDirection> recommendationDirection;
+        private final MutableSettingsValue<String> defaultOwner;
+        private final IaDefaultOwnerConfig defaultOwnerConfig;
         private final List<AsrModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
@@ -194,7 +218,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
         private AsrSettingsDraft(IntakeSettingsAccess config, IAudioBridge audioBridge, ModuleRuntimeServices services, ModuleSettingsContext context,
                                  ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                 ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay) {
+                                 ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
+                                 IaDefaultOwnerConfig defaultOwnerConfig) {
             this.config = config;
             this.audioBridge = audioBridge;
             this.services = services;
@@ -204,6 +229,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             this.textProvider = textProvider;
             this.voiceKeyDisplay = voiceKeyDisplay;
             this.audioDeviceCatalog = audioDeviceCatalog;
+            this.defaultOwnerConfig = defaultOwnerConfig;
             this.catalog = AsrModelManager.getAllModels();
             this.availabilitySnapshot = asrModelService().modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
@@ -215,6 +241,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             this.performanceDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
             this.qualityDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
             this.recommendationDirection = new MutableSettingsValue<>(() -> SortDirection.DESC, ignored -> {}, Objects::nonNull);
+            this.defaultOwner = new MutableSettingsValue<>(this::effectiveDefaultOwner, ignored -> {}, Objects::nonNull);
             asrModelService().refreshModelAvailabilityAsync(() -> runOnClient(() -> {
                 availabilitySnapshot = asrModelService().modelAvailability();
                 refreshSettingsScreen();
@@ -225,6 +252,69 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             refreshMicrophoneNames();
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get);
+        }
+
+        /**
+         * The default owner, picked from the participants that declared they can own an unclaimed turn.
+         *
+         * <p>The control always shows the owner that is in effect, not the raw stored key: a fresh install has
+         * nothing stored and must still read as the out-of-box default, and a stored id whose module is gone must
+         * read as "nobody" instead of naming something that is not there.</p>
+         */
+        private void buildDefaultOwnerOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+            options.select("ia.default_owner.select", asr("option.default_owner"), defaultOwnerValues(), defaultOwner, this::defaultOwnerLabel);
+        }
+
+        private boolean hasDefaultOwnerCandidates() {
+            return defaultOwnerConfig != null && !defaultOwnerCandidates().isEmpty();
+        }
+
+        private List<String> defaultOwnerValues() {
+            List<String> values = new ArrayList<>();
+            values.add(NOBODY);
+            defaultOwnerCandidates().forEach(participant -> values.add(participant.participantId()));
+            return values;
+        }
+
+        private UiText defaultOwnerLabel(String participantId) {
+            if (participantId == null || participantId.isBlank()) {
+                return asr("default_owner.none");
+            }
+            return defaultOwnerCandidates().stream()
+                    .filter(participant -> participantId.equals(participant.participantId()))
+                    .findFirst()
+                    .map(this::participantLabel)
+                    .orElseGet(() -> asr("default_owner.none"));
+        }
+
+        private UiText participantLabel(DialogueParticipantDescriptor participant) {
+            String name = participant.displayName();
+            return UiText.literal(name == null || name.isBlank() ? participant.participantId() : name);
+        }
+
+        /** Who owns an unclaimed turn right now, resolved the same way the arbiter resolves it. */
+        private String effectiveDefaultOwner() {
+            if (defaultOwnerConfig == null) {
+                return NOBODY;
+            }
+            return new DialogueDefaultOwnerResolver()
+                    .resolve(defaultOwnerCandidates(), defaultOwnerConfig)
+                    .map(DialogueParticipantDescriptor::participantId)
+                    .orElse(NOBODY);
+        }
+
+        private List<DialogueParticipantDescriptor> defaultOwnerCandidates() {
+            return iaService()
+                    .map(service -> service.snapshot().participants().stream()
+                            .filter(participant -> participant != null && participant.canBeDefaultOwner())
+                            .sorted(Comparator.comparingInt(DialogueParticipantDescriptor::priority).reversed()
+                                    .thenComparing(DialogueParticipantDescriptor::participantId))
+                            .toList())
+                    .orElse(List.of());
+        }
+
+        private Optional<IaModuleService> iaService() {
+            return services == null ? Optional.empty() : services.findService(IaModuleService.class);
         }
 
         private void buildMainStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
@@ -261,7 +351,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                     || selectedMic.dirty()
                     || selectedModelName.dirty()
                     || highPassFilterEnabled.dirty()
-                    || githubProxyUrl.dirty();
+                    || githubProxyUrl.dirty()
+                    || defaultOwner.dirty();
         }
 
         @Override
@@ -286,6 +377,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                     .commit(config::save);
             IntakeSettingsSnapshot after = IntakeSettingsSnapshot.from(config);
             settingsApplier().apply(before, after);
+            saveDefaultOwner();
             return SettingsSaveResult.success(asr("message.saved"), false, true);
         }
 
@@ -296,6 +388,23 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             selectedModelName.reset();
             highPassFilterEnabled.reset();
             githubProxyUrl.reset();
+            defaultOwner.reset();
+        }
+
+        /**
+         * Writes the default-owner choice and asks the arbiter to redraw the partner marker.
+         *
+         * <p>Only a dirty value is written: saving another setting on this page must not turn an untouched "never
+         * configured" into an explicit one, and must not erase a stored pick whose module is only temporarily
+         * missing.</p>
+         */
+        private void saveDefaultOwner() {
+            if (defaultOwnerConfig == null || !defaultOwner.dirty()) {
+                return;
+            }
+            defaultOwnerConfig.select(defaultOwner.get());
+            iaService().ifPresent(IaModuleService::defaultOwnerChanged);
+            defaultOwner.save();
         }
 
         private List<String> micNames() {

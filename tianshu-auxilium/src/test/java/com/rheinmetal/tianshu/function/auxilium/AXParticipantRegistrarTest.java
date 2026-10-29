@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXParticipantRegistrarTest {
     @Test
@@ -38,6 +39,8 @@ class AXParticipantRegistrarTest {
         assertEquals(DialogueClaimMode.DEFAULT_OWNER, payload.descriptor().claimProfile().mode());
         assertEquals(DialogueTriggerGroup.EMPTY, payload.descriptor().triggerGroup());
         assertEquals(DialogueHoldTier.TEN_SECONDS, payload.descriptor().holdTier());
+        assertTrue(payload.descriptor().factoryDefaultOwner(),
+                "the host's own assistant is the out-of-box default owner");
         assertEquals(AXParticipantRegistrar.PARTICIPANT_ID, payload.descriptor().displayName(),
                 "without a language entry the participant falls back to its id, never to an empty name");
     }

@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.ia.policy;
 
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
-import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimMode;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 
 import java.util.Comparator;
@@ -18,21 +17,28 @@ import java.util.stream.Collectors;
  *
  * <p>The rules are deliberately small and in this order: a hard claim wins by its source (a pointed-at target
  * outranks a named one), then participant priority, then the stable participant id. With no claim, the
- * participant that won the previous turn keeps the round while its lease is alive. With no lease, the default
- * owner takes the turn; with no default owner the turn is rejected instead of being guessed.</p>
+ * participant that won the previous turn keeps the round while its lease is alive. With no lease, the turn goes
+ * to the default owner handed in here — the policy does not decide who that is, because that answer depends on
+ * the player's settings; with no default owner the turn is rejected instead of being guessed.</p>
  */
 public final class DialogueArbitrationPolicy {
-    public DialogueArbitrationDecision decide(List<DialogueParticipantDescriptor> participants, List<DialogueClaim> claims) {
-        return decide(participants, claims, "");
+    public DialogueArbitrationDecision decide(
+            List<DialogueParticipantDescriptor> participants,
+            List<DialogueClaim> claims,
+            Optional<DialogueParticipantDescriptor> defaultOwner
+    ) {
+        return decide(participants, claims, "", defaultOwner);
     }
 
     /**
      * @param leaseHolderId the participant that still holds the turn from the previous round, or blank
+     * @param defaultOwner  who owns a turn with no claim and no lease; empty means nobody does
      */
     public DialogueArbitrationDecision decide(
             List<DialogueParticipantDescriptor> participants,
             List<DialogueClaim> claims,
-            String leaseHolderId
+            String leaseHolderId,
+            Optional<DialogueParticipantDescriptor> defaultOwner
     ) {
         if (participants == null || participants.isEmpty()) {
             return DialogueArbitrationDecision.rejected("NO_PARTICIPANT");
@@ -50,8 +56,9 @@ public final class DialogueArbitrationPolicy {
         if (leaseHolderId != null && !leaseHolderId.isBlank() && participantById.containsKey(leaseHolderId)) {
             return DialogueArbitrationDecision.accepted(participantById.get(leaseHolderId), null, "LEASE_CONTINUED");
         }
-        return defaultOwnerParticipant(participants)
-                .map(owner -> DialogueArbitrationDecision.accepted(owner, null, "DEFAULT_OWNER"))
+        return defaultOwner
+                .filter(owner -> owner != null && participantById.containsKey(owner.participantId()))
+                .map(owner -> DialogueArbitrationDecision.accepted(participantById.get(owner.participantId()), null, "DEFAULT_OWNER"))
                 .orElseGet(() -> DialogueArbitrationDecision.rejected("NO_OWNER"));
     }
 
@@ -59,12 +66,5 @@ public final class DialogueArbitrationPolicy {
         return Comparator.comparingInt((DialogueClaim claim) -> claim.source().ordinal())
                 .thenComparingInt(DialogueClaim::priority)
                 .thenComparing(DialogueClaim::participantId, Comparator.reverseOrder());
-    }
-
-    private Optional<DialogueParticipantDescriptor> defaultOwnerParticipant(List<DialogueParticipantDescriptor> participants) {
-        return participants.stream()
-                .filter(participant -> participant != null && participant.claimProfile().mode() == DialogueClaimMode.DEFAULT_OWNER)
-                .max(Comparator.comparing(DialogueParticipantDescriptor::priority)
-                        .thenComparing(DialogueParticipantDescriptor::participantId, Comparator.reverseOrder()));
     }
 }

@@ -10,8 +10,10 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleRegistrar;
 import com.rheinmetal.tianshu.function.intake.index.ClientIrNamedObjectEnhancer;
 import com.rheinmetal.tianshu.function.intake.index.ClientNamedObjectIndexManager;
+import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerConfig;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeConfig;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeSettingsRegistrySource;
+import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 
 import java.nio.file.Path;
@@ -66,7 +68,9 @@ public final class IntakeModuleProvider implements TianshuModuleProvider {
                 ports.scheduler(),
                 ports.uiHost(),
                 ports.texts(),
-                ports.audioDevices()));
+                ports.audioDevices(),
+                () -> UiText.key("key.tianshu.activate"),
+                new IaDefaultOwnerConfig(ports.configStores().forModule(ProtocolModuleIds.IA))));
     }
 
     /**

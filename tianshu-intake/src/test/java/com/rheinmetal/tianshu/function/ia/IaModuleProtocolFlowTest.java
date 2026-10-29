@@ -31,6 +31,7 @@ import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
+import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerSettings;
 import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
 import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
@@ -163,7 +164,7 @@ class IaModuleProtocolFlowTest {
                 )),
                 DialogueTriggerGroup.of(List.of("maid"), List.of("farm"))
         ));
-        service.registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        service.registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
 
         assertEquals(List.of("maid", "farm"), voiceResources.registeredWords());
 
@@ -294,7 +295,7 @@ class IaModuleProtocolFlowTest {
         RecordingHandler axDelivery = new RecordingHandler();
         registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
         subscribeSessionEvents(new RecordingHandler());
-        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
         DialogueArbitrationRequestPayload payload = request("req-2", "player", "turn-2", 901L, "帮我记一下", List.of(), List.of());
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
@@ -314,6 +315,42 @@ class IaModuleProtocolFlowTest {
         assertEquals("module.ax", result.ownerModuleId());
         assertEquals("ax", result.ownerParticipantId());
         assertEquals("DEFAULT_OWNER", result.reason());
+    }
+
+    @Test
+    void aTurnWithNoClaimIsRejectedWhenTheDefaultOwnerSettingIsOff() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        IaModule ia = new IaModule(runtime, new IaDefaultOwnerSettings() {
+            @Override
+            public boolean isDisabled() {
+                return true;
+            }
+
+            @Override
+            public String participantId() {
+                return "";
+            }
+        });
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler axDelivery = new RecordingHandler();
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
+        subscribeSessionEvents(new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+        TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
+                "module.ir",
+                ProtocolCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                request("req-off", "player", "turn-off", 902L, "帮我记一下", List.of(), List.of())
+        ).build();
+        RecordingHandler resultHandler = new RecordingHandler();
+        registerResponseHandler(requestEnvelope, PayloadType.DIALOGUE_ARBITRATION_RESULT, DialogueArbitrationResultPayload.class, resultHandler);
+
+        runtime.submit(requestEnvelope);
+
+        DialogueArbitrationResultPayload result = resultHandler.awaitPayload(DialogueArbitrationResultPayload.class);
+        assertFalse(result.accepted(), "the player turned the default owner off; nobody owns an unclaimed turn");
+        assertEquals("NO_OWNER", result.reason());
+        assertTrue(axDelivery.envelopes().isEmpty());
     }
 
     @Test
@@ -381,6 +418,23 @@ class IaModuleProtocolFlowTest {
                 DialogueTurnProcessingPolicy.DEFAULT,
                 partnerIcon(participantId),
                 DialogueHoldTier.TEN_SECONDS
+        );
+    }
+
+    /** The participant a fresh install falls back to: it owns unclaimed turns unless the player says otherwise. */
+    private DialogueParticipantDescriptor factoryDefaultOwnerParticipant(String participantId, String moduleId, String routeCapability) {
+        return new DialogueParticipantDescriptor(
+                participantId,
+                moduleId,
+                participantId,
+                0,
+                DialogueClaimProfile.DEFAULT_OWNER,
+                DialogueTriggerGroup.EMPTY,
+                routeCapability,
+                DialogueTurnProcessingPolicy.DEFAULT,
+                partnerIcon(participantId),
+                DialogueHoldTier.TEN_SECONDS,
+                true
         );
     }
 

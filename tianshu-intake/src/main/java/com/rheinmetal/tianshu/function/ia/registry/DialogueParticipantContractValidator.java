@@ -31,6 +31,9 @@ public final class DialogueParticipantContractValidator {
         if (descriptor.claimProfile().mode() == DialogueClaimMode.RULES && !descriptor.hasPartnerIcon()) {
             return ValidationResult.reject("PARTICIPANT_ICON_MISSING", "A participant that can own a turn must declare a partner icon");
         }
+        if (descriptor.factoryDefaultOwner() && !descriptor.canBeDefaultOwner()) {
+            return ValidationResult.reject("PARTICIPANT_FACTORY_DEFAULT_NOT_AVAILABLE", "Only a participant that can own an unclaimed turn can be the out-of-box default owner");
+        }
         if (descriptor.hasPartnerIcon() && !ICON_PATTERN.matcher(descriptor.icon()).matches()) {
             return ValidationResult.reject("PARTICIPANT_ICON_INVALID", "Participant icon must be a namespaced texture path: " + descriptor.icon());
         }

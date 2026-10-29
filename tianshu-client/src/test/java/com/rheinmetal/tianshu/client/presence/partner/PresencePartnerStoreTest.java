@@ -39,14 +39,24 @@ class PresencePartnerStoreTest {
     }
 
     @Test
-    void theDefaultOwnerNeverDrawsAPartnerIcon() {
+    void aDefaultOwnerWithoutAnIconIsExpressedByTheMainIcon() {
         PresencePartnerStore store = new PresencePartnerStore();
         store.accept(partner("module.ax", "tianshu.AX", "", true, 0L, 0L));
 
         PresencePartnerSnapshot snapshot = store.at(1_000L);
         assertTrue(snapshot.present());
         assertTrue(snapshot.defaultOwner());
-        assertFalse(snapshot.showIcon(), "the default owner is expressed by the main icon, not by a partner icon");
+        assertFalse(snapshot.showIcon(), "the host's own assistant registers no icon, so the main icon speaks for it");
+    }
+
+    @Test
+    void aDefaultOwnerWithAnIconIsDrawnLikeAnyPartner() {
+        PresencePartnerStore store = new PresencePartnerStore();
+        store.accept(partner("module.maid", "maid", "tianshu:textures/gui/partner/maid.png", true, 0L, 0L));
+
+        PresencePartnerSnapshot snapshot = store.at(1_000L);
+        assertTrue(snapshot.defaultOwner());
+        assertTrue(snapshot.showIcon(), "a third-party default owner is a partner the player picked, so it is visible");
     }
 
     @Test
