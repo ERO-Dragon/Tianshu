@@ -135,7 +135,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
     public void subscribePresenceWorldEvents(EnvelopeHandler handler) {
         subscribeTopic(
-                PresenceWorldEventPayload.TOPIC,
+                PresenceTopics.WORLD_EVENT,
                 PayloadType.CUSTOM,
                 PresenceWorldEventPayload.class,
                 BrokerType.BOUNDED_QUEUE,

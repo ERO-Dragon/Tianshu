@@ -20,7 +20,8 @@ import com.rheinmetal.tianshu.function.presence.partner.PresencePartnerStore;
 import com.rheinmetal.tianshu.function.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.function.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.function.presence.status.PresenceHudDisplay;
-import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 
 import java.util.Objects;
 

@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
@@ -89,7 +90,7 @@ class PresenceWorldEventPublishingTest {
                         defaults.cancellable(), defaults.supportsStreaming(), 1, defaults.queueCapacity()
                 ),
                 new TopicSubscriptionDescriptor(
-                        PresenceWorldEventPayload.TOPIC,
+                        PresenceTopics.WORLD_EVENT,
                         PayloadType.CUSTOM,
                         PresenceWorldEventPayload.class,
                         BrokerType.BOUNDED_QUEUE,

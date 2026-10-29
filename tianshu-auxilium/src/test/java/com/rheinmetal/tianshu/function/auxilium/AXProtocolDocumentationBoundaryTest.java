@@ -41,7 +41,7 @@ class AXProtocolDocumentationBoundaryTest {
                 "PresenceCapabilities.QUERY_CONTEXT",
                 "ProtocolCapabilities.TTS_SPEAK",
                 "ProtocolCapabilities.TTS_CONTROL",
-                "PresenceWorldEventPayload.TOPIC",
+                "PresenceTopics.WORLD_EVENT",
                 "PresenceWorldEventPayload.EVENT_CHAT_MESSAGE",
                 "ProtocolTopics.MODULE_STATUS"
         )) {

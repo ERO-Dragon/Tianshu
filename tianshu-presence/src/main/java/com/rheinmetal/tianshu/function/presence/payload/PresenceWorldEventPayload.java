@@ -31,8 +31,6 @@ public record PresenceWorldEventPayload(
         long occurredAtMillis,
         List<Occurrence> occurrences
 ) implements ITianshuPayload {
-    public static final String TOPIC = "PRESENCE.WORLD_EVENT";
-
     public static final String EVENT_ADVANCEMENT_UNLOCKED = WorldEventTypes.EVENT_ADVANCEMENT_UNLOCKED;
     public static final String EVENT_PLAYER_DEATH = WorldEventTypes.EVENT_PLAYER_DEATH;
     public static final String EVENT_ITEM_CRAFTED = WorldEventTypes.EVENT_ITEM_CRAFTED;

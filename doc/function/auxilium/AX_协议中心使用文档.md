@@ -307,7 +307,7 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 
 | 符号 | 值/来源 | 用途 |
 |---|---|---|
-| `PresenceWorldEventPayload.TOPIC` | `PRESENCE.WORLD_EVENT` | 世界事件（统一渲染为 `<event>`） |
+| `PresenceTopics.WORLD_EVENT` | `PRESENCE.WORLD_EVENT` | 世界事件（统一渲染为 `<event>`） |
 | `PresenceWorldEventPayload.EVENT_CHAT_MESSAGE` | `PresenceWorldEventPayload.eventType` | 公屏聊天：世界事件的一个类型（同样进 `<event>`，带说话人） |
 
 发布（别人听 AX）：
