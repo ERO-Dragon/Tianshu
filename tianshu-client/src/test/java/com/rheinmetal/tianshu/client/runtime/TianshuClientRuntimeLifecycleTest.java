@@ -112,7 +112,6 @@ class TianshuClientRuntimeLifecycleTest {
                 () -> { },
                 () -> { },
                 () -> { },
-                () -> { },
                 presenceStarts::incrementAndGet,
                 presenceStops::incrementAndGet,
                 () -> { },
@@ -143,7 +142,6 @@ class TianshuClientRuntimeLifecycleTest {
                 () -> { },
                 () -> { },
                 () -> { },
-                () -> { },
                 presenceStarts::incrementAndGet,
                 presenceStops::incrementAndGet,
                 () -> { },
@@ -168,7 +166,6 @@ class TianshuClientRuntimeLifecycleTest {
                 closedResources::incrementAndGet,
                 closedResources::incrementAndGet,
                 closedResources::incrementAndGet,
-                () -> { },
                 () -> { },
                 ignored -> { }
         );

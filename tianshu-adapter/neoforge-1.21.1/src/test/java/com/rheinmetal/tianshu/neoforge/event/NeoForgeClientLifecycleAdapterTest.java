@@ -15,13 +15,11 @@ class NeoForgeClientLifecycleAdapterTest {
 
         adapter.onClientReady();
         adapter.onWorldLogin();
-        adapter.onClientTick();
         adapter.onWorldLogout();
         adapter.onClientShutdown();
 
         assertEquals(1, runtime.clientStarts.get());
         assertEquals(1, runtime.worldStarts.get());
-        assertEquals(1, runtime.ticks.get());
         assertEquals(1, runtime.worldStops.get());
         assertEquals(1, runtime.shutdowns.get());
     }
@@ -30,13 +28,11 @@ class NeoForgeClientLifecycleAdapterTest {
         private final AtomicInteger clientStarts = new AtomicInteger();
         private final AtomicInteger worldStarts = new AtomicInteger();
         private final AtomicInteger worldStops = new AtomicInteger();
-        private final AtomicInteger ticks = new AtomicInteger();
         private final AtomicInteger shutdowns = new AtomicInteger();
 
         @Override public void startClient() { clientStarts.incrementAndGet(); }
         @Override public void startWorldSession() { worldStarts.incrementAndGet(); }
         @Override public void stopWorldSession() { worldStops.incrementAndGet(); }
-        @Override public void tick() { ticks.incrementAndGet(); }
         @Override public void shutdown() { shutdowns.incrementAndGet(); }
     }
 }

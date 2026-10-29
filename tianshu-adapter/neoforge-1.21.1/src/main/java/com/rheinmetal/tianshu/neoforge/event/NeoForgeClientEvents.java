@@ -94,9 +94,8 @@ public final class NeoForgeClientEvents {
         if (!worldIdentityCapture.isAvailable()) {
             worldIdentityCapture.refresh();
         }
-        lifecycleAdapter.onClientTick();
         // The event layer owns two time-based doors (the deferred window and the immediate queue); this is the clock
-        // that opens them. It carries no facts, so it stays even though the sampling port is gone.
+        // that opens them. Modules that need a per-tick clock subscribe to it themselves.
         com.rheinmetal.tianshu.api.assembly.TickSignals.publish(
                 com.rheinmetal.tianshu.api.assembly.TickSignals.TICK, System.currentTimeMillis());
 
@@ -115,15 +114,15 @@ public final class NeoForgeClientEvents {
     /**
      * Whether module key input may be dispatched right now.
      *
-     * <p>Two gates, one reading: the core must be running the session, and presence must not be reporting "loading".
-     * Presence is the aggregated product state, so this is the same answer the HUD shows — the platform never
-     * inspects an individual module's capabilities, and a module that is loading necessarily published its loading
-     * activity for the HUD anyway.</p>
+     * <p>Two gates, one reading: the core must be running the session, and the runtime gate must not be reporting
+     * "loading". The gate is written by the module that aggregates the product state, so this is the same answer
+     * the HUD shows — the platform never inspects an individual module's capabilities, and never names the module
+     * that produces the state.</p>
      */
     private boolean moduleInputAvailable() {
         return coreManager.isInitialized()
                 && coreManager.runtimeReadyForRequests()
-                && !presenceRuntime.isLoading();
+                && !com.rheinmetal.tianshu.api.assembly.RuntimeGates.inputBlocked();
     }
 
     /**

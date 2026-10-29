@@ -15,7 +15,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final Runnable shutdownAudio;
     private final Runnable closeDiagnostics;
     private final Runnable closeIndex;
-    private final Runnable tickPresence;
     private final Runnable startPresenceWorldSession;
     private final Runnable stopPresenceWorldSession;
     private final Runnable onWorldReady;
@@ -39,7 +38,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 services.audioManager()::shutdown,
                 services.diagnosticRouter()::close,
                 () -> { },
-                services.presenceRuntime()::tick,
                 services.presenceRuntime()::startWorldSession,
                 services.presenceRuntime()::stopWorldSession,
                 onWorldReady,
@@ -54,7 +52,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             Runnable shutdownAudio,
             Runnable closeDiagnostics,
             Runnable closeIndex,
-            Runnable tickPresence,
             Runnable onWorldReady,
             Consumer<Throwable> onWorldFailure
     ) {
@@ -65,7 +62,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 shutdownAudio,
                 closeDiagnostics,
                 closeIndex,
-                tickPresence,
                 () -> { },
                 () -> { },
                 onWorldReady,
@@ -80,7 +76,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             Runnable shutdownAudio,
             Runnable closeDiagnostics,
             Runnable closeIndex,
-            Runnable tickPresence,
             Runnable startPresenceWorldSession,
             Runnable stopPresenceWorldSession,
             Runnable onWorldReady,
@@ -92,7 +87,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         this.shutdownAudio = Objects.requireNonNull(shutdownAudio, "shutdownAudio");
         this.closeDiagnostics = Objects.requireNonNull(closeDiagnostics, "closeDiagnostics");
         this.closeIndex = Objects.requireNonNull(closeIndex, "closeIndex");
-        this.tickPresence = Objects.requireNonNull(tickPresence, "tickPresence");
         this.startPresenceWorldSession = Objects.requireNonNull(startPresenceWorldSession, "startPresenceWorldSession");
         this.stopPresenceWorldSession = Objects.requireNonNull(stopPresenceWorldSession, "stopPresenceWorldSession");
         this.onWorldReady = onWorldReady == null ? () -> { } : onWorldReady;
@@ -153,13 +147,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         }
         stopPresenceWorldSession.run();
         core.stop().whenComplete((ignored, failure) -> completeWorldStop(requestGeneration, failure));
-    }
-
-    @Override
-    public void tick() {
-        if (state == ClientSessionState.WORLD_RUNNING) {
-            tickPresence.run();
-        }
     }
 
     @Override

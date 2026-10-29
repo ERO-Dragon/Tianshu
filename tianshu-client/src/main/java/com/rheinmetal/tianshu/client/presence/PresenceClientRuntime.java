@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.api.assembly.RuntimeGates;
+import com.rheinmetal.tianshu.api.assembly.TickSignals;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceContextSnapshotAssembler;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
@@ -29,6 +31,9 @@ import java.util.Objects;
  * HUD reads {@link #currentHudDisplay()} on the render thread; everything else runs on the client thread.</p>
  */
 public final class PresenceClientRuntime {
+    private static final TickSignals.Subscription NO_TICK = () -> {
+    };
+
     private final PresenceActivityTracker activityTracker = new PresenceActivityTracker();
     private final PresenceDisplayPolicy displayPolicy;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
@@ -38,6 +43,10 @@ public final class PresenceClientRuntime {
     private volatile PresenceActivitySnapshot displayedActivitySnapshot;
     private volatile PresenceHudDisplay cachedHudDisplay = PresenceHudDisplay.HIDDEN;
     private volatile boolean worldSessionActive;
+    /** The clock subscription while a world session is running; presence is ticked by the shared clock signal. */
+    private volatile TickSignals.Subscription tickSubscription = NO_TICK;
+    /** Last value handed to {@link RuntimeGates}; the gate is written only on change. */
+    private volatile boolean inputBlocked;
 
     public PresenceClientRuntime(ClientGameContextPort platform, PresenceTextProvider textProvider) {
         this(platform, textProvider, LogSink.NOOP);
@@ -62,15 +71,19 @@ public final class PresenceClientRuntime {
         interactionContextWatcher.reset();
         partnerStore.clear();
         eventCollector.startWorldSession();
+        publishInputGate();
+        subscribeToClock();
     }
 
     public void stopWorldSession() {
         worldSessionActive = false;
+        unsubscribeFromClock();
         contextQueryCoordinator.stopWorldSession();
         interactionContextWatcher.reset();
         partnerStore.clear();
         eventCollector.stopWorldSession();
         activityTracker.stopWorldSession();
+        publishInputGate();
     }
 
     public TianshuModuleInstaller moduleInstaller(ModuleRuntimeAccess moduleRuntime) {
@@ -86,6 +99,35 @@ public final class PresenceClientRuntime {
             contextQueryCoordinator.processPending();
             interactionContextWatcher.poll();
             eventCollector.flushWorldEvents();
+            publishInputGate();
+        }
+    }
+
+    /**
+     * Keeps the platform's input gate in step with the aggregated product state.
+     *
+     * <p>The platform must not ask presence whether it is loading — that would name the module — so presence pushes
+     * the answer into {@link RuntimeGates} instead. It is written only when the answer changes, so a steady state
+     * costs nothing.</p>
+     */
+    private void publishInputGate() {
+        boolean blocked = isLoading();
+        if (blocked != inputBlocked) {
+            inputBlocked = blocked;
+            RuntimeGates.setInputBlocked(blocked);
+        }
+    }
+
+    private void subscribeToClock() {
+        unsubscribeFromClock();
+        tickSubscription = TickSignals.subscribe(TickSignals.TICK, ignored -> tick());
+    }
+
+    private void unsubscribeFromClock() {
+        TickSignals.Subscription subscription = tickSubscription;
+        tickSubscription = NO_TICK;
+        if (subscription != null) {
+            subscription.close();
         }
     }
 

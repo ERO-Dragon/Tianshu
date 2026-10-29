@@ -23,10 +23,6 @@ public final class NeoForgeClientLifecycleAdapter {
         runtime.stopWorldSession();
     }
 
-    public void onClientTick() {
-        runtime.tick();
-    }
-
     public void onClientShutdown() {
         runtime.shutdown();
     }
