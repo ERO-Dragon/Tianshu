@@ -18,6 +18,7 @@ import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.List;
@@ -91,7 +92,29 @@ public final class PresenceClientRuntime {
         contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
         interactionContextWatcher.setSink(adapter::publishInteractionContext);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
-        return new PresenceModuleInstaller(adapter, activityTracker, contextQueryCoordinator, partnerStore);
+        return new PresenceModuleInstaller(adapter, activityTracker, contextQueryCoordinator, partnerStore,
+                this::recordExternalEvent);
+    }
+
+    /**
+     * Feeds one raw platform event into the aggregation window.
+     *
+     * <p>The platform produces single occurrences (and knows only {@code WorldEventTypes}); the window, the
+     * grouping and the re-publication are presence's, which is why the conversion lives here and the host never
+     * sees an aggregated payload.</p>
+     */
+    public void recordExternalEvent(WorldEventPayload event) {
+        if (event == null || !worldSessionActive) {
+            return;
+        }
+        eventCollector.recordWorldEvents(List.of(new PresenceWorldEventPayload(
+                null,
+                event.eventType(),
+                event.playerId(),
+                event.dimensionId(),
+                event.occurredAtMillis(),
+                event.values()
+        )));
     }
 
     public void tick() {

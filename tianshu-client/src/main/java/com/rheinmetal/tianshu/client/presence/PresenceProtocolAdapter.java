@@ -18,6 +18,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
@@ -98,6 +99,26 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
                 PayloadType.PRESENCE_PARTNER,
                 PresencePartnerPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
+    /**
+     * Subscribes to the platform's raw world events.
+     *
+     * <p>The vocabulary is {@code WorldEventTypes} (api), so the producer needs no knowledge of presence; this
+     * module is the aggregator, and the window it builds is what it re-publishes for other consumers.</p>
+     */
+    public void subscribeWorldEventInput(EnvelopeHandler handler) {
+        subscribeTopic(
+                ProtocolTopics.WORLD_EVENT,
+                PayloadType.CUSTOM,
+                WorldEventPayload.class,
+                BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.EVENT),
                 Priority.LOW,
                 CompletionPolicy.AUTO_COMPLETE_ON_RETURN,

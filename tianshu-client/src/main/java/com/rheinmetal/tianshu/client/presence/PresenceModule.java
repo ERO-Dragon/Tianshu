@@ -9,12 +9,14 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 /**
  * The protocol face of presence: the module that owns {@code PRESENCE.QUERY_CONTEXT}, the
@@ -29,6 +31,7 @@ public final class PresenceModule implements TianshuManagedModule {
     private final PresenceActivityTracker activityTracker;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final PresencePartnerStore partnerStore;
+    private final Consumer<WorldEventPayload> externalEventSink;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile boolean lifecycleActive;
 
@@ -36,12 +39,14 @@ public final class PresenceModule implements TianshuManagedModule {
             PresenceProtocolAdapter adapter,
             PresenceActivityTracker activityTracker,
             PresenceContextQueryCoordinator contextQueryCoordinator,
-            PresencePartnerStore partnerStore
+            PresencePartnerStore partnerStore,
+            Consumer<WorldEventPayload> externalEventSink
     ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.activityTracker = Objects.requireNonNull(activityTracker, "activityTracker");
         this.contextQueryCoordinator = Objects.requireNonNull(contextQueryCoordinator, "contextQueryCoordinator");
         this.partnerStore = Objects.requireNonNull(partnerStore, "partnerStore");
+        this.externalEventSink = externalEventSink == null ? payload -> { } : externalEventSink;
         this.contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
     }
 
@@ -57,6 +62,7 @@ public final class PresenceModule implements TianshuManagedModule {
         adapter.registerQueryContextCapability(this::handleQueryContext);
         adapter.subscribePresenceActivity(this::handlePresenceActivity);
         adapter.subscribePartner(this::handlePartner);
+        adapter.subscribeWorldEventInput(this::handleWorldEventInput);
         lifecycleActive = true;
         publishLifecycle(ModuleStatuses.lifecycleReady(moduleId(), lifecycleGeneration.get()));
     }
@@ -90,6 +96,14 @@ public final class PresenceModule implements TianshuManagedModule {
     private void handlePresenceActivity(TianshuEnvelope envelope, ProtocolContext context) {
         if (envelope.payload() instanceof PresenceActivityPayload payload) {
             activityTracker.accept(envelope.header().sourceId(), payload);
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    /** One raw platform event: handed to the aggregation window, never rendered or answered here. */
+    private void handleWorldEventInput(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof WorldEventPayload payload) {
+            externalEventSink.accept(payload);
         }
         context.complete(envelope.envelopeId());
     }
