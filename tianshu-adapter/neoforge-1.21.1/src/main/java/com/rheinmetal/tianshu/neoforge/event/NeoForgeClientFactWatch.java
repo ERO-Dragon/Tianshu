@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.ResourceLocation;
@@ -44,17 +45,17 @@ public final class NeoForgeClientFactWatch {
         if (!(event.getLevel() instanceof ClientLevel level)) {
             return;
         }
-        publish(PresenceWorldEventPayload.EVENT_DIMENSION_CHANGED, level, dimensionValues(level));
+        publish(WorldEventTypes.EVENT_DIMENSION_CHANGED, level, dimensionValues(level));
     }
 
     public void onPlayerClone(ClientPlayerNetworkEvent.Clone event) {
         Level level = event.getNewPlayer() == null ? null : event.getNewPlayer().level();
-        publish(PresenceWorldEventPayload.EVENT_RESPAWN, level, dimensionValues(level));
+        publish(WorldEventTypes.EVENT_RESPAWN, level, dimensionValues(level));
     }
 
     public void onScreenOpening(ScreenEvent.Opening event) {
         if (event.getNewScreen() instanceof AbstractContainerScreen<?>) {
-            publish(PresenceWorldEventPayload.EVENT_CONTAINER_OPEN, null, Map.of());
+            publish(WorldEventTypes.EVENT_CONTAINER_OPEN, null, Map.of());
         }
     }
 
@@ -76,20 +77,19 @@ public final class NeoForgeClientFactWatch {
         }
         ResourceLocation id = level.dimension().location();
         Map<String, String> values = new LinkedHashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_DIMENSION, id.toString());
-        values.put(PresenceWorldEventPayload.VALUE_DIMENSION_NAME,
+        values.put(WorldEventTypes.VALUE_DIMENSION, id.toString());
+        values.put(WorldEventTypes.VALUE_DIMENSION_NAME,
                 ClientLanguagePolicy.registryDisplayName(id, "dimension",
                         ClientLanguagePolicy.captureCurrentLanguageCode()));
         return values;
     }
 
-    private void publish(String factId, Level level, Map<String, String> values) {
-        NeoForgePresenceHooks.recordFact(new PresenceWorldEventPayload(
-                null,
-                factId,
+    private void publish(String eventType, Level level, Map<String, String> values) {
+        NeoForgeWorldEventHooks.publish(new WorldEventPayload(
+                eventType,
                 "",
                 level == null ? "" : level.dimension().location().toString(),
-                System.currentTimeMillis(),
-                values));
+                values,
+                System.currentTimeMillis()));
     }
 }

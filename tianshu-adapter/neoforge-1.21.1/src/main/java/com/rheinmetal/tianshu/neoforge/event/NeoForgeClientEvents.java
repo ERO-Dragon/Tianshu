@@ -3,11 +3,11 @@ package com.rheinmetal.tianshu.neoforge.event;
 import com.rheinmetal.tianshu.api.assembly.InputSignals;
 import com.rheinmetal.tianshu.neoforge.ui.TextDialogueScreen;
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
-import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
+import com.rheinmetal.tianshu.neoforge.ui.hud.NeoForgeHudHost;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
@@ -29,8 +29,7 @@ public final class NeoForgeClientEvents {
     private final TianshuCoreManager coreManager;
     private final TianshuSettingsModule settingsModule;
     private final NeoForgeClientLifecycleAdapter lifecycleAdapter;
-    private final PresenceClientRuntime presenceRuntime;
-    private final PresenceHudRenderer presenceHudRenderer;
+    private final NeoForgeHudHost hudHost;
     private final NeoForgeWorldIdentityCapture worldIdentityCapture;
     private final Supplier<KeyMapping> voiceKeySupplier;
     private final Supplier<KeyMapping> textInputKeySupplier;
@@ -41,8 +40,7 @@ public final class NeoForgeClientEvents {
             TianshuCoreManager coreManager,
             TianshuSettingsModule settingsModule,
             NeoForgeClientLifecycleAdapter lifecycleAdapter,
-            PresenceClientRuntime presenceRuntime,
-            PresenceHudRenderer presenceHudRenderer,
+            NeoForgeHudHost hudHost,
             NeoForgeWorldIdentityCapture worldIdentityCapture,
             Supplier<KeyMapping> voiceKeySupplier,
             Supplier<KeyMapping> textInputKeySupplier,
@@ -52,8 +50,7 @@ public final class NeoForgeClientEvents {
         this.coreManager = Objects.requireNonNull(coreManager, "coreManager");
         this.settingsModule = Objects.requireNonNull(settingsModule, "settingsModule");
         this.lifecycleAdapter = Objects.requireNonNull(lifecycleAdapter, "lifecycleAdapter");
-        this.presenceRuntime = Objects.requireNonNull(presenceRuntime, "presenceRuntime");
-        this.presenceHudRenderer = Objects.requireNonNull(presenceHudRenderer, "presenceHudRenderer");
+        this.hudHost = Objects.requireNonNull(hudHost, "hudHost");
         this.worldIdentityCapture = Objects.requireNonNull(worldIdentityCapture, "worldIdentityCapture");
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
         this.textInputKeySupplier = Objects.requireNonNull(textInputKeySupplier, "textInputKeySupplier");
@@ -66,7 +63,7 @@ public final class NeoForgeClientEvents {
     public void onWorldLogin(ClientPlayerNetworkEvent.LoggingIn event) {
         logSink.info("neoforge.world.login");
         worldIdentityCapture.refresh();
-        NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
+        NeoForgeWorldEventHooks.resetWorldSession();
         lifecycleAdapter.onWorldLogin();
     }
 
@@ -80,8 +77,8 @@ public final class NeoForgeClientEvents {
         logSink.info("neoforge.world.logout");
         resetVoiceInputState();
         worldIdentityCapture.clear();
-        presenceHudRenderer.clear();
-        NeoForgePresenceHooks.resetWorldSession(presenceRuntime);
+        hudHost.resetLayers();
+        NeoForgeWorldEventHooks.resetWorldSession();
         lifecycleAdapter.onWorldLogout();
     }
 
@@ -172,18 +169,30 @@ public final class NeoForgeClientEvents {
 
     @SubscribeEvent
     public void onRenderGui(RenderGuiEvent.Post event) {
-        presenceHudRenderer.render(event.getGuiGraphics());
+        hudHost.render(event.getGuiGraphics());
     }
 
+    /**
+     * A player's chat line is a world event, not a second channel.
+     *
+     * <p>The line only becomes an event when there is something to report — a blank message or a missing sender is
+     * not news, and letting it through would put an empty group in the consumer's window.</p>
+     */
     @SubscribeEvent
     public void onClientChatReceived(ClientChatReceivedEvent event) {
-        if (event instanceof ClientChatReceivedEvent.Player && !event.isSystem()) {
-            presenceRuntime.recordPlayerChatMessage(
-                    event.getMessage().getString(),
-                    event.getSender() == null ? "" : event.getSender().toString(),
-                    playerChatSenderName(event)
-            );
+        if (!(event instanceof ClientChatReceivedEvent.Player) || event.isSystem()) {
+            return;
         }
+        String messageText = event.getMessage().getString();
+        String senderId = event.getSender() == null ? "" : event.getSender().toString();
+        if (messageText.isBlank() || senderId.isBlank()) {
+            return;
+        }
+        NeoForgeWorldEventHooks.publish(WorldEventPayload.chatMessage(
+                senderId,
+                playerChatSenderName(event),
+                messageText
+        ));
     }
 
     public void resetVoiceInputState() {

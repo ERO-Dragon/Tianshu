@@ -280,14 +280,15 @@ NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一�
 
 1. **模块自注册**：模块在自己的 `@Mod` 构造里调用 `TianshuModuleProviderRegistry.register(factory)`；内核每个世界会话把工厂实例化成 provider。
 2. **两个装配入口**：`TianshuModuleRegistrar` 只有 `addModule(installer)` 与 `addSettings(page)`。内置页与外置贡献走同一条路（`ModuleSettingsSourceRegistry`），没有第二条特权路径。
-3. **只交端口**：`TianshuModuleAssemblyContext` 给出 `ClientPorts`（scheduler / uiHost / texts / filePicker / settingsLayers / audioDevices / configStores / modelLoadQueue）、`ModuleRuntimeServices`（findService / requireService / requestRefresh）与宿主信号；**不交** CoreManager、ProtocolRuntime、ClientConfig。
+3. **只交端口**：`TianshuModuleAssemblyContext` 给出 `ClientPorts`（scheduler / uiHost / texts / filePicker / settingsLayers / audioDevices / configStores / modelLoadQueue / hud）、`ModuleRuntimeServices`（findService / requireService / requestRefresh）与宿主信号；**不交** CoreManager、ProtocolRuntime、ClientConfig。
 
 配置与模型资产的归属随之改变：
 
 | 内容 | 归属 |
 |---|---|
 | 四个功能模组的设置 | `config/Tianshu/module/<moduleId>.properties`，键名、默认值、路径全部在模块内 |
-| 内核设置 | `config/tianshu-client.toml`（debug / 映迹 HUD）；`ClientConfig` 只实现内核自己的 3 个接口 |
+| 内核设置 | `config/tianshu-client.toml`（只剩 debug）；`ClientConfig` 只实现内核自己的 1 个接口 |
+| 映迹 HUD 设置 | `config/Tianshu/module/module.presence.properties`，键名与默认值在映迹内 |
 | 具名对象索引 | 听澜自建、自持生命周期、缓存到 `<module>/asr/index`；内核只能通过 `NamedObjectIndex` 端口观测 |
 | 模型清单与读取器 | intake / weaving / echo 各自持有；`tianshu-core/model` 只留传输与状态机 |
 

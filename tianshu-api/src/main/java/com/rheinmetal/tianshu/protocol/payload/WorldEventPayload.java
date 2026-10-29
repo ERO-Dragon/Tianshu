@@ -40,14 +40,20 @@ public record WorldEventPayload(
         }
     }
 
-    /** One chat line as a world event; chat is a kind, not a second payload shape. */
-    public static WorldEventPayload chatMessage(String playerId, String senderId, String senderName, String messageText) {
+    /**
+     * One chat line as a world event; chat is a kind, not a second payload shape.
+     *
+     * <p>The speaker is the player the event is about, so the speaker id is both the player id and the value a
+     * consumer reads — there is no second participant in a chat line.</p>
+     */
+    public static WorldEventPayload chatMessage(String senderId, String senderName, String messageText) {
+        String speakerId = senderId == null ? "" : senderId;
         return new WorldEventPayload(
                 WorldEventTypes.EVENT_CHAT_MESSAGE,
-                playerId,
+                speakerId,
                 "",
                 Map.of(
-                        WorldEventTypes.VALUE_SENDER_ID, senderId == null ? "" : senderId,
+                        WorldEventTypes.VALUE_SENDER_ID, speakerId,
                         WorldEventTypes.VALUE_SENDER_NAME, senderName == null ? "" : senderName,
                         WorldEventTypes.VALUE_TEXT, messageText == null ? "" : messageText
                 ),

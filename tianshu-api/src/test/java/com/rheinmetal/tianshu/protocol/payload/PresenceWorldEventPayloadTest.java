@@ -96,7 +96,8 @@ class PresenceWorldEventPayloadTest {
 
     @Test
     void theOccurrenceListIsImmutable() {
-        PresenceWorldEventPayload payload = PresenceWorldEventPayload.chatMessage("uuid", "Player", "hello");
+        PresenceWorldEventPayload payload = new PresenceWorldEventPayload(
+                null, "test:fact", "player", "", 1_000L, Map.of("key", "value"));
 
         assertThrows(UnsupportedOperationException.class,
                 () -> payload.occurrences().add(new PresenceWorldEventPayload.Occurrence(1, Map.of())));

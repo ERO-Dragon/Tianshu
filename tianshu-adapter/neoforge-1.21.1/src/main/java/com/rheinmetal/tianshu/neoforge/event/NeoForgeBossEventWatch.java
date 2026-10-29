@@ -1,11 +1,13 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.CustomizeGuiOverlayEvent;
 
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,16 +42,13 @@ public final class NeoForgeBossEventWatch {
         if (id == null || !REPORTED.add(id)) {
             return;
         }
-        PresenceWorldEventPayload payload = new PresenceWorldEventPayload(
-                null,
-                PresenceWorldEventPayload.EVENT_BOSS_ENGAGE,
+        NeoForgeWorldEventHooks.publish(new WorldEventPayload(
+                WorldEventTypes.EVENT_BOSS_ENGAGE,
                 "",
                 "",
-                System.currentTimeMillis(),
-                java.util.Map.of(PresenceWorldEventPayload.VALUE_ENTITY_NAME,
-                        event.getBossEvent().getName().getString())
-        );
-        NeoForgePresenceHooks.recordFact(payload);
+                Map.of(WorldEventTypes.VALUE_ENTITY_NAME, event.getBossEvent().getName().getString()),
+                System.currentTimeMillis()
+        ));
     }
 
     /** Drops the reported ids: a new world must be able to report the same boss again. */

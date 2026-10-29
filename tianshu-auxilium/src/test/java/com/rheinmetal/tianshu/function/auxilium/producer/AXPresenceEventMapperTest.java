@@ -78,8 +78,7 @@ class AXPresenceEventMapperTest {
     /** Chat is something said, and an unknown type is a fact of its own: both stay out of the event layer. */
     @Test
     void chatAndUnknownTypesStayOutOfTheEventLayer() {
-        assertTrue(AXPresenceEventMapper.batch(
-                PresenceWorldEventPayload.chatMessage("uuid-1", "甲", "在吗")).isEmpty());
+        assertTrue(AXPresenceEventMapper.batch(chat("uuid-1", "甲", "在吗")).isEmpty());
         assertTrue(AXPresenceEventMapper.batch(
                 new PresenceWorldEventPayload(null, "mymod:custom_fact", "player", "minecraft:overworld", 1L,
                         Map.of())).isEmpty());
@@ -123,6 +122,14 @@ class AXPresenceEventMapperTest {
 
     private static AXPresenceEventMapper.Batch batch(PresenceWorldEventPayload payload) {
         return AXPresenceEventMapper.batch(payload).orElseThrow();
+    }
+
+    private static PresenceWorldEventPayload chat(String senderId, String senderName, String text) {
+        return new PresenceWorldEventPayload(null, PresenceWorldEventPayload.EVENT_CHAT_MESSAGE,
+                senderId, "", 1L, Map.of(
+                        PresenceWorldEventPayload.VALUE_SENDER_ID, senderId,
+                        PresenceWorldEventPayload.VALUE_SENDER_NAME, senderName,
+                        PresenceWorldEventPayload.VALUE_TEXT, text));
     }
 
     private static PresenceWorldEventPayload advancement(String title) {

@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.network;
 
 import com.rheinmetal.tianshu.neoforge.TianshuNeoForge;
-import com.rheinmetal.tianshu.neoforge.event.NeoForgePresenceHooks;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.neoforge.event.NeoForgeWorldEventHooks;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -16,7 +16,7 @@ import java.util.Map;
  * One authoritative fact travelling from the optional server component to a client.
  *
  * <p>The wire type is a platform concern and lives here, not in the protocol api: the receiving side turns it straight
- * into a {@link PresenceWorldEventPayload}, which is the shape every consumer already understands. A fact that no
+ * into a {@link WorldEventPayload}, which is the shape every consumer already understands. A fact that no
  * client knows how to consume is dropped there — the client is allowed to be older than the server.</p>
  *
  * <p>Only facts about the receiving player are ever sent on this channel; the server decides that (see
@@ -47,8 +47,8 @@ public record PresenceFactPacket(
     }
 
     /** The protocol shape every consumer already reads; no client-side class is touched here. */
-    public PresenceWorldEventPayload toWorldEvent() {
-        return new PresenceWorldEventPayload(null, factId, "", dimensionId, occurredAtMillis, values);
+    public WorldEventPayload toWorldEvent() {
+        return new WorldEventPayload(factId, "", dimensionId, values, occurredAtMillis);
     }
 
     void encode(RegistryFriendlyByteBuf buffer) {
@@ -74,9 +74,9 @@ public record PresenceFactPacket(
         return new PresenceFactPacket(factId, dimensionId, occurredAtMillis, values);
     }
 
-    /** Runs on the client thread: the presence runtime is a client-side object. */
+    /** Runs on the client thread: the world-event entry is a client-side object. */
     static void handle(PresenceFactPacket packet, IPayloadContext context) {
-        PresenceWorldEventPayload event = packet.toWorldEvent();
-        context.enqueueWork(() -> NeoForgePresenceHooks.recordFact(event));
+        WorldEventPayload event = packet.toWorldEvent();
+        context.enqueueWork(() -> NeoForgeWorldEventHooks.publish(event));
     }
 }

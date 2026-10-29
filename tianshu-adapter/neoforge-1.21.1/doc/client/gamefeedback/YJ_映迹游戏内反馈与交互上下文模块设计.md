@@ -35,7 +35,8 @@ module.presence
 
 ## 2. 模块定位
 
-映迹是 `tianshu-client` 中的平台无关客户端模块；`tianshu-neoforge` 只负责接入 Minecraft 状态和实际 HUD 绘制。映迹负责：
+映迹是 `tianshu-client` 中的平台无关客户端模块；`tianshu-neoforge` 只负责接入 Minecraft 状态并在 api 端口
+（`HudSurface` / `HudHost` / `ClientGameContextPort`）后面提供落笔实现。映迹负责：
 
 - 通过外层 platform 端口读取客户端状态
 - 维护不可变快照
@@ -127,7 +128,7 @@ WORLD_ENVIRONMENT
 
 已确定目标：
 
-- 映迹采集链只依赖 `ClientGameContextProvider`
+- 映迹采集链只依赖 `ClientGameContextPort`
 - 映迹文本映射只依赖 `PresenceTextProvider`
 - NeoForge / Minecraft 的活对象读取、screen 分类、成就包解析、注册表读取、本地化 API 都放在外层 adapter 和 event 包
 - 映迹事件入口尽量接收普通值或平台端口，不让 `Screen`、`Component`、packet 等版本敏感类型流入映迹核心
@@ -137,7 +138,7 @@ WORLD_ENVIRONMENT
 - `PresenceEventCollector` 不再直接读取 `Minecraft.getInstance()`
 - `PresenceEventCollector` 不再接收 `Screen`、`Component`、`ClientboundUpdateAdvancementsPacket`
 - `PresenceContextFactMapper` 和 `PresenceDisplayPolicy` 不再直接调用 Minecraft `I18n`
-- NeoForge 细节集中到 `NeoForgePresencePlatform`、`NeoForgePresenceAdvancementTracker`、`NeoForgePresenceScreenClassifier`、`NeoForgePresenceTextProvider`
+- NeoForge 细节集中到 `NeoForgeGameContextPort`、`NeoForgeWorldEventHooks`、`NeoForgeAdvancementEventTracker`、`NeoForgePresenceScreenClassifier`、`NeoForgeHudHost` / `NeoForgeHudSurface`
 
 ### 3.3 三期：UI 解耦与能力扩展
 
@@ -157,13 +158,15 @@ WORLD_ENVIRONMENT
 
 - `PresenceHudDisplay` 作为 HUD 纯显示数据
 - `PresenceClientRuntime.currentHudDisplay()` 输出当前 HUD 状态
-- `tianshu-neoforge` 的 `PresenceHudRenderer` 负责 HUD 元素调度
-- `PresenceHudElementFrame` 承载元素类型、状态、显示数据和状态时间
+- `PresenceHudLayer`（映迹侧）负责 HUD 元素调度，并通过 api 的 `HudSurface` 绘制；平台侧
+  `NeoForgeHudHost` 只负责图层注册、两套时钟、GUI 门控、异常熔断，`NeoForgeHudSurface` 只负责落笔
+- `PresenceHudElementFrame` 承载元素类型、状态、显示数据、两套时钟和状态时间
 - `PresenceStatusTextElementController` 负责状态文本元素的可见性和状态机
-- `PresenceStatusTextElementRenderer` 负责状态文本元素的 Minecraft 绘制
+- `PresenceStatusTextElementRenderer` 负责状态文本元素的排版与 `HudSurface` 绘制调用
 - `PresenceActivityTracker` 聚合显式 `PRESENCE.ACTIVITY`，并输出主状态与独立 `listening` 标记
-- `PresenceHudSettings` 控制 HUD 总开关、状态文本、图标、尺寸、视觉预设和位置
-- Presence 图标由 NeoForge GUI 层按渲染帧采样，使用单调时间驱动 shader 或 Java fallback；状态切换的 loading 层采用连续透明度过渡。渲染帧消费的是 Presence client 已缓存的不可变展示快照，不在每帧扫描活动表或重新计算状态。
+- `PresenceHudSettings` 控制 HUD 总开关、状态文本、图标、尺寸、视觉预设和位置（持久化在
+  `module.presence.properties`，不再进 `ClientConfig`）
+- Presence 图标在映迹侧按渲染帧采样，使用单调时间驱动 shader 或 Java fallback；状态切换的 loading 层采用连续透明度过渡。渲染帧消费的是 Presence client 已缓存的不可变展示快照，不在每帧扫描活动表或重新计算状态。
 - 映迹设置页已接入设置控制台，不再暴露按 ASR / LLM / TTS / AX 过滤产品活动的旧选项
 - 内测调试开关已接入设置页，默认关闭
 - 模块流水线调试视图只读读取 `ModuleStatusCache`，不订阅新 topic，不保存历史
@@ -483,9 +486,8 @@ tianshu-client/src/main/java/.../client/presence/hud/
   PresenceHudSettings
   PresenceHudVisualPreset
   PresenceHudVisualState
-
-tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
-  PresenceHudRenderer
+  PresenceHudLayer
+  PresenceHudAnchorView
   PresenceHudElementController
   PresenceHudElementFrame
   PresenceHudElementRenderer
@@ -495,8 +497,6 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
   PresenceHudElementType
   PresenceHudElementUpdateContext
   PresenceHudLayout
-  PresenceHudPositionEditorScreen
-  PresenceHudShaderRegistry
   PresenceHudVisualParameters
   PresenceHudVisualTransition
   PresenceIconElementController
@@ -505,6 +505,37 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
   PresenceHudShapes
   PresenceStatusTextElementController
   PresenceStatusTextElementRenderer
+
+tianshu-client/src/main/java/.../client/presence/
+  PresenceClientFeature
+  PresenceModuleConfig
+
+tianshu-api/src/main/java/.../api/client/host/hud/
+  HudSurface
+  HudLayer
+  HudHost
+  HudFrameContext
+  HudProgram
+  HudShaderParams
+  HudAnchorEditor
+  HudAnchorView
+  HudAnchorPoint
+
+tianshu-api/src/main/java/.../api/client/host/game/
+  ClientGameContextPort
+  GameInteractionContext
+  GameTarget
+  GamePlayerStatus
+  GameInventoryEntry
+  GameEquipment
+  GameEffect
+  GameWorldEnvironment
+  GameScreenKind
+
+tianshu-api/src/main/java/.../protocol/payload/
+  WorldEventPayload
+  WorldEventTypes
+  PresenceWorldEventPayload
 
 tianshu-client/src/main/java/.../client/presence/partner/
   PresencePartnerStore
@@ -516,22 +547,20 @@ tianshu-client/src/main/java/.../client/presence/diagnostics/
 tianshu-client/src/main/java/.../client/settings/module/presence/
   PresenceSettingsRegistrySource
   PresenceSettingsAccess
-  PresenceHudPositionEditorOpener
 
-tianshu-api/src/main/java/.../client/host/
-  ClientGameContextProvider
+tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
+  NeoForgeHudHost
+  NeoForgeHudSurface
+  HudShaderPrograms
+  HudAnchorEditorScreen
 
 tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/adapter/
-  NeoForgePresencePlatform
+  NeoForgeGameContextPort
   NeoForgePresenceScreenClassifier
-  NeoForgePresenceTextProvider
-
-tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/config/
-  ClientConfigPresenceHudSettings
 
 tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
-  NeoForgePresenceHooks
-  NeoForgePresenceAdvancementTracker
+  NeoForgeWorldEventHooks
+  NeoForgeAdvancementEventTracker
 
 ```
 
@@ -546,8 +575,10 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 - IA / AX 接入 Presence 查询（IR 已退出这条链路）
 - 旧的同步上下文桥已移除
 - 世界事件 topic 已纳入 Presence 一期/二期范围（聊天作为事件类型并入）
-- HUD 绘制位于 `tianshu-adapter` 的 `neoforge/ui/hud`
-- 映迹核心只输出 `PresenceHudDisplay`
+- HUD 的表现计算与绘制调用位于映迹（`client/presence/hud`），落笔位于 `tianshu-adapter` 的 `neoforge/ui/hud`
+  （`NeoForgeHudSurface` / `NeoForgeHudHost` 只处理渲染状态、门控、时钟与异常熔断）
+- 映迹核心只输出 `PresenceHudDisplay`，并把它组合成 `HudLayer` 交给平台
+- 映迹配置（HUD 开关/元素/尺寸/预设/位置）持久化在 `module.presence.properties`
 - 世界退出会清空旧状态和排队查询，重新进入后建立新世界会话
 - 上下文只在查询被回答时采集；同一 tick 的请求共享一次平台抓取；交互上下文摘要另走变化推送（`PresenceInteractionContextWatcher` + `PRESENCE.INTERACTION_CONTEXT`），不参与查询快照（§5.2）
 - 预中标人与中标租期由听澜算出并通过 `PRESENCE.PARTNER` 写出（预中标人变化 / 中标含续租 / 租期到期三种时机），映迹只消费
@@ -569,7 +600,8 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 
 ## 10. 设计原则
 
-1. 映迹核心位于 `tianshu-client`，NeoForge 只提供 Minecraft 状态读取和 HUD 绘制适配。
+1. 映迹核心位于 `tianshu-client`（阶段二搬入 `tianshu-presence`），NeoForge 只提供 Minecraft 状态读取与
+   `HudSurface` / `HudHost` 的落笔实现。
 2. 玩家可见状态要克制，优先轻量、短 TTL、可降级。
 3. IA 只使用映迹提供的快照；IR 与辅星按需自采，不向映迹要第二次。
 4. payload 只承载 DTO，不携带 Minecraft 活对象。
@@ -577,7 +609,7 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 6. 动态详细字段按请求捕获，没人请求不读取，不进行固定保鲜扫描；唯一例外是 §5.2 的预约摘要——它按变化推送，且不保温查询快照。
 7. 协议处理线程不直接读取 Minecraft 活对象。
 8. 采集和文本映射依赖 client 端口；NeoForge / Minecraft 版本敏感实现留在 adapter、event 和 UI 包。
-9. HUD 绘制属于 GUI 层；映迹核心只做显示状态控制。
+9. HUD 的产品外观与帧组装属于映迹；像素、渲染状态与 GUI 门控属于平台（`HudSurface` 端口）。
 10. 设置页只控制显示策略，不影响采集、协议订阅和状态生成。
 11. shader / 动画参数属于具体 HUD 元素，不进入 Presence 协议和采集模型。
 12. 内测调试视图只读观察现有状态缓存，不新增协议能力、不记录历史流水。
@@ -607,3 +639,24 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 - 广播归映迹所有：`PRESENCE.PARTNER` 取代对话域的 `DIALOGUE.OWNER_PREVIEW`，载荷 `PresencePartnerPayload` 由映迹定义，不进入对话契约；写它的仍然是听澜；
 - 随之删除：500ms 轮询、打分等待、开口时的上下文补抓，以及"聆听开始"和"仲裁出结果"两次预览发布——后者本来也不该另发一次，中标会改写预中标状态，走的是同一条"变了才发"；
 - 租期到期只排一次到期任务，且只在当前没有预中标人显示时才需要排。
+
+---
+
+## 修订：端口化（拆分阶段一）
+
+为把映迹拆成可选功能模组，宿主能力全部改成端口；本文件上文里"由 NeoForge 直接绘制"的描述作废：
+
+- **世界事件**：宿主生产者只产 api 的 `WorldEventPayload`（单次、`WorldEventTypes` 词表），经
+  `WorldEventPublisher` 发布到 `GAME.WORLD_EVENT`；映迹订阅该 topic，在**消费侧**聚合成
+  `PresenceWorldEventPayload` 再发 `PRESENCE.WORLD_EVENT`。聊天是同一条流里的事件类型。
+- **采集**：`ClientGameContextPort` 六个方法（交互 / 状态 / 背包 / 装备 / 效果 / 环境），按请求分组采集，
+  空世界降级；映迹不再认识 Minecraft 类型。
+- **tick**：`TickSignals.TICK` 订阅制，`TianshuClientRuntime` 不再有 `tick()`。
+- **输入门禁**：`RuntimeGates.setInputBlocked`，映迹只在变化时写，平台按键判定只读。
+- **HUD**：api `HudSurface` / `HudLayer` / `HudHost` / `HudFrameContext` / `HudProgram` / `HudShaderParams` /
+  `HudAnchorEditor` / `HudAnchorView` / `HudAnchorPoint`；映迹拥有控制器、布局、视觉过渡、图标/文本/伙伴标记
+  渲染器，宿主只剩 `NeoForgeHudHost`（图层、两套时钟、门控、异常熔断）、`NeoForgeHudSurface`（pose/深度/
+  着色器/贴图解析/文本度量）与 `HudAnchorEditorScreen`。
+- **配置**：HUD 七个键迁到 `module.presence.properties`（`PresenceModuleConfig`）。
+- **会话**：`WorldSessionListener` 列表，客户端运行时不再点名映迹。
+- **装配**：组合根只写 `PresenceClientFeature.create(...)`，模块与 HUD 图层都由它交出 api 类型句柄。

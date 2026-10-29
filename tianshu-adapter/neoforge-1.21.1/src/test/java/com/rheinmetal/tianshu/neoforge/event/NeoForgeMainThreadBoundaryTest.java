@@ -153,22 +153,22 @@ final class NeoForgeMainThreadBoundaryTest {
                 Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"),
                 StandardCharsets.UTF_8
         );
-        String renderer = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceHudRenderer.java"),
+        String host = Files.readString(
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/NeoForgeHudHost.java"),
                 StandardCharsets.UTF_8
         );
-        String iconRenderer = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceIconElementRenderer.java"),
+        String layer = Files.readString(
+                Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/presence/hud/PresenceHudLayer.java"),
                 StandardCharsets.UTF_8
         );
 
-        assertFalse(methodBody(events, "public void onClientTick").contains("presenceHudRenderer.update()"));
-        assertTrue(methodBody(events, "public void onRenderGui").contains("presenceHudRenderer.render(event.getGuiGraphics())"));
-        assertTrue(methodBody(renderer, "public void render").contains("statusTextController.update("));
-        assertTrue(methodBody(renderer, "public void render").contains("iconController.update("));
-        assertTrue(renderer.contains("System.nanoTime()"));
-        assertTrue(iconRenderer.contains("frame.timing().updatedAtMillis()"));
-        assertFalse(iconRenderer.contains("System.nanoTime()"));
+        assertFalse(methodBody(events, "public void onClientTick").contains("hudHost.render"));
+        assertTrue(methodBody(events, "public void onRenderGui").contains("hudHost.render(event.getGuiGraphics())"));
+        assertTrue(host.contains("System.nanoTime()"), "the platform samples the render clock");
+        assertTrue(methodBody(host, "public void render").contains("layer.render(frame, surface)"));
+        assertTrue(methodBody(layer, "public void render").contains("statusTextController.update("));
+        assertTrue(methodBody(layer, "public void render").contains("iconController.update("));
+        assertFalse(layer.contains("System.nanoTime()"), "the feature reads the frame clock, never the system one");
     }
 
     @Test
@@ -184,9 +184,9 @@ final class NeoForgeMainThreadBoundaryTest {
     }
 
     @Test
-    void stalePresenceCleanupCannotClearANewerRuntimeBinding() throws Exception {
+    void staleWorldEventCleanupCannotClearANewerPublisherBinding() throws Exception {
         String hooks = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgePresenceHooks.java"),
+                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgeWorldEventHooks.java"),
                 StandardCharsets.UTF_8
         );
 

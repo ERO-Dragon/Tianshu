@@ -11,11 +11,13 @@ import com.rheinmetal.tianshu.client.settings.session.MutableSettingsValue;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
+import com.rheinmetal.tianshu.api.client.host.hud.HudAnchorEditor;
 import com.rheinmetal.tianshu.client.presence.PresenceProtocolAdapter;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.presence.PresenceTextProvider;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudAnchorView;
 import com.rheinmetal.tianshu.client.presence.hud.PresenceHudSettings;
 import com.rheinmetal.tianshu.client.presence.hud.PresenceHudVisualPreset;
 
@@ -31,16 +33,16 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
     private final PresenceTextProvider textProvider;
     private final PresenceDebugPipelineSnapshot debugPipelineSnapshot;
     private final BooleanSupplier debugEnabled;
-    private final PresenceHudPositionEditorOpener positionEditorOpener;
+    private final HudAnchorEditor anchorEditor;
 
     public PresenceSettingsRegistrySource(PresenceSettingsAccess config, TianshuCoreManager coreManager,
                                           PresenceTextProvider textProvider, BooleanSupplier debugEnabled,
-                                          PresenceHudPositionEditorOpener positionEditorOpener) {
+                                          HudAnchorEditor anchorEditor) {
         this.config = config;
         this.debugPipelineSnapshot = new PresenceDebugPipelineSnapshot(coreManager);
         this.textProvider = textProvider == null ? PresenceTextProvider.NOOP : textProvider;
         this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
-        this.positionEditorOpener = positionEditorOpener == null ? PresenceHudPositionEditorOpener.NOOP : positionEditorOpener;
+        this.anchorEditor = anchorEditor == null ? view -> { } : anchorEditor;
     }
 
     @Override
@@ -72,14 +74,13 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
                 .actions("presence.hud.position_editor", presence("section.position_editor"),
                         () -> session.hudEnabled.get() && session.iconEnabled.get(), actions -> actions
                         .button("presence.hud.edit_position", presence("action.edit_position"),
-                                () -> positionEditorOpener.open(
-                                        session.positionX::get,
-                                        session.positionY::get,
+                                () -> anchorEditor.open(new PresenceHudAnchorView(
+                                        draftSettings(session),
                                         (x, y) -> {
                                             session.positionX.set(x);
                                             session.positionY.set(y);
                                         }
-                                )))
+                                ))))
                 .status("presence.hud.status", presence("section.current"), status -> status
                         .row("presence.status.hud", presence("row.hud"), () -> common(session.hudEnabled.get() ? "on" : "off"))
                         .row("presence.status.text", presence("row.status_text"), () -> common(session.statusTextEnabled.get() ? "on" : "off"))
@@ -88,6 +89,46 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
                         .items(debugPipelineSnapshot::rows)
                         .card(this::debugPipelineCard)
                         .emptyText(presence("debug.empty")));
+    }
+
+    /** The settings as the page's draft currently has them, so the editor previews unsaved values. */
+    private static PresenceHudSettings draftSettings(PresenceSettingsSession session) {
+        return new PresenceHudSettings() {
+            @Override
+            public boolean hudEnabled() {
+                return session.hudEnabled.get();
+            }
+
+            @Override
+            public boolean statusTextEnabled() {
+                return session.statusTextEnabled.get();
+            }
+
+            @Override
+            public boolean iconEnabled() {
+                return session.iconEnabled.get();
+            }
+
+            @Override
+            public double iconSizePixels() {
+                return session.iconSize.get();
+            }
+
+            @Override
+            public PresenceHudVisualPreset visualPreset() {
+                return session.visualPreset.get();
+            }
+
+            @Override
+            public double iconPositionX() {
+                return session.positionX.get();
+            }
+
+            @Override
+            public double iconPositionY() {
+                return session.positionY.get();
+            }
+        };
     }
 
     private UiText visualPresetLabel(PresenceHudVisualPreset value) {
@@ -183,13 +224,13 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
 
         private PresenceSettingsSession(PresenceSettingsAccess config) {
             this.config = config;
-            this.hudEnabled = new MutableSettingsValue<>(config::isPresenceHudEnabled, config::setPresenceHudEnabled);
-            this.statusTextEnabled = new MutableSettingsValue<>(config::isPresenceStatusTextEnabled, config::setPresenceStatusTextEnabled);
-            this.iconEnabled = new MutableSettingsValue<>(config::isPresenceIconEnabled, config::setPresenceIconEnabled);
-            this.iconSize = new MutableSettingsValue<>(config::getPresenceIconSize, config::setPresenceIconSize);
-            this.visualPreset = new MutableSettingsValue<>(config::getPresenceVisualPreset, config::setPresenceVisualPreset);
-            this.positionX = new MutableSettingsValue<>(config::getPresenceIconPositionX, config::setPresenceIconPositionX);
-            this.positionY = new MutableSettingsValue<>(config::getPresenceIconPositionY, config::setPresenceIconPositionY);
+            this.hudEnabled = new MutableSettingsValue<>(config::hudEnabled, config::setHudEnabled);
+            this.statusTextEnabled = new MutableSettingsValue<>(config::statusTextEnabled, config::setStatusTextEnabled);
+            this.iconEnabled = new MutableSettingsValue<>(config::iconEnabled, config::setIconEnabled);
+            this.iconSize = new MutableSettingsValue<>(config::iconSizePixels, config::setIconSizePixels);
+            this.visualPreset = new MutableSettingsValue<>(config::visualPreset, config::setVisualPreset);
+            this.positionX = new MutableSettingsValue<>(config::iconPositionX, config::setIconPositionX);
+            this.positionY = new MutableSettingsValue<>(config::iconPositionY, config::setIconPositionY);
         }
 
         @Override

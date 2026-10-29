@@ -2,17 +2,20 @@ package com.rheinmetal.tianshu.client.presence.capture;
 
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 
-import java.util.List;
 import java.util.Objects;
 
 /**
- * Feeds the world-fact stream into the aggregator and publishes the windows that close.
+ * Feeds the platform's world-fact stream into the aggregator and publishes the windows that close.
  *
- * <p>Nothing leaves here per occurrence: {@link #recordPlayerChatMessage} and {@link #recordWorldEvents} only add to
- * the current second, and {@link #flushWorldEvents} — called from the client tick — publishes one payload per kind
- * whose second has elapsed. Draining after the world session ended is suppressed, and pending windows are dropped
- * rather than published into the next world.</p>
+ * <p>Nothing leaves here per occurrence: {@link #recordWorldEvent} only adds to the current second, and
+ * {@link #flushWorldEvents} — called on the client tick — publishes one payload per kind whose second has elapsed.
+ * Draining after the world session ended is suppressed, and pending windows are dropped rather than published into
+ * the next world.</p>
+ *
+ * <p>The platform hands over raw single occurrences ({@link WorldEventPayload}); the window, the grouping and the
+ * re-publication are this module's, so the host never sees an aggregated payload.</p>
  */
 public final class PresenceEventCollector {
     private final PresenceWorldEventAggregator aggregator;
@@ -35,32 +38,24 @@ public final class PresenceEventCollector {
     }
 
     /**
-     * One chat line, grouped with the other lines of the same second.
+     * One occurrence, grouped with the other occurrences of the same kind in the same second.
      *
-     * <p>Chat used to have its own payload and its own topic; it is an event kind now, so it is aggregated like
-     * every other fact and a chatty second leaves as one payload carrying each speaker's line.</p>
+     * <p>The raw event is the platform's shape; this is where it becomes a presence window. A chat line, an
+     * advancement and a block broken are the same thing here — a kind with values — so nothing downstream switches on
+     * where the fact was born.</p>
      */
-    public void recordPlayerChatMessage(String messageText, String senderId, String senderName) {
-        if (!worldSessionActive) {
+    public void recordWorldEvent(WorldEventPayload event) {
+        if (!worldSessionActive || event == null) {
             return;
         }
-        if (messageText == null || messageText.isBlank() || senderId == null || senderId.isBlank()) {
-            return;
-        }
-        aggregator.accept(PresenceWorldEventPayload.chatMessage(
-                senderId,
-                cleanSenderName(senderName),
-                messageText
+        aggregator.accept(new PresenceWorldEventPayload(
+                null,
+                event.eventType(),
+                event.playerId(),
+                event.dimensionId(),
+                event.occurredAtMillis(),
+                event.values()
         ));
-    }
-
-    public void recordWorldEvents(List<PresenceWorldEventPayload> events) {
-        if (!worldSessionActive || events == null || events.isEmpty()) {
-            return;
-        }
-        for (PresenceWorldEventPayload payload : events) {
-            aggregator.accept(payload);
-        }
     }
 
     /** Publishes every closed window; the only path from this collector to the protocol sink. */
@@ -90,9 +85,5 @@ public final class PresenceEventCollector {
     public void stopWorldSession() {
         worldSessionActive = false;
         aggregator.reset();
-    }
-
-    private String cleanSenderName(String senderName) {
-        return senderName == null ? "" : senderName.trim();
     }
 }

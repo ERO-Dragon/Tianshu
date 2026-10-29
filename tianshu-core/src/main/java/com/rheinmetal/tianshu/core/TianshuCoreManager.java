@@ -30,6 +30,7 @@ import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleStatusCache;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
@@ -212,6 +213,16 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
 
     public void submit(TianshuEnvelope envelope) {
         protocolRuntime.submit(envelope);
+    }
+
+    /**
+     * Publishes one raw world event on the game's behalf.
+     *
+     * <p>The adapter observes the game and calls this; the raw shape and its vocabulary are api types, so no feature
+     * is named here and an absent consumer changes nothing.</p>
+     */
+    public void publishWorldEvent(WorldEventPayload event) {
+        protocolRuntime.publishWorldEvent(event);
     }
 
     public RuntimeEnginePhase getEnginePhase() {

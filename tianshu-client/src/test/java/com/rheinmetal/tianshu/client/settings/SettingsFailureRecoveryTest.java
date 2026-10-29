@@ -52,20 +52,15 @@ class SettingsFailureRecoveryTest {
     private static final class Access implements PresenceSettingsAccess, GlobalDebugSettingsAccess {
         boolean hud, text, debug, fail = true;
         int attempts;
-        public boolean isPresenceHudEnabled() { return hud; }
-        public void setPresenceHudEnabled(boolean value) { hud = value; }
-        public boolean isPresenceStatusTextEnabled() { return text; }
-        public void setPresenceStatusTextEnabled(boolean value) { text = value; }
-        public boolean isPresenceIconEnabled() { return true; }
-        public void setPresenceIconEnabled(boolean value) { }
-        public double getPresenceIconSize() { return 28.0D; }
-        public void setPresenceIconSize(double value) { }
-        public PresenceHudVisualPreset getPresenceVisualPreset() { return PresenceHudVisualPreset.PRESET_ONE; }
-        public void setPresenceVisualPreset(PresenceHudVisualPreset value) { }
-        public double getPresenceIconPositionX() { return 0.5D; }
-        public void setPresenceIconPositionX(double value) { }
-        public double getPresenceIconPositionY() { return -1.0D; }
-        public void setPresenceIconPositionY(double value) { }
+        public boolean hudEnabled() { return hud; }
+        public void setHudEnabled(boolean value) { hud = value; }
+        public boolean statusTextEnabled() { return text; }
+        public void setStatusTextEnabled(boolean value) { text = value; }
+        public void setIconEnabled(boolean value) { }
+        public void setIconSizePixels(double value) { }
+        public void setVisualPreset(PresenceHudVisualPreset value) { }
+        public void setIconPositionX(double value) { }
+        public void setIconPositionY(double value) { }
         public boolean isDebugEnabled() { return debug; }
         public void setDebugEnabled(boolean value) { debug = value; }
         public void save() {

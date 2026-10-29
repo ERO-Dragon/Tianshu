@@ -9,54 +9,73 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Guardrails for the split between the platform's drawing and the feature's presentation.
+ *
+ * <p>They read source files because the properties they protect are structural: which side owns render state, which
+ * side owns a screen, and that no feature ever reaches for OpenGL directly.</p>
+ */
 final class PresenceHudPresentationBoundaryTest {
+    private static final Path ANCHOR_SCREEN =
+            Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/HudAnchorEditorScreen.java");
+    private static final Path SURFACE =
+            Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/NeoForgeHudSurface.java");
+    private static final Path PRESENCE_ICON =
+            Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/presence/hud/PresenceIconElementRenderer.java");
+
+    private static String read(Path path) throws Exception {
+        return Files.readString(path, StandardCharsets.UTF_8);
+    }
+
     @Test
-    void positionEditorUsesATransparentCanvasWithoutVanillaBlur() throws Exception {
-        String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceHudPositionEditorScreen.java"),
-                StandardCharsets.UTF_8
-        );
+    void anchorEditorUsesATransparentCanvasWithoutVanillaBlur() throws Exception {
+        String source = read(ANCHOR_SCREEN);
 
         assertTrue(source.contains("renderTransparentBackground(graphics)"));
         assertFalse(source.contains("renderBackground(graphics"));
     }
 
     @Test
-    void positionEditorDoesNotRenderVanillaScreenAfterItsCanvas() throws Exception {
-        String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceHudPositionEditorScreen.java"),
-                StandardCharsets.UTF_8
-        );
+    void anchorEditorDoesNotRenderVanillaScreenAfterItsCanvas() throws Exception {
+        String source = read(ANCHOR_SCREEN);
 
         assertFalse(source.contains("super.render(graphics"));
         assertTrue(source.contains("for (Renderable renderable : renderables)"));
+        assertTrue(source.contains("view.resolve("), "the preview must come from the feature's resolver");
     }
 
     @Test
     void presenceSettingsExposePositionOnlyThroughTheEditor() throws Exception {
-        String source = Files.readString(
-                Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/settings/module/presence/PresenceSettingsRegistrySource.java"),
-                StandardCharsets.UTF_8
+        String source = read(
+                Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/settings/module/presence/PresenceSettingsRegistrySource.java")
         );
 
         assertTrue(source.contains("presence.hud.edit_position"));
         assertFalse(source.contains("presence.hud.position_x"));
         assertFalse(source.contains("presence.hud.position_y"));
+        assertTrue(source.contains("HudAnchorEditor"), "the editor is a platform port, not a module screen");
     }
 
     @Test
-    void shaderPathOwnsGuiDepthAndColorState() throws Exception {
-        String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/PresenceIconElementRenderer.java"),
-                StandardCharsets.UTF_8
-        );
+    void theSurfaceOwnsGuiDepthAndColorState() throws Exception {
+        String surface = read(SURFACE);
 
-        assertTrue(source.contains("RenderSystem.disableDepthTest()"));
-        assertTrue(source.contains("RenderSystem.depthMask(false)"));
-        assertTrue(source.contains("RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F)"));
-        assertTrue(source.contains("renderFluidCore(graphics"));
-        assertTrue(source.contains("renderLoading(graphics"));
-        assertTrue(source.contains("RenderType.guiOverlay()"));
+        assertTrue(surface.contains("RenderSystem.disableDepthTest()"));
+        assertTrue(surface.contains("RenderSystem.depthMask(false)"));
+        assertTrue(surface.contains("RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F)"));
+        assertTrue(surface.contains("BufferUploader.drawWithShader(mesh)"));
+        assertFalse(surface.contains("presence"), "the platform's surface names no feature");
+    }
+
+    @Test
+    void theFeatureDrawsOnlyThroughTheSurface() throws Exception {
+        String icon = read(PRESENCE_ICON);
+
+        assertTrue(icon.contains("renderFluidCore(surface"));
+        assertTrue(icon.contains("renderLoading(surface"));
+        assertTrue(icon.contains("surface.shaderRect("));
+        assertFalse(icon.contains("RenderSystem"));
+        assertFalse(icon.contains("net.minecraft"), "a feature composes the HUD, the platform produces pixels");
     }
 
     @Test
@@ -66,9 +85,8 @@ final class PresenceHudPresentationBoundaryTest {
                 "presence_preset_one.json",
                 "presence_preset_two.json"
         }) {
-            String source = Files.readString(
-                    Path.of("src/main/resources/assets/tianshu/shaders/core/" + shader),
-                    StandardCharsets.UTF_8
+            String source = read(
+                    Path.of("src/main/resources/assets/tianshu/shaders/core/" + shader)
             );
             assertTrue(source.contains("\"srcrgb\": \"srcalpha\""), shader);
             assertTrue(source.contains("\"dstrgb\": \"1-srcalpha\""), shader);
@@ -77,10 +95,7 @@ final class PresenceHudPresentationBoundaryTest {
 
     @Test
     void shaderRegistrationUsesExplicitNamespacedLocations() throws Exception {
-        String source = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
-                StandardCharsets.UTF_8
-        );
+        String source = read(Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"));
 
         assertTrue(source.contains("ResourceLocation.fromNamespaceAndPath(TianshuNeoForge.MOD_ID, path)"));
         assertTrue(source.contains("new ShaderInstance(event.getResourceProvider(), shaderLocation"));
@@ -89,14 +104,8 @@ final class PresenceHudPresentationBoundaryTest {
 
     @Test
     void vadDebugOverlayAndRecordingKeyAreRetired() throws Exception {
-        String events = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"),
-                StandardCharsets.UTF_8
-        );
-        String bootstrap = Files.readString(
-                Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
-                StandardCharsets.UTF_8
-        );
+        String events = read(Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/event/NeoForgeClientEvents.java"));
+        String bootstrap = read(Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"));
 
         assertFalse(events.contains("AsrVadDebugOverlay"));
         assertFalse(events.contains("vadRecordKey"));

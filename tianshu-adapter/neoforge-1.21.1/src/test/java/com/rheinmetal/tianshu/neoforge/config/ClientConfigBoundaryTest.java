@@ -17,6 +17,8 @@ final class ClientConfigBoundaryTest {
 
     private static final Path CONFIG_HOST =
             Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/config/ClientConfig.java");
+    private static final Path PRESENCE_CONFIG =
+            Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/presence/PresenceModuleConfig.java");
     private static final Path INTAKE_CONFIG =
             Path.of("../../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/settings/IntakeConfig.java");
     private static final Path WEAVING_CONFIG =
@@ -54,22 +56,27 @@ final class ClientConfigBoundaryTest {
     }
 
     @Test
-    void presenceConfigurationKeepsOnlyProductLevelHudControls() throws Exception {
+    void presenceSettingsLiveWithPresenceAndNotInTheKernelConfig() throws Exception {
         String source = read(CONFIG_HOST);
 
-        assertTrue(source.contains("PRESENCE_HUD_ENABLED"));
-        assertTrue(source.contains("PRESENCE_STATUS_TEXT_ENABLED"));
-        assertTrue(source.contains("PRESENCE_ICON_ENABLED"));
-        assertTrue(source.contains("PRESENCE_ICON_SIZE_PIXELS"));
-        assertTrue(source.contains("PRESENCE_ICON_POSITION_X"));
-        assertTrue(source.contains("PRESENCE_ICON_POSITION_Y"));
-        assertFalse(source.contains("PRESENCE_ASR_STATUS_VISIBLE"));
-        assertFalse(source.contains("PRESENCE_LLM_STATUS_VISIBLE"));
-        assertFalse(source.contains("PRESENCE_TTS_STATUS_VISIBLE"));
-        assertFalse(source.contains("PRESENCE_AX_STATUS_VISIBLE"));
-        // The two-column usage panel lives in the settings page, so no HUD geometry may come back
-        // here: a resident overlay is the presence module's job, not a configurable Tianshu surface.
-        assertFalse(source.contains("PRESENCE_PANEL_"));
+        assertFalse(source.contains("PRESENCE_"), "a feature's keys in the kernel config make the kernel follow it");
+        assertFalse(source.contains("PresenceHudSettings"));
+        assertFalse(source.contains("presence"), "even a comment ties the two modules together");
+
+        String presence = read(PRESENCE_CONFIG);
+        assertTrue(presence.contains("\"hud.enabled\""));
+        assertTrue(presence.contains("\"hud.status_text.enabled\""));
+        assertTrue(presence.contains("\"hud.icon.enabled\""));
+        assertTrue(presence.contains("\"hud.icon.size\""));
+        assertTrue(presence.contains("\"hud.icon.preset\""));
+        assertTrue(presence.contains("\"hud.icon.x\""));
+        assertTrue(presence.contains("\"hud.icon.y\""));
+        // Presence's own settings are the HUD's product decisions, never another module's status readout.
+        assertFalse(presence.contains("ASR_STATUS_VISIBLE"));
+        assertFalse(presence.contains("LLM_STATUS_VISIBLE"));
+        assertFalse(presence.contains("TTS_STATUS_VISIBLE"));
+        assertFalse(presence.contains("AX_STATUS_VISIBLE"));
+        assertFalse(presence.contains("PANEL_"));
     }
 
     @Test

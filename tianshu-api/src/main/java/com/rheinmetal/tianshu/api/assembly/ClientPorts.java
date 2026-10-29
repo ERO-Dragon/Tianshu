@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.assembly;
 
+import com.rheinmetal.tianshu.api.client.host.hud.HudHost;
 import com.rheinmetal.tianshu.api.config.ModuleConfigStores;
 import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
 import com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog;
@@ -25,6 +26,7 @@ public record ClientPorts(
         SettingsLayerHost settingsLayers,
         ClientAudioDeviceCatalog audioDevices,
         ModuleConfigStores configStores,
-        NativeModelLoadQueue modelLoadQueue
+        NativeModelLoadQueue modelLoadQueue,
+        HudHost hud
 ) {
 }

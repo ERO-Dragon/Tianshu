@@ -23,6 +23,7 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import org.junit.jupiter.api.Test;
 
@@ -46,13 +47,11 @@ class PresenceRuntimeTest {
         List<PresenceWorldEventPayload> published = new ArrayList<>();
         PresenceEventCollector collector = collectorWithClock(now, published);
 
-        collector.recordPlayerChatMessage("outside", "uuid-player", "Player");
+        collector.recordWorldEvent(chat("outside", "uuid-player", "Player"));
         assertTrue(published.isEmpty());
 
         collector.startWorldSession();
-        collector.recordPlayerChatMessage("inside", "uuid-player", "Player");
-        collector.recordPlayerChatMessage("   ", "uuid-player", "Player");
-        collector.recordPlayerChatMessage("inside", "", "Player");
+        collector.recordWorldEvent(chat("inside", "uuid-player", "Player"));
         collector.flushWorldEvents();
         assertTrue(published.isEmpty(), "a window is only published once its second has elapsed");
 
@@ -70,18 +69,19 @@ class PresenceRuntimeTest {
         AtomicLong now = new AtomicLong(1_000L);
         List<PresenceWorldEventPayload> published = new ArrayList<>();
         PresenceEventCollector collector = collectorWithClock(now, published);
-        PresenceWorldEventPayload first = worldEvent("first");
+        WorldEventPayload first = worldEvent("first");
 
-        collector.recordWorldEvents(List.of(first));
+        collector.recordWorldEvent(first);
         collector.startWorldSession();
-        collector.recordWorldEvents(java.util.Arrays.asList(first, null));
+        collector.recordWorldEvent(null);
+        collector.recordWorldEvent(first);
         collector.stopWorldSession();
         now.set(2_000L);
         collector.flushWorldEvents();
         assertTrue(published.isEmpty(), "a window that ended with its world is dropped, never published late");
 
         collector.startWorldSession();
-        collector.recordWorldEvents(List.of(first));
+        collector.recordWorldEvent(first);
         now.set(3_000L);
         collector.flushWorldEvents();
 
@@ -218,8 +218,12 @@ class PresenceRuntimeTest {
         return collector;
     }
 
-    private static PresenceWorldEventPayload worldEvent(String id) {
-        return new PresenceWorldEventPayload(id, "test", "player", "dimension", 1L, Map.of("id", id));
+    private static WorldEventPayload chat(String messageText, String senderId, String senderName) {
+        return WorldEventPayload.chatMessage(senderId, senderName, messageText);
+    }
+
+    private static WorldEventPayload worldEvent(String id) {
+        return new WorldEventPayload("test", "player", "dimension", Map.of("id", id), 1L);
     }
 
     private static PresenceContextQueryPayload query(String requestId, String... factIds) {

@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.TopicSubscriptionDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolBootstrap;
@@ -48,11 +49,9 @@ class PresenceWorldEventPublishingTest {
             collector.setWorldEventSink(adapter::publishWorldEvent);
             collector.startWorldSession();
 
-            collector.recordWorldEvents(List.of(
-                    pickup("minecraft:dirt", "泥土"),
-                    pickup("minecraft:dirt", "泥土"),
-                    pickup("minecraft:stone", "石头")
-            ));
+            collector.recordWorldEvent(pickup("minecraft:dirt", "泥土"));
+            collector.recordWorldEvent(pickup("minecraft:dirt", "泥土"));
+            collector.recordWorldEvent(pickup("minecraft:stone", "石头"));
             now.set(2_000L);
             collector.flushWorldEvents();
 
@@ -67,17 +66,16 @@ class PresenceWorldEventPublishingTest {
         }
     }
 
-    private static PresenceWorldEventPayload pickup(String itemId, String itemName) {
-        return new PresenceWorldEventPayload(
-                null,
+    private static WorldEventPayload pickup(String itemId, String itemName) {
+        return new WorldEventPayload(
                 PresenceWorldEventPayload.EVENT_ITEM_PICKUP,
                 "player",
                 "minecraft:overworld",
-                1_000L,
                 Map.of(
                         PresenceWorldEventPayload.VALUE_ITEM_ID, itemId,
                         PresenceWorldEventPayload.VALUE_ITEM_NAME, itemName
-                )
+                ),
+                1_000L
         );
     }
 

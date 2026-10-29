@@ -22,6 +22,7 @@ import com.rheinmetal.tianshu.protocol.integration.IntegrationModuleRegistry;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.payload.CancelPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityRegistry;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -40,6 +41,14 @@ import java.util.function.Consumer;
 
 public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterruptPublisher, AutoCloseable {
     private static final String RUNTIME_SOURCE_ID = "core.runtime";
+    /**
+     * The producer identity of world events.
+     *
+     * <p>World events are the game's, not a module's: the adapter observes them and hands them in one at a time. The
+     * id exists so envelopes still name a source, and it is deliberately not a module id — nothing is registered
+     * under it.</p>
+     */
+    private static final String HOST_SOURCE_ID = "core.host";
 
     private final ModuleRegistry moduleRegistry = new ModuleRegistry();
     private final CapabilityRegistry capabilityRegistry = new CapabilityRegistry();
@@ -363,6 +372,27 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
                         new RuntimeInterruptPayload(sessionId, reason, detail == null ? "" : detail, System.currentTimeMillis())
                 )
                 .priority(Priority.CRITICAL)
+                .build());
+    }
+
+    /**
+     * Publishes one raw world event the host observed.
+     *
+     * <p>The shape is the api's raw {@link WorldEventPayload} and the vocabulary is {@code WorldEventTypes}: one
+     * envelope per occurrence, never a summary, because windowing is the consumer's decision. An event that arrives
+     * while nobody subscribes completes silently — the host keeps producing whether or not a feature is installed.</p>
+     */
+    public void publishWorldEvent(WorldEventPayload event) {
+        if (event == null) {
+            return;
+        }
+        submit(EnvelopeBuilder.eventTopic(
+                        HOST_SOURCE_ID,
+                        ProtocolTopics.WORLD_EVENT,
+                        PayloadType.CUSTOM,
+                        event
+                )
+                .priority(Priority.LOW)
                 .build());
     }
 

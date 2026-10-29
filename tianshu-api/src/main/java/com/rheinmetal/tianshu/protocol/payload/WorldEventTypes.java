@@ -49,6 +49,11 @@ public final class WorldEventTypes {
     /** Progress facts carry their own id and their localized title; a consumer words the line from these. */
     public static final String VALUE_ADVANCEMENT_ID = "advancementId";
     public static final String VALUE_TITLE = "title";
+    public static final String VALUE_DESCRIPTION = "description";
+    /** An advancement's kind (task / goal / challenge), which consumers use to tag and group it. */
+    public static final String VALUE_TYPE = "type";
+    /** The item an advancement shows as its icon. */
+    public static final String VALUE_ICON_ITEM_ID = "iconItemId";
     /** Craft facts: the registry id, the name the server resolved, and how many were made. */
     public static final String VALUE_ITEM_ID = "itemId";
     public static final String VALUE_ITEM_NAME = "itemName";

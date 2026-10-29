@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.server;
 
 import com.rheinmetal.tianshu.neoforge.network.PresenceFactPacket;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -67,8 +67,8 @@ public final class PresenceServerCollector {
             return;
         }
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_AMOUNT, Integer.toString(Math.round(event.getNewDamage())));
-        send(player, PresenceWorldEventPayload.EVENT_DAMAGE_TAKEN, values);
+        values.put(WorldEventTypes.VALUE_AMOUNT, Integer.toString(Math.round(event.getNewDamage())));
+        send(player, WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
     }
 
     public void onItemPickup(ItemEntityPickupEvent.Post event) {
@@ -87,8 +87,8 @@ public final class PresenceServerCollector {
             return;
         }
         Map<String, String> values = itemValues(original);
-        values.put(PresenceWorldEventPayload.VALUE_COUNT, Integer.toString(pickedCount));
-        send(player, PresenceWorldEventPayload.EVENT_ITEM_PICKUP, values);
+        values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(pickedCount));
+        send(player, WorldEventTypes.EVENT_ITEM_PICKUP, values);
     }
 
     public void onTrade(TradeWithVillagerEvent event) {
@@ -99,7 +99,7 @@ public final class PresenceServerCollector {
         if (result == null || result.isEmpty()) {
             return;
         }
-        send(player, PresenceWorldEventPayload.EVENT_TRADE, itemValues(result));
+        send(player, WorldEventTypes.EVENT_TRADE, itemValues(result));
     }
 
     public void onEffectExpired(MobEffectEvent.Expired event) {
@@ -108,10 +108,10 @@ public final class PresenceServerCollector {
         }
         Map<String, String> values = new HashMap<>();
         if (event.getEffectInstance() != null) {
-            values.put(PresenceWorldEventPayload.VALUE_EFFECT_NAME,
+            values.put(WorldEventTypes.VALUE_EFFECT_NAME,
                     event.getEffectInstance().getEffect().value().getDisplayName().getString());
         }
-        send(player, PresenceWorldEventPayload.EVENT_EFFECT_EXPIRED, values);
+        send(player, WorldEventTypes.EVENT_EFFECT_EXPIRED, values);
     }
 
     public void onXpLevelChange(PlayerXpEvent.LevelChange event) {
@@ -119,8 +119,8 @@ public final class PresenceServerCollector {
             return;
         }
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_LEVEL, Integer.toString(player.experienceLevel));
-        send(player, PresenceWorldEventPayload.EVENT_EXP_LEVEL, values);
+        values.put(WorldEventTypes.VALUE_LEVEL, Integer.toString(player.experienceLevel));
+        send(player, WorldEventTypes.EVENT_EXP_LEVEL, values);
     }
 
     /** A friend joining is visible in chat anyway; the fact goes to the other players, never to the joiner. */
@@ -131,8 +131,8 @@ public final class PresenceServerCollector {
         String name = joining.getGameProfile().getName();
         for (ServerPlayer other : joining.getServer().getPlayerList().getPlayers()) {
             if (other != joining) {
-                send(other, PresenceWorldEventPayload.EVENT_FRIEND_JOIN, Map.of(
-                        PresenceWorldEventPayload.VALUE_PLAYER_NAME, name));
+                send(other, WorldEventTypes.EVENT_FRIEND_JOIN, Map.of(
+                        WorldEventTypes.VALUE_PLAYER_NAME, name));
             }
         }
     }
@@ -144,8 +144,8 @@ public final class PresenceServerCollector {
         String name = leaving.getGameProfile().getName();
         for (ServerPlayer other : leaving.getServer().getPlayerList().getPlayers()) {
             if (other != leaving) {
-                send(other, PresenceWorldEventPayload.EVENT_FRIEND_LEAVE, Map.of(
-                        PresenceWorldEventPayload.VALUE_PLAYER_NAME, name));
+                send(other, WorldEventTypes.EVENT_FRIEND_LEAVE, Map.of(
+                        WorldEventTypes.VALUE_PLAYER_NAME, name));
             }
         }
     }
@@ -155,9 +155,9 @@ public final class PresenceServerCollector {
             return;
         }
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_EFFECT_NAME,
+        values.put(WorldEventTypes.VALUE_EFFECT_NAME,
                 event.getEffectInstance().getEffect().value().getDisplayName().getString());
-        send(player, PresenceWorldEventPayload.EVENT_EFFECT_GAINED, values);
+        send(player, WorldEventTypes.EVENT_EFFECT_GAINED, values);
     }
 
     /** Two facts, one event: the player's own death, and a kill the player made. */
@@ -168,18 +168,18 @@ public final class PresenceServerCollector {
         }
         if (dying instanceof ServerPlayer player) {
             Map<String, String> values = new HashMap<>();
-            values.put(PresenceWorldEventPayload.VALUE_DEATH_MESSAGE,
+            values.put(WorldEventTypes.VALUE_DEATH_MESSAGE,
                     player.getCombatTracker().getDeathMessage().getString());
-            values.put(PresenceWorldEventPayload.VALUE_DIMENSION, dimensionId(player.level()));
-            send(player, PresenceWorldEventPayload.EVENT_PLAYER_DEATH, values);
+            values.put(WorldEventTypes.VALUE_DIMENSION, dimensionId(player.level()));
+            send(player, WorldEventTypes.EVENT_PLAYER_DEATH, values);
             return;
         }
         if (event.getSource() != null && event.getSource().getEntity() instanceof ServerPlayer killer) {
             Map<String, String> values = new HashMap<>();
-            values.put(PresenceWorldEventPayload.VALUE_ENTITY_ID, entityId(dying));
-            values.put(PresenceWorldEventPayload.VALUE_ENTITY_NAME, dying.getType().getDescription().getString());
-            values.put(PresenceWorldEventPayload.VALUE_COUNT, "1");
-            send(killer, PresenceWorldEventPayload.EVENT_MOB_KILLED, values);
+            values.put(WorldEventTypes.VALUE_ENTITY_ID, entityId(dying));
+            values.put(WorldEventTypes.VALUE_ENTITY_NAME, dying.getType().getDescription().getString());
+            values.put(WorldEventTypes.VALUE_COUNT, "1");
+            send(killer, WorldEventTypes.EVENT_MOB_KILLED, values);
         }
     }
 
@@ -191,7 +191,7 @@ public final class PresenceServerCollector {
         if (crafted == null || crafted.isEmpty()) {
             return;
         }
-        send(player, PresenceWorldEventPayload.EVENT_ITEM_CRAFTED, itemValues(crafted));
+        send(player, WorldEventTypes.EVENT_ITEM_CRAFTED, itemValues(crafted));
     }
 
     public void onItemFished(ItemFishedEvent event) {
@@ -202,7 +202,7 @@ public final class PresenceServerCollector {
         if (drops == null || drops.isEmpty()) {
             return;
         }
-        send(player, PresenceWorldEventPayload.EVENT_FISHING_CATCH, itemValues(drops.get(0)));
+        send(player, WorldEventTypes.EVENT_FISHING_CATCH, itemValues(drops.get(0)));
     }
 
     public void onTamed(AnimalTameEvent event) {
@@ -210,24 +210,24 @@ public final class PresenceServerCollector {
             return;
         }
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_ENTITY_ID, entityId(event.getEntity()));
-        values.put(PresenceWorldEventPayload.VALUE_ENTITY_NAME,
+        values.put(WorldEventTypes.VALUE_ENTITY_ID, entityId(event.getEntity()));
+        values.put(WorldEventTypes.VALUE_ENTITY_NAME,
                 event.getEntity().getType().getDescription().getString());
-        send(player, PresenceWorldEventPayload.EVENT_TAMED, values);
+        send(player, WorldEventTypes.EVENT_TAMED, values);
     }
 
     public void onBlockBreak(BlockEvent.BreakEvent event) {
         if (!(event.getPlayer() instanceof ServerPlayer player)) {
             return;
         }
-        send(player, PresenceWorldEventPayload.EVENT_BLOCK_BROKEN, blockValues(event.getState()));
+        send(player, WorldEventTypes.EVENT_BLOCK_BROKEN, blockValues(event.getState()));
     }
 
     public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        send(player, PresenceWorldEventPayload.EVENT_BLOCK_PLACED, blockValues(event.getPlacedBlock()));
+        send(player, WorldEventTypes.EVENT_BLOCK_PLACED, blockValues(event.getPlacedBlock()));
     }
 
     public void onMount(EntityMountEvent event) {
@@ -235,14 +235,14 @@ public final class PresenceServerCollector {
             return;
         }
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_ENTITY_ID,
+        values.put(WorldEventTypes.VALUE_ENTITY_ID,
                 Objects.requireNonNull(BuiltInRegistries.ENTITY_TYPE.getKey(
                         event.getEntityBeingMounted().getType())).toString());
-        values.put(PresenceWorldEventPayload.VALUE_ENTITY_NAME,
+        values.put(WorldEventTypes.VALUE_ENTITY_NAME,
                 event.getEntityBeingMounted().getType().getDescription().getString());
         send(player, event.isMounting()
-                ? PresenceWorldEventPayload.EVENT_MOUNT
-                : PresenceWorldEventPayload.EVENT_DISMOUNT, values);
+                ? WorldEventTypes.EVENT_MOUNT
+                : WorldEventTypes.EVENT_DISMOUNT, values);
     }
 
     /** The one place that talks to the network; a client without the channel simply gets nothing. */
@@ -262,11 +262,11 @@ public final class PresenceServerCollector {
 
     private static Map<String, String> itemValues(ItemStack stack) {
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_ITEM_ID, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        values.put(WorldEventTypes.VALUE_ITEM_ID, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
         // The name is resolved server-side, which is right in single player and may follow the server's language on a
         // dedicated one; the id travels next to it so a client can re-resolve it later.
-        values.put(PresenceWorldEventPayload.VALUE_ITEM_NAME, stack.getHoverName().getString());
-        values.put(PresenceWorldEventPayload.VALUE_COUNT, Integer.toString(stack.getCount()));
+        values.put(WorldEventTypes.VALUE_ITEM_NAME, stack.getHoverName().getString());
+        values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(stack.getCount()));
         return values;
     }
 
@@ -275,9 +275,9 @@ public final class PresenceServerCollector {
             return Map.of();
         }
         Map<String, String> values = new HashMap<>();
-        values.put(PresenceWorldEventPayload.VALUE_BLOCK_ID,
+        values.put(WorldEventTypes.VALUE_BLOCK_ID,
                 BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
-        values.put(PresenceWorldEventPayload.VALUE_BLOCK_NAME, state.getBlock().getName().getString());
+        values.put(WorldEventTypes.VALUE_BLOCK_NAME, state.getBlock().getName().getString());
         return values;
     }
 

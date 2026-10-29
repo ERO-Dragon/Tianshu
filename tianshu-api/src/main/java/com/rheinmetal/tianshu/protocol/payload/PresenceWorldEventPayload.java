@@ -65,6 +65,9 @@ public record PresenceWorldEventPayload(
     public static final String VALUE_TEXT = WorldEventTypes.VALUE_TEXT;
     public static final String VALUE_ADVANCEMENT_ID = WorldEventTypes.VALUE_ADVANCEMENT_ID;
     public static final String VALUE_TITLE = WorldEventTypes.VALUE_TITLE;
+    public static final String VALUE_DESCRIPTION = WorldEventTypes.VALUE_DESCRIPTION;
+    public static final String VALUE_TYPE = WorldEventTypes.VALUE_TYPE;
+    public static final String VALUE_ICON_ITEM_ID = WorldEventTypes.VALUE_ICON_ITEM_ID;
     public static final String VALUE_ITEM_ID = WorldEventTypes.VALUE_ITEM_ID;
     public static final String VALUE_ITEM_NAME = WorldEventTypes.VALUE_ITEM_NAME;
     public static final String VALUE_COUNT = WorldEventTypes.VALUE_COUNT;
@@ -116,28 +119,6 @@ public record PresenceWorldEventPayload(
             Map<String, String> values
     ) {
         this(eventId, eventType, playerId, dimensionId, occurredAtMillis, List.of(new Occurrence(1, values)));
-    }
-
-    /**
-     * One chat line as a world event.
-     *
-     * <p>Chat used to travel as its own payload, which meant two kinds of "something happened in the world" for
-     * consumers to switch on. It is a kind now: the event type says what happened, the values carry who spoke and
-     * what was said.</p>
-     */
-    public static PresenceWorldEventPayload chatMessage(String senderId, String senderName, String messageText) {
-        return new PresenceWorldEventPayload(
-                null,
-                EVENT_CHAT_MESSAGE,
-                senderId,
-                "",
-                System.currentTimeMillis(),
-                Map.of(
-                        VALUE_SENDER_ID, senderId == null ? "" : senderId,
-                        VALUE_SENDER_NAME, senderName == null ? "" : senderName,
-                        VALUE_TEXT, messageText == null ? "" : messageText
-                )
-        );
     }
 
     /**

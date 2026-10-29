@@ -10,7 +10,7 @@ import com.rheinmetal.tianshu.client.audio.AudioManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
-import com.rheinmetal.tianshu.client.presence.PresenceClientRuntime;
+import com.rheinmetal.tianshu.client.presence.PresenceClientFeature;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
 import com.rheinmetal.tianshu.client.runtime.TianshuClientRuntime;
@@ -19,8 +19,6 @@ import com.rheinmetal.tianshu.client.runtime.module.ClientTianshuModuleAssembler
 import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.neoforge.TianshuNeoForge;
 import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
-import com.rheinmetal.tianshu.client.settings.module.presence.PresenceSettingsRegistrySource;
-import com.rheinmetal.tianshu.client.settings.module.presence.PresenceHudPositionEditorOpener;
 import com.rheinmetal.tianshu.client.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.registry.ExternalSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.registry.ModuleSettingsRegistrySource;
@@ -42,21 +40,22 @@ import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeEnvironment;
 import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
+import com.rheinmetal.tianshu.api.game.WorldEventPublisher;
+import com.rheinmetal.tianshu.api.client.host.hud.HudLayer;
+import com.rheinmetal.tianshu.api.client.host.hud.HudProgram;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameContextPort;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresenceTextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
-import com.rheinmetal.tianshu.neoforge.config.ClientConfigPresenceHudSettings;
 import com.rheinmetal.tianshu.neoforge.event.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientEvents;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientLifecycleAdapter;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeEventRegistration;
-import com.rheinmetal.tianshu.neoforge.event.NeoForgePresenceHooks;
+import com.rheinmetal.tianshu.neoforge.event.NeoForgeWorldEventHooks;
 import com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEvent;
-import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudRenderer;
-import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudShaderRegistry;
-import com.rheinmetal.tianshu.neoforge.ui.hud.PresenceHudPositionEditorScreen;
+import com.rheinmetal.tianshu.neoforge.ui.hud.HudAnchorEditorScreen;
+import com.rheinmetal.tianshu.neoforge.ui.hud.HudShaderPrograms;
+import com.rheinmetal.tianshu.neoforge.ui.hud.NeoForgeHudHost;
 import com.rheinmetal.tianshu.neoforge.ui.settings.SettingsLayerScreen;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsScreen;
@@ -96,7 +95,8 @@ public final class NeoForgeClientBootstrap {
     private ClientDiagnosticRouter diagnosticRouter;
     private NeoForgeNamedObjectDictionaryProvider namedObjectDictionaryProvider;
     private NeoForgeClientLifecycleAdapter lifecycleAdapter;
-    private PresenceClientRuntime presenceRuntime;
+    private PresenceClientFeature presenceFeature;
+    private NeoForgeHudHost hudHost;
     private NeoForgeClientEvents events;
     private NeoForgeClientSession clientSession;
     private boolean shutdownHookRegistered;
@@ -137,32 +137,37 @@ public final class NeoForgeClientBootstrap {
             environment.bindDiagnostics(diagnosticRouter);
             environment.bindLogs(diagnosticRouter);
             diagnosticRouter.info("neoforge.client.bootstrap_starting");
+            Path moduleConfigDirectory = gameDirectory.resolve("config").resolve("Tianshu").resolve("module");
+            PropertyModuleConfigStores moduleConfigs = new PropertyModuleConfigStores(moduleConfigDirectory, diagnosticRouter);
             // The platform supplies the dictionary snapshot and nothing else: the module that indexes it
             // owns the index, its cache and its lifetime.
             createNamedObjectDictionary();
             refreshNamedObjectSnapshot();
-            presenceRuntime = new PresenceClientRuntime(
+            NeoForgeClientTextProvider clientTexts = new NeoForgeClientTextProvider();
+            // One seam for the whole feature: ports in, api-typed handles out. Below this line is presence's business.
+            presenceFeature = PresenceClientFeature.create(
                     new NeoForgeGameContextPort(languageSnapshot, diagnosticRouter),
-                    new NeoForgePresenceTextProvider(),
+                    clientTexts,
+                    moduleConfigs,
                     diagnosticRouter
             );
-            PresenceClientRuntime currentPresenceRuntime = presenceRuntime;
-            ClientConfigPresenceHudSettings presenceHudSettings = new ClientConfigPresenceHudSettings(config);
-            PresenceHudRenderer presenceHudRenderer = new PresenceHudRenderer(
-                    currentPresenceRuntime::currentHudDisplay,
-                    presenceHudSettings,
-                    () -> currentPresenceRuntime.currentPartner(System.currentTimeMillis())
-            );
+            // The HUD host is the platform half: it renders whatever layers are registered and knows none of them.
+            NeoForgeHudHost hudHost = new NeoForgeHudHost(diagnosticRouter, view -> {
+                Minecraft minecraft = Minecraft.getInstance();
+                minecraft.setScreen(new HudAnchorEditorScreen(minecraft.screen, view));
+            });
+            this.hudHost = hudHost;
+            // The composition root decides that this feature has a HUD; the layer itself is built by the feature.
+            HudLayer presenceHudLayer = presenceFeature.hudLayer();
+            hudHost.addLayer(presenceHudLayer);
+            startingSession.own(() -> hudHost.removeLayer(presenceHudLayer.id()));
             NeoForgeWorldIdentityCapture worldIdentityCapture = new NeoForgeWorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
 
             audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
             NeoForgeClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
-            Path moduleConfigDirectory = gameDirectory.resolve("config").resolve("Tianshu").resolve("module");
-            PropertyModuleConfigStores moduleConfigs = new PropertyModuleConfigStores(moduleConfigDirectory, diagnosticRouter);
 
             NeoForgeClientScheduler clientScheduler = new NeoForgeClientScheduler();
-            NeoForgeClientTextProvider clientTexts = new NeoForgeClientTextProvider();
             NeoForgeClientFilePicker clientFilePicker = new NeoForgeClientFilePicker(clientTexts);
             startingSession.own(clientFilePicker::close);
             NeoForgeClientUiHost clientUiHost = new NeoForgeClientUiHost(() -> settingsModule);
@@ -178,7 +183,8 @@ public final class NeoForgeClientBootstrap {
                     createSettingsLayerHost(),
                     audioManager instanceof com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog catalog ? catalog : null,
                     moduleConfigs,
-                    loadQueue
+                    loadQueue,
+                    hudHost
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -191,7 +197,7 @@ public final class NeoForgeClientBootstrap {
             );
 
             TianshuClientRuntime clientRuntime = new TianshuClientRuntime(
-                    new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter, presenceRuntime),
+                    new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter, List.of(presenceFeature.worldSession())),
                     () -> diagnosticRouter.info("neoforge.world.session_started"),
                     failure -> diagnosticRouter.error("neoforge.world.session_lifecycle_failed", failure)
             );
@@ -204,8 +210,11 @@ public final class NeoForgeClientBootstrap {
             currentLifecycleAdapter.onClientReady();
             startingSession.own(worldIdentityCapture::clear);
 
-            NeoForgePresenceHooks.bind(currentPresenceRuntime, diagnosticRouter);
-            startingSession.own(() -> NeoForgePresenceHooks.clear(currentPresenceRuntime));
+            // The game's own event stream: the adapter observes, the runtime publishes. Binding the publisher —
+            // rather than a feature runtime — is what lets the host report events whether or not a feature is installed.
+            WorldEventPublisher worldEventPublisher = coreManager::publishWorldEvent;
+            NeoForgeWorldEventHooks.bind(worldEventPublisher, diagnosticRouter);
+            startingSession.own(() -> NeoForgeWorldEventHooks.clear(worldEventPublisher));
 
             externalSettingsContributors = new TianshuSettingsContributorRegistry();
             integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
@@ -219,8 +228,7 @@ public final class NeoForgeClientBootstrap {
                     coreManager,
                     settingsModule,
                     lifecycleAdapter,
-                    presenceRuntime,
-                    presenceHudRenderer,
+                    hudHost,
                     worldIdentityCapture,
                     () -> voiceKey,
                 () -> textInputKey,
@@ -277,29 +285,38 @@ public final class NeoForgeClientBootstrap {
 
     public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(new NamedObjectReloadListener(
-                this::refreshNamedObjectSnapshot,
+                this::onResourcesReloaded,
                 diagnosticRouter == null ? com.rheinmetal.tianshu.api.LogSink.NOOP : diagnosticRouter
         ));
     }
 
-    public void registerShaders(RegisterShadersEvent event) {
-        registerShader(event, "presence_loading", PresenceHudShaderRegistry::setLoading);
-        registerShader(event, "presence_preset_one", PresenceHudShaderRegistry::setPresetOne);
-        registerShader(event, "presence_preset_two", PresenceHudShaderRegistry::setPresetTwo);
+    /** A reload changes translations and resources, so everything measured or resolved from them must be dropped. */
+    private void onResourcesReloaded() {
+        refreshNamedObjectSnapshot();
+        NeoForgeHudHost host = hudHost;
+        if (host != null) {
+            host.onResourcesReloaded();
+        }
     }
 
-    private void registerShader(RegisterShadersEvent event, String path, java.util.function.Consumer<ShaderInstance> sink) {
+    public void registerShaders(RegisterShadersEvent event) {
+        registerShader(event, HudProgram.LOADING, "presence_loading");
+        registerShader(event, HudProgram.PRESET_ONE, "presence_preset_one");
+        registerShader(event, HudProgram.PRESET_TWO, "presence_preset_two");
+    }
+
+    private void registerShader(RegisterShadersEvent event, HudProgram program, String path) {
         ResourceLocation shaderLocation = ResourceLocation.fromNamespaceAndPath(TianshuNeoForge.MOD_ID, path);
         try {
             event.registerShader(
                     new ShaderInstance(event.getResourceProvider(), shaderLocation, DefaultVertexFormat.POSITION_TEX),
-                    sink
+                    shader -> HudShaderPrograms.register(program, shader)
             );
         } catch (IOException | RuntimeException failure) {
-            // A visual shader is optional; clear this handle so the renderer selects its Java fallback.
-            sink.accept(null);
+            // A visual shader is optional; clear this handle so the surface draws its Java fallback.
+            HudShaderPrograms.register(program, null);
             if (diagnosticRouter != null) {
-                diagnosticRouter.error("neoforge.presence.shader_registration_failed name=" + shaderLocation, failure);
+                diagnosticRouter.error("neoforge.hud.shader_registration_failed name=" + shaderLocation, failure);
             }
         }
     }
@@ -324,11 +341,12 @@ public final class NeoForgeClientBootstrap {
     }
 
     private void clearSessionReferences() {
-        PresenceHudShaderRegistry.clear();
+        HudShaderPrograms.clear();
         events = null;
         integrationApi = null;
         lifecycleAdapter = null;
-        presenceRuntime = null;
+        presenceFeature = null;
+        hudHost = null;
         coreManager = null;
         audioManager = null;
         diagnosticRouter = null;
@@ -347,7 +365,7 @@ public final class NeoForgeClientBootstrap {
             NativeModelLoadQueue loadQueue) {
         return List.of(
                 registrar -> registrar.addModule(new ClientOnnxRuntimeModuleInstaller()),
-                registrar -> registrar.addModule(presenceRuntime.moduleInstaller(context.moduleRuntime()))
+                presenceFeature.moduleProvider(context.moduleRuntime())
         );
     }
 
@@ -370,19 +388,8 @@ public final class NeoForgeClientBootstrap {
     private TianshuSettingsRegistrySource createSettingsRegistrySource(ClientPorts ports) {
         TianshuSettingsRegistrySource moduleSource = new ModuleSettingsRegistrySource(coreManager::managedModules);
         TianshuSettingsRegistrySource externalSource = new ExternalSettingsRegistrySource(externalSettingsContributors);
-        NeoForgePresenceTextProvider presenceTextProvider = new NeoForgePresenceTextProvider();
-        PresenceHudPositionEditorOpener positionEditorOpener = (positionX, positionY, apply) -> {
-            Minecraft minecraft = Minecraft.getInstance();
-            minecraft.setScreen(new PresenceHudPositionEditorScreen(
-                    minecraft.screen,
-                    new ClientConfigPresenceHudSettings(config),
-                    positionX,
-                    positionY,
-                    apply
-            ));
-        };
-        TianshuSettingsRegistrySource presenceSource = new PresenceSettingsRegistrySource(
-                config, coreManager, presenceTextProvider, config::isDebugEnabled, positionEditorOpener
+        TianshuSettingsRegistrySource presenceSource = presenceFeature.settingsSource(
+                coreManager, config::isDebugEnabled, hudHost.anchorEditor()
         );
         return CompositeSettingsRegistrySource.of(
                 moduleSource,

@@ -9,6 +9,8 @@ import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
 import com.rheinmetal.tianshu.client.presence.context.PresenceInteractionContextWatcher;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudLayer;
+import com.rheinmetal.tianshu.client.presence.hud.PresenceHudSettings;
 import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.client.presence.partner.PresencePartnerSnapshot;
@@ -16,12 +18,11 @@ import com.rheinmetal.tianshu.client.presence.partner.PresencePartnerStore;
 import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
+import com.rheinmetal.tianshu.client.runtime.WorldSessionListener;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
-import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -31,7 +32,7 @@ import java.util.Objects;
  * aggregator and the query coordinator — and it is the only place that knows a world session is active. The
  * HUD reads {@link #currentHudDisplay()} on the render thread; everything else runs on the client thread.</p>
  */
-public final class PresenceClientRuntime {
+public final class PresenceClientRuntime implements WorldSessionListener {
     private static final TickSignals.Subscription NO_TICK = () -> {
     };
 
@@ -65,8 +66,8 @@ public final class PresenceClientRuntime {
         this.eventCollector = new PresenceEventCollector(logSink);
     }
 
-    public void startWorldSession() {
-        worldSessionActive = true;
+    @Override
+    public void startWorldSession() {        worldSessionActive = true;
         activityTracker.startWorldSession();
         contextQueryCoordinator.startWorldSession();
         interactionContextWatcher.reset();
@@ -76,6 +77,7 @@ public final class PresenceClientRuntime {
         subscribeToClock();
     }
 
+    @Override
     public void stopWorldSession() {
         worldSessionActive = false;
         unsubscribeFromClock();
@@ -97,24 +99,29 @@ public final class PresenceClientRuntime {
     }
 
     /**
+     * The HUD as one platform layer.
+     *
+     * <p>The runtime owns the two suppliers — the cached display and the partner marker — and the composition root
+     * decides where the layer is registered. Presence therefore never needs to know the platform's render loop, and the
+     * platform never needs to know what a frame contains.</p>
+     */
+    public PresenceHudLayer hudLayer(PresenceHudSettings settings) {
+        return new PresenceHudLayer(
+                settings,
+                this::currentHudDisplay,
+                () -> currentPartner(System.currentTimeMillis())
+        );
+    }
+
+    /**
      * Feeds one raw platform event into the aggregation window.
      *
      * <p>The platform produces single occurrences (and knows only {@code WorldEventTypes}); the window, the
-     * grouping and the re-publication are presence's, which is why the conversion lives here and the host never
-     * sees an aggregated payload.</p>
+     * grouping and the re-publication are presence's, which is why the conversion lives on the presence side and
+     * the host never sees an aggregated payload.</p>
      */
     public void recordExternalEvent(WorldEventPayload event) {
-        if (event == null || !worldSessionActive) {
-            return;
-        }
-        eventCollector.recordWorldEvents(List.of(new PresenceWorldEventPayload(
-                null,
-                event.eventType(),
-                event.playerId(),
-                event.dimensionId(),
-                event.occurredAtMillis(),
-                event.values()
-        )));
+        eventCollector.recordWorldEvent(event);
     }
 
     public void tick() {
@@ -162,14 +169,6 @@ public final class PresenceClientRuntime {
      */
     public boolean isLoading() {
         return worldSessionActive && activityTracker.snapshot().primaryState() == PresencePrimaryState.LOADING;
-    }
-
-    public void recordPlayerChatMessage(String messageText, String senderId, String senderName) {
-        eventCollector.recordPlayerChatMessage(messageText, senderId, senderName);
-    }
-
-    public void recordWorldEvents(List<PresenceWorldEventPayload> events) {
-        eventCollector.recordWorldEvents(events);
     }
 
     /**

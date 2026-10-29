@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.module.memory;
 
 import com.rheinmetal.tianshu.function.auxilium.scope.AXScope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +16,7 @@ public final class AXPresenceWorldEventMapper {
         }
         AXScope effectiveScope = scope == null ? AXScope.unknown() : scope;
         Map<String, String> values = payload.values();
-        String nativeId = firstNonBlank(values.get("advancementId"), payload.eventId());
+        String nativeId = firstNonBlank(values.get(WorldEventTypes.VALUE_ADVANCEMENT_ID), payload.eventId());
         String text = eventText(payload);
         return new AXAttachedWorldEvent(
                 "awe_" + payload.eventId(),
@@ -34,8 +35,8 @@ public final class AXPresenceWorldEventMapper {
     private String eventText(PresenceWorldEventPayload payload) {
         Map<String, String> values = payload.values();
         if (PresenceWorldEventPayload.EVENT_ADVANCEMENT_UNLOCKED.equals(payload.eventType())) {
-            String title = values.getOrDefault("title", "");
-            String description = values.getOrDefault("description", "");
+            String title = values.getOrDefault(WorldEventTypes.VALUE_TITLE, "");
+            String description = values.getOrDefault(WorldEventTypes.VALUE_DESCRIPTION, "");
             if (!title.isBlank() && !description.isBlank()) {
                 return payload.eventType() + ": " + title + " (" + description + ")";
             }
@@ -43,7 +44,7 @@ public final class AXPresenceWorldEventMapper {
                 return payload.eventType() + ": " + title;
             }
         }
-        String text = values.getOrDefault("text", "");
+        String text = values.getOrDefault(WorldEventTypes.VALUE_TEXT, "");
         return text.isBlank() ? payload.eventType() : text;
     }
 
@@ -58,15 +59,15 @@ public final class AXPresenceWorldEventMapper {
         List<String> tags = new ArrayList<>();
         tags.add("presence_world_event");
         tags.add(payload.eventType());
-        String advancementId = payload.values().getOrDefault("advancementId", "");
+        String advancementId = payload.values().getOrDefault(WorldEventTypes.VALUE_ADVANCEMENT_ID, "");
         if (!advancementId.isBlank()) {
             tags.add(advancementId);
         }
-        String type = payload.values().getOrDefault("type", "");
+        String type = payload.values().getOrDefault(WorldEventTypes.VALUE_TYPE, "");
         if (!type.isBlank()) {
             tags.add(type);
         }
-        String iconItemId = payload.values().getOrDefault("iconItemId", "");
+        String iconItemId = payload.values().getOrDefault(WorldEventTypes.VALUE_ICON_ITEM_ID, "");
         if (!iconItemId.isBlank()) {
             tags.add(iconItemId);
         }
