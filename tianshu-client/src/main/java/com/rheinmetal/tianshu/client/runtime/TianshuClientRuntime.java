@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.client.runtime;
 
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -16,7 +15,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final Runnable shutdownAudio;
     private final Runnable closeDiagnostics;
     private final Runnable closeIndex;
-    private final List<WorldSessionListener> worldSessionListeners;
     private final Runnable onWorldReady;
     private final Consumer<Throwable> onWorldFailure;
     private final AtomicLong generation = new AtomicLong();
@@ -38,7 +36,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 services.audioManager()::shutdown,
                 services.diagnosticRouter()::close,
                 () -> { },
-                services.worldSessionListeners(),
                 onWorldReady,
                 onWorldFailure
         );
@@ -51,30 +48,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             Runnable shutdownAudio,
             Runnable closeDiagnostics,
             Runnable closeIndex,
-            Runnable onWorldReady,
-            Consumer<Throwable> onWorldFailure
-    ) {
-        this(
-                core,
-                startClientResources,
-                releaseCaptureHardware,
-                shutdownAudio,
-                closeDiagnostics,
-                closeIndex,
-                List.of(),
-                onWorldReady,
-                onWorldFailure
-        );
-    }
-
-    TianshuClientRuntime(
-            CoreLifecycle core,
-            Runnable startClientResources,
-            Runnable releaseCaptureHardware,
-            Runnable shutdownAudio,
-            Runnable closeDiagnostics,
-            Runnable closeIndex,
-            List<WorldSessionListener> worldSessionListeners,
             Runnable onWorldReady,
             Consumer<Throwable> onWorldFailure
     ) {
@@ -84,7 +57,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         this.shutdownAudio = Objects.requireNonNull(shutdownAudio, "shutdownAudio");
         this.closeDiagnostics = Objects.requireNonNull(closeDiagnostics, "closeDiagnostics");
         this.closeIndex = Objects.requireNonNull(closeIndex, "closeIndex");
-        this.worldSessionListeners = worldSessionListeners == null ? List.of() : List.copyOf(worldSessionListeners);
         this.onWorldReady = onWorldReady == null ? () -> { } : onWorldReady;
         this.onWorldFailure = onWorldFailure == null ? ignored -> { } : onWorldFailure;
     }
@@ -123,10 +95,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.WORLD_STARTING;
             requestGeneration = generation.incrementAndGet();
         }
-        // The world session opens with the request, not with the core's completion: modules publish "loading"
-        // while they prepare, and a session that starts after that would drop exactly the events the HUD and the
-        // input gate need during startup.
-        startWorldSessionListeners();
         core.start().whenComplete((running, failure) -> completeWorldStart(requestGeneration, running, failure));
     }
 
@@ -141,7 +109,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.WORLD_STOPPING;
             requestGeneration = generation.incrementAndGet();
         }
-        stopWorldSessionListeners();
         core.stop().whenComplete((ignored, failure) -> completeWorldStop(requestGeneration, failure));
     }
 
@@ -155,7 +122,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             worldSessionRequested = false;
             generation.incrementAndGet();
         }
-        stopWorldSessionListeners();
         try {
             core.destroy().join();
         } catch (CompletionException failure) {
@@ -175,18 +141,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         return generation.get();
     }
 
-    private void startWorldSessionListeners() {
-        for (WorldSessionListener listener : worldSessionListeners) {
-            listener.startWorldSession();
-        }
-    }
-
-    private void stopWorldSessionListeners() {
-        for (WorldSessionListener listener : worldSessionListeners) {
-            listener.stopWorldSession();
-        }
-    }
-
     private void completeWorldStart(long requestGeneration, Boolean running, Throwable failure) {
         synchronized (lifecycleMonitor) {
             if (requestGeneration != generation.get() || state != ClientSessionState.WORLD_STARTING) {
@@ -199,8 +153,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             }
         }
         if (failure != null || !Boolean.TRUE.equals(running)) {
-            // The session that was opened with the request must not outlive the failed start.
-            stopWorldSessionListeners();
             onWorldFailure.accept(failure == null ? new IllegalStateException("CORE_SESSION_NOT_RUNNING") : failure);
             return;
         }

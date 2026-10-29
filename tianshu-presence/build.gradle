@@ -1,0 +1,87 @@
+plugins {
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+dependencies {
+    api project(':tianshu-core')
+    testImplementation project(':tianshu-testkit')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------- mod packaging
+// Presence ships as its own client-only mod. It keeps no platform code: the HUD is composed through the api's
+// `HudSurface`, and the shader programs stay with the platform that draws them.
+def tianshuModVersion = providers.gradleProperty('mod_version').get()
+def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+def tianshuModName = providers.gradleProperty('mod_name').get()
+
+processResources {
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+                mod_version               : tianshuModVersion,
+                minecraft_version_range   : tianshuMcRange,
+                tianshu_libs_version_range: tianshuLibsRange,
+                mod_name                  : tianshuModName
+        )
+    }
+    filesMatching('fabric.mod.json') {
+        expand(mod_version: tianshuModVersion, mod_name: tianshuModName)
+    }
+}
+
+jar {
+    archiveBaseName = 'tianshu_presence'
+}
+
+// ---------------------------------------------------------------- loader entrypoints
+// Two empty classes, one per loader, outside src/main so the platform-free gate still covers only
+// business code. The jar carries both manifests, which is what makes it universal.
+// fabricmc has to come first: the neoforged mirror resets connections here and Gradle stops at the
+// first repository that throws instead of trying the next one.
+repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.neoforged.net/releases' }
+}
+
+sourceSets {
+    neoforgeStubs {
+        java.srcDir 'src/neoforgeStubs'
+    }
+    neoforgeEntry {
+        java.srcDir 'src/neoforgeEntry/java'
+        compileClasspath += sourceSets.main.output + sourceSets.neoforgeStubs.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
+    }
+    fabricEntry {
+        java.srcDir 'src/fabricEntry/java'
+        compileClasspath += sourceSets.main.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
+    }
+}
+
+def neoforgeEntryOutput = sourceSets.neoforgeEntry.output
+def fabricEntryOutput = sourceSets.fabricEntry.output
+
+dependencies {
+    fabricEntryCompileOnly "net.fabricmc:fabric-loader:${fabric_loader_version}"
+}
+
+jar {
+    from neoforgeEntryOutput
+    from fabricEntryOutput
+}

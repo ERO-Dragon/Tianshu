@@ -18,7 +18,7 @@ final class ClientConfigBoundaryTest {
     private static final Path CONFIG_HOST =
             Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/config/ClientConfig.java");
     private static final Path PRESENCE_CONFIG =
-            Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/presence/PresenceModuleConfig.java");
+            Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/PresenceModuleConfig.java");
     private static final Path INTAKE_CONFIG =
             Path.of("../../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/settings/IntakeConfig.java");
     private static final Path WEAVING_CONFIG =

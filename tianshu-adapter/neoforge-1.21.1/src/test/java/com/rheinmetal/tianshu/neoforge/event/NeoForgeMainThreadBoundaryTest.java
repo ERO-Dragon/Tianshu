@@ -158,7 +158,7 @@ final class NeoForgeMainThreadBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String layer = Files.readString(
-                Path.of("../../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/presence/hud/PresenceHudLayer.java"),
+                Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceHudLayer.java"),
                 StandardCharsets.UTF_8
         );
 

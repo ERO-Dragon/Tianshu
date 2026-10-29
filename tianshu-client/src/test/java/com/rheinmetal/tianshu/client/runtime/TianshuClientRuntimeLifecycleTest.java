@@ -2,8 +2,6 @@ package com.rheinmetal.tianshu.client.runtime;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -100,71 +98,6 @@ class TianshuClientRuntimeLifecycleTest {
 
         assertEquals(2, core.starts.get());
         assertEquals(ClientSessionState.WORLD_RUNNING, runtime.state());
-    }
-
-    @Test
-    void worldSessionListenersOpenWithTheRequestSoLoadingNoticesAreNotDropped() {
-        FakeCore core = new FakeCore();
-        AtomicInteger sessionStarts = new AtomicInteger();
-        AtomicInteger sessionStops = new AtomicInteger();
-        TianshuClientRuntime runtime = runtimeWithSession(core, sessionStarts, sessionStops);
-
-        runtime.startClient();
-        runtime.startWorldSession();
-        assertEquals(1, sessionStarts.get(),
-                "modules publish their loading notices while the core prepares, so the session has to be open");
-
-        core.start.complete(true);
-        assertEquals(1, sessionStarts.get(), "an accepted start must not open a second session");
-
-        runtime.stopWorldSession();
-        assertEquals(1, sessionStops.get());
-    }
-
-    @Test
-    void aFailedWorldStartClosesTheSessionItOpened() {
-        FakeCore core = new FakeCore();
-        AtomicInteger sessionStarts = new AtomicInteger();
-        AtomicInteger sessionStops = new AtomicInteger();
-        TianshuClientRuntime runtime = runtimeWithSession(core, sessionStarts, sessionStops);
-
-        runtime.startClient();
-        runtime.startWorldSession();
-        assertEquals(1, sessionStarts.get());
-
-        core.start.completeExceptionally(new IllegalStateException("boom"));
-
-        assertEquals(1, sessionStops.get(), "the session that was opened with the request must not outlive a failed start");
-        assertEquals(ClientSessionState.CLIENT_READY, runtime.state());
-    }
-
-    private static TianshuClientRuntime runtimeWithSession(
-            FakeCore core,
-            AtomicInteger sessionStarts,
-            AtomicInteger sessionStops
-    ) {
-        WorldSessionListener listener = new WorldSessionListener() {
-            @Override
-            public void startWorldSession() {
-                sessionStarts.incrementAndGet();
-            }
-
-            @Override
-            public void stopWorldSession() {
-                sessionStops.incrementAndGet();
-            }
-        };
-        return new TianshuClientRuntime(
-                core,
-                () -> { },
-                () -> { },
-                () -> { },
-                () -> { },
-                () -> { },
-                List.of(listener),
-                () -> { },
-                ignored -> { }
-        );
     }
 
     private static TianshuClientRuntime runtime(FakeCore core, AtomicInteger releaseCapture, AtomicInteger closedResources) {

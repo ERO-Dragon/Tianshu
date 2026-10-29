@@ -22,7 +22,7 @@ tasks.withType(JavaCompile).configureEach {
 //   4. the kernel (core/client/adapter) referencing a payload at all is the only reason it belongs in api —
 //      never move a feature payload into api just to avoid writing a guard.
 
-def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium']
+def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium', 'tianshu-presence']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
 // A pair of feature modules is in exactly one of three states, and the difference is a product statement:
@@ -42,12 +42,14 @@ def requiredFeatureEdges = [
         'intake'  : [],
         'weaving' : [],
         'echo'    : [],
+        'presence': [],
 ]
 def optionalFeatureEdges = [
         'auxilium': ['intake', 'echo'],
         'intake'  : [],
         'weaving' : [],
         'echo'    : [],
+        'presence': [],
 ]
 def allowedFeatureEdges = [:]
 featureModules.each { module ->
@@ -78,7 +80,7 @@ tasks.register('verifyFeatureIsolation') {
             if (!(owner in names)) return
             def allowed = allowedFeatureEdges[owner] ?: []
             source.eachLine('UTF-8') { line ->
-                def m = line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium)\./
+                def m = line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./
                 if (m.find() && m.group(1) != owner && !(m.group(1) in allowed)) {
                     violations << "${source.name}: ${owner} -> ${m.group(1)} is not an allowed edge: ${line.trim()}"
                 }
@@ -230,7 +232,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
         // kernel fail to build when a feature jar is removed, even though no import says so.
         hostBuildFiles.each { buildFile ->
             if (!buildFile.exists()) return
-            (buildFile.text =~ /(api|implementation|compileOnly) project\(':tianshu-(intake|echo|weaving|auxilium)'\)/).each { match ->
+            (buildFile.text =~ /(api|implementation|compileOnly) project\(':tianshu-(intake|echo|weaving|auxilium|presence)'\)/).each { match ->
                 throw new GradleException("${buildFile} declares a dependency on tianshu-${match[2]}; the kernel must not depend on a feature module")
             }
         }
@@ -238,7 +240,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
         task.inputs.files.files.each { source ->
             if (!source.path.endsWith('.java')) return
             source.eachLine('UTF-8') { line ->
-                if (line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium)\./) {
+                if (line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./) {
                     violations << "${source.name}: ${line.trim()}"
                 }
             }

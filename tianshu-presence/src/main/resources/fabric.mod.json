@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "tianshu_presence",
+  "version": "${mod_version}",
+  "name": "${mod_name} - Presence",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.rheinmetal.tianshu.function.presence.PresenceFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21 <1.22",
+    "tianshu": ">=${mod_version}",
+    "tianshu_libs": ">=1.0.0"
+  }
+}

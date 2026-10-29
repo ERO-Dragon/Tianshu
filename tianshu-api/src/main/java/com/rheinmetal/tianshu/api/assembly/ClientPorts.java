@@ -8,7 +8,10 @@ import com.rheinmetal.tianshu.client.host.ClientFilePicker;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.ClientTextProvider;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
+import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
+
+import java.util.function.BooleanSupplier;
 
 /**
  * The client services a module may use while it builds itself.
@@ -17,6 +20,9 @@ import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
  * settings page, a background task or a file dialog asks for these instead of reaching into the host.
  * Adding a service here is a contract change for every provider, so it happens when a module actually
  * needs one.</p>
+ *
+ * <p>{@code gameContext} and {@code hud} are the two ports a rendering feature needs: one reads the game, the
+ * other draws on it. Neither carries a Minecraft type, which is what lets the feature stay universal.</p>
  */
 public record ClientPorts(
         ClientScheduler scheduler,
@@ -27,6 +33,8 @@ public record ClientPorts(
         ClientAudioDeviceCatalog audioDevices,
         ModuleConfigStores configStores,
         NativeModelLoadQueue modelLoadQueue,
-        HudHost hud
+        HudHost hud,
+        ClientGameContextPort gameContext,
+        BooleanSupplier debugEnabled
 ) {
 }

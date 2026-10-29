@@ -90,11 +90,11 @@ neoForge {
     // so launching `runClient` from echo installs kernel+echo, and launching it from auxilium installs
     // kernel+auxilium+intake+weaving (its hard dependencies) but not echo (an optional integration).
     // `-PfeatureMods=` overrides the whole thing: `-PfeatureMods=` is the kernel alone.
-    def runFeatureNames = ['intake', 'echo', 'weaving', 'auxilium']
+    def runFeatureNames = ['intake', 'echo', 'weaving', 'auxilium', 'presence']
     def startedFrom = {
         def startParameter = gradle.startParameter
         def explicitFeature = startParameter.taskNames.findResult { name ->
-            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium)):run(Client|Server)$/
+            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium|presence)):run(Client|Server)$/
             match.find() ? match.group(2) : null
         }
         if (explicitFeature != null) {
@@ -170,6 +170,12 @@ neoForge {
             tianshu_auxilium {
                 sourceSet(project(':tianshu-auxilium').sourceSets.main)
                 sourceSet(project(':tianshu-auxilium').sourceSets.neoforgeEntry)
+            }
+        }
+        if ('presence' in devFeatureMods) {
+            tianshu_presence {
+                sourceSet(project(':tianshu-presence').sourceSets.main)
+                sourceSet(project(':tianshu-presence').sourceSets.neoforgeEntry)
             }
         }
     }

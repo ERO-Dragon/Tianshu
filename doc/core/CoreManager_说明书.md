@@ -272,7 +272,7 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 
 ### 11.1 配置所有权
 
-NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一读写宿主。common 不创建第二份 TOML，也不保存 GUI 配置。`TianshuClient` 在组合根把同一个宿主配置映射为 ASR、LLM、TTS 和 AX 的窄读取端口；`TianshuModuleAssemblyContext` 只提供环境、音频桥、模块运行时和生命周期信号，不提供配置总接口。
+NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一读写宿主，但它只剩下内核自己的 debug 开关与语音资源路径：功能设置（含映迹 HUD）都放在 `config/Tianshu/module/<moduleId>.properties`，由模块通过 `ModuleConfigStore` 自持。`TianshuClient` 在组合根把同一个宿主配置映射为 ASR、LLM、TTS 和 AX 的窄读取端口；`TianshuModuleAssemblyContext` 只提供环境、音频桥、模块运行时和生命周期信号，不提供配置总接口。
 
 ## 12. 装配边界（后续修订）
 
@@ -280,7 +280,7 @@ NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一�
 
 1. **模块自注册**：模块在自己的 `@Mod` 构造里调用 `TianshuModuleProviderRegistry.register(factory)`；内核每个世界会话把工厂实例化成 provider。
 2. **两个装配入口**：`TianshuModuleRegistrar` 只有 `addModule(installer)` 与 `addSettings(page)`。内置页与外置贡献走同一条路（`ModuleSettingsSourceRegistry`），没有第二条特权路径。
-3. **只交端口**：`TianshuModuleAssemblyContext` 给出 `ClientPorts`（scheduler / uiHost / texts / filePicker / settingsLayers / audioDevices / configStores / modelLoadQueue / hud）、`ModuleRuntimeServices`（findService / requireService / requestRefresh）与宿主信号；**不交** CoreManager、ProtocolRuntime、ClientConfig。
+3. **只交端口**：`TianshuModuleAssemblyContext` 给出 `ClientPorts`（scheduler / uiHost / texts / filePicker / settingsLayers / audioDevices / configStores / modelLoadQueue / hud / gameContext / debugEnabled）、`ModuleRuntimeServices`（findService / requireService / requestRefresh / queryModuleStatuses）与宿主信号；**不交** CoreManager、ProtocolRuntime、ClientConfig。
 
 配置与模型资产的归属随之改变：
 

@@ -35,8 +35,8 @@ module.presence
 
 ## 2. 模块定位
 
-映迹是 `tianshu-client` 中的平台无关客户端模块；`tianshu-neoforge` 只负责接入 Minecraft 状态并在 api 端口
-（`HudSurface` / `HudHost` / `ClientGameContextPort`）后面提供落笔实现。映迹负责：
+映迹是独立的 universal 功能模组 `tianshu-presence`（客户端，零平台代码）；北辰只负责在 api 端口
+（`HudSurface` / `HudHost` / `ClientGameContextPort`）后面提供 Minecraft 落笔与 GUI 门控。映迹负责：
 
 - 通过外层 platform 端口读取客户端状态
 - 维护不可变快照
@@ -445,18 +445,18 @@ IR 不再查询映迹：命名物体增强改为在辅星侧自采（`AsrTextRep
 ## 8. 当前 NeoForge 结构
 
 ```text
-tianshu-client/src/main/java/.../client/presence/
+tianshu-presence/src/main/java/.../function/presence/
   PresenceClientRuntime
   PresenceModule
   PresenceModuleInstaller
   PresenceProtocolAdapter
   PresenceTextProvider
 
-tianshu-client/src/main/java/.../client/presence/capture/
+tianshu-presence/src/main/java/.../function/presence/capture/
   PresenceEventCollector
   PresenceWorldEventSink
 
-tianshu-client/src/main/java/.../client/presence/context/
+tianshu-presence/src/main/java/.../function/presence/context/
   PresenceContextFactMapper
   PresenceContextQueryCoordinator
   PresenceInteractionContextWatcher      §5.2 的摘要变化检测与推送
@@ -477,12 +477,12 @@ tianshu-api/src/main/java/.../client/presence/model/
   PresenceTargetSnapshot
   PresenceWorldEnvironment
 
-tianshu-client/src/main/java/.../client/presence/status/
+tianshu-presence/src/main/java/.../function/presence/status/
   PresenceActivityTracker
   PresenceDisplayPolicy
   PresenceHudDisplay
 
-tianshu-client/src/main/java/.../client/presence/hud/
+tianshu-presence/src/main/java/.../function/presence/hud/
   PresenceHudSettings
   PresenceHudVisualPreset
   PresenceHudVisualState
@@ -506,8 +506,9 @@ tianshu-client/src/main/java/.../client/presence/hud/
   PresenceStatusTextElementController
   PresenceStatusTextElementRenderer
 
-tianshu-client/src/main/java/.../client/presence/
-  PresenceClientFeature
+tianshu-presence/src/main/java/.../function/presence/
+  PresenceModuleRegistration
+  PresenceModuleProvider
   PresenceModuleConfig
 
 tianshu-api/src/main/java/.../api/client/host/hud/
@@ -537,14 +538,14 @@ tianshu-api/src/main/java/.../protocol/payload/
   WorldEventTypes
   PresenceWorldEventPayload
 
-tianshu-client/src/main/java/.../client/presence/partner/
+tianshu-presence/src/main/java/.../function/presence/partner/
   PresencePartnerStore
   PresencePartnerSnapshot
 
-tianshu-client/src/main/java/.../client/presence/diagnostics/
+tianshu-presence/src/main/java/.../function/presence/diagnostics/
   PresenceDebugPipelineSnapshot
 
-tianshu-client/src/main/java/.../client/settings/module/presence/
+tianshu-presence/src/main/java/.../function/presence/settings/
   PresenceSettingsRegistrySource
   PresenceSettingsAccess
 
@@ -569,13 +570,15 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 已完成：
 
 - 模块骨架
+- 已拆成独立 universal 功能模组 `tianshu-presence`（两份清单 + 两个加载器入口）；内核 jar 不再包含映迹类，
+  宿主代码对映迹零引用（`ClientPorts` + provider 自注册）
 - HUD 状态展示
 - Presence topic
 - Presence capability
 - IA / AX 接入 Presence 查询（IR 已退出这条链路）
 - 旧的同步上下文桥已移除
 - 世界事件 topic 已纳入 Presence 一期/二期范围（聊天作为事件类型并入）
-- HUD 的表现计算与绘制调用位于映迹（`client/presence/hud`），落笔位于 `tianshu-adapter` 的 `neoforge/ui/hud`
+- HUD 的表现计算与绘制调用位于映迹（`function/presence/hud`），落笔位于 `tianshu-adapter` 的 `neoforge/ui/hud`
   （`NeoForgeHudSurface` / `NeoForgeHudHost` 只处理渲染状态、门控、时钟与异常熔断）
 - 映迹核心只输出 `PresenceHudDisplay`，并把它组合成 `HudLayer` 交给平台
 - 映迹配置（HUD 开关/元素/尺寸/预设/位置）持久化在 `module.presence.properties`
@@ -600,7 +603,7 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 
 ## 10. 设计原则
 
-1. 映迹核心位于 `tianshu-client`（阶段二搬入 `tianshu-presence`），NeoForge 只提供 Minecraft 状态读取与
+1. 映迹核心位于 `tianshu-presence`（已独立成 universal 功能模组），NeoForge 只提供 Minecraft 状态读取与
    `HudSurface` / `HudHost` 的落笔实现。
 2. 玩家可见状态要克制，优先轻量、短 TTL、可降级。
 3. IA 只使用映迹提供的快照；IR 与辅星按需自采，不向映迹要第二次。
@@ -659,4 +662,6 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
   着色器/贴图解析/文本度量）与 `HudAnchorEditorScreen`。
 - **配置**：HUD 七个键迁到 `module.presence.properties`（`PresenceModuleConfig`）。
 - **会话**：`WorldSessionListener` 列表，客户端运行时不再点名映迹。
-- **装配**：组合根只写 `PresenceClientFeature.create(...)`，模块与 HUD 图层都由它交出 api 类型句柄。
+- **装配**：映迹在两个加载器入口里调用 `PresenceModuleRegistration.announce()`，把
+  `PresenceModuleProvider` 注册进 `TianshuModuleProviderRegistry`；宿主只从注册表取工厂，代码里没有任何
+  映迹类型。模块注册时加入 HUD 图层、开世界会话，停止时两者一并收回。

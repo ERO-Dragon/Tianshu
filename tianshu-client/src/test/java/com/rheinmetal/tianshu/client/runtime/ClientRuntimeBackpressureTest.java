@@ -13,12 +13,9 @@ class ClientRuntimeBackpressureTest {
     @Test
     void clientOwnedWorkersUseBoundedQueuesAndExplicitExecutors() throws Exception {
         String audio = source("com/rheinmetal/tianshu/client/audio/AudioManager.java");
-        String presence = source("com/rheinmetal/tianshu/client/presence/context/PresenceContextQueryCoordinator.java");
 
         assertTrue(audio.contains("new ArrayBlockingQueue<>(8)"));
         assertFalse(audio.contains("Executors.newFixedThreadPool"));
-        assertTrue(presence.contains("new ArrayBlockingQueue<>(MAX_PENDING_QUERIES)"));
-        assertTrue(presence.contains("\"PRESENCE_BUSY\""));
     }
 
     private static String source(String relativePath) throws Exception {

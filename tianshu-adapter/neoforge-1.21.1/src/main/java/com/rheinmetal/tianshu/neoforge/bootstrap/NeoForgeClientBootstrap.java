@@ -10,7 +10,6 @@ import com.rheinmetal.tianshu.client.audio.AudioManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
-import com.rheinmetal.tianshu.client.presence.PresenceClientFeature;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
 import com.rheinmetal.tianshu.client.runtime.TianshuClientRuntime;
@@ -41,7 +40,6 @@ import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
 import com.rheinmetal.tianshu.api.game.WorldEventPublisher;
-import com.rheinmetal.tianshu.api.client.host.hud.HudLayer;
 import com.rheinmetal.tianshu.api.client.host.hud.HudProgram;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameContextPort;
@@ -95,7 +93,6 @@ public final class NeoForgeClientBootstrap {
     private ClientDiagnosticRouter diagnosticRouter;
     private NeoForgeNamedObjectDictionaryProvider namedObjectDictionaryProvider;
     private NeoForgeClientLifecycleAdapter lifecycleAdapter;
-    private PresenceClientFeature presenceFeature;
     private NeoForgeHudHost hudHost;
     private NeoForgeClientEvents events;
     private NeoForgeClientSession clientSession;
@@ -144,23 +141,14 @@ public final class NeoForgeClientBootstrap {
             createNamedObjectDictionary();
             refreshNamedObjectSnapshot();
             NeoForgeClientTextProvider clientTexts = new NeoForgeClientTextProvider();
-            // One seam for the whole feature: ports in, api-typed handles out. Below this line is presence's business.
-            presenceFeature = PresenceClientFeature.create(
-                    new NeoForgeGameContextPort(languageSnapshot, diagnosticRouter),
-                    clientTexts,
-                    moduleConfigs,
-                    diagnosticRouter
-            );
             // The HUD host is the platform half: it renders whatever layers are registered and knows none of them.
             NeoForgeHudHost hudHost = new NeoForgeHudHost(diagnosticRouter, view -> {
                 Minecraft minecraft = Minecraft.getInstance();
                 minecraft.setScreen(new HudAnchorEditorScreen(minecraft.screen, view));
             });
             this.hudHost = hudHost;
-            // The composition root decides that this feature has a HUD; the layer itself is built by the feature.
-            HudLayer presenceHudLayer = presenceFeature.hudLayer();
-            hudHost.addLayer(presenceHudLayer);
-            startingSession.own(() -> hudHost.removeLayer(presenceHudLayer.id()));
+            // The game context port. A feature reads it; the platform only captures.
+            var gameContextPort = new NeoForgeGameContextPort(languageSnapshot, diagnosticRouter);
             NeoForgeWorldIdentityCapture worldIdentityCapture = new NeoForgeWorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
 
@@ -184,7 +172,9 @@ public final class NeoForgeClientBootstrap {
                     audioManager instanceof com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog catalog ? catalog : null,
                     moduleConfigs,
                     loadQueue,
-                    hudHost
+                    hudHost,
+                    gameContextPort,
+                    config::isDebugEnabled
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -197,7 +187,7 @@ public final class NeoForgeClientBootstrap {
             );
 
             TianshuClientRuntime clientRuntime = new TianshuClientRuntime(
-                    new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter, List.of(presenceFeature.worldSession())),
+                    new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter),
                     () -> diagnosticRouter.info("neoforge.world.session_started"),
                     failure -> diagnosticRouter.error("neoforge.world.session_lifecycle_failed", failure)
             );
@@ -345,7 +335,6 @@ public final class NeoForgeClientBootstrap {
         events = null;
         integrationApi = null;
         lifecycleAdapter = null;
-        presenceFeature = null;
         hudHost = null;
         coreManager = null;
         audioManager = null;
@@ -364,8 +353,7 @@ public final class NeoForgeClientBootstrap {
             TianshuModuleAssemblyContext context,
             NativeModelLoadQueue loadQueue) {
         return List.of(
-                registrar -> registrar.addModule(new ClientOnnxRuntimeModuleInstaller()),
-                presenceFeature.moduleProvider(context.moduleRuntime())
+                registrar -> registrar.addModule(new ClientOnnxRuntimeModuleInstaller())
         );
     }
 
@@ -388,14 +376,12 @@ public final class NeoForgeClientBootstrap {
     private TianshuSettingsRegistrySource createSettingsRegistrySource(ClientPorts ports) {
         TianshuSettingsRegistrySource moduleSource = new ModuleSettingsRegistrySource(coreManager::managedModules);
         TianshuSettingsRegistrySource externalSource = new ExternalSettingsRegistrySource(externalSettingsContributors);
-        TianshuSettingsRegistrySource presenceSource = presenceFeature.settingsSource(
-                coreManager, config::isDebugEnabled, hudHost.anchorEditor()
-        );
+        // Feature pages arrive through `moduleSettingsSources`: every feature contributes its own page when it is
+        // assembled, so the platform holds no list of them.
         return CompositeSettingsRegistrySource.of(
                 moduleSource,
                 externalSource,
-                moduleSettingsSources,
-                presenceSource
+                moduleSettingsSources
         );
     }
 
