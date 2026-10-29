@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>映迹 HUD 预览 · Presence HUD Preview</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-dot"></span>
+        <h1>映迹 HUD 预览</h1>
+        <span class="tag">tianshu-presence</span>
+    </div>
+    <div class="topbar-actions">
+        <span id="asset-status" class="asset-status">模型加载中…</span>
+        <button id="copy-state" class="ghost-button" type="button">复制当前状态</button>
+    </div>
+</header>
+
+<main class="workbench">
+    <aside class="sidebar sidebar-left">
+        <section class="card">
+            <h2>主状态 <span class="note">PresencePrimaryState</span></h2>
+            <div class="state-grid">
+                <button class="state-button" data-primary="IDLE" type="button">空闲<small>IDLE</small></button>
+                <button class="state-button" data-primary="LOADING" type="button">加载<small>LOADING</small></button>
+                <button class="state-button" data-primary="THINKING" type="button">思考<small>THINKING</small></button>
+                <button class="state-button" data-primary="RESPONDING" type="button">回复<small>RESPONDING</small></button>
+                <button class="state-button" data-primary="ERROR" type="button">错误<small>ERROR</small></button>
+                <button class="state-button" data-primary="RECONNECTING" type="button">重连<small>RECONNECTING</small></button>
+            </div>
+            <p class="hint">ERROR / RECONNECTING 复用 TASK / LOADING 的视觉，只有状态文字不同。</p>
+        </section>
+
+        <section class="card">
+            <h2>并行标记</h2>
+            <label class="check"><input id="listening" type="checkbox"> 正在听（ASR 活动，图标外圈波动）</label>
+            <label class="check"><input id="background-task" type="checkbox"> 后台任务（图标右上角小点）</label>
+        </section>
+
+        <section class="card">
+            <h2>视觉</h2>
+            <div class="radio-row">
+                <label class="radio"><input type="radio" name="preset" value="PRESET_ONE" checked> 预设一</label>
+                <label class="radio"><input type="radio" name="preset" value="PRESET_TWO"> 预设二</label>
+            </div>
+            <label class="check"><input id="shader-enabled" type="checkbox" checked> 着色器层（关闭 = 程序缺失时的 Java 回退）</label>
+            <p class="hint">着色器源码与游戏内 <code>.fsh</code> 逐字一致，只由页面补 GLSL ES 头。</p>
+        </section>
+
+        <section class="card">
+            <h2>显示</h2>
+            <label class="check"><input id="hud-enabled" type="checkbox" checked> HUD 总开关</label>
+            <label class="check"><input id="icon-enabled" type="checkbox" checked> 图标</label>
+            <label class="check"><input id="text-enabled" type="checkbox" checked> 状态文字</label>
+            <label class="check"><input id="fallback-enabled" type="checkbox" checked> Java 回退层（关掉只看着色器）</label>
+            <label class="check"><input id="partner-enabled" type="checkbox"> 伙伴标记</label>
+        </section>
+
+        <section class="card">
+            <h2>图标位置</h2>
+            <label class="slider">尺寸 <output id="size-value">28</output> px
+                <input id="size" type="range" min="16" max="64" step="1" value="28">
+            </label>
+            <label class="slider">X <output id="pos-x-value">0.500</output>
+                <input id="pos-x" type="range" min="0" max="1" step="0.001" value="0.5">
+            </label>
+            <label class="check"><input id="default-anchor" type="checkbox" checked> 默认锚点（经验条上方）</label>
+            <label class="slider">Y <output id="pos-y-value">-1.000</output>
+                <input id="pos-y" type="range" min="0" max="1" step="0.001" value="0.5" disabled>
+            </label>
+        </section>
+
+        <section class="card">
+            <h2>伙伴标记</h2>
+            <label class="field">占位图标
+                <select id="partner-icon">
+                    <option value="star" selected>星形（占位）</option>
+                    <option value="moon">月牙（占位）</option>
+                    <option value="note">音符（占位）</option>
+                    <option value="bubble">气泡（占位）</option>
+                </select>
+            </label>
+            <label class="slider">租约 <output id="lease-value">8.0</output> s
+                <input id="lease" type="range" min="2" max="20" step="0.5" value="8">
+            </label>
+            <button id="restart-lease" class="wide-button" type="button">重新开始租约</button>
+            <p class="hint">游戏内图标来自伙伴载荷的贴图 id；预览用占位图形，环与摆动按真实参数。</p>
+        </section>
+
+        <section class="card">
+            <h2>演示</h2>
+            <label class="check"><input id="auto-cycle" type="checkbox"> 自动轮播主状态（2 秒）</label>
+            <button id="replay-transition" class="wide-button" type="button">重放当前过渡</button>
+            <div class="field-row">
+                <label class="field">语言
+                    <select id="language">
+                        <option value="zh_cn" selected>中文</option>
+                        <option value="en_us">English</option>
+                    </select>
+                </label>
+                <label class="field">屏幕
+                    <select id="screen">
+                        <option value="1920x1080@2" selected>1920×1080 · GUI 2×</option>
+                        <option value="1920x1080@3">1920×1080 · GUI 3×</option>
+                        <option value="2560x1440@2">2560×1440 · GUI 2×</option>
+                        <option value="2560x1440@3">2560×1440 · GUI 3×</option>
+                        <option value="1280x720@2">1280×720 · GUI 2×</option>
+                        <option value="3840x2160@3">3840×2160 · GUI 3×</option>
+                    </select>
+                </label>
+            </div>
+        </section>
+    </aside>
+
+    <section class="stage">
+        <div class="stage-head">
+            <div id="screen-label" class="stage-label">1920×1080 · GUI 2×</div>
+            <div class="stage-tools">
+                <label class="chip">缩放
+                    <select id="zoom">
+                        <option value="1" selected>100%</option>
+                        <option value="1.5">150%</option>
+                        <option value="2">200%</option>
+                        <option value="3">300%</option>
+                    </select>
+                </label>
+                <button id="pause" class="chip" type="button">暂停</button>
+                <label class="chip">倍率 <output id="speed-value">1.00×</output>
+                    <input id="speed" type="range" min="0.1" max="2" step="0.05" value="1">
+                </label>
+            </div>
+        </div>
+        <div class="screen-shell">
+            <div class="screen" id="screen-surface">
+                <canvas id="fallback-canvas"></canvas>
+                <canvas id="shader-canvas"></canvas>
+                <canvas id="overlay-canvas"></canvas>
+            </div>
+        </div>
+        <p class="stage-note">游戏画面是示意背景；热键栏、经验条、状态面板与坐标都按逻辑像素绘制。着色器层与 Java 回退层叠加顺序与游戏内一致。</p>
+    </section>
+
+    <aside class="sidebar sidebar-right">
+        <section class="card">
+            <h2>调试读数</h2>
+            <dl id="readout" class="readout"></dl>
+        </section>
+        <section class="card">
+            <h2>着色器</h2>
+            <p id="shader-status" class="hint">尚未编译</p>
+        </section>
+        <section class="card">
+            <h2>来源</h2>
+            <ul class="source-list">
+                <li><code>PresenceHudVisualParameters</code> 状态参数</li>
+                <li><code>PresenceHudLayout</code> 锚点与尺寸</li>
+                <li><code>PresenceHudVisualTransition</code> 240ms smootherstep</li>
+                <li><code>PresenceIconElementRenderer</code> 回退层</li>
+                <li><code>PresenceStatusTextElementRenderer</code> 文字面板</li>
+                <li><code>PresencePartnerIconRenderer</code> 伙伴标记</li>
+            </ul>
+            <p class="hint">模型与着色器由 <code>:tianshu-presence:exportHudPreviewAssets</code> 生成；测试会拒绝过期页面。</p>
+        </section>
+    </aside>
+</main>
+
+<!-- The two blocks below are generated from the presence sources; do not edit by hand. -->
+<script type="application/json" id="presence-hud-model">
+{
+  "generatedBy": "HudPreviewAssetExporter",
+  "moduleId": "module.presence",
+  "textKeyPrefix": "tianshu.presence.status.",
+  "primaryStates": [
+    "IDLE",
+    "LOADING",
+    "THINKING",
+    "RESPONDING",
+    "RECONNECTING",
+    "ERROR"
+  ],
+  "visualStates": [
+    "IDLE",
+    "LOADING",
+    "TASK",
+    "CHAT",
+    "CHAT_THINKING"
+  ],
+  "visualStateOf": {
+    "ERROR": "TASK",
+    "IDLE": "IDLE",
+    "LOADING": "LOADING",
+    "RECONNECTING": "LOADING",
+    "RESPONDING": "CHAT",
+    "THINKING": "CHAT_THINKING"
+  },
+  "visualParameters": {
+    "IDLE": [
+      {
+        "intensity": 0.34,
+        "speed": 0.24,
+        "convergence": 0.18,
+        "pulse": 0.0,
+        "loadingBlend": 0.0
+      },
+      {
+        "intensity": 0.34,
+        "speed": 0.24,
+        "convergence": 0.18,
+        "pulse": 1.0,
+        "loadingBlend": 0.0
+      }
+    ],
+    "LOADING": [
+      {
+        "intensity": 0.7,
+        "speed": 0.7,
+        "convergence": 0.15,
+        "pulse": 0.0,
+        "loadingBlend": 1.0
+      },
+      {
+        "intensity": 0.7,
+        "speed": 0.7,
+        "convergence": 0.15,
+        "pulse": 1.0,
+        "loadingBlend": 1.0
+      }
+    ],
+    "TASK": [
+      {
+        "intensity": 0.78,
+        "speed": 0.9,
+        "convergence": 0.35,
+        "pulse": 0.0,
+        "loadingBlend": 0.0
+      },
+      {
+        "intensity": 0.78,
+        "speed": 0.9,
+        "convergence": 0.35,
+        "pulse": 1.0,
+        "loadingBlend": 0.0
+      }
+    ],
+    "CHAT": [
+      {
+        "intensity": 0.92,
+        "speed": 1.15,
+        "convergence": 0.1,
+        "pulse": 0.0,
+        "loadingBlend": 0.0
+      },
+      {
+        "intensity": 0.92,
+        "speed": 1.15,
+        "convergence": 0.1,
+        "pulse": 1.0,
+        "loadingBlend": 0.0
+      }
+    ],
+    "CHAT_THINKING": [
+      {
+        "intensity": 0.66,
+        "speed": 0.52,
+        "convergence": 0.78,
+        "pulse": 0.0,
+        "loadingBlend": 0.0
+      },
+      {
+        "intensity": 0.66,
+        "speed": 0.52,
+        "convergence": 0.78,
+        "pulse": 1.0,
+        "loadingBlend": 0.0
+      }
+    ]
+  },
+  "texts": {
+    "zh_cn": {
+      "idle": "",
+      "loading": "正在加载",
+      "thinking": "正在思考",
+      "responding": "正在回复",
+      "error": "天枢启动失败：请检查 API Key、服务地址或向量模型文件",
+      "reconnecting": "云端 LLM 未就绪，正在重连…",
+      "listening": "正在听你说"
+    },
+    "en_us": {
+      "idle": "",
+      "loading": "Loading",
+      "thinking": "Thinking",
+      "responding": "Responding",
+      "error": "Tianshu failed to start: check the API key, the service address, or the vector model file",
+      "reconnecting": "Cloud LLM is not ready; reconnecting…",
+      "listening": "Listening"
+    }
+  },
+  "constants": {
+    "PresenceHudSettings": {
+      "DEFAULT_ICON_SIZE_PIXELS": 28.0,
+      "MAX_ICON_SIZE_PIXELS": 64.0,
+      "MIN_ICON_SIZE_PIXELS": 16.0
+    },
+    "PresenceHudLayout": {
+      "DEFAULT_ANCHOR_SENTINEL": 0.0,
+      "DEFAULT_X": 0.5,
+      "EXPERIENCE_LEVEL_GAP": 5.0,
+      "EXPERIENCE_LEVEL_TOP_OFFSET": 35.0
+    },
+    "PresenceHudShapes": {
+      "DISC_BANDS_LIMIT": 64,
+      "DISC_BANDS_MIN": 3,
+      "RING_SEGMENTS": 64,
+      "RING_SEGMENT_LIMIT": 512
+    },
+    "PresenceIconElementController": {
+      "ELEMENT_ID": "presence.icon",
+      "TRANSITION_MILLIS": 240
+    },
+    "PresenceIconElementRenderer": {
+      "FLUID_LAYER_OPACITY": 0.58,
+      "LOADING_LAYER_OPACITY": 0.72
+    },
+    "PresenceStatusTextElementRenderer": {
+      "ACTIVE_ACCENT": -794299393,
+      "MIN_PANEL_WIDTH": 88,
+      "PANEL_BACKGROUND": -1979248362,
+      "PANEL_BOTTOM_MARGIN": 18,
+      "PANEL_HORIZONTAL_PADDING": 9,
+      "PANEL_LEFT": 12,
+      "TEXT_COLOR": -1378305
+    },
+    "PresencePartnerIconRenderer": {
+      "CROSSFADE_MILLIS": 260,
+      "ENTER_MILLIS": 320,
+      "ENTER_MIN_SCALE": 0.55,
+      "ENTER_SPIN_RADIANS": -3.1415927,
+      "EXIT_MILLIS": 320,
+      "EXIT_MIN_SCALE": 0.55,
+      "EXIT_SPIN_RADIANS": 3.1415927,
+      "ICON_SCALE": 0.55,
+      "RING_COLOR": -1378305,
+      "RING_GROW_MILLIS": 220,
+      "RING_OPACITY": 0.85,
+      "RING_RADIUS_SCALE": 0.52,
+      "RING_RENEW_THRESHOLD": 0.02,
+      "RING_THICKNESS_SCALE": 0.05,
+      "START_ANGLE": -1.5707964,
+      "WOBBLE_AMPLITUDE_RADIANS": 0.26,
+      "WOBBLE_PERIOD_MILLIS": 2800.0
+    }
+  }
+}
+</script>
+<script type="x-shader/x-vertex" id="shader-presence-icon-vsh">
+#version 150
+
+in vec3 Position;
+in vec2 UV0;
+
+uniform mat4 ModelViewMat;
+uniform mat4 ProjMat;
+
+out vec2 texCoord0;
+
+void main() {
+    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
+    texCoord0 = UV0;
+}
+</script>
+<script type="x-shader/x-fragment" id="shader-presence-loading-fsh">
+#version 150
+
+uniform float Time;
+uniform float Intensity;
+uniform float Speed;
+uniform float Opacity;
+
+in vec2 texCoord0;
+out vec4 fragColor;
+
+float circle(vec2 p, vec2 center, float radius) {
+    return 1.0 - smoothstep(radius * 0.72, radius, length(p - center));
+}
+
+void main() {
+    vec2 p = texCoord0 * 2.0 - 1.0;
+    float spacing = 0.30;
+    float value = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float phase = Time * (2.8 + Speed * 0.5) - float(i) * 0.45;
+        float lift = 0.12 * sin(phase);
+        value += circle(p, vec2((float(i) - 1.0) * spacing, -lift), 0.16);
+    }
+    vec3 color = mix(vec3(0.38, 0.88, 1.0), vec3(1.0, 0.48, 0.82), 0.5 + 0.5 * sin(Time * 0.6));
+    fragColor = vec4(color * (0.52 + value * 0.68) * Intensity, value * 0.95 * Intensity * Opacity);
+}
+</script>
+<script type="x-shader/x-fragment" id="shader-presence-preset-one-fsh">
+#version 150
+
+uniform float Time;
+uniform float Intensity;
+uniform float Speed;
+uniform float Convergence;
+uniform float Pulse;
+uniform float Opacity;
+uniform float State;
+
+in vec2 texCoord0;
+out vec4 fragColor;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+void main() {
+    vec2 p = texCoord0 * 2.0 - 1.0;
+    float t = Time * (0.7 + Speed * 0.3);
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    float n = noise(p * 4.0 + vec2(t * 0.6, -t * 0.35));
+    float waves = 0.5 + 0.5 * sin(a * 7.0 - t * 2.0 + n * 3.0);
+    float surface = 1.0 - smoothstep(0.36 + 0.04 * waves, 0.60 + 0.05 * waves, r);
+    float edge = 1.0 - smoothstep(0.42, 0.84, r);
+    float core = smoothstep(0.56, 0.10 + Convergence * 0.12, r);
+    float pulse = 1.0 + 0.10 * sin(t * 1.4) + Pulse * 0.16;
+    vec3 warm = vec3(1.0, 0.42, 0.80);
+    vec3 cool = vec3(0.28, 0.88, 1.0);
+    vec3 color = mix(cool, warm, 0.5 + 0.5 * sin(a * 0.8 + t * 0.4 + State));
+    float alpha = max(surface * 0.88, edge * 0.24) * Intensity;
+    fragColor = vec4(color * (0.56 + core * 0.68) * pulse, alpha * Opacity);
+}
+</script>
+<script type="x-shader/x-fragment" id="shader-presence-preset-two-fsh">
+#version 150
+
+uniform float Time;
+uniform float Intensity;
+uniform float Speed;
+uniform float Convergence;
+uniform float Pulse;
+uniform float Opacity;
+uniform float State;
+
+in vec2 texCoord0;
+out vec4 fragColor;
+
+mat2 rotate(float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return mat2(c, -s, s, c);
+}
+
+float distanceField(vec3 p, float t) {
+    p.xy *= rotate(t * 0.35);
+    p.xz *= rotate(-t * 0.23);
+    float twist = sin(p.x * 2.2 + t) * sin(p.y * 2.0 - t * 0.7) * 0.22;
+    float sphere = length(p) - (0.82 + Convergence * 0.12);
+    float ribs = abs(dot(p, sin(p.zxy * 2.4 + t))) * 0.15;
+    return max(sphere, ribs + twist);
+}
+
+void main() {
+    vec2 uv = texCoord0 * 2.0 - 1.0;
+    float t = Time * (0.65 + Speed * 0.28);
+    vec3 rayOrigin = vec3(0.0, 0.0, 2.6);
+    vec3 rayDirection = normalize(vec3(uv * 1.16, -1.8));
+    float depth = 0.0;
+    float glow = 0.0;
+    for (int i = 0; i < 64; i++) {
+        vec3 samplePoint = rayOrigin + rayDirection * depth;
+        float distance = distanceField(samplePoint, t);
+        glow += 0.012 / (0.025 + abs(distance));
+        depth += max(0.018, distance * 0.38);
+        if (depth > 4.2) {
+            break;
+        }
+    }
+    float mask = smoothstep(1.08, 0.02, length(uv));
+    vec3 color = mix(vec3(0.35, 0.68, 1.0), vec3(1.0, 0.38, 0.78), 0.5 + 0.5 * sin(t * 0.3 + State));
+    float alpha = clamp(glow * 0.012 + Pulse * 0.06, 0.0, 1.0) * mask * Intensity;
+    fragColor = vec4(color * (0.20 + glow * 0.0025) * Intensity, alpha * Opacity);
+}
+</script>
+<script src="renderer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

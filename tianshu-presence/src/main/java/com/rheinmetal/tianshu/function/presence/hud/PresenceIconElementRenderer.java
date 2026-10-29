@@ -221,18 +221,6 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
         PresenceHudShapes.drawDisc(surface, centerX, centerY, glowRadius * 0.78F, color,
                 0.12F * parameters.intensity() * opacity);
 
-        PresenceHudVisualPreset preset = settings.visualPreset();
-        int lobes = preset == PresenceHudVisualPreset.PRESET_TWO ? 8 : 6;
-        float orbit = size * (0.10F + (1.0F - parameters.convergence()) * 0.12F);
-        for (int i = 0; i < lobes; i++) {
-            float angle = (float) (i * Math.PI * 2.0 / lobes) + time * (0.18F + parameters.speed() * 0.22F);
-            float wobble = 1.0F + 0.20F * (float) Math.sin(time * 1.7F + i * 1.31F);
-            float lobeRadius = size * (preset == PresenceHudVisualPreset.PRESET_TWO ? 0.18F : 0.16F) * wobble;
-            float x = centerX + (float) Math.cos(angle) * orbit;
-            float y = centerY + (float) Math.sin(angle) * orbit;
-            PresenceHudShapes.drawDisc(surface, x, y, lobeRadius, color,
-                    0.26F * parameters.intensity() * opacity);
-        }
         PresenceHudShapes.drawDisc(surface, centerX, centerY, outerRadius, color,
                 0.66F * parameters.intensity() * opacity);
         PresenceHudShapes.drawDisc(

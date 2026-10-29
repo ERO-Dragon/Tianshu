@@ -22,6 +22,18 @@ test {
     useJUnitPlatform()
 }
 
+// ---------------------------------------------------------------- HUD preview tool
+// `tools/hud-preview` is a browser port of the presence HUD. Its model values and shader copies are generated from
+// the sources above instead of being typed twice; the test next to the exporter fails when the page goes stale.
+tasks.register('exportHudPreviewAssets', JavaExec) {
+    group = 'presence'
+    description = 'Regenerates tools/hud-preview from the presence HUD model and shader sources'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.rheinmetal.tianshu.function.presence.hud.HudPreviewAssetExporter'
+    workingDir = projectDir
+}
+
 // ---------------------------------------------------------------- mod packaging
 // Presence ships as its own client-only mod. It keeps no platform code: the HUD is composed through the api's
 // `HudSurface`, and the shader programs stay with the platform that draws them.
