@@ -91,12 +91,9 @@ class PresenceRuntimeTest {
     }
 
     @Test
-    void oneCaptureServesEveryQueryDrainedInTheSameTick() {
-        List<Set<PresenceContextGroup>> captures = new ArrayList<>();
-        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
-            captures.add(Set.copyOf(groups));
-            return snapshot("player");
-        }, null);
+    void oneBatchReadsEachRequestedGroupOnce() {
+        FakeGameContextPort port = new FakeGameContextPort();
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(port, null);
         RecordingResponder responder = new RecordingResponder();
         coordinator.bindResponder(responder);
         coordinator.startWorldSession();
@@ -108,22 +105,16 @@ class PresenceRuntimeTest {
 
         coordinator.processPending();
 
-        assertEquals(1, captures.size());
-        assertEquals(
-                EnumSet.of(PresenceContextGroup.PLAYER_INVENTORY, PresenceContextGroup.PLAYER_STATUS),
-                captures.get(0)
-        );
+        assertEquals(List.of("status", "inventory"), port.captures(),
+                "one batch reads each requested group once, and nothing else");
         assertEquals(List.of("request-1", "request-2"), responder.requestIds);
         assertTrue(responder.factsByRequest.get(0).isEmpty(), "an empty capture contributes no fact");
     }
 
     @Test
     void requestWithoutFactGroupsAnswersWithoutReadingTheGame() {
-        List<PresenceContextGroup> captured = new ArrayList<>();
-        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
-            captured.addAll(groups);
-            return snapshot("player");
-        }, null);
+        FakeGameContextPort port = new FakeGameContextPort();
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(port, null);
         RecordingResponder responder = new RecordingResponder();
         coordinator.bindResponder(responder);
         coordinator.startWorldSession();
@@ -133,7 +124,7 @@ class PresenceRuntimeTest {
         coordinator.handleQuery(envelope(payload), context, payload);
         coordinator.processPending();
 
-        assertTrue(captured.isEmpty());
+        assertTrue(port.captures().isEmpty());
         assertEquals(0, context.failureCodes.size());
         assertEquals(List.of("request-empty"), responder.requestIds);
         assertTrue(responder.factsByRequest.get(0).isEmpty());
@@ -141,9 +132,8 @@ class PresenceRuntimeTest {
 
     @Test
     void captureFailureFailsTheRequestInsteadOfEscapingTheTick() {
-        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
-            throw new IllegalStateException("boom");
-        }, null);
+        FakeGameContextPort port = new FakeGameContextPort().failWith(new IllegalStateException("boom"));
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(port, null);
         coordinator.startWorldSession();
         PresenceContextQueryPayload payload = query("request-1", PresenceContextFactIds.PLAYER_STATUS);
         RecordingProtocolContext context = new RecordingProtocolContext();
@@ -157,7 +147,7 @@ class PresenceRuntimeTest {
     @Test
     void queuedQueryIsFailedWhenWorldStopsAndCannotContinueAfterRestart() {
         PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(
-                groups -> snapshot("world-b"), null);
+                new FakeGameContextPort(), null);
         coordinator.startWorldSession();
         PresenceContextQueryPayload payload = query("request-1", PresenceContextFactIds.PLAYER_INVENTORY);
         RecordingProtocolContext context = new RecordingProtocolContext();
@@ -174,11 +164,8 @@ class PresenceRuntimeTest {
 
     @Test
     void pendingQueriesAreBoundedAndTheRemainderIsAnsweredOnTheNextTick() {
-        List<Set<PresenceContextGroup>> captures = new ArrayList<>();
-        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(groups -> {
-            captures.add(Set.copyOf(groups));
-            return snapshot("player");
-        }, null);
+        FakeGameContextPort port = new FakeGameContextPort();
+        PresenceContextQueryCoordinator coordinator = new PresenceContextQueryCoordinator(port, null);
         coordinator.startWorldSession();
         for (int index = 0; index < 9; index++) {
             PresenceContextQueryPayload payload = query("request-" + index, PresenceContextFactIds.PLAYER_INVENTORY);
@@ -186,16 +173,16 @@ class PresenceRuntimeTest {
         }
 
         coordinator.processPending();
-        assertEquals(1, captures.size());
+        assertEquals(1, port.captures().size());
 
         coordinator.processPending();
-        assertEquals(2, captures.size());
+        assertEquals(2, port.captures().size());
     }
 
     @Test
     void hudIsHiddenOutsideAnActiveWorldSession() {
         PresenceClientRuntime runtime = new PresenceClientRuntime(
-                groups -> PresenceContextSnapshot.empty(),
+                new FakeGameContextPort(),
                 PresenceTextProvider.NOOP
         );
 
@@ -233,28 +220,6 @@ class PresenceRuntimeTest {
 
     private static PresenceWorldEventPayload worldEvent(String id) {
         return new PresenceWorldEventPayload(id, "test", "player", "dimension", 1L, Map.of("id", id));
-    }
-
-    private static PresenceContextSnapshot snapshot(String playerId) {
-        return new PresenceContextSnapshot(
-                playerId,
-                "minecraft:overworld",
-                "",
-                com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind.NONE,
-                "",
-                "",
-                List.of(),
-                com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot.empty(),
-                false,
-                false,
-                false,
-                com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus.empty(),
-                com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment.empty(),
-                List.of(),
-                com.rheinmetal.tianshu.client.presence.model.PresenceEquipment.empty(),
-                List.of(),
-                1L
-        );
     }
 
     private static PresenceContextQueryPayload query(String requestId, String... factIds) {

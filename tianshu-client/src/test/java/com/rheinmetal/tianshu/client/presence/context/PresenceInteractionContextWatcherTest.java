@@ -1,12 +1,9 @@
 package com.rheinmetal.tianshu.client.presence.context;
 
-import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
-import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceEquipment;
-import com.rheinmetal.tianshu.client.presence.model.PresencePlayerStatus;
-import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
-import com.rheinmetal.tianshu.client.presence.model.PresenceTargetSnapshot;
-import com.rheinmetal.tianshu.client.presence.model.PresenceWorldEnvironment;
+import com.rheinmetal.tianshu.client.host.game.GameInteractionContext;
+import com.rheinmetal.tianshu.client.host.game.GameScreenKind;
+import com.rheinmetal.tianshu.client.host.game.GameTarget;
+import com.rheinmetal.tianshu.client.presence.FakeGameContextPort;
 import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
 import org.junit.jupiter.api.Test;
 
@@ -19,10 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceInteractionContextWatcherTest {
     private final List<PresenceInteractionContextPayload> published = new ArrayList<>();
+    private final FakeGameContextPort port = new FakeGameContextPort();
 
     @Test
     void publishesTheFirstCaptureAndNothingWhileTheInteractionStaysTheSame() {
-        PresenceInteractionContextWatcher watcher = watcher(groups -> snapshot("player", "minecraft:stick", "touhou_little_maid:maid"));
+        port.interaction(() -> interaction("minecraft:stick", "touhou_little_maid:maid"));
+        PresenceInteractionContextWatcher watcher = new PresenceInteractionContextWatcher(port);
         watcher.setSink(published::add);
 
         watcher.poll();
@@ -35,12 +34,15 @@ class PresenceInteractionContextWatcherTest {
         assertEquals("touhou_little_maid:maid", payload.crosshairEntityTypeId());
         assertTrue(payload.crosshairHit());
         assertEquals(List.of("minecraft:iron_helmet"), payload.equippedItemIds());
+        assertEquals(List.of("interaction", "interaction"), port.captures(),
+                "the per-tick path reads the interaction slice only");
     }
 
     @Test
     void publishesAgainWhenTheHeldItemChanges() {
         String[] held = {"minecraft:stick"};
-        PresenceInteractionContextWatcher watcher = watcher(groups -> snapshot("player", held[0], ""));
+        port.interaction(() -> interaction(held[0], ""));
+        PresenceInteractionContextWatcher watcher = new PresenceInteractionContextWatcher(port);
         watcher.setSink(published::add);
 
         watcher.poll();
@@ -54,9 +56,8 @@ class PresenceInteractionContextWatcherTest {
 
     @Test
     void aFailingCaptureDoesNotEscapeAndDoesNotPublish() {
-        PresenceInteractionContextWatcher watcher = watcher(groups -> {
-            throw new IllegalStateException("broken capture");
-        });
+        port.failWith(new IllegalStateException("broken capture"));
+        PresenceInteractionContextWatcher watcher = new PresenceInteractionContextWatcher(port);
         watcher.setSink(published::add);
 
         watcher.poll();
@@ -66,7 +67,8 @@ class PresenceInteractionContextWatcherTest {
 
     @Test
     void staysQuietOutsideAWorld() {
-        PresenceInteractionContextWatcher watcher = watcher(groups -> snapshot("", "minecraft:stick", ""));
+        port.playerId("").interaction(() -> interaction("minecraft:stick", ""));
+        PresenceInteractionContextWatcher watcher = new PresenceInteractionContextWatcher(port);
         watcher.setSink(published::add);
 
         watcher.poll();
@@ -76,7 +78,8 @@ class PresenceInteractionContextWatcherTest {
 
     @Test
     void resetMakesTheNextCapturePublishAgain() {
-        PresenceInteractionContextWatcher watcher = watcher(groups -> snapshot("player", "minecraft:stick", ""));
+        port.interaction(() -> interaction("minecraft:stick", ""));
+        PresenceInteractionContextWatcher watcher = new PresenceInteractionContextWatcher(port);
         watcher.setSink(published::add);
 
         watcher.poll();
@@ -86,19 +89,14 @@ class PresenceInteractionContextWatcherTest {
         assertEquals(2, published.size());
     }
 
-    private PresenceInteractionContextWatcher watcher(ClientGameContextProvider platform) {
-        return new PresenceInteractionContextWatcher(platform);
-    }
-
-    private static PresenceContextSnapshot snapshot(String playerId, String heldItemId, String crosshairEntityTypeId) {
-        PresenceTargetSnapshot target = crosshairEntityTypeId.isBlank()
-                ? PresenceTargetSnapshot.empty()
-                : new PresenceTargetSnapshot("entity-1", crosshairEntityTypeId, "酒狐", 2.0D, true);
-        return new PresenceContextSnapshot(
-                playerId,
+    private static GameInteractionContext interaction(String heldItemId, String crosshairEntityTypeId) {
+        GameTarget target = crosshairEntityTypeId.isBlank()
+                ? GameTarget.EMPTY
+                : new GameTarget("entity-1", crosshairEntityTypeId, "酒狐", 2.0D, true);
+        return new GameInteractionContext(
                 "minecraft:overworld",
                 "",
-                PresenceScreenKind.NONE,
+                GameScreenKind.NONE,
                 heldItemId,
                 "",
                 List.of("minecraft:iron_helmet"),
@@ -106,11 +104,6 @@ class PresenceInteractionContextWatcherTest {
                 false,
                 false,
                 false,
-                PresencePlayerStatus.empty(),
-                PresenceWorldEnvironment.empty(),
-                List.of(),
-                PresenceEquipment.empty(),
-                List.of(),
                 1_000L
         );
     }

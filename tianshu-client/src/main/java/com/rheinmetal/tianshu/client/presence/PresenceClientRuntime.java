@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
+import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.presence.capture.PresenceContextSnapshotAssembler;
 import com.rheinmetal.tianshu.client.presence.capture.PresenceEventCollector;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextFactMapper;
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
@@ -38,17 +39,19 @@ public final class PresenceClientRuntime {
     private volatile PresenceHudDisplay cachedHudDisplay = PresenceHudDisplay.HIDDEN;
     private volatile boolean worldSessionActive;
 
-    public PresenceClientRuntime(ClientGameContextProvider platform, PresenceTextProvider textProvider) {
+    public PresenceClientRuntime(ClientGameContextPort platform, PresenceTextProvider textProvider) {
         this(platform, textProvider, LogSink.NOOP);
     }
 
-    public PresenceClientRuntime(ClientGameContextProvider platform, PresenceTextProvider textProvider, LogSink logSink) {
+    public PresenceClientRuntime(ClientGameContextPort platform, PresenceTextProvider textProvider, LogSink logSink) {
+        PresenceContextSnapshotAssembler assembler = new PresenceContextSnapshotAssembler();
         this.displayPolicy = new PresenceDisplayPolicy(textProvider);
         this.contextQueryCoordinator = new PresenceContextQueryCoordinator(
                 Objects.requireNonNull(platform, "platform"),
+                assembler,
                 new PresenceContextFactMapper()
         );
-        this.interactionContextWatcher = new PresenceInteractionContextWatcher(platform);
+        this.interactionContextWatcher = new PresenceInteractionContextWatcher(platform, assembler);
         this.eventCollector = new PresenceEventCollector(logSink);
     }
 

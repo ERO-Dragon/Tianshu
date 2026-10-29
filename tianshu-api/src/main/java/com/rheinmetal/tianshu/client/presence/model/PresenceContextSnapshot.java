@@ -5,9 +5,9 @@ import java.util.List;
 /**
  * What one {@code PRESENCE.QUERY_CONTEXT} capture saw, addressed by the fact groups the caller asked for.
  *
- * <p>The record is the platform boundary: a {@code ClientGameContextProvider} fills only the groups of the
- * current request and leaves the rest empty, and the client maps the filled parts into typed facts. It holds
- * values, never live Minecraft objects.</p>
+ * <p>The record is presence's own view of one capture: it is assembled from the platform's grouped game reading
+ * ({@code ClientGameContextPort}) for exactly the groups the current request asked for, and the client maps the
+ * filled parts into typed facts. It holds values, never live Minecraft objects.</p>
  */
 public record PresenceContextSnapshot(
         String playerId,

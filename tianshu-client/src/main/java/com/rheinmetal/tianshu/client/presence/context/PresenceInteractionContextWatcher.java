@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.presence.context;
 
-import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
+import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.presence.capture.PresenceContextSnapshotAssembler;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
 
@@ -20,12 +21,18 @@ import java.util.Objects;
  * flapping to "nothing".</p>
  */
 public final class PresenceInteractionContextWatcher {
-    private final ClientGameContextProvider platform;
+    private final ClientGameContextPort platform;
+    private final PresenceContextSnapshotAssembler assembler;
     private PresenceInteractionContextSink sink = PresenceInteractionContextSink.NOOP;
     private PresenceInteractionContextPayload lastPublished;
 
-    public PresenceInteractionContextWatcher(ClientGameContextProvider platform) {
+    public PresenceInteractionContextWatcher(ClientGameContextPort platform) {
+        this(platform, new PresenceContextSnapshotAssembler());
+    }
+
+    public PresenceInteractionContextWatcher(ClientGameContextPort platform, PresenceContextSnapshotAssembler assembler) {
         this.platform = Objects.requireNonNull(platform, "platform");
+        this.assembler = assembler == null ? new PresenceContextSnapshotAssembler() : assembler;
     }
 
     public void setSink(PresenceInteractionContextSink sink) {
@@ -41,7 +48,7 @@ public final class PresenceInteractionContextWatcher {
     public void poll() {
         PresenceInteractionContextPayload next;
         try {
-            PresenceContextSnapshot snapshot = platform.captureContext(EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT));
+            PresenceContextSnapshot snapshot = assembler.assemble(platform, EnumSet.of(PresenceContextGroup.INTERACTION_CONTEXT));
             next = PresenceInteractionContextPayload.from(snapshot);
         } catch (RuntimeException failure) {
             return;

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.presence.context;
 
-import com.rheinmetal.tianshu.client.host.ClientGameContextProvider;
+import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.presence.capture.PresenceContextSnapshotAssembler;
 import com.rheinmetal.tianshu.client.presence.model.PresenceContextSnapshot;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
@@ -30,14 +31,20 @@ public final class PresenceContextQueryCoordinator {
 
     private final Queue<PendingContextQuery> pendingQueries = new ArrayBlockingQueue<>(MAX_PENDING_QUERIES);
     private final Object lifecycleMonitor = new Object();
-    private final ClientGameContextProvider platform;
+    private final ClientGameContextPort platform;
+    private final PresenceContextSnapshotAssembler assembler;
     private final PresenceContextFactMapper factMapper;
     private volatile PresenceContextResponder responder;
     private boolean worldSessionActive;
     private long worldGeneration;
 
-    public PresenceContextQueryCoordinator(ClientGameContextProvider platform, PresenceContextFactMapper factMapper) {
+    public PresenceContextQueryCoordinator(ClientGameContextPort platform, PresenceContextFactMapper factMapper) {
+        this(platform, new PresenceContextSnapshotAssembler(), factMapper);
+    }
+
+    public PresenceContextQueryCoordinator(ClientGameContextPort platform, PresenceContextSnapshotAssembler assembler, PresenceContextFactMapper factMapper) {
         this.platform = Objects.requireNonNull(platform, "platform");
+        this.assembler = assembler == null ? new PresenceContextSnapshotAssembler() : assembler;
         this.factMapper = factMapper == null ? new PresenceContextFactMapper() : factMapper;
     }
 
@@ -105,7 +112,7 @@ public final class PresenceContextQueryCoordinator {
             captured = PresenceContextSnapshot.empty();
         } else {
             try {
-                captured = platform.captureContext(requestedGroups);
+                captured = assembler.assemble(platform, requestedGroups);
             } catch (RuntimeException failure) {
                 failAll(drained, "PRESENCE_CAPTURE_FAILED",
                         "Presence context capture failed: " + failure.getMessage());

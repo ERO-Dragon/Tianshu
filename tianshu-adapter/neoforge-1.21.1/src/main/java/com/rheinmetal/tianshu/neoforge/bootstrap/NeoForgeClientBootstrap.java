@@ -43,7 +43,7 @@ import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresencePlatform;
+import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameContextPort;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgePresenceTextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
@@ -142,7 +142,7 @@ public final class NeoForgeClientBootstrap {
             createNamedObjectDictionary();
             refreshNamedObjectSnapshot();
             presenceRuntime = new PresenceClientRuntime(
-                    new NeoForgePresencePlatform(languageSnapshot, diagnosticRouter),
+                    new NeoForgeGameContextPort(languageSnapshot, diagnosticRouter),
                     new NeoForgePresenceTextProvider(),
                     diagnosticRouter
             );
