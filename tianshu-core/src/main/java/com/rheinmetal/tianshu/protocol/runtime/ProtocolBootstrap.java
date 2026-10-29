@@ -46,6 +46,9 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, DeliveryPolicy.WAIT_IN_QUEUE, 80));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, DeliveryPolicy.WAIT_IN_QUEUE, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.PRESENCE_PARTNER, PayloadType.PRESENCE_PARTNER, DeliveryPolicy.LATEST_ONLY, 10));
+        // Raw world events are dropped by aggregation, never by delivery: a consumer that windows them must see
+        // every occurrence, and an absent consumer completes silently (a registered topic with no subscriber).
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.WORLD_EVENT, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 40));
     }
 }
 

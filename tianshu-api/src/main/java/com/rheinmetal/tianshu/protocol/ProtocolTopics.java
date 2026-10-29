@@ -13,6 +13,8 @@ public final class ProtocolTopics {
     public static final String PRESENCE_INTERACTION_CONTEXT = "PRESENCE.INTERACTION_CONTEXT";
     public static final String PRESENCE_PARTNER = "PRESENCE.PARTNER";
     public static final String DIALOGUE_SESSION_EVENTS = "DIALOGUE.SESSION_EVENTS";
+    /** Raw world events as the platform observed them; the aggregation into windows belongs to the consumer. */
+    public static final String WORLD_EVENT = "GAME.WORLD_EVENT";
 
     private ProtocolTopics() {
     }
