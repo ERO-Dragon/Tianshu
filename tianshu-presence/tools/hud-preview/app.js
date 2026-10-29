@@ -61,7 +61,6 @@
         hud: true,
         icon: true,
         text: true,
-        fallback: true,
         shader: true,
         partnerEnabled: false,
         size: DEFAULT_SIZE,
@@ -310,7 +309,6 @@
                 iconEnabled: state.icon,
                 textEnabled: state.text,
                 shaderEnabled: state.shader,
-                fallbackEnabled: state.fallback,
                 preset: state.preset
             },
             layout: layout,
@@ -399,8 +397,7 @@
         'hud-enabled': 'hud',
         'icon-enabled': 'icon',
         'text-enabled': 'text',
-        'shader-enabled': 'shader',
-        'fallback-enabled': 'fallback'
+        'shader-enabled': 'shader'
     };
     Object.entries(toggles).forEach(([id, key]) => {
         $(id).addEventListener('change', (event) => {
@@ -582,7 +579,6 @@
         state.icon = !text('icon') || flag('icon');
         state.text = !text('text') || flag('text');
         state.shader = !text('shader') || flag('shader');
-        state.fallback = !text('fallback') || flag('fallback');
         state.partnerEnabled = flag('partner');
         state.partnerIcon = text('partnericon') || state.partnerIcon;
         state.leaseSeconds = clamp(number('lease', state.leaseSeconds), 2, 20);
@@ -609,7 +605,6 @@
         $('icon-enabled').checked = state.icon;
         $('text-enabled').checked = state.text;
         $('shader-enabled').checked = state.shader;
-        $('fallback-enabled').checked = state.fallback;
         $('partner-enabled').checked = state.partnerEnabled;
         $('size').value = String(state.size);
         $('size-value').textContent = String(state.size);

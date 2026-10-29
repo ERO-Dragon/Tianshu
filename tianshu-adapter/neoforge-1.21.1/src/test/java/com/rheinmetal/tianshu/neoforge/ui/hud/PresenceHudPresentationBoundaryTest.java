@@ -71,9 +71,10 @@ final class PresenceHudPresentationBoundaryTest {
     void theFeatureDrawsOnlyThroughTheSurface() throws Exception {
         String icon = read(PRESENCE_ICON);
 
-        assertTrue(icon.contains("renderFluidCore(surface"));
-        assertTrue(icon.contains("renderLoading(surface"));
         assertTrue(icon.contains("surface.shaderRect("));
+        assertFalse(icon.contains("renderFluidCore"));
+        assertFalse(icon.contains("renderLoading"));
+        assertFalse(icon.contains("PresenceHudShapes"), "the icon's shapes live in the shader, not in Java");
         assertFalse(icon.contains("RenderSystem"));
         assertFalse(icon.contains("net.minecraft"), "a feature composes the HUD, the platform produces pixels");
     }

@@ -7,8 +7,8 @@ import com.rheinmetal.tianshu.api.client.host.hud.HudShaderCatalog;
  * The shader assets presence ships.
  *
  * <p>They live in presence's own namespace and jar: the look of the HUD is a product decision, so the platform only
- * creates programs for families a feature declared. When presence is absent nothing is declared, and the layers keep
- * their Java fallback.</p>
+ * creates programs for families a feature declared. When presence is absent nothing is declared, and its icon is simply
+ * not drawn.</p>
  */
 public final class PresenceHudShaders {
 

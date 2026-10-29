@@ -53,7 +53,6 @@ public final class HudPreviewAssetExporter {
             PresenceHudLayout.class,
             PresenceHudShapes.class,
             PresenceIconElementController.class,
-            PresenceIconElementRenderer.class,
             PresenceStatusTextElementRenderer.class,
             PresencePartnerIconRenderer.class
     );

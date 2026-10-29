@@ -30,7 +30,7 @@ import java.util.Set;
  * The one implementation of {@link HudSurface}: it turns the feature's drawing calls into Minecraft drawing.
  *
  * <p>Every piece of render state the platform owns lives here and nowhere else — the depth test, the shader colour,
- * the pose stack, the shader program and its fallback. A feature call can therefore never leave the GUI in a broken
+ * the pose stack and the shader program. A feature call can therefore never leave the GUI in a broken
  * state, and a program that fails at runtime is remembered once instead of being retried every frame.</p>
  *
  * <p>The instance is bound to one frame at a time and reused; nothing here may be retained by a caller. Text widths and
@@ -181,6 +181,7 @@ final class NeoForgeHudSurface implements HudSurface {
             setUniform(shader, "Convergence", params.convergence());
             setUniform(shader, "Pulse", params.pulse());
             setUniform(shader, "State", params.state());
+            setUniform(shader, "Task", params.task());
             setUniform(shader, "Opacity", params.opacity());
 
             BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
@@ -202,7 +203,7 @@ final class NeoForgeHudSurface implements HudSurface {
             RenderSystem.setShader(() -> shader);
             BufferUploader.drawWithShader(mesh);
         } catch (RuntimeException failure) {
-            // One bad program must not cost a frame every tick: remember it and keep the Java fallback.
+            // One bad program must not cost a frame every tick: remember it and skip that program for the rest of the session.
             unavailablePrograms.add(shader);
         } finally {
             if (depthMaskDisabled) {

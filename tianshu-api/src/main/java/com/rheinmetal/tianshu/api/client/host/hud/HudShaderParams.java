@@ -13,6 +13,7 @@ package com.rheinmetal.tianshu.api.client.host.hud;
  * @param pulse       the listening pulse, 0..1
  * @param opacity     the layer's own alpha, 0..1
  * @param state       product state as the programs' agreed index
+ * @param task        the parallel background-task mark, 0 or 1
  */
 public record HudShaderParams(
         float intensity,
@@ -20,7 +21,8 @@ public record HudShaderParams(
         float convergence,
         float pulse,
         float opacity,
-        int state
+        int state,
+        float task
 ) {
     /** The index every program agrees on: the visual state enum's declaration order. */
     public static final int STATE_IDLE = 0;
@@ -36,6 +38,7 @@ public record HudShaderParams(
         pulse = clamp01(pulse);
         opacity = clamp01(opacity);
         state = Math.max(STATE_IDLE, Math.min(STATE_CHAT_THINKING, state));
+        task = clamp01(task);
     }
 
     private static float clamp01(float value) {

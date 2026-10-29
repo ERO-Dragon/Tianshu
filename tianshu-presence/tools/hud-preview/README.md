@@ -17,12 +17,9 @@
 
 - `PresenceHudPreviewAssetTest` 会比对页面里的生成块与源码；改了 HUD 却忘了重新生成时，`check` 会失败而不是让页面悄悄过期。
 
-- **手写部分是渲染过程本身**：`renderer.js` 按 `PresenceIconElementRenderer` /
-  `PresenceStatusTextElementRenderer` / `PresencePartnerIconRenderer` 的调用逐条转写（drawDisc / drawRing / 图层顺序 /
-  面板位置），`app.js` 复刻 `PresenceHudVisualTransition` 的 240 ms smootherstep 与
-  `PresencePartnerIconRenderer` 的入退场、租约环。渲染器方法内部的魔法数无法被常量导出覆盖，改动 Java 里的绘制数学时
-  需要同步 `renderer.js`。圆盘/圆环的密度公式来自 `PresenceHudShapes`（盘 3–64 带、环 64–512 段、重叠按比例补偿
-  alpha），改公式也要同步这里。
+- **手写部分是渲染过程本身**：`renderer.js` 只保留示意背景、状态文字面板和伙伴标记（它本来就是贴图 + 租约环）；
+  图标完全由 `.fsh` 绘制。`app.js` 复刻 `PresenceHudVisualTransition` 的 240 ms smootherstep 与
+  `PresencePartnerIconRenderer` 的入退场、租约环。伙伴环的密度公式来自 `PresenceHudShapes`，改公式要同步这里。
 
 ## 对照关系
 
@@ -32,7 +29,7 @@
 | 状态参数 | `PresenceHudVisualParameters.forState` |
 | 中心点与尺寸 | `PresenceHudLayout.resolve`（默认锚点在经验条上方） |
 | 240 ms 过渡 | `PresenceHudVisualTransition` |
-| 图标层 | `PresenceIconElementRenderer` 的 Java 回退 + 真实 `.fsh` 着色器 |
+| 图标层 | `PresenceIconElementRenderer` 的 quad + `presence_preset_*.fsh`（底座与图案同一个片元程序） |
 | 状态文字 | `PresenceDisplayPolicy` + `PresenceStatusTextElementRenderer` |
 | 伙伴标记 | `PresencePartnerSnapshot` 的租约 + `PresencePartnerIconRenderer` 的环/摆动/入退场 |
 | 着色器 | `assets/tianshu_presence/shaders/core/*`（原文，页面只补 `#version 300 es` 与 precision） |
@@ -42,10 +39,8 @@
 - **主状态**：IDLE / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。切换时走真实的 240 ms 过渡；
   ERROR 与 RECONNECTING 分别复用 TASK / LOADING 的视觉，只有文字不同。
 - **正在听 / 后台任务**：对应 `listening` 与 `backgroundTask` 两个并行标记。
-- **预设一 / 预设二**：切换 shader 与 Java 回退的配色、波瓣数量。
-- **禁用来着色器层**：只看 Java 回退，等价于游戏内程序缺失/编译失败时的画面。
-- **Java 回退层**：默认开启，与游戏内一样是「回退层 + 着色器」叠加；关掉只看着色器，便于分辨某条边/某个色块
-  是回退层还是 `.fsh` 画的。
+- **预设一 / 预设二**：两套可选图案（两个片元程序）；底座（球体、波瓣、环、听波动画、后台小点）在两者里都有。
+- **禁用来着色器层**：图标不绘制，等价于游戏内程序缺失/编译失败时的画面（没有 Java 回退层）。
 - **暂停 / 倍率**：把过渡放慢或冻住，便于检查中间帧。
 - **缩放**：围绕图标中心放大显示（100%–300%），逻辑像素与布局不变；放大是显示层缩放，着色器细节会略软，
   要看 1:1 就切回 100%。
@@ -61,7 +56,7 @@ index.html?primary=RESPONDING&preset=PRESET_TWO&size=64&zoom=1.5&paused=1&t=1.5&
 ```
 
 可用参数：`primary`、`preset`、`size`、`posx`/`posy`（配合 `anchor=0` 自定义）、`lang`、`screen`、`zoom`、
-`listening`、`background`、`hud`/`icon`/`text`/`shader`/`fallback`（`0` 关闭）、`partner`、`partnericon`、`lease`、`paused`、`t`、`speed`、`cycle`。
+`listening`、`background`、`hud`/`icon`/`text`/`shader`（`0` 关闭）、`partner`、`partnericon`、`lease`、`paused`、`t`、`speed`、`cycle`。
 
 ## 不精确的地方（有意为之）
 

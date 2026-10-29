@@ -1,10 +1,10 @@
 /*
  * The presence HUD, ported to a 2D canvas plus a WebGL layer.
  *
- * The 2D half is the Java fallback (PresenceIconElementRenderer / PresenceStatusTextElementRenderer /
- * PresencePartnerIconRenderer), transcribed call for call. The WebGL half runs the real .fsh sources, copied into the
- * page by :tianshu-presence:exportHudPreviewAssets. Everything is drawn in logical GUI pixels with the same rounding
- * the platform surface uses; the canvas backing store is the physical size, so a GUI scale of 2 behaves like a 2x
+ * The icon is drawn by the real .fsh sources, copied into the page by :tianshu-presence:exportHudPreviewAssets; there
+ * is no Java fallback shape underneath. The remaining 2D drawing is the mock game HUD, the status panel and the
+ * partner marker (a texture plus its lease ring). Everything is drawn in logical GUI pixels with the same rounding the
+ * platform surface uses; the canvas backing store is the physical size, so a GUI scale of 2 behaves like a 2x
  * Minecraft window.
  *
  * Values that mirror a Java constant are read from the generated model block, not typed here. The only things kept in
@@ -15,15 +15,6 @@
 
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
     const clamp01 = (value) => clamp(value, 0, 1);
-    const fract = (value) => value - Math.floor(value);
-
-    function mixColor(first, second, progress) {
-        const r = Math.round(((first >>> 16) & 0xFF) + (((second >>> 16) & 0xFF) - ((first >>> 16) & 0xFF)) * progress);
-        const g = Math.round(((first >>> 8) & 0xFF) + (((second >>> 8) & 0xFF) - ((first >>> 8) & 0xFF)) * progress);
-        const b = Math.round((first & 0xFF) + ((second & 0xFF) - (first & 0xFF)) * progress);
-        return (0xFF000000 | (r << 16) | (g << 8) | b) >>> 0;
-    }
-
     function argb(value) {
         const color = value >>> 0;
         return {
@@ -146,7 +137,7 @@
                 throw new Error(label + ' link: ' + log);
             }
             const uniforms = {};
-            ['ProjMat', 'ModelViewMat', 'Time', 'Intensity', 'Speed', 'Convergence', 'Pulse', 'Opacity', 'State']
+            ['ProjMat', 'ModelViewMat', 'Time', 'Intensity', 'Speed', 'Convergence', 'Pulse', 'Opacity', 'State', 'Task']
                 .forEach((name) => {
                     uniforms[name] = gl.getUniformLocation(program, name);
                 });
@@ -252,6 +243,7 @@
             gl.uniform1f(built.uniforms.Pulse, frame.visual.pulse);
             gl.uniform1f(built.uniforms.Opacity, opacity);
             gl.uniform1f(built.uniforms.State, model.visualStates.indexOf(state));
+            gl.uniform1f(built.uniforms.Task, frame.display.backgroundTask ? 1.0 : 0.0);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.deleteBuffer(buffer);
         }
@@ -307,10 +299,6 @@
 
         const RING_SEGMENTS = constant(model, 'PresenceHudShapes', 'RING_SEGMENTS');
         const RING_SEGMENT_LIMIT = constant(model, 'PresenceHudShapes', 'RING_SEGMENT_LIMIT');
-        const DISC_BANDS_MIN = constant(model, 'PresenceHudShapes', 'DISC_BANDS_MIN');
-        const DISC_BANDS_LIMIT = constant(model, 'PresenceHudShapes', 'DISC_BANDS_LIMIT');
-        const LOADING_LAYER_OPACITY = constant(model, 'PresenceIconElementRenderer', 'LOADING_LAYER_OPACITY');
-        const FLUID_LAYER_OPACITY = constant(model, 'PresenceIconElementRenderer', 'FLUID_LAYER_OPACITY');
         const PANEL_BACKGROUND = constant(model, 'PresenceStatusTextElementRenderer', 'PANEL_BACKGROUND');
         const TEXT_COLOR = constant(model, 'PresenceStatusTextElementRenderer', 'TEXT_COLOR');
         const ACTIVE_ACCENT = constant(model, 'PresenceStatusTextElementRenderer', 'ACTIVE_ACCENT');
@@ -379,53 +367,6 @@
                 paint(context, x - halfThickness, y - halfThickness, x + halfThickness + 1,
                     y + halfThickness + 1, argbColor);
             }
-        }
-
-        function drawRing(...args) {
-            ringOn(ctx, ...args);
-        }
-
-        function discOn(context, centreX, centreY, radius, color, opacity) {
-            const alpha = clamp(Math.round(opacity * ((color >>> 24) & 0xFF)), 0, 255);
-            if (alpha <= 0 || radius <= 0) {
-                return;
-            }
-            const argbColor = ((alpha << 24) | (color & 0x00FFFFFF)) >>> 0;
-            const bands = Math.min(DISC_BANDS_LIMIT, Math.max(DISC_BANDS_MIN, Math.ceil(radius * 2)));
-            const bandHeight = Math.max(1, (radius * 2) / bands);
-            for (let band = 0; band < bands; band++) {
-                const normalized = ((band + 0.5) / bands) * 2 - 1;
-                const horizontal = radius * Math.sqrt(Math.max(0, 1 - normalized * normalized));
-                const y = centreY + normalized * radius;
-                paint(context, centreX - horizontal, y, centreX + horizontal + 1, y + bandHeight, argbColor);
-            }
-        }
-
-        function drawDisc(...args) {
-            discOn(ctx, ...args);
-        }
-
-        function colorFor(preset, state, time) {
-            const presetTwo = preset === 'PRESET_TWO';
-            const phase = fract(time * (presetTwo ? 0.06 : 0.10));
-            const first = presetTwo ? 0xFFB28CFF : 0xFF78E8FF;
-            const second = presetTwo ? 0xFF6A8CFF : 0xFFFF8DD8;
-            let bias;
-            switch (state) {
-                case 'CHAT_THINKING':
-                    bias = 0.22;
-                    break;
-                case 'TASK':
-                    bias = 0.48;
-                    break;
-                case 'CHAT':
-                    bias = 0.72;
-                    break;
-                default:
-                    bias = 0.34;
-                    break;
-            }
-            return mixColor(first, second, fract(phase + bias));
         }
 
         function drawBackground(width, height) {
@@ -569,114 +510,6 @@
             return ctx.measureText(text).width;
         }
 
-        function drawLoadingCore(layout, parameters, time, color, opacity) {
-            const baseRadius = Math.max(1, layout.sizePixels * 0.18);
-            const spacing = layout.sizePixels * 0.26;
-            for (let index = 0; index < 3; index++) {
-                const phase = time * 3 - index * 0.42;
-                const lift = Math.sin(phase) * layout.sizePixels * 0.10;
-                const alpha = 0.34 + 0.66 * (0.5 + 0.5 * Math.sin(phase));
-                drawDisc(
-                    layout.centerX - spacing + index * spacing,
-                    layout.centerY - lift,
-                    baseRadius * (0.86 + 0.14 * alpha),
-                    color,
-                    alpha * parameters.intensity * opacity
-                );
-            }
-        }
-
-        function drawFluidCore(layout, parameters, time, color, opacity) {
-            const centreX = layout.centerX;
-            const centreY = layout.centerY;
-            const size = layout.sizePixels;
-            const pulse = 1 + 0.06 * Math.sin(time * (1.2 + parameters.speed));
-            const outerRadius = size * (0.42 + parameters.intensity * 0.09) * pulse;
-            const glowRadius = size * (0.76 + parameters.intensity * 0.14);
-            drawDisc(centreX, centreY, glowRadius, color, 0.10 * parameters.intensity * opacity);
-            drawDisc(centreX, centreY, glowRadius * 0.78, color, 0.12 * parameters.intensity * opacity);
-
-            drawDisc(centreX, centreY, outerRadius, color, 0.66 * parameters.intensity * opacity);
-            drawDisc(
-                centreX,
-                centreY,
-                outerRadius * (0.52 + parameters.convergence * 0.18),
-                0xFFFFFFFF,
-                0.40 * parameters.intensity * opacity
-            );
-
-            const rotation = time * (0.16 + parameters.speed * 0.16);
-            const arcAlpha = 0.34 + 0.34 * parameters.intensity;
-            drawRing(
-                centreX,
-                centreY,
-                size * 0.46,
-                Math.max(1, size * 0.055),
-                color,
-                arcAlpha * opacity,
-                rotation,
-                0.60
-            );
-        }
-
-        function drawIconCore(frame) {
-            if (!frame.settings.fallbackEnabled) {
-                return;
-            }
-            const layout = frame.layout;
-            const parameters = frame.visual;
-            const time = frame.renderSeconds;
-            const loadingOpacity = parameters.loadingBlend;
-            if (loadingOpacity > 0.001) {
-                const color = colorFor(frame.settings.preset, 'LOADING', time);
-                drawLoadingCore(layout, parameters, time, color, loadingOpacity * LOADING_LAYER_OPACITY);
-            }
-            const fluidOpacity = 1 - loadingOpacity;
-            if (fluidOpacity > 0.001) {
-                const fluidState = parameters.state === 'LOADING' ? 'IDLE' : parameters.state;
-                const color = colorFor(frame.settings.preset, fluidState, time);
-                drawFluidCore(layout, parameters, time, color, fluidOpacity * FLUID_LAYER_OPACITY);
-            }
-        }
-
-        function drawIconOverlay(frame) {
-            const layout = frame.layout;
-            const parameters = frame.visual;
-            const time = frame.renderSeconds;
-            const fluidOpacity = 1 - parameters.loadingBlend;
-            if (fluidOpacity > 0.001 && (parameters.listening || parameters.pulse > 0.01)) {
-                const fluidState = parameters.state === 'LOADING' ? 'IDLE' : parameters.state;
-                const color = colorFor(frame.settings.preset, fluidState, time);
-                const wavePhase = fract(time * (0.34 + parameters.speed * 0.18));
-                const waveRadius = layout.sizePixels * (0.48 + wavePhase * 0.46);
-                const waveAlpha = (1 - wavePhase) * (0.20 + parameters.pulse * 0.45) * fluidOpacity;
-                ringOn(
-                    overlay,
-                    layout.centerX,
-                    layout.centerY,
-                    waveRadius,
-                    Math.max(1, layout.sizePixels * 0.045),
-                    color,
-                    waveAlpha,
-                    0,
-                    1
-                );
-            }
-            if (frame.display.backgroundTask) {
-                const pulse = 0.55 + 0.45 * Math.sin(time * 4);
-                const offset = layout.sizePixels * 0.34;
-                discOn(
-                    overlay,
-                    layout.centerX + offset,
-                    layout.centerY + offset,
-                    Math.max(1.5, layout.sizePixels * 0.09),
-                    0xFFEAF7FF,
-                    0.45 + 0.45 * pulse
-                );
-            }
-            drawPartner(overlay, frame);
-        }
-
         function drawPartner(context, frame) {
             const partner = frame.partner;
             const layout = frame.layout;
@@ -795,9 +628,8 @@
                 return;
             }
             if (frame.settings.iconEnabled) {
-                drawIconCore(frame);
                 shader.draw(frame);
-                drawIconOverlay(frame);
+                drawPartner(overlay, frame);
             }
             if (frame.settings.textEnabled) {
                 drawStatusText(overlay, frame);

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Two properties matter: the files live in presence's own namespace (the platform ships no visual for a feature),
  * and the declarations map each api family to that namespace. Moving or renaming a file without the declaration —
- * or the other way round — would silently fall back to the Java drawing, so both are checked here.</p>
+ * or the other way round — would make the icon silently invisible, so both are checked here.</p>
  */
 final class PresenceHudShaderTest {
     private static final Path SHADER_DIR =

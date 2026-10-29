@@ -9,8 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>The platform creates {@code ShaderInstance}s; the feature owns the files, their uniforms and their look. A
  * feature declares the asset id while its jar loads (before the client's shader event), and the platform registers
- * whatever has been declared. An absent feature declares nothing, its family simply has no program, and the layer's
- * Java fallback is what the player sees — the platform never needs a list of features or their resource paths.</p>
+ * whatever has been declared. An absent feature declares nothing, its family simply has no program, and that layer
+ * draws nothing — the platform never needs a list of features or their resource paths.</p>
  *
  * <p>Declarations are keyed by {@link HudProgram}, so a family has exactly one program; declaring the same family
  * again (a reload of the same mod, a test) replaces it.</p>

@@ -4,12 +4,22 @@ uniform float Time;
 uniform float Intensity;
 uniform float Speed;
 uniform float Opacity;
+uniform float Task;
 
 in vec2 texCoord0;
 out vec4 fragColor;
 
 float circle(vec2 p, vec2 center, float radius) {
     return 1.0 - smoothstep(radius * 0.72, radius, length(p - center));
+}
+
+vec4 over(vec4 top, vec4 bottom) {
+    float alpha = top.a + bottom.a * (1.0 - top.a);
+    if (alpha <= 0.0001) {
+        return vec4(0.0);
+    }
+    vec3 rgb = (top.rgb * top.a + bottom.rgb * bottom.a * (1.0 - top.a)) / alpha;
+    return vec4(rgb, alpha);
 }
 
 void main() {
@@ -22,5 +32,12 @@ void main() {
         value += circle(p, vec2((float(i) - 1.0) * spacing, -lift), 0.16);
     }
     vec3 color = mix(vec3(0.38, 0.88, 1.0), vec3(1.0, 0.48, 0.82), 0.5 + 0.5 * sin(Time * 0.6));
-    fragColor = vec4(color * (0.52 + value * 0.68) * Intensity, value * 0.95 * Intensity * Opacity);
+    vec4 result = vec4(color * (0.52 + value * 0.68) * Intensity, value * 0.95 * Intensity * Opacity);
+    if (Task > 0.5) {
+        float taskPulse = 0.55 + 0.45 * sin(Time * 4.0);
+        float offset = 2.0 * 0.34;
+        float dot = circle(p, vec2(offset, offset), 2.0 * 0.09);
+        result = over(vec4(vec3(0.92, 0.97, 1.0), (0.45 + 0.45 * taskPulse) * dot), result);
+    }
+    fragColor = result;
 }

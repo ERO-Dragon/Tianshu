@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * The HUD shader handles, one per program family, as created from the features' declarations.
  *
  * <p>Registration happens once per client start from {@code HudShaderCatalog}; a program that failed to compile is
- * simply absent, and the surface draws its Java fallback without asking why. The map is concurrent because a shutdown
+ * simply absent, and the surface draws nothing for that family without asking why. The map is concurrent because a shutdown
  * can clear it while a frame is being drawn.</p>
  */
 public final class HudShaderPrograms {

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.hud;
 
-/** Immutable animation inputs shared by a shader program and the platform's Java fallback. */
+/** Immutable animation inputs consumed by the icon's fragment programs. */
 public record PresenceHudVisualParameters(
         PresenceHudVisualState state,
         boolean listening,

@@ -53,9 +53,10 @@ public interface HudSurface {
     /**
      * Draws one quad through a platform shader program.
      *
-     * <p>The host owns the program, its uniforms and its fallback: an unavailable or failing program draws nothing,
-     * so a caller always draws its Java fallback first and treats this as an enhancement. The frame's time is injected
-     * by the platform, which is why {@link HudShaderParams} carries only the product values.</p>
+     * <p>The host owns the program and its uniforms: an unavailable or failing program draws nothing, and the caller
+     * treats that as "this element is absent" rather than drawing a second version underneath. A feature that wants a
+     * fallback draws it itself; the presence icon deliberately has none. The frame's time is injected by the platform,
+     * which is why {@link HudShaderParams} carries only the product values.</p>
      */
     void shaderRect(HudProgram program, float left, float top, float right, float bottom, HudShaderParams params);
 }

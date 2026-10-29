@@ -136,7 +136,7 @@ assets/<feature_modid>/shaders/core/<fragment>.fsh
 ```
 
 功能模组在自身入口里调用 api 的 `HudShaderCatalog.declare(HudProgram, "namespace:program")`；平台的
-`RegisterShadersEvent` 只遍历这些声明并创建 `ShaderInstance`，程序缺失或编译失败时静默落到该图层的 Java 回退。
+`RegisterShadersEvent` 只遍历这些声明并创建 `ShaderInstance`，程序缺失或编译失败时该图层不绘制（映迹的图标没有 Java 回退形状）。
 程序 JSON 通过 `vertex` 和 `fragment` 的基础名称关联两个阶段。`.fsh` 是 fragment shader 的标准后缀，不是把
 Shadertoy 源码机械改名。`libs/ShaderToy/*.glsl` 只作为视觉参考和移植输入，不能直接作为 Minecraft core shader
 运行资源；移植后的代码必须使用 Minecraft 的 GLSL 150 阶段输入输出约定。
