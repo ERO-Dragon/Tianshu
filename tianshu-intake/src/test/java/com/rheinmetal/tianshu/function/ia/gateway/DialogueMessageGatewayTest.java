@@ -9,7 +9,6 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescrip
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSession;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionState;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessDecision;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessController;
 import com.rheinmetal.tianshu.function.ia.security.DialogueAccessPolicy;
@@ -117,11 +116,6 @@ class DialogueMessageGatewayTest {
 
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload payload) {
-            return null;
-        }
-
-        @Override
-        public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
             return null;
         }
 

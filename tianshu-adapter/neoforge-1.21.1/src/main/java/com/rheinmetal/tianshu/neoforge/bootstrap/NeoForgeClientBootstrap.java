@@ -150,7 +150,8 @@ public final class NeoForgeClientBootstrap {
             ClientConfigPresenceHudSettings presenceHudSettings = new ClientConfigPresenceHudSettings(config);
             PresenceHudRenderer presenceHudRenderer = new PresenceHudRenderer(
                     currentPresenceRuntime::currentHudDisplay,
-                    presenceHudSettings
+                    presenceHudSettings,
+                    () -> currentPresenceRuntime.currentPartner(System.currentTimeMillis())
             );
             NeoForgeWorldIdentityCapture worldIdentityCapture = new NeoForgeWorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);

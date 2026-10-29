@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.ui.hud;
 
 import com.rheinmetal.tianshu.client.presence.hud.PresenceHudSettings;
+import com.rheinmetal.tianshu.client.presence.partner.PresencePartnerSnapshot;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -15,17 +16,31 @@ public final class PresenceHudRenderer {
     private final long renderClockOriginNanos = System.nanoTime();
     private final PresenceHudSettings settings;
     private final Supplier<PresenceHudDisplay> displaySupplier;
+    private final Supplier<PresencePartnerSnapshot> partnerSupplier;
     private final PresenceStatusTextElementController statusTextController;
     private final PresenceIconElementController iconController;
     private final Map<PresenceHudElementType, PresenceHudElementRenderer> renderers;
 
     public PresenceHudRenderer(Supplier<PresenceHudDisplay> displaySupplier) {
-        this(displaySupplier, PresenceHudSettings.ENABLED);
+        this(displaySupplier, PresenceHudSettings.ENABLED, () -> PresencePartnerSnapshot.HIDDEN);
     }
 
     public PresenceHudRenderer(Supplier<PresenceHudDisplay> displaySupplier, PresenceHudSettings settings) {
+        this(displaySupplier, settings, () -> PresencePartnerSnapshot.HIDDEN);
+    }
+
+    /**
+     * @param partnerSupplier the partner marker for this frame; it is asked against the wall clock, because a
+     *                        lease deadline is a wall-clock instant rather than elapsed render time
+     */
+    public PresenceHudRenderer(
+            Supplier<PresenceHudDisplay> displaySupplier,
+            PresenceHudSettings settings,
+            Supplier<PresencePartnerSnapshot> partnerSupplier
+    ) {
         this.settings = settings == null ? PresenceHudSettings.ENABLED : settings;
         this.displaySupplier = Objects.requireNonNull(displaySupplier, "displaySupplier");
+        this.partnerSupplier = partnerSupplier == null ? () -> PresencePartnerSnapshot.HIDDEN : partnerSupplier;
         this.statusTextController = new PresenceStatusTextElementController(this.settings);
         this.iconController = new PresenceIconElementController(this.settings);
         PresenceStatusTextElementRenderer statusTextRenderer = new PresenceStatusTextElementRenderer();
@@ -54,7 +69,8 @@ public final class PresenceHudRenderer {
                 displaySupplier.get(),
                 nowMillis,
                 minecraft.getWindow().getGuiScaledWidth(),
-                minecraft.getWindow().getGuiScaledHeight()
+                minecraft.getWindow().getGuiScaledHeight(),
+                partnerSupplier.get()
         );
         Optional<PresenceHudElementFrame> iconFrame = iconController.update(context);
         Optional<PresenceHudElementFrame> statusTextFrame = statusTextController.update(context);

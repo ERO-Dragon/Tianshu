@@ -51,7 +51,8 @@ public final class PresenceIconElementController implements PresenceHudElementCo
                 elementState.state(),
                 display,
                 new PresenceHudElementTiming(nowMillis, elementState.enteredAtMillis()),
-                visualTransition.sample(nowMillis)
+                visualTransition.sample(nowMillis),
+                context.partner()
         ));
     }
 
@@ -61,7 +62,6 @@ public final class PresenceIconElementController implements PresenceHudElementCo
         visualTransition.reset();
         cachedLayout = null;
     }
-
     private PresenceHudLayout layoutFor(PresenceHudElementUpdateContext context) {
         int screenWidth = context.screenWidth();
         int screenHeight = context.screenHeight();

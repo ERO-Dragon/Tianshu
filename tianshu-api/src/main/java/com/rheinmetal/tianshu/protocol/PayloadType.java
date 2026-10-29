@@ -40,6 +40,7 @@ public final class PayloadType {
     public static final PayloadType PRESENCE_CONTEXT_SNAPSHOT = register("PRESENCE_CONTEXT_SNAPSHOT");
     public static final PayloadType PRESENCE_ACTIVITY = register("PRESENCE_ACTIVITY");
     public static final PayloadType PRESENCE_INTERACTION_CONTEXT = register("PRESENCE_INTERACTION_CONTEXT");
+    public static final PayloadType PRESENCE_PARTNER = register("PRESENCE_PARTNER");
     public static final PayloadType TTS_TEXT = register("TTS_TEXT");
     public static final PayloadType TTS_PLAYBACK_STATUS = register("TTS_PLAYBACK_STATUS");
     public static final PayloadType TTS_REQUEST_STATUS = register("TTS_REQUEST_STATUS");
@@ -53,7 +54,6 @@ public final class PayloadType {
     public static final PayloadType DIALOGUE_PARTICIPANT_UNREGISTER = register("DIALOGUE_PARTICIPANT_UNREGISTER");
     public static final PayloadType DIALOGUE_SESSION_CONTROL = register("DIALOGUE_SESSION_CONTROL");
     public static final PayloadType DIALOGUE_SESSION_EVENT = register("DIALOGUE_SESSION_EVENT");
-    public static final PayloadType DIALOGUE_OWNER_PREVIEW = register("DIALOGUE_OWNER_PREVIEW");
     public static final PayloadType DIALOGUE_DELIVERY = register("DIALOGUE_DELIVERY");
     public static final PayloadType DIALOGUE_CONTEXT_INPUT = register("DIALOGUE_CONTEXT_INPUT");
     /** One world event a producer already worded, handed to AX together with its tier. */

@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
@@ -25,17 +24,13 @@ import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityType;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
-import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
-import java.time.Duration;
 import java.util.EnumSet;
 
 public final class IaProtocolAdapter extends AbstractProtocolAdapter implements DialogueProtocolPort {
@@ -151,49 +146,6 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
         );
     }
 
-    public TianshuEnvelope buildPresenceContextQuery(TianshuEnvelope parent, PresenceContextQueryPayload payload) {
-        return buildRequestCapability(parent, ProtocolCapabilities.PRESENCE_QUERY_CONTEXT, PayloadType.PRESENCE_CONTEXT_QUERY, payload);
-    }
-
-    public TianshuEnvelope submitPresenceContextQuery(TianshuEnvelope envelope) {
-        return submitPrepared(envelope);
-    }
-
-    public int presenceContextProviderCount() {
-        return runtime().capabilityProviderCount(ProtocolCapabilities.PRESENCE_QUERY_CONTEXT);
-    }
-
-    public void registerPresenceContextSnapshotResponse(String requestEnvelopeId, EnvelopeHandler handler) {
-        registerResponseHandler(
-                requestEnvelopeId,
-                PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
-                PresenceContextSnapshotPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.RESPONSE),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
-    public void unregisterPresenceContextResponses(String requestEnvelopeId) {
-        unregisterResponseHandlers(requestEnvelopeId);
-    }
-
-    public ProtocolTaskHandle schedulePresenceTimeout(String requestEnvelopeId, Runnable task, Duration delay) {
-        return runtime().schedule(
-                ProtocolTaskSpec.builder()
-                        .moduleId(MODULE_ID)
-                        .lane(ExecutionLane.SCHEDULED)
-                        .taskId("ia.presence-timeout." + requestEnvelopeId)
-                        .envelopeId(requestEnvelopeId)
-                        .build(),
-                task,
-                delay
-        );
-    }
-
     @Override
     public boolean hasCapabilityProvider(String capabilityId) {
         return runtime().capabilityProviderCount(capabilityId) > 0;
@@ -204,12 +156,29 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
         return publishTopic(parent, ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, payload);
     }
 
-    @Override
-    public TianshuEnvelope publishOwnerPreview(TianshuEnvelope parent, DialogueOwnerPreviewPayload payload) {
-        if (parent == null) {
-            return publishTopic(ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, payload);
-        }
-        return publishTopic(parent, ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, payload);
+    /**
+     * Writes the partner marker state on presence's channel.
+     *
+     * <p>The topic and payload belong to presence; the arbiter is only the module that can compute who the
+     * partner is, so it is the writer. There is no parent envelope to inherit from: this is a standalone
+     * product broadcast, not a reply to anything.</p>
+     */
+    public TianshuEnvelope publishPartner(PresencePartnerPayload payload) {
+        return publishTopic(ProtocolTopics.PRESENCE_PARTNER, PayloadType.PRESENCE_PARTNER, payload);
+    }
+
+    public void subscribeInteractionContext(EnvelopeHandler handler) {
+        subscribeTopic(
+                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
+                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                PresenceInteractionContextPayload.class,
+                BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
     }
 
     public TianshuEnvelope publishModuleStatus(ModuleStatus status) {

@@ -246,7 +246,9 @@ ProtocolTopics.DIALOGUE_SESSION_EVENTS
 
 写 `PRESENCE.PARTNER` 时只在显示状态变化时写：预中标人变化、中标（含续租）、租期到期回默认。没有固定刷新周期，没有事件就没有流量。
 
-IA 同时订阅映迹的 `PRESENCE.INTERACTION_CONTEXT`（交互上下文摘要），它是预中标人的唯一驱动（订阅与预中标状态机在下一步实现）：摘要一变就重算预中标人，变了才写伙伴广播。开口时冻结最近一次摘要做本轮仲裁，不再现抓一次完整快照。完整上下文仍可在决议之后随 delivery 附带，它不拖慢仲裁。
+载荷 `PresencePartnerPayload` 的字段：`playerId` / `moduleId` / `participantId` / `icon` / `defaultOwner` / `holdUntilMillis` / `holdDurationMillis` / `updatedAtMillis`。`holdUntilMillis > 0` 表示中标租期（`holdDurationMillis` 是那一档的时长），`0` 表示预中标或默认承接者；主题由协议中心注册（`LATEST_ONLY`），听澜是写入方。
+
+IA 订阅映迹的 `PRESENCE.INTERACTION_CONTEXT`（交互上下文摘要）：摘要一变就重算预中标人，变了才写伙伴广播。仲裁用的就是同一份摘要——开口那一刻把它按 sessionId 冻结，同一帧也随 delivery 交给承接者，所以画面上的预中标人与实际拿到这一轮的人不会错开，仲裁也不再有上下文等待。
 
 ## 6. 广播策略
 
@@ -596,10 +598,10 @@ IA 的租期到期任务和 Presence 查询超时都由 IA 表达生命周期语
 
 IA 的 runtime 资源遵循以下边界：
 
-- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、激活新的 runtime generation、标记仲裁能力 ready，并订阅交互上下文摘要。ready 表示 IA 服务可以接收并给出仲裁结论，不要求当前已经存在 owner；participant 为空时直接以 `NO_PARTICIPANT` 拒绝，不查询 Presence、不创建 active session，也不触发 delivery、LLM 或 TTS。IA 可以保留终态 `REJECTED` 审计记录。
+- `prepare` 绑定当前 voice resource registry、发布当前 participant 的 wake/extra words、激活新的 runtime generation、标记仲裁能力 ready，并订阅交互上下文摘要。ready 表示 IA 服务可以接收并给出仲裁结论，不要求当前已经存在 owner；participant 为空时直接以 `NO_PARTICIPANT` 拒绝，不读取上下文、不创建 active session，也不触发 delivery、LLM 或 TTS。IA 可以保留终态 `REJECTED` 审计记录。
 - 重复 `prepare` 不重复订阅摘要；若 runtime context 发生替换，先解绑旧 voice registry 和旧 capability 状态。
-- `stop` 先关闭当前 runtime generation，取消 pending 到期任务与 Presence 请求，再解绑 voice trigger 并撤销 `ARBITRATION` ready 状态。
-- `destroy` 可重复执行，并清空 participant、session、租期、冻结上下文、Presence pending 请求和已写入的伙伴广播去重状态。
+- `stop` 先关闭当前 runtime generation，再取消 pending 到期任务，解绑 voice trigger 并撤销 `ARBITRATION` ready 状态。
+- `destroy` 可重复执行，并清空 participant、session、租期、冻结上下文、交互摘要槽位和已写入的伙伴广播去重状态。
 - Protocol 已关闭时，`stop` / `destroy` 仍只做幂等资源释放，不尝试创建替代线程或兼容分支。
 
 Core 在世界退出时按 `stop -> destroy -> unregister` 清理模块，再次进入世界时重新运行 assembler 并创建新的 IA 实例。因此 participant、owner、session、租期和 preview 都不跨世界继承；各功能模块或外部模组必须在新世界会话重新注册 participant。

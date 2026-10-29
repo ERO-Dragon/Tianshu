@@ -23,6 +23,31 @@ import java.util.StringJoiner;
 
 public final class DialogueClaimEngine {
     public List<DialogueClaim> collectLocalClaims(List<DialogueParticipantDescriptor> participants, DialogueArbitrationInput input) {
+        return collectLocalClaims(participants, input.interactionHints(), input.contextSnapshot(),
+                input.objectMatches(), input.moduleMatches());
+    }
+
+    /**
+     * The claims a participant would make from the interaction context alone, with no utterance at all.
+     *
+     * <p>This is the pre-winner path: it runs on every pushed digest, so a wake word or a mentioned entity can
+     * never match here — there is no text to match against.</p>
+     */
+    public List<DialogueClaim> collectLocalClaims(
+            List<DialogueParticipantDescriptor> participants,
+            DialogueInteractionHints hints,
+            DialogueContextSnapshot context
+    ) {
+        return collectLocalClaims(participants, hints, context, List.of(), List.of());
+    }
+
+    private List<DialogueClaim> collectLocalClaims(
+            List<DialogueParticipantDescriptor> participants,
+            DialogueInteractionHints hints,
+            DialogueContextSnapshot context,
+            List<IrObjectMatch> objectMatches,
+            List<IrModuleMatch> moduleMatches
+    ) {
         if (participants == null || participants.isEmpty()) {
             return List.of();
         }
@@ -35,16 +60,23 @@ public final class DialogueClaimEngine {
             if (profile.mode() == DialogueClaimMode.DISABLED) {
                 continue;
             }
-            collectClaim(participant, profile, input).ifPresent(claims::add);
+            collectClaim(participant, profile, hints, context, objectMatches, moduleMatches).ifPresent(claims::add);
         }
         return List.copyOf(claims);
     }
 
-    private java.util.Optional<DialogueClaim> collectClaim(DialogueParticipantDescriptor participant, DialogueClaimProfile profile, DialogueArbitrationInput input) {
+    private java.util.Optional<DialogueClaim> collectClaim(
+            DialogueParticipantDescriptor participant,
+            DialogueClaimProfile profile,
+            DialogueInteractionHints hints,
+            DialogueContextSnapshot context,
+            List<IrObjectMatch> objectMatches,
+            List<IrModuleMatch> moduleMatches
+    ) {
         DialogueClaimSource source = null;
         StringJoiner reason = new StringJoiner(",");
         for (DialogueClaimRule rule : profile.rules()) {
-            List<DialogueClaimCondition> matched = matchedConditions(rule, input);
+            List<DialogueClaimCondition> matched = matchedConditions(rule, hints, context, objectMatches, moduleMatches);
             if (matched.isEmpty()) {
                 continue;
             }
@@ -70,14 +102,22 @@ public final class DialogueClaimEngine {
      * {@code wakeWord OR crosshairEntity} is an utterance claim when only the wake word matched. {@code ALL}
      * either matches every condition or none.</p>
      */
-    private List<DialogueClaimCondition> matchedConditions(DialogueClaimRule rule, DialogueArbitrationInput input) {
+    private List<DialogueClaimCondition> matchedConditions(
+            DialogueClaimRule rule,
+            DialogueInteractionHints hints,
+            DialogueContextSnapshot context,
+            List<IrObjectMatch> objectMatches,
+            List<IrModuleMatch> moduleMatches
+    ) {
         if (rule.conditions().isEmpty()) {
             return List.of();
         }
         if (rule.operator() == DialogueClaimOperator.ANY) {
-            return rule.conditions().stream().filter(condition -> matchesCondition(condition, input)).toList();
+            return rule.conditions().stream()
+                    .filter(condition -> matchesCondition(condition, hints, context, objectMatches, moduleMatches))
+                    .toList();
         }
-        return rule.conditions().stream().allMatch(condition -> matchesCondition(condition, input))
+        return rule.conditions().stream().allMatch(condition -> matchesCondition(condition, hints, context, objectMatches, moduleMatches))
                 ? rule.conditions()
                 : List.of();
     }
@@ -89,14 +129,18 @@ public final class DialogueClaimEngine {
                 .orElse(DialogueClaimSource.UTTERANCE);
     }
 
-    private boolean matchesCondition(DialogueClaimCondition condition, DialogueArbitrationInput input) {
-        DialogueInteractionHints hints = input.interactionHints();
-        DialogueContextSnapshot context = input.contextSnapshot();
+    private boolean matchesCondition(
+            DialogueClaimCondition condition,
+            DialogueInteractionHints hints,
+            DialogueContextSnapshot context,
+            List<IrObjectMatch> objectMatches,
+            List<IrModuleMatch> moduleMatches
+    ) {
         return switch (condition.type()) {
-            case WAKE_WORD -> matchesAny(condition.values(), triggerWords(input));
+            case WAKE_WORD -> matchesAny(condition.values(), triggerWords(moduleMatches));
             case HELD_ITEM -> matchesAny(condition.values(), List.of(hints.heldItemId()));
             case EQUIPPED_ITEM -> matchesAny(condition.values(), context.equippedItemIds());
-            case MENTIONED_ENTITY -> matchesAny(condition.values(), mentionedEntityTypeIds(input));
+            case MENTIONED_ENTITY -> matchesAny(condition.values(), mentionedEntityTypeIds(objectMatches));
             case CROSSHAIR_ENTITY -> matchesAny(condition.values(), crosshairEntityTypes(context));
             case INTERACTION_KEY -> hints.interactionKeyDown();
             case SNEAKING -> hints.sneaking();
@@ -111,8 +155,11 @@ public final class DialogueClaimEngine {
      * compared against the spoken side of every module match; a word that no module registered still matches
      * nothing, which is what keeps an unrelated utterance from claiming the turn.</p>
      */
-    private static List<String> triggerWords(DialogueArbitrationInput input) {
-        return input.moduleMatches().stream()
+    private static List<String> triggerWords(List<IrModuleMatch> moduleMatches) {
+        if (moduleMatches == null) {
+            return List.of();
+        }
+        return moduleMatches.stream()
                 .filter(match -> IrModuleMatch.KIND_WAKE.equals(match.kind()))
                 .map(IrModuleMatch::spokenWord)
                 .filter(value -> value != null && !value.isBlank())
@@ -126,8 +173,11 @@ public final class DialogueClaimEngine {
      * <p>Decided by the match's own registry kind ({@link IrObjectMatch#entity()}), not by the shape of the id:
      * mentioning {@code minecraft:minecart} as an item must not claim a condition that asks for the entity.</p>
      */
-    private static List<String> mentionedEntityTypeIds(DialogueArbitrationInput input) {
-        return input.objectMatches().stream()
+    private static List<String> mentionedEntityTypeIds(List<IrObjectMatch> objectMatches) {
+        if (objectMatches == null) {
+            return List.of();
+        }
+        return objectMatches.stream()
                 .filter(IrObjectMatch::entity)
                 .map(IrObjectMatch::registryId)
                 .filter(value -> value != null && !value.isBlank())

@@ -1,12 +1,14 @@
 package com.rheinmetal.tianshu.client.presence;
 
 import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordinator;
+import com.rheinmetal.tianshu.client.presence.partner.PresencePartnerStore;
 import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
@@ -16,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The protocol face of presence: the module that owns {@code PRESENCE.QUERY_CONTEXT}, the
- * {@code PRESENCE.ACTIVITY} subscription and the presence world-event topic.
+ * {@code PRESENCE.ACTIVITY} and {@code PRESENCE.PARTNER} subscriptions and the presence world-event topic.
  *
  * <p>It owns no world state of its own. Everything it touches is created and owned by
  * {@link PresenceClientRuntime}, because a world restart must not destroy the aggregator or the capture path:
@@ -26,17 +28,20 @@ public final class PresenceModule implements TianshuManagedModule {
     private final PresenceProtocolAdapter adapter;
     private final PresenceActivityTracker activityTracker;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
+    private final PresencePartnerStore partnerStore;
     private final AtomicLong lifecycleGeneration = new AtomicLong();
     private volatile boolean lifecycleActive;
 
     public PresenceModule(
             PresenceProtocolAdapter adapter,
             PresenceActivityTracker activityTracker,
-            PresenceContextQueryCoordinator contextQueryCoordinator
+            PresenceContextQueryCoordinator contextQueryCoordinator,
+            PresencePartnerStore partnerStore
     ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.activityTracker = Objects.requireNonNull(activityTracker, "activityTracker");
         this.contextQueryCoordinator = Objects.requireNonNull(contextQueryCoordinator, "contextQueryCoordinator");
+        this.partnerStore = Objects.requireNonNull(partnerStore, "partnerStore");
         this.contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
     }
 
@@ -51,6 +56,7 @@ public final class PresenceModule implements TianshuManagedModule {
         adapter.registerOwnedTopics(context.protocol());
         adapter.registerQueryContextCapability(this::handleQueryContext);
         adapter.subscribePresenceActivity(this::handlePresenceActivity);
+        adapter.subscribePartner(this::handlePartner);
         lifecycleActive = true;
         publishLifecycle(ModuleStatuses.lifecycleReady(moduleId(), lifecycleGeneration.get()));
     }
@@ -66,6 +72,7 @@ public final class PresenceModule implements TianshuManagedModule {
     @Override
     public void destroy() {
         stop();
+        partnerStore.clear();
     }
 
     private void publishLifecycle(ModuleStatus status) {
@@ -83,6 +90,13 @@ public final class PresenceModule implements TianshuManagedModule {
     private void handlePresenceActivity(TianshuEnvelope envelope, ProtocolContext context) {
         if (envelope.payload() instanceof PresenceActivityPayload payload) {
             activityTracker.accept(envelope.header().sourceId(), payload);
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handlePartner(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof PresencePartnerPayload payload) {
+            partnerStore.accept(payload);
         }
         context.complete(envelope.envelopeId());
     }

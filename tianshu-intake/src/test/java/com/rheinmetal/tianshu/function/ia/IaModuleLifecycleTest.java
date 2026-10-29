@@ -14,12 +14,12 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -106,21 +107,11 @@ class IaModuleLifecycleTest {
     }
 
     @Test
-    void stoppingWithPendingPresenceDoesNotContinueArbitration() {
+    void aTurnThatArrivesAfterStopIsRejectedInsteadOfDelivered() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         IaModule ia = registeredModule(services);
         ia.prepare(new ModuleRuntimeContext(runtime, services, null, new ModuleRuntimeState()));
-        BlockingPresenceHandler presence = new BlockingPresenceHandler();
-        runtime.registerModule(module("test.presence", new CapabilityDescriptor(
-                ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
-                PayloadType.PRESENCE_CONTEXT_QUERY,
-                PresenceContextQueryPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.REQUEST),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE
-        )), presence);
         RecordingHandler delivery = new RecordingHandler();
         runtime.registerModule(module("module.ax", new CapabilityDescriptor(
                 "AX.DIALOGUE_INPUT",
@@ -142,7 +133,8 @@ class IaModuleLifecycleTest {
                 DialogueTurnProcessingPolicy.DEFAULT
         ));
 
-        runtime.submit(EnvelopeBuilder.commandToCapability(
+        ia.stop();
+        TianshuEnvelope turn = EnvelopeBuilder.commandToCapability(
                 "module.ir",
                 ProtocolCapabilities.DIALOGUE_ARBITRATE,
                 PayloadType.DIALOGUE_ARBITRATION_REQUEST,
@@ -151,13 +143,12 @@ class IaModuleLifecycleTest {
                         "hello", "hello", List.of(), List.of(),
                         System.currentTimeMillis(), System.currentTimeMillis() + 10_000L
                 )
-        ).build());
-
-        await(() -> presence.requestCount() > 0);
-        ia.stop();
-        sleep(500L);
+        ).build();
+        runtime.submit(turn);
+        sleep(200L);
 
         assertTrue(delivery.envelopes().isEmpty());
+        assertEquals(EnvelopeStatus.COMPLETED, runtime.lifecycle().statusOf(turn.envelopeId()));
     }
 
     private IaModule registeredModule(ModuleServiceRegistry services) {
@@ -194,40 +185,12 @@ class IaModuleLifecycleTest {
         );
     }
 
-    private static void await(BooleanCondition condition) {
-        long deadline = System.currentTimeMillis() + 3_000L;
-        while (System.currentTimeMillis() < deadline) {
-            if (condition.satisfied()) {
-                return;
-            }
-            sleep(10L);
-        }
-        throw new AssertionError("Timed out waiting for condition");
-    }
-
     private static void sleep(long millis) {
         try {
             Thread.sleep(millis);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AssertionError(exception);
-        }
-    }
-
-    private interface BooleanCondition {
-        boolean satisfied();
-    }
-
-    private static final class BlockingPresenceHandler implements EnvelopeHandler {
-        private final CopyOnWriteArrayList<TianshuEnvelope> envelopes = new CopyOnWriteArrayList<>();
-
-        @Override
-        public void handle(TianshuEnvelope envelope, ProtocolContext context) {
-            envelopes.add(envelope);
-        }
-
-        private int requestCount() {
-            return envelopes.size();
         }
     }
 

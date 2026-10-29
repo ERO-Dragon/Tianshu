@@ -173,7 +173,7 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 
 非 owner 不会收到该 payload。
 
-其中 `repairedText`、`normalizedText`、`objectMatches`、`moduleMatches` 来自 IR 的文本侧结果：`objectMatches` 每个命中对象一条，`moduleMatches` 每个命中触发词一条。`matchedEntityRefs`、`interactionHints` 来自 IA 在开口时冻结的交互上下文摘要（映迹 `PRESENCE.INTERACTION_CONTEXT` 的最近一次推送），所以仲裁本身不等待上下文；`contextSnapshot`、`displayNames` 是 IA 在决议之后补取的完整快照，不阻塞仲裁。`matchedEntityRefs` 使用 `DialogueEntityRef`，包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
+其中 `repairedText`、`normalizedText`、`objectMatches`、`moduleMatches` 来自 IR 的文本侧结果：`objectMatches` 每个命中对象一条，`moduleMatches` 每个命中触发词一条。`matchedEntityRefs`、`interactionHints`、`contextSnapshot`、`displayNames` 全部来自同一份冻结摘要（映迹 `PRESENCE.INTERACTION_CONTEXT` 最近一次推送），不再有第二次采集，所以仲裁不等待上下文，也不会与画面上的预中标人错开。摘要里带着显示名与准星距离，正是为了让 delivery 的措辞仍然说"僵尸"而不是 `minecraft:zombie`；`contextSnapshot.facts` 为空，因为摘要不携带事实行。`matchedEntityRefs` 使用 `DialogueEntityRef`，包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
 
 ## 5. 处理 delivery
 

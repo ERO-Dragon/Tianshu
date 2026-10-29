@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.client.presence.context.PresenceContextQueryCoordi
 import com.rheinmetal.tianshu.client.presence.context.PresenceInteractionContextWatcher;
 import com.rheinmetal.tianshu.client.presence.model.PresenceActivitySnapshot;
 import com.rheinmetal.tianshu.client.presence.model.PresencePrimaryState;
+import com.rheinmetal.tianshu.client.presence.partner.PresencePartnerSnapshot;
+import com.rheinmetal.tianshu.client.presence.partner.PresencePartnerStore;
 import com.rheinmetal.tianshu.client.presence.status.PresenceActivityTracker;
 import com.rheinmetal.tianshu.client.presence.status.PresenceDisplayPolicy;
 import com.rheinmetal.tianshu.client.presence.status.PresenceHudDisplay;
@@ -30,6 +32,7 @@ public final class PresenceClientRuntime {
     private final PresenceDisplayPolicy displayPolicy;
     private final PresenceContextQueryCoordinator contextQueryCoordinator;
     private final PresenceInteractionContextWatcher interactionContextWatcher;
+    private final PresencePartnerStore partnerStore = new PresencePartnerStore();
     private final PresenceEventCollector eventCollector;
     private volatile PresenceActivitySnapshot displayedActivitySnapshot;
     private volatile PresenceHudDisplay cachedHudDisplay = PresenceHudDisplay.HIDDEN;
@@ -54,6 +57,7 @@ public final class PresenceClientRuntime {
         activityTracker.startWorldSession();
         contextQueryCoordinator.startWorldSession();
         interactionContextWatcher.reset();
+        partnerStore.clear();
         eventCollector.startWorldSession();
     }
 
@@ -61,6 +65,7 @@ public final class PresenceClientRuntime {
         worldSessionActive = false;
         contextQueryCoordinator.stopWorldSession();
         interactionContextWatcher.reset();
+        partnerStore.clear();
         eventCollector.stopWorldSession();
         activityTracker.stopWorldSession();
     }
@@ -70,7 +75,7 @@ public final class PresenceClientRuntime {
         contextQueryCoordinator.bindResponder(adapter::respondContextFacts);
         interactionContextWatcher.setSink(adapter::publishInteractionContext);
         eventCollector.setWorldEventSink(adapter::publishWorldEvent);
-        return new PresenceModuleInstaller(adapter, activityTracker, contextQueryCoordinator);
+        return new PresenceModuleInstaller(adapter, activityTracker, contextQueryCoordinator, partnerStore);
     }
 
     public void tick() {
@@ -97,6 +102,17 @@ public final class PresenceClientRuntime {
 
     public void recordWorldEvents(List<PresenceWorldEventPayload> events) {
         eventCollector.recordWorldEvents(events);
+    }
+
+    /**
+     * The partner marker to draw at {@code nowMillis}.
+     *
+     * <p>Only the ring is resolved against the clock here. Whether the icon is on screen at all stays the
+     * arbiter's decision — see {@link PresencePartnerStore#at(long)} — so a lease running out never makes the
+     * marker fly off on its own. Nothing is drawn outside a world session.</p>
+     */
+    public PresencePartnerSnapshot currentPartner(long nowMillis) {
+        return worldSessionActive ? partnerStore.at(nowMillis) : PresencePartnerSnapshot.HIDDEN;
     }
 
     /**

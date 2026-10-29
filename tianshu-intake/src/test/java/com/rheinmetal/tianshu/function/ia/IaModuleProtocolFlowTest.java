@@ -15,7 +15,6 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
-import com.rheinmetal.tianshu.function.ia.contract.DialogueOwnerPreviewPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -25,18 +24,18 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
-import com.rheinmetal.tianshu.protocol.payload.FactField;
-import com.rheinmetal.tianshu.protocol.payload.FactValue;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
-import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.client.presence.model.PresenceScreenKind;
+import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
+import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
+import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -53,8 +52,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -221,8 +218,7 @@ class IaModuleProtocolFlowTest {
     @Test
     void hardClaimUsesFrozenSpeechStartContextAndDeliversOnlyToOwner() {
         runtime = ProtocolBootstrap.create(Runnable::run);
-        MutablePresenceContextHandler presence = new MutablePresenceContextHandler();
-        registerPresenceContextHandler(presence);
+        registerInteractionContextTopic();
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler maidDelivery = new RecordingHandler();
@@ -230,7 +226,7 @@ class IaModuleProtocolFlowTest {
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", maidDelivery);
         registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
         RecordingHandler previewEvents = new RecordingHandler();
-        subscribeOwnerPreview(previewEvents);
+        subscribePartner(previewEvents);
         subscribeSessionEvents(new RecordingHandler());
         registerParticipant(participant(
                 "maid",
@@ -244,16 +240,10 @@ class IaModuleProtocolFlowTest {
                 ))
         ));
         registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
-        presence.payload(interactionContextPayload(
-                "",
-                "minecraft:overworld",
-                "",
-                "",
-                "maid-uuid",
-                "touhou_little_maid:maid",
-                "酒狐",
-                "3.0"
-        ));
+        // The digest is the only context a turn is arbitrated against now, so what the player was aiming at when the
+        // speech started has to arrive as a push, not as an answer to a query.
+        publishInteractionContext("local", "minecraft:overworld", "主世界", "",
+                "maid-uuid", "touhou_little_maid:maid", "酒狐", 3.0D);
 
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.asr",
@@ -261,8 +251,6 @@ class IaModuleProtocolFlowTest {
                 PayloadType.ASR_SPEECH_ACTIVITY,
                 AsrSpeechActivityPayload.speaking(900L)
         ).build());
-        await(() -> presence.requestCount() >= 1);
-        presence.payload(PresenceContextSnapshotPayload.success("empty", List.of()));
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.ir",
                 ProtocolTopics.IR_RESULT,
@@ -280,13 +268,20 @@ class IaModuleProtocolFlowTest {
         ).build());
 
         DialogueDeliveryPayload delivery = maidDelivery.awaitPayload(DialogueDeliveryPayload.class);
-        DialogueOwnerPreviewPayload preview = previewEvents.awaitPayload(DialogueOwnerPreviewPayload.class);
+        PresencePartnerPayload partner = previewEvents.awaitPayload(PresencePartnerPayload.class, PresencePartnerPayload::hasLease);
         assertEquals("酒狐帮我种地", delivery.repairedText());
         assertEquals(List.of(new IrModuleMatch("module.maid", "酒狐", "酒狐")), delivery.moduleMatches());
         assertEquals(1, delivery.matchedEntityRefs().size());
         assertEquals("maid-uuid", delivery.matchedEntityRefs().get(0).entityId());
+        assertEquals("酒狐", delivery.matchedEntityRefs().get(0).displayName());
+        assertEquals("酒狐", delivery.displayNames().get("touhou_little_maid:maid"));
+        assertEquals("主世界", delivery.displayNames().get("minecraft:overworld"));
+        assertEquals(3.0D, delivery.interactionHints().targetDistance(), 0.001D);
         assertEquals("local", delivery.contextSnapshot().playerId());
-        assertEquals("module.maid", preview.moduleId());
+        assertEquals("module.maid", partner.moduleId());
+        assertTrue(partner.hasLease(), "winning a turn opens the participant's ten-second lease");
+        assertEquals(10_000L, partner.holdDurationMillis());
+        assertFalse(partner.defaultOwner());
         assertTrue(axDelivery.envelopes().isEmpty());
         assertTrue(runtime.deadLetters().snapshot(16).isEmpty());
     }
@@ -322,18 +317,16 @@ class IaModuleProtocolFlowTest {
     }
 
     @Test
-    void readyArbitrationWithoutParticipantsRejectsSilentlyWithoutPresenceLookup() {
+    void readyArbitrationWithoutParticipantsRejectsSilently() {
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
-        MutablePresenceContextHandler presence = new MutablePresenceContextHandler();
-        registerPresenceContextHandler(presence);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, services));
         ia.prepare(new ModuleRuntimeContext(runtime, services, voiceResources, runtimeState));
         subscribeSessionEvents(new RecordingHandler());
-        subscribeOwnerPreview(new RecordingHandler());
+        subscribePartner(new RecordingHandler());
         DialogueArbitrationRequestPayload payload = request("req-empty", "player", "turn-empty", 903L, "无人处理", List.of(), List.of());
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
@@ -350,7 +343,6 @@ class IaModuleProtocolFlowTest {
         assertTrue(runtimeState.capabilities().isReady(IaRuntimeCapabilities.ARBITRATION));
         assertFalse(result.accepted());
         assertEquals("NO_PARTICIPANT", result.reason());
-        assertEquals(0, presence.requestCount());
         assertTrue(runtime.deadLetters().snapshot(16).isEmpty());
     }
 
@@ -443,80 +435,121 @@ class IaModuleProtocolFlowTest {
         );
     }
 
-    private void registerPresenceContextHandler(MutablePresenceContextHandler handler) {
-        runtime.registerModule(
-                descriptor("test.presence", new CapabilityDescriptor(
-                        ProtocolCapabilities.PRESENCE_QUERY_CONTEXT,
-                        PayloadType.PRESENCE_CONTEXT_QUERY,
-                        PresenceContextQueryPayload.class,
-                        BrokerType.BOUNDED_QUEUE,
-                        EnumSet.of(PacketType.REQUEST),
-                        Priority.LOW,
-                        CompletionPolicy.MANUAL_COMPLETE
-                )),
-                handler
-        );
-    }
-
-    private PresenceContextSnapshotPayload interactionContextPayload(
-            String playerId,
-            String dimensionId,
-            String heldItemId,
-            String equippedItemIds,
-            String targetId,
-            String targetTypeId,
-            String targetName,
-            String targetDistance
-    ) {
-        // Typed fields only: the IA mapper flattens them itself now, so this fixture has to speak the same
-        // language the producer does.
-        List<FactField> fields = new ArrayList<>();
-        addField(fields, "playerId", identifier(playerId));
-        addField(fields, "dimensionId", identifier(dimensionId));
-        addField(fields, "heldItemId", identifier(heldItemId));
-        addField(fields, "equippedItemIds", identifier(equippedItemIds));
-        addField(fields, "crosshairTargetId", identifier(targetId));
-        addField(fields, "crosshairTargetTypeId", identifier(targetTypeId));
-        addField(fields, "crosshairTargetDisplayName", identifier(targetName));
-        addField(fields, "crosshairTargetDistance", number(targetDistance));
-        return PresenceContextSnapshotPayload.success("test.presence.context", List.of(
-                new PresenceContextSnapshotPayload.FactPayload(
-                        PresenceContextFactIds.INTERACTION_CONTEXT,
-                        fields,
-                        84,
-                        "presence",
-                        "interaction",
-                        List.of(),
-                        System.currentTimeMillis(),
-                        120_000L
-                )
+    private void registerInteractionContextTopic() {
+        runtime.registerTopic(new TopicDescriptor(
+                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
+                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                DeliveryPolicy.LATEST_ONLY,
+                20
         ));
     }
 
-    private static void addField(List<FactField> fields, String name, FactValue value) {
-        if (value != null) {
-            fields.add(new FactField(name, value));
-        }
+    private void publishInteractionContext(
+            String playerId,
+            String dimensionId,
+            String dimensionDisplayName,
+            String heldItemId,
+            String targetId,
+            String targetTypeId,
+            String targetName,
+            double targetDistance
+    ) {
+        runtime.submit(EnvelopeBuilder.eventTopic(
+                "module.presence",
+                ProtocolTopics.PRESENCE_INTERACTION_CONTEXT,
+                PayloadType.PRESENCE_INTERACTION_CONTEXT,
+                new PresenceInteractionContextPayload(
+                        playerId,
+                        dimensionId,
+                        dimensionDisplayName,
+                        PresenceScreenKind.NONE,
+                        heldItemId,
+                        "",
+                        List.of(),
+                        targetId,
+                        targetTypeId,
+                        targetName,
+                        targetDistance,
+                        !targetId.isBlank() || !targetTypeId.isBlank(),
+                        false,
+                        false,
+                        System.currentTimeMillis()
+                )
+        ).build());
     }
 
-    private static FactValue identifier(String value) {
-        return value == null || value.isBlank() ? null : new FactValue.Identifier(value);
+    @Test
+    void aPushedInteractionChangeMakesTheAimedParticipantThePreWinner() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        registerInteractionContextTopic();
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "maid.crosshair",
+                        DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
+                ))
+        ));
+        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+
+        publishInteractionContext("player", "minecraft:overworld", "", "", "maid-uuid",
+                "touhou_little_maid:maid", "", 0.0D);
+
+        PresencePartnerPayload partner = partnerEvents.awaitPayload(PresencePartnerPayload.class);
+        assertEquals("module.maid", partner.moduleId());
+        assertFalse(partner.hasLease(), "a pre-winner has no lease yet");
+        assertFalse(partner.defaultOwner());
+        assertTrue(partner.icon().contains("maid"), "the marker carries the participant's registered icon");
     }
 
-    private static FactValue number(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return new FactValue.Number(Double.parseDouble(value.trim()));
+    @Test
+    void aTurnWithoutAFrozenSpeechContextArbitratesAgainstTheNewestDigest() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler maidDelivery = new RecordingHandler();
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", maidDelivery);
+        registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "maid.crosshair",
+                        DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
+                ))
+        ));
+        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        publishInteractionContext("player", "minecraft:overworld", "主世界", "",
+                "maid-uuid", "touhou_little_maid:maid", "酒狐", 3.0D);
+
+        runtime.submit(EnvelopeBuilder.commandToCapability(
+                "module.ir",
+                ProtocolCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                request("req-digest", "player", "turn-digest", 0L, "看看这个", List.of(), List.of())
+        ).build());
+
+        DialogueDeliveryPayload delivery = maidDelivery.awaitPayload(DialogueDeliveryPayload.class);
+        assertEquals("看看这个", delivery.repairedText());
+        assertEquals("maid-uuid", delivery.matchedEntityRefs().get(0).entityId());
+        assertEquals("酒狐", delivery.matchedEntityRefs().get(0).displayName());
     }
 
-    private void subscribeOwnerPreview(RecordingHandler handler) {
-        runtime.subscribeTopic(
-                descriptor("test.preview", List.of()),
+    private void subscribePartner(RecordingHandler handler) {        runtime.subscribeTopic(
+                descriptor("test.partner", List.of()),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.DIALOGUE_OWNER_PREVIEW,
-                        PayloadType.DIALOGUE_OWNER_PREVIEW,
-                        DialogueOwnerPreviewPayload.class,
+                        ProtocolTopics.PRESENCE_PARTNER,
+                        PayloadType.PRESENCE_PARTNER,
+                        PresencePartnerPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),
                         Priority.LOW,
@@ -581,31 +614,6 @@ class IaModuleProtocolFlowTest {
         boolean satisfied();
     }
 
-    private static final class MutablePresenceContextHandler implements EnvelopeHandler {
-        private final AtomicReference<PresenceContextSnapshotPayload> payload = new AtomicReference<>(PresenceContextSnapshotPayload.success("empty", List.of()));
-        private final AtomicInteger captureCount = new AtomicInteger();
-
-        @Override
-        public void handle(TianshuEnvelope envelope, ProtocolContext context) {
-            captureCount.incrementAndGet();
-            context.submit(EnvelopeBuilder.responseTo(
-                    "test.presence",
-                    envelope,
-                    PayloadType.PRESENCE_CONTEXT_SNAPSHOT,
-                    payload.get()
-            ).build());
-            context.complete(envelope.envelopeId());
-        }
-
-        private void payload(PresenceContextSnapshotPayload value) {
-            payload.set(value == null ? PresenceContextSnapshotPayload.success("empty", List.of()) : value);
-        }
-
-        private int requestCount() {
-            return captureCount.get();
-        }
-    }
-
     private static final class RecordingHandler implements EnvelopeHandler {
         private final List<TianshuEnvelope> envelopes = new CopyOnWriteArrayList<>();
 
@@ -635,6 +643,28 @@ class IaModuleProtocolFlowTest {
                 }
             }
             throw new AssertionError("Timed out waiting for payload " + type.getSimpleName() + ", received " + envelopes.size() + " envelope(s)");
+        }
+
+        /** Waits for the first payload of {@code type} that matches, so a marker's later state is observable. */
+        private <T> T awaitPayload(Class<T> type, java.util.function.Predicate<T> condition) {
+            long deadline = System.currentTimeMillis() + 10_000L;
+            while (System.currentTimeMillis() < deadline) {
+                for (TianshuEnvelope envelope : envelopes) {
+                    if (type.isInstance(envelope.payload())) {
+                        T payload = type.cast(envelope.payload());
+                        if (condition.test(payload)) {
+                            return payload;
+                        }
+                    }
+                }
+                try {
+                    Thread.sleep(10L);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            throw new AssertionError("Timed out waiting for matching " + type.getSimpleName() + ", received " + envelopes.size() + " envelope(s)");
         }
     }
 }

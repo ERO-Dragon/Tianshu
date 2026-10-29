@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.protocol.payload.PresenceActivityPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextQueryPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceContextSnapshotPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceInteractionContextPayload;
+import com.rheinmetal.tianshu.protocol.payload.PresencePartnerPayload;
 import com.rheinmetal.tianshu.protocol.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
@@ -76,6 +77,26 @@ public final class PresenceProtocolAdapter extends AbstractProtocolAdapter {
                 ProtocolTopics.PRESENCE_ACTIVITY,
                 PayloadType.PRESENCE_ACTIVITY,
                 PresenceActivityPayload.class,
+                BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                CompletionPolicy.AUTO_COMPLETE_ON_RETURN,
+                handler,
+                defaults()
+        );
+    }
+
+    /**
+     * Subscribes to the partner marker pushes the arbiter writes on presence's channel.
+     *
+     * <p>The topic and payload are presence's own vocabulary, so subscribing here is the same rule as owning
+     * them: this module is the only consumer, and the writer never talks to the HUD directly.</p>
+     */
+    public void subscribePartner(EnvelopeHandler handler) {
+        subscribeTopic(
+                ProtocolTopics.PRESENCE_PARTNER,
+                PayloadType.PRESENCE_PARTNER,
+                PresencePartnerPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.EVENT),
                 Priority.LOW,

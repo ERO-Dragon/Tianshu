@@ -45,7 +45,7 @@ public final class ProtocolBootstrap {
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.MODULE_STATUS, PayloadType.MODULE_STATUS, DeliveryPolicy.LATEST_ONLY, 40));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.PRESENCE_ACTIVITY, PayloadType.PRESENCE_ACTIVITY, DeliveryPolicy.WAIT_IN_QUEUE, 80));
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, DeliveryPolicy.WAIT_IN_QUEUE, 40));
-        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.DIALOGUE_OWNER_PREVIEW, PayloadType.DIALOGUE_OWNER_PREVIEW, DeliveryPolicy.LATEST_ONLY, 10));
+        runtime.registerTopic(new TopicDescriptor(ProtocolTopics.PRESENCE_PARTNER, PayloadType.PRESENCE_PARTNER, DeliveryPolicy.LATEST_ONLY, 10));
     }
 }
 

@@ -26,9 +26,8 @@ import net.minecraft.client.gui.GuiGraphics;
  * the product state model.
  */
 public final class PresenceIconElementRenderer implements PresenceHudElementRenderer {
-    private static final int ARC_SEGMENTS = 48;
-
     private final PresenceHudSettings settings;
+    private final PresencePartnerIconRenderer partnerRenderer = new PresencePartnerIconRenderer();
     private final Set<ShaderInstance> unavailableShaders = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public PresenceIconElementRenderer(PresenceHudSettings settings) {
@@ -72,6 +71,8 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
         if (frame.display().backgroundTask()) {
             renderBackgroundTaskMark(graphics, centerX, centerY, size, time);
         }
+        // The partner marker is drawn last: it sits on top of the icon's own visual, never replaces it.
+        partnerRenderer.render(graphics, layout, frame.partner(), frame.timing().updatedAtMillis());
     }
 
     /**
@@ -132,10 +133,10 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
             renderShader(graphics, shader, layout, parameters, state, time, opacity);
         }
         if (parameters.listening() || parameters.pulse() > 0.01F) {
-            float wavePhase = fract(time * (0.34F + parameters.speed() * 0.18F));
+            float wavePhase = PresenceHudShapes.fract(time * (0.34F + parameters.speed() * 0.18F));
             float waveRadius = size * (0.48F + wavePhase * 0.46F);
             float waveAlpha = (1.0F - wavePhase) * (0.20F + parameters.pulse() * 0.45F) * opacity;
-            drawRing(graphics, centerX, centerY, waveRadius, Math.max(1.0F, size * 0.045F), color, waveAlpha, 0.0F, 1.0F);
+            PresenceHudShapes.drawRing(graphics, centerX, centerY, waveRadius, Math.max(1.0F, size * 0.045F), color, waveAlpha, 0.0F, 1.0F);
         }
     }
 
@@ -273,7 +274,7 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
 
         float rotation = time * (0.16F + parameters.speed() * 0.16F);
         float arcAlpha = 0.34F + 0.34F * parameters.intensity();
-        drawRing(
+        PresenceHudShapes.drawRing(
                 graphics,
                 centerX,
                 centerY,
@@ -287,7 +288,7 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
     }
 
     private static int colorFor(PresenceHudVisualPreset preset, PresenceHudVisualState state, float time) {
-        float phase = fract(time * (preset == PresenceHudVisualPreset.PRESET_TWO ? 0.06F : 0.10F));
+        float phase = PresenceHudShapes.fract(time * (preset == PresenceHudVisualPreset.PRESET_TWO ? 0.06F : 0.10F));
         int first = preset == PresenceHudVisualPreset.PRESET_TWO ? 0xFFB28CFF : 0xFF78E8FF;
         int second = preset == PresenceHudVisualPreset.PRESET_TWO ? 0xFF6A8CFF : 0xFFFF8DD8;
         float stateBias = switch (state) {
@@ -296,12 +297,12 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
             case CHAT -> 0.72F;
             default -> 0.34F;
         };
-        return mixColor(first, second, fract(phase + stateBias));
+        return mixColor(first, second, PresenceHudShapes.fract(phase + stateBias));
     }
 
     private static void drawDisc(GuiGraphics graphics, float centerX, float centerY, float radius,
                                  int color, float opacity) {
-        int alpha = clampColor(opacity * ((color >>> 24) & 0xFF));
+        int alpha = PresenceHudShapes.clampColor(opacity * ((color >>> 24) & 0xFF));
         int argb = (alpha << 24) | (color & 0x00FFFFFF);
         int bands = Math.min(9, Math.max(3, (int) Math.ceil(radius)));
         for (int band = 0; band < bands; band++) {
@@ -325,39 +326,10 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
         return Math.max(1.0F, radius * 2.0F / bands);
     }
 
-    private static void drawRing(GuiGraphics graphics, int centerX, int centerY, float radius,
-                                 float thickness, int color, float opacity, float rotation, float coverage) {
-        int alpha = clampColor(opacity * ((color >>> 24) & 0xFF));
-        int argb = (alpha << 24) | (color & 0x00FFFFFF);
-        int halfThickness = Math.max(1, Math.round(thickness / 2.0F));
-        int segments = Math.max(1, Math.round(ARC_SEGMENTS * Math.min(1.0F, Math.max(0.0F, coverage))));
-        for (int i = 0; i < segments; i++) {
-            float angle = rotation + (float) (i * Math.PI * 2.0 / ARC_SEGMENTS);
-            int x = Math.round(centerX + (float) Math.cos(angle) * radius);
-            int y = Math.round(centerY + (float) Math.sin(angle) * radius);
-            graphics.fill(
-                    RenderType.guiOverlay(),
-                    x - halfThickness,
-                    y - halfThickness,
-                    x + halfThickness + 1,
-                    y + halfThickness + 1,
-                    argb
-            );
-        }
-    }
-
     private static int mixColor(int first, int second, float progress) {
         int r = Math.round(((first >>> 16) & 0xFF) + (((second >>> 16) & 0xFF) - ((first >>> 16) & 0xFF)) * progress);
         int g = Math.round(((first >>> 8) & 0xFF) + (((second >>> 8) & 0xFF) - ((first >>> 8) & 0xFF)) * progress);
         int b = Math.round((first & 0xFF) + ((second & 0xFF) - (first & 0xFF)) * progress);
         return 0xFF000000 | (r << 16) | (g << 8) | b;
-    }
-
-    private static int clampColor(float value) {
-        return Math.max(0, Math.min(255, Math.round(value)));
-    }
-
-    private static float fract(float value) {
-        return value - (float) Math.floor(value);
     }
 }

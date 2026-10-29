@@ -11,8 +11,8 @@ public final class ProtocolTopics {
     public static final String MODULE_STATUS = "MODULE.STATUS";
     public static final String PRESENCE_ACTIVITY = "PRESENCE.ACTIVITY";
     public static final String PRESENCE_INTERACTION_CONTEXT = "PRESENCE.INTERACTION_CONTEXT";
+    public static final String PRESENCE_PARTNER = "PRESENCE.PARTNER";
     public static final String DIALOGUE_SESSION_EVENTS = "DIALOGUE.SESSION_EVENTS";
-    public static final String DIALOGUE_OWNER_PREVIEW = "DIALOGUE.OWNER_PREVIEW";
 
     private ProtocolTopics() {
     }
