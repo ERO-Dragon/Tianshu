@@ -9,14 +9,17 @@ import java.util.Optional;
  *
  * <p>The resolved layout is cached and re-resolved only when the screen size, the icon size or the configured
  * position changes, so a steady frame builds no objects at all: the transition returns the same parameter
- * instance and this controller returns a frame that carries it.</p>
+ * instance and this controller returns a frame that carries it. Ordinary state changes take 240 ms; the
+ * loading handoff uses 700 ms so the collapse to the dot and the growth out of it read as one motion.</p>
  */
 public final class PresenceIconElementController implements PresenceHudElementController {
     public static final String ELEMENT_ID = "presence.icon";
-    private static final long TRANSITION_MILLIS = 240L;
+    private static final long TRANSITION_MILLIS = 1000L;
+    private static final long LOADING_TRANSITION_MILLIS = 1500L;
 
     private final PresenceHudSettings settings;
-    private final PresenceHudVisualTransition visualTransition = new PresenceHudVisualTransition(TRANSITION_MILLIS);
+    private final PresenceHudVisualTransition visualTransition =
+            new PresenceHudVisualTransition(TRANSITION_MILLIS, LOADING_TRANSITION_MILLIS);
     private final PresenceHudElementStateTracker elementState = new PresenceHudElementStateTracker();
     private PresenceHudLayout cachedLayout;
     private int cachedScreenWidth = -1;

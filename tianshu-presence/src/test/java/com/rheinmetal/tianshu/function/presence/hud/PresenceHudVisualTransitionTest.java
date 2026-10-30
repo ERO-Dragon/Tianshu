@@ -79,4 +79,30 @@ final class PresenceHudVisualTransitionTest {
         assertTrue(halfway.loadingBlend() > 0.0F);
         assertTrue(halfway.loadingBlend() < 1.0F);
     }
+
+    @Test
+    void transitionsThatTouchLoadingUseTheLongerHandoffDuration() {
+        PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24.0F, false, 0.5D, 0.4D);
+        PresenceHudVisualTransition transition = new PresenceHudVisualTransition(100L, 700L);
+
+        transition.accept(PresenceHudVisualState.IDLE, 1_000L, layout);
+        transition.accept(PresenceHudVisualState.LOADING, 1_100L, layout);
+
+        PresenceHudVisualParameters early = transition.sample(1_200L);
+        assertTrue(early.loadingBlend() > 0.0F && early.loadingBlend() < 1.0F,
+                "a 100 ms sample must not finish a 700 ms loading handoff");
+
+        PresenceHudVisualParameters midpoint = transition.sample(1_450L);
+        assertEquals(0.5F, midpoint.loadingBlend(), 0.02F);
+
+        PresenceHudVisualParameters done = transition.sample(1_800L);
+        assertEquals(1.0F, done.loadingBlend(), 0.001F);
+
+        transition.accept(PresenceHudVisualState.CHAT, 2_000L, layout);
+        PresenceHudVisualParameters leaving = transition.sample(2_300L);
+        assertTrue(leaving.loadingBlend() > 0.0F && leaving.loadingBlend() < 1.0F,
+                "leaving loading uses the same longer duration");
+
+        assertEquals(0.0F, transition.sample(2_700L).loadingBlend(), 0.001F);
+    }
 }

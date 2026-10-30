@@ -135,7 +135,7 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
 | `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期和健康状态，供设置、诊断和日志观察。 |
-| `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态与两个并行标记（聆听、后台任务）。 |
+| `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态（含聆听）与后台并行标记。 |
 | `PRESENCE.INTERACTION_CONTEXT` | `PRESENCE_INTERACTION_CONTEXT` | 交互上下文摘要；映迹在准星、主手、装备、屏幕变化时推送，IA 据它维护预中标人。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `PRESENCE.PARTNER` | `PRESENCE_PARTNER` | 当前预中标人，或中标人及其租期截止时间；听澜写入、映迹渲染，取代旧的 `DIALOGUE.OWNER_PREVIEW`。 |
@@ -144,7 +144,7 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 
 `MODULE_STATUS` 使用 `ModuleStatusPayload`。它是观察性状态，不替代 `RuntimeCapabilityRegistry` 的请求准入判断。模块应在真实生命周期边界发布已有的 waiting/starting/ready/failed 状态：模型下载完成但运行时尚未初始化或预热时仍发布 waiting，只有对应 capability 已可用后才能发布 ready。状态中的 `messageKey` 由订阅者本地化；common 不依赖具体 HUD 或 GUI。
 
-`PRESENCE.ACTIVITY` 使用 `PresenceActivityPayload`，由活动实际拥有者配对发布 `STARTED/ENDED`。`ERROR`、`RECONNECTING`、`LOADING` 和 `PROCESSING_TASK` 任何模块可发布；`THINKING` / `RESPONDING` 只接受 `module.ax`。`LISTENING` 是回合级活动：`module.asr` 按下说话键时开始，由解析这一轮的模块（`module.ia`）在仲裁给出结果时结束——这是唯一允许非所有者结束的类型。`PROCESSING_TASK` 与 `LISTENING` 是并行标记，不参与主状态排序。完整接入规则见 [Presence产品活动协议使用文档.md](Presence产品活动协议使用文档.md)。
+`PRESENCE.ACTIVITY` 使用 `PresenceActivityPayload`，由活动实际拥有者配对发布 `STARTED/ENDED`。`ERROR`、`RECONNECTING`、`LOADING` 和 `PROCESSING_TASK` 任何模块可发布；`THINKING` / `RESPONDING` 只接受 `module.ax`。`LISTENING` 是回合级活动：`module.asr` 按下说话键时开始，由解析这一轮的模块（`module.ia`）在仲裁给出结果时结束——这是唯一允许非所有者结束的类型。`LISTENING` 与其它活动一样竞争主状态；`PROCESSING_TASK` 是唯一的并行标记，不参与主状态排序。完整接入规则见 [Presence_产品活动协议使用文档](../function/presence/Presence_产品活动协议使用文档.md)。
 
 `PRESENCE.INTERACTION_CONTEXT` 使用 `PresenceInteractionContextPayload`，字段是仲裁条件能读到的上下文子集：准星命中与目标实体、主手与装备物品 id、潜行、交互键、屏幕类型，外加 delivery 措辞需要的显示名与准星距离（不参与变化比较，也不被任何 claim 条件读取）。映迹在客户端 tick 里比较这些值，变化才发，topic 用 `LATEST_ONLY`；听澜开口时冻结最近一次推送作为本轮仲裁上下文，不再另发 `PRESENCE.QUERY_CONTEXT`，查询快照因此只服务于其他消费者（如辅星的动态事实）。
 

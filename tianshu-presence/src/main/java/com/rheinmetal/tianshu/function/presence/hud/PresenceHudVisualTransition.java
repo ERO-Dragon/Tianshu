@@ -9,16 +9,27 @@ import java.util.Objects;
  * parameter object until something really changes, so a steady frame allocates nothing here; only the two
  * frames around a state change build new parameters. The layout is supplied on every {@link #accept} call
  * because a resize or a settings change must move the element even while the animation is settled.</p>
+ *
+ * <p>Transitions that touch {@link PresenceHudVisualState#LOADING} use their own, longer duration: that is the
+ * sphere ⇄ handoff-dot ⇄ loading-cluster sequence, and it needs time to read as one motion rather than a flash.</p>
  */
 public final class PresenceHudVisualTransition {
     private final long durationMillis;
+    private final long loadingDurationMillis;
     private PresenceHudVisualParameters from;
     private PresenceHudVisualParameters target;
     private PresenceHudLayout layout;
     private long startedAtMillis;
+    private long activeDurationMillis;
 
     public PresenceHudVisualTransition(long durationMillis) {
+        this(durationMillis, durationMillis);
+    }
+
+    public PresenceHudVisualTransition(long durationMillis, long loadingDurationMillis) {
         this.durationMillis = Math.max(1L, durationMillis);
+        this.loadingDurationMillis = Math.max(1L, loadingDurationMillis);
+        this.activeDurationMillis = this.durationMillis;
     }
 
     public void reset() {
@@ -26,6 +37,7 @@ public final class PresenceHudVisualTransition {
         target = null;
         layout = null;
         startedAtMillis = 0L;
+        activeDurationMillis = durationMillis;
     }
 
     /**
@@ -45,6 +57,9 @@ public final class PresenceHudVisualTransition {
             from = PresenceHudVisualParameters.forState(state, layout);
             target = from;
             startedAtMillis = now;
+            activeDurationMillis = state == PresenceHudVisualState.LOADING
+                    ? loadingDurationMillis
+                    : durationMillis;
             return;
         }
         if (target.state() == state) {
@@ -56,6 +71,9 @@ public final class PresenceHudVisualTransition {
         }
         from = sample(now);
         target = PresenceHudVisualParameters.forState(state, layout);
+        boolean touchesLoading = from.state() == PresenceHudVisualState.LOADING
+                || target.state() == PresenceHudVisualState.LOADING;
+        activeDurationMillis = touchesLoading ? loadingDurationMillis : durationMillis;
         startedAtMillis = now;
     }
 
@@ -68,7 +86,7 @@ public final class PresenceHudVisualTransition {
             return target;
         }
         float progress = Math.min(1.0F, Math.max(0.0F,
-                (Math.max(0L, nowMillis) - startedAtMillis) / (float) durationMillis));
+                (Math.max(0L, nowMillis) - startedAtMillis) / (float) activeDurationMillis));
         if (progress >= 1.0F) {
             from = target;
             return target;

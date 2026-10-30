@@ -1,5 +1,7 @@
 # 映迹 HUD 预览（浏览器版）
 
+模块文档入口见 [Presence 文档索引](../../../doc/function/presence/Presence_文档索引.md)。
+
 不用启动游戏，直接在网页里切换映迹的主状态、预设、图标尺寸与伙伴标记，观察图标、状态文字和整个 HUD 的变化。
 
 双击 `index.html` 即可打开（`file://` 下也能运行，不需要起服务器）。
@@ -18,7 +20,7 @@
 - `PresenceHudPreviewAssetTest` 会比对页面里的生成块与源码；改了 HUD 却忘了重新生成时，`check` 会失败而不是让页面悄悄过期。
 
 - **手写部分是渲染过程本身**：`renderer.js` 只保留示意背景、状态文字面板和伙伴标记（它本来就是贴图 + 租约环）；
-  图标完全由 `.fsh` 绘制。`app.js` 复刻 `PresenceHudVisualTransition` 的 240 ms smootherstep 与
+  图标完全由 `.fsh` 绘制。`app.js` 复刻 `PresenceHudVisualTransition` 的 240 ms 状态过渡 / 700 ms loading 交接与
   `PresencePartnerIconRenderer` 的入退场、租约环。伙伴环的密度公式来自 `PresenceHudShapes`，改公式要同步这里。
 
 ## 对照关系
@@ -28,7 +30,7 @@
 | 主状态（含正在听）/ 后台标记 | `PresenceActivitySnapshot`（`primaryState` / `backgroundTask`） |
 | 状态参数 | `PresenceHudVisualParameters.forState` |
 | 中心点与尺寸 | `PresenceHudLayout.resolve`（默认锚点在经验条上方） |
-| 240 ms 过渡 | `PresenceHudVisualTransition` |
+| 240 ms / 700 ms 过渡 | `PresenceHudVisualTransition` |
 | 图标层 | `PresenceIconElementRenderer` 的 quad + `presence_preset_*.fsh`（预设、聆听环、后台小点同一个片元程序） |
 | 状态文字 | `PresenceDisplayPolicy` + `PresenceStatusTextElementRenderer` |
 | 伙伴标记 | `PresencePartnerSnapshot` 的租约 + `PresencePartnerIconRenderer` 的环/摆动/入退场 |
@@ -36,7 +38,7 @@
 
 ## 页面怎么用
 
-- **主状态**：IDLE / LISTENING / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。切换时走真实的 240 ms 过渡；
+- **主状态**：IDLE / LISTENING / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。普通切换 240 ms，涉及 loading 的交接 700 ms；
   ERROR 与 RECONNECTING 分别复用 TASK / LOADING 的视觉，只有文字不同。
 - **正在听**是主状态（与空闲同级）；**后台任务**才是唯一并行标记。
   `PresencePrimaryState.LISTENING` 与 `PresenceHudVisualState.LISTENING` 直接对应，视觉上是 IDLE 参数加聆听脉冲，不再有单独的 `listening` 布尔。

@@ -1,6 +1,7 @@
 /*
- * Drives the presence HUD preview: the control panel, the virtual clocks, the 240 ms visual transition and the partner
- * marker's lease. The drawing itself lives in renderer.js; this file only decides what state a frame is in.
+ * Drives the presence HUD preview: the control panel, the virtual clocks, the 240 ms visual transition / 700 ms
+ * loading handoff, and the partner marker's lease. The drawing itself lives in renderer.js; this file only decides
+ * what state a frame is in.
  */
 (function () {
     'use strict';
@@ -35,6 +36,7 @@
     const XP_TOP_OFFSET = constant('PresenceHudLayout', 'EXPERIENCE_LEVEL_TOP_OFFSET');
     const XP_GAP = constant('PresenceHudLayout', 'EXPERIENCE_LEVEL_GAP');
     const TRANSITION_MILLIS = constant('PresenceIconElementController', 'TRANSITION_MILLIS');
+    const LOADING_TRANSITION_MILLIS = constant('PresenceIconElementController', 'LOADING_TRANSITION_MILLIS');
     const ENTER_MILLIS = constant('PresencePartnerIconRenderer', 'ENTER_MILLIS');
     const EXIT_MILLIS = constant('PresencePartnerIconRenderer', 'EXIT_MILLIS');
     const ENTER_MIN_SCALE = constant('PresencePartnerIconRenderer', 'ENTER_MIN_SCALE');
@@ -82,7 +84,7 @@
     let autoCycleAt = 0;
     let autoCycleIndex = 0;
 
-    const transition = { from: null, target: null, startedAt: 0 };
+    const transition = { from: null, target: null, startedAt: 0, duration: TRANSITION_MILLIS };
     const partner = {
         phase: 'on',
         phaseStart: 0,
@@ -133,13 +135,19 @@
         return paramsFor(visualState());
     }
 
+    function transitionMillisFor(from, to) {
+        return from && to && (from.state === 'LOADING' || to.state === 'LOADING')
+            ? LOADING_TRANSITION_MILLIS
+            : TRANSITION_MILLIS;
+    }
+
     function sampleParams(now) {
         if (!transition.target) {
             return currentParams();
         }
         const from = transition.from || transition.target;
         const to = transition.target;
-        const progress = clamp01((now - transition.startedAt) / TRANSITION_MILLIS);
+        const progress = clamp01((now - transition.startedAt) / (transition.duration || TRANSITION_MILLIS));
         if (progress >= 1) {
             return to;
         }
@@ -156,8 +164,10 @@
 
     function beginTransition(now) {
         const target = currentParams();
-        transition.from = sampleParams(now);
+        const from = sampleParams(now);
+        transition.from = from;
         transition.target = target;
+        transition.duration = transitionMillisFor(from, target);
         transition.startedAt = now;
     }
 
@@ -363,7 +373,7 @@
         if (!transition.target) {
             return 1;
         }
-        return clamp01((renderMs - transition.startedAt) / TRANSITION_MILLIS);
+        return clamp01((renderMs - transition.startedAt) / (transition.duration || TRANSITION_MILLIS));
     }
 
     // ------------------------------------------------------------------ controls
@@ -457,6 +467,7 @@
         const now = renderMs;
         transition.from = paramsFor('IDLE', false);
         transition.target = currentParams();
+        transition.duration = transitionMillisFor(transition.from, transition.target);
         transition.startedAt = now;
     });
 
@@ -633,6 +644,7 @@
     $('asset-status').textContent = '模型已加载 · ' + model.moduleId;
     transition.target = currentParams();
     transition.from = transition.target;
+    transition.duration = transitionMillisFor(transition.from, transition.target);
     transition.startedAt = renderMs;
     requestAnimationFrame(frame);
 })();

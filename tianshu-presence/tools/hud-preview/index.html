@@ -157,7 +157,7 @@
             <ul class="source-list">
                 <li><code>PresenceHudVisualParameters</code> 状态参数</li>
                 <li><code>PresenceHudLayout</code> 锚点与尺寸</li>
-                <li><code>PresenceHudVisualTransition</code> 240ms smootherstep</li>
+                <li><code>PresenceHudVisualTransition</code> 240ms / loading 700ms smootherstep</li>
                 <li><code>PresenceIconElementRenderer</code> 着色器 quad</li>
                 <li><code>PresenceStatusTextElementRenderer</code> 文字面板</li>
                 <li><code>PresencePartnerIconRenderer</code> 伙伴标记</li>
@@ -281,6 +281,7 @@
     },
     "PresenceIconElementController": {
       "ELEMENT_ID": "presence.icon",
+      "LOADING_TRANSITION_MILLIS": 700,
       "TRANSITION_MILLIS": 240
     },
     "PresenceStatusTextElementRenderer": {

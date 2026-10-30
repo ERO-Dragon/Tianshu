@@ -122,7 +122,7 @@ if (!AsrProtocolAdapter.MODULE_ID.equals(status.moduleId())) {
 
 PTT 链路会发布 `asr.speech.<sessionId>`（`LISTENING`）：按下开始采集时 STARTED。它会一直保持到这一轮有了仲裁结果——识别、文本修复、仲裁都属于同一轮语音，由思衡在仲裁给出结果时结束（`LISTENING` 是回合级活动，允许解析方结束）。ASR 只在自己的路径上提前结束：没录到音频、识别失败、取消、运行时打断、模块停止。
 
-`LISTENING` 是并行标记：不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动。
+`LISTENING` 是主状态：它占用 HUD 的主状态槽位，显示聆听文字与图标脉冲；不创建 ASR 文本、不代表 IA 已选择 owner，也不触发 AX 中断。映迹在世界退出时清空这些活动。
 
 ## 6. 运行时中断
 
