@@ -15,6 +15,8 @@ file('adapter.properties').withInputStream { adapterProperties.load(it) }
 def neoVersion = adapterProperties.getProperty('neo_version')
 def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings_version')
 def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
+def sharedLayer = adapterProperties.getProperty('shared_layer')
+def sharedLayerRoot = "../${sharedLayer}"
 
 // Running the NeoForge client from the Gradle panel is the development path,
 // so it defaults to the Debug channel. Artifact builds remain Release by
@@ -61,8 +63,8 @@ java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_vers
 // of it, which is the whole contract. A sibling adapter (1.21-1.21.1-fabric) includes the same directory.
 sourceSets {
     main {
-        java.srcDir '../1.21-1.21.1-common/src/main/java'
-        resources.srcDir '../1.21-1.21.1-common/src/main/resources'
+        java.srcDir "${sharedLayerRoot}/src/main/java"
+        resources.srcDir "${sharedLayerRoot}/src/main/resources"
     }
     test {
         java.srcDir '../common/src/test/java'

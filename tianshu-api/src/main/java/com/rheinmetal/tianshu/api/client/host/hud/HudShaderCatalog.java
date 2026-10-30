@@ -7,8 +7,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Where a feature declares the shader asset behind one of its HUD programs.
  *
- * <p>The platform creates {@code ShaderInstance}s; the feature owns the files, their uniforms and their look. A
- * feature declares the asset id while its jar loads (before the client's shader event), and the platform registers
+ * <p>The platform compiles the declared asset; the feature owns the files, their uniforms and their look. A
+ * feature declares the asset id while its jar loads (before the client's shader registration), and the platform registers
  * whatever has been declared. An absent feature declares nothing, its program simply has no shader, and that layer
  * draws nothing — the platform never needs a list of features or their resource paths.</p>
  *

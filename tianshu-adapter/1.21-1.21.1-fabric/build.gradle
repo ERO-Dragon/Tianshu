@@ -13,6 +13,8 @@ file('adapter.properties').withInputStream { adapterProperties.load(it) }
 def mcVersion = adapterProperties.getProperty('minecraft_version')
 def loaderVersion = adapterProperties.getProperty('fabric_loader_version')
 def apiVersion = adapterProperties.getProperty('fabric_api_version')
+def sharedLayer = adapterProperties.getProperty('shared_layer')
+def sharedLayerRoot = "../${sharedLayer}"
 
 // Both adapters ship a jar with the same mod id, so the artifact name says which loader it belongs to.
 base {
@@ -27,8 +29,8 @@ java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_vers
 // `verifyCommonAdapterNeutral` keeps loader imports out of it.
 sourceSets {
     main {
-        java.srcDir '../1.21-1.21.1-common/src/main/java'
-        resources.srcDir '../1.21-1.21.1-common/src/main/resources'
+        java.srcDir "${sharedLayerRoot}/src/main/java"
+        resources.srcDir "${sharedLayerRoot}/src/main/resources"
     }
     test {
         java.srcDir '../common/src/test/java'

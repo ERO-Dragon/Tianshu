@@ -1,0 +1,50 @@
+package com.rheinmetal.tianshu.mc.host;
+
+import com.rheinmetal.tianshu.api.game.GameObjectId;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+final class ClientEntityDictionaryBuilder {
+    private final ClientLanguageSnapshot languageSnapshot;
+
+    ClientEntityDictionaryBuilder(ClientLanguageSnapshot languageSnapshot) {
+        this.languageSnapshot = languageSnapshot;
+    }
+
+    Map<String, List<String>> build() {
+        String languageCode = languageSnapshot.languageCode();
+        LinkedHashMap<String, List<String>> dictionary = new LinkedHashMap<>(BuiltInRegistries.ENTITY_TYPE.size());
+        for (EntityType<?> entityType : BuiltInRegistries.ENTITY_TYPE) {
+            ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(entityType);
+            if (key == null) {
+                continue;
+            }
+
+            String entityTypeId = key.toString();
+            String localizedName = ClientLanguagePolicy.useChineseContent(languageCode)
+                    ? ClientLanguagePolicy.safeTranslatedName(Component.translatable(entityType.getDescriptionId()).getString())
+                    : "";
+            String registryAlias = ClientLanguagePolicy.englishName(key);
+
+            List<String> aliases = new ArrayList<>();
+            if (localizedName != null && !localizedName.isEmpty()) {
+                aliases.add(localizedName);
+            }
+            if (registryAlias != null && !registryAlias.isEmpty() && !registryAlias.equalsIgnoreCase(localizedName)) {
+                aliases.add(registryAlias);
+            }
+
+            if (!aliases.isEmpty()) {
+                dictionary.put(GameObjectId.entity(entityTypeId), aliases);
+            }
+        }
+        return dictionary;
+    }
+}
