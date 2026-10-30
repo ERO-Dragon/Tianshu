@@ -8,10 +8,10 @@
 
 ## 这个工具从哪里取数
 
-- **模型块与着色器块是生成出来的**：`index.html` 里的 `<script id="presence-hud-model">` 和四个 `<script id="shader-…">`
+- **模型块与着色器块是生成出来的**：`index.html` 里的 `<script id="presence-hud-model">` 和三个 `<script id="shader-…">`
   由 `HudPreviewAssetExporter` 从 `tianshu-presence` 的真实源码生成——
   状态参数（`PresenceHudVisualParameters`）、状态映射、布局常量、过渡时长、渲染器颜色/透明度/限流常量、
-  七条状态文案与三份 `.fsh` 原文。重新生成：
+  七条状态文案与两份 `.fsh` 原文。重新生成：
 
   ```powershell
   .\gradlew.bat :tianshu-presence:exportHudPreviewAssets
@@ -20,7 +20,7 @@
 - `PresenceHudPreviewAssetTest` 会比对页面里的生成块与源码；改了 HUD 却忘了重新生成时，`check` 会失败而不是让页面悄悄过期。
 
 - **手写部分是渲染过程本身**：`renderer.js` 只保留示意背景、状态文字面板和伙伴标记（它本来就是贴图 + 租约环）；
-  图标完全由 `.fsh` 绘制。`app.js` 复刻 `PresenceHudVisualTransition` 的 240 ms 状态过渡 / 700 ms loading 交接与
+  图标完全由 `.fsh` 绘制。`app.js` 复刻 `PresenceHudVisualTransition` 的状态过渡 / loading 交接时长与
   `PresencePartnerIconRenderer` 的入退场、租约环。伙伴环的密度公式来自 `PresenceHudShapes`，改公式要同步这里。
 
 ## 对照关系
@@ -30,7 +30,7 @@
 | 主状态（含正在听）/ 后台标记 | `PresenceActivitySnapshot`（`primaryState` / `backgroundTask`） |
 | 状态参数 | `PresenceHudVisualParameters.forState` |
 | 中心点与尺寸 | `PresenceHudLayout.resolve`（默认锚点在经验条上方） |
-| 240 ms / 700 ms 过渡 | `PresenceHudVisualTransition` |
+| 状态 / loading 过渡 | `PresenceHudVisualTransition` |
 | 图标层 | `PresenceIconElementRenderer` 的 quad + `presence_preset_*.fsh`（预设、聆听环、后台小点同一个片元程序） |
 | 状态文字 | `PresenceDisplayPolicy` + `PresenceStatusTextElementRenderer` |
 | 伙伴标记 | `PresencePartnerSnapshot` 的租约 + `PresencePartnerIconRenderer` 的环/摆动/入退场 |
@@ -38,14 +38,16 @@
 
 ## 页面怎么用
 
-- **主状态**：IDLE / LISTENING / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。普通切换 240 ms，涉及 loading 的交接 700 ms；
+- **主状态**：IDLE / LISTENING / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。普通切换与 loading 交接的时长由 `PresenceIconElementController` 的两个常量决定；
   ERROR 与 RECONNECTING 分别复用 TASK / LOADING 的视觉，只有文字不同。
 - **正在听**是主状态（与空闲同级）；**后台任务**才是唯一并行标记。
-  `PresencePrimaryState.LISTENING` 与 `PresenceHudVisualState.LISTENING` 直接对应，视觉上是 IDLE 参数加聆听脉冲，不再有单独的 `listening` 布尔。
+  `LISTENING` 有独立视觉参数：球体最大、极光只比空闲略强，`pulse` 在球外画两道扩散涟漪；不再使用“IDLE 参数加脉冲”的旧映射。
+- **主状态视觉**：IDLE 小球弱极光；LISTENING 大球 + 外涟漪；THINKING 参考尺寸与参考极光；RESPONDING 与思考同尺寸、极光与聆听同强度，球体表面肥皂泡式起伏。预设一 / 预设二共用这套语义，只换图案。
+- **尺寸**：16–96 px。此前的 64 px 上限已放宽；状态越大的球越需要足够像素，调 shader 时建议先在 64–96 px 看。
 - **预设一 / 预设二**：两套可选图案，分别对应 `libs/ShaderToy/preset1.glsl` 与 `preset2.glsl`；
-  聆听扩散环和后台小点是两者共用的叠加层，加载态使用独立的 liquid loading 程序。
-- **加载交接**：进入加载时，当前球体在前半段收成中心实心点，loading 在后半段从点展开成六点；
-  退出时反过来，六点收成点，所选预设从点长成球体。同一时刻只画一个程序，中点两层画同一个点。
+  聆听扩散环、后台小点和 loading 入口都在各自的预设程序里，不再有独立 loading program。
+- **加载交接**：`Morph` 0 是预设球体、1 是六点液体簇；进入时球体收成点、loading 从点展开成六点，退出时反过来。
+  交接、点与球体在同一个预设程序里合成，中点两层绘制同一个点。
 - **禁用来着色器层**：图标不绘制，等价于游戏内程序缺失/编译失败时的画面（没有 Java 回退层）。
 - **暂停 / 倍率**：把过渡放慢或冻住，便于检查中间帧。
 - **缩放**：围绕图标中心放大显示（100%–300%），逻辑像素与布局不变；放大是显示层缩放，着色器细节会略软，

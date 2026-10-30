@@ -46,6 +46,11 @@ public record PresenceHudVisualParameters(
         layout = layout == null ? PresenceHudLayout.resolve(null, 1, 1) : layout;
     }
 
+    /**
+     * The settled per-state look: idle is a small, quiet sphere; listening a larger shell with outside ripples;
+     * thinking the reference aurora at the reference size; responding the listening aurora on a thinking-sized
+     * soap bubble (the surface undulation itself is keyed off the shader state).
+     */
     public static PresenceHudVisualParameters forState(
             PresenceHudVisualState state,
             PresenceHudLayout layout
@@ -66,19 +71,24 @@ public record PresenceHudVisualParameters(
                 convergence = 0.35F;
             }
             case CHAT -> {
-                intensity = 0.92F;
-                speed = 1.15F;
-                convergence = 0.10F;
+                intensity = 0.28F;
+                speed = 0.90F;
+                convergence = 0.34F;
             }
             case CHAT_THINKING -> {
                 intensity = 0.66F;
                 speed = 0.52F;
-                convergence = 0.78F;
+                convergence = 0.34F;
             }
-            case IDLE, LISTENING -> {
-                intensity = 0.34F;
+            case IDLE -> {
+                intensity = 0.24F;
+                speed = 0.20F;
+                convergence = 0.96F;
+            }
+            case LISTENING -> {
+                intensity = 0.28F;
                 speed = 0.24F;
-                convergence = 0.18F;
+                convergence = 0.15F;
             }
             default -> throw new IllegalStateException("Unhandled visual state: " + effective);
         }

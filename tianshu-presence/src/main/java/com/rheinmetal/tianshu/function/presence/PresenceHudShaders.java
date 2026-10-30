@@ -12,16 +12,14 @@ import com.rheinmetal.tianshu.api.client.host.hud.HudShaderCatalog;
  */
 public final class PresenceHudShaders {
 
-    public static final String LOADING = "tianshu_presence:presence_loading";
     public static final String PRESET_ONE = "tianshu_presence:presence_preset_one";
     public static final String PRESET_TWO = "tianshu_presence:presence_preset_two";
 
     private PresenceHudShaders() {
     }
 
-    /** Declares the three families; called once while the mod loads, before the client's shader event. */
+    /** Declares the two families; each owns its loading entrance. */
     public static void declare() {
-        HudShaderCatalog.declare(HudProgram.LOADING, LOADING);
         HudShaderCatalog.declare(HudProgram.PRESET_ONE, PRESET_ONE);
         HudShaderCatalog.declare(HudProgram.PRESET_TWO, PRESET_TWO);
     }

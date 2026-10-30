@@ -1,6 +1,6 @@
 /*
- * Drives the presence HUD preview: the control panel, the virtual clocks, the 240 ms visual transition / 700 ms
- * loading handoff, and the partner marker's lease. The drawing itself lives in renderer.js; this file only decides
+ * Drives the presence HUD preview: the control panel, the virtual clocks, the visual transition and loading
+ * handoff, and the partner marker's lease. The drawing itself lives in renderer.js; this file only decides
  * what state a frame is in.
  */
 (function () {

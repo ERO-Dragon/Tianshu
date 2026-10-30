@@ -31,8 +31,7 @@ final class PresenceHudShaderTest {
             PresenceHudShaders.declare();
             Map<HudProgram, String> declared = HudShaderCatalog.declarations();
 
-            assertEquals(3, declared.size());
-            assertEquals("tianshu_presence:presence_loading", declared.get(HudProgram.LOADING));
+            assertEquals(2, declared.size());
             assertEquals("tianshu_presence:presence_preset_one", declared.get(HudProgram.PRESET_ONE));
             assertEquals("tianshu_presence:presence_preset_two", declared.get(HudProgram.PRESET_TWO));
         } finally {
@@ -43,7 +42,6 @@ final class PresenceHudShaderTest {
     @Test
     void theDeclaredAssetsExistAndBlendWithAlpha() throws Exception {
         for (String shader : new String[]{
-                "presence_loading.json",
                 "presence_preset_one.json",
                 "presence_preset_two.json"
         }) {

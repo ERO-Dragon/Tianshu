@@ -9,8 +9,8 @@ import java.util.Optional;
  *
  * <p>The resolved layout is cached and re-resolved only when the screen size, the icon size or the configured
  * position changes, so a steady frame builds no objects at all: the transition returns the same parameter
- * instance and this controller returns a frame that carries it. Ordinary state changes take 240 ms; the
- * loading handoff uses 700 ms so the collapse to the dot and the growth out of it read as one motion.</p>
+ * instance and this controller returns a frame that carries it. Ordinary state changes and the loading handoff
+ * have separate durations, so the collapse to the dot and the growth out of it can be tuned as one motion.</p>
  */
 public final class PresenceIconElementController implements PresenceHudElementController {
     public static final String ELEMENT_ID = "presence.icon";

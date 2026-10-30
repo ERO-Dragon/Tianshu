@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.presence.hud;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class PresenceHudVisualParametersTest {
     @Test
@@ -42,17 +43,34 @@ final class PresenceHudVisualParametersTest {
     }
 
     @Test
-    void listeningIsTheIdleVisualWithThePulseOn() {
+    void listeningGrowsTheShellAndAddsTheRipple() {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24, false, 0.5D, 0.4D);
 
         PresenceHudVisualParameters idle = PresenceHudVisualParameters.forState(PresenceHudVisualState.IDLE, layout);
         PresenceHudVisualParameters listening = PresenceHudVisualParameters.forState(
                 PresenceHudVisualState.LISTENING, layout);
 
-        assertEquals(idle.intensity(), listening.intensity(), 0.001F);
-        assertEquals(idle.speed(), listening.speed(), 0.001F);
-        assertEquals(idle.convergence(), listening.convergence(), 0.001F);
+        assertTrue(listening.convergence() < idle.convergence(), "listening must be the larger sphere");
+        assertTrue(listening.intensity() > idle.intensity(), "listening aurora is slightly stronger than idle");
         assertEquals(1.0F, listening.pulse(), 0.001F);
         assertEquals(0.0F, idle.pulse(), 0.001F);
+    }
+
+    @Test
+    void thinkingAndRespondingShareTheShellWhileRespondingMatchesTheListeningAurora() {
+        PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24, false, 0.5D, 0.4D);
+
+        PresenceHudVisualParameters listening = PresenceHudVisualParameters.forState(
+                PresenceHudVisualState.LISTENING, layout);
+        PresenceHudVisualParameters thinking = PresenceHudVisualParameters.forState(
+                PresenceHudVisualState.CHAT_THINKING, layout);
+        PresenceHudVisualParameters responding = PresenceHudVisualParameters.forState(
+                PresenceHudVisualState.CHAT, layout);
+
+        assertEquals(thinking.convergence(), responding.convergence(), 0.001F);
+        assertEquals(listening.intensity(), responding.intensity(), 0.001F);
+        assertTrue(thinking.intensity() > listening.intensity(), "thinking keeps the reference aurora");
+        assertTrue(listening.convergence() < thinking.convergence(), "listening is larger than thinking");
+        assertEquals(0.0F, responding.pulse(), 0.001F);
     }
 }

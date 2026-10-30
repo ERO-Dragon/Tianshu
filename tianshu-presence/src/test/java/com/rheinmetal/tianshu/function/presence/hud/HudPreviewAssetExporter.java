@@ -125,7 +125,6 @@ public final class HudPreviewAssetExporter {
     private static Map<String, String> shaderBlocks() {
         Map<String, String> blocks = new LinkedHashMap<>();
         blocks.put("presence_icon.vsh", "shader-presence-icon-vsh");
-        blocks.put("presence_loading.fsh", "shader-presence-loading-fsh");
         blocks.put("presence_preset_one.fsh", "shader-presence-preset-one-fsh");
         blocks.put("presence_preset_two.fsh", "shader-presence-preset-two-fsh");
         return blocks;

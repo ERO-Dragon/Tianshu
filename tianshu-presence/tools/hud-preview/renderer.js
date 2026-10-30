@@ -65,7 +65,6 @@
         const programs = new Map();
         const shaders = {
             vertex: sourceText('shader-presence-icon-vsh'),
-            loading: sourceText('shader-presence-loading-fsh'),
             presetOne: sourceText('shader-presence-preset-one-fsh'),
             presetTwo: sourceText('shader-presence-preset-two-fsh')
         };
@@ -158,12 +157,10 @@
             }
             try {
                 const fragments = {
-                    loading: shaders.loading,
                     presetOne: shaders.presetOne,
                     presetTwo: shaders.presetTwo
                 };
                 const labels = {
-                    loading: 'presence_loading.fsh',
                     presetOne: 'presence_preset_one.fsh',
                     presetTwo: 'presence_preset_two.fsh'
                 };
@@ -260,31 +257,9 @@
             if (!frame.settings.hudEnabled || !frame.settings.iconEnabled) {
                 return;
             }
-            // Loading hands off through one solid dot: the outgoing layer collapses into it on the first half of
-            // the loading blend, then the incoming layer grows out of it on the second half. Only one layer draws.
-            const blend = frame.visual.loadingBlend;
-            const loadingTarget = frame.visual.state === 'LOADING';
+            // The selected preset program owns the entire lifecycle; loadingBlend is its one handoff parameter.
             const presetKey = frame.settings.preset === 'PRESET_TWO' ? 'presetTwo' : 'presetOne';
-            const presetState = loadingTarget ? 'IDLE' : frame.visual.state;
-            const drawLoading = (morph) => drawLayer('loading', frame, 'LOADING', 1, morph);
-            const drawPreset = (morph) => drawLayer(presetKey, frame, presetState, 1, morph);
-            if (loadingTarget) {
-                if (blend < 0.5) {
-                    drawPreset(blend * 2);
-                } else {
-                    drawLoading(2 - blend * 2);
-                }
-                return;
-            }
-            if (blend > 0.001) {
-                if (blend > 0.5) {
-                    drawLoading(2 - blend * 2);
-                } else {
-                    drawPreset(blend * 2);
-                }
-                return;
-            }
-            drawPreset(0);
+            drawLayer(presetKey, frame, frame.visual.state, 1, frame.visual.loadingBlend);
         }
 
         function status() {

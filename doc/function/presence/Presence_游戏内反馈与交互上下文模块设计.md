@@ -291,6 +291,22 @@ LISTENING > RESPONDING > THINKING > ERROR > RECONNECTING > LOADING > IDLE
 
 两种运行时状况只表达"这条能力现在能不能用"：`RECONNECTING` 在通道恢复或模块停止时显式撤回，`ERROR` 在失败时发布、恢复时撤回，TTL 只是进程崩溃时的兜底。错误码、堆栈、队列长度、细分加载阶段和下载进度仍不进入产品状态；需要调试时只在设置页调试区域、诊断或日志查看。未来 shader 只消费 `primaryState`、`backgroundTask` 和状态持续时间，视觉参数不进入协议 payload。
 
+#### 5.3.1 主状态的视觉语言
+
+预设一与预设二共用同一套主状态语义，只改变图案本身；球体尺寸、极光强度和外围效果由 `PresenceHudVisualParameters` 的 intensity / speed / convergence 与 shader 的 `State` / `Pulse` 决定：
+
+| 主状态 | 球体 | 中心极光 | 外围 |
+|---|---|---|---|
+| `IDLE` | 最小，整体更接近一个安静的球 | 最弱 | 无涟漪 |
+| `LISTENING` | 最大 | 只比空闲略强 | 两道从球面向外扩散的涟漪 |
+| `THINKING` | 参考尺寸 | 参考强度，无额外衰减 | 无涟漪 |
+| `RESPONDING` | 与思考相同 | 与聆听相同 | 球体表面像肥皂泡一样缓慢起伏 |
+| `LOADING` | 六点液体簇，不是球 | — | 进入/退出时经中心实心点交接 |
+
+状态切换与 loading 交接使用各自的过渡常量（`TRANSITION_MILLIS` / `LOADING_TRANSITION_MILLIS`）。聆听涟漪、回答的肥皂泡起伏和 loading 的中心点由 shader 按 `Pulse` / `State` / `Morph` 执行，不进入协议。
+
+每个预设只有一个片元程序：liquid loading、中心点交接和球体都在同一个程序里，`Morph` 是唯一的「loading → 球体」参数；不再有独立 loading program，也不再有运行时切程序。
+
 ### 5.4 对话伙伴标记：预中标人与中标人
 
 映迹在主图标上显示"你现在在和谁说话"。这是**并行展示信息**，不参与主状态。这里有两个不同的东西，混在一起会让倒计时语义出错：
@@ -529,9 +545,8 @@ tianshu-presence/src/main/java/.../function/presence/
   PresenceHudShaders
 
 tianshu-presence/src/main/resources/assets/tianshu_presence/shaders/core/
-  presence_loading.json / presence_loading.fsh
-  presence_preset_one.json / presence_preset_one.fsh
-  presence_preset_two.json / presence_preset_two.fsh
+  presence_preset_one.json / presence_preset_one.fsh   (loading + fluid orb)
+  presence_preset_two.json / presence_preset_two.fsh   (loading + raymarch orb)
   presence_icon.vsh
 
 tianshu-api/src/main/java/.../api/client/host/hud/
@@ -624,8 +639,9 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 - 设置页控制 HUD 总开关、状态文本、图标、尺寸、预设和位置，不按来源过滤真实产品活动
 - 内测调试页已可查看 ASR / IA / AX / LLM / TTS / Presence 最新模块状态
 - 开口时冻结交互摘要，仲裁不再现取一次完整快照
-- HUD 图标改为纯 shader 绘制：流体球、raymarch 预设、liquid loading、聆听环与后台小点；程序缺失时图标不绘制，没有 Java 回退
-- loading 与预设通过中心实心点交接：进入 700ms（球 → 点 → 六点），退出 700ms（六点 → 点 → 球），同一时刻只画一个程序
+- HUD 图标改为纯 shader 绘制：每个预设程序都包含 liquid loading、中心点交接、流体球/raymarch、聆听环与后台小点；
+  程序缺失时图标不绘制，没有 Java 回退
+- `Morph` 是唯一的 loading→球体参数：进入 700ms（球 → 点 → 六点），退出 700ms（六点 → 点 → 球），全程同一个程序
 - 浏览器 HUD 预览工具（`tianshu-presence/tools/hud-preview`）可切换状态、预设、尺寸与伙伴标记，并查看生成模型和着色器
 
 待实现：

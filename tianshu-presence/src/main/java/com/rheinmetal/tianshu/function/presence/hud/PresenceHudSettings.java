@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.function.presence.hud;
 public interface PresenceHudSettings {
     double MIN_ICON_SIZE_PIXELS = 16.0D;
     double DEFAULT_ICON_SIZE_PIXELS = 28.0D;
-    double MAX_ICON_SIZE_PIXELS = 64.0D;
+    double MAX_ICON_SIZE_PIXELS = 96.0D;
 
     PresenceHudSettings ENABLED = new PresenceHudSettings() {
     };

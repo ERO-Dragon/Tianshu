@@ -18,8 +18,8 @@ final class PresenceHudVisualTransitionTest {
         PresenceHudVisualParameters halfway = transition.sample(1_220L);
 
         assertEquals(PresenceHudVisualState.CHAT, halfway.state());
-        assertTrue(halfway.intensity() > 0.34F);
-        assertTrue(halfway.intensity() < 0.92F);
+        assertTrue(halfway.intensity() > 0.24F);
+        assertTrue(halfway.intensity() < 0.32F);
         assertEquals(24.0F, halfway.layout().sizePixels(), 0.001F);
     }
 
@@ -33,7 +33,7 @@ final class PresenceHudVisualTransitionTest {
 
         PresenceHudVisualParameters sample = transition.sample(1_240L);
 
-        assertEquals(0.34F, sample.intensity(), 0.001F);
+        assertEquals(0.24F, sample.intensity(), 0.001F);
     }
 
     @Test
