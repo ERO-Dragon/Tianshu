@@ -161,6 +161,8 @@ public class TianshuModuleHost {
         registered.clear();
         prepared.clear();
         started.clear();
+        // Statuses deliberately survive: "a module failed to start" stays visible to diagnostics after the
+        // session is torn down (pinned by TianshuCoreManagerLifecycleTest#requiredPrepareFailureRemainsVisibleAfterCleanup).
     }
 
     private boolean invoke(TianshuModuleInstallation installation, ModuleLifecyclePhase phase, RuntimeCapabilityRegistry capabilities, Runnable action) {

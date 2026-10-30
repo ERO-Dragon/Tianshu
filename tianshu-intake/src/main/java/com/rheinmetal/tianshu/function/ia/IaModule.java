@@ -265,7 +265,7 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         // Reaching this handler means the turn now has an outcome, whatever it is: the arbiter is the one that
-        // closes the listening mark the speech module opened, so the player is never marked as still speaking after
+        // closes the listening state the speech module opened, so the player is never marked as still speaking after
         // the turn has been resolved (or rejected, or dropped because this module is not running).
         endListeningTurn(payload.sessionId());
         if (rejectWhenInactive(envelope, context)) {

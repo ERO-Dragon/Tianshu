@@ -4,11 +4,16 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
+    /** How long shutdown waits for the kernel to tear its modules down before releasing client resources anyway. */
+    private static final long DESTROY_TIMEOUT_MILLIS = 5_000L;
+
     private final CoreLifecycle core;
     private final Runnable startClientResources;
     private final Runnable releaseCaptureHardware;
@@ -123,8 +128,15 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             generation.incrementAndGet();
         }
         try {
-            core.destroy().join();
-        } catch (CompletionException failure) {
+            // Bounded on purpose: this runs on the client thread during shutdown, and an unbounded join on a
+            // module teardown that never returns would hang the process with no way out but killing it.
+            core.destroy().get(DESTROY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeout) {
+            onWorldFailure.accept(timeout);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            onWorldFailure.accept(interrupted);
+        } catch (ExecutionException failure) {
             onWorldFailure.accept(failure.getCause() == null ? failure : failure.getCause());
         } finally {
             shutdownAudio.run();

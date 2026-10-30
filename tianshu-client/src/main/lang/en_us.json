@@ -101,5 +101,9 @@
 "tianshu.chat.progress.thinking": "Thinking",
 "tianshu.chat.progress.reply_ready": "Reply ready",
 "tianshu.chat.progress.voice_ready": "Playing voice",
-"tianshu.chat.progress.failed": "Processing failed"
+"tianshu.chat.progress.failed": "Processing failed",
+"tianshu.gui.settings.confirm.discard.title": "Unsaved changes",
+"tianshu.gui.settings.confirm.discard.message": "Your changes will be lost if you close the settings page.",
+"tianshu.gui.settings.confirm.discard.leave": "Discard and close",
+"tianshu.gui.settings.confirm.discard.stay": "Keep editing"
 }

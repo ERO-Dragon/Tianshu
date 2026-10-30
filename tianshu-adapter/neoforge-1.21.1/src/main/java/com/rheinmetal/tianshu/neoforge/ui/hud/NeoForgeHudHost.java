@@ -89,7 +89,11 @@ public final class NeoForgeHudHost implements HudHost {
         for (HudLayer layer : active) {
             try {
                 layer.render(frame, surface);
-                consecutiveFailures.remove(layer.id());
+                // Only touch the failure table when it has entries: the common frame must not write to a
+                // concurrent map once per layer just to record "nothing went wrong".
+                if (!consecutiveFailures.isEmpty()) {
+                    consecutiveFailures.remove(layer.id());
+                }
             } catch (RuntimeException failure) {
                 onLayerFailure(layer, failure);
             }

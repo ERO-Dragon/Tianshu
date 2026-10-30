@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.Set;
 
 public final class ProtocolExecutorManager implements ModuleExecutionAccess, AutoCloseable {
+    /** How long {@link #close()} waits for interrupted work before giving up on it. */
+    private static final long CLOSE_AWAIT_MILLIS = 1_000L;
+
     private final MainThreadExecutor mainThreadExecutor;
     private final Map<ExecutionLane, ThreadPoolExecutor> executors = new EnumMap<>(ExecutionLane.class);
     private final Map<String, TaskGroup> taskGroups = new java.util.concurrent.ConcurrentHashMap<>();
@@ -151,10 +154,15 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
             if (handle.state() != ProtocolTaskState.CANCELLED) {
                 handle.setState(ProtocolTaskState.COMPLETED);
             }
-        } catch (Exception exception) {
+        } catch (Throwable throwable) {
+            // Every exit must leave a state behind: a handle stuck in RUNNING makes isDone() lie forever,
+            // and native backends fail with Error (NoClassDefFoundError, OOM), not Exception.
             if (handle.state() != ProtocolTaskState.CANCELLED) {
-                handle.setFailureCause(exception);
+                handle.setFailureCause(throwable);
                 handle.setState(ProtocolTaskState.FAILED);
+            }
+            if (throwable instanceof Error error) {
+                throw error;
             }
         } finally {
             activeHandles.remove(handle);
@@ -322,6 +330,28 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 executor.shutdownNow();
             }
             scheduledExecutor.shutdownNow();
+            awaitTermination();
+        }
+    }
+
+    /** Gives interrupted work one bounded window to finish before the caller releases its resources. */
+    private void awaitTermination() {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CLOSE_AWAIT_MILLIS);
+        for (ThreadPoolExecutor executor : executors.values()) {
+            awaitQuietly(executor, deadline);
+        }
+        awaitQuietly(scheduledExecutor, deadline);
+    }
+
+    private static void awaitQuietly(java.util.concurrent.ExecutorService executor, long deadline) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0L) {
+            return;
+        }
+        try {
+            executor.awaitTermination(remaining, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

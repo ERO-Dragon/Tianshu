@@ -23,6 +23,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,7 +38,19 @@ import java.util.Set;
  * texture lookups are cached because both are per-frame questions with stable answers.</p>
  */
 final class NeoForgeHudSurface implements HudSurface {
-    private final Map<String, Integer> textWidths = new HashMap<>();
+    /**
+     * Measured widths are keyed by the text itself, so a HUD layer that renders changing text (coordinates,
+     * timers, counters) would otherwise grow this map for the whole session. The cap is far above what a
+     * screenful of HUD text needs; eviction costs one re-measure, never a wrong width.
+     */
+    private static final int TEXT_WIDTH_CACHE_CAPACITY = 256;
+
+    private final Map<String, Integer> textWidths = new LinkedHashMap<>(TEXT_WIDTH_CACHE_CAPACITY, 0.75F, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Integer> eldest) {
+            return size() > TEXT_WIDTH_CACHE_CAPACITY;
+        }
+    };
     private final Map<String, ResourceLocation> textures = new HashMap<>();
     private final Set<String> missingTextures = new java.util.HashSet<>();
     private final Set<ShaderInstance> unavailablePrograms =
@@ -183,6 +196,7 @@ final class NeoForgeHudSurface implements HudSurface {
             setUniform(shader, "State", params.state());
             setUniform(shader, "Task", params.task());
             setUniform(shader, "Opacity", params.opacity());
+            setUniform(shader, "Morph", params.morph());
 
             BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
             buffer.addVertex(left, bottom, 0.0F).setUv(0.0F, 1.0F);

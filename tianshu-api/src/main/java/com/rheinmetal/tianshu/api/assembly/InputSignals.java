@@ -59,6 +59,9 @@ public final class InputSignals {
      * <p>The handler receives the signal's text, which is empty for a key press and carries the player's line
      * for {@link #TEXT_SUBMITTED}. Handlers run on the thread that published, so a module that needs to work
      * elsewhere schedules it itself.</p>
+     *
+     * <p>A handler that throws is contained by {@link SignalFailures}: the remaining subscribers still receive
+     * the signal, and the failure is reported instead of unwinding into the game loop.</p>
      */
     public static Subscription subscribe(String channel, Consumer<String> handler) {
         if (channel == null || channel.isBlank() || handler == null) {
@@ -96,7 +99,12 @@ public final class InputSignals {
         }
         String payload = text == null ? "" : text;
         for (Consumer<String> handler : handlers) {
-            handler.accept(payload);
+            try {
+                handler.accept(payload);
+            } catch (RuntimeException failure) {
+                // One subscriber's bug must not reach the game loop, and must not silence the rest.
+                SignalFailures.report("input", channel, failure);
+            }
         }
     }
 

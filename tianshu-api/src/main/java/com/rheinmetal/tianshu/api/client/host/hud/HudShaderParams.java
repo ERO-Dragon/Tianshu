@@ -12,6 +12,7 @@ package com.rheinmetal.tianshu.api.client.host.hud;
  * @param convergence how tightly the visual's parts gather, 0..1
  * @param pulse       the listening pulse, 0..1
  * @param opacity     the layer's own alpha, 0..1
+ * @param morph       0 = the settled shape, 1 = the single handoff dot
  * @param state       product state as the programs' agreed index
  * @param task        the parallel background-task mark, 0 or 1
  */
@@ -21,6 +22,7 @@ public record HudShaderParams(
         float convergence,
         float pulse,
         float opacity,
+        float morph,
         int state,
         float task
 ) {
@@ -37,6 +39,7 @@ public record HudShaderParams(
         convergence = clamp01(convergence);
         pulse = clamp01(pulse);
         opacity = clamp01(opacity);
+        morph = clamp01(morph);
         state = Math.max(STATE_IDLE, Math.min(STATE_CHAT_THINKING, state));
         task = clamp01(task);
     }

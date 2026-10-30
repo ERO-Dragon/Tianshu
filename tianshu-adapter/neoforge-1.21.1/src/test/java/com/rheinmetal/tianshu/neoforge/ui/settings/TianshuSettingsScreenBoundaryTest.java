@@ -67,7 +67,10 @@ final class TianshuSettingsScreenBoundaryTest {
         assertTrue(mouseScrolled.contains("if (selectionPanel != null)"));
         assertTrue(mouseScrolled.contains("rightPanelScrollRegions"));
         assertTrue(mouseScrolled.indexOf("rightPanelScrollRegions") < mouseScrolled.indexOf("rightPanelScroll.canScroll()"));
-        assertTrue(mouseScrolled.contains("rebuildCurrentPage()"));
+        // Scrolling must coalesce through the existing queue: a high-resolution wheel delivers several
+        // events per frame, and rebuilding the whole page per notch was the one place the screen dropped frames.
+        assertTrue(mouseScrolled.contains("requestRebuildCurrentPage()"));
+        assertFalse(mouseScrolled.contains("rebuildCurrentPage();"));
     }
 
     @Test
