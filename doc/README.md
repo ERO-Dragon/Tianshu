@@ -11,6 +11,7 @@
 | [资源归属清单](architecture/资源归属清单.md) | 每类资源随哪个模块发布，迁移规则 |
 | [API 兼容策略](architecture/API兼容策略.md) | api 面、1.x 兼容规则、模块版本范围、1.0.0 检查清单 |
 | [双端化实施方案](architecture/双端化实施方案-服务端可选.md) | 客户端必需、服务端可选：现状、事件矩阵、剩余工作 |
+| [平台能力清单](architecture/平台能力清单.md) | 北辰与游戏本体的交互面：客户端/服务端 × 读/写，已有/缺/不做 |
 | [弃用清单](api-deprecations.md) | 处于弃用期的条目与移除计划 |
 | [协议中心](protocol/TianshuProtocolCenter.md) | 信封、broker、topic、生命周期 |
 | [协议适配指南](protocol/TianshuProtocolAdapterGuide.md) | 模块如何接协议中心 |
