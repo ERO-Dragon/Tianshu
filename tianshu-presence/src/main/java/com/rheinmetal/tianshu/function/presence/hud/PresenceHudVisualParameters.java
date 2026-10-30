@@ -1,9 +1,15 @@
 package com.rheinmetal.tianshu.function.presence.hud;
 
-/** Immutable animation inputs consumed by the icon's fragment programs. */
+/**
+ * Immutable animation inputs consumed by the icon's fragment programs.
+ *
+ * <p>{@code pulse} is the listening wave: it belongs to the visual state ({@link PresenceHudVisualState#LISTENING}
+ * turns it on) instead of being a second flag carried beside every state. {@code loadingBlend} is the handoff
+ * envelope: 0 is the settled shape, 1 is the loading cluster, and the icon collapses the outgoing layer into a
+ * solid dot and grows the incoming layer out of it when the envelope crosses its midpoint.</p>
+ */
 public record PresenceHudVisualParameters(
         PresenceHudVisualState state,
-        boolean listening,
         float intensity,
         float speed,
         float convergence,
@@ -13,7 +19,6 @@ public record PresenceHudVisualParameters(
 ) {
     public PresenceHudVisualParameters(
             PresenceHudVisualState state,
-            boolean listening,
             float intensity,
             float speed,
             float convergence,
@@ -22,7 +27,6 @@ public record PresenceHudVisualParameters(
     ) {
         this(
                 state,
-                listening,
                 intensity,
                 speed,
                 convergence,
@@ -44,7 +48,6 @@ public record PresenceHudVisualParameters(
 
     public static PresenceHudVisualParameters forState(
             PresenceHudVisualState state,
-            boolean listening,
             PresenceHudLayout layout
     ) {
         PresenceHudVisualState effective = state == null ? PresenceHudVisualState.IDLE : state;
@@ -72,18 +75,17 @@ public record PresenceHudVisualParameters(
                 speed = 0.52F;
                 convergence = 0.78F;
             }
-            case IDLE -> {
+            case IDLE, LISTENING -> {
                 intensity = 0.34F;
                 speed = 0.24F;
                 convergence = 0.18F;
             }
             default -> throw new IllegalStateException("Unhandled visual state: " + effective);
         }
-        float pulse = listening ? 1.0F : 0.0F;
+        float pulse = effective == PresenceHudVisualState.LISTENING ? 1.0F : 0.0F;
         float loadingBlend = effective == PresenceHudVisualState.LOADING ? 1.0F : 0.0F;
         return new PresenceHudVisualParameters(
                 effective,
-                listening,
                 intensity,
                 speed,
                 convergence,
@@ -101,12 +103,11 @@ public record PresenceHudVisualParameters(
         PresenceHudVisualParameters start = from == null ? to : from;
         PresenceHudVisualParameters end = to == null ? from : to;
         if (start == null || end == null) {
-            return new PresenceHudVisualParameters(PresenceHudVisualState.IDLE, false, 0.0F, 0.0F, 0.0F, 0.0F, null);
+            return new PresenceHudVisualParameters(PresenceHudVisualState.IDLE, 0.0F, 0.0F, 0.0F, 0.0F, null);
         }
         float t = clamp01(progress);
         return new PresenceHudVisualParameters(
                 end.state(),
-                t < 0.5F ? start.listening() : end.listening(),
                 lerp(start.intensity(), end.intensity(), t),
                 lerp(start.speed(), end.speed(), t),
                 lerp(start.convergence(), end.convergence(), t),

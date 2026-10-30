@@ -36,19 +36,18 @@ public final class PresenceHudVisualTransition {
      */
     public void accept(
             PresenceHudVisualState state,
-            boolean listening,
             long nowMillis,
             PresenceHudLayout layout
     ) {
         this.layout = Objects.requireNonNull(layout, "layout");
         long now = Math.max(0L, nowMillis);
         if (target == null) {
-            from = PresenceHudVisualParameters.forState(state, listening, layout);
+            from = PresenceHudVisualParameters.forState(state, layout);
             target = from;
             startedAtMillis = now;
             return;
         }
-        if (target.state() == state && target.listening() == listening) {
+        if (target.state() == state) {
             if (target.layout() != layout) {
                 from = withLayout(from, layout);
                 target = withLayout(target, layout);
@@ -56,14 +55,14 @@ public final class PresenceHudVisualTransition {
             return;
         }
         from = sample(now);
-        target = PresenceHudVisualParameters.forState(state, listening, layout);
+        target = PresenceHudVisualParameters.forState(state, layout);
         startedAtMillis = now;
     }
 
     /** The parameters of this frame; the same immutable instance while nothing is animating. */
     public PresenceHudVisualParameters sample(long nowMillis) {
         if (target == null) {
-            return PresenceHudVisualParameters.forState(PresenceHudVisualState.IDLE, false, layout);
+            return PresenceHudVisualParameters.forState(PresenceHudVisualState.IDLE, layout);
         }
         if (from == target) {
             return target;
@@ -83,7 +82,6 @@ public final class PresenceHudVisualTransition {
         }
         return new PresenceHudVisualParameters(
                 parameters.state(),
-                parameters.listening(),
                 parameters.intensity(),
                 parameters.speed(),
                 parameters.convergence(),

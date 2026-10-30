@@ -43,7 +43,7 @@ public final class PresenceIconElementController implements PresenceHudElementCo
         }
         elementState.enter(PresenceHudElementState.ACTIVE, nowMillis);
         PresenceHudLayout layout = layoutFor(context);
-        visualTransition.accept(display.visualState(), display.listening(), nowMillis, layout);
+        visualTransition.accept(display.visualState(), nowMillis, layout);
         return Optional.of(new PresenceHudElementFrame(
                 ELEMENT_ID,
                 PresenceHudElementType.ICON,

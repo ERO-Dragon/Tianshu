@@ -25,21 +25,25 @@
 
 | 页面 | Java |
 |---|---|
-| 主状态 / 并行标记 | `PresenceActivitySnapshot`（`primaryState` / `listening` / `backgroundTask`） |
+| 主状态（含正在听）/ 后台标记 | `PresenceActivitySnapshot`（`primaryState` / `backgroundTask`） |
 | 状态参数 | `PresenceHudVisualParameters.forState` |
 | 中心点与尺寸 | `PresenceHudLayout.resolve`（默认锚点在经验条上方） |
 | 240 ms 过渡 | `PresenceHudVisualTransition` |
-| 图标层 | `PresenceIconElementRenderer` 的 quad + `presence_preset_*.fsh`（底座与图案同一个片元程序） |
+| 图标层 | `PresenceIconElementRenderer` 的 quad + `presence_preset_*.fsh`（预设、聆听环、后台小点同一个片元程序） |
 | 状态文字 | `PresenceDisplayPolicy` + `PresenceStatusTextElementRenderer` |
 | 伙伴标记 | `PresencePartnerSnapshot` 的租约 + `PresencePartnerIconRenderer` 的环/摆动/入退场 |
 | 着色器 | `assets/tianshu_presence/shaders/core/*`（原文，页面只补 `#version 300 es` 与 precision） |
 
 ## 页面怎么用
 
-- **主状态**：IDLE / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。切换时走真实的 240 ms 过渡；
+- **主状态**：IDLE / LISTENING / LOADING / THINKING / RESPONDING / ERROR / RECONNECTING。切换时走真实的 240 ms 过渡；
   ERROR 与 RECONNECTING 分别复用 TASK / LOADING 的视觉，只有文字不同。
-- **正在听 / 后台任务**：对应 `listening` 与 `backgroundTask` 两个并行标记。
-- **预设一 / 预设二**：两套可选图案（两个片元程序）；底座（球体、波瓣、环、听波动画、后台小点）在两者里都有。
+- **正在听**是主状态（与空闲同级）；**后台任务**才是唯一并行标记。
+  `PresencePrimaryState.LISTENING` 与 `PresenceHudVisualState.LISTENING` 直接对应，视觉上是 IDLE 参数加聆听脉冲，不再有单独的 `listening` 布尔。
+- **预设一 / 预设二**：两套可选图案，分别对应 `libs/ShaderToy/preset1.glsl` 与 `preset2.glsl`；
+  聆听扩散环和后台小点是两者共用的叠加层，加载态使用独立的 liquid loading 程序。
+- **加载交接**：进入加载时，当前球体在前半段收成中心实心点，loading 在后半段从点展开成六点；
+  退出时反过来，六点收成点，所选预设从点长成球体。同一时刻只画一个程序，中点两层画同一个点。
 - **禁用来着色器层**：图标不绘制，等价于游戏内程序缺失/编译失败时的画面（没有 Java 回退层）。
 - **暂停 / 倍率**：把过渡放慢或冻住，便于检查中间帧。
 - **缩放**：围绕图标中心放大显示（100%–300%），逻辑像素与布局不变；放大是显示层缩放，着色器细节会略软，
@@ -52,11 +56,11 @@
 页面支持用查询参数复现一个画面，便于截图与对照：
 
 ```
-index.html?primary=RESPONDING&preset=PRESET_TWO&size=64&zoom=1.5&paused=1&t=1.5&listening=1
+index.html?primary=LISTENING&preset=PRESET_TWO&size=64&zoom=1.5&paused=1&t=1.5
 ```
 
 可用参数：`primary`、`preset`、`size`、`posx`/`posy`（配合 `anchor=0` 自定义）、`lang`、`screen`、`zoom`、
-`listening`、`background`、`hud`/`icon`/`text`/`shader`（`0` 关闭）、`partner`、`partnericon`、`lease`、`paused`、`t`、`speed`、`cycle`。
+`primary=LISTENING`（旧参数 `listening=1` 仍兼容）、`background`、`hud`/`icon`/`text`/`shader`（`0` 关闭）、`partner`、`partnericon`、`lease`、`paused`、`t`、`speed`、`cycle`。
 
 ## 不精确的地方（有意为之）
 

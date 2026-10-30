@@ -12,15 +12,14 @@ final class PresenceHudVisualTransitionTest {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24.0F, false, 0.5D, 0.4D);
         PresenceHudVisualTransition transition = new PresenceHudVisualTransition(240L);
 
-        transition.accept(PresenceHudVisualState.IDLE, false, 1_000L, layout);
-        transition.accept(PresenceHudVisualState.CHAT, true, 1_100L, layout);
+        transition.accept(PresenceHudVisualState.IDLE, 1_000L, layout);
+        transition.accept(PresenceHudVisualState.CHAT, 1_100L, layout);
 
         PresenceHudVisualParameters halfway = transition.sample(1_220L);
 
         assertEquals(PresenceHudVisualState.CHAT, halfway.state());
         assertTrue(halfway.intensity() > 0.34F);
         assertTrue(halfway.intensity() < 0.92F);
-        assertTrue(halfway.pulse() > 0.0F);
         assertEquals(24.0F, halfway.layout().sizePixels(), 0.001F);
     }
 
@@ -29,8 +28,8 @@ final class PresenceHudVisualTransitionTest {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24.0F, false, 0.5D, 0.4D);
         PresenceHudVisualTransition transition = new PresenceHudVisualTransition(240L);
 
-        transition.accept(PresenceHudVisualState.IDLE, false, 1_000L, layout);
-        transition.accept(PresenceHudVisualState.IDLE, false, 1_100L, layout);
+        transition.accept(PresenceHudVisualState.IDLE, 1_000L, layout);
+        transition.accept(PresenceHudVisualState.IDLE, 1_100L, layout);
 
         PresenceHudVisualParameters sample = transition.sample(1_240L);
 
@@ -41,11 +40,11 @@ final class PresenceHudVisualTransitionTest {
     void settledFramesReuseTheSameParametersInsteadOfRebuildingThem() {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24.0F, false, 0.5D, 0.4D);
         PresenceHudVisualTransition transition = new PresenceHudVisualTransition(240L);
-        transition.accept(PresenceHudVisualState.TASK, false, 1_000L, layout);
+        transition.accept(PresenceHudVisualState.TASK, 1_000L, layout);
 
         PresenceHudVisualParameters first = transition.sample(1_000L);
         PresenceHudVisualParameters settled = transition.sample(2_000L);
-        transition.accept(PresenceHudVisualState.TASK, false, 2_000L, layout);
+        transition.accept(PresenceHudVisualState.TASK, 2_000L, layout);
         PresenceHudVisualParameters afterAnotherFrame = transition.sample(2_016L);
 
         assertSame(first, settled);
@@ -57,9 +56,9 @@ final class PresenceHudVisualTransitionTest {
         PresenceHudLayout before = new PresenceHudLayout(100.0F, 80.0F, 24.0F, false, 0.5D, 0.4D);
         PresenceHudLayout after = new PresenceHudLayout(160.0F, 80.0F, 32.0F, false, 0.6D, 0.4D);
         PresenceHudVisualTransition transition = new PresenceHudVisualTransition(240L);
-        transition.accept(PresenceHudVisualState.TASK, false, 1_000L, before);
+        transition.accept(PresenceHudVisualState.TASK, 1_000L, before);
 
-        transition.accept(PresenceHudVisualState.TASK, false, 1_100L, after);
+        transition.accept(PresenceHudVisualState.TASK, 1_100L, after);
 
         PresenceHudVisualParameters sample = transition.sample(1_100L);
         assertEquals(160.0F, sample.layout().centerX(), 0.001F);
@@ -72,8 +71,8 @@ final class PresenceHudVisualTransitionTest {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24.0F, false, 0.5D, 0.4D);
         PresenceHudVisualTransition transition = new PresenceHudVisualTransition(240L);
 
-        transition.accept(PresenceHudVisualState.IDLE, false, 1_000L, layout);
-        transition.accept(PresenceHudVisualState.LOADING, false, 1_100L, layout);
+        transition.accept(PresenceHudVisualState.IDLE, 1_000L, layout);
+        transition.accept(PresenceHudVisualState.LOADING, 1_100L, layout);
 
         PresenceHudVisualParameters halfway = transition.sample(1_220L);
 

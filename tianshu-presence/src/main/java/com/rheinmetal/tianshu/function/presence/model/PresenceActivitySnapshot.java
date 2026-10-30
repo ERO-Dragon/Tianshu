@@ -1,14 +1,14 @@
 package com.rheinmetal.tianshu.function.presence.model;
 
 /**
- * What the player is experiencing: one primary state, plus the two parallel marks that can be true next to it.
+ * What the player is experiencing: one primary state, plus the background-work mark.
  *
- * <p>Listening and background work are separate booleans instead of more primary states, because either can run at
- * the same time as any primary state. They are what the HUD shows beside the icon, not what the icon turns into.</p>
+ * <p>Listening is one of the primary states, not a separate flag: a speech turn is what the player is doing, so it
+ * competes for the same single slot as idle, thinking or responding. Only background work stays parallel, because it
+ * can run next to any primary state without changing what the player is doing.</p>
  */
 public record PresenceActivitySnapshot(
         PresencePrimaryState primaryState,
-        boolean listening,
         boolean backgroundTask,
         String primarySourceId,
         long updatedAtMillis
@@ -20,6 +20,6 @@ public record PresenceActivitySnapshot(
     }
 
     public static PresenceActivitySnapshot idle(long nowMillis) {
-        return new PresenceActivitySnapshot(PresencePrimaryState.IDLE, false, false, "", nowMillis);
+        return new PresenceActivitySnapshot(PresencePrimaryState.IDLE, false, "", nowMillis);
     }
 }

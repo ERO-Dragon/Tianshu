@@ -16,28 +16,47 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceActivityTrackerTest {
     @Test
-    void listeningIsAParallelMarkNextToThePrimaryState() {
+    void listeningIsAPrimaryStateWhileTheTurnRuns() {
         AtomicLong now = new AtomicLong(1_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
-        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
         tracker.accept("module.asr", started("asr.speech.7", PresenceActivityType.LISTENING, now.get(), 8_000L));
 
         PresenceActivitySnapshot listening = tracker.snapshot();
-        assertEquals(PresencePrimaryState.THINKING, listening.primaryState());
-        assertTrue(listening.listening());
+        assertEquals(PresencePrimaryState.LISTENING, listening.primaryState());
         assertFalse(listening.backgroundTask());
 
         tracker.accept("module.asr", ended("asr.speech.7", PresenceActivityType.LISTENING, now.get()));
 
-        PresenceActivitySnapshot resumed = tracker.snapshot();
-        assertEquals(PresencePrimaryState.THINKING, resumed.primaryState());
-        assertFalse(resumed.listening());
+        assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState());
     }
 
     @Test
-    void theTurnResolverMayCloseTheListeningMarkItDidNotOpen() {
+    void listeningOwnsThePrimarySlotUntilTheTurnIsResolved() {
+        AtomicLong now = new AtomicLong(1_200L);
+        PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
+        tracker.startWorldSession();
+
+        tracker.accept("module.asr", started("asr.speech.7", PresenceActivityType.LISTENING, now.get(), 30_000L));
+        tracker.accept("module.llm", started("llm.model.load", PresenceActivityType.LOADING, now.get(), 30_000L));
+
+        assertEquals(PresencePrimaryState.LISTENING, tracker.snapshot().primaryState(),
+                "a live speech turn outranks an ambient load");
+
+        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
+
+        assertEquals(PresencePrimaryState.LISTENING, tracker.snapshot().primaryState(),
+                "the speech turn owns the slot until the arbiter resolves it");
+
+        tracker.accept("module.asr", ended("asr.speech.7", PresenceActivityType.LISTENING, now.get()));
+
+        assertEquals(PresencePrimaryState.THINKING, tracker.snapshot().primaryState(),
+                "ending the turn hands the slot to the conversation that follows it");
+    }
+
+    @Test
+    void theTurnResolverMayCloseTheListeningStateItDidNotOpen() {
         AtomicLong now = new AtomicLong(1_500L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
@@ -45,19 +64,20 @@ class PresenceActivityTrackerTest {
 
         tracker.accept("module.ia", ended("asr.speech.7", PresenceActivityType.LISTENING, now.get()));
 
-        assertFalse(tracker.snapshot().listening(),
-                "the arbiter resolves the turn, so it closes the mark the speech module opened");
+        assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState(),
+                "the arbiter resolves the turn, so it closes the state the speech module opened");
     }
 
     @Test
-    void aTurnScopedMarkCannotBeOpenedByAnotherModule() {
+    void aTurnScopedStateCannotBeOpenedByAnotherModule() {
         AtomicLong now = new AtomicLong(1_600L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
         tracker.accept("module.ia", started("asr.speech.7", PresenceActivityType.LISTENING, now.get(), 30_000L));
 
-        assertFalse(tracker.snapshot().listening(), "only the speech module may open the mark");
+        assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState(),
+                "only the speech module may open the state");
     }
 
     @Test
@@ -143,7 +163,6 @@ class PresenceActivityTrackerTest {
 
         PresenceActivitySnapshot snapshot = tracker.snapshot();
         assertEquals(PresencePrimaryState.IDLE, snapshot.primaryState());
-        assertFalse(snapshot.listening());
     }
 
     @Test

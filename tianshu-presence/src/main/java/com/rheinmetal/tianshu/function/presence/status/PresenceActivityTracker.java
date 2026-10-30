@@ -13,12 +13,12 @@ import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
- * Turns the stream of module activities into the one thing the HUD draws: a primary state plus parallel marks.
+ * Turns the stream of module activities into the one thing the HUD draws: a primary state plus the background mark.
  *
- * <p>Primary activities (thinking, responding, error, reconnecting, loading) compete by the priority declared on
- * the activity type; parallel activities (listening, background work) never compete, they only flip a boolean.
- * The result is cached and recomputed only when an activity changed or the earliest activity expired, so the render
- * thread reads an immutable snapshot instead of scanning a table.</p>
+ * <p>Primary activities (listening, thinking, responding, error, reconnecting, loading) compete by the priority
+ * declared on the activity type; a background task never competes, it only flips the parallel mark. The result is
+ * cached and recomputed only when an activity changed or the earliest activity expired, so the render thread reads
+ * an immutable snapshot instead of scanning a table.</p>
  */
 public final class PresenceActivityTracker {
     private final LongSupplier clock;
@@ -102,15 +102,10 @@ public final class PresenceActivityTracker {
         // The cache expires exactly at the earliest activity expiry, so reaching this point always means
         // "recompute": either an event changed the table or at least one activity has just expired.
         activities.values().removeIf(activity -> activity.expired(now));
-        boolean listening = false;
         boolean backgroundTask = false;
         ActiveActivity primary = null;
         for (ActiveActivity activity : activities.values()) {
             PresenceActivityType type = activity.key().activityType();
-            if (type == PresenceActivityType.LISTENING) {
-                listening = true;
-                continue;
-            }
             if (!type.primary()) {
                 backgroundTask = true;
                 continue;
@@ -120,11 +115,10 @@ public final class PresenceActivityTracker {
             }
         }
         if (primary == null) {
-            cachedSnapshot = new PresenceActivitySnapshot(PresencePrimaryState.IDLE, listening, backgroundTask, "", now);
+            cachedSnapshot = new PresenceActivitySnapshot(PresencePrimaryState.IDLE, backgroundTask, "", now);
         } else {
             cachedSnapshot = new PresenceActivitySnapshot(
                     primaryState(primary.key().activityType()),
-                    listening,
                     backgroundTask,
                     primary.key().sourceId(),
                     Math.max(now, primary.occurredAtMillis())
@@ -191,12 +185,13 @@ public final class PresenceActivityTracker {
 
     private PresencePrimaryState primaryState(PresenceActivityType type) {
         return switch (type) {
+            case LISTENING -> PresencePrimaryState.LISTENING;
             case LOADING -> PresencePrimaryState.LOADING;
             case THINKING -> PresencePrimaryState.THINKING;
             case RESPONDING -> PresencePrimaryState.RESPONDING;
             case RECONNECTING -> PresencePrimaryState.RECONNECTING;
             case ERROR -> PresencePrimaryState.ERROR;
-            case PROCESSING_TASK, LISTENING -> PresencePrimaryState.IDLE;
+            case PROCESSING_TASK -> PresencePrimaryState.IDLE;
         };
     }
 

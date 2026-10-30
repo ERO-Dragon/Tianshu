@@ -137,7 +137,7 @@
                 throw new Error(label + ' link: ' + log);
             }
             const uniforms = {};
-            ['ProjMat', 'ModelViewMat', 'Time', 'Intensity', 'Speed', 'Convergence', 'Pulse', 'Opacity', 'State', 'Task']
+            ['ProjMat', 'ModelViewMat', 'Time', 'Intensity', 'Speed', 'Convergence', 'Pulse', 'Opacity', 'Morph', 'State', 'Task']
                 .forEach((name) => {
                     uniforms[name] = gl.getUniformLocation(program, name);
                 });
@@ -199,7 +199,7 @@
             ]);
         }
 
-        function drawLayer(key, frame, state, opacity) {
+        function drawLayer(key, frame, state, opacity, morph) {
             const built = programFor(key);
             if (!built) {
                 return;
@@ -242,7 +242,8 @@
             gl.uniform1f(built.uniforms.Convergence, frame.visual.convergence);
             gl.uniform1f(built.uniforms.Pulse, frame.visual.pulse);
             gl.uniform1f(built.uniforms.Opacity, opacity);
-            gl.uniform1f(built.uniforms.State, model.visualStates.indexOf(state));
+            gl.uniform1f(built.uniforms.Morph, morph);
+            gl.uniform1f(built.uniforms.State, model.visualStates.indexOf(state === 'LISTENING' ? 'IDLE' : state));
             gl.uniform1f(built.uniforms.Task, frame.display.backgroundTask ? 1.0 : 0.0);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.deleteBuffer(buffer);
@@ -259,15 +260,31 @@
             if (!frame.settings.hudEnabled || !frame.settings.iconEnabled) {
                 return;
             }
-            const loading = frame.visual.loadingBlend;
-            if (loading > 0.001) {
-                drawLayer('loading', frame, 'LOADING', loading);
+            // Loading hands off through one solid dot: the outgoing layer collapses into it on the first half of
+            // the loading blend, then the incoming layer grows out of it on the second half. Only one layer draws.
+            const blend = frame.visual.loadingBlend;
+            const loadingTarget = frame.visual.state === 'LOADING';
+            const presetKey = frame.settings.preset === 'PRESET_TWO' ? 'presetTwo' : 'presetOne';
+            const presetState = loadingTarget ? 'IDLE' : frame.visual.state;
+            const drawLoading = (morph) => drawLayer('loading', frame, 'LOADING', 1, morph);
+            const drawPreset = (morph) => drawLayer(presetKey, frame, presetState, 1, morph);
+            if (loadingTarget) {
+                if (blend < 0.5) {
+                    drawPreset(blend * 2);
+                } else {
+                    drawLoading(2 - blend * 2);
+                }
+                return;
             }
-            const fluid = 1 - loading;
-            if (fluid > 0.001) {
-                const state = frame.visual.state === 'LOADING' ? 'IDLE' : frame.visual.state;
-                drawLayer(frame.settings.preset === 'PRESET_TWO' ? 'presetTwo' : 'presetOne', frame, state, fluid);
+            if (blend > 0.001) {
+                if (blend > 0.5) {
+                    drawLoading(2 - blend * 2);
+                } else {
+                    drawPreset(blend * 2);
+                }
+                return;
             }
+            drawPreset(0);
         }
 
         function status() {

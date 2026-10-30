@@ -11,8 +11,9 @@ import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
  * resolves a turn may close it ({@code endableByAnyModule}).</p>
  *
  * <p>Two axes are deliberately separate. A <em>primary</em> state answers "what is the player experiencing right
- * now" and only one can win; a <em>parallel</em> activity (listening, a background task) is shown next to the
- * primary state instead of competing with it, because it can be true at the same time as any primary state.</p>
+ * now" and only one can win; a <em>parallel</em> activity (a background task) is shown next to the primary state
+ * instead of competing with it, because it can be true at the same time as any primary state. Listening is a primary
+ * state: a speech turn is what the player is doing, and it competes for the same slot as thinking or responding.</p>
  *
  * <p>Ranking answers "what should the player see now", not "how bad is it": a foreground conversation always
  * outranks an ambient failure or a load, so a notice about a failed lane can never hide an answer that is being
@@ -40,11 +41,12 @@ public enum PresenceActivityType {
     /**
      * The player's speech turn is being handled.
      *
-     * <p>It is parallel to the primary state, and it is turn scoped: the speech module opens it when the player
-     * starts speaking and the module that resolves the turn (the arbiter) closes it. That is why this type alone
-     * may be ended by a module other than its owner.</p>
+     * <p>It is a primary state: the turn owns the single primary slot while it runs, so the HUD shows the listening
+     * text and pulse instead of whatever ambient state was underneath. It is turn scoped: the speech module opens it
+     * when the player starts speaking and the module that resolves the turn (the arbiter) closes it. That is why this
+     * type alone may be ended by a module other than its owner.</p>
      */
-    LISTENING(ProtocolModuleIds.ASR, 0, false, true);
+    LISTENING(ProtocolModuleIds.ASR, 70, true, true);
 
     private final String publisherModuleId;
     private final int priority;

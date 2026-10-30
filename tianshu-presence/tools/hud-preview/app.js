@@ -51,11 +51,10 @@
         '3840x2160@3': { physicalW: 3840, physicalH: 2160, scale: 3 }
     };
 
-    const PRIMARY_CYCLE = ['IDLE', 'LOADING', 'THINKING', 'RESPONDING', 'ERROR', 'RECONNECTING'];
+    const PRIMARY_CYCLE = ['IDLE', 'LISTENING', 'LOADING', 'THINKING', 'RESPONDING', 'ERROR', 'RECONNECTING'];
 
     const state = {
         primary: 'THINKING',
-        listening: false,
         backgroundTask: false,
         preset: 'PRESET_ONE',
         hud: true,
@@ -118,11 +117,10 @@
         return model.visualStateOf[state.primary] || 'IDLE';
     }
 
-    function paramsFor(visual, listening) {
-        const values = model.visualParameters[visual][listening ? 1 : 0];
+    function paramsFor(visual) {
+        const values = model.visualParameters[visual];
         return {
             state: visual,
-            listening: listening,
             intensity: values.intensity,
             speed: values.speed,
             convergence: values.convergence,
@@ -132,7 +130,7 @@
     }
 
     function currentParams() {
-        return paramsFor(visualState(), state.listening);
+        return paramsFor(visualState());
     }
 
     function sampleParams(now) {
@@ -148,7 +146,6 @@
         const eased = smootherstep(progress);
         return {
             state: to.state,
-            listening: eased < 0.5 ? from.listening : to.listening,
             intensity: from.intensity + (to.intensity - from.intensity) * eased,
             speed: from.speed + (to.speed - from.speed) * eased,
             convergence: from.convergence + (to.convergence - from.convergence) * eased,
@@ -193,12 +190,12 @@
     }
 
     function textKey() {
-        return model.textKeyPrefix + (state.listening ? 'listening' : state.primary.toLowerCase());
+        return model.textKeyPrefix + state.primary.toLowerCase();
     }
 
     function displayText() {
         const language = model.texts[state.language] || {};
-        return language[state.listening ? 'listening' : state.primary.toLowerCase()] || '';
+        return language[state.primary.toLowerCase()] || '';
     }
 
     function partnerFrame(now) {
@@ -292,7 +289,6 @@
         const layout = resolveLayout();
         const display = {
             text: displayText(),
-            listening: state.listening,
             backgroundTask: state.backgroundTask,
             primaryState: state.primary
         };
@@ -332,7 +328,7 @@
         const rows = [
             ['主状态', state.primary],
             ['视觉状态', frameData.visual.state],
-            ['监听 / 后台', (state.listening ? '是' : '否') + ' / ' + (state.backgroundTask ? '是' : '否')],
+            ['后台任务', state.backgroundTask ? '是' : '否'],
             ['文字键', textKey().replace(model.textKeyPrefix, '…')],
             ['文字', frameData.display.text || '（空 → 面板隐藏）'],
             ['尺寸', frameData.layout.sizePixels.toFixed(1) + ' px'],
@@ -374,11 +370,6 @@
 
     document.querySelectorAll('.state-button').forEach((button) => {
         button.addEventListener('click', () => setPrimary(button.dataset.primary));
-    });
-
-    $('listening').addEventListener('change', (event) => {
-        state.listening = event.target.checked;
-        beginTransition(renderMs);
     });
 
     $('background-task').addEventListener('change', (event) => {
@@ -500,7 +491,6 @@
         const payload = {
             primary: state.primary,
             visualState: visual.state,
-            listening: state.listening,
             backgroundTask: state.backgroundTask,
             preset: state.preset,
             layout: {
@@ -562,7 +552,9 @@
         if (text('preset') === 'PRESET_ONE' || text('preset') === 'PRESET_TWO') {
             state.preset = text('preset');
         }
-        state.listening = flag('listening');
+        if (flag('listening') && !text('primary')) {
+            state.primary = 'LISTENING';
+        }
         state.backgroundTask = flag('background');
         if (text('lang') && model.texts[text('lang')]) {
             state.language = text('lang');
@@ -596,7 +588,6 @@
 
     function syncControls() {
         syncPrimaryButtons();
-        $('listening').checked = state.listening;
         $('background-task').checked = state.backgroundTask;
         document.querySelectorAll('input[name="preset"]').forEach((input) => {
             input.checked = input.value === state.preset;

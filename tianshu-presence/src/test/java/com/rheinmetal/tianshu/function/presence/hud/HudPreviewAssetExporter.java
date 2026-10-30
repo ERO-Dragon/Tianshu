@@ -172,18 +172,14 @@ public final class HudPreviewAssetExporter {
         }, 960, 540);
         Map<String, Object> states = new LinkedHashMap<>();
         for (PresenceHudVisualState state : PresenceHudVisualState.values()) {
-            List<Object> byListening = new ArrayList<>(2);
-            for (boolean listening : new boolean[] {false, true}) {
-                PresenceHudVisualParameters parameters = PresenceHudVisualParameters.forState(state, listening, layout);
-                Map<String, Object> values = new LinkedHashMap<>();
-                values.put("intensity", parameters.intensity());
-                values.put("speed", parameters.speed());
-                values.put("convergence", parameters.convergence());
-                values.put("pulse", parameters.pulse());
-                values.put("loadingBlend", parameters.loadingBlend());
-                byListening.add(values);
-            }
-            states.put(state.name(), byListening);
+            PresenceHudVisualParameters parameters = PresenceHudVisualParameters.forState(state, layout);
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("intensity", parameters.intensity());
+            values.put("speed", parameters.speed());
+            values.put("convergence", parameters.convergence());
+            values.put("pulse", parameters.pulse());
+            values.put("loadingBlend", parameters.loadingBlend());
+            states.put(state.name(), values);
         }
         return states;
     }

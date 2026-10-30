@@ -15,6 +15,7 @@
     { "name": "Convergence", "type": "float", "count": 1, "values": [0.0] },
     { "name": "Pulse", "type": "float", "count": 1, "values": [0.0] },
     { "name": "Opacity", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "Morph", "type": "float", "count": 1, "values": [0.0] },
     { "name": "State", "type": "float", "count": 1, "values": [0.0] },
     { "name": "Task", "type": "float", "count": 1, "values": [0.0] }
   ]

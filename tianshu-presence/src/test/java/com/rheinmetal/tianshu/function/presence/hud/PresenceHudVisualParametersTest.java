@@ -9,10 +9,10 @@ final class PresenceHudVisualParametersTest {
     void transitionInterpolatesAnimationParametersWithoutChangingTheLayout() {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24, false, 0.5D, 0.4D);
         PresenceHudVisualParameters from = new PresenceHudVisualParameters(
-                PresenceHudVisualState.IDLE, false, 1.0F, 0.2F, 0.25F, 0.0F, layout
+                PresenceHudVisualState.IDLE, 1.0F, 0.2F, 0.25F, 0.0F, layout
         );
         PresenceHudVisualParameters to = new PresenceHudVisualParameters(
-                PresenceHudVisualState.CHAT_THINKING, true, 0.0F, 0.8F, 0.45F, 0.8F, layout
+                PresenceHudVisualState.CHAT_THINKING, 0.0F, 0.8F, 0.45F, 0.8F, layout
         );
 
         PresenceHudVisualParameters halfway = PresenceHudVisualParameters.interpolate(from, to, 0.5F);
@@ -28,10 +28,10 @@ final class PresenceHudVisualParametersTest {
     void loadingAppearanceIsAContinuousTransitionParameter() {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24, false, 0.5D, 0.4D);
         PresenceHudVisualParameters idle = PresenceHudVisualParameters.forState(
-                PresenceHudVisualState.IDLE, false, layout
+                PresenceHudVisualState.IDLE, layout
         );
         PresenceHudVisualParameters loading = PresenceHudVisualParameters.forState(
-                PresenceHudVisualState.LOADING, false, layout
+                PresenceHudVisualState.LOADING, layout
         );
 
         PresenceHudVisualParameters halfway = PresenceHudVisualParameters.interpolate(idle, loading, 0.5F);
@@ -39,5 +39,20 @@ final class PresenceHudVisualParametersTest {
         assertEquals(0.0F, idle.loadingBlend(), 0.001F);
         assertEquals(1.0F, loading.loadingBlend(), 0.001F);
         assertEquals(0.5F, halfway.loadingBlend(), 0.001F);
+    }
+
+    @Test
+    void listeningIsTheIdleVisualWithThePulseOn() {
+        PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24, false, 0.5D, 0.4D);
+
+        PresenceHudVisualParameters idle = PresenceHudVisualParameters.forState(PresenceHudVisualState.IDLE, layout);
+        PresenceHudVisualParameters listening = PresenceHudVisualParameters.forState(
+                PresenceHudVisualState.LISTENING, layout);
+
+        assertEquals(idle.intensity(), listening.intensity(), 0.001F);
+        assertEquals(idle.speed(), listening.speed(), 0.001F);
+        assertEquals(idle.convergence(), listening.convergence(), 0.001F);
+        assertEquals(1.0F, listening.pulse(), 0.001F);
+        assertEquals(0.0F, idle.pulse(), 0.001F);
     }
 }

@@ -8,65 +8,59 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresenceDisplayPolicyTest {
     @Test
-    void listeningTextTakesForegroundWithoutReplacingPrimaryState() {
+    void listeningIsWordedAsItsOwnPrimaryState() {
         PresenceDisplayPolicy policy = new PresenceDisplayPolicy(texts(Map.of(
-                "tianshu.presence.status.listening", "正在聆听",
-                "tianshu.presence.status.responding", "正在回复"
+                "tianshu.presence.status.listening", "listening-text",
+                "tianshu.presence.status.responding", "responding-text"
         )));
 
         var display = policy.hudDisplay(new PresenceActivitySnapshot(
-                PresencePrimaryState.RESPONDING,
-                true,
+                PresencePrimaryState.LISTENING,
                 false,
-                "module.ax",
+                "module.asr",
                 1_000L
         ));
 
-        assertEquals("正在聆听", display.text());
-        assertEquals(PresencePrimaryState.RESPONDING, display.primaryState());
-        assertTrue(display.listening());
+        assertEquals("listening-text", display.text());
+        assertEquals(PresencePrimaryState.LISTENING, display.primaryState());
     }
 
     @Test
     void primaryStateUsesStableLocalizedKey() {
         PresenceDisplayPolicy policy = new PresenceDisplayPolicy(texts(Map.of(
-                "tianshu.presence.status.loading", "正在加载"
+                "tianshu.presence.status.loading", "loading-text"
         )));
 
         var display = policy.hudDisplay(new PresenceActivitySnapshot(
                 PresencePrimaryState.LOADING,
                 false,
-                false,
                 "module.llm",
                 1_000L
         ));
 
-        assertEquals("正在加载", display.text());
+        assertEquals("loading-text", display.text());
         assertEquals(PresencePrimaryState.LOADING, display.primaryState());
     }
 
     @Test
     void backgroundWorkIsCarriedAsAParallelMarkNotAsWords() {
         PresenceDisplayPolicy policy = new PresenceDisplayPolicy(texts(Map.of(
-                "tianshu.presence.status.thinking", "正在思考"
+                "tianshu.presence.status.thinking", "thinking-text"
         )));
 
         var display = policy.hudDisplay(new PresenceActivitySnapshot(
                 PresencePrimaryState.THINKING,
-                false,
                 true,
                 "module.ax",
                 1_000L
         ));
 
-        assertEquals("正在思考", display.text());
+        assertEquals("thinking-text", display.text());
         assertTrue(display.backgroundTask());
-        assertFalse(display.listening());
     }
 
     private static PresenceTextProvider texts(Map<String, String> values) {

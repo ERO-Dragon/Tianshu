@@ -52,6 +52,12 @@ final class PresenceHudShaderTest {
             String source = Files.readString(path, StandardCharsets.UTF_8);
             assertTrue(source.contains("\"srcrgb\": \"srcalpha\""), shader);
             assertTrue(source.contains("\"dstrgb\": \"1-srcalpha\""), shader);
+            for (String uniform : new String[]{
+                    "Time", "Intensity", "Speed", "Convergence", "Pulse", "Opacity", "Morph", "State", "Task"
+            }) {
+                assertTrue(source.contains("\"name\": \"" + uniform + "\""),
+                        shader + " must declare the shared uniform " + uniform);
+            }
             assertTrue(source.contains("\"vertex\": \"tianshu_presence:presence_icon\""),
                     "the shared vertex stage must be presence's own: " + shader);
             assertFalse(source.contains("tianshu:hud_"), "no kernel-namespaced shader may be referenced");

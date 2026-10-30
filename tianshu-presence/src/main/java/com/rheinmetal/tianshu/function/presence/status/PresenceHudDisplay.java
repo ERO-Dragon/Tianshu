@@ -4,22 +4,21 @@ import com.rheinmetal.tianshu.function.presence.model.PresencePrimaryState;
 import com.rheinmetal.tianshu.function.presence.hud.PresenceHudVisualState;
 
 /**
- * The immutable snapshot the HUD draws: one primary state, the words for it, and the two parallel marks.
+ * The immutable snapshot the HUD draws: one primary state, the words for it, and the background mark.
  *
- * <p>{@code backgroundTask} and {@code listening} are what the renderer shows beside the icon; the primary state is
- * what the icon itself becomes. Keeping the three apart is why the HUD never has to decide which of two concurrent
- * module states "wins": only primary states compete.</p>
+ * <p>Listening is one of the primary states, so the icon becomes the listening visual instead of carrying a second
+ * flag. {@code backgroundTask} is the only mark that can sit next to a primary state; it never competes for the slot.
+ * </p>
  */
 public record PresenceHudDisplay(
         boolean visible,
         String text,
         PresencePrimaryState primaryState,
-        boolean listening,
         boolean backgroundTask,
         String sourceModuleId
 ) {
     public static final PresenceHudDisplay HIDDEN =
-            new PresenceHudDisplay(false, "", PresencePrimaryState.IDLE, false, false, "");
+            new PresenceHudDisplay(false, "", PresencePrimaryState.IDLE, false, "");
 
     public PresenceHudDisplay {
         text = text == null ? "" : text.trim();
