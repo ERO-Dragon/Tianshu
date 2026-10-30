@@ -28,4 +28,28 @@ public interface ClientGameContextPort {
     List<GameEffect> captureEffects();
 
     GameWorldEnvironment captureEnvironment();
+
+    /** The block under the crosshair; cheap, O(1). */
+    GameBlockTarget captureBlockTarget();
+
+    /** Position, rotation and game mode; cheap, O(1). */
+    GamePlayerPose capturePlayerPose();
+
+    /** Experience progress, saturation and absorption; cheap, O(1). */
+    GamePlayerVitals captureVitals();
+
+    /**
+     * The container the player currently has open, if any.
+     *
+     * <p>Only reads the open menu (bounded by vanilla's slot count); outside a container screen it returns
+     * {@link GameContainerView#EMPTY} without touching the world.</p>
+     */
+    GameContainerView captureOpenContainer();
+
+    /**
+     * The public tab list: names, latency and game mode.
+     *
+     * <p>O(players) and reads only fields the client already renders; never another player's inventory.</p>
+     */
+    List<GamePlayerListEntry> capturePlayerList();
 }

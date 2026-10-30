@@ -145,5 +145,6 @@
   "tianshu.gui.ax.action.retry": "重试",
   "tianshu.gui.ax.action.dismiss": "忽略",
   "tianshu.gui.ax.text_input.title": "与辅星对话",
-  "tianshu.gui.ax.text_input.hint": "输入要对辅星说的话，回车发送，Esc 取消"
+  "tianshu.gui.ax.text_input.hint": "输入要对辅星说的话，回车发送，Esc 取消",
+  "tianshu.gui.ax.output.failed": "回答生成失败，详情见日志"
 }

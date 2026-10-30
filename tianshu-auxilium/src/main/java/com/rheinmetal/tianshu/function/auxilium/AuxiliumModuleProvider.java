@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleRegistrar;
-import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
+import com.rheinmetal.tianshu.function.auxilium.core.output.AuxiliumChatOutput;
 import com.rheinmetal.tianshu.function.auxilium.module.system.AXPromptLanguageProvider;
 import com.rheinmetal.tianshu.function.auxilium.producer.ModGameEventTexts;
 import com.rheinmetal.tianshu.function.auxilium.scope.AXWorldIdentityProvider;
@@ -78,7 +78,7 @@ public final class AuxiliumModuleProvider implements TianshuModuleProvider {
                 config,
                 AXRuntimePolicy.defaults(),
                 config,
-                AXChatOutputSink.NOOP,
+                new AuxiliumChatOutput(ports.presentation()),
                 speechBridge,
                 speechBridge,
                 texts

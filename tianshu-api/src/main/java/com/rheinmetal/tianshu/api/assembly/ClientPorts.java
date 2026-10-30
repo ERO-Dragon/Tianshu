@@ -4,7 +4,9 @@ import com.rheinmetal.tianshu.api.client.host.hud.HudHost;
 import com.rheinmetal.tianshu.api.config.ModuleConfigStores;
 import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
 import com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog;
+import com.rheinmetal.tianshu.api.server.ClientServerActionPort;
 import com.rheinmetal.tianshu.client.host.ClientFilePicker;
+import com.rheinmetal.tianshu.client.host.ClientPresentationPort;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.ClientTextProvider;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
@@ -22,8 +24,9 @@ import java.util.function.BooleanSupplier;
  * Adding a service here is a contract change for every provider, so it happens when a module actually
  * needs one.</p>
  *
- * <p>{@code gameContext} and {@code hud} are the two ports a rendering feature needs: one reads the game, the
- * other draws on it. Neither carries a Minecraft type, which is what lets the feature stay universal.</p>
+ * <p>{@code gameContext} reads the game, {@code hud} draws continuously, and {@code presentation} fires
+ * one-shot local effects (chat line, action bar, toast, title, sound). None of them carries a Minecraft type,
+ * which is what lets the feature stay universal.</p>
  */
 public record ClientPorts(
         ClientScheduler scheduler,
@@ -37,6 +40,8 @@ public record ClientPorts(
         HudHost hud,
         ClientGameContextPort gameContext,
         BooleanSupplier debugEnabled,
-        DiagnosticChatCatalogue diagnosticChat
+        DiagnosticChatCatalogue diagnosticChat,
+        ClientPresentationPort presentation,
+        ClientServerActionPort serverActions
 ) {
 }

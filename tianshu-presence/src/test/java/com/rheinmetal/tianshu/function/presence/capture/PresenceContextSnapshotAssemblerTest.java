@@ -1,11 +1,17 @@
 package com.rheinmetal.tianshu.function.presence.capture;
 
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.host.game.GameBlockTarget;
+import com.rheinmetal.tianshu.client.host.game.GameContainerEntry;
+import com.rheinmetal.tianshu.client.host.game.GameContainerView;
 import com.rheinmetal.tianshu.client.host.game.GameEffect;
 import com.rheinmetal.tianshu.client.host.game.GameEquipment;
 import com.rheinmetal.tianshu.client.host.game.GameInteractionContext;
 import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerListEntry;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerPose;
 import com.rheinmetal.tianshu.client.host.game.GamePlayerStatus;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerVitals;
 import com.rheinmetal.tianshu.client.host.game.GameScreenKind;
 import com.rheinmetal.tianshu.client.host.game.GameTarget;
 import com.rheinmetal.tianshu.client.host.game.GameWorldEnvironment;
@@ -242,6 +248,43 @@ final class PresenceContextSnapshotAssemblerTest {
             return empty
                     ? GameWorldEnvironment.EMPTY
                     : new GameWorldEnvironment(true, true, 9000L, "minecraft:plains", "Plains");
+        }
+
+        @Override
+        public GameBlockTarget captureBlockTarget() {
+            calls.add("captureBlockTarget");
+            return empty
+                    ? GameBlockTarget.EMPTY
+                    : new GameBlockTarget("minecraft:stone", "Stone", 1, 64, 1, true);
+        }
+
+        @Override
+        public GamePlayerPose capturePlayerPose() {
+            calls.add("capturePlayerPose");
+            return empty
+                    ? GamePlayerPose.EMPTY
+                    : new GamePlayerPose("minecraft:overworld", 1.0D, 64.0D, 1.0D, 90.0F, 0.0F, "survival");
+        }
+
+        @Override
+        public GamePlayerVitals captureVitals() {
+            calls.add("captureVitals");
+            return empty ? GamePlayerVitals.EMPTY : new GamePlayerVitals(0.5F, 3.0F, 0.0F);
+        }
+
+        @Override
+        public GameContainerView captureOpenContainer() {
+            calls.add("captureOpenContainer");
+            return empty
+                    ? GameContainerView.EMPTY
+                    : new GameContainerView("Chest", List.of(
+                            new GameContainerEntry(0, "minecraft:stone", "Stone", 1)));
+        }
+
+        @Override
+        public List<GamePlayerListEntry> capturePlayerList() {
+            calls.add("capturePlayerList");
+            return empty ? List.of() : List.of(new GamePlayerListEntry("player-1", 20, "survival"));
         }
     }
 }

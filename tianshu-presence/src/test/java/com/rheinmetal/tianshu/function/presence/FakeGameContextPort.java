@@ -1,11 +1,16 @@
 package com.rheinmetal.tianshu.function.presence;
 
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.host.game.GameBlockTarget;
+import com.rheinmetal.tianshu.client.host.game.GameContainerView;
 import com.rheinmetal.tianshu.client.host.game.GameEffect;
 import com.rheinmetal.tianshu.client.host.game.GameEquipment;
 import com.rheinmetal.tianshu.client.host.game.GameInteractionContext;
 import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerListEntry;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerPose;
 import com.rheinmetal.tianshu.client.host.game.GamePlayerStatus;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerVitals;
 import com.rheinmetal.tianshu.client.host.game.GameWorldEnvironment;
 
 import java.util.ArrayList;
@@ -119,6 +124,36 @@ public final class FakeGameContextPort implements ClientGameContextPort {
     public GameWorldEnvironment captureEnvironment() {
         record("environment");
         return nullSafe(environment.get(), GameWorldEnvironment.EMPTY);
+    }
+
+    @Override
+    public GameBlockTarget captureBlockTarget() {
+        record("blockTarget");
+        return GameBlockTarget.EMPTY;
+    }
+
+    @Override
+    public GamePlayerPose capturePlayerPose() {
+        record("playerPose");
+        return GamePlayerPose.EMPTY;
+    }
+
+    @Override
+    public GamePlayerVitals captureVitals() {
+        record("vitals");
+        return GamePlayerVitals.EMPTY;
+    }
+
+    @Override
+    public GameContainerView captureOpenContainer() {
+        record("openContainer");
+        return GameContainerView.EMPTY;
+    }
+
+    @Override
+    public List<GamePlayerListEntry> capturePlayerList() {
+        record("playerList");
+        return List.of();
     }
 
     private void record(String slice) {

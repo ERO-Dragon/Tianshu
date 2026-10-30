@@ -232,6 +232,11 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
         protocolRuntime.publishWorldEvent(event);
     }
 
+    /** Whether a module currently consumes the world-event stream; producers use it to skip work. */
+    public boolean hasWorldEventSubscribers() {
+        return protocolRuntime.topicSubscriberCount(com.rheinmetal.tianshu.protocol.ProtocolTopics.WORLD_EVENT) > 0;
+    }
+
     public RuntimeEnginePhase getEnginePhase() {
         return state.getPhase();
     }

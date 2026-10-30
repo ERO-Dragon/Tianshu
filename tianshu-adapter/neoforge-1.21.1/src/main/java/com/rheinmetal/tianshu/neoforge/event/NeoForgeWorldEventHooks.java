@@ -50,7 +50,7 @@ public final class NeoForgeWorldEventHooks {
 
     public static void recordAdvancementUpdate(ClientboundUpdateAdvancementsPacket packet) {
         Binding current = binding.get();
-        if (current != null) {
+        if (current != null && current.publisher().hasSubscribers()) {
             current.advancementTracker().collect(packet).forEach(current.publisher()::publish);
         }
     }
@@ -64,7 +64,7 @@ public final class NeoForgeWorldEventHooks {
      */
     public static void publish(WorldEventPayload event) {
         Binding current = binding.get();
-        if (current != null && event != null) {
+        if (current != null && event != null && current.publisher().hasSubscribers()) {
             current.publisher().publish(event);
         }
     }

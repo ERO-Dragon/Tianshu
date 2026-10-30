@@ -2,16 +2,25 @@ package com.rheinmetal.tianshu.neoforge.adapter;
 
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.host.game.GameBlockTarget;
+import com.rheinmetal.tianshu.client.host.game.GameContainerEntry;
+import com.rheinmetal.tianshu.client.host.game.GameContainerView;
 import com.rheinmetal.tianshu.client.host.game.GameEffect;
 import com.rheinmetal.tianshu.client.host.game.GameEquipment;
 import com.rheinmetal.tianshu.client.host.game.GameInteractionContext;
 import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerListEntry;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerPose;
 import com.rheinmetal.tianshu.client.host.game.GamePlayerStatus;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerVitals;
 import com.rheinmetal.tianshu.client.host.game.GameScreenKind;
 import com.rheinmetal.tianshu.client.host.game.GameTarget;
 import com.rheinmetal.tianshu.client.host.game.GameWorldEnvironment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -20,8 +29,11 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 
@@ -191,6 +203,103 @@ public final class NeoForgeGameContextPort implements ClientGameContextPort {
             logSink.warn("neoforge.game_context.biome_capture_failed detail=" + exception.getMessage());
         }
         return new GameWorldEnvironment(level.isRaining(), level.isThundering(), dayTime, biomeId, biomeDisplayName);
+    }
+
+    @Override
+    public GameBlockTarget captureBlockTarget() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.level == null
+                || !(minecraft.hitResult instanceof BlockHitResult hitResult)) {
+            return GameBlockTarget.EMPTY;
+        }
+        BlockPos position = hitResult.getBlockPos();
+        BlockState state = minecraft.level.getBlockState(position);
+        ResourceLocation key = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+        return new GameBlockTarget(
+                key == null ? "" : key.toString(),
+                state.getBlock().getName().getString(),
+                position.getX(),
+                position.getY(),
+                position.getZ(),
+                true
+        );
+    }
+
+    @Override
+    public GamePlayerPose capturePlayerPose() {
+        Minecraft minecraft = Minecraft.getInstance();
+        Player player = player();
+        if (player == null || minecraft.level == null) {
+            return GamePlayerPose.EMPTY;
+        }
+        String gameMode = minecraft.gameMode == null ? "" : minecraft.gameMode.getPlayerMode().getName();
+        return new GamePlayerPose(
+                minecraft.level.dimension().location().toString(),
+                player.getX(),
+                player.getY(),
+                player.getZ(),
+                player.getYRot(),
+                player.getXRot(),
+                gameMode
+        );
+    }
+
+    @Override
+    public GamePlayerVitals captureVitals() {
+        Player player = player();
+        if (player == null) {
+            return GamePlayerVitals.EMPTY;
+        }
+        return new GamePlayerVitals(
+                player.experienceProgress,
+                player.getFoodData().getSaturationLevel(),
+                player.getAbsorptionAmount()
+        );
+    }
+
+    @Override
+    public GameContainerView captureOpenContainer() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || !(minecraft.screen instanceof AbstractContainerScreen<?> screen)) {
+            return GameContainerView.EMPTY;
+        }
+        String languageCode = languageSnapshot.languageCode();
+        List<GameContainerEntry> entries = new ArrayList<>();
+        for (Slot slot : screen.getMenu().slots) {
+            ItemStack stack = slot.getItem();
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            entries.add(new GameContainerEntry(
+                    slot.index,
+                    key == null ? "" : key.toString(),
+                    ClientLanguagePolicy.itemDisplayName(stack, key, languageCode),
+                    stack.getCount()
+            ));
+        }
+        String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
+        return new GameContainerView(title, entries);
+    }
+
+    @Override
+    public List<GamePlayerListEntry> capturePlayerList() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getConnection() == null) {
+            return List.of();
+        }
+        List<GamePlayerListEntry> result = new ArrayList<>();
+        for (PlayerInfo info : minecraft.getConnection().getOnlinePlayers()) {
+            if (info == null || info.getProfile() == null) {
+                continue;
+            }
+            result.add(new GamePlayerListEntry(
+                    info.getProfile().getName(),
+                    info.getLatency(),
+                    info.getGameMode() == null ? "" : info.getGameMode().getName()
+            ));
+        }
+        return List.copyOf(result);
     }
 
     private Player player() {

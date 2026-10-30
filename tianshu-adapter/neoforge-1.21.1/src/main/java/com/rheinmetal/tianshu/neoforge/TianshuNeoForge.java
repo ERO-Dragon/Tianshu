@@ -52,11 +52,16 @@ public final class TianshuNeoForge {
         // The one network channel is registered on both sides: whoever hosts the server component still has to know
         // how a fact is shaped, and a client has to know how to receive it.
         modEventBus.addListener(TianshuNetwork::register);
+        // Server-side action switches: independent of the client config, off by default, reloaded with the server.
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,
+                com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.SPEC);
         // The collector is registered on both distributions: in single player the integrated server lives in this
         // same process, and "single player takes the same packet path" is a stated requirement. Its listeners only
         // act on {@code ServerPlayer}, so on a client connected to a remote server they simply never fire.
         serverCollector = new GameFactCollector();
         serverCollector.register(NeoForge.EVENT_BUS);
+        // The action channel announces its enabled set on join; the client side builds its toolbar from that.
+        com.rheinmetal.tianshu.neoforge.server.ServerActionHandler.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             clientBootstrap = new NeoForgeClientBootstrap();
             // A module's settings row may want to send the player to the controls screen; the binding is a

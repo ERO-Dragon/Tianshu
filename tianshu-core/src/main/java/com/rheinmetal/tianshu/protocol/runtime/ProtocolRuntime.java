@@ -415,7 +415,9 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
      * while nobody subscribes completes silently — the host keeps producing whether or not a feature is installed.</p>
      */
     public void publishWorldEvent(WorldEventPayload event) {
-        if (event == null) {
+        // No consumer is the normal state when the module that reads the stream is not installed: skipping here
+        // keeps an unused capability from allocating an envelope, a lifecycle record and a broker task per event.
+        if (event == null || topicSubscriberCount(ProtocolTopics.WORLD_EVENT) == 0) {
             return;
         }
         submit(EnvelopeBuilder.eventTopic(

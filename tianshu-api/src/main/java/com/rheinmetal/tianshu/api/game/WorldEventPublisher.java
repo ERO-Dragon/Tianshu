@@ -15,4 +15,14 @@ public interface WorldEventPublisher {
 
     /** Publishes one occurrence; an aggregation window belongs to whoever consumes the stream. */
     void publish(WorldEventPayload event);
+
+    /**
+     * Whether anyone is currently listening.
+     *
+     * <p>Producers use this to skip building a payload and an envelope when the stream has no consumer; the
+     * default keeps a publisher that cannot answer cheaply correct (it publishes as before).</p>
+     */
+    default boolean hasSubscribers() {
+        return true;
+    }
 }

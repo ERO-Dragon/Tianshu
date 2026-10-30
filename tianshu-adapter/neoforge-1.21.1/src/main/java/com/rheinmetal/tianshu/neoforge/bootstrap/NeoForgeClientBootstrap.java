@@ -33,7 +33,9 @@ import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
 import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguageSnapshot;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientFilePicker;
+import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientPresentation;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientScheduler;
+import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientTextProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientUiHost;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeEnvironment;
@@ -41,6 +43,7 @@ import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
 import com.rheinmetal.tianshu.api.game.WorldEventPublisher;
+import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameContextPort;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
@@ -183,7 +186,9 @@ public final class NeoForgeClientBootstrap {
                     hudHost,
                     gameContextPort,
                     config::isDebugEnabled,
-                    chatCatalogue
+                    chatCatalogue,
+                    new NeoForgeClientPresentation(),
+                    new NeoForgeServerActionClient()
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -211,7 +216,19 @@ public final class NeoForgeClientBootstrap {
 
             // The game's own event stream: the adapter observes, the runtime publishes. Binding the publisher —
             // rather than a feature runtime — is what lets the host report events whether or not a feature is installed.
-            WorldEventPublisher worldEventPublisher = coreManager::publishWorldEvent;
+            // The anonymous implementation exists for `hasSubscribers`: with no consumer the adapter can skip the
+            // payload/envelope entirely instead of routing an event nobody reads.
+            WorldEventPublisher worldEventPublisher = new WorldEventPublisher() {
+                @Override
+                public void publish(WorldEventPayload event) {
+                    coreManager.publishWorldEvent(event);
+                }
+
+                @Override
+                public boolean hasSubscribers() {
+                    return coreManager.hasWorldEventSubscribers();
+                }
+            };
             NeoForgeWorldEventHooks.bind(worldEventPublisher, diagnosticRouter);
             startingSession.own(() -> NeoForgeWorldEventHooks.clear(worldEventPublisher));
 

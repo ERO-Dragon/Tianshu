@@ -6,14 +6,14 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 /**
  * The one network channel Tianshu owns.
  *
- * <p>It is one-way by construction: the server component sends facts, the client receives them. There is no client to
- * server payload, so a client cannot feed itself authoritative facts, and this channel is not offered to other mods —
- * an external mod that needs server facts brings its own channel, exactly as the integration guide states.</p>
+ * <p>Two channels: the server component sends facts to a client, and a client sends whitelisted action requests to
+ * the server component. There is no generic client payload, so a client cannot feed itself authoritative facts or
+ * invent an action outside the handler's switch, and this channel is not offered to other mods.</p>
  */
 public final class TianshuNetwork {
 
-    /** Bumped when the fact payload changes shape; an older client simply refuses the channel. */
-    private static final String PROTOCOL_VERSION = "2";
+    /** Bumped when a payload changes shape; an older client simply refuses the channel. */
+    private static final String PROTOCOL_VERSION = "3";
 
     private TianshuNetwork() {
     }
@@ -21,5 +21,11 @@ public final class TianshuNetwork {
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
         registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, GameFactBatchPacket::handle);
+        registrar.playToClient(ServerActionResultPacket.TYPE, ServerActionResultPacket.STREAM_CODEC,
+                com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient::handleResult);
+        registrar.playToClient(ServerActionCatalogPacket.TYPE, ServerActionCatalogPacket.STREAM_CODEC,
+                com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient::handleCatalog);
+        registrar.playToServer(ServerActionRequestPacket.TYPE, ServerActionRequestPacket.STREAM_CODEC,
+                com.rheinmetal.tianshu.neoforge.server.ServerActionHandler::handle);
     }
 }
