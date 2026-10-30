@@ -30,36 +30,39 @@ import com.rheinmetal.tianshu.api.assembly.ClientPorts;
 import com.rheinmetal.tianshu.client.settings.registry.ModuleSettingsSourceRegistry;
 import com.rheinmetal.tianshu.integration.CoreBackedTianshuIntegrationApi;
 import com.rheinmetal.tianshu.integration.TianshuIntegrationAccess;
-import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
-import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguageSnapshot;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientFilePicker;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientPresentation;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientScheduler;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientTextProvider;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientUiHost;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeEnvironment;
+import com.rheinmetal.tianshu.mc.host.ClientLanguagePolicy;
+import com.rheinmetal.tianshu.mc.host.ClientLanguageSnapshot;
+import com.rheinmetal.tianshu.mc.host.SwingFilePicker;
+import com.rheinmetal.tianshu.mc.host.LocalPresentation;
+import com.rheinmetal.tianshu.mc.host.MainThreadScheduler;
+import com.rheinmetal.tianshu.mc.host.ServerActionClient;
+import com.rheinmetal.tianshu.mc.host.GameTextProvider;
+import com.rheinmetal.tianshu.mc.host.UiHost;
+import com.rheinmetal.tianshu.mc.host.GameEnvironment;
 import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
 import com.rheinmetal.tianshu.api.game.WorldEventPublisher;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameContextPort;
-import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
+import com.rheinmetal.tianshu.mc.host.RegistryDictionaryProvider;
+import com.rheinmetal.tianshu.mc.host.LiveGameContext;
+import com.rheinmetal.tianshu.mc.host.WorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
-import com.rheinmetal.tianshu.neoforge.event.NamedObjectReloadListener;
+import com.rheinmetal.tianshu.mc.event.NamedObjectReloadListener;
+import com.rheinmetal.tianshu.mc.event.ClientEvents;
+import com.rheinmetal.tianshu.mc.event.DeclaredKeyBindings;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientEvents;
-import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientLifecycleAdapter;
-import com.rheinmetal.tianshu.neoforge.event.NeoForgeEventRegistration;
-import com.rheinmetal.tianshu.neoforge.event.NeoForgeWorldEventHooks;
+import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
+import com.rheinmetal.tianshu.mc.event.ClientLifecycleAdapter;
+import com.rheinmetal.tianshu.mc.event.EventRegistration;
+import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
 import com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEvent;
-import com.rheinmetal.tianshu.neoforge.ui.hud.HudAnchorEditorScreen;
-import com.rheinmetal.tianshu.neoforge.ui.hud.HudShaderPrograms;
-import com.rheinmetal.tianshu.neoforge.ui.hud.NeoForgeHudHost;
-import com.rheinmetal.tianshu.neoforge.ui.settings.SettingsLayerScreen;
-import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
-import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsScreen;
+import com.rheinmetal.tianshu.mc.ui.hud.HudAnchorEditorScreen;
+import com.rheinmetal.tianshu.mc.ui.hud.HudShaderPrograms;
+import com.rheinmetal.tianshu.mc.ui.hud.HudLayerHost;
+import com.rheinmetal.tianshu.mc.ui.settings.SettingsLayerScreen;
+import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsModule;
+import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsScreen;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.ClientHooks;
@@ -82,14 +85,37 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import com.rheinmetal.tianshu.mc.bootstrap.ClientSession;
+import com.rheinmetal.tianshu.mc.event.ClientLifecycleAdapter;
+import com.rheinmetal.tianshu.mc.event.EventRegistration;
+import com.rheinmetal.tianshu.mc.event.NamedObjectReloadListener;
+import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
+import com.rheinmetal.tianshu.mc.host.ClientLanguagePolicy;
+import com.rheinmetal.tianshu.mc.host.ClientLanguageSnapshot;
+import com.rheinmetal.tianshu.mc.host.GameEnvironment;
+import com.rheinmetal.tianshu.mc.host.GameTextProvider;
+import com.rheinmetal.tianshu.mc.host.LiveGameContext;
+import com.rheinmetal.tianshu.mc.host.LocalPresentation;
+import com.rheinmetal.tianshu.mc.host.MainThreadScheduler;
+import com.rheinmetal.tianshu.mc.host.RegistryDictionaryProvider;
+import com.rheinmetal.tianshu.mc.host.SwingFilePicker;
+import com.rheinmetal.tianshu.mc.host.UiHost;
+import com.rheinmetal.tianshu.mc.host.WorldIdentityCapture;
+import com.rheinmetal.tianshu.mc.ui.hud.HudAnchorEditorScreen;
+import com.rheinmetal.tianshu.mc.ui.hud.HudLayerHost;
+import com.rheinmetal.tianshu.mc.ui.hud.HudShaderPrograms;
+import com.rheinmetal.tianshu.mc.ui.settings.SettingsLayerScreen;
+import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsModule;
+import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsScreen;
 
 public final class NeoForgeClientBootstrap {
     private final ClientLanguageSnapshot languageSnapshot = new ClientLanguageSnapshot();
     private final Path gameDirectory;
     private final ClientConfig config;
+    private final ServerActionClient serverActions;
     private KeyMapping voiceKey;
     private KeyMapping textInputKey;
-    private final com.rheinmetal.tianshu.neoforge.event.NeoForgeKeyBindings keyBindings = new com.rheinmetal.tianshu.neoforge.event.NeoForgeKeyBindings();
+    private final DeclaredKeyBindings keyBindings = new DeclaredKeyBindings();
     private AudioManager audioManager;
     private TianshuCoreManager coreManager;
 
@@ -98,18 +124,19 @@ public final class NeoForgeClientBootstrap {
     private TianshuSettingsContributorRegistry externalSettingsContributors;
     private CoreBackedTianshuIntegrationApi integrationApi;
     private ClientDiagnosticRouter diagnosticRouter;
-    private NeoForgeNamedObjectDictionaryProvider namedObjectDictionaryProvider;
-    private NeoForgeClientLifecycleAdapter lifecycleAdapter;
-    private NeoForgeHudHost hudHost;
+    private RegistryDictionaryProvider namedObjectDictionaryProvider;
+    private ClientLifecycleAdapter lifecycleAdapter;
+    private HudLayerHost hudHost;
     private NeoForgeClientEvents events;
-    private NeoForgeClientSession clientSession;
+    private ClientSession clientSession;
     private boolean shutdownHookRegistered;
 
-    public NeoForgeClientBootstrap() {
-        this(FMLPaths.GAMEDIR.get());
+    public NeoForgeClientBootstrap(ServerActionClient serverActions) {
+        this(FMLPaths.GAMEDIR.get(), serverActions);
     }
 
-    NeoForgeClientBootstrap(Path gameDirectory) {
+    NeoForgeClientBootstrap(Path gameDirectory, ServerActionClient serverActions) {
+        this.serverActions = Objects.requireNonNull(serverActions, "serverActions");
         this.gameDirectory = Objects.requireNonNull(gameDirectory, "gameDirectory").toAbsolutePath().normalize();
         this.config = new ClientConfig(gameDirectory);
     }
@@ -118,9 +145,9 @@ public final class NeoForgeClientBootstrap {
         if (clientSession != null) {
             return;
         }
-        NeoForgeClientSession startingSession = new NeoForgeClientSession();
+        ClientSession startingSession = new ClientSession();
         try {
-            NeoForgeEnvironment environment = new NeoForgeEnvironment(gameDirectory);
+            GameEnvironment environment = new GameEnvironment(gameDirectory);
             ClientDiagnosticMessageSink chatSink = message -> Minecraft.getInstance().execute(() -> {
                 if (Minecraft.getInstance().player != null && message != null) {
                     Minecraft.getInstance().player.displayClientMessage(
@@ -137,7 +164,7 @@ public final class NeoForgeClientBootstrap {
                     chatSink,
                     chatCatalogue
             );
-            NeoForgeClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
+            ClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
             environment.bindDiagnostics(diagnosticRouter);
             environment.bindLogs(diagnosticRouter);
             // A subscriber that throws is contained by the bus; report it where every other failure goes,
@@ -152,25 +179,25 @@ public final class NeoForgeClientBootstrap {
             // owns the index, its cache and its lifetime.
             createNamedObjectDictionary();
             refreshNamedObjectSnapshot();
-            NeoForgeClientTextProvider clientTexts = new NeoForgeClientTextProvider();
+            GameTextProvider clientTexts = new GameTextProvider();
             // The HUD host is the platform half: it renders whatever layers are registered and knows none of them.
-            NeoForgeHudHost hudHost = new NeoForgeHudHost(diagnosticRouter, view -> {
+            HudLayerHost hudHost = new HudLayerHost(diagnosticRouter, view -> {
                 Minecraft minecraft = Minecraft.getInstance();
                 minecraft.setScreen(new HudAnchorEditorScreen(minecraft.screen, view));
             });
             this.hudHost = hudHost;
             // The game context port. A feature reads it; the platform only captures.
-            var gameContextPort = new NeoForgeGameContextPort(languageSnapshot, diagnosticRouter);
-            NeoForgeWorldIdentityCapture worldIdentityCapture = new NeoForgeWorldIdentityCapture(gameDirectory);
+            var gameContextPort = new LiveGameContext(languageSnapshot, diagnosticRouter);
+            WorldIdentityCapture worldIdentityCapture = new WorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
 
             audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
-            NeoForgeClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
+            ClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
 
-            NeoForgeClientScheduler clientScheduler = new NeoForgeClientScheduler();
-            NeoForgeClientFilePicker clientFilePicker = new NeoForgeClientFilePicker(clientTexts);
+            MainThreadScheduler clientScheduler = new MainThreadScheduler();
+            SwingFilePicker clientFilePicker = new SwingFilePicker(clientTexts);
             startingSession.own(clientFilePicker::close);
-            NeoForgeClientUiHost clientUiHost = new NeoForgeClientUiHost(() -> settingsModule);
+            UiHost clientUiHost = new UiHost(() -> settingsModule);
             // One gate for every native model load in the process: retrieval claims it as the primary
             // lane and the speech modules queue behind it, so their native peaks never add up.
             NativeModelLoadQueue loadQueue = new NativeModelLoadQueue();
@@ -188,8 +215,8 @@ public final class NeoForgeClientBootstrap {
                     gameContextPort,
                     config::isDebugEnabled,
                     chatCatalogue,
-                    new NeoForgeClientPresentation(),
-                    new NeoForgeServerActionClient()
+                    new LocalPresentation(),
+                    serverActions
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -197,7 +224,7 @@ public final class NeoForgeClientBootstrap {
                             context,
                             moduleSettingsSources));
             TianshuCoreManager assembledCoreManager = coreManager;
-            NeoForgeClientSession.Ownership coreOwnership = startingSession.own(
+            ClientSession.Ownership coreOwnership = startingSession.own(
                     () -> assembledCoreManager.destroy().join()
             );
 
@@ -206,8 +233,8 @@ public final class NeoForgeClientBootstrap {
                     () -> diagnosticRouter.info("neoforge.world.session_started"),
                     failure -> diagnosticRouter.error("neoforge.world.session_lifecycle_failed", failure)
             );
-            lifecycleAdapter = new NeoForgeClientLifecycleAdapter(clientRuntime);
-            NeoForgeClientLifecycleAdapter currentLifecycleAdapter = lifecycleAdapter;
+            lifecycleAdapter = new ClientLifecycleAdapter(clientRuntime);
+            ClientLifecycleAdapter currentLifecycleAdapter = lifecycleAdapter;
             startingSession.own(currentLifecycleAdapter::onClientShutdown);
             coreOwnership.release();
             audioOwnership.release();
@@ -230,8 +257,8 @@ public final class NeoForgeClientBootstrap {
                     return coreManager.hasWorldEventSubscribers();
                 }
             };
-            NeoForgeWorldEventHooks.bind(worldEventPublisher, diagnosticRouter);
-            startingSession.own(() -> NeoForgeWorldEventHooks.clear(worldEventPublisher));
+            WorldEventHooks.bind(worldEventPublisher, diagnosticRouter);
+            startingSession.own(() -> WorldEventHooks.clear(worldEventPublisher));
 
             externalSettingsContributors = new TianshuSettingsContributorRegistry();
             integrationApi = new CoreBackedTianshuIntegrationApi(coreManager);
@@ -241,20 +268,22 @@ public final class NeoForgeClientBootstrap {
             settingsModule = new TianshuSettingsModule(createSettingsRegistrySource(clientPorts), config, diagnosticRouter);
             NeoForge.EVENT_BUS.post(new TianshuIntegrationRegisterEvent(currentIntegrationApi, externalSettingsContributors));
 
-            events = new NeoForgeClientEvents(
+            events = new NeoForgeClientEvents(new ClientEvents(
                     coreManager,
                     settingsModule,
                     lifecycleAdapter,
                     hudHost,
                     worldIdentityCapture,
                     () -> voiceKey,
-                () -> textInputKey,
+                    () -> textInputKey,
                     keyBindings,
                     clientUiHost,
+                    serverActions,
+                    TianshuNetwork::protocolVersion,
                     diagnosticRouter
-            );
+            ));
             NeoForgeClientEvents currentEvents = events;
-            NeoForgeEventRegistration eventRegistration = NeoForgeEventRegistration.register(
+            EventRegistration eventRegistration = EventRegistration.register(
                     () -> NeoForge.EVENT_BUS.register(currentEvents),
                     () -> NeoForge.EVENT_BUS.unregister(currentEvents)
             );
@@ -277,7 +306,7 @@ public final class NeoForgeClientBootstrap {
     }
 
     /** The registry a module declares its own key into. */
-    public com.rheinmetal.tianshu.neoforge.event.NeoForgeKeyBindings keyBindings() {
+    public DeclaredKeyBindings keyBindings() {
         return keyBindings;
     }
 
@@ -298,7 +327,7 @@ public final class NeoForgeClientBootstrap {
                 "key.categories.tianshu"
         );
         event.register(textInputKey);
-        keyBindings.registerAll(event);
+        keyBindings.registerAll(event::register);
     }
 
     public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {
@@ -311,7 +340,7 @@ public final class NeoForgeClientBootstrap {
     /** A reload changes translations and resources, so everything measured or resolved from them must be dropped. */
     private void onResourcesReloaded() {
         refreshNamedObjectSnapshot();
-        NeoForgeHudHost host = hudHost;
+        HudLayerHost host = hudHost;
         if (host != null) {
             host.onResourcesReloaded();
         }
@@ -354,7 +383,7 @@ public final class NeoForgeClientBootstrap {
     }
 
     public synchronized void shutdown() {
-        NeoForgeClientSession currentSession = clientSession;
+        ClientSession currentSession = clientSession;
         if (currentSession == null) {
             return;
         }
@@ -459,9 +488,9 @@ public final class NeoForgeClientBootstrap {
      * that reads speech, and that module decides where it lives and when it is rebuilt. Registering it here
      * is the whole extent of the platform's involvement.</p>
      */
-    private synchronized NeoForgeNamedObjectDictionaryProvider createNamedObjectDictionary() {
+    private synchronized RegistryDictionaryProvider createNamedObjectDictionary() {
         if (namedObjectDictionaryProvider == null) {
-            namedObjectDictionaryProvider = new NeoForgeNamedObjectDictionaryProvider(languageSnapshot);
+            namedObjectDictionaryProvider = new RegistryDictionaryProvider(languageSnapshot);
             TianshuRuntimePorts.register(NamedObjectDictionary.class, namedObjectDictionaryProvider);
         }
         return namedObjectDictionaryProvider;
@@ -469,7 +498,7 @@ public final class NeoForgeClientBootstrap {
 
     private void refreshNamedObjectSnapshot() {
         if (namedObjectDictionaryProvider == null) {
-            namedObjectDictionaryProvider = new NeoForgeNamedObjectDictionaryProvider(languageSnapshot);
+            namedObjectDictionaryProvider = new RegistryDictionaryProvider(languageSnapshot);
         }
         try {
             languageSnapshot.update(ClientLanguagePolicy.captureCurrentLanguageCode());

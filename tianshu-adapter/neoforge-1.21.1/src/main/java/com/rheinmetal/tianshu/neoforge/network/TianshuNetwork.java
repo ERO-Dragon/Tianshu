@@ -1,5 +1,12 @@
 package com.rheinmetal.tianshu.neoforge.network;
 
+import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
+import com.rheinmetal.tianshu.mc.host.ServerActionClient;
+import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -23,13 +30,21 @@ public final class TianshuNetwork {
         return PROTOCOL_VERSION;
     }
 
-    public static void register(RegisterPayloadHandlersEvent event) {
+    public static void register(RegisterPayloadHandlersEvent event, ServerActionClient actions) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
-        registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, GameFactBatchPacket::handle);
+        // One enqueue keeps a batch atomic with respect to other client work: consumers see the facts in the
+        // order the server produced them, not interleaved with another packet.
+        registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, (packet, context) -> {
+            var events = packet.toEvents();
+            if (events.isEmpty()) {
+                return;
+            }
+            context.enqueueWork(() -> events.forEach(WorldEventHooks::publish));
+        });
         registrar.playToClient(ServerActionResultPacket.TYPE, ServerActionResultPacket.STREAM_CODEC,
-                com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient::handleResult);
+                (packet, context) -> actions.receiveResult(packet, context::enqueueWork));
         registrar.playToClient(ServerActionCatalogPacket.TYPE, ServerActionCatalogPacket.STREAM_CODEC,
-                com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient::handleCatalog);
+                (packet, context) -> actions.receiveCatalog(packet, context::enqueueWork));
         registrar.playToServer(ServerActionRequestPacket.TYPE, ServerActionRequestPacket.STREAM_CODEC,
                 com.rheinmetal.tianshu.neoforge.server.ServerActionHandler::handle);
     }

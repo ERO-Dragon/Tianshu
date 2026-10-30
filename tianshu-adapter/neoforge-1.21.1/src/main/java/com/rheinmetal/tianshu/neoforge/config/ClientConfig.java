@@ -6,6 +6,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.nio.file.Path;
 import java.util.Objects;
+import com.rheinmetal.tianshu.mc.config.TianshuBuildProfile;
 
 /**
  * The kernel's own settings.

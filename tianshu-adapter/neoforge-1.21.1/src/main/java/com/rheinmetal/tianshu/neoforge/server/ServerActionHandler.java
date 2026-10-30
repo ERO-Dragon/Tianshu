@@ -2,9 +2,9 @@ package com.rheinmetal.tianshu.neoforge.server;
 
 import com.rheinmetal.tianshu.api.server.ServerActionResult;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
-import com.rheinmetal.tianshu.neoforge.network.ServerActionCatalogPacket;
-import com.rheinmetal.tianshu.neoforge.network.ServerActionRequestPacket;
-import com.rheinmetal.tianshu.neoforge.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;

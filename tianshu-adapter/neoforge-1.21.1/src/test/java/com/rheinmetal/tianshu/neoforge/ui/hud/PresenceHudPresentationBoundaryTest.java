@@ -8,6 +8,8 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.rheinmetal.tianshu.mc.ui.hud.HudAnchorEditorScreen;
+import com.rheinmetal.tianshu.mc.ui.hud.HudSurfaceRenderer;
 
 /**
  * Guardrails for the split between the platform's drawing and the feature's presentation.
@@ -17,9 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 final class PresenceHudPresentationBoundaryTest {
     private static final Path ANCHOR_SCREEN =
-            Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/HudAnchorEditorScreen.java");
+            Path.of("../common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudAnchorEditorScreen.java");
     private static final Path SURFACE =
-            Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/ui/hud/NeoForgeHudSurface.java");
+            Path.of("../common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudSurfaceRenderer.java");
     private static final Path PRESENCE_ICON =
             Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceIconElementRenderer.java");
 
@@ -40,7 +42,7 @@ final class PresenceHudPresentationBoundaryTest {
         String source = read(ANCHOR_SCREEN);
 
         assertFalse(source.contains("super.render(graphics"));
-        assertTrue(source.contains("for (Renderable renderable : renderables)"));
+        assertTrue(source.contains("for (GuiEventListener child : children())"));
         assertTrue(source.contains("view.resolve("), "the preview must come from the feature's resolver");
     }
 

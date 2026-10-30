@@ -8,9 +8,10 @@ import com.rheinmetal.tianshu.neoforge.bootstrap.NeoForgeClientBootstrap;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
+import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
 import com.rheinmetal.tianshu.neoforge.server.GameFactCollector;
-import com.rheinmetal.tianshu.neoforge.ui.NeoForgeClientKeyBindings;
+import com.rheinmetal.tianshu.mc.ui.VanillaKeyBindings;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -51,7 +52,12 @@ public final class TianshuNeoForge {
                 modId -> modId != null && !modId.isBlank() && ModList.get().isLoaded(modId));
         // The one network channel is registered on both sides: whoever hosts the server component still has to know
         // how a fact is shaped, and a client has to know how to receive it.
-        modEventBus.addListener(TianshuNetwork::register);
+        // The brain: one action client per process. The network registration delivers answers to it and the
+        // client bootstrap reads its snapshots, so no static has to describe this object.
+        ServerActionClient serverActions = new ServerActionClient(
+                net.neoforged.neoforge.network.PacketDistributor::sendToServer);
+        modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
+                TianshuNetwork.register(registerPayloads, serverActions));
         // Server-side action switches: independent of the client config, off by default, reloaded with the server.
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,
                 com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.SPEC);
@@ -63,10 +69,10 @@ public final class TianshuNeoForge {
         // The action channel announces its enabled set on join; the client side builds its toolbar from that.
         com.rheinmetal.tianshu.neoforge.server.ServerActionHandler.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            clientBootstrap = new NeoForgeClientBootstrap();
+            clientBootstrap = new NeoForgeClientBootstrap(serverActions);
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
-            TianshuRuntimePorts.register(ClientKeyBindings.class, new NeoForgeClientKeyBindings());
+            TianshuRuntimePorts.register(ClientKeyBindings.class, new VanillaKeyBindings());
             // A module that wants a key declares it here while its jar loads; the platform registers it in the
             // key-mapping event later, so the module never touches a KeyMapping.
             TianshuRuntimePorts.register(KeyBindings.class, clientBootstrap.keyBindings());

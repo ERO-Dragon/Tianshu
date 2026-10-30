@@ -54,6 +54,21 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
 
+// ---------------------------------------------------------------- shared Minecraft layer
+// Everything that talks to Minecraft but not to a loader lives in tianshu-adapter/common and is compiled here
+// from source. A Gradle project cannot be compiled once against two loaders' Minecraft artifacts, so the tree
+// is shared and each adapter supplies its own classpath; `verifyCommonAdapterNeutral` keeps loader imports out
+// of it, which is the whole contract. A sibling adapter (fabric-1.21.1) includes the same directory.
+sourceSets {
+    main {
+        java.srcDir '../common/src/main/java'
+        resources.srcDir '../common/src/main/resources'
+    }
+    test {
+        java.srcDir '../common/src/test/java'
+    }
+}
+
 repositories {
 }
 

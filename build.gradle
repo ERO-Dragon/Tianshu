@@ -221,17 +221,20 @@ tasks.register('verifyFeatureOptionalDependencies') {
 // Snapshot of the real project graph, taken after every subproject has been evaluated. It is captured here,
 // not read inside the task, because a task action may not reach into other projects under the configuration
 // cache — and the project graph is exactly what this gate is about.
+def adapterProjects = project(':tianshu-adapter').subprojects as List
+// The shared adapter layer is not a Gradle project: one source tree is compiled into every loader adapter,
+// so it is scanned by path wherever a rule says "kernel code".
+def commonAdapterSources = file('tianshu-adapter/common/src/main/java')
 def hostProjectDependencyViolations = []
 gradle.projectsEvaluated {
-    hostModules.each { module ->
-        def projectPath = module == 'tianshu-adapter' ? ':tianshu-adapter:neoforge-1.21.1' : ":${module}"
-        def hostProject = project(projectPath)
+    def kernelProjects = hostModules.findAll { it != 'tianshu-adapter' }.collect { project(":${it}") } + adapterProjects
+    kernelProjects.each { hostProject ->
         ['api', 'implementation', 'compileOnly', 'runtimeOnly'].each { configurationName ->
             def configuration = hostProject.configurations.findByName(configurationName)
             if (configuration == null) return
             configuration.dependencies.withType(org.gradle.api.artifacts.ProjectDependency).each { dependency ->
                 if (dependency.path in featureModules.collect { ":${it}" }) {
-                    hostProjectDependencyViolations << "${module} declares a project dependency on ${dependency.path}; the kernel must not depend on a feature module"
+                    hostProjectDependencyViolations << "${hostProject.path} declares a project dependency on ${dependency.path}; the kernel must not depend on a feature module"
                 }
             }
         }
@@ -241,11 +244,13 @@ gradle.projectsEvaluated {
 tasks.register('verifyHostHasNoFeatureDependency') {
     group = 'verification'
     description = 'The kernel modules must never reference or depend on a feature module.'
-    def hostBuildFiles = hostModules.collectMany { module ->
-        def dir = module == 'tianshu-adapter' ? 'tianshu-adapter/neoforge-1.21.1' : module
-        [file("${dir}/build.gradle")]
-    }
-    inputs.files(files(hostModules.collect { "${it}/src/main/java" }))
+    def plainHostModules = hostModules.findAll { it != 'tianshu-adapter' }
+    def adapterProjectDirs = adapterProjects.collect { it.projectDir }
+    def hostBuildFiles = plainHostModules.collect { file("${it}/build.gradle") } +
+            adapterProjectDirs.collect { new File(it, 'build.gradle') }
+    inputs.files(files(plainHostModules.collect { "${it}/src/main/java" }))
+    inputs.dir(commonAdapterSources)
+    adapterProjectDirs.each { dir -> inputs.dir(new File(dir, 'src/main/java')) }
     inputs.files(hostBuildFiles)
     doLast { task ->
         // A source-free build dependency is the same coupling in a different place: it is what makes the
@@ -267,6 +272,35 @@ tasks.register('verifyHostHasNoFeatureDependency') {
         }
         if (!violations.isEmpty()) {
             throw new GradleException("Kernel modules reference feature modules:\n" + violations.join('\n'))
+        }
+    }
+}
+
+tasks.register('verifyCommonAdapterNeutral') {
+    group = 'verification'
+    description = 'The shared adapter layer must talk to Minecraft without knowing which loader it runs on.'
+    // A loader import here would compile in one adapter and fail in the other, so the layer is compiled into
+    // both from one tree and the tree is kept loader-free. Comments are allowed to name a loader; code is not.
+    inputs.dir(commonAdapterSources)
+    doLast { task ->
+        def forbidden = ['net.neoforged', 'net.fabricmc', 'net.minecraftforge', 'cpw.mods']
+        def violations = []
+        task.inputs.files.files.each { source ->
+            if (!source.path.endsWith('.java')) return
+            int lineNumber = 0
+            source.eachLine('UTF-8') { line ->
+                lineNumber++
+                def trimmed = line.trim()
+                if (trimmed.startsWith('*') || trimmed.startsWith('//') || trimmed.startsWith('/*')) return
+                forbidden.each { prefix ->
+                    if (trimmed.contains(prefix)) {
+                        violations << "${source.name}:${lineNumber} references a loader: ${trimmed}"
+                    }
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Shared adapter layer references a loader:\n" + violations.join('\n'))
         }
     }
 }
@@ -355,6 +389,7 @@ tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
     dependsOn tasks.named('verifyFeatureOptionalDependencies')
     dependsOn tasks.named('verifyHostHasNoFeatureDependency')
+    dependsOn tasks.named('verifyCommonAdapterNeutral')
     dependsOn tasks.named('verifyNoPlatformImport')
     dependsOn tasks.named('verifyUniversalModuleJars')
 }

@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.server;
 
-import com.rheinmetal.tianshu.neoforge.network.GameFact;
-import com.rheinmetal.tianshu.neoforge.network.GameFactBatch;
-import com.rheinmetal.tianshu.neoforge.network.GameFactBatchPacket;
+import com.rheinmetal.tianshu.mc.network.GameFact;
+import com.rheinmetal.tianshu.mc.network.GameFactBatch;
+import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;

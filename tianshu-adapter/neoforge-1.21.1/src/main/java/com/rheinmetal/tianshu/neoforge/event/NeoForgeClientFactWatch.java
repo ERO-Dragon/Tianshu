@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
-import com.rheinmetal.tianshu.neoforge.adapter.ClientLanguagePolicy;
+import com.rheinmetal.tianshu.mc.host.ClientLanguagePolicy;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -14,6 +14,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
 
 /**
  * Facts the client itself can observe exactly, without a server component.
@@ -85,7 +86,7 @@ public final class NeoForgeClientFactWatch {
     }
 
     private void publish(String eventType, Level level, Map<String, String> values) {
-        NeoForgeWorldEventHooks.publish(new WorldEventPayload(
+        WorldEventHooks.publish(new WorldEventPayload(
                 eventType,
                 "",
                 level == null ? "" : level.dimension().location().toString(),

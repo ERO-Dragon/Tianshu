@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
 
 /**
  * Turns "a boss bar appeared on screen" into a world event.
@@ -42,7 +43,7 @@ public final class NeoForgeBossEventWatch {
         if (id == null || !REPORTED.add(id)) {
             return;
         }
-        NeoForgeWorldEventHooks.publish(new WorldEventPayload(
+        WorldEventHooks.publish(new WorldEventPayload(
                 WorldEventTypes.EVENT_BOSS_ENGAGE,
                 "",
                 "",
