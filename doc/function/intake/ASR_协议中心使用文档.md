@@ -171,4 +171,4 @@ ASR 使用 `sessionId` 区分当前输入代次和外部中断：收到不同于
 - [ ] 不假设 ASR 提供请求响应 capability。
 ## 诊断记录
 
-ASR 的结构化诊断由设置页右下角的全局 Debug 开关统一控制。开启后可记录识别原文、输入模式和会话标识；关闭时事件不会进入诊断文件。普通运行日志始终写入独立的 `logs/tianshu-diagnostics.log`；文件由 Client 异步集中写入，ASR 不自行创建文件或线程。
+ASR 的结构化诊断由设置页右下角的全局 Debug 开关统一控制。开启后可记录识别原文、输入模式和会话标识；关闭时事件不再进聊天栏，但 WARN/ERROR 仍会落盘（INFO 级进度事件只在开关打开时落盘）。普通运行日志始终写入独立的 `logs/tianshu-diagnostics.log`；文件由 Client 异步集中写入，ASR 不自行创建文件或线程。

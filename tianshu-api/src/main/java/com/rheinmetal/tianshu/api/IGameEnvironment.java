@@ -6,8 +6,6 @@ import java.nio.file.Path;
 
 public interface IGameEnvironment {
 
-    void displayMessageToPlayer(String message);
-
     void executeOnMainThread(Runnable task);
 
     Path getGameDirectory();

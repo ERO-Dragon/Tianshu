@@ -23,6 +23,7 @@
 "tianshu.gui.settings.title": "Tianshu Settings",
 "tianshu.gui.settings.modules": "Modules",
 "tianshu.gui.settings.console": "Tianshu AI Console",
+"tianshu.gui.settings.empty.title": "No feature modules installed",
 "tianshu.gui.settings.action.save": "Save",
 "tianshu.gui.settings.action.close": "Close",
 "tianshu.gui.settings.debug.enabled": "Debug: On",

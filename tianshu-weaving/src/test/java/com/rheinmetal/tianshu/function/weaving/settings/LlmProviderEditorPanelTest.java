@@ -988,10 +988,6 @@ final class LlmProviderEditorPanelTest {
     /** Only the game directory is real; the page must not need anything else. */
     private record FakeGameEnvironment(Path gameDirectory) implements IGameEnvironment {
         @Override
-        public void displayMessageToPlayer(String message) {
-        }
-
-        @Override
         public void executeOnMainThread(Runnable task) {
             task.run();
         }

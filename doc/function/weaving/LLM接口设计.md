@@ -592,6 +592,6 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 ```
 ## 诊断记录
 
-LLM 的结构化推理诊断由设置页右下角的全局 Debug 开关统一控制。开启后允许记录请求消息和生成结果，用于调试 prompt、上下文和输出链路；关闭时事件不会进入诊断文件。普通运行日志始终写入独立的 `logs/tianshu-diagnostics.log`，文件写入由 Client 异步集中完成。
+LLM 的结构化推理诊断由设置页右下角的全局 Debug 开关统一控制。开启后允许记录请求消息和生成结果，用于调试 prompt、上下文和输出链路；关闭时事件不再进聊天栏，但 WARN/ERROR 仍会落盘（INFO 级进度事件只在开关打开时落盘）。普通运行日志始终写入独立的 `logs/tianshu-diagnostics.log`，文件写入由 Client 异步集中完成。
 
 模型下载进度不是 LLM 协议 payload。宿主设置页接收 `ModelDownloadProgress`，使用 `stage`、`percent`、`downloadedBytes`、`totalBytes` 和 `detailCode` 更新界面；Common 不发送自由文本下载标签。

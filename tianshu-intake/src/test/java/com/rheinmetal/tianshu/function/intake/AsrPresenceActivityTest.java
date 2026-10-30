@@ -232,7 +232,6 @@ class AsrPresenceActivityTest {
     }
 
     private static final class FakeEnvironment implements IGameEnvironment {
-        @Override public void displayMessageToPlayer(String message) {}
         @Override public void executeOnMainThread(Runnable task) { task.run(); }
         @Override public Path getGameDirectory() { return Path.of("."); }
         @Override public boolean isClientSide() { return true; }

@@ -1,18 +1,29 @@
 package com.rheinmetal.tianshu.client.diagnostics;
 
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.host.DiagnosticChatCatalogue;
 
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * One sink for everything the session reports: the structured log file, and the optional progress lines in chat.
+ *
+ * <p>The two outputs are decided separately on purpose. The file is the support surface — a warning or an error
+ * belongs there in every build. Chat is the debugging surface, and only exists while the debug switch is on, which
+ * a release build can never turn on. A module does not choose the destination: it picks a severity and, if the code
+ * deserves a player-facing line at all, registers that code in the {@link DiagnosticChatCatalogue}.</p>
+ */
 public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, AutoCloseable {
     private final Predicate<String> moduleEnabled;
+    private final BooleanSupplier inGameMessages;
     private final ClientDiagnosticWriter writer;
     private final ClientDiagnosticMessageSink messageSink;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -37,7 +48,17 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
     public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled,
                                   ClientDiagnosticMessageSink messageSink,
                                   DiagnosticChatCatalogue chatCatalogue) {
-        this(gameDirectory, moduleEnabled, 2_048, 8L * 1024L * 1024L, 5, messageSink, chatCatalogue);
+        this(gameDirectory, moduleEnabled, () -> false, 2_048, 8L * 1024L * 1024L, 5, messageSink, chatCatalogue);
+    }
+
+    /**
+     * @param inGameMessages whether progress lines may reach the player; the platform passes the debug switch here,
+     *                       so a release build logs without ever printing in game
+     */
+    public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, BooleanSupplier inGameMessages,
+                                  ClientDiagnosticMessageSink messageSink,
+                                  DiagnosticChatCatalogue chatCatalogue) {
+        this(gameDirectory, moduleEnabled, inGameMessages, 2_048, 8L * 1024L * 1024L, 5, messageSink, chatCatalogue);
     }
 
     ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, int queueCapacity, long maxFileBytes, int maxArchives) {
@@ -45,12 +66,19 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
     }
 
     public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, int queueCapacity, long maxFileBytes, int maxArchives, ClientDiagnosticMessageSink messageSink) {
-        this(gameDirectory, moduleEnabled, queueCapacity, maxFileBytes, maxArchives, messageSink, new ClientDiagnosticChatCatalogue());
+        this(gameDirectory, moduleEnabled, () -> false, queueCapacity, maxFileBytes, maxArchives, messageSink, new ClientDiagnosticChatCatalogue());
     }
 
     public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, int queueCapacity, long maxFileBytes, int maxArchives, ClientDiagnosticMessageSink messageSink, DiagnosticChatCatalogue chatCatalogue) {
+        this(gameDirectory, moduleEnabled, () -> false, queueCapacity, maxFileBytes, maxArchives, messageSink, chatCatalogue);
+    }
+
+    public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, BooleanSupplier inGameMessages,
+                                  int queueCapacity, long maxFileBytes, int maxArchives,
+                                  ClientDiagnosticMessageSink messageSink, DiagnosticChatCatalogue chatCatalogue) {
         Objects.requireNonNull(gameDirectory, "gameDirectory");
         this.moduleEnabled = Objects.requireNonNull(moduleEnabled, "moduleEnabled");
+        this.inGameMessages = inGameMessages == null ? () -> false : inGameMessages;
         this.messageSink = messageSink == null ? ClientDiagnosticMessageSink.NOOP : messageSink;
         this.chatCatalogue = chatCatalogue == null ? new ClientDiagnosticChatCatalogue() : chatCatalogue;
         this.writer = new ClientDiagnosticWriter(gameDirectory.resolve("logs").resolve("tianshu-diagnostics.log"), queueCapacity, maxFileBytes, maxArchives);
@@ -61,10 +89,18 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
         if (event == null || closed.get() || !moduleEnabled.test(event.moduleId())) {
             return;
         }
-        if (!writer.offer(event)) {
-            droppedEvents.incrementAndGet();
-        } else {
-            acceptedRecords.set(true);
+        boolean inGame = inGameMessages.getAsBoolean();
+        // Trace, debug and progress output are debugging aids and stay out of a shipping log; a warning or an error
+        // is news the log keeps whether or not anyone turned the switch on.
+        if (inGame || event.severity() == DiagnosticSeverity.WARN || event.severity() == DiagnosticSeverity.ERROR) {
+            if (!writer.offer(event)) {
+                droppedEvents.incrementAndGet();
+            } else {
+                acceptedRecords.set(true);
+            }
+        }
+        if (!inGame) {
+            return;
         }
         ClientDiagnosticMessage message = ClientDiagnosticProgress.messageFor(event, chatCatalogue);
         if (message != null) {

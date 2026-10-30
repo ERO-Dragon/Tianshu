@@ -331,6 +331,9 @@ public final class TianshuSettingsScreen extends Screen {
         renderScrollRegionWidgets(guiGraphics, contentMouseX, contentMouseY, partialTick);
         drawRightPanelDecorationBorders(guiGraphics, layout);
         chrome.drawForeground(guiGraphics, font, width, height, TITLE, LEFT_TITLE, selectedCategory(), statusMessage());
+        if (registry.categories().isEmpty()) {
+            drawEmptyState(guiGraphics, layout);
+        }
         chrome.drawOverlay(guiGraphics, layout, rightPanelScroll);
         if (selectionPanel != null) {
             selectionPanel.render(guiGraphics, font, width, height, mouseX, mouseY);
@@ -535,6 +538,17 @@ public final class TianshuSettingsScreen extends Screen {
 
     private ModuleSettingsCategory selectedCategory() {
         return selectedModuleId == null ? null : registry.find(selectedModuleId);
+    }
+
+    /**
+     * A kernel-only install has no module pages. Without a word here the screen is an empty frame with three
+     * buttons, which reads as a broken page rather than "nothing is installed".
+     */
+    private void drawEmptyState(GuiGraphics guiGraphics, SettingsScreenLayout layout) {
+        Component title = Component.translatable("tianshu.gui.settings.empty.title");
+        int centreX = (layout.leftX() + layout.rightX() + layout.rightWidth()) / 2;
+        int centreY = (layout.contentTop() + layout.actionsY()) / 2;
+        guiGraphics.drawCenteredString(font, title, centreX, centreY - 4, 0xFFFFFF);
     }
 
     private Component statusMessage() {

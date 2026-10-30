@@ -23,6 +23,7 @@
 "tianshu.gui.settings.title": "天枢设置",
 "tianshu.gui.settings.modules": "模块",
 "tianshu.gui.settings.console": "天枢 AI 控制台",
+"tianshu.gui.settings.empty.title": "未安装任何功能模组",
 "tianshu.gui.settings.action.save": "保存",
 "tianshu.gui.settings.action.close": "关闭",
 "tianshu.gui.settings.debug.enabled": "调试：开",

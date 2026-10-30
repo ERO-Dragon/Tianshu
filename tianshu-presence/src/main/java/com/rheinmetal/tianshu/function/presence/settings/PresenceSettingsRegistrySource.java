@@ -85,7 +85,9 @@ public final class PresenceSettingsRegistrySource implements TianshuSettingsRegi
                         .row("presence.status.hud", presence("row.hud"), () -> common(session.hudEnabled.get() ? "on" : "off"))
                         .row("presence.status.text", presence("row.status_text"), () -> common(session.statusTextEnabled.get() ? "on" : "off"))
                         .row("presence.status.icon", presence("row.icon"), () -> common(session.iconEnabled.get() ? "on" : "off")))
-                .<PresenceDebugPipelineSnapshot.Row>list("presence.debug.pipeline", presence("section.debug_pipeline"), debugEnabled, list -> list
+                // Hidden, not merely greyed: with the debug switch off — which is every release build — the page
+                // must not show a pipeline readout at all.
+                .<PresenceDebugPipelineSnapshot.Row>list("presence.debug.pipeline", presence("section.debug_pipeline"), debugEnabled, debugEnabled, list -> list
                         .items(debugPipelineSnapshot::rows)
                         .card(this::debugPipelineCard)
                         .emptyText(presence("debug.empty")));

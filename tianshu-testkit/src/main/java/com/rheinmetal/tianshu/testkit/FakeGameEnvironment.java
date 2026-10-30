@@ -21,10 +21,6 @@ public final class FakeGameEnvironment implements IGameEnvironment {
     public final List<String> errors = new ArrayList<>();
 
     @Override
-    public void displayMessageToPlayer(String message) {
-    }
-
-    @Override
     public void executeOnMainThread(Runnable task) {
         task.run();
     }

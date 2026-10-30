@@ -54,10 +54,6 @@ class ThirdPartyModuleHostingTest {
 
     private static final class QuietEnvironment implements IGameEnvironment {
         @Override
-        public void displayMessageToPlayer(String message) {
-        }
-
-        @Override
         public void executeOnMainThread(Runnable task) {
             task.run();
         }

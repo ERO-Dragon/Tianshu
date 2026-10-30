@@ -132,7 +132,8 @@ public final class NeoForgeClientBootstrap {
             ClientDiagnosticChatCatalogue chatCatalogue = new ClientDiagnosticChatCatalogue();
             diagnosticRouter = new ClientDiagnosticRouter(
                     gameDirectory,
-                    new ClientDiagnosticPolicy(config, this::diagnosticModuleIds),
+                    new ClientDiagnosticPolicy(this::diagnosticModuleIds),
+                    config::isDebugEnabled,
                     chatSink,
                     chatCatalogue
             );

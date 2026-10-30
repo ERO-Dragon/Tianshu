@@ -27,17 +27,6 @@ public class NeoForgeEnvironment implements IGameEnvironment {
     }
 
     @Override
-    public void displayMessageToPlayer(String message) {
-        Minecraft.getInstance().execute(() -> {
-            if (Minecraft.getInstance().player != null) {
-                Minecraft.getInstance().player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal(message), false
-                );
-            }
-        });
-    }
-
-    @Override
     public void executeOnMainThread(Runnable task) {
         Minecraft.getInstance().execute(task);
     }

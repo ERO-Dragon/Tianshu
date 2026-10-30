@@ -102,7 +102,7 @@ final class ClientDiagnosticRouterTest {
     void enabledDiagnosticCanBeForwardedAsProductProgressMessage() throws Exception {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
-        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16, 8L * 1024L * 1024L, 5, messages::add, catalogue());
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> true, 16, 8L * 1024L * 1024L, 5, messages::add, catalogue());
         router.publish(DiagnosticEvent.now("module.ax", "LLM_SUBMITTED", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT, Map.of("text", "raw-content")));
         router.close();
@@ -116,7 +116,7 @@ final class ClientDiagnosticRouterTest {
     void chatSummaryUsesProductStageWithoutDiagnosticIdentifiers() throws Exception {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat-stage");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
-        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16,
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> true, 16,
                 8L * 1024L * 1024L, 5, messages::add, catalogue());
         router.publish(DiagnosticEvent.now("module.asr", "STREAM_RESULT", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT,
@@ -132,7 +132,7 @@ final class ClientDiagnosticRouterTest {
     void chatSummaryKeepsLlmInputAndOutputWithoutInternalIdentifiers() throws Exception {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat-content");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
-        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16,
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> true, 16,
                 8L * 1024L * 1024L, 5, messages::add, catalogue());
         router.publish(DiagnosticEvent.now("module.llm", "CHAT_COMPLETED", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT,
@@ -145,11 +145,46 @@ final class ClientDiagnosticRouterTest {
     }
 
     @Test
+    void inGameLinesOffStillLogsWarningsAndErrors() throws Exception {
+        Path root = Files.createTempDirectory("tianshu-diagnostics-quiet");
+        java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> false,
+                messages::add, catalogue());
+        router.publish(event("module.asr", "RECOGNITION_FAILED"));
+        router.publish(DiagnosticEvent.now("module.llm", "CHAT_COMPLETED", DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT, Map.of("input", "player input", "output", "assistant output")));
+        router.publish(DiagnosticEvent.now("module.llm", "TRACE_TIMING", DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.PUBLIC, Map.of()));
+        router.close();
+
+        String content = Files.readString(root.resolve("logs/tianshu-diagnostics.log"), StandardCharsets.UTF_8);
+        assertTrue(content.contains("RECOGNITION_FAILED"), "a failure belongs in the log even with the switch off");
+        assertFalse(content.contains("CHAT_COMPLETED"), "progress with the switch off is debugging noise, not a log line");
+        assertFalse(content.contains("TRACE_TIMING"), "trace/debug output is debugging output");
+        assertTrue(messages.isEmpty(), "nothing may reach the player when the switch is off");
+    }
+
+    @Test
+    void inGameLinesOnKeepsProgressInBothOutputs() throws Exception {
+        Path root = Files.createTempDirectory("tianshu-diagnostics-chatty");
+        java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> true,
+                messages::add, catalogue());
+        router.publish(DiagnosticEvent.now("module.llm", "CHAT_COMPLETED", DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT, Map.of("input", "player input", "output", "assistant output")));
+        router.close();
+
+        String content = Files.readString(root.resolve("logs/tianshu-diagnostics.log"), StandardCharsets.UTF_8);
+        assertTrue(content.contains("CHAT_COMPLETED"));
+        assertEquals(1, messages.size());
+    }
+
+    @Test
     void ordinaryRuntimeLogIsWrittenWithoutDebugChatSummary() throws Exception {
         Path root = Files.createTempDirectory("tianshu-runtime-log");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
-        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16,
-                8L * 1024L * 1024L, 5, messages::add);
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> true,
+                messages::add, new ClientDiagnosticChatCatalogue());
         router.info("runtime.started");
         router.warn("runtime.warning");
         router.error("runtime.failed", new IllegalStateException("broken"));

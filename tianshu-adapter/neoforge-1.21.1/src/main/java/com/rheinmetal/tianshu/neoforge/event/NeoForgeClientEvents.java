@@ -202,7 +202,7 @@ public final class NeoForgeClientEvents {
                 (button.getWidth() <= GRID_BUTTON_MAX_WIDTH ? narrow : wide).add(button);
             }
         }
-        PauseMenuConsoleSlot.Slot slot = PauseMenuConsoleSlot.resolve(
+        PauseMenuConsoleSlot.Bounds slot = PauseMenuConsoleSlot.resolve(
                 boundsOf(narrow), boundsOf(wide), BUTTON_HEIGHT, BUTTON_GAP);
         if (slot == null) {
             // No grid to anchor to: keep an entry so a modded pause menu still reaches the console.
@@ -213,13 +213,9 @@ public final class NeoForgeClientEvents {
             ).pos((screen.width - width) / 2, screen.height / 2).size(width, BUTTON_HEIGHT).build());
             return;
         }
-        for (int index : slot.shifted()) {
-            Button button = wide.get(index);
-            button.setY(button.getY() + slot.shift());
-        }
         logSink.info("neoforge.pause.console_slot x=" + slot.x() + " y=" + slot.y()
                 + " width=" + slot.width() + " grid=" + narrow.size() + " wide=" + wide.size()
-                + " shifted=" + slot.shifted().size());
+                + " screenHeight=" + screen.height);
         event.addListener(Button.builder(
                 Component.translatable("tianshu.gui.settings.console"),
                 button -> settingsModule.openScreen()
