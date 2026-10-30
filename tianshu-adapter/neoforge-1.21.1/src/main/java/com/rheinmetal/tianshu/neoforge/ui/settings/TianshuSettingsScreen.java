@@ -51,6 +51,8 @@ public final class TianshuSettingsScreen extends Screen {
     private final TianshuSettingsRegistry registry;
     private final ModuleSettingsRendererProvider rendererProvider;
     private final GlobalDebugSettingsSession debugSession;
+    /** Where closing goes: the screen this one was opened over, or the game when it was opened from nothing. */
+    private final Screen returnScreen;
     private final SettingsScreenChrome chrome = new SettingsScreenChrome();
     private String selectedModuleId;
     private ScrollState rightPanelScroll = new ScrollState(0, 0, 0);
@@ -66,18 +68,19 @@ public final class TianshuSettingsScreen extends Screen {
     private SelectionPanel<?> selectionPanel;
     private boolean rebuildQueued;
 
-    public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession) {
+    public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession, Screen returnScreen) {
         super(TITLE);
         this.context = context;
         this.registry = registry;
         this.rendererProvider = rendererProvider;
         this.debugSession = debugSession;
+        this.returnScreen = returnScreen;
     }
 
-    public static TianshuSettingsScreen create(ModuleSettingsContext context, TianshuSettingsRegistrySource registrySource, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession) {
+    public static TianshuSettingsScreen create(ModuleSettingsContext context, TianshuSettingsRegistrySource registrySource, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession, Screen returnScreen) {
         TianshuSettingsRegistry registry = new TianshuSettingsRegistry();
         registrySource.contribute(registry, context);
-        return new TianshuSettingsScreen(context, registry, rendererProvider, debugSession);
+        return new TianshuSettingsScreen(context, registry, rendererProvider, debugSession, returnScreen);
     }
 
     @Override
@@ -573,7 +576,7 @@ public final class TianshuSettingsScreen extends Screen {
 
     private void closeAndRelease() {
         context.settingsSessions().close();
-        Minecraft.getInstance().setScreen(null);
+        Minecraft.getInstance().setScreen(returnScreen);
     }
 
     /** A confirmation whose Esc means "go back to the page", not "dismiss the page with its drafts". */

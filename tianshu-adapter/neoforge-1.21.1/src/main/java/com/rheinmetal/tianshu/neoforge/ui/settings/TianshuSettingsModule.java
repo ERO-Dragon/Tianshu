@@ -29,7 +29,7 @@ public final class TianshuSettingsModule {
         this.logs = java.util.Objects.requireNonNull(logs, "logs");
     }
 
-    public Screen createScreen() {
+    public Screen createScreen(Screen returnScreen) {
         SettingsSessionRegistry sessions = new SettingsSessionRegistry(logs);
         SettingsCoordinator coordinator = new SettingsCoordinator(sessions, SettingsEventPublisher.NOOP);
         GlobalDebugSettingsSession debugSession = TianshuBuildProfile.debugBuild()
@@ -39,11 +39,19 @@ public final class TianshuSettingsModule {
             sessions.register(debugSession);
         }
         ModuleSettingsContext context = new TianshuSettingsContext(coordinator);
-        return TianshuSettingsScreen.create(context, registrySource, rendererProvider, debugSession);
+        return TianshuSettingsScreen.create(context, registrySource, rendererProvider, debugSession, returnScreen);
     }
 
+    /**
+     * Opens over whatever asked for it, and closing goes back there.
+     *
+     * <p>Opened from the pause menu, closing returns to the pause menu — the same round trip as the vanilla
+     * options screen. Opened from nowhere (a keybind in the world) there is nothing to return to and closing
+     * drops back into the game.</p>
+     */
     public void openScreen() {
-        Minecraft.getInstance().setScreen(createScreen());
+        Minecraft instance = Minecraft.getInstance();
+        instance.setScreen(createScreen(instance.screen));
     }
 
 }

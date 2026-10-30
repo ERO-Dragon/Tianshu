@@ -13,7 +13,7 @@ final class TianshuSettingsScreenBoundaryTest {
     @Test
     void everyScreenOwnsFreshSettingsSessions() throws Exception {
         String module = read("src/main/java/com/rheinmetal/tianshu/neoforge/ui/settings/TianshuSettingsModule.java");
-        String createScreen = methodBody(module, "public Screen createScreen()");
+        String createScreen = methodBody(module, "public Screen createScreen(Screen returnScreen)");
 
         assertTrue(createScreen.contains("new SettingsSessionRegistry(logs)"));
         assertTrue(createScreen.contains("new SettingsCoordinator("));

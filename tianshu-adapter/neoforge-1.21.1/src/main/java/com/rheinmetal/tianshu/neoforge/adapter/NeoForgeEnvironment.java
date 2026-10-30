@@ -80,6 +80,18 @@ public class NeoForgeEnvironment implements IGameEnvironment {
         logSink.error(msg, t);
     }
 
+    /**
+     * The sink {@link #info}, {@link #warn} and {@link #error} already write to.
+     *
+     * <p>The interface default returns a no-op, so a platform that binds a sink but forgets this accessor
+     * silently swallows every {@code env.logs().info(...)} line — which is most of what the modules report
+     * about themselves.</p>
+     */
+    @Override
+    public LogSink logs() {
+        return logSink;
+    }
+
     @Override
     public DiagnosticSink diagnostics() {
         return diagnosticSink;

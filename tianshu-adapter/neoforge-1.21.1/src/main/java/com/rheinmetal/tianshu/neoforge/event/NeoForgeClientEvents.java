@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.event;
 
 import com.rheinmetal.tianshu.api.assembly.InputSignals;
+import com.rheinmetal.tianshu.neoforge.ui.PauseMenuConsoleSlot;
 import com.rheinmetal.tianshu.neoforge.ui.TextDialogueScreen;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -26,6 +27,11 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 public final class NeoForgeClientEvents {
+    /** Vanilla's pause-menu grid buttons are 120 wide; the full-width entries below the grid are 200. */
+    private static final int GRID_BUTTON_MAX_WIDTH = 120;
+    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_GAP = 4;
+
     private final LogSink logSink;
     private final TianshuCoreManager coreManager;
     private final TianshuSettingsModule settingsModule;
@@ -187,55 +193,45 @@ public final class NeoForgeClientEvents {
             return;
         }
 
-        int gridLeft = Integer.MAX_VALUE;
-        int gridRight = 0;
-        int gridBottom = 0;
-        java.util.List<Button> fullWidth = new java.util.ArrayList<>();
+        java.util.List<Button> narrow = new java.util.ArrayList<>();
+        java.util.List<Button> wide = new java.util.ArrayList<>();
         for (GuiEventListener widget : screen.children()) {
-            if (!(widget instanceof Button button)) {
-                continue;
-            }
-            // PauseScreen's two-column grid uses narrow buttons; "Save and Quit" spans the full width below it.
-            if (button.getWidth() <= 120) {
-                gridLeft = Math.min(gridLeft, button.getX());
-                gridRight = Math.max(gridRight, button.getX() + button.getWidth());
-                gridBottom = Math.max(gridBottom, button.getY() + button.getHeight());
-            } else {
-                fullWidth.add(button);
+            if (widget instanceof Button button) {
+                // PauseScreen's two-column grid uses narrow buttons; everything below it ("Mods", "Save and Quit")
+                // spans the full width. The width is the only thing that tells the two apart.
+                (button.getWidth() <= GRID_BUTTON_MAX_WIDTH ? narrow : wide).add(button);
             }
         }
-        if (gridLeft == Integer.MAX_VALUE) {
-            int width = 200;
+        PauseMenuConsoleSlot.Slot slot = PauseMenuConsoleSlot.resolve(
+                boundsOf(narrow), boundsOf(wide), BUTTON_HEIGHT, BUTTON_GAP);
+        if (slot == null) {
+            // No grid to anchor to: keep an entry so a modded pause menu still reaches the console.
+            int width = GRID_BUTTON_MAX_WIDTH;
             event.addListener(Button.builder(
                     Component.translatable("tianshu.gui.settings.console"),
                     button -> settingsModule.openScreen()
-            ).pos((screen.width - width) / 2, screen.height / 2).size(width, 20).build());
+            ).pos((screen.width - width) / 2, screen.height / 2).size(width, BUTTON_HEIGHT).build());
             return;
         }
-
-        // Insert between the grid and "Save and Quit": shift the full-width buttons down by one row, then take
-        // the freed slot. This keeps the same left edge, width and row gap as the vanilla buttons.
-        Button quit = null;
-        for (Button button : fullWidth) {
-            if (button.getY() >= gridBottom - 4 && (quit == null || button.getY() < quit.getY())) {
-                quit = button;
-            }
+        for (int index : slot.shifted()) {
+            Button button = wide.get(index);
+            button.setY(button.getY() + slot.shift());
         }
-        int rowHeight = 20;
-        int gap = 4;
-        int y = quit == null ? gridBottom + gap : quit.getY();
-        if (quit != null) {
-            int shift = rowHeight + gap;
-            for (Button button : fullWidth) {
-                if (button.getY() >= quit.getY()) {
-                    button.setY(button.getY() + shift);
-                }
-            }
-        }
+        logSink.info("neoforge.pause.console_slot x=" + slot.x() + " y=" + slot.y()
+                + " width=" + slot.width() + " grid=" + narrow.size() + " wide=" + wide.size()
+                + " shifted=" + slot.shifted().size());
         event.addListener(Button.builder(
                 Component.translatable("tianshu.gui.settings.console"),
                 button -> settingsModule.openScreen()
-        ).pos(gridLeft, y).size(gridRight - gridLeft, rowHeight).build());
+        ).pos(slot.x(), slot.y()).size(slot.width(), BUTTON_HEIGHT).build());
+    }
+
+    private static java.util.List<PauseMenuConsoleSlot.Bounds> boundsOf(java.util.List<Button> buttons) {
+        java.util.List<PauseMenuConsoleSlot.Bounds> bounds = new java.util.ArrayList<>(buttons.size());
+        for (Button button : buttons) {
+            bounds.add(new PauseMenuConsoleSlot.Bounds(button.getX(), button.getY(), button.getWidth(), button.getHeight()));
+        }
+        return bounds;
     }
 
     @SubscribeEvent
