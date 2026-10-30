@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.client.audio.AudioManager;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
+import com.rheinmetal.tianshu.api.client.host.hud.HudProgramId;
 import com.rheinmetal.tianshu.api.client.host.hud.HudShaderCatalog;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
@@ -40,7 +41,6 @@ import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
 import com.rheinmetal.tianshu.api.game.WorldEventPublisher;
-import com.rheinmetal.tianshu.api.client.host.hud.HudProgram;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeNamedObjectDictionaryProvider;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeGameContextPort;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
@@ -295,16 +295,16 @@ public final class NeoForgeClientBootstrap {
      * Creates the HUD programs features declared.
      *
      * <p>The platform owns the {@code ShaderInstance} lifecycle and the failure fallback; the features own the files,
-     * their uniforms and their look. Nothing here names a feature: an absent one declares nothing, its family simply
-     * has no program, and the layer keeps drawing its Java fallback.</p>
+     * their uniforms, their binding and their look. Nothing here names a feature: an absent one declares nothing, its
+     * program simply has no shader, and that layer draws nothing.</p>
      */
     public void registerShaders(RegisterShadersEvent event) {
-        for (java.util.Map.Entry<HudProgram, String> declaration : HudShaderCatalog.declarations().entrySet()) {
+        for (java.util.Map.Entry<HudProgramId, String> declaration : HudShaderCatalog.declarations().entrySet()) {
             registerShader(event, declaration.getKey(), declaration.getValue());
         }
     }
 
-    private void registerShader(RegisterShadersEvent event, HudProgram program, String shaderId) {
+    private void registerShader(RegisterShadersEvent event, HudProgramId program, String shaderId) {
         ResourceLocation shaderLocation = ResourceLocation.tryParse(shaderId);
         if (shaderLocation == null) {
             HudShaderPrograms.register(program, null);
@@ -319,7 +319,7 @@ public final class NeoForgeClientBootstrap {
                     shader -> HudShaderPrograms.register(program, shader)
             );
         } catch (IOException | RuntimeException failure) {
-            // A visual shader is optional; clear this handle so the surface draws its Java fallback.
+            // A visual shader is optional; clear this handle so the layer simply draws nothing for the program.
             HudShaderPrograms.register(program, null);
             if (diagnosticRouter != null) {
                 diagnosticRouter.error("neoforge.hud.shader_registration_failed name=" + shaderLocation, failure);

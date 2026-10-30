@@ -1,22 +1,22 @@
-package com.rheinmetal.tianshu.api.client.host.hud;
+package com.rheinmetal.tianshu.function.presence.hud;
 
 /**
- * The product values one shader quad carries.
+ * The values presence writes into its own HUD program.
  *
- * <p>Deliberately a fixed set of primitives rather than a map: the programs share this uniform layout, so a call site
- * either has every value or it has a bug. The frame's time is not here — the platform injects it per quad — so a
- * settled state can reuse one instance without allocating.</p>
+ * <p>This type lives in presence, not in the api. Adding a visual control means adding a field here, teaching
+ * {@link PresenceHudProgram} to write its uniform and updating the shader asset; the released platform does not need a
+ * new parameter layout. The shader receives floats only, so the state index is carried as a float.</p>
  *
  * @param intensity   overall energy of the visual, 0..1
  * @param speed       how fast the internal motion runs, 0..1 and beyond
  * @param convergence how tightly the visual's parts gather, 0..1
  * @param pulse       the listening pulse, 0..1
  * @param opacity     the layer's own alpha, 0..1
- * @param morph       0 = the settled shape, 1 = the single handoff dot
- * @param state       product state as the programs' agreed index
+ * @param morph       0 = the settled shape, 1 = the loading cluster
+ * @param state       presence's visual-state index understood by the shaders
  * @param task        the parallel background-task mark, 0 or 1
  */
-public record HudShaderParams(
+public record PresenceHudShaderParams(
         float intensity,
         float speed,
         float convergence,
@@ -26,14 +26,14 @@ public record HudShaderParams(
         int state,
         float task
 ) {
-    /** The index every program agrees on: the visual state enum's declaration order. */
-    public static final int STATE_IDLE = 0;
-    public static final int STATE_LOADING = 1;
-    public static final int STATE_TASK = 2;
-    public static final int STATE_CHAT = 3;
-    public static final int STATE_CHAT_THINKING = 4;
+    /** The shader's state index; it mirrors {@link PresenceHudVisualState}'s declaration order. */
+    static final int STATE_IDLE = 0;
+    static final int STATE_LOADING = 1;
+    static final int STATE_TASK = 2;
+    static final int STATE_CHAT = 3;
+    static final int STATE_CHAT_THINKING = 4;
 
-    public HudShaderParams {
+    public PresenceHudShaderParams {
         intensity = clamp01(intensity);
         speed = Math.max(0.0F, speed);
         convergence = clamp01(convergence);

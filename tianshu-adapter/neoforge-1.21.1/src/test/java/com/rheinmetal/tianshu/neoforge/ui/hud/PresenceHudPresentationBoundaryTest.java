@@ -68,6 +68,16 @@ final class PresenceHudPresentationBoundaryTest {
     }
 
     @Test
+    void theSurfaceCallsTheFeatureBinderWithoutNamingUniforms() throws Exception {
+        String surface = read(SURFACE);
+
+        assertTrue(surface.contains("program.bind(uniforms, params)"),
+                "the feature owns the uniform binding, not the platform");
+        assertFalse(surface.contains("\"Intensity\""), "the platform must not hard-code a feature uniform");
+        assertFalse(surface.contains("\"Morph\""), "the platform must not hard-code a feature uniform");
+    }
+
+    @Test
     void theFeatureDrawsOnlyThroughTheSurface() throws Exception {
         String icon = read(PRESENCE_ICON);
 

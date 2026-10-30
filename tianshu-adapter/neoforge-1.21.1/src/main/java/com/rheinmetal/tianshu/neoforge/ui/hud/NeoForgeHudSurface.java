@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.neoforge.ui.hud;
 
-import com.mojang.blaze3d.shaders.AbstractUniform;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -11,7 +10,6 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.math.Axis;
 import com.rheinmetal.tianshu.api.client.host.hud.HudFrameContext;
 import com.rheinmetal.tianshu.api.client.host.hud.HudProgram;
-import com.rheinmetal.tianshu.api.client.host.hud.HudShaderParams;
 import com.rheinmetal.tianshu.api.client.host.hud.HudSurface;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -55,6 +53,7 @@ final class NeoForgeHudSurface implements HudSurface {
     private final Set<String> missingTextures = new java.util.HashSet<>();
     private final Set<ShaderInstance> unavailablePrograms =
             Collections.newSetFromMap(new IdentityHashMap<>());
+    private final NeoForgeShaderUniformSink uniforms = new NeoForgeShaderUniformSink();
 
     private GuiGraphics graphics;
     private Font font;
@@ -171,16 +170,19 @@ final class NeoForgeHudSurface implements HudSurface {
     }
 
     @Override
-    public void shaderRect(
-            HudProgram program,
+    public <P> void shaderRect(
+            HudProgram<P> program,
             float left,
             float top,
             float right,
             float bottom,
-            HudShaderParams params
+            P params
     ) {
-        ShaderInstance shader = HudShaderPrograms.get(program);
-        if (shader == null || params == null || unavailablePrograms.contains(shader)) {
+        if (program == null || params == null) {
+            return;
+        }
+        ShaderInstance shader = HudShaderPrograms.get(program.id());
+        if (shader == null || unavailablePrograms.contains(shader)) {
             return;
         }
         MeshData mesh = null;
@@ -188,15 +190,8 @@ final class NeoForgeHudSurface implements HudSurface {
         boolean depthMaskDisabled = false;
         try {
             float time = (frame == null ? 0L : frame.renderMillis()) / 1_000.0F;
-            setUniform(shader, "Time", time);
-            setUniform(shader, "Intensity", params.intensity());
-            setUniform(shader, "Speed", params.speed());
-            setUniform(shader, "Convergence", params.convergence());
-            setUniform(shader, "Pulse", params.pulse());
-            setUniform(shader, "State", params.state());
-            setUniform(shader, "Task", params.task());
-            setUniform(shader, "Opacity", params.opacity());
-            setUniform(shader, "Morph", params.morph());
+            uniforms.begin(shader, time);
+            program.bind(uniforms, params);
 
             BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
             buffer.addVertex(left, bottom, 0.0F).setUv(0.0F, 1.0F);
@@ -257,12 +252,5 @@ final class NeoForgeHudSurface implements HudSurface {
         }
         textures.put(textureId, location);
         return location;
-    }
-
-    private static void setUniform(ShaderInstance shader, String name, float value) {
-        AbstractUniform uniform = shader.getUniform(name);
-        if (uniform != null) {
-            uniform.set(value);
-        }
     }
 }

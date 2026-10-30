@@ -555,7 +555,8 @@ tianshu-api/src/main/java/.../api/client/host/hud/
   HudHost
   HudFrameContext
   HudProgram
-  HudShaderParams
+  HudProgramId
+  HudUniformSink
   HudShaderCatalog
   HudAnchorEditor
   HudAnchorView
@@ -630,7 +631,9 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 - 映迹核心只输出 `PresenceHudDisplay`，并把它组合成 `HudLayer` 交给平台
 - 映迹配置（HUD 开关/元素/尺寸/预设/位置）持久化在 `module.presence.properties`
 - HUD shader 资源随映迹（`assets/tianshu_presence/shaders/core`），由 `PresenceHudShaders` 在模组入口向
-  `HudShaderCatalog` 声明家族；宿主只创建 `ShaderInstance`，自身不保留 shader 文件，程序缺失时跳过图标绘制（没有 Java 回退）
+  `HudShaderCatalog` 声明 program id 与资源 id；uniform 名和参数布局在 `PresenceHudProgram` /
+  `PresenceHudShaderParams`，宿主只创建 `ShaderInstance` 并调用 binder，自身不保留 shader 文件，也不认识
+  uniform 名；程序缺失时跳过图标绘制（没有 Java 回退）
 - 世界退出会清空旧状态和排队查询，重新进入后建立新世界会话
 - 上下文只在查询被回答时采集；同一 tick 的请求共享一次平台抓取；交互上下文摘要另走变化推送（`PresenceInteractionContextWatcher` + `PRESENCE.INTERACTION_CONTEXT`），不参与查询快照（§5.2）
 - 预中标人与中标租期由听澜算出并通过 `PRESENCE.PARTNER` 写出（预中标人变化 / 中标含续租 / 租期到期三种时机），映迹只消费
@@ -641,7 +644,8 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
 - 开口时冻结交互摘要，仲裁不再现取一次完整快照
 - HUD 图标改为纯 shader 绘制：每个预设程序都包含 liquid loading、中心点交接、流体球/raymarch、聆听环与后台小点；
   程序缺失时图标不绘制，没有 Java 回退
-- `Morph` 是唯一的 loading→球体参数：进入 700ms（球 → 点 → 六点），退出 700ms（六点 → 点 → 球），全程同一个程序
+- `Morph` 是唯一的 loading→球体参数：进入（球 → 点 → 六点）与退出（六点 → 点 → 球）使用控制器配置的交接时长，全程同一个程序
+- `PresenceHudProgram` 是 uniform 契约的唯一位置：北辰发布后，映迹新增/改名 uniform、增加参数或预设，只需更新映迹 jar 与 shader 资源，不需要更新北辰
 - 浏览器 HUD 预览工具（`tianshu-presence/tools/hud-preview`）可切换状态、预设、尺寸与伙伴标记，并查看生成模型和着色器
 
 待实现：
@@ -710,10 +714,10 @@ tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
   空世界降级；映迹不再认识 Minecraft 类型。
 - **tick**：`TickSignals.TICK` 订阅制，`TianshuClientRuntime` 不再有 `tick()`。
 - **输入门禁**：`RuntimeGates.setInputBlocked`，映迹只在变化时写，平台按键判定只读。
-- **HUD**：api `HudSurface` / `HudLayer` / `HudHost` / `HudFrameContext` / `HudProgram` / `HudShaderParams` /
-  `HudAnchorEditor` / `HudAnchorView` / `HudAnchorPoint`；映迹拥有控制器、布局、视觉过渡、图标/文本/伙伴标记
-  渲染器，宿主只剩 `NeoForgeHudHost`（图层、两套时钟、门控、异常熔断）、`NeoForgeHudSurface`（pose/深度/
-  着色器/贴图解析/文本度量）与 `HudAnchorEditorScreen`。
+- **HUD**：api `HudSurface` / `HudLayer` / `HudHost` / `HudFrameContext` / `HudProgram` / `HudProgramId` /
+  `HudUniformSink` / `HudAnchorEditor` / `HudAnchorView` / `HudAnchorPoint`；映迹拥有控制器、布局、视觉过渡、
+  图标/文本/伙伴标记渲染器与 uniform 绑定，宿主只剩 `NeoForgeHudHost`（图层、两套时钟、门控、异常熔断）、
+  `NeoForgeHudSurface`（pose/深度/着色器/贴图解析/文本度量）与 `HudAnchorEditorScreen`。
 - **配置**：HUD 七个键迁到 `module.presence.properties`（`PresenceModuleConfig`）。
 - **会话**：`WorldSessionListener` 列表，客户端运行时不再点名映迹。
 - **装配**：映迹在两个加载器入口里调用 `PresenceModuleRegistration.announce()`，把

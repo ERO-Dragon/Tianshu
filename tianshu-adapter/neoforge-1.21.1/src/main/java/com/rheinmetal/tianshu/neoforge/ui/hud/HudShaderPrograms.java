@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.ui.hud;
 
-import com.rheinmetal.tianshu.api.client.host.hud.HudProgram;
+import com.rheinmetal.tianshu.api.client.host.hud.HudProgramId;
 import net.minecraft.client.renderer.ShaderInstance;
 
 import java.util.Map;
@@ -8,19 +8,19 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The HUD shader handles, one per program family, as created from the features' declarations.
+ * The HUD shader handles, one per feature-declared program id, as created from {@code HudShaderCatalog}.
  *
- * <p>Registration happens once per client start from {@code HudShaderCatalog}; a program that failed to compile is
- * simply absent, and the surface draws nothing for that family without asking why. The map is concurrent because a shutdown
- * can clear it while a frame is being drawn.</p>
+ * <p>Registration happens once per client start; a program that failed to compile is simply absent, and the surface
+ * draws nothing for it without asking why. The map is concurrent because a shutdown can clear it while a frame is
+ * being drawn.</p>
  */
 public final class HudShaderPrograms {
-    private static final Map<HudProgram, ShaderInstance> PROGRAMS = new ConcurrentHashMap<>();
+    private static final Map<HudProgramId, ShaderInstance> PROGRAMS = new ConcurrentHashMap<>();
 
     private HudShaderPrograms() {
     }
 
-    public static void register(HudProgram program, ShaderInstance shader) {
+    public static void register(HudProgramId program, ShaderInstance shader) {
         Objects.requireNonNull(program, "program");
         if (shader == null) {
             PROGRAMS.remove(program);
@@ -29,7 +29,7 @@ public final class HudShaderPrograms {
         }
     }
 
-    public static ShaderInstance get(HudProgram program) {
+    public static ShaderInstance get(HudProgramId program) {
         return program == null ? null : PROGRAMS.get(program);
     }
 

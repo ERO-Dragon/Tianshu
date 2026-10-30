@@ -5,31 +5,32 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Where a feature declares the shader assets behind its HUD programs.
+ * Where a feature declares the shader asset behind one of its HUD programs.
  *
  * <p>The platform creates {@code ShaderInstance}s; the feature owns the files, their uniforms and their look. A
  * feature declares the asset id while its jar loads (before the client's shader event), and the platform registers
- * whatever has been declared. An absent feature declares nothing, its family simply has no program, and that layer
+ * whatever has been declared. An absent feature declares nothing, its program simply has no shader, and that layer
  * draws nothing — the platform never needs a list of features or their resource paths.</p>
  *
- * <p>Declarations are keyed by {@link HudProgram}, so a family has exactly one program; declaring the same family
- * again (a reload of the same mod, a test) replaces it.</p>
+ * <p>Declarations are keyed by {@link HudProgramId}, so a program has exactly one shader asset; declaring the same id
+ * again (a reload of the same mod, a test) replaces it. The id stays stable for the feature's renderer even when the
+ * asset path changes.</p>
  */
 public final class HudShaderCatalog {
 
-    private static final Map<HudProgram, String> DECLARED = new ConcurrentHashMap<>();
+    private static final Map<HudProgramId, String> DECLARED = new ConcurrentHashMap<>();
 
     private HudShaderCatalog() {
     }
 
     /**
-     * Declares the shader asset for one program family.
+     * Declares the shader asset for one program id.
      *
-     * @param program  the family the platform's HUD layers ask for
-     * @param shaderId a namespaced asset id, e.g. {@code "example_mod:my_hud_loading"}
+     * @param program  the feature-owned program id the platform's HUD layers ask for
+     * @param shaderId a namespaced asset id, e.g. {@code "example_mod:my_hud_program"}
      */
-    public static void declare(HudProgram program, String shaderId) {
-        HudProgram effective = Objects.requireNonNull(program, "program");
+    public static void declare(HudProgramId program, String shaderId) {
+        HudProgramId effective = Objects.requireNonNull(program, "program");
         if (shaderId == null || shaderId.isBlank()) {
             throw new IllegalArgumentException("shader id must not be blank for " + effective);
         }
@@ -40,8 +41,8 @@ public final class HudShaderCatalog {
         DECLARED.put(effective, trimmed);
     }
 
-    /** The declarations the platform's shader event should create, keyed by family; empty when no feature declared. */
-    public static Map<HudProgram, String> declarations() {
+    /** The declarations the platform's shader event should create, keyed by program id; empty when nothing declared. */
+    public static Map<HudProgramId, String> declarations() {
         return Map.copyOf(DECLARED);
     }
 

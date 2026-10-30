@@ -43,6 +43,15 @@ final class PresenceHudVisualParametersTest {
     }
 
     @Test
+    void shaderStateIndicesFollowTheVisualStateDeclarationOrder() {
+        assertEquals(PresenceHudShaderParams.STATE_IDLE, PresenceHudVisualState.IDLE.ordinal());
+        assertEquals(PresenceHudShaderParams.STATE_LOADING, PresenceHudVisualState.LOADING.ordinal());
+        assertEquals(PresenceHudShaderParams.STATE_TASK, PresenceHudVisualState.TASK.ordinal());
+        assertEquals(PresenceHudShaderParams.STATE_CHAT, PresenceHudVisualState.CHAT.ordinal());
+        assertEquals(PresenceHudShaderParams.STATE_CHAT_THINKING, PresenceHudVisualState.CHAT_THINKING.ordinal());
+    }
+
+    @Test
     void listeningGrowsTheShellAndAddsTheRipple() {
         PresenceHudLayout layout = new PresenceHudLayout(100.0F, 80.0F, 24, false, 0.5D, 0.4D);
 

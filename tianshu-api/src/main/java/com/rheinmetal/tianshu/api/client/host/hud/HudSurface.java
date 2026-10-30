@@ -51,12 +51,16 @@ public interface HudSurface {
     );
 
     /**
-     * Draws one quad through a platform shader program.
+     * Draws one quad through a feature-declared shader program.
      *
-     * <p>The host owns the program and its uniforms: an unavailable or failing program draws nothing, and the caller
-     * treats that as "this element is absent" rather than drawing a second version underneath. A feature that wants a
-     * fallback draws it itself; the presence icon deliberately has none. The frame's time is injected by the platform,
-     * which is why {@link HudShaderParams} carries only the product values.</p>
+     * <p>The feature owns the program, its shader assets and its uniforms: it supplies a {@link HudProgram} whose
+     * binder writes the feature's own parameters through {@link HudUniformSink}. The host owns the compiled program's
+     * lifecycle, the frame clock and all render state around the call. An unavailable or failing program draws
+     * nothing, and the caller treats that as "this element is absent" rather than drawing a second version underneath;
+     * a feature that wants a fallback draws it itself.</p>
+     *
+     * @param program the feature's program and uniform binder
+     * @param params  the matching feature parameter object, never interpreted by the host
      */
-    void shaderRect(HudProgram program, float left, float top, float right, float bottom, HudShaderParams params);
+    <P> void shaderRect(HudProgram<P> program, float left, float top, float right, float bottom, P params);
 }

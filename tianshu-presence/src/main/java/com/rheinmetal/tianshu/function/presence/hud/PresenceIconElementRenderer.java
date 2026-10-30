@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.function.presence.hud;
 
 import com.rheinmetal.tianshu.api.client.host.hud.HudProgram;
-import com.rheinmetal.tianshu.api.client.host.hud.HudShaderParams;
 import com.rheinmetal.tianshu.api.client.host.hud.HudSurface;
 
 /**
@@ -11,6 +10,10 @@ import com.rheinmetal.tianshu.api.client.host.hud.HudSurface;
  * settled orb. {@code Morph} is the one handoff parameter — 1 is the loading cluster, 0 is the settled orb — and
  * the program blends the two internally, so the element never switches programs mid-transition.</p>
  *
+ * <p>The uniform names and values are presence's contract, carried by {@link PresenceHudProgram} and
+ * {@link PresenceHudShaderParams}; the platform only supplies the compiled shader and the uniform sink. A presence-only
+ * update can therefore add or rename a uniform without changing the platform.</p>
+ *
  * <p>A missing or failing program draws nothing; there is no Java fallback, because a second, differently rendered
  * icon underneath the shader is what made the visual look blocky in the first place.</p>
  */
@@ -18,7 +21,7 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
     private final PresenceHudSettings settings;
     private final PresencePartnerIconRenderer partnerRenderer = new PresencePartnerIconRenderer();
     /** One reusable parameter instance: a settled frame hands the same values, so nothing is allocated. */
-    private HudShaderParams cachedShaderParams;
+    private PresenceHudShaderParams cachedShaderParams;
     private long cachedShaderKey = Long.MIN_VALUE;
 
     public PresenceIconElementRenderer(PresenceHudSettings settings) {
@@ -52,14 +55,14 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
                 frame.timing().updatedAtMillis(), frame.timing().wallAtMillis());
     }
 
-    private HudShaderParams shaderParams(
+    private PresenceHudShaderParams shaderParams(
             PresenceHudVisualParameters parameters,
             float morph,
             boolean backgroundTask
     ) {
         PresenceHudVisualState state = parameters.state();
         int shaderState = state == PresenceHudVisualState.LISTENING
-                ? PresenceHudVisualState.IDLE.ordinal()
+                ? PresenceHudShaderParams.STATE_IDLE
                 : state.ordinal();
         int intensityKey = Math.round(parameters.intensity() * 100.0F);
         int speedKey = Math.round(parameters.speed() * 100.0F);
@@ -74,7 +77,7 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
         key = key * 1_001L + morphKey;
         key = key * 2L + (backgroundTask ? 1L : 0L);
         if (cachedShaderParams == null || key != cachedShaderKey) {
-            cachedShaderParams = new HudShaderParams(
+            cachedShaderParams = new PresenceHudShaderParams(
                     parameters.intensity(),
                     parameters.speed(),
                     parameters.convergence(),
@@ -89,8 +92,10 @@ public final class PresenceIconElementRenderer implements PresenceHudElementRend
         return cachedShaderParams;
     }
 
-    private static HudProgram programFor(PresenceHudVisualPreset preset) {
-        return preset == PresenceHudVisualPreset.PRESET_TWO ? HudProgram.PRESET_TWO : HudProgram.PRESET_ONE;
+    private static HudProgram<PresenceHudShaderParams> programFor(PresenceHudVisualPreset preset) {
+        return preset == PresenceHudVisualPreset.PRESET_TWO
+                ? PresenceHudProgram.PRESET_TWO
+                : PresenceHudProgram.PRESET_ONE;
     }
 
     private static float quadLeft(PresenceHudLayout layout) {
