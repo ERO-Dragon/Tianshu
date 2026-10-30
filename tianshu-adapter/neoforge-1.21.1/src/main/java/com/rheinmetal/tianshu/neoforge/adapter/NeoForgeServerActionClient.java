@@ -86,6 +86,16 @@ public final class NeoForgeServerActionClient implements ClientServerActionPort 
         });
     }
 
+    /** The catalog snapshot for a log line; the port instance is not available from the event handler. */
+    public static Set<String> enabledActionsSnapshot() {
+        return enabledActions;
+    }
+
+    /** Whether the catalog has arrived, so a log line can distinguish "empty" from "not yet announced". */
+    public static boolean catalogReceivedSnapshot() {
+        return catalogReceived;
+    }
+
     /** Leaving the world drops the catalog and fails any request whose answer can no longer arrive. */
     public static void reset() {
         enabledActions = Set.of();

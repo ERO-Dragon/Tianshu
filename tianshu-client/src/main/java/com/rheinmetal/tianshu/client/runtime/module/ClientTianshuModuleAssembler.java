@@ -75,5 +75,11 @@ public final class ClientTianshuModuleAssembler implements TianshuModuleAssemble
             }
         }
         new CompositeTianshuModuleAssembler(installers).assemble(moduleHost, moduleServices);
+        if (context != null && context.env() != null) {
+            context.env().logs().info("neoforge.modules.assembled installers=" + installers.size()
+                    + " settings=" + (settingsSources == null ? 0 : settingsSources.sources().size())
+                    + " providers=" + (kernelProviders.size()
+                            + TianshuModuleProviderRegistry.factories().size()));
+        }
     }
 }

@@ -110,7 +110,11 @@ public final class TianshuSettingsScreen extends Screen {
         rightPanelDecorations = List.of();
         rightPanelScrollRegions = List.of();
         List<ModuleSettingsCategory> categories = registry.categories();
+        SettingsScreenLayout layout = pageLayout();
         if (categories.isEmpty()) {
+            // A kernel-only install has no module pages, but the screen still needs a way out: keep the footer
+            // instead of returning with an empty page that can only be left with Esc.
+            addBottomActions(layout);
             return;
         }
         ModuleSettingsCategory selected = selectedModuleId == null ? categories.get(0) : registry.find(selectedModuleId);
@@ -118,8 +122,6 @@ public final class TianshuSettingsScreen extends Screen {
             selected = categories.get(0);
         }
         selectedModuleId = selected.moduleId();
-
-        SettingsScreenLayout layout = pageLayout();
 
         addRenderableWidget(new SettingsNavigationWidget(layout.leftX(), layout.leftListTop(), layout.leftWidth(), layout.leftListHeight(), categories, selectedModuleId, category -> {
             selectedModuleId = category.moduleId();

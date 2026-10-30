@@ -37,6 +37,7 @@ public final class NeoForgeClientEvents {
     private final NeoForgeKeyBindings keyBindings;
     private final NeoForgeClientUiHost uiHost;
     private final NeoForgeVoiceInputController voiceInputController;
+    private boolean sessionSummaryLogged;
 
     public NeoForgeClientEvents(
             TianshuCoreManager coreManager,
@@ -79,6 +80,7 @@ public final class NeoForgeClientEvents {
     @SubscribeEvent
     public void onWorldLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         logSink.info("neoforge.world.logout");
+        sessionSummaryLogged = false;
         resetVoiceInputState();
         worldIdentityCapture.clear();
         hudHost.resetLayers();
@@ -95,6 +97,10 @@ public final class NeoForgeClientEvents {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
             return;
+        }
+        if (!sessionSummaryLogged && coreManager.isInitialized()) {
+            sessionSummaryLogged = true;
+            logSessionSummary();
         }
         if (!worldIdentityCapture.isAvailable()) {
             worldIdentityCapture.refresh();
@@ -131,6 +137,27 @@ public final class NeoForgeClientEvents {
     }
 
     /**
+     * One line that answers "is the host actually running the session": modules loaded, the server's action
+     * catalog and the wire protocol. It goes to the shared diagnostics log, so a report has this without the
+     * player having to describe the setup.
+     */
+    private void logSessionSummary() {
+        StringBuilder modules = new StringBuilder();
+        for (com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule module : coreManager.managedModules()) {
+            if (!modules.isEmpty()) {
+                modules.append(',');
+            }
+            modules.append(module.moduleId());
+        }
+        logSink.info("neoforge.session.summary modules=[" + modules + "] actions="
+                + com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient
+                        .enabledActionsSnapshot()
+                + " catalogKnown="
+                + com.rheinmetal.tianshu.neoforge.adapter.NeoForgeServerActionClient.catalogReceivedSnapshot()
+                + " protocol=" + com.rheinmetal.tianshu.neoforge.network.TianshuNetwork.protocolVersion());
+    }
+
+    /**
      * Opens the typed-dialogue bar, but only when something will answer it.
      *
      * <p>The question goes to the input bus rather than to a module: the module that answers a typed line
@@ -160,19 +187,55 @@ public final class NeoForgeClientEvents {
             return;
         }
 
-        int buttonWidth = 200;
-        int buttonHeight = 20;
-        int buttonX = (screen.width - buttonWidth) / 2;
-        int maxY = 0;
+        int gridLeft = Integer.MAX_VALUE;
+        int gridRight = 0;
+        int gridBottom = 0;
+        java.util.List<Button> fullWidth = new java.util.ArrayList<>();
         for (GuiEventListener widget : screen.children()) {
-            if (widget instanceof Button button) {
-                maxY = Math.max(maxY, button.getY() + button.getHeight());
+            if (!(widget instanceof Button button)) {
+                continue;
+            }
+            // PauseScreen's two-column grid uses narrow buttons; "Save and Quit" spans the full width below it.
+            if (button.getWidth() <= 120) {
+                gridLeft = Math.min(gridLeft, button.getX());
+                gridRight = Math.max(gridRight, button.getX() + button.getWidth());
+                gridBottom = Math.max(gridBottom, button.getY() + button.getHeight());
+            } else {
+                fullWidth.add(button);
+            }
+        }
+        if (gridLeft == Integer.MAX_VALUE) {
+            int width = 200;
+            event.addListener(Button.builder(
+                    Component.translatable("tianshu.gui.settings.console"),
+                    button -> settingsModule.openScreen()
+            ).pos((screen.width - width) / 2, screen.height / 2).size(width, 20).build());
+            return;
+        }
+
+        // Insert between the grid and "Save and Quit": shift the full-width buttons down by one row, then take
+        // the freed slot. This keeps the same left edge, width and row gap as the vanilla buttons.
+        Button quit = null;
+        for (Button button : fullWidth) {
+            if (button.getY() >= gridBottom - 4 && (quit == null || button.getY() < quit.getY())) {
+                quit = button;
+            }
+        }
+        int rowHeight = 20;
+        int gap = 4;
+        int y = quit == null ? gridBottom + gap : quit.getY();
+        if (quit != null) {
+            int shift = rowHeight + gap;
+            for (Button button : fullWidth) {
+                if (button.getY() >= quit.getY()) {
+                    button.setY(button.getY() + shift);
+                }
             }
         }
         event.addListener(Button.builder(
                 Component.translatable("tianshu.gui.settings.console"),
                 button -> settingsModule.openScreen()
-        ).pos(buttonX, maxY + 5).size(buttonWidth, buttonHeight).build());
+        ).pos(gridLeft, y).size(gridRight - gridLeft, rowHeight).build());
     }
 
     @SubscribeEvent

@@ -18,6 +18,11 @@ public final class TianshuNetwork {
     private TianshuNetwork() {
     }
 
+    /** The protocol version currently on the wire; also reported in the session summary. */
+    public static String protocolVersion() {
+        return PROTOCOL_VERSION;
+    }
+
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
         registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, GameFactBatchPacket::handle);
