@@ -8,6 +8,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -15,6 +16,7 @@ import java.util.function.Predicate;
 final class SettingsNavigationWidget extends AbstractWidget {
     private static final int ITEM_HEIGHT = 24;
     private final List<ModuleSettingsCategory> categories;
+    private final List<Component> titles;
     private final String selectedModuleId;
     private final Consumer<ModuleSettingsCategory> onSelect;
     private final Predicate<String> dirtyModules;
@@ -23,6 +25,12 @@ final class SettingsNavigationWidget extends AbstractWidget {
     SettingsNavigationWidget(int x, int y, int width, int height, List<ModuleSettingsCategory> categories, String selectedModuleId, Consumer<ModuleSettingsCategory> onSelect, Predicate<String> dirtyModules) {
         super(x, y, width, height, Component.empty());
         this.categories = categories;
+        List<Component> resolved = new ArrayList<>(categories.size());
+        for (ModuleSettingsCategory category : categories) {
+            // A translatable component still re-resolves when drawn; only the construction is cached.
+            resolved.add(NeoForgeUiText.toComponent(category.title()));
+        }
+        this.titles = List.copyOf(resolved);
         this.selectedModuleId = selectedModuleId;
         this.onSelect = onSelect;
         this.dirtyModules = dirtyModules == null ? moduleId -> false : dirtyModules;
@@ -47,7 +55,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
                 guiGraphics.fill(getX() + 4, itemY + 10, getX() + 7, itemY + 13, 0xFFFFCC33);
                 textX += 6;
             }
-            guiGraphics.drawString(Minecraft.getInstance().font, NeoForgeUiText.toComponent(category.title()), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
+            guiGraphics.drawString(Minecraft.getInstance().font, titles.get(start + i), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
         }
         drawScrollbar(guiGraphics, visible, start);
     }

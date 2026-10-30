@@ -138,11 +138,24 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
                         StandardCopyOption.REPLACE_EXISTING);
                 corrupt = false;
             }
-            Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
-            try (OutputStream out = Files.newOutputStream(temporary)) {
-                values.store(out, "Tianshu module settings");
+            // A unique temporary name, not a fixed ".tmp": two stores for the same module (or a crash mid-write)
+            // must never clobber each other's staging file.
+            Path directory = parent == null ? file.toAbsolutePath().getParent() : parent;
+            Path temporary = Files.createTempFile(directory, file.getFileName() + ".", ".tmp");
+            try {
+                try (OutputStream out = Files.newOutputStream(temporary)) {
+                    values.store(out, "Tianshu module settings");
+                }
+                try {
+                    // Atomic on the same filesystem; a partially written config would be worse than no config.
+                    Files.move(temporary, file,
+                            StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException atomicUnsupported) {
+                    Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(temporary);
             }
-            Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
             dirty = false;
         } catch (IOException failure) {
             // A silent failure here becomes a lie in the UI: the caller cannot tell "written" from

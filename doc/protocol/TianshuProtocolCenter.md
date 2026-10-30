@@ -224,7 +224,6 @@ Broker 是能力或订阅的资源控制器，负责排队、拒绝、合并、�
 | `BOUNDED_QUEUE` | 普通短队列任务。 |
 | `STATELESS_FAST_PATH` | IR、本地规则解析等快速无状态任务。 |
 | `MAIN_THREAD` | 客户端 UI 或必须主线程处理的任务。 |
-| `SERVER_PACKET` | 服务端真实状态变更意图。 |
 
 阻塞任务不能在 Broker Handler 或主线程里直接执行，必须提交到协议中心统一执行通道：
 

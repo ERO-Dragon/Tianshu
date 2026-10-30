@@ -27,15 +27,39 @@ final class SettingsListCardWidget extends AbstractWidget {
     private static final int BORDER_LIGHT = 0x33FFFFFF;
     private static final int BORDER_DARK = 0x55000000;
     private final SettingsListCard card;
+    /** Title, status and badges are resolved once: row widgets outlive many frames, and each frame used to re-split them. */
+    private final Component title;
+    private final Component status;
+    private final int statusWidth;
+    private final FormattedCharSequence titleLine;
+    private final List<Component> badges;
     private final List<FormattedCharSequence> detailLines;
     private final Runnable onClick;
 
     SettingsListCardWidget(int x, int y, int width, int height, SettingsListCard card, Runnable onClick) {
         super(x, y, width, height, card == null ? Component.empty() : NeoForgeUiText.toComponent(card.title()));
         this.card = card == null ? SettingsListCard.text(UiText.literal("")) : card;
-        this.detailLines = wrapDetails(Minecraft.getInstance().font, this.card, width);
+        Font font = Minecraft.getInstance().font;
+        this.title = NeoForgeUiText.toComponent(this.card.title());
+        this.status = NeoForgeUiText.toComponent(this.card.status());
+        this.statusWidth = status.getString().isBlank() ? 0 : font.width(status) + 8;
+        List<FormattedCharSequence> titleLines = font.split(title, Math.max(1, width - PADDING_X * 2 - statusWidth));
+        this.titleLine = titleLines.isEmpty() ? null : titleLines.get(0);
+        this.badges = resolveBadges(this.card);
+        this.detailLines = wrapDetails(font, this.card, width);
         this.onClick = onClick;
         this.active = false;
+    }
+
+    private static List<Component> resolveBadges(SettingsListCard card) {
+        List<Component> resolved = new ArrayList<>();
+        for (UiText badgeText : card.badges()) {
+            Component badge = NeoForgeUiText.toComponent(badgeText);
+            if (badge != null && !badge.getString().isBlank()) {
+                resolved.add(badge);
+            }
+        }
+        return List.copyOf(resolved);
     }
 
     static int heightFor(Font font, SettingsListCard card, int width) {
@@ -69,14 +93,11 @@ final class SettingsListCardWidget extends AbstractWidget {
         int textX = getX() + PADDING_X;
         int textY = getY() + PADDING_Y;
         int contentRight = right - PADDING_X;
-        int titleWidth = Math.max(1, getWidth() - PADDING_X * 2 - statusWidth(font));
-        for (FormattedCharSequence titleLine : font.split(NeoForgeUiText.toComponent(card.title()), titleWidth)) {
+        if (titleLine != null) {
             guiGraphics.drawString(font, titleLine, textX, textY, TITLE_COLOR, false);
             textY += LINE_HEIGHT;
-            break;
         }
-        Component status = NeoForgeUiText.toComponent(card.status());
-        if (!status.getString().isBlank()) {
+        if (statusWidth > 0) {
             int statusX = Math.max(textX, contentRight - font.width(status));
             guiGraphics.drawString(font, status, statusX, getY() + PADDING_Y, STATUS_COLOR, false);
         }
@@ -88,25 +109,16 @@ final class SettingsListCardWidget extends AbstractWidget {
         drawBadges(guiGraphics, font, textX, bottom - PADDING_Y - LINE_HEIGHT, contentRight);
     }
 
-    private int statusWidth(Font font) {
-        Component status = NeoForgeUiText.toComponent(card.status());
-        return status.getString().isBlank() ? 0 : font.width(status) + 8;
-    }
-
     private int badgeHeight() {
         return card.badges().isEmpty() ? 0 : LINE_HEIGHT + 2;
     }
 
     private void drawBadges(GuiGraphics guiGraphics, Font font, int x, int y, int right) {
-        if (card.badges().isEmpty()) {
+        if (badges.isEmpty()) {
             return;
         }
         int badgeX = x;
-        for (UiText badgeText : card.badges()) {
-            Component badge = NeoForgeUiText.toComponent(badgeText);
-            if (badge == null || badge.getString().isBlank()) {
-                continue;
-            }
+        for (Component badge : badges) {
             int width = font.width(badge) + 10;
             if (badgeX + width > right) {
                 break;

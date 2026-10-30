@@ -376,6 +376,11 @@ public final class ModelDownloadHttpClient {
     private Optional<ResumeState> loadResumeState(URI candidate, Path temporary, Path metadataFile) throws IOException {
         Optional<ModelDownloadResumeMetadata> metadata = ModelDownloadResumeMetadata.read(metadataFile);
         if (metadata.isEmpty()) {
+            if (Files.isRegularFile(metadataFile)) {
+                // The sidecar exists but could not be parsed; the download restarts from zero, which is fine,
+                // but the reason used to disappear silently.
+                env.warn("MODEL_DOWNLOAD_RESUME_METADATA_UNREADABLE file=" + metadataFile);
+            }
             if (Files.exists(metadataFile) || Files.exists(temporary)) {
                 Files.deleteIfExists(metadataFile);
                 Files.deleteIfExists(temporary);

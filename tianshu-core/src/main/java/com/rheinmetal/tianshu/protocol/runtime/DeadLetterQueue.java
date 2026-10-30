@@ -8,9 +8,12 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class DeadLetterQueue {
     private final Deque<DeadLetterRecord> records = new ConcurrentLinkedDeque<>();
+    /** {@code ConcurrentLinkedDeque.size()} walks the list, and it used to run on every add. */
+    private final AtomicInteger size = new AtomicInteger();
     private final int capacity;
     private final EnvelopeLifecycleStore lifecycleStore;
 
@@ -21,9 +24,14 @@ public final class DeadLetterQueue {
 
     public void add(TianshuEnvelope envelope, String errorCode, String reason, DeadLetterPolicy policy) {
         records.addFirst(DeadLetterRecord.from(envelope, errorCode, reason, policy));
+        size.incrementAndGet();
         lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.DEAD_LETTERED, errorCode, reason);
-        while (records.size() > capacity) {
-            records.pollLast();
+        while (size.get() > capacity) {
+            if (records.pollLast() == null) {
+                size.set(0);
+                break;
+            }
+            size.decrementAndGet();
         }
     }
 

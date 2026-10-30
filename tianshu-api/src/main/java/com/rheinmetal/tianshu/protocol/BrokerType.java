@@ -6,7 +6,6 @@ public enum BrokerType {
     LATEST_ONLY,
     BOUNDED_QUEUE,
     STATELESS_FAST_PATH,
-    MAIN_THREAD,
-    SERVER_PACKET
+    MAIN_THREAD
 }
 

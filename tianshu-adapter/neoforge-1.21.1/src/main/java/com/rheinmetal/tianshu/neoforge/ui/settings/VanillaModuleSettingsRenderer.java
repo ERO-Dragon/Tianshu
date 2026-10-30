@@ -433,29 +433,35 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             int actionWidth = actions.isEmpty() ? 0 : actions.size() * ITEM_ACTION_WIDTH + Math.max(0, actions.size() - 1) * SettingsLayoutMetrics.GAP;
             int bodyWidth = Math.max(80, rowWidth - actionWidth - (actions.isEmpty() ? 0 : SettingsLayoutMetrics.GAP));
             SettingsLayoutItem item;
-            AbstractWidget listWidget;
             if (group.carder() != null) {
                 SettingsListCard card = safeApply(group.carder(), value, SettingsListCard.text(UiText.literal("")));
                 int cardHeight = SettingsListCardWidget.heightFor(font, card, bodyWidth);
                 item = allowPartialVisibility ? layout.nextIntersecting(cardHeight) : layout.next(cardHeight);
-                listWidget = new SettingsListCardWidget(rowX, item.screenY(), bodyWidth, cardHeight, card, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value)));
+                // Build the widget only when the row is on screen: its constructor lays the text out, and
+                // off-screen rows used to pay for that layout and then be discarded.
+                if (item.visible()) {
+                    addIfVisible(new SettingsListCardWidget(rowX, item.screenY(), bodyWidth, cardHeight, card, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value))), item, groupActive);
+                }
             } else {
                 Component valueLabel = safeLabel(group.labeler(), value);
                 Component label = active ? Component.translatable("tianshu.gui.settings.list.selected", valueLabel) : valueLabel;
                 int itemHeight = Math.max(SettingsLayoutMetrics.CONTROL_HEIGHT, SettingsListItemWidget.heightFor(font, label, bodyWidth));
                 item = allowPartialVisibility ? layout.nextIntersecting(itemHeight) : layout.next(itemHeight);
-                listWidget = new SettingsListItemWidget(rowX, item.screenY(), bodyWidth, itemHeight, label, groupActive ? 0xD0D0D0 : 0x606060, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value)));
+                if (item.visible()) {
+                    addIfVisible(new SettingsListItemWidget(rowX, item.screenY(), bodyWidth, itemHeight, label, groupActive ? 0xD0D0D0 : 0x606060, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value))), item, groupActive);
+                }
             }
-            addIfVisible(listWidget, item, groupActive);
-            int buttonX = rowX + bodyWidth + SettingsLayoutMetrics.GAP;
-            int buttonY = item.screenY() + Math.max(0, (item.height() - SettingsLayoutMetrics.CONTROL_HEIGHT) / 2);
-            for (SettingsTemplateModel.ItemActionEntry<T> action : actions) {
-                Button button = Button.builder(safeComponent(action.label(), Component.empty()), clicked -> runActionAndRefresh(() -> safeAccept(action.action(), value)))
-                        .pos(buttonX, buttonY)
-                        .size(ITEM_ACTION_WIDTH, SettingsLayoutMetrics.CONTROL_HEIGHT)
-                        .build();
-                addIfVisible(button, item, groupActive);
-                buttonX += ITEM_ACTION_WIDTH + SettingsLayoutMetrics.GAP;
+            if (item.visible()) {
+                int buttonX = rowX + bodyWidth + SettingsLayoutMetrics.GAP;
+                int buttonY = item.screenY() + Math.max(0, (item.height() - SettingsLayoutMetrics.CONTROL_HEIGHT) / 2);
+                for (SettingsTemplateModel.ItemActionEntry<T> action : actions) {
+                    Button button = Button.builder(safeComponent(action.label(), Component.empty()), clicked -> runActionAndRefresh(() -> safeAccept(action.action(), value)))
+                            .pos(buttonX, buttonY)
+                            .size(ITEM_ACTION_WIDTH, SettingsLayoutMetrics.CONTROL_HEIGHT)
+                            .build();
+                    addIfVisible(button, item, groupActive);
+                    buttonX += ITEM_ACTION_WIDTH + SettingsLayoutMetrics.GAP;
+                }
             }
             layout.gap();
         }

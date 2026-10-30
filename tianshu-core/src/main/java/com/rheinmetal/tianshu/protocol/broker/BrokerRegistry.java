@@ -49,7 +49,6 @@ public final class BrokerRegistry {
             case BOUNDED_QUEUE -> new BoundedQueueBroker(brokerId, queueCapacity, maxConcurrency, executorManager, executionPolicy);
             case STATELESS_FAST_PATH -> new StatelessFastPathBroker(brokerId, executorManager, executionPolicy);
             case MAIN_THREAD -> new MainThreadBroker(brokerId, mainThreadExecutor);
-            case SERVER_PACKET -> new ServerPacketBroker(brokerId, queueCapacity, executorManager, executionPolicy);
         };
     }
 }

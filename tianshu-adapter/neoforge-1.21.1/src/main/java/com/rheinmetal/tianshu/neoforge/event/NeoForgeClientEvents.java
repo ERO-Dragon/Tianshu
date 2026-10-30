@@ -79,6 +79,9 @@ public final class NeoForgeClientEvents {
         worldIdentityCapture.clear();
         hudHost.resetLayers();
         NeoForgeWorldEventHooks.resetWorldSession();
+        // The gate is global state written by a module; leaving it latched would swallow the next session's keys.
+        // Only the gate is cleared here: the signal buses belong to the modules that subscribed to them.
+        com.rheinmetal.tianshu.api.assembly.RuntimeGates.clear();
         lifecycleAdapter.onWorldLogout();
     }
 

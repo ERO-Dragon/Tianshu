@@ -47,8 +47,9 @@ public final class ProtocolBootstrap {
         // Raw world events are dropped by aggregation, never by delivery: a consumer that windows them must see
         // every occurrence, and an absent consumer completes silently (a registered topic with no subscriber).
         runtime.registerTopic(new TopicDescriptor(ProtocolTopics.WORLD_EVENT, PayloadType.CUSTOM, DeliveryPolicy.WAIT_IN_QUEUE, 40));
-        // Feature topics are not registered here: the module that owns them registers them while the session is
-        // assembled (see PresenceProtocolAdapter#registerOwnedTopics). The kernel's table is platform vocabulary only.
+        // The rows above this comment are the four original modules' topics and are still registered by the
+        // kernel; presence, added later, registers its own topics in PresenceProtocolAdapter#registerOwnedTopics.
+        // New modules should follow that pattern: register while the session is assembled, not here.
     }
 }
 

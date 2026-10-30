@@ -125,9 +125,6 @@ public final class NeoForgeClientBootstrap {
             diagnosticRouter = new ClientDiagnosticRouter(
                     gameDirectory,
                     new ClientDiagnosticPolicy(config),
-                    2_048,
-                    8L * 1024L * 1024L,
-                    5,
                     chatSink
             );
             NeoForgeClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
@@ -346,7 +343,8 @@ public final class NeoForgeClientBootstrap {
         } finally {
             clearSessionReferences();
         }
-        currentLogSink.info("neoforge.client.shutdown_completed");
+        // No "shutdown_completed" line here on purpose: the router writes diagnostic.log_closed as its last
+        // record, and anything logged after currentSession.close() lands in a closed writer.
     }
 
     private void clearSessionReferences() {

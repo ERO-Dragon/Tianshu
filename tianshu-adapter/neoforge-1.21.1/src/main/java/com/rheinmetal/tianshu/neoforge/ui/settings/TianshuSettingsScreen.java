@@ -57,6 +57,11 @@ public final class TianshuSettingsScreen extends Screen {
     private List<SettingsDecoration> rightPanelDecorations = List.of();
     private List<SettingsScrollRegion> rightPanelScrollRegions = List.of();
     private final Map<String, ScrollState> nestedScrollStates = new ConcurrentHashMap<>();
+    /** Frame-stable layout and per-region clip rectangles: both were rebuilt several times per frame. */
+    private SettingsScreenLayout cachedLayout;
+    private int cachedLayoutWidth = -1;
+    private int cachedLayoutHeight = -1;
+    private final Map<SettingsScrollRegion, VisibleRegion> visibleRegionCache = new java.util.IdentityHashMap<>();
     private Button saveButton;
     private SelectionPanel<?> selectionPanel;
     private boolean rebuildQueued;
@@ -80,9 +85,28 @@ public final class TianshuSettingsScreen extends Screen {
         rebuildCurrentPage();
     }
 
+    /**
+     * The page layout for the current window size.
+     *
+     * <p>{@link #render} asks for it several times per frame — frame, decorations, widgets, overlay — and every
+     * ask used to build a fresh {@link SettingsScreenLayout}. The size only changes on resize, so one cached
+     * instance per size is enough; the per-region clip rectangles are derived from it and are dropped with it.</p>
+     */
+    private SettingsScreenLayout pageLayout() {
+        if (cachedLayout == null || cachedLayoutWidth != width || cachedLayoutHeight != height) {
+            cachedLayout = chrome.layout(width, height);
+            cachedLayoutWidth = width;
+            cachedLayoutHeight = height;
+            visibleRegionCache.clear();
+        }
+        return cachedLayout;
+    }
+
     public void rebuildCurrentPage() {
         rebuildQueued = false;
         clearWidgets();
+        // The scroll regions below are new objects; clips cached against the old ones are unreachable.
+        visibleRegionCache.clear();
         rightPanelDecorations = List.of();
         rightPanelScrollRegions = List.of();
         List<ModuleSettingsCategory> categories = registry.categories();
@@ -95,7 +119,7 @@ public final class TianshuSettingsScreen extends Screen {
         }
         selectedModuleId = selected.moduleId();
 
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
 
         addRenderableWidget(new SettingsNavigationWidget(layout.leftX(), layout.leftListTop(), layout.leftWidth(), layout.leftListHeight(), categories, selectedModuleId, category -> {
             selectedModuleId = category.moduleId();
@@ -231,7 +255,8 @@ public final class TianshuSettingsScreen extends Screen {
         if (regionId == null || regionId.isBlank()) {
             return 0;
         }
-        return nestedScrollStates.getOrDefault(regionId, new ScrollState(0, 0, 0)).offset();
+        ScrollState state = nestedScrollStates.get(regionId);
+        return state == null ? 0 : state.offset();
     }
 
     public void registerScrollRegion(String regionId, int contentHeight, int viewportHeight) {
@@ -264,10 +289,13 @@ public final class TianshuSettingsScreen extends Screen {
             selectionPanel.mouseScrolled(scrollY);
             return true;
         }
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
             if (visibleRegionContains(layout, region, mouseX, mouseY) && region.canScroll()) {
-                ScrollState current = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()));
+                ScrollState current = nestedScrollStates.get(region.id());
+                if (current == null) {
+                    current = new ScrollState(0, region.contentHeight(), region.viewportHeight());
+                }
                 nestedScrollStates.put(region.id(), current.withMetrics(region.contentHeight(), region.viewportHeight())
                         .withOffset(current.offset() - (int) Math.signum(scrollY) * SCROLL_STEP));
                 // Coalesced, not immediate: a high-resolution wheel delivers several events in one frame, and a
@@ -291,7 +319,7 @@ public final class TianshuSettingsScreen extends Screen {
         clearPointerFocus(contentMouseX, contentMouseY);
         updateActionStates();
         renderMenuBackground(guiGraphics);
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
         chrome.drawFrame(guiGraphics, layout, rightPanelScroll);
         drawRightPanelDecorationBackgrounds(guiGraphics, layout);
         super.render(guiGraphics, contentMouseX, contentMouseY, partialTick);
@@ -309,7 +337,7 @@ public final class TianshuSettingsScreen extends Screen {
         if (selectionPanel != null && selectionPanel.mouseClicked(mouseX, mouseY)) {
             return true;
         }
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
             if (!visibleRegionContains(layout, region, mouseX, mouseY)) {
                 continue;
@@ -403,7 +431,7 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     private void renderScrollRegionWidgets(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
         for (SettingsScrollRegion region : rightPanelScrollRegions) {
             VisibleRegion visible = visibleRegion(layout, region);
             if (visible == null) {
@@ -421,7 +449,7 @@ public final class TianshuSettingsScreen extends Screen {
     }
 
     private void drawScrollRegionDecorations(GuiGraphics guiGraphics, SettingsScrollRegion region, boolean background) {
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
         VisibleRegion visible = visibleRegion(layout, region);
         if (visible == null) {
             return;
@@ -444,19 +472,22 @@ public final class TianshuSettingsScreen extends Screen {
         if (!region.canScroll() || region.viewportHeight() <= 0) {
             return;
         }
-        SettingsScreenLayout layout = chrome.layout(width, height);
+        SettingsScreenLayout layout = pageLayout();
         VisibleRegion visible = visibleRegion(layout, region);
         if (visible == null) {
             return;
         }
-        ScrollState scroll = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()))
-                .withMetrics(region.contentHeight(), region.viewportHeight());
+        ScrollState scroll = nestedScrollStates.get(region.id());
+        int offset = scroll == null ? 0 : scroll.offset();
+        int contentHeight = Math.max(1, region.contentHeight());
+        int viewportHeight = region.viewportHeight();
+        int maxOffset = Math.max(1, contentHeight - viewportHeight);
         int scrollbarX = visible.right() - 4;
         int trackTop = visible.top();
         int trackBottom = visible.bottom();
         int trackHeight = Math.max(1, trackBottom - trackTop);
-        int thumbHeight = Math.max(16, trackHeight * scroll.viewportHeight() / Math.max(1, scroll.contentHeight()));
-        int thumbY = trackTop + (trackHeight - thumbHeight) * scroll.offset() / Math.max(1, scroll.maxOffset());
+        int thumbHeight = Math.max(16, trackHeight * viewportHeight / contentHeight);
+        int thumbY = trackTop + (trackHeight - thumbHeight) * offset / maxOffset;
         guiGraphics.fill(scrollbarX, trackTop, scrollbarX + 2, trackBottom, 0x66000000);
         guiGraphics.fill(scrollbarX, thumbY, scrollbarX + 2, thumbY + thumbHeight, 0xFFB0B0B0);
     }
@@ -466,12 +497,27 @@ public final class TianshuSettingsScreen extends Screen {
         return visible != null && visible.contains(mouseX, mouseY);
     }
 
+    /**
+     * The on-screen clip of one scroll region, memoised for the frame.
+     *
+     * <p>The same region is clipped three times per frame (background, border, widgets) and used again for hit
+     * testing; the cache is keyed to the region instance and dropped whenever the layout or the regions change.</p>
+     */
     private VisibleRegion visibleRegion(SettingsScreenLayout layout, SettingsScrollRegion region) {
+        VisibleRegion cached = visibleRegionCache.get(region);
+        if (cached != null) {
+            return cached;
+        }
         int left = Math.max(region.x(), layout.rightX() + 1);
         int right = Math.min(region.x() + region.width(), layout.rightX() + layout.rightWidth() - 1);
         int top = Math.max(region.y(), layout.viewportTop());
         int bottom = Math.min(region.y() + region.height(), layout.viewportBottom());
-        return right > left && bottom > top ? new VisibleRegion(left, top, right, bottom) : null;
+        if (right <= left || bottom <= top) {
+            return null;
+        }
+        VisibleRegion computed = new VisibleRegion(left, top, right, bottom);
+        visibleRegionCache.put(region, computed);
+        return computed;
     }
 
     private void pruneNestedScrollStates(List<SettingsScrollRegion> regions) {
