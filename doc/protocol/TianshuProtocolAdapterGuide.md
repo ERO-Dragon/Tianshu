@@ -45,8 +45,8 @@ public final class MyModuleProtocolAdapter extends AbstractProtocolAdapter {
 ```java
 public TianshuEnvelope speak(TtsSpeakPayload payload) {
     return commandCapability(
-        ProtocolCapabilities.TTS_SPEAK,
-        PayloadType.TTS_TEXT,
+        "TTS_SPEAK",
+        PayloadType.of("TTS_TEXT"),
         payload
     );
 }
@@ -76,8 +76,8 @@ public TianshuEnvelope speak(TtsSpeakPayload payload) {
 ```java
 public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
     return requestCapability(
-        ProtocolCapabilities.LLM_REQUEST,
-        PayloadType.LLM_PROMPT_REQUEST,
+        "LLM.REQUEST",
+        PayloadType.of("LLM_PROMPT_REQUEST"),
         payload
     );
 }
@@ -100,8 +100,8 @@ public TianshuEnvelope requestLlm(LLMPromptRequestPayload payload) {
 ```java
 public TianshuEnvelope publishAsrFinalText(AsrTextPayload payload) {
     return publishTopic(
-        ProtocolTopics.INPUT_ASR_FINAL_TEXT,
-        PayloadType.ASR_TEXT,
+        IntakeTopics.INPUT_ASR_FINAL_TEXT,
+        PayloadType.of("ASR_TEXT"),
         payload
     );
 }
@@ -125,8 +125,8 @@ public TianshuEnvelope publishAsrFinalText(AsrTextPayload payload) {
 ```java
 public void registerDialogueInput(EnvelopeHandler handler) {
     registerCapability(
-        ProtocolCapabilities.AX_DIALOGUE_INPUT,
-        PayloadType.DIALOGUE_DELIVERY,
+        "AX.DIALOGUE_INPUT",
+        PayloadType.of("DIALOGUE_DELIVERY"),
         DialogueDeliveryPayload.class,
         BrokerType.BOUNDED_QUEUE,
         EnumSet.of(PacketType.COMMAND),
@@ -158,8 +158,8 @@ public void registerDialogueInput(EnvelopeHandler handler) {
 ```java
 public void subscribeTtsPlayback(EnvelopeHandler handler) {
     subscribeTopic(
-        ProtocolTopics.TTS_PLAYBACK,
-        PayloadType.TTS_PLAYBACK_STATUS,
+        TtsTopics.TTS_PLAYBACK,
+        PayloadType.of("TTS_PLAYBACK_STATUS"),
         TtsPlaybackStatusPayload.class,
         BrokerType.STATELESS_FAST_PATH,
         EnumSet.of(PacketType.EVENT),
@@ -189,14 +189,14 @@ request LLM.REQUEST
 
 ```java
 TianshuEnvelope request = buildRequestCapability(
-    ProtocolCapabilities.LLM_REQUEST,
-    PayloadType.LLM_PROMPT_REQUEST,
+    "LLM.REQUEST",
+    PayloadType.of("LLM_PROMPT_REQUEST"),
     payload
 );
 
 registerResponseHandler(
     request.envelopeId(),
-    PayloadType.LLM_PROMPT_STREAM_CHUNK,
+    PayloadType.of("LLM_PROMPT_STREAM_CHUNK"),
     LLMPromptStreamChunkPayload.class,
     BrokerType.BOUNDED_QUEUE,
     EnumSet.of(PacketType.RESPONSE),
@@ -206,7 +206,7 @@ registerResponseHandler(
 
 registerResponseHandler(
     request.envelopeId(),
-    PayloadType.LLM_PROMPT_RESULT,
+    PayloadType.of("LLM_PROMPT_RESULT"),
     LLMPromptResultPayload.class,
     BrokerType.BOUNDED_QUEUE,
     EnumSet.of(PacketType.RESPONSE),
@@ -224,7 +224,7 @@ submitPrepared(request);
 服务方只需要回信：
 
 ```java
-respondTo(parentEnvelope, PayloadType.LLM_PROMPT_RESULT, resultPayload);
+respondTo(parentEnvelope, PayloadType.of("LLM_PROMPT_RESULT"), resultPayload);
 ```
 
 服务方不需要知道请求方模块 ID，也不需要给请求方注册公开能力。

@@ -1,3 +1,5 @@
+> 历史文档（拆分前的设置 GUI 框架说明）。当前设置扩展方式见 [外部接入指南](../../../EXTERNAL_INTEGRATION_GUIDE.md) 与 [模块架构](../../architecture/模块架构.md)。
+
 # 天枢设置 GUI 框架
 
 ## 快速摘要

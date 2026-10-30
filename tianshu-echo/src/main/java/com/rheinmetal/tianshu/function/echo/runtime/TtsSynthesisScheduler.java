@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
@@ -12,7 +13,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 public final class TtsSynthesisScheduler {
-    private static final String MODULE_ID = ProtocolModuleIds.TTS;
+    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
     static final String BACKEND_CONCURRENCY_KEY = MODULE_ID + ":backend";
 
     private final ModuleExecutionAccess executorManager;
@@ -79,7 +80,7 @@ public final class TtsSynthesisScheduler {
     }
 
     public ExecutionLane lane() {
-        return synthesisEngine.isAutoregressive() ? ExecutionLane.TTS_AUTOREGRESSIVE : ExecutionLane.TTS_FAST;
+        return synthesisEngine.isAutoregressive() ? ExecutionLane.AUDIO_SYNTH_AR : ExecutionLane.AUDIO_SYNTH_FAST;
     }
 
     public static Priority priorityFor(TtsRequest request) {

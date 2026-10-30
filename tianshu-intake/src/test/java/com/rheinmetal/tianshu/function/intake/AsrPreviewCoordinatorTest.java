@@ -134,7 +134,7 @@ class AsrPreviewCoordinatorTest {
     private static ProtocolTaskSpec previewTaskSpec() {
         return ProtocolTaskSpec.builder()
                 .moduleId("module.asr")
-                .lane(ExecutionLane.ASR_STREAM)
+                .lane(ExecutionLane.AUDIO_INPUT_STREAM)
                 .concurrencyKey("module.asr:preview")
                 .maxConcurrency(1)
                 .queueCapacity(8)

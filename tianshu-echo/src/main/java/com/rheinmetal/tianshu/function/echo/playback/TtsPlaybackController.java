@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.playback;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
@@ -23,7 +24,7 @@ import java.util.Map;
 import java.time.Duration;
 
 public final class TtsPlaybackController {
-    private static final String MODULE_ID = ProtocolModuleIds.TTS;
+    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
     private static final String PLAYBACK_CONCURRENCY_KEY = MODULE_ID + ":playback";
     private static final Priority PLAYBACK_COMMAND_PRIORITY = Priority.NORMAL;
 

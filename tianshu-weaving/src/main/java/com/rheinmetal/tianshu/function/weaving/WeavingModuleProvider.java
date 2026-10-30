@@ -1,12 +1,16 @@
 package com.rheinmetal.tianshu.function.weaving;
 
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleRegistrar;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfig;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingSettingsRegistrySource;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+
+import java.util.List;
 
 /**
  * Weaving announces itself to the kernel.
@@ -29,8 +33,13 @@ public final class WeavingModuleProvider implements TianshuModuleProvider {
             return;
         }
         ClientPorts ports = context.clientPorts();
+        // The wording of this module's progress lines belongs here; the host only looks the codes up.
+        ports.diagnosticChat().register("CHAT_COMPLETED", new DiagnosticChatNotice(
+                "tianshu.chat.progress.llm.reply", List.of(List.of("input"), List.of("output"))));
+        ports.diagnosticChat().register("STREAM_COMPLETED", new DiagnosticChatNotice(
+                "tianshu.chat.progress.llm.reply", List.of(List.of("input"), List.of("output"))));
         WeavingConfig config = new WeavingConfig(
-                ports.configStores().forModule(ProtocolModuleIds.LLM),
+                ports.configStores().forModule(LlmProtocolAdapter.MODULE_ID),
                 ports.configStores().moduleDirectory(),
                 ports.texts()::currentLanguage);
 

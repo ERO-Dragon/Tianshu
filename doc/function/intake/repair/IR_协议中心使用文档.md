@@ -6,8 +6,8 @@
 
 | 方向 | 协议 | PayloadType | Payload | PacketType |
 | --- | --- | --- | --- | --- |
-| ASR -> IR | `ProtocolTopics.INPUT_ASR_FINAL_TEXT` | `PayloadType.ASR_TEXT` | `AsrTextPayload` | `EVENT` |
-| IR -> IA/观察者 | `ProtocolTopics.IR_RESULT` | `PayloadType.IR_RESULT` | `IrResultPayload` | `EVENT` |
+| ASR -> IR | `IntakeTopics.INPUT_ASR_FINAL_TEXT` | `PayloadType.of("ASR_TEXT")` | `AsrTextPayload` | `EVENT` |
+| IR -> IA/观察者 | `IntakeTopics.IR_RESULT` | `PayloadType.of("IR_RESULT")` | `IrResultPayload` | `EVENT` |
 
 模块装配仍通过 `TianshuModuleAssemblyContext.moduleRuntime()` 提供的 `ModuleRuntimeAccess` 创建窄 adapter。不要持有 `IrModule`、`CommandParser` 或完整 `ProtocolRuntime`。
 
@@ -17,8 +17,8 @@
 
 ```java
 subscribeTopic(
-    ProtocolTopics.IR_RESULT,
-    PayloadType.IR_RESULT,
+    IntakeTopics.IR_RESULT,
+    PayloadType.of("IR_RESULT"),
     IrResultPayload.class,
     BrokerType.BOUNDED_QUEUE,
     EnumSet.of(PacketType.EVENT),
@@ -57,7 +57,7 @@ subscribeTopic(
 
 ## 3. IA 消费语义
 
-IA 直接订阅 `ProtocolTopics.IR_RESULT`。标准语音链路中，IR 不调用 `ProtocolCapabilities.DIALOGUE_ARBITRATE`。
+IA 直接订阅 `IntakeTopics.IR_RESULT`。标准语音链路中，IR 不调用 `"DIALOGUE.ARBITRATE"`。
 
 IA 会结合：
 
@@ -93,7 +93,7 @@ IR 不再请求 `PresenceCapabilities.QUERY_CONTEXT`，也不再消费 `Presence
 ## 7. 接入检查表
 
 - [ ] 使用自己的 adapter 和 `ModuleRuntimeAccess`。
-- [ ] 只在确实需要观察分析结果时订阅 `ProtocolTopics.IR_RESULT`。
+- [ ] 只在确实需要观察分析结果时订阅 `IntakeTopics.IR_RESULT`。
 - [ ] 使用 `sessionId + turnId` 关联链路。
 - [ ] 不把触发词命中当成最终 owner。
 - [ ] 实体仲裁只读 `objectMatches` 中 `entity()` 为真的条目，不按 id 形状猜类别。

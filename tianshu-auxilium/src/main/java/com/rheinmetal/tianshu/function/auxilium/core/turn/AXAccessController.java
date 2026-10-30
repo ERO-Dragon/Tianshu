@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TargetMode;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 
@@ -22,13 +21,13 @@ public final class AXAccessController {
         if (envelope == null || input == null) {
             return false;
         }
-        if (envelope.header().payloadType() != PayloadType.DIALOGUE_DELIVERY) {
+        if (envelope.header().payloadType() != PayloadType.of("DIALOGUE_DELIVERY")) {
             return false;
         }
         if (envelope.header().packetType() != PacketType.COMMAND && envelope.header().packetType() != PacketType.REQUEST) {
             return false;
         }
-        if (!ProtocolModuleIds.IA.equals(envelope.header().sourceId())) {
+        if (!"module.ia".equals(envelope.header().sourceId())) {
             return false;
         }
         if (envelope.header().targetMode() != TargetMode.CAPABILITY) {

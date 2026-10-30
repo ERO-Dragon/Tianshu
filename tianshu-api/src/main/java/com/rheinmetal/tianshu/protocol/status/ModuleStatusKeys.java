@@ -1,11 +1,5 @@
 package com.rheinmetal.tianshu.protocol.status;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
-
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
 /**
  * The language keys of the module lifecycle dimension, derived from the module id instead of spelled
  * out at each call site.
@@ -29,20 +23,6 @@ public final class ModuleStatusKeys {
     private static final String READY = ".ready";
     private static final String STOPPED = ".stopped";
 
-    /**
-     * Modules whose lifecycle rows this build's language test sweeps, in the order the rows are listed.
-     *
-     * <p>The key itself is derived from any module id, so a module that owns its id itself (presence) still gets a
-     * correct row at runtime; it checks its own language entries in its own test instead of being listed here.</p>
-     */
-    private static final List<String> LIFECYCLE_MODULES = List.of(
-            ProtocolModuleIds.AX,
-            ProtocolModuleIds.IA,
-            ProtocolModuleIds.LLM,
-            ProtocolModuleIds.ASR,
-            ProtocolModuleIds.TTS
-    );
-
     private ModuleStatusKeys() {
     }
 
@@ -56,22 +36,6 @@ public final class ModuleStatusKeys {
 
     public static String stopped(String moduleId) {
         return lifecycleKey(moduleId, STOPPED);
-    }
-
-    /**
-     * Every lifecycle key this build can emit.
-     *
-     * <p>The language test walks this set, so adding a module to {@link #LIFECYCLE_MODULES} without its
-     * two language entries fails immediately instead of at runtime.</p>
-     */
-    public static Set<String> lifecycleKeys() {
-        Set<String> keys = new LinkedHashSet<>();
-        for (String moduleId : LIFECYCLE_MODULES) {
-            keys.add(starting(moduleId));
-            keys.add(ready(moduleId));
-            keys.add(stopped(moduleId));
-        }
-        return keys;
     }
 
     /** {@code module.llm} → {@code tianshu.runtime.module.llm.ready}: no id rewriting, the id is the path. */

@@ -1,10 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.function.auxilium.AXModule;
+
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TargetMode;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.TextPayload;
@@ -28,7 +29,7 @@ class AXTypedTurnEnvelopeTest {
     void aTypedTurnGetsAnEnvelopeIndistinguishableFromADeliveredOne() {
         TianshuEnvelope envelope = AXTypedTurnEnvelope.selfEnvelope(AXDialogueInput.typed("player", "钻石锄怎么用", 0L));
 
-        assertEquals(ProtocolModuleIds.AX, envelope.header().sourceId(), "the module speaks for itself");
+        assertEquals(AXModule.MODULE_ID, envelope.header().sourceId(), "the module speaks for itself");
         assertEquals(AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY, envelope.header().target());
         assertEquals(TargetMode.CAPABILITY, envelope.header().targetMode());
         assertEquals(PacketType.COMMAND, envelope.header().packetType());

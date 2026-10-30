@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.client.diagnostics;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatCatalogue;
 
 import java.nio.file.Path;
 import java.util.Objects;
@@ -18,6 +19,7 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
     private final AtomicLong droppedEvents = new AtomicLong();
     /** Whether any record was accepted: a router that never logged must not create the file just to close. */
     private final AtomicBoolean acceptedRecords = new AtomicBoolean();
+    private final DiagnosticChatCatalogue chatCatalogue;
 
     public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled) {
         this(gameDirectory, moduleEnabled, ClientDiagnosticMessageSink.NOOP);
@@ -25,7 +27,17 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
 
     /** Production shape: the queue and rotation budget stay owned here instead of being repeated at the call site. */
     public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, ClientDiagnosticMessageSink messageSink) {
-        this(gameDirectory, moduleEnabled, 2_048, 8L * 1024L * 1024L, 5, messageSink);
+        this(gameDirectory, moduleEnabled, messageSink, new ClientDiagnosticChatCatalogue());
+    }
+
+    /**
+     * @param chatCatalogue the session's code → chat-line table, filled by the modules as they assemble; an empty
+     *                      catalogue keeps the generic fallback, which is what a test or a headless run wants
+     */
+    public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled,
+                                  ClientDiagnosticMessageSink messageSink,
+                                  DiagnosticChatCatalogue chatCatalogue) {
+        this(gameDirectory, moduleEnabled, 2_048, 8L * 1024L * 1024L, 5, messageSink, chatCatalogue);
     }
 
     ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, int queueCapacity, long maxFileBytes, int maxArchives) {
@@ -33,9 +45,14 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
     }
 
     public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, int queueCapacity, long maxFileBytes, int maxArchives, ClientDiagnosticMessageSink messageSink) {
+        this(gameDirectory, moduleEnabled, queueCapacity, maxFileBytes, maxArchives, messageSink, new ClientDiagnosticChatCatalogue());
+    }
+
+    public ClientDiagnosticRouter(Path gameDirectory, Predicate<String> moduleEnabled, int queueCapacity, long maxFileBytes, int maxArchives, ClientDiagnosticMessageSink messageSink, DiagnosticChatCatalogue chatCatalogue) {
         Objects.requireNonNull(gameDirectory, "gameDirectory");
         this.moduleEnabled = Objects.requireNonNull(moduleEnabled, "moduleEnabled");
         this.messageSink = messageSink == null ? ClientDiagnosticMessageSink.NOOP : messageSink;
+        this.chatCatalogue = chatCatalogue == null ? new ClientDiagnosticChatCatalogue() : chatCatalogue;
         this.writer = new ClientDiagnosticWriter(gameDirectory.resolve("logs").resolve("tianshu-diagnostics.log"), queueCapacity, maxFileBytes, maxArchives);
     }
 
@@ -49,7 +66,7 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
         } else {
             acceptedRecords.set(true);
         }
-        ClientDiagnosticMessage message = ClientDiagnosticProgress.messageFor(event);
+        ClientDiagnosticMessage message = ClientDiagnosticProgress.messageFor(event, chatCatalogue);
         if (message != null) {
             try {
                 messageSink.publish(message);

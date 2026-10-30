@@ -25,7 +25,6 @@ import com.rheinmetal.tianshu.function.echo.voice.TtsVoiceRequestValidator;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsAudioAckPayload;
@@ -110,6 +109,7 @@ public final class TtsModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        adapter.registerOwnedTopics(context.protocol());
         modelService = new TtsModelService(env, config, runtime, this::publishModuleStatus);
         moduleService = new TtsModuleService();
         moduleService.bindModelService(modelService);
@@ -636,7 +636,7 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         adapter.publishRequestStatus(status);
-        if (ProtocolModuleIds.AX.equals(status.sourceId()) || status.requestId().isBlank()) {
+        if ("module.ax".equals(status.sourceId()) || status.requestId().isBlank()) {
             return;
         }
         if (status.status() == com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatus.QUEUED
@@ -648,7 +648,7 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private void beginRequestActivity(String sourceId, String requestId) {
-        if (ProtocolModuleIds.AX.equals(sourceId) || requestId == null || requestId.isBlank()) {
+        if ("module.ax".equals(sourceId) || requestId == null || requestId.isBlank()) {
             return;
         }
         String normalizedRequestId = requestId.trim();

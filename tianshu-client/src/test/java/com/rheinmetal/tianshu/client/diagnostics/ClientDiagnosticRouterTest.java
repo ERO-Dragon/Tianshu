@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.client.diagnostics;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -101,7 +102,7 @@ final class ClientDiagnosticRouterTest {
     void enabledDiagnosticCanBeForwardedAsProductProgressMessage() throws Exception {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
-        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16, 8L * 1024L * 1024L, 5, messages::add);
+        ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16, 8L * 1024L * 1024L, 5, messages::add, catalogue());
         router.publish(DiagnosticEvent.now("module.ax", "LLM_SUBMITTED", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT, Map.of("text", "raw-content")));
         router.close();
@@ -116,7 +117,7 @@ final class ClientDiagnosticRouterTest {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat-stage");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
         ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16,
-                8L * 1024L * 1024L, 5, messages::add);
+                8L * 1024L * 1024L, 5, messages::add, catalogue());
         router.publish(DiagnosticEvent.now("module.asr", "STREAM_RESULT", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT,
                 Map.of("sessionId", "99", "turnId", "4", "inputMode", "always", "text", "hello")));
@@ -132,7 +133,7 @@ final class ClientDiagnosticRouterTest {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat-content");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
         ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, 16,
-                8L * 1024L * 1024L, 5, messages::add);
+                8L * 1024L * 1024L, 5, messages::add, catalogue());
         router.publish(DiagnosticEvent.now("module.llm", "CHAT_COMPLETED", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT,
                 Map.of("requestId", "request-1", "input", "player input", "output", "assistant output")));
@@ -171,6 +172,23 @@ final class ClientDiagnosticRouterTest {
                 assertFalse(source.contains("org.slf4j"), () -> "Host logger dependency in " + file);
             }
         }
+    }
+
+    /**
+     * The entries a module would register; the router itself has no table of feature codes any more.
+     *
+     * <p>They are repeated here on purpose: the test asserts how the router composes a message from a catalogue
+     * entry, not what any particular module's wording is.</p>
+     */
+    private static ClientDiagnosticChatCatalogue catalogue() {
+        ClientDiagnosticChatCatalogue catalogue = new ClientDiagnosticChatCatalogue();
+        catalogue.register("LLM_SUBMITTED", new DiagnosticChatNotice("tianshu.chat.progress.thinking", java.util.List.of()));
+        catalogue.register("STREAM_RESULT", DiagnosticChatNotice.single(
+                "tianshu.chat.progress.asr.recognition", "text", "output", "input"));
+        catalogue.register("CHAT_COMPLETED", new DiagnosticChatNotice(
+                "tianshu.chat.progress.llm.reply",
+                java.util.List.of(java.util.List.of("input"), java.util.List.of("output"))));
+        return catalogue;
     }
 
     private static DiagnosticEvent event(String moduleId, String code) {

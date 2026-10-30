@@ -30,12 +30,21 @@ def tianshuDebugBuild = providers.gradleProperty('tianshuDebugBuild')
         .orElse(devRunRequested)
 def tianshuBuildProfile = layout.buildDirectory.file('generated/resources/tianshu-build.properties')
 tasks.register('generateTianshuBuildProfile') {
+    // The build owns the numbers: a release carries its own mod version and the api epoch it was built against,
+    // so the runtime probe reports facts instead of literals. The epoch is the mod version's MAJOR, derived here
+    // rather than typed into a second property that could drift.
+    def tianshuVersion = providers.gradleProperty('mod_version').orElse('0.0')
+    def tianshuApiVersion = tianshuVersion.map { value -> value.split('\\.')[0] }
     inputs.property('debugBuild', tianshuDebugBuild)
+    inputs.property('version', tianshuVersion)
+    inputs.property('apiVersion', tianshuApiVersion)
     outputs.file(tianshuBuildProfile)
     doLast {
         def output = tianshuBuildProfile.get().asFile
         output.parentFile.mkdirs()
-        output.text = "debugBuild=${tianshuDebugBuild.get()}\n"
+        output.text = "debugBuild=${tianshuDebugBuild.get()}\n" +
+                "version=${tianshuVersion.get()}\n" +
+                "apiVersion=${tianshuApiVersion.get()}\n"
     }
 }
 

@@ -35,7 +35,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
@@ -296,8 +295,8 @@ class AXMemorySummarySwapTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.memory-swap-test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        "LLM.REQUEST",
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         LLMPromptRequestPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -317,7 +316,7 @@ class AXMemorySummarySwapTest {
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.memory-swap-test",
                     envelope,
-                    PayloadType.LLM_PROMPT_RESULT,
+                    PayloadType.of("LLM_PROMPT_RESULT"),
                     LLMPromptResultPayload.completed(payload.requestId(), COMPACT_JSON)
             ).build());
             context.complete(envelope.envelopeId());
@@ -329,8 +328,8 @@ class AXMemorySummarySwapTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.primitive.memory-swap-test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                        PayloadType.LLM_PRIMITIVE_QUERY,
+                        "LLM.PRIMITIVE_QUERY",
+                        PayloadType.of("LLM_PRIMITIVE_QUERY"),
                         LLMPrimitiveQueryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -353,7 +352,7 @@ class AXMemorySummarySwapTest {
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.primitive.memory-swap-test",
                     envelope,
-                    PayloadType.LLM_PRIMITIVE_RESULT,
+                    PayloadType.of("LLM_PRIMITIVE_RESULT"),
                     result
             ).build());
             context.complete(envelope.envelopeId());

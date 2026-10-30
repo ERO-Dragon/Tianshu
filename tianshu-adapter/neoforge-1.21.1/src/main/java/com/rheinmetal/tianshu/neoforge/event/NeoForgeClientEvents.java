@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.assembly.InputSignals;
 import com.rheinmetal.tianshu.neoforge.ui.TextDialogueScreen;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
+import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeClientUiHost;
 import com.rheinmetal.tianshu.neoforge.adapter.NeoForgeWorldIdentityCapture;
 import com.rheinmetal.tianshu.neoforge.ui.hud.NeoForgeHudHost;
 import com.rheinmetal.tianshu.neoforge.ui.settings.TianshuSettingsModule;
@@ -34,6 +35,7 @@ public final class NeoForgeClientEvents {
     private final Supplier<KeyMapping> voiceKeySupplier;
     private final Supplier<KeyMapping> textInputKeySupplier;
     private final NeoForgeKeyBindings keyBindings;
+    private final NeoForgeClientUiHost uiHost;
     private final NeoForgeVoiceInputController voiceInputController;
 
     public NeoForgeClientEvents(
@@ -45,6 +47,7 @@ public final class NeoForgeClientEvents {
             Supplier<KeyMapping> voiceKeySupplier,
             Supplier<KeyMapping> textInputKeySupplier,
             NeoForgeKeyBindings keyBindings,
+            NeoForgeClientUiHost uiHost,
             LogSink logSink
     ) {
         this.coreManager = Objects.requireNonNull(coreManager, "coreManager");
@@ -55,6 +58,7 @@ public final class NeoForgeClientEvents {
         this.voiceKeySupplier = Objects.requireNonNull(voiceKeySupplier, "voiceKeySupplier");
         this.textInputKeySupplier = Objects.requireNonNull(textInputKeySupplier, "textInputKeySupplier");
         this.keyBindings = Objects.requireNonNull(keyBindings, "keyBindings");
+        this.uiHost = Objects.requireNonNull(uiHost, "uiHost");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.voiceInputController = new NeoForgeVoiceInputController();
     }
@@ -143,7 +147,7 @@ public final class NeoForgeClientEvents {
         }
         while (textKey.consumeClick()) {
             if (openAllowed && InputSignals.hasSubscribers(InputSignals.TEXT_SUBMITTED)) {
-                client.setScreen(new TextDialogueScreen());
+                client.setScreen(new TextDialogueScreen(uiHost.textInputTitle(), uiHost.textInputHint()));
             }
         }
     }

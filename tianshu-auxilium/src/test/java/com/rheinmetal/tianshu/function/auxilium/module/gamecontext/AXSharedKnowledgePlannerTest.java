@@ -11,7 +11,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
@@ -72,8 +71,8 @@ class AXSharedKnowledgePlannerTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.cache-manage.gamecontext-test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_CACHE_MANAGE,
-                        PayloadType.LLM_CACHE_MANAGE,
+                        "LLM.CACHE_MANAGE",
+                        PayloadType.of("LLM_CACHE_MANAGE"),
                         LLMCacheManagePayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -125,7 +124,7 @@ class AXSharedKnowledgePlannerTest {
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.cache-manage.gamecontext-test",
                     envelope,
-                    PayloadType.LLM_CACHE_MANAGE_RESULT,
+                    PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
                     result
             ).build());
             context.complete(envelope.envelopeId());

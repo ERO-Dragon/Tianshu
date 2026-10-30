@@ -1,17 +1,20 @@
 package com.rheinmetal.tianshu.function.intake;
 
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
+
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
 
 import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
 
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceActivityIds;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
@@ -31,8 +34,30 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.EnumSet;
 
 public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
-    public static final String MODULE_ID = ProtocolModuleIds.ASR;
-    public static final String SOURCE_ID = ProtocolModuleIds.ASR;
+    public static final String MODULE_ID = "module.asr";
+    public static final String SOURCE_ID = AsrProtocolAdapter.MODULE_ID;
+
+    /**
+     * Registers the topics this module produces.
+     *
+     * <p>Topic ownership follows payload ownership: the producer declares its own route. The kernel used to
+     * register these for the four original modules, so deleting a module still left its vocabulary behind.</p>
+     */
+    public void registerOwnedTopics(com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess protocol) {
+        if (protocol == null) {
+            return;
+        }
+        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
+                IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY, PayloadType.of("ASR_SPEECH_ACTIVITY"),
+                DeliveryPolicy.LATEST_ONLY, 20));
+        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
+                IntakeTopics.INPUT_ASR_FINAL_TEXT, PayloadType.of("ASR_TEXT"),
+                DeliveryPolicy.WAIT_IN_QUEUE, 20));
+        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
+                IntakeTopics.IR_RESULT, PayloadType.of("IR_RESULT"),
+                DeliveryPolicy.WAIT_IN_QUEUE, 20));
+    }
+
     /**
      * Long enough for the longest sentence a player may hold the key through, because the turn always ends
      * with an explicit {@code ENDED}: this TTL only matters when the client dies mid-turn.
@@ -60,11 +85,11 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishFinalText(AsrTextPayload payload) {
-        return publishTopic(ProtocolTopics.INPUT_ASR_FINAL_TEXT, PayloadType.ASR_TEXT, payload);
+        return publishTopic(IntakeTopics.INPUT_ASR_FINAL_TEXT, PayloadType.of("ASR_TEXT"), payload);
     }
 
     public TianshuEnvelope publishSpeechActivity(AsrSpeechActivityPayload payload) {
-        return publishTopic(ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY, PayloadType.ASR_SPEECH_ACTIVITY, payload);
+        return publishTopic(IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY, PayloadType.of("ASR_SPEECH_ACTIVITY"), payload);
     }
 
     public TianshuEnvelope publishPresenceActivity(PresenceActivityPayload payload) {
@@ -100,7 +125,7 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
 
     public ProtocolTaskHandle submitRecognitionTask(String taskName, Runnable task) {
         return submitTask(
-                taskSpec(ExecutionLane.ASR_STREAM)
+                taskSpec(ExecutionLane.AUDIO_INPUT_STREAM)
                         .concurrencyKey(MODULE_ID + ":recognition")
                         .maxConcurrency(1)
                         .queueCapacity(2)
@@ -118,7 +143,7 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
      * consumer that only wants the corrected text does not have to know which module produced it.</p>
      */
     public TianshuEnvelope publishIrResult(TianshuEnvelope parent, IrResultPayload payload) {
-        return publishTopic(parent, ProtocolTopics.IR_RESULT, PayloadType.IR_RESULT, payload);
+        return publishTopic(parent, IntakeTopics.IR_RESULT, PayloadType.of("IR_RESULT"), payload);
     }
 }
 

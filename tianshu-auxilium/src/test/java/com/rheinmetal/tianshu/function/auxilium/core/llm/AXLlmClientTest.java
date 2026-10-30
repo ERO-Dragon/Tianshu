@@ -10,7 +10,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
@@ -322,8 +321,8 @@ class AXLlmClientTest {
         return new ModuleDescriptor(
                 "module.llm.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        "LLM.REQUEST",
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         LLMPromptRequestPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),

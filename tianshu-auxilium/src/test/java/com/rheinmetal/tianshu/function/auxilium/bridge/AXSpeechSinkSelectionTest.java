@@ -11,8 +11,6 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
@@ -143,11 +141,11 @@ class AXSpeechSinkSelectionTest {
     private static void registerSpeechSink(ProtocolRuntime runtime, List<String> spoken) {
         AdapterDefaults defaults = AdapterDefaults.standard().withConcurrency(1, 64);
         runtime.registerModule(new ModuleDescriptor(
-                ProtocolModuleIds.TTS,
+                "module.tts",
                 List.of(
                         new CapabilityDescriptor(
-                                ProtocolCapabilities.TTS_SPEAK,
-                                PayloadType.TTS_TEXT,
+                                "TTS_SPEAK",
+                                PayloadType.of("TTS_TEXT"),
                                 TtsSpeakPayload.class,
                                 BrokerType.BOUNDED_QUEUE,
                                 EnumSet.of(PacketType.COMMAND, PacketType.STREAM_CHUNK, PacketType.STREAM_END),
@@ -155,7 +153,7 @@ class AXSpeechSinkSelectionTest {
                                 CompletionPolicy.MANUAL_COMPLETE
                         ),
                         new CapabilityDescriptor(
-                                ProtocolCapabilities.TTS_CONTROL,
+                                "TTS_CONTROL",
                                 PayloadType.CUSTOM,
                                 TtsControlPayload.class,
                                 BrokerType.BOUNDED_QUEUE,

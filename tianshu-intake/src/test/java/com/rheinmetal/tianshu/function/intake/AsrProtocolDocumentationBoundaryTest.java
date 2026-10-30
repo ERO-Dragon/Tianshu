@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.intake;
 
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
+
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import org.junit.jupiter.api.Test;
@@ -20,8 +22,8 @@ class AsrProtocolDocumentationBoundaryTest {
         String guide = Files.readString(PROTOCOL_GUIDE, StandardCharsets.UTF_8);
 
         for (String symbol : List.of(
-                "ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY",
-                "ProtocolTopics.INPUT_ASR_FINAL_TEXT",
+                "IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY",
+                "IntakeTopics.INPUT_ASR_FINAL_TEXT",
                 "ProtocolTopics.MODULE_STATUS",
                 "ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT",
                 "AsrSpeechActivityPayload",

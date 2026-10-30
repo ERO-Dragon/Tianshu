@@ -2,6 +2,6 @@
   "key.categories.tianshu": "Tianshu AI",
   "key.tianshu.activate": "Toggle Voice (Press to Talk)",
   "key.tianshu.text_input": "Text Dialogue (Open Input Bar)",
-  "ax.input.title": "Talk to Auxilium",
-  "ax.input.hint": "Type what you want to say, Enter to send, Esc to cancel"
+  "tianshu.gui.text_input.title": "Talk to the assistant",
+  "tianshu.gui.text_input.hint": "Type what you want to say, Enter to send, Esc to cancel"
 }

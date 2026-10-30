@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving;
 
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmCapabilities;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapshot;
@@ -21,8 +23,7 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
@@ -71,8 +72,8 @@ class LlmProtocolAdapterTest {
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
                         "test",
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        LlmCapabilities.LLM_REQUEST,
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         new LLMPromptRequestPayload(
                                 "request-1", 0, 0.7f, false, false, "COMPLEX", 0, false,
                                 List.of(LLMPromptRequestPayload.ChunkPayload.message(
@@ -550,6 +551,7 @@ class LlmProtocolAdapterTest {
     void inferenceStatusIsPublishedToLlmStatusTopic() {
         ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run);
         LlmProtocolAdapter adapter = new LlmProtocolAdapter(runtime, null);
+        adapter.registerOwnedTopics(runtime);
         List<LlmStatusPayload> statuses = registerStatusCapture(runtime);
 
         adapter.publishInferenceStatus(new LlmStatusPayload(
@@ -588,8 +590,8 @@ class LlmProtocolAdapterTest {
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
                         "test",
-                        ProtocolCapabilities.LLM_CACHE_MANAGE,
-                        PayloadType.LLM_CACHE_MANAGE,
+                        LlmCapabilities.LLM_CACHE_MANAGE,
+                        PayloadType.of("LLM_CACHE_MANAGE"),
                         LLMCacheManagePayload.upsertEntry("shared", "entry-a", "memory", null)
                 )
                 .build();
@@ -618,8 +620,8 @@ class LlmProtocolAdapterTest {
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
                         "test",
-                        ProtocolCapabilities.LLM_CACHE_MANAGE,
-                        PayloadType.LLM_CACHE_MANAGE,
+                        LlmCapabilities.LLM_CACHE_MANAGE,
+                        PayloadType.of("LLM_CACHE_MANAGE"),
                         LLMCacheManagePayload.searchInlineContents(
                                 "dynamic",
                                 "where is the pickaxe",
@@ -657,8 +659,8 @@ class LlmProtocolAdapterTest {
         RecordingContext context = new RecordingContext();
         TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
                         "test",
-                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                        PayloadType.LLM_PRIMITIVE_QUERY,
+                        LlmCapabilities.LLM_PRIMITIVE_QUERY,
+                        PayloadType.of("LLM_PRIMITIVE_QUERY"),
                         LLMPrimitiveQueryPayload.tokenCount(
                                 "tokens-1",
                                 "",
@@ -756,8 +758,8 @@ class LlmProtocolAdapterTest {
     private TianshuEnvelope llmEnvelope(String sourceId, LLMPromptRequestPayload payload) {
         return EnvelopeBuilder.requestCapability(
                         sourceId,
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        LlmCapabilities.LLM_REQUEST,
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         payload
                 )
                 .build();
@@ -781,7 +783,7 @@ class LlmProtocolAdapterTest {
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "test.llm.response",
-                PayloadType.LLM_PROMPT_RESULT,
+                PayloadType.of("LLM_PROMPT_RESULT"),
                 LLMPromptResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -814,7 +816,7 @@ class LlmProtocolAdapterTest {
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "test.llm.cache.response",
-                PayloadType.LLM_CACHE_MANAGE_RESULT,
+                PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
                 LLMCacheManageResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -847,7 +849,7 @@ class LlmProtocolAdapterTest {
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "test.llm.primitive.response",
-                PayloadType.LLM_PRIMITIVE_RESULT,
+                PayloadType.of("LLM_PRIMITIVE_RESULT"),
                 LLMPrimitiveResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -880,7 +882,7 @@ class LlmProtocolAdapterTest {
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "test.llm.stream.response",
-                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                PayloadType.of("LLM_PROMPT_STREAM_CHUNK"),
                 LLMPromptStreamChunkPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -918,7 +920,7 @@ class LlmProtocolAdapterTest {
         AdapterDefaults defaults = AdapterDefaults.standard();
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "test.llm.stream.payload.response",
-                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                PayloadType.of("LLM_PROMPT_STREAM_CHUNK"),
                 LLMPromptStreamChunkPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -950,8 +952,8 @@ class LlmProtocolAdapterTest {
         List<LlmStatusPayload> statuses = new CopyOnWriteArrayList<>();
         AdapterDefaults defaults = AdapterDefaults.standard();
         TopicSubscriptionDescriptor subscription = new TopicSubscriptionDescriptor(
-                ProtocolTopics.LLM_STATUS,
-                PayloadType.LLM_STATUS,
+                LlmTopics.LLM_STATUS,
+                PayloadType.of("LLM_STATUS"),
                 LlmStatusPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.EVENT),

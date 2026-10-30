@@ -23,16 +23,16 @@
 IR 是语音链路中的文本修复与文本特征提取层。当前唯一业务输入是 ASR 发布的 final text：
 
 ```text
-ProtocolTopics.INPUT_ASR_FINAL_TEXT
-PayloadType.ASR_TEXT
+IntakeTopics.INPUT_ASR_FINAL_TEXT
+PayloadType.of("ASR_TEXT")
 AsrTextPayload
 ```
 
 IR 完成处理后发布结构化分析事件：
 
 ```text
-ProtocolTopics.IR_RESULT
-PayloadType.IR_RESULT
+IntakeTopics.IR_RESULT
+PayloadType.of("IR_RESULT")
 IrResultPayload
 ```
 

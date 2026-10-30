@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.function.echo.settings;
 
+import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+
 import com.rheinmetal.tianshu.function.echo.settings.EchoSettingsAccess;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
@@ -48,7 +49,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class EchoSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = ProtocolModuleIds.TTS;
+    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
     private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     private static final UiText TITLE = tts("title");
     private static final UiText DESCRIPTION = tts("description");

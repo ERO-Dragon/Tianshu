@@ -143,5 +143,7 @@
   "tianshu.gui.ax.retry.badge.retryable": "Can retry",
   "tianshu.gui.ax.retry.badge.final": "Needs settings",
   "tianshu.gui.ax.action.retry": "Retry",
-  "tianshu.gui.ax.action.dismiss": "Dismiss"
+  "tianshu.gui.ax.action.dismiss": "Dismiss",
+  "tianshu.gui.ax.text_input.title": "Talk to Auxilium",
+  "tianshu.gui.ax.text_input.hint": "Type what you want to say, Enter to send, Esc to cancel"
 }

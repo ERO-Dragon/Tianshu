@@ -77,9 +77,11 @@ class HostPortContractTest {
 
     @Test
     void filePickerReturnsOnlyPortablePathValues() {
-        ClientFilePicker picker = title -> java.util.concurrent.CompletableFuture.completedFuture(Optional.of(Path.of("voice.wav")));
+        ClientFilePicker picker = (title, extension, filterLabel) ->
+                java.util.concurrent.CompletableFuture.completedFuture(Optional.of(Path.of("voice." + extension)));
 
-        assertEquals(Path.of("voice.wav"), picker.chooseWavFile(UiText.key("choose.voice")).join().orElseThrow());
+        assertEquals(Path.of("voice.wav"),
+                picker.chooseFile(UiText.key("choose.voice"), "wav", UiText.key("choose.audio")).join().orElseThrow());
     }
 
     @Test

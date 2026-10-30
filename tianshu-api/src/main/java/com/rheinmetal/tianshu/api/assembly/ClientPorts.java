@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.client.host.ClientFilePicker;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.ClientTextProvider;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatCatalogue;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 
@@ -35,6 +36,7 @@ public record ClientPorts(
         NativeModelLoadQueue modelLoadQueue,
         HudHost hud,
         ClientGameContextPort gameContext,
-        BooleanSupplier debugEnabled
+        BooleanSupplier debugEnabled,
+        DiagnosticChatCatalogue diagnosticChat
 ) {
 }

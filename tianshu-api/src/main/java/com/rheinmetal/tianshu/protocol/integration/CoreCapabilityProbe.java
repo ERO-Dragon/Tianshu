@@ -19,8 +19,9 @@ public record CoreCapabilityProbe(
     public static CoreCapabilityProbe current() {
         return new CoreCapabilityProbe(
                 true,
-                "tianshu-core",
-                "1",
+                // Stamped by the adapter's build; the literals that used to sit here described nothing.
+                com.rheinmetal.tianshu.api.BuildInfo.version(),
+                com.rheinmetal.tianshu.api.BuildInfo.apiVersion(),
                 Set.of(
                         IntegrationCapability.VOICE_TRIGGER,
                         IntegrationCapability.DIALOGUE_PARTICIPANT,

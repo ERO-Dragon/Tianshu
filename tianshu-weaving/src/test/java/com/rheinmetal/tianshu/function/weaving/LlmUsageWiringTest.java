@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving;
 
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmCapabilities;
+
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
@@ -23,7 +25,6 @@ import com.rheinmetal.tianshu.libs.llm.StreamFinishType;
 import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -181,8 +182,8 @@ class LlmUsageWiringTest {
     private TianshuEnvelope envelope(String sourceId, String requestId, boolean stream) {
         return EnvelopeBuilder.requestCapability(
                         sourceId,
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        LlmCapabilities.LLM_REQUEST,
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         new LLMPromptRequestPayload(
                                 requestId, 0, 0.7f, stream, false, false, "COMPLEX", 0, false,
                                 List.of(LLMPromptRequestPayload.ChunkPayload.message(

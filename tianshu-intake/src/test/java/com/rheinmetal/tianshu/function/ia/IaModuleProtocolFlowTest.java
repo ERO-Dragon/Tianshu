@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
+
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
 
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
@@ -30,8 +33,8 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
+import com.rheinmetal.tianshu.function.ia.protocol.IaTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
@@ -150,6 +153,7 @@ class IaModuleProtocolFlowTest {
         TriggerRegistry voiceResources = new TriggerRegistry();
         runtime = ProtocolBootstrap.create(Runnable::run, voiceResources);
         installPresence(runtime);
+        installAsrRoutes(runtime);
         ModuleServiceRegistry services = new ModuleServiceRegistry();
         ModuleRuntimeState runtimeState = new ModuleRuntimeState();
         IaModule ia = new IaModule(runtime);
@@ -179,8 +183,8 @@ class IaModuleProtocolFlowTest {
 
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.ir",
-                ProtocolTopics.IR_RESULT,
-                PayloadType.IR_RESULT,
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
                 new IrResultPayload(
                         "farm please",
                         "farm please",
@@ -230,6 +234,7 @@ class IaModuleProtocolFlowTest {
     void hardClaimUsesFrozenSpeechStartContextAndDeliversOnlyToOwner() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         installPresence(runtime);
+        installAsrRoutes(runtime);
         registerInteractionContextTopic();
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
@@ -259,14 +264,14 @@ class IaModuleProtocolFlowTest {
 
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.asr",
-                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
-                PayloadType.ASR_SPEECH_ACTIVITY,
+                IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY,
+                PayloadType.of("ASR_SPEECH_ACTIVITY"),
                 AsrSpeechActivityPayload.speaking(900L)
         ).build());
         runtime.submit(EnvelopeBuilder.eventTopic(
                 "module.ir",
-                ProtocolTopics.IR_RESULT,
-                PayloadType.IR_RESULT,
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
                 new IrResultPayload(
                         "酒狐帮我种地",
                         "酒狐帮我种地",
@@ -311,12 +316,12 @@ class IaModuleProtocolFlowTest {
         DialogueArbitrationRequestPayload payload = request("req-2", "player", "turn-2", 901L, "帮我记一下", List.of(), List.of());
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 payload
         ).build();
         RecordingHandler resultHandler = new RecordingHandler();
-        registerResponseHandler(requestEnvelope, PayloadType.DIALOGUE_ARBITRATION_RESULT, DialogueArbitrationResultPayload.class, resultHandler);
+        registerResponseHandler(requestEnvelope, PayloadType.of("DIALOGUE_ARBITRATION_RESULT"), DialogueArbitrationResultPayload.class, resultHandler);
 
         runtime.submit(requestEnvelope);
 
@@ -351,12 +356,12 @@ class IaModuleProtocolFlowTest {
         registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 request("req-off", "player", "turn-off", 902L, "帮我记一下", List.of(), List.of())
         ).build();
         RecordingHandler resultHandler = new RecordingHandler();
-        registerResponseHandler(requestEnvelope, PayloadType.DIALOGUE_ARBITRATION_RESULT, DialogueArbitrationResultPayload.class, resultHandler);
+        registerResponseHandler(requestEnvelope, PayloadType.of("DIALOGUE_ARBITRATION_RESULT"), DialogueArbitrationResultPayload.class, resultHandler);
 
         runtime.submit(requestEnvelope);
 
@@ -381,12 +386,12 @@ class IaModuleProtocolFlowTest {
         DialogueArbitrationRequestPayload payload = request("req-empty", "player", "turn-empty", 903L, "无人处理", List.of(), List.of());
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 payload
         ).build();
         RecordingHandler resultHandler = new RecordingHandler();
-        registerResponseHandler(requestEnvelope, PayloadType.DIALOGUE_ARBITRATION_RESULT, DialogueArbitrationResultPayload.class, resultHandler);
+        registerResponseHandler(requestEnvelope, PayloadType.of("DIALOGUE_ARBITRATION_RESULT"), DialogueArbitrationResultPayload.class, resultHandler);
 
         runtime.submit(requestEnvelope);
 
@@ -402,8 +407,8 @@ class IaModuleProtocolFlowTest {
     private void registerParticipant(DialogueParticipantDescriptor descriptor) {
         TianshuEnvelope registration = EnvelopeBuilder.commandToCapability(
                 descriptor.moduleId(),
-                ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER,
-                PayloadType.DIALOGUE_PARTICIPANT_REGISTER,
+                IaCapabilities.DIALOGUE_PARTICIPANT_REGISTER,
+                PayloadType.of("DIALOGUE_PARTICIPANT_REGISTER"),
                 new DialogueParticipantRegisterPayload(descriptor, System.currentTimeMillis())
         ).build();
         runtime.submit(registration);
@@ -475,7 +480,7 @@ class IaModuleProtocolFlowTest {
         runtime.registerModule(
                 descriptor(moduleId, new CapabilityDescriptor(
                         capabilityId,
-                        PayloadType.DIALOGUE_DELIVERY,
+                        PayloadType.of("DIALOGUE_DELIVERY"),
                         DialogueDeliveryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.COMMAND),
@@ -582,6 +587,7 @@ class IaModuleProtocolFlowTest {
     void aTurnWithoutAFrozenSpeechContextArbitratesAgainstTheNewestDigest() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         installPresence(runtime);
+        installAsrRoutes(runtime);
         registerInteractionContextTopic();
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
@@ -603,8 +609,8 @@ class IaModuleProtocolFlowTest {
 
         runtime.submit(EnvelopeBuilder.commandToCapability(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 request("req-digest", "player", "turn-digest", 0L, "看看这个", List.of(), List.of())
         ).build());
 
@@ -617,6 +623,11 @@ class IaModuleProtocolFlowTest {
     /** Presence owns its topics now; the kernel no longer registers them. */
     private static void installPresence(ProtocolRuntime runtime) {
         new PresenceProtocolAdapter(runtime).registerOwnedTopics(runtime);
+    }
+
+    /** The ASR module owns the ASR/IR routes; a flow test that publishes them declares them the same way. */
+    private static void installAsrRoutes(ProtocolRuntime runtime) {
+        new AsrProtocolAdapter(runtime).registerOwnedTopics(runtime);
     }
     private void subscribePartner(RecordingHandler handler) {        runtime.subscribeTopic(
                 descriptor("test.partner", List.of()),
@@ -637,8 +648,8 @@ class IaModuleProtocolFlowTest {
         runtime.subscribeTopic(
                 descriptor("test.session_events." + System.nanoTime(), List.of()),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.DIALOGUE_SESSION_EVENTS,
-                        PayloadType.DIALOGUE_SESSION_EVENT,
+                        IaTopics.DIALOGUE_SESSION_EVENTS,
+                        PayloadType.of("DIALOGUE_SESSION_EVENT"),
                         DialogueSessionEventPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),

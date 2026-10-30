@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.function.intake.settings;
 
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
+
 import com.rheinmetal.tianshu.function.intake.settings.IntakeSettingsAccess;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.client.api.settings.SettingsListCard;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
@@ -50,7 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public final class IntakeSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = ProtocolModuleIds.ASR;
+    private static final String MODULE_ID = AsrProtocolAdapter.MODULE_ID;
     private static final UiText TITLE = asr("title");
     private static final UiText DESCRIPTION = asr("description");
 

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.intake;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
@@ -84,8 +85,8 @@ public class AsrModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                ProtocolModuleIds.ASR, executorManager, env, this::buildAvailabilitySnapshot);
-        this.deletionRunner = new ModelDeletionRunner(ProtocolModuleIds.ASR, executorManager, availabilityRefresher);
+                AsrProtocolAdapter.MODULE_ID, executorManager, env, this::buildAvailabilitySnapshot);
+        this.deletionRunner = new ModelDeletionRunner(AsrProtocolAdapter.MODULE_ID, executorManager, availabilityRefresher);
         this.previewCoordinator = new AsrPreviewCoordinator(
                 env,
                 audioBridge,
@@ -115,7 +116,7 @@ public class AsrModelService {
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(ProtocolModuleIds.ASR)
+                        .moduleId(AsrProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.asr:model.cleanup")
                         .maxConcurrency(1)
@@ -227,7 +228,7 @@ public class AsrModelService {
         publishWaiting("tianshu.runtime.module.asr.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(ProtocolModuleIds.ASR)
+                        .moduleId(AsrProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.asr:model.download")
                         .maxConcurrency(1)
@@ -574,11 +575,11 @@ public class AsrModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(ProtocolModuleIds.ASR, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(AsrProtocolAdapter.MODULE_ID, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed(ProtocolModuleIds.ASR, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(AsrProtocolAdapter.MODULE_ID, messageKey));
     }
 
     private boolean isActiveModel(String modelKey) {

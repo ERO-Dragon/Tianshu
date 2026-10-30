@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
@@ -43,7 +42,7 @@ class AXLlmPrimitiveClientTest {
         runtime.submit(EnvelopeBuilder.responseTo(
                 "module.llm.test",
                 request.get(),
-                PayloadType.LLM_PRIMITIVE_RESULT,
+                PayloadType.of("LLM_PRIMITIVE_RESULT"),
                 LLMPrimitiveResultPayload.tokenCount("tokens", 7)
         ).build());
         await(() -> result.get() != null);
@@ -66,7 +65,7 @@ class AXLlmPrimitiveClientTest {
         runtime.submit(EnvelopeBuilder.responseTo(
                 "module.llm.test",
                 request.get(),
-                PayloadType.LLM_PRIMITIVE_RESULT,
+                PayloadType.of("LLM_PRIMITIVE_RESULT"),
                 LLMPrimitiveResultPayload.tokenCount("tokens", 9)
         ).build());
         await(() -> result.get() != null);
@@ -104,7 +103,7 @@ class AXLlmPrimitiveClientTest {
         runtime.submit(EnvelopeBuilder.responseTo(
                 "module.llm.test",
                 secondRequest.get(),
-                PayloadType.LLM_PRIMITIVE_RESULT,
+                PayloadType.of("LLM_PRIMITIVE_RESULT"),
                 LLMPrimitiveResultPayload.tokenCount("background.embedding", 11)
         ).build());
         await(() -> secondResult.get() != null);
@@ -116,8 +115,8 @@ class AXLlmPrimitiveClientTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                        PayloadType.LLM_PRIMITIVE_QUERY,
+                        "LLM.PRIMITIVE_QUERY",
+                        PayloadType.of("LLM_PRIMITIVE_QUERY"),
                         LLMPrimitiveQueryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -140,8 +139,8 @@ class AXLlmPrimitiveClientTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                        PayloadType.LLM_PRIMITIVE_QUERY,
+                        "LLM.PRIMITIVE_QUERY",
+                        PayloadType.of("LLM_PRIMITIVE_QUERY"),
                         LLMPrimitiveQueryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),

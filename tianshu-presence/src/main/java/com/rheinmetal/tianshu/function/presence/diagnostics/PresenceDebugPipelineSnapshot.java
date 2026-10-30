@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.presence.diagnostics;
 
 import com.rheinmetal.tianshu.api.assembly.ModuleRuntimeServices;
 import com.rheinmetal.tianshu.function.presence.PresenceProtocolAdapter;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusQuery;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
@@ -19,11 +18,11 @@ import java.util.List;
  */
 public final class PresenceDebugPipelineSnapshot {
     private static final List<ModuleEntry> MODULES = List.of(
-            new ModuleEntry(ProtocolModuleIds.ASR, "tianshu.gui.presence.debug.module.asr"),
-            new ModuleEntry(ProtocolModuleIds.IA, "tianshu.gui.presence.debug.module.ia"),
-            new ModuleEntry(ProtocolModuleIds.AX, "tianshu.gui.presence.debug.module.ax"),
-            new ModuleEntry(ProtocolModuleIds.LLM, "tianshu.gui.presence.debug.module.llm"),
-            new ModuleEntry(ProtocolModuleIds.TTS, "tianshu.gui.presence.debug.module.tts"),
+            new ModuleEntry("module.asr", "tianshu.gui.presence.debug.module.asr"),
+            new ModuleEntry("module.ia", "tianshu.gui.presence.debug.module.ia"),
+            new ModuleEntry("module.ax", "tianshu.gui.presence.debug.module.ax"),
+            new ModuleEntry("module.llm", "tianshu.gui.presence.debug.module.llm"),
+            new ModuleEntry("module.tts", "tianshu.gui.presence.debug.module.tts"),
             new ModuleEntry(PresenceProtocolAdapter.MODULE_ID, "tianshu.gui.presence.debug.module.presence")
     );
 

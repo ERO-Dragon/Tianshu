@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -295,7 +296,7 @@ public class LLMService {
                 .reduce((left, right) -> left + "\n" + right)
                 .orElse("");
         env.diagnostics().publish(DiagnosticEvent.now(
-                ProtocolModuleIds.LLM,
+                LlmProtocolAdapter.MODULE_ID,
                 code,
                 DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT,
@@ -308,7 +309,7 @@ public class LLMService {
             return;
         }
         env.diagnostics().publish(DiagnosticEvent.now(
-                ProtocolModuleIds.LLM,
+                LlmProtocolAdapter.MODULE_ID,
                 "LLM_REQUEST_PREPARED",
                 DiagnosticSeverity.DEBUG,
                 DiagnosticPrivacy.REDACTED,

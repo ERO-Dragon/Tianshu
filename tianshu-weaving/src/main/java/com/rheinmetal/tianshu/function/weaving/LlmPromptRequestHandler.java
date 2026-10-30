@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.function.weaving.service.LLMRequest;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;

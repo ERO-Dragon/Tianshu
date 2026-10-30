@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.AXModule;
+
+import com.rheinmetal.tianshu.function.auxilium.protocol.AxCapabilities;
+
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
 
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
@@ -16,9 +20,7 @@ import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
@@ -48,11 +50,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = AXModule.MODULE_ID;
-    public static final String SOURCE_ID = ProtocolModuleIds.AX;
-    public static final String DIALOGUE_INPUT_CAPABILITY = ProtocolCapabilities.AX_DIALOGUE_INPUT;
-    public static final String CONTEXT_INPUT_CAPABILITY = ProtocolCapabilities.AX_CONTEXT_INPUT;
+    public static final String SOURCE_ID = AXModule.MODULE_ID;
+    public static final String DIALOGUE_INPUT_CAPABILITY = AxCapabilities.AX_DIALOGUE_INPUT;
+    public static final String CONTEXT_INPUT_CAPABILITY = AxCapabilities.AX_CONTEXT_INPUT;
     /** 事件型入口：外部模块投递一句自己渲染好的世界事件，外加三档之一。 */
-    public static final String EVENT_INPUT_CAPABILITY = ProtocolCapabilities.AX_EVENT_INPUT;
+    public static final String EVENT_INPUT_CAPABILITY = AxCapabilities.AX_EVENT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
     private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
     /** 准备中的活动 id；与织言的 {@code llm.model.load} 并列而不是共用，两者可以同时为真。 */
@@ -104,7 +106,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public void registerContextInputCapability(EnvelopeHandler handler) {
         registerCapability(
                 CONTEXT_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_CONTEXT_INPUT,
+                PayloadType.of("DIALOGUE_CONTEXT_INPUT"),
                 DialogueContextInputPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -122,7 +124,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public void registerEventInputCapability(EnvelopeHandler handler) {
         registerCapability(
                 EVENT_INPUT_CAPABILITY,
-                PayloadType.AX_WORLD_EVENT,
+                PayloadType.of("AX_WORLD_EVENT"),
                 AXWorldEventPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -149,11 +151,11 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
 
 
     public TianshuEnvelope buildLlmRequest(LLMPromptRequestPayload payload) {
-        return buildRequestCapability(ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
+        return buildRequestCapability("LLM.REQUEST", PayloadType.of("LLM_PROMPT_REQUEST"), payload);
     }
 
     public TianshuEnvelope buildLlmRequest(TianshuEnvelope parent, LLMPromptRequestPayload payload) {
-        return buildRequestCapability(parent, ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
+        return buildRequestCapability(parent, "LLM.REQUEST", PayloadType.of("LLM_PROMPT_REQUEST"), payload);
     }
 
     /**
@@ -169,8 +171,8 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
         return build(
                 EnvelopeBuilder.requestCapability(
                                 sourceId(),
-                                ProtocolCapabilities.LLM_REQUEST,
-                                PayloadType.LLM_PROMPT_REQUEST,
+                                "LLM.REQUEST",
+                                PayloadType.of("LLM_PROMPT_REQUEST"),
                                 payload
                         )
                         .traceId(traceId)
@@ -299,11 +301,11 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope buildLlmPrimitiveQuery(LLMPrimitiveQueryPayload payload) {
-        return buildRequestCapability(ProtocolCapabilities.LLM_PRIMITIVE_QUERY, PayloadType.LLM_PRIMITIVE_QUERY, payload);
+        return buildRequestCapability("LLM.PRIMITIVE_QUERY", PayloadType.of("LLM_PRIMITIVE_QUERY"), payload);
     }
 
     public TianshuEnvelope buildLlmPrimitiveQuery(TianshuEnvelope parent, LLMPrimitiveQueryPayload payload) {
-        return buildRequestCapability(parent, ProtocolCapabilities.LLM_PRIMITIVE_QUERY, PayloadType.LLM_PRIMITIVE_QUERY, payload);
+        return buildRequestCapability(parent, "LLM.PRIMITIVE_QUERY", PayloadType.of("LLM_PRIMITIVE_QUERY"), payload);
     }
 
     public TianshuEnvelope submitLlmPrimitiveQuery(TianshuEnvelope envelope) {
@@ -317,7 +319,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public void registerLlmPrimitiveResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
-                PayloadType.LLM_PRIMITIVE_RESULT,
+                PayloadType.of("LLM_PRIMITIVE_RESULT"),
                 LLMPrimitiveResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -333,15 +335,15 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int llmPrimitiveProviderCount() {
-        return runtime().capabilityProviderCount(ProtocolCapabilities.LLM_PRIMITIVE_QUERY);
+        return runtime().capabilityProviderCount("LLM.PRIMITIVE_QUERY");
     }
 
     public TianshuEnvelope buildLlmCacheManage(LLMCacheManagePayload payload) {
-        return buildRequestCapability(ProtocolCapabilities.LLM_CACHE_MANAGE, PayloadType.LLM_CACHE_MANAGE, payload);
+        return buildRequestCapability("LLM.CACHE_MANAGE", PayloadType.of("LLM_CACHE_MANAGE"), payload);
     }
 
     public TianshuEnvelope buildLlmCacheManage(TianshuEnvelope parent, LLMCacheManagePayload payload) {
-        return buildRequestCapability(parent, ProtocolCapabilities.LLM_CACHE_MANAGE, PayloadType.LLM_CACHE_MANAGE, payload);
+        return buildRequestCapability(parent, "LLM.CACHE_MANAGE", PayloadType.of("LLM_CACHE_MANAGE"), payload);
     }
 
     public TianshuEnvelope submitLlmCacheManage(TianshuEnvelope envelope) {
@@ -355,7 +357,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public void registerLlmCacheManageResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
-                PayloadType.LLM_CACHE_MANAGE_RESULT,
+                PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
                 LLMCacheManageResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -371,13 +373,13 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int llmCacheManageProviderCount() {
-        return runtime().capabilityProviderCount(ProtocolCapabilities.LLM_CACHE_MANAGE);
+        return runtime().capabilityProviderCount("LLM.CACHE_MANAGE");
     }
 
     public void registerLlmPromptResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
-                PayloadType.LLM_PROMPT_RESULT,
+                PayloadType.of("LLM_PROMPT_RESULT"),
                 LLMPromptResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -391,7 +393,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     public void registerLlmPromptStreamChunkResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
-                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                PayloadType.of("LLM_PROMPT_STREAM_CHUNK"),
                 LLMPromptStreamChunkPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -460,7 +462,7 @@ public final class AXProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public int dialogueParticipantRegistrationProviderCount() {
-        return runtime().capabilityProviderCount(ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER);
+        return runtime().capabilityProviderCount("DIALOGUE.PARTICIPANT_REGISTER");
     }
 
     /** Generic command forms: the payload is built by the bridge that owns the partner's vocabulary. */

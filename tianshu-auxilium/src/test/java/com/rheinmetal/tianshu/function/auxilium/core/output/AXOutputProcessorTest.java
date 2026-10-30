@@ -11,7 +11,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
@@ -172,8 +171,8 @@ class AXOutputProcessorTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.tts.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.TTS_SPEAK,
-                        PayloadType.TTS_TEXT,
+                        "TTS_SPEAK",
+                        PayloadType.of("TTS_TEXT"),
                         TtsSpeakPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.COMMAND, PacketType.STREAM_CHUNK, PacketType.STREAM_END),

@@ -38,18 +38,18 @@ LLM 模块对外提供三个协议能力：
 
 | 能力 | Payload | 说明 |
 |------|---------|------|
-| `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptRequestPayload` | 发起聊天、流式聊天、后台 TASK |
-| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManagePayload` | 管理、查询持久 RAG 条目；提供无副作用内联 RAG 召回 |
-| `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveQueryPayload` | token 计数、embedding 向量化、运行态快照 |
+| `"LLM.REQUEST"` | `LLMPromptRequestPayload` | 发起聊天、流式聊天、后台 TASK |
+| `"LLM.CACHE_MANAGE"` | `LLMCacheManagePayload` | 管理、查询持久 RAG 条目；提供无副作用内联 RAG 召回 |
+| `"LLM.PRIMITIVE_QUERY"` | `LLMPrimitiveQueryPayload` | token 计数、embedding 向量化、运行态快照 |
 
 响应类型：
 
 | 请求能力 | 响应 Payload | 说明 |
 |----------|--------------|------|
-| `ProtocolCapabilities.LLM_REQUEST` | `LLMPromptResultPayload` | 最终结果，包含状态、文本、RAG hits、usage |
-| `ProtocolCapabilities.LLM_REQUEST` + `stream=true` | `LLMPromptStreamChunkPayload` | 流式 token 分片；结束包包含 terminal 状态和 usage，随后还有最终 `LLMPromptResultPayload` |
-| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLMCacheManageResultPayload` | cache 管理结果 |
-| `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLMPrimitiveResultPayload` | 原语查询结果，按请求类型返回 token、vector 或状态快照 |
+| `"LLM.REQUEST"` | `LLMPromptResultPayload` | 最终结果，包含状态、文本、RAG hits、usage |
+| `"LLM.REQUEST"` + `stream=true` | `LLMPromptStreamChunkPayload` | 流式 token 分片；结束包包含 terminal 状态和 usage，随后还有最终 `LLMPromptResultPayload` |
+| `"LLM.CACHE_MANAGE"` | `LLMCacheManageResultPayload` | cache 管理结果 |
+| `"LLM.PRIMITIVE_QUERY"` | `LLMPrimitiveResultPayload` | 原语查询结果，按请求类型返回 token、vector 或状态快照 |
 
 ### 1.1 模块内部职责边界
 
@@ -74,9 +74,9 @@ LLM 只把实际执行的 `lane=COMPLEX` 任务公开为 `llm.task.<taskId> / PR
 
 ---
 
-## 2. `ProtocolCapabilities.LLM_REQUEST`
+## 2. `"LLM.REQUEST"`
 
-外部模块向 `ProtocolCapabilities.LLM_REQUEST` 提交 `LLMPromptRequestPayload`。
+外部模块向 `"LLM.REQUEST"` 提交 `LLMPromptRequestPayload`。
 
 ```java
 LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
@@ -146,8 +146,8 @@ LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoF
 
 | 项 | 值 |
 |----|----|
-| capability | `ProtocolCapabilities.LLM_REQUEST` |
-| payloadType | `PayloadType.LLM_PROMPT_REQUEST` |
+| capability | `"LLM.REQUEST"` |
+| payloadType | `PayloadType.of("LLM_PROMPT_REQUEST")` |
 | payload | `LLMPromptRequestPayload` |
 
 提交示例：
@@ -155,8 +155,8 @@ LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoF
 ```java
 TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
         "module.ax",
-        ProtocolCapabilities.LLM_REQUEST,
-        PayloadType.LLM_PROMPT_REQUEST,
+        "LLM.REQUEST",
+        PayloadType.of("LLM_PROMPT_REQUEST"),
         payload
 ).build();
 
@@ -339,9 +339,9 @@ TASK 调度规则：
 
 ---
 
-## 4. `ProtocolCapabilities.LLM_CACHE_MANAGE`
+## 4. `"LLM.CACHE_MANAGE"`
 
-外部模块向 `ProtocolCapabilities.LLM_CACHE_MANAGE` 提交 `LLMCacheManagePayload`。
+外部模块向 `"LLM.CACHE_MANAGE"` 提交 `LLMCacheManagePayload`。
 
 ```java
 LLMCacheManagePayload.upsertEntry(
@@ -356,8 +356,8 @@ LLMCacheManagePayload.upsertEntry(
 
 | 项 | 值 |
 |----|----|
-| capability | `ProtocolCapabilities.LLM_CACHE_MANAGE` |
-| payloadType | `PayloadType.LLM_CACHE_MANAGE` |
+| capability | `"LLM.CACHE_MANAGE"` |
+| payloadType | `PayloadType.of("LLM_CACHE_MANAGE")` |
 | payload | `LLMCacheManagePayload` |
 
 提交示例：
@@ -365,8 +365,8 @@ LLMCacheManagePayload.upsertEntry(
 ```java
 TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
         "module.ax",
-        ProtocolCapabilities.LLM_CACHE_MANAGE,
-        PayloadType.LLM_CACHE_MANAGE,
+        "LLM.CACHE_MANAGE",
+        PayloadType.of("LLM_CACHE_MANAGE"),
         LLMCacheManagePayload.searchUid("ax.memory.cluster.cluster-001", "玩家问钻石镐在哪里", 4, 0.7f)
 ).build();
 
@@ -472,9 +472,9 @@ manifest.txt
 
 ---
 
-## 5. `ProtocolCapabilities.LLM_PRIMITIVE_QUERY`
+## 5. `"LLM.PRIMITIVE_QUERY"`
 
-外部模块向 `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` 提交 `LLMPrimitiveQueryPayload`。
+外部模块向 `"LLM.PRIMITIVE_QUERY"` 提交 `LLMPrimitiveQueryPayload`。
 
 ### 5.1 支持的 queryType
 

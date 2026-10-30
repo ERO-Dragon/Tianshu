@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.function.auxilium.bridge;
 
+import com.rheinmetal.tianshu.function.auxilium.AXModule;
+
 import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechSink;
 import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechUtterance;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.echo.contract.TtsControlPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackPlacement;
@@ -45,9 +45,9 @@ public final class EchoSpeechBridge implements AXSpeechSink {
                 TtsTextInputMode.SENTENCE_STREAM,
                 voiceOptionsOf(effective.voice()));
         TianshuEnvelope envelope = EnvelopeBuilder.commandToCapability(
-                        ProtocolModuleIds.AX,
-                        ProtocolCapabilities.TTS_SPEAK,
-                        PayloadType.TTS_TEXT,
+                        AXModule.MODULE_ID,
+                        "TTS_SPEAK",
+                        PayloadType.of("TTS_TEXT"),
                         payload)
                 .packetType(packetTypeOf(effective.mode()))
                 .priority(effective.priority())
@@ -60,11 +60,11 @@ public final class EchoSpeechBridge implements AXSpeechSink {
         TtsControlPayload payload = new TtsControlPayload(
                 TtsControlPayload.Action.STOP_SOURCE,
                 "",
-                ProtocolModuleIds.AX,
+                AXModule.MODULE_ID,
                 reasonCode == null ? "" : reasonCode);
         runtime.submit(EnvelopeBuilder.commandToCapability(
-                        ProtocolModuleIds.AX,
-                        ProtocolCapabilities.TTS_CONTROL,
+                        AXModule.MODULE_ID,
+                        "TTS_CONTROL",
                         PayloadType.CUSTOM,
                         payload)
                 .build());

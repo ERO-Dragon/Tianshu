@@ -28,14 +28,18 @@ public final class NeoForgeClientFilePicker implements ClientFilePicker, AutoClo
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<Path>> chooseWavFile(UiText title) {
+    public synchronized CompletableFuture<Optional<Path>> chooseFile(UiText title, String extension, UiText filterLabel) {
         if (closed) return CompletableFuture.failedFuture(new IllegalStateException("FILE_PICKER_CLOSED"));
         if (pending != null && !pending.isDone()) {
             return pending;
         }
         // Resolve game-owned language state on the calling client thread.
         String dialogTitle = textProvider.text(title);
-        String filterLabel = textProvider.text(UiText.key("tianshu.gui.tts.dialog.wav_audio"));
+        String label = textProvider.text(filterLabel);
+        String normalizedExtension = extension == null ? "" : extension.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalizedExtension.isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("FILE_PICKER_EXTENSION_BLANK"));
+        }
         var result = new CompletableFuture<Optional<Path>>();
         pending = result;
         SwingUtilities.invokeLater(() -> {
@@ -45,7 +49,7 @@ public final class NeoForgeClientFilePicker implements ClientFilePicker, AutoClo
                 chooser.setDialogTitle(dialogTitle);
                 chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
                 chooser.setAcceptAllFileFilterUsed(false);
-                chooser.setFileFilter(new FileNameExtensionFilter(filterLabel, "wav"));
+                chooser.setFileFilter(new FileNameExtensionFilter(label, normalizedExtension));
                 result.whenComplete((ignored, failure) -> {
                     if (result.isCancelled()) SwingUtilities.invokeLater(chooser::cancelSelection);
                 });

@@ -1,10 +1,13 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
+
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
 
 import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceActivityIds;
 import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
@@ -19,7 +22,8 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
+import com.rheinmetal.tianshu.function.ia.protocol.IaTopics;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
@@ -38,8 +42,23 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.EnumSet;
 
 public final class IaProtocolAdapter extends AbstractProtocolAdapter implements DialogueProtocolPort {
-    public static final String MODULE_ID = ProtocolModuleIds.IA;
-    public static final String SOURCE_ID = ProtocolModuleIds.IA;
+    public static final String MODULE_ID = "module.ia";
+    public static final String SOURCE_ID = IaProtocolAdapter.MODULE_ID;
+
+    /**
+     * Registers the topics this module produces.
+     *
+     * <p>Topic ownership follows payload ownership: the producer declares its own route. The kernel used to
+     * register these for the four original modules, so deleting a module still left its vocabulary behind.</p>
+     */
+    public void registerOwnedTopics(com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess protocol) {
+        if (protocol == null) {
+            return;
+        }
+        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
+                IaTopics.DIALOGUE_SESSION_EVENTS, PayloadType.of("DIALOGUE_SESSION_EVENT"),
+                com.rheinmetal.tianshu.protocol.DeliveryPolicy.WAIT_IN_QUEUE, 40));
+    }
 
     public IaProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, SOURCE_ID, runtime, AdapterDefaults.standard().withConcurrency(1, 64));
@@ -47,8 +66,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void registerArbitrationCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 DialogueArbitrationRequestPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
@@ -61,8 +80,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void registerParticipantCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER,
-                PayloadType.DIALOGUE_PARTICIPANT_REGISTER,
+                IaCapabilities.DIALOGUE_PARTICIPANT_REGISTER,
+                PayloadType.of("DIALOGUE_PARTICIPANT_REGISTER"),
                 DialogueParticipantRegisterPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -75,8 +94,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void registerParticipantUnregisterCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER,
-                PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER,
+                IaCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER,
+                PayloadType.of("DIALOGUE_PARTICIPANT_UNREGISTER"),
                 DialogueParticipantUnregisterPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -89,8 +108,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void registerSessionControlCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.DIALOGUE_SESSION_CONTROL,
-                PayloadType.DIALOGUE_SESSION_CONTROL,
+                IaCapabilities.DIALOGUE_SESSION_CONTROL,
+                PayloadType.of("DIALOGUE_SESSION_CONTROL"),
                 DialogueSessionControlPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -103,8 +122,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
         subscribeTopic(
-                ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
-                PayloadType.ASR_SPEECH_ACTIVITY,
+                IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY,
+                PayloadType.of("ASR_SPEECH_ACTIVITY"),
                 AsrSpeechActivityPayload.class,
                 BrokerType.STATELESS_FAST_PATH,
                 EnumSet.of(PacketType.EVENT),
@@ -117,8 +136,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     public void subscribeIrResult(EnvelopeHandler handler) {
         subscribeTopic(
-                ProtocolTopics.IR_RESULT,
-                PayloadType.IR_RESULT,
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
                 IrResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.EVENT),
@@ -130,7 +149,7 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     }
 
     public TianshuEnvelope respondArbitrationResult(TianshuEnvelope parent, DialogueArbitrationResultPayload payload) {
-        return respondTo(parent, PayloadType.DIALOGUE_ARBITRATION_RESULT, payload);
+        return respondTo(parent, PayloadType.of("DIALOGUE_ARBITRATION_RESULT"), payload);
     }
 
     /**
@@ -157,7 +176,7 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     @Override
     public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
-        return publishTopic(parent, ProtocolTopics.DIALOGUE_SESSION_EVENTS, PayloadType.DIALOGUE_SESSION_EVENT, payload);
+        return publishTopic(parent, IaTopics.DIALOGUE_SESSION_EVENTS, PayloadType.of("DIALOGUE_SESSION_EVENT"), payload);
     }
 
     /**
@@ -195,6 +214,6 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
 
     @Override
     public TianshuEnvelope deliverToCapability(TianshuEnvelope parent, String capabilityId, DialogueDeliveryPayload payload) {
-        return commandCapability(parent, capabilityId, PayloadType.DIALOGUE_DELIVERY, payload);
+        return commandCapability(parent, capabilityId, PayloadType.of("DIALOGUE_DELIVERY"), payload);
     }
 }

@@ -16,9 +16,9 @@
 |---|---|
 | [协议中心](../../protocol/TianshuProtocolCenter.md) | `PRESENCE.*` topic、载荷与投递策略的注册表 |
 | [模块架构](../../architecture/模块架构.md) | 映迹在依赖矩阵中的位置与职责 |
-| [模块拆分实施记录](../../architecture/模块拆分实施记录.md) | §7–§9：拆分阶段、等价性核对、HUD 预览工具 |
+| [模块拆分实施记录](../../history/模块拆分实施记录.md) | §7–§9：拆分阶段、等价性核对、HUD 预览工具 |
 | [资源归属清单](../../architecture/资源归属清单.md) | 语言分片、shader 资源与模块清单文件的归属 |
-| [NeoForge 客户端架构说明](../../../tianshu-adapter/neoforge-1.21.1/doc/client/NeoForge客户端架构说明.md) | 宿主如何装配、绘制和门控映迹 |
+| [模块架构](../../architecture/模块架构.md) | 宿主如何装配、绘制和门控映迹 |
 
 ## 建议阅读顺序
 

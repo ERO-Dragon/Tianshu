@@ -25,7 +25,7 @@ class TtsVoiceImportControllerTest {
     private CompletableFuture<Optional<Path>> selection;
 
     private TtsVoiceImportController controller() {
-        return new TtsVoiceImportController(title -> {
+        return new TtsVoiceImportController((title, extension, filterLabel) -> {
             selections.incrementAndGet();
             return selection = new CompletableFuture<>();
         }, scheduler, (path, callback) -> {

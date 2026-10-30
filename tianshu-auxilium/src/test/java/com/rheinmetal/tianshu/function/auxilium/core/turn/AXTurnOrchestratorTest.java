@@ -46,7 +46,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceContextFactIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
@@ -132,7 +131,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
 
@@ -386,7 +385,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
 
@@ -621,7 +620,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
 
@@ -687,7 +686,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
 
@@ -731,7 +730,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope deliveryEnvelope = EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
 
@@ -929,7 +928,7 @@ class AXTurnOrchestratorTest {
         return EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
     }
@@ -1005,8 +1004,8 @@ class AXTurnOrchestratorTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        "LLM.REQUEST",
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         LLMPromptRequestPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -1121,8 +1120,8 @@ class AXTurnOrchestratorTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.tts.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.TTS_SPEAK,
-                        PayloadType.TTS_TEXT,
+                        "TTS_SPEAK",
+                        PayloadType.of("TTS_TEXT"),
                         TtsSpeakPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.COMMAND, PacketType.STREAM_CHUNK, PacketType.STREAM_END),
@@ -1148,7 +1147,7 @@ class AXTurnOrchestratorTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.tts.control.test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.TTS_CONTROL,
+                        "TTS_CONTROL",
                         PayloadType.CUSTOM,
                         TtsControlPayload.class,
                         BrokerType.BOUNDED_QUEUE,

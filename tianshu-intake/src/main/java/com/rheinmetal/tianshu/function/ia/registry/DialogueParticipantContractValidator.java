@@ -51,7 +51,7 @@ public final class DialogueParticipantContractValidator {
         }
 
         CapabilityDescriptor capability = registration.descriptor();
-        if (capability.supportedPayloadType() != PayloadType.DIALOGUE_DELIVERY) {
+        if (capability.supportedPayloadType() != PayloadType.of("DIALOGUE_DELIVERY")) {
             return ValidationResult.reject("DIALOGUE_INPUT_PAYLOAD_TYPE_MISMATCH", "Dialogue input capability must accept DIALOGUE_DELIVERY payload type");
         }
         if (capability.payloadClass() != DialogueDeliveryPayload.class) {

@@ -35,7 +35,7 @@ class DialogueParticipantContractValidatorTest {
         CapabilityRegistry registry = new CapabilityRegistry();
         registerCapability(registry, "module.maid", new CapabilityDescriptor(
                 "MAID.DIALOGUE_INPUT",
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -69,7 +69,7 @@ class DialogueParticipantContractValidatorTest {
         CapabilityRegistry registry = new CapabilityRegistry();
         registerCapability(registry, "module.other", new CapabilityDescriptor(
                 "MAID.DIALOGUE_INPUT",
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -86,7 +86,7 @@ class DialogueParticipantContractValidatorTest {
         CapabilityRegistry registry = new CapabilityRegistry();
         registerCapability(registry, "module.maid", new CapabilityDescriptor(
                 "MAID.DIALOGUE_INPUT",
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -108,7 +108,7 @@ class DialogueParticipantContractValidatorTest {
         CapabilityRegistry registry = new CapabilityRegistry();
         registerCapability(registry, "module.maid", new CapabilityDescriptor(
                 "MAID.DIALOGUE_INPUT",
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),

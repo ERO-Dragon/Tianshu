@@ -55,8 +55,8 @@ IA 负责：
 
 LLM 模块负责：
 
-- 通过协议中心统一接收 `ProtocolCapabilities.LLM_REQUEST`。
-- 处理 `PayloadType.LLM_PROMPT_REQUEST` / `LLMPromptRequestPayload`。
+- 通过协议中心统一接收 `"LLM.REQUEST"`。
+- 处理 `PayloadType.of("LLM_PROMPT_REQUEST")` / `LLMPromptRequestPayload`。
 - 按 `lane=SIMPLE` 或 `lane=COMPLEX` 执行推理调度。
 - 通过协议响应返回 `LLMPromptResultPayload` / `LLMPromptStreamChunkPayload`，由协议中心按原请求 `envelopeId` 路由给请求方登记的响应处理器。
 
@@ -106,8 +106,8 @@ DialogueParticipantDescriptor(
 外部模块和其他功能模块统一通过协议中心提交 participant 注册：
 
 ```text
-ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER
-PayloadType.DIALOGUE_PARTICIPANT_REGISTER
+"DIALOGUE.PARTICIPANT_REGISTER"
+PayloadType.of("DIALOGUE_PARTICIPANT_REGISTER")
 DialogueParticipantRegisterPayload
 PacketType.COMMAND
 ```
@@ -115,8 +115,8 @@ PacketType.COMMAND
 卸载或停用时提交：
 
 ```text
-ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER
-PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER
+"DIALOGUE.PARTICIPANT_UNREGISTER"
+PayloadType.of("DIALOGUE_PARTICIPANT_UNREGISTER")
 DialogueParticipantUnregisterPayload
 PacketType.COMMAND
 ```
@@ -127,9 +127,9 @@ PacketType.COMMAND
 
 ### 3.2 仲裁入口语义
 
-标准语音主链路由 IR 发布 `ProtocolTopics.IR_RESULT / PayloadType.IR_RESULT / IrResultPayload`，IA 订阅该 topic 后完成 owner 判定、session 创建/更新、正文 delivery 和 session 状态事件发布。IR 不定向调用 IA，也不等待仲裁结果。
+标准语音主链路由 IR 发布 `IntakeTopics.IR_RESULT / PayloadType.of("IR_RESULT") / IrResultPayload`，IA 订阅该 topic 后完成 owner 判定、session 创建/更新、正文 delivery 和 session 状态事件发布。IR 不定向调用 IA，也不等待仲裁结果。
 
-`DIALOGUE_ARBITRATE` 是 IA 保留给诊断、测试和受信模块的显式服务端口，不是标准 IR 链路。只有确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.DIALOGUE_ARBITRATION_RESULT` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动提交仲裁请求或消费仲裁结果。
+`DIALOGUE_ARBITRATE` 是 IA 保留给诊断、测试和受信模块的显式服务端口，不是标准 IR 链路。只有确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.of("DIALOGUE_ARBITRATION_RESULT")` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动提交仲裁请求或消费仲裁结果。
 
 IA capability ready 只表示仲裁服务可响应，不表示已经注册了 owner。当前没有 participant 时，`REQUEST` 返回 `accepted=false / reason=NO_PARTICIPANT`；普通 COMMAND 同样结束为拒绝，不产生玩家提示、Presence 查询、对话 delivery、LLM 或 TTS 请求。IA 内部可以为诊断保留终态 `REJECTED` 审计记录，但不会形成 active session。
 
@@ -140,7 +140,7 @@ IA capability ready 只表示仲裁服务可响应，不表示已经注册了 ow
 该 capability 应接收：
 
 ```text
-PayloadType.DIALOGUE_DELIVERY
+PayloadType.of("DIALOGUE_DELIVERY")
 DialogueDeliveryPayload
 PacketType.COMMAND
 ```
@@ -202,8 +202,8 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 如果 owner 需要调用 LLM，应通过协议中心提交 `LLMPromptRequestPayload`。
 
 ```text
-ProtocolCapabilities.LLM_REQUEST
-PayloadType.LLM_PROMPT_REQUEST
+"LLM.REQUEST"
+PayloadType.of("LLM_PROMPT_REQUEST")
 LLMPromptRequestPayload
 ```
 
@@ -238,8 +238,8 @@ LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
 ```text
 EnvelopeBuilder.requestCapability(
     ownerModuleId,
-    ProtocolCapabilities.LLM_REQUEST,
-    PayloadType.LLM_PROMPT_REQUEST,
+    "LLM.REQUEST",
+    PayloadType.of("LLM_PROMPT_REQUEST"),
     payload
 )
 ```
@@ -253,7 +253,7 @@ LLMPromptResultPayload
 
 注意：
 
-- `ProtocolCapabilities.LLM_REQUEST` 是当前 LLM 的公共能力入口。
+- `"LLM.REQUEST"` 是当前 LLM 的公共能力入口。
 - `LLM_PROMPT_REQUEST` 是当前 LLM 的公共请求 payload 类型。
 - `SIMPLE` / `COMPLEX` 是 `LLMPromptRequestPayload.lane`，不是 IA owner 判定。
 - `lane=SIMPLE` 是对话型 LLM 请求，会携带 `dialogueSessionId / requesterModuleId / requesterParticipantId / dialogueTurnId`，用于把请求关联到本轮对话；从 IA delivery 补齐这些身份。
@@ -289,8 +289,8 @@ owner 可以通过 IA session control 控制当前 session。
 使用：
 
 ```text
-ProtocolCapabilities.DIALOGUE_SESSION_CONTROL
-PayloadType.DIALOGUE_SESSION_CONTROL
+"DIALOGUE.SESSION_CONTROL"
+PayloadType.of("DIALOGUE_SESSION_CONTROL")
 ```
 
 典型动作包括：
@@ -327,8 +327,8 @@ IA 会校验 requester 是否为当前 session owner。非 owner 控制请求会
 其他模块可以订阅：
 
 ```text
-ProtocolTopics.DIALOGUE_SESSION_EVENTS
-PayloadType.DIALOGUE_SESSION_EVENT
+IaTopics.DIALOGUE_SESSION_EVENTS
+PayloadType.of("DIALOGUE_SESSION_EVENT")
 ```
 
 事件只包含 session 状态，不包含玩家正文、prompt、LLM response 或完整上下文。所有 RELEASED、EXPIRED、REJECTED 等终态都会在对应原因事件后发布一次 `CONVERSATION_SESSION_FINISHED`，订阅方可以统一用它结束 UI 或本地追踪状态。
@@ -464,8 +464,8 @@ ownerParticipantId = maid.default
 女仆模组向 LLM 发对话型请求时使用：
 
 ```text
-ProtocolCapabilities.LLM_REQUEST
-PayloadType.LLM_PROMPT_REQUEST
+"LLM.REQUEST"
+PayloadType.of("LLM_PROMPT_REQUEST")
 LLMPromptRequestPayload.lane = CHAT
 ```
 

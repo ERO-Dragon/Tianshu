@@ -60,9 +60,9 @@ public final class ProtocolExecutorPolicy {
             lane(ExecutionLane.CPU, Math.max(1, processors / 2), 64);
             lane(ExecutionLane.IO, Math.max(2, Math.min(4, processors / 2)), 64);
             lane(ExecutionLane.AUDIO_IO, 1, 128);
-            lane(ExecutionLane.TTS_FAST, 1, 4);
-            lane(ExecutionLane.TTS_AUTOREGRESSIVE, 1, 1);
-            lane(ExecutionLane.ASR_STREAM, 1, 8);
+            lane(ExecutionLane.AUDIO_SYNTH_FAST, 1, 4);
+            lane(ExecutionLane.AUDIO_SYNTH_AR, 1, 1);
+            lane(ExecutionLane.AUDIO_INPUT_STREAM, 1, 8);
             lane(ExecutionLane.MODEL_LOAD, 1, 2);
             lane(ExecutionLane.LONG, 2, 8);
         }

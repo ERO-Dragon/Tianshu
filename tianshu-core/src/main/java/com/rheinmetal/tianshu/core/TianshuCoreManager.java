@@ -149,6 +149,13 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
         protocolRuntime.integrationModules().unregister(moduleId);
     }
 
+    /** Ids of modules that declared themselves through the integration API, for host-side gates. */
+    public List<String> integrationModuleIds() {
+        return protocolRuntime.integrationModules().declarations().stream()
+                .map(IntegrationModuleDeclaration::moduleId)
+                .toList();
+    }
+
     public TriggerRegistrationResult registerTrigger(TriggerRegistration registration) {
         return protocolRuntime.triggers().register(registration);
     }

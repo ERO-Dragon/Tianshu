@@ -216,7 +216,7 @@ AXWorldEventPayload payload = new AXWorldEventPayload(
 api.submit(EnvelopeBuilder.commandToCapability(
         "example_radar",
         AXProtocolAdapter.EVENT_INPUT_CAPABILITY,
-        PayloadType.AX_WORLD_EVENT,
+        PayloadType.of("AX_WORLD_EVENT"),
         payload
 ).build());
 ```
@@ -280,7 +280,7 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 ## 已知限制
 
 - **没有生命周期 / 资源刷新事件**：天枢不发 `CoreLifecycleEventPayload`、`ResourceReloadEventPayload` 这类协议事件，也没有 GUI 描述协议（`GuiContributionDescriptor` 等类型不存在）。需要感知启停时，用 `TianshuIntegrationAccess.isAvailable()` 做延迟判断。
-- **版本探测是占位**：`CoreCapabilityProbe.apiVersion` 目前恒为 `"1"`，`coreVersion` 恒为 `"tianshu-core"`，不要在外部做版本分支；能力探测请用 `supports(...)`。
+- **版本探测是构建注入的**：`CoreCapabilityProbe.coreVersion` 报本 jar 的 mod 版本，`apiVersion` 报由 mod 版本 MAJOR 推导的 api 纪元（1.x.y → `"1"`）。可以据此判断"这一版是不是我编译时的 api 纪元"，但不要拿它做细粒度的功能分支——能力探测请用 `supports(...)`。
 - **模块声明不被校验**：`registerModule` 只记录声明，天枢不会据此限制或路由。
 - **设置页只画界面**：没有任何配置读写、校验或同步能力由天枢提供。
 - **没有服务端通道**：天枢服务端组件只采集自己的事实，不向外部模组开放网络通道。

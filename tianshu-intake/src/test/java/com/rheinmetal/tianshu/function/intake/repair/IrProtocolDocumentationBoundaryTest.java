@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.function.intake.repair;
 
+import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
+
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
+
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
 
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
@@ -25,12 +29,12 @@ class IrProtocolDocumentationBoundaryTest {
         for (String symbol : List.of(
                 "TianshuModuleAssemblyContext.moduleRuntime()",
                 "ModuleRuntimeAccess",
-                "ProtocolTopics.INPUT_ASR_FINAL_TEXT",
-                "ProtocolTopics.IR_RESULT",
+                "IntakeTopics.INPUT_ASR_FINAL_TEXT",
+                "IntakeTopics.IR_RESULT",
                 "IrResultPayload",
                 "IrObjectMatch",
                 "IrModuleMatch",
-                "ProtocolCapabilities.DIALOGUE_ARBITRATE",
+                "DIALOGUE.ARBITRATE",
                 "PresenceCapabilities.QUERY_CONTEXT",
                 "PresenceContextSnapshotPayload"
         )) {

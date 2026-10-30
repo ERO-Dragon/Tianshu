@@ -28,7 +28,7 @@ displayTest="IGNORE_SERVER_VERSION"
 [[dependencies.tianshu_echo]]
     modId="tianshu"
     type="required"
-    versionRange="[${mod_version},)"
+    versionRange="[1.0.0,2.0.0)"
     ordering="AFTER"
     side="CLIENT"
 

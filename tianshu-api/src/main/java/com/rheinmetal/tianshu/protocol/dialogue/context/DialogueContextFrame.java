@@ -8,7 +8,7 @@ public record DialogueContextFrame(
         /**
          * Display names for the ids this frame carries, keyed by raw id; empty when the producer had none.
          *
-         * <p>This is the only place a localized name can enter the dialogue path: the presence snapshot holds ids
+         * <p>This is the only place a localized name can enter the dialogue path: the context snapshot holds ids
          * plus, for some facts, a companion display name, and the frame is where those two are paired up.</p>
          */
         Map<String, String> displayNames

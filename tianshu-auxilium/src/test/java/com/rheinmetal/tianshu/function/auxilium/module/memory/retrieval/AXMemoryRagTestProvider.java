@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
@@ -38,8 +37,8 @@ final class AXMemoryRagTestProvider {
         runtime.registerModule(new ModuleDescriptor(
                 MODULE_ID,
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_CACHE_MANAGE,
-                        PayloadType.LLM_CACHE_MANAGE,
+                        "LLM.CACHE_MANAGE",
+                        PayloadType.of("LLM_CACHE_MANAGE"),
                         LLMCacheManagePayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -79,7 +78,7 @@ final class AXMemoryRagTestProvider {
             case LLMCacheManagePayload.ACTION_SEARCH_UID -> search(payload);
             default -> LLMCacheManageResultPayload.failed(payload.uid(), "unsupported action");
         };
-        context.submit(EnvelopeBuilder.responseTo(MODULE_ID, envelope, PayloadType.LLM_CACHE_MANAGE_RESULT, result).build());
+        context.submit(EnvelopeBuilder.responseTo(MODULE_ID, envelope, PayloadType.of("LLM_CACHE_MANAGE_RESULT"), result).build());
         context.complete(envelope.envelopeId());
     }
 

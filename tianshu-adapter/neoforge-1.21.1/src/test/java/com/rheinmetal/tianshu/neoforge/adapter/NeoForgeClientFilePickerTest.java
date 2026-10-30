@@ -24,7 +24,9 @@ class NeoForgeClientFilePickerTest {
     void fileSelectionPortMustReturnBeforeTheUserResponds() throws Exception {
         // Verify the async contract before any native dialog is opened.
         assertEquals(CompletableFuture.class,
-                NeoForgeClientFilePicker.class.getMethod("chooseWavFile", UiText.class).getReturnType());
+                NeoForgeClientFilePicker.class
+                        .getMethod("chooseFile", UiText.class, String.class, UiText.class)
+                        .getReturnType());
     }
 
     @Test
@@ -44,9 +46,9 @@ class NeoForgeClientFilePickerTest {
                 return APPROVE_OPTION;
             }
         })) {
-            var selected = picker.chooseWavFile(UiText.literal("voice"));
+            var selected = picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio"));
             assertFalse(selected.isDone());
-            assertSame(selected, picker.chooseWavFile(UiText.literal("voice")));
+            assertSame(selected, picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")));
             release.countDown();
             assertEquals(Path.of("voice.wav"), selected.get(10, TimeUnit.SECONDS).orElseThrow());
         } finally {
@@ -59,10 +61,10 @@ class NeoForgeClientFilePickerTest {
         AtomicInteger created = new AtomicInteger();
         var picker = new NeoForgeClientFilePicker(texts, () -> { created.incrementAndGet(); return new JFileChooser(); });
         SwingUtilities.invokeAndWait(() -> {
-            var selected = picker.chooseWavFile(UiText.literal("voice"));
+            var selected = picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio"));
             picker.close();
             assertTrue(selected.isCancelled());
-            assertTrue(picker.chooseWavFile(UiText.literal("voice")).isCompletedExceptionally());
+            assertTrue(picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).isCompletedExceptionally());
         });
         SwingUtilities.invokeAndWait(() -> {});
         assertEquals(0, created.get());
@@ -78,8 +80,8 @@ class NeoForgeClientFilePickerTest {
             };
         })) {
             assertThrows(java.util.concurrent.ExecutionException.class,
-                    () -> picker.chooseWavFile(UiText.literal("voice")).get(10, TimeUnit.SECONDS));
-            assertTrue(picker.chooseWavFile(UiText.literal("voice")).get(10, TimeUnit.SECONDS).isEmpty());
+                    () -> picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).get(10, TimeUnit.SECONDS));
+            assertTrue(picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).get(10, TimeUnit.SECONDS).isEmpty());
         }
     }
 }

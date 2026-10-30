@@ -43,7 +43,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextSnapshot;
@@ -449,7 +448,7 @@ class AXAgentTurnWiringTest {
         return EnvelopeBuilder.commandToCapability(
                 IaProtocolAdapter.SOURCE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 deliveryPayload()
         ).build();
     }
@@ -519,8 +518,8 @@ class AXAgentTurnWiringTest {
             delegate.registerModule(new ModuleDescriptor(
                     "module.llm.test",
                     List.of(new CapabilityDescriptor(
-                            ProtocolCapabilities.LLM_REQUEST,
-                            PayloadType.LLM_PROMPT_REQUEST,
+                            "LLM.REQUEST",
+                            PayloadType.of("LLM_PROMPT_REQUEST"),
                             LLMPromptRequestPayload.class,
                             BrokerType.BOUNDED_QUEUE,
                             EnumSet.of(PacketType.REQUEST),

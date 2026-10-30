@@ -30,7 +30,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
@@ -273,7 +272,7 @@ class AXMemoryMaintenanceServiceTest {
             runtime.submit(EnvelopeBuilder.responseTo(
                     "module.llm.memory-test",
                     heldRequest.get(),
-                    PayloadType.LLM_PROMPT_RESULT,
+                    PayloadType.of("LLM_PROMPT_RESULT"),
                     LLMPromptResultPayload.completed(payload.requestId(), COMPACT_JSON)
             ).build());
 
@@ -355,8 +354,8 @@ class AXMemoryMaintenanceServiceTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.memory-test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        "LLM.REQUEST",
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         LLMPromptRequestPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -419,8 +418,8 @@ class AXMemoryMaintenanceServiceTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.memory-test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_REQUEST,
-                        PayloadType.LLM_PROMPT_REQUEST,
+                        "LLM.REQUEST",
+                        PayloadType.of("LLM_PROMPT_REQUEST"),
                         LLMPromptRequestPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -443,8 +442,8 @@ class AXMemoryMaintenanceServiceTest {
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.primitive.memory-test",
                 List.of(new CapabilityDescriptor(
-                        ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                        PayloadType.LLM_PRIMITIVE_QUERY,
+                        "LLM.PRIMITIVE_QUERY",
+                        PayloadType.of("LLM_PRIMITIVE_QUERY"),
                         LLMPrimitiveQueryPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.REQUEST),
@@ -467,7 +466,7 @@ class AXMemoryMaintenanceServiceTest {
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.primitive.memory-test",
                     envelope,
-                    PayloadType.LLM_PRIMITIVE_RESULT,
+                    PayloadType.of("LLM_PRIMITIVE_RESULT"),
                     result
             ).build());
             context.complete(envelope.envelopeId());
@@ -496,7 +495,7 @@ class AXMemoryMaintenanceServiceTest {
             context.submit(EnvelopeBuilder.responseTo(
                     "module.llm.memory-test",
                     envelope,
-                    PayloadType.LLM_PROMPT_RESULT,
+                    PayloadType.of("LLM_PROMPT_RESULT"),
                     LLMPromptResultPayload.completed(payload.requestId(), response)
             ).build());
             context.complete(envelope.envelopeId());

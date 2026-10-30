@@ -145,6 +145,7 @@ public final class IaModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        adapter.registerOwnedTopics(context.protocol());
         adapter.registerArbitrationCapability(this::handleArbitration);
         adapter.registerParticipantCapability(this::handleParticipantRegister);
         adapter.registerParticipantUnregisterCapability(this::handleParticipantUnregister);

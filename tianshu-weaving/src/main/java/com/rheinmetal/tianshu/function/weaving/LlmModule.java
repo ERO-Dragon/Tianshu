@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.weaving.catalog.OpenAiCompatibleModelCatalogClient;
@@ -129,11 +130,12 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public String moduleId() {
-        return ProtocolModuleIds.LLM;
+        return LlmProtocolAdapter.MODULE_ID;
     }
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        adapter.registerOwnedTopics(context.protocol());
         serviceRegistry = context == null ? null : context.services();
         moduleService = new LlmModuleService(config, usageLedger);
         // The service owns the runtime state; the module owns what the HUD is told about it. Switching the

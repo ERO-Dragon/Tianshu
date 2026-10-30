@@ -14,7 +14,6 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
@@ -44,7 +43,7 @@ public final class IaDialogueBridge implements AXDialogueChannel {
         Objects.requireNonNull(handler, "handler");
         adapter.registerCapabilityWith(
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -71,16 +70,16 @@ public final class IaDialogueBridge implements AXDialogueChannel {
             return;
         }
         adapter.commandCapabilityWith(
-                ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER,
-                PayloadType.DIALOGUE_PARTICIPANT_REGISTER,
+                "DIALOGUE.PARTICIPANT_REGISTER",
+                PayloadType.of("DIALOGUE_PARTICIPANT_REGISTER"),
                 new DialogueParticipantRegisterPayload(descriptor, System.currentTimeMillis()));
     }
 
     @Override
     public void unregisterParticipant() {
         adapter.commandCapabilityWith(
-                ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER,
-                PayloadType.DIALOGUE_PARTICIPANT_UNREGISTER,
+                "DIALOGUE.PARTICIPANT_UNREGISTER",
+                PayloadType.of("DIALOGUE_PARTICIPANT_UNREGISTER"),
                 new DialogueParticipantUnregisterPayload(
                         AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, false,
                         System.currentTimeMillis()));
@@ -109,8 +108,8 @@ public final class IaDialogueBridge implements AXDialogueChannel {
         }
         adapter.commandCapabilityWith(
                 parent,
-                ProtocolCapabilities.DIALOGUE_SESSION_CONTROL,
-                PayloadType.DIALOGUE_SESSION_CONTROL,
+                "DIALOGUE.SESSION_CONTROL",
+                PayloadType.of("DIALOGUE_SESSION_CONTROL"),
                 new DialogueSessionControlPayload(
                         input.sessionId(),
                         AXModule.MODULE_ID,

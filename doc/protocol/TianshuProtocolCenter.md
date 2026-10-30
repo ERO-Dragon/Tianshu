@@ -233,9 +233,9 @@ Broker 是能力或订阅的资源控制器，负责排队、拒绝、合并、�
 | `CPU` | 普通短 CPU 任务。 |
 | `IO` | 网络、文件、LLM HTTP stream。 |
 | `AUDIO_IO` | 音频播放和设备交互。 |
-| `TTS_FAST` | 快速 TTS 合成。 |
-| `TTS_AUTOREGRESSIVE` | 自回归 TTS 合成。 |
-| `ASR_STREAM` | ASR 音频流处理。 |
+| `AUDIO_SYNTH_FAST` | 快速音频合成。 |
+| `AUDIO_SYNTH_AR` | 自回归音频合成。 |
+| `AUDIO_INPUT_STREAM` | 音频输入流处理。 |
 | `MODEL_LOAD` | 模型加载和切换。 |
 | `LONG` | 长驻监控或子进程监控。 |
 | `SCHEDULED` | 定时清理和延迟任务。 |

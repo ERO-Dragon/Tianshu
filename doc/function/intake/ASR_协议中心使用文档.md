@@ -8,8 +8,8 @@ ASR 当前通过协议中心公开四个事件 topic，不提供公共请求 cap
 
 | 方向 | Topic | PayloadType | Payload | 语义 |
 | --- | --- | --- | --- | --- |
-| ASR 发布 | `ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY` | `ASR_SPEECH_ACTIVITY` | `AsrSpeechActivityPayload` | 处理后音频中的说话活动状态变化。 |
-| ASR 发布 | `ProtocolTopics.INPUT_ASR_FINAL_TEXT` | `ASR_TEXT` | `AsrTextPayload` | 已完成且仍属于当前 session 的识别文本。 |
+| ASR 发布 | `IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY` | `ASR_SPEECH_ACTIVITY` | `AsrSpeechActivityPayload` | 处理后音频中的说话活动状态变化。 |
+| ASR 发布 | `IntakeTopics.INPUT_ASR_FINAL_TEXT` | `ASR_TEXT` | `AsrTextPayload` | 已完成且仍属于当前 session 的识别文本。 |
 | ASR 发布 | `ProtocolTopics.MODULE_STATUS` | `MODULE_STATUS` | `ModuleStatusPayload` | `module.asr` 的准备、下载、重载和失败状态。 |
 | ASR 发布 | `PresenceTopics.ACTIVITY` | `PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载、识别任务和真实说话活动的产品状态。 |
 | ASR 订阅 | `ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT` | `CUSTOM` | `RuntimeInterruptPayload` | 运行时会话中断；不是普通录音控制入口。 |
@@ -33,8 +33,8 @@ topic 的信封类型均为 `PacketType.EVENT`。ASR 不通过公共 topic 接�
 ```java
 public void subscribeAsrFinalText(EnvelopeHandler handler) {
     subscribeTopic(
-        ProtocolTopics.INPUT_ASR_FINAL_TEXT,
-        PayloadType.ASR_TEXT,
+        IntakeTopics.INPUT_ASR_FINAL_TEXT,
+        PayloadType.of("ASR_TEXT"),
         AsrTextPayload.class,
         BrokerType.STATELESS_FAST_PATH,
         EnumSet.of(PacketType.EVENT),
@@ -64,7 +64,7 @@ public void subscribeAsrFinalText(EnvelopeHandler handler) {
 - 对话 owner 仲裁应消费 IR/IA 的结构化输出，不应由外部模块直接监听 ASR 文本抢占开放对话。
 - handler 中不得执行模型推理、网络请求、文件 IO 或长任务；需要继续处理时提交到协议中心受控 execution lane。
 
-`ProtocolTopics.INPUT_ASR_FINAL_TEXT` 在协议中心使用 `WAIT_IN_QUEUE` delivery policy，目的是保留有序文本事件。订阅者仍必须尽快返回，不能把协议投递线程当业务工作线程。
+`IntakeTopics.INPUT_ASR_FINAL_TEXT` 在协议中心使用 `WAIT_IN_QUEUE` delivery policy，目的是保留有序文本事件。订阅者仍必须尽快返回，不能把协议投递线程当业务工作线程。
 
 当前客户端只支持 PTT：按住语音开关采集音频，松开后进行一次完整识别；没有有效文本的空提交不会发布 `INPUT_ASR_FINAL_TEXT`。连续输入和 VAD 分段入口已封存，调用方不应依赖 `force_flush` 或 `vad_segment` 输入模式。
 
@@ -73,8 +73,8 @@ public void subscribeAsrFinalText(EnvelopeHandler handler) {
 ```java
 public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
     subscribeTopic(
-        ProtocolTopics.INPUT_ASR_SPEECH_ACTIVITY,
-        PayloadType.ASR_SPEECH_ACTIVITY,
+        IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY,
+        PayloadType.of("ASR_SPEECH_ACTIVITY"),
         AsrSpeechActivityPayload.class,
         BrokerType.STATELESS_FAST_PATH,
         EnumSet.of(PacketType.EVENT),
@@ -141,7 +141,7 @@ ASR 使用 `sessionId` 区分当前输入代次和外部中断：收到不同于
 
 ## 7. 请求与响应语义
 
-当前 ASR 没有公共 `ProtocolCapabilities.ASR_*` 请求入口，因此：
+当前听澜没有公共请求能力（能力名归模块自己，`AsrProtocolAdapter` 只声明事件 topic），因此：
 
 - 不要向 ASR topic 发送 `PacketType.REQUEST` 或 `PacketType.COMMAND`。
 - 不要为 ASR 最终文本注册 response handler；最终文本是独立事件，不是某个外部请求的回包。

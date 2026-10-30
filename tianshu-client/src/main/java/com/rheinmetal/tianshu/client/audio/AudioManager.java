@@ -442,8 +442,8 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         }
         long endedAtNanos = System.nanoTime();
         diagnostics.publish(DiagnosticEvent.now(
-                ProtocolModuleIds.TTS,
-                "TTS_AUDIO_LINE_METRICS",
+                ProtocolModuleIds.PLATFORM_AUDIO,
+                "AUDIO_LINE_METRICS",
                 DiagnosticSeverity.DEBUG,
                 DiagnosticPrivacy.REDACTED,
                 ttsPlaybackMetricAttributes(

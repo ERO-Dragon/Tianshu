@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.function.auxilium;
 
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;

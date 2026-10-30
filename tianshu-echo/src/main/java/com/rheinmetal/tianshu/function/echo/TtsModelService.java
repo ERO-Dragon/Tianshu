@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.echo;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.function.echo.download.TtsModelDownloadCoordinator;
@@ -71,8 +72,8 @@ public class TtsModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new TtsModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                ProtocolModuleIds.TTS, executorManager, env, this::buildAvailabilitySnapshot);
-        this.deletionRunner = new ModelDeletionRunner(ProtocolModuleIds.TTS, executorManager, availabilityRefresher);
+                TtsProtocolAdapter.MODULE_ID, executorManager, env, this::buildAvailabilitySnapshot);
+        this.deletionRunner = new ModelDeletionRunner(TtsProtocolAdapter.MODULE_ID, executorManager, availabilityRefresher);
         scheduleStartupCleanup();
     }
 
@@ -217,7 +218,7 @@ public class TtsModelService {
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(ProtocolModuleIds.TTS)
+                        .moduleId(TtsProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.tts:model.cleanup")
                         .maxConcurrency(1)
@@ -388,7 +389,7 @@ public class TtsModelService {
         publishWaiting("tianshu.runtime.module.tts.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(ProtocolModuleIds.TTS)
+                        .moduleId(TtsProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.tts:model.download")
                         .maxConcurrency(1)
@@ -797,11 +798,11 @@ public class TtsModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(ProtocolModuleIds.TTS, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(TtsProtocolAdapter.MODULE_ID, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed(ProtocolModuleIds.TTS, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(TtsProtocolAdapter.MODULE_ID, messageKey));
     }
 
     private void cleanupIncompleteDownload(DownloadTask task) {

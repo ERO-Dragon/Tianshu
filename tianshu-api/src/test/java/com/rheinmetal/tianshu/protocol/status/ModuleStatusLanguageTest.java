@@ -54,12 +54,26 @@ class ModuleStatusLanguageTest {
             "tianshu.presence.status.reconnecting"
     );
 
+    /**
+     * The in-repo modules that publish a lifecycle row.
+     *
+     * <p>The list lives in this test, not in the kernel: the host derives a lifecycle key from any id, so it
+     * never needs to know which ids exist. Keeping the sweep list here means api ships no feature ids.</p>
+     */
+    private static final List<String> LIFECYCLE_MODULES = List.of(
+            "module.ax", "module.ia", "module.llm", "module.asr", "module.tts");
+
     @Test
     void everyDerivedLifecycleKeyHasTextInBothLanguages() {
         Set<String> zh = LangShards.keys(LangShards.ZH_CN);
         Set<String> en = LangShards.keys(LangShards.EN_US);
 
-        Set<String> lifecycle = ModuleStatusKeys.lifecycleKeys();
+        Set<String> lifecycle = new java.util.LinkedHashSet<>();
+        for (String moduleId : LIFECYCLE_MODULES) {
+            lifecycle.add(ModuleStatusKeys.starting(moduleId));
+            lifecycle.add(ModuleStatusKeys.ready(moduleId));
+            lifecycle.add(ModuleStatusKeys.stopped(moduleId));
+        }
         assertFalse(lifecycle.isEmpty(), "the lifecycle key set must not be empty");
         for (String key : lifecycle) {
             assertTrue(zh.contains(key), "missing in zh_cn: " + key);

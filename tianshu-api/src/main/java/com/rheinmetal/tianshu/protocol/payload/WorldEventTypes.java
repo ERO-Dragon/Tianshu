@@ -4,7 +4,7 @@ package com.rheinmetal.tianshu.protocol.payload;
  * The vocabulary of world events: what happened, and the field names the values use.
  *
  * <p>It lives in the api because the platform produces these events and modules consume them — the strings are the
- * contract between the two sides, independent of which payload carries them. The presence module's aggregated
+ * contract between the two sides, independent of which payload carries them. The aggregation module's aggregated
  * world-event payload re-exports them as aliases so its existing readers keep compiling; new code should reference
  * this class directly.</p>
  */

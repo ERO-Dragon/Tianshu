@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.intake;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
@@ -125,11 +126,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public String moduleId() {
-        return ProtocolModuleIds.ASR;
+        return AsrProtocolAdapter.MODULE_ID;
     }
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        adapter.registerOwnedTopics(context.protocol());
         modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::asrEngine, this::isAsrReady, this::publishModuleStatus);
         context.services().register(AsrModelService.class, modelService);
         context.services().register(AsrModuleRuntimeControl.class, this);

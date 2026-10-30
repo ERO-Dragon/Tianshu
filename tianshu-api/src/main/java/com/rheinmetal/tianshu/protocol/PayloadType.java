@@ -8,9 +8,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Wire vocabulary of payload kinds.
  *
- * <p>The kernel registers the kinds it ships with as constants. A module that introduces a kind of its
- * own calls {@link #of(String)} (or {@link #of(String, Class)}) and does <em>not</em> have to edit this
- * class — that is what keeps the kernel from shipping a release for every module.</p>
+ * <p>The constants below are the platform's own base kinds. Every feature kind belongs to the module that
+ * produces it and is created there with {@link #of(String)} (or {@link #of(String, Class)}) — the kernel
+ * neither names nor registers a feature's payload types, so adding or removing a module never edits this
+ * class.</p>
  *
  * <p>Identity follows the name: {@link #of(String)} always returns the canonical instance, and two
  * instances with the same name are equal. A name may be bound to exactly one payload class; binding it to
@@ -25,34 +26,8 @@ public final class PayloadType {
     public static final PayloadType NONE = register("NONE");
     /** Backed by {@code TextPayload}; exercised by the dialogue contract validator. */
     public static final PayloadType TEXT = register("TEXT");
-    public static final PayloadType ASR_SPEECH_ACTIVITY = register("ASR_SPEECH_ACTIVITY");
-    public static final PayloadType ASR_TEXT = register("ASR_TEXT");
-    public static final PayloadType IR_RESULT = register("IR_RESULT");
-    public static final PayloadType LLM_PROMPT_REQUEST = register("LLM_PROMPT_REQUEST");
-    public static final PayloadType LLM_PROMPT_RESULT = register("LLM_PROMPT_RESULT");
-    public static final PayloadType LLM_PROMPT_STREAM_CHUNK = register("LLM_PROMPT_STREAM_CHUNK");
-    public static final PayloadType LLM_PRIMITIVE_QUERY = register("LLM_PRIMITIVE_QUERY");
-    public static final PayloadType LLM_PRIMITIVE_RESULT = register("LLM_PRIMITIVE_RESULT");
-    public static final PayloadType LLM_STATUS = register("LLM_STATUS");
-    public static final PayloadType LLM_CACHE_MANAGE = register("LLM_CACHE_MANAGE");
-    public static final PayloadType LLM_CACHE_MANAGE_RESULT = register("LLM_CACHE_MANAGE_RESULT");
-    public static final PayloadType TTS_TEXT = register("TTS_TEXT");
-    public static final PayloadType TTS_PLAYBACK_STATUS = register("TTS_PLAYBACK_STATUS");
-    public static final PayloadType TTS_REQUEST_STATUS = register("TTS_REQUEST_STATUS");
-    public static final PayloadType TTS_AUDIO = register("TTS_AUDIO");
-    public static final PayloadType TTS_AUDIO_ACK = register("TTS_AUDIO_ACK");
     public static final PayloadType CANCEL = register("CANCEL");
     public static final PayloadType MODULE_STATUS = register("MODULE_STATUS");
-    public static final PayloadType DIALOGUE_ARBITRATION_REQUEST = register("DIALOGUE_ARBITRATION_REQUEST");
-    public static final PayloadType DIALOGUE_ARBITRATION_RESULT = register("DIALOGUE_ARBITRATION_RESULT");
-    public static final PayloadType DIALOGUE_PARTICIPANT_REGISTER = register("DIALOGUE_PARTICIPANT_REGISTER");
-    public static final PayloadType DIALOGUE_PARTICIPANT_UNREGISTER = register("DIALOGUE_PARTICIPANT_UNREGISTER");
-    public static final PayloadType DIALOGUE_SESSION_CONTROL = register("DIALOGUE_SESSION_CONTROL");
-    public static final PayloadType DIALOGUE_SESSION_EVENT = register("DIALOGUE_SESSION_EVENT");
-    public static final PayloadType DIALOGUE_DELIVERY = register("DIALOGUE_DELIVERY");
-    public static final PayloadType DIALOGUE_CONTEXT_INPUT = register("DIALOGUE_CONTEXT_INPUT");
-    /** One world event a producer already worded, handed to AX together with its tier. */
-    public static final PayloadType AX_WORLD_EVENT = register("AX_WORLD_EVENT");
     /** Escape hatch for module payloads that live outside the kernel's vocabulary. */
     public static final PayloadType CUSTOM = register("CUSTOM");
 

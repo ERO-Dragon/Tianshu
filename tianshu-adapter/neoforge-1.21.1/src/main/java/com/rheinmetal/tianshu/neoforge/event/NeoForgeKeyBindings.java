@@ -25,7 +25,7 @@ import java.util.function.Consumer;
  */
 public final class NeoForgeKeyBindings implements KeyBindings {
 
-    private final Map<String, KeyBindingPlan.Declaration> declarations = new LinkedHashMap<>();
+    private final Map<String, Declared> declarations = new LinkedHashMap<>();
     private final Map<String, KeyMapping> mappings = new LinkedHashMap<>();
     private final Consumer<String> diagnostics;
 
@@ -40,11 +40,40 @@ public final class NeoForgeKeyBindings implements KeyBindings {
     }
 
     @Override
-    public synchronized void declare(String keyId, int defaultKeyCode, String categoryLangKey) {
+    public synchronized void declare(String keyId, String defaultKeyName, String categoryLangKey) {
         if (keyId == null || keyId.isBlank()) {
             return;
         }
-        declarations.put(keyId.trim(), new KeyBindingPlan.Declaration(keyId.trim(), defaultKeyCode, categoryLangKey));
+        declarations.put(keyId.trim(), new Declared(keyId.trim(), defaultKeyName == null ? "" : defaultKeyName.trim(), categoryLangKey));
+    }
+
+    /** A module's declaration: the key name is resolved to a platform code when the mappings are registered. */
+    private record Declared(String keyId, String defaultKeyName, String categoryLangKey) {
+    }
+
+    private static int resolveKeyCode(String keyName) {
+        if (keyName == null || keyName.isBlank()) {
+            return KeyBindingPlan.UNBOUND;
+        }
+        try {
+            return InputConstants.getKey(keyName).getValue();
+        } catch (RuntimeException unknownName) {
+            return KeyBindingPlan.UNBOUND;
+        }
+    }
+
+    /** Turns declared key names into platform key codes, reporting names the platform does not know. */
+    private List<KeyBindingPlan.Declaration> resolvedDeclarations() {
+        List<KeyBindingPlan.Declaration> resolved = new ArrayList<>(declarations.size());
+        for (Declared declared : declarations.values()) {
+            int keyCode = resolveKeyCode(declared.defaultKeyName());
+            if (keyCode == KeyBindingPlan.UNBOUND && !declared.defaultKeyName().isBlank()) {
+                diagnostics.accept("key " + declared.keyId()
+                        + " left unbound: unknown default key " + declared.defaultKeyName());
+            }
+            resolved.add(new KeyBindingPlan.Declaration(declared.keyId(), keyCode, declared.categoryLangKey()));
+        }
+        return resolved;
     }
 
     /** Creates and registers the mappings; called from the platform's key-mapping event. */
@@ -60,7 +89,7 @@ public final class NeoForgeKeyBindings implements KeyBindings {
         if (registrar == null) {
             return;
         }
-        List<KeyBindingPlan.Entry> plan = KeyBindingPlan.resolve(new ArrayList<>(declarations.values()));
+        List<KeyBindingPlan.Entry> plan = KeyBindingPlan.resolve(resolvedDeclarations());
         for (KeyBindingPlan.Entry entry : plan) {
             KeyMapping existing = mappings.get(entry.keyId());
             if (existing != null) {

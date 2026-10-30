@@ -19,7 +19,7 @@ import java.util.List;
 /**
  * Turns providers into the installers one session runs.
  *
- * <p>Two sources feed it: the providers the kernel owns itself (the native runtime and presence, which
+ * <p>Two sources feed it: the providers the kernel owns itself (the host's own platform modules, which
  * ship with it), and the factories modules registered from their own jars. Because the second set is
  * discovered rather than listed, removing a module's jar removes its installer from the session without
  * editing the kernel — and its settings page disappears through the same registrar.</p>

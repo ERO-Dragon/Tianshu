@@ -105,6 +105,14 @@
 
 ---
 
+## 📚 文档
+
+- [文档索引](doc/README.md) — 架构、协议、各功能模块、历史与计划的唯一入口
+- [外部接入指南](EXTERNAL_INTEGRATION_GUIDE.md) — 第三方模组如何依赖天枢与调用接入 API
+- [未完成事项](doc/architecture/未完成事项.md) — 当前进度与收口条件
+
+---
+
 ## 📄 许可证
 
 MIT License - 详见 [LICENSE](LICENSE)

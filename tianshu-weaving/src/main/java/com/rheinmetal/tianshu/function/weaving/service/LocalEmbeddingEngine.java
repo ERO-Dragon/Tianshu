@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -48,7 +49,7 @@ import java.util.function.BiConsumer;
  * listener, so no caller has to poll for it.
  */
 public final class LocalEmbeddingEngine implements EmbeddingService {
-    private static final String MODULE_ID = ProtocolModuleIds.LLM;
+    private static final String MODULE_ID = LlmProtocolAdapter.MODULE_ID;
     private static final String UNAVAILABLE_MESSAGE = "LLM_EMBEDDING_UNAVAILABLE";
     /** One short inference: what turns "the model loaded" into "the model can embed". */
     private static final String WARM_UP_TEXT = "tianshu embedding warm-up";

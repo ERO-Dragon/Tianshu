@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.function.ia;
 
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
@@ -39,8 +39,8 @@ class IrResultArbitrationMapperTest {
         );
         var envelope = EnvelopeBuilder.eventTopic(
                 "module.ir",
-                ProtocolTopics.IR_RESULT,
-                PayloadType.IR_RESULT,
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
                 result
         ).build();
 
@@ -73,8 +73,8 @@ class IrResultArbitrationMapperTest {
         );
         var envelope = EnvelopeBuilder.eventTopic(
                 "module.ir",
-                ProtocolTopics.IR_RESULT,
-                PayloadType.IR_RESULT,
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
                 result
         ).build();
 

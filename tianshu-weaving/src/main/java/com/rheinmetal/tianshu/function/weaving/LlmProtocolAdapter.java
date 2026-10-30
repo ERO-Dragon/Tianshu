@@ -1,7 +1,10 @@
 package com.rheinmetal.tianshu.function.weaving;
 
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmCapabilities;
+
 import com.rheinmetal.tianshu.function.weaving.bridge.LlmPresenceActivityBridge;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.weaving.service.RagCacheManager;
@@ -11,7 +14,7 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmTopics;
 import com.rheinmetal.tianshu.protocol.ProtocolTopics;
 import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
@@ -42,8 +45,23 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     private static final long TASK_ACTIVITY_TTL_MILLIS = 900_000L;
     /** Backstop for a crash mid-load; a real start ends the notice explicitly. */
     private static final long MODEL_LOADING_TTL_MILLIS = 120_000L;
-    public static final String MODULE_ID = ProtocolModuleIds.LLM;
-    public static final String SOURCE_ID = ProtocolModuleIds.LLM;
+    public static final String MODULE_ID = "module.llm";
+    public static final String SOURCE_ID = LlmProtocolAdapter.MODULE_ID;
+
+    /**
+     * Registers the status topic this module produces.
+     *
+     * <p>Topic ownership follows payload ownership: the producer declares its own route. The kernel used to
+     * register these for the four original modules, so deleting a module still left its vocabulary behind.</p>
+     */
+    public void registerOwnedTopics(com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess protocol) {
+        if (protocol == null) {
+            return;
+        }
+        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
+                LlmTopics.LLM_STATUS, PayloadType.of("LLM_STATUS"),
+                com.rheinmetal.tianshu.protocol.DeliveryPolicy.LATEST_ONLY, 40));
+    }
 
     private volatile LLMService llmService;
     private volatile LlmRagStorageService ragStorageService;
@@ -121,8 +139,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
     public void registerLLMRequestCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.LLM_REQUEST,
-                PayloadType.LLM_PROMPT_REQUEST,
+                LlmCapabilities.LLM_REQUEST,
+                PayloadType.of("LLM_PROMPT_REQUEST"),
                 LLMPromptRequestPayload.class,
                 BrokerType.PARALLEL_LIMIT,
                 EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
@@ -135,8 +153,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
     public void registerLLMCacheManageCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.LLM_CACHE_MANAGE,
-                PayloadType.LLM_CACHE_MANAGE,
+                LlmCapabilities.LLM_CACHE_MANAGE,
+                PayloadType.of("LLM_CACHE_MANAGE"),
                 LLMCacheManagePayload.class,
                 BrokerType.PARALLEL_LIMIT,
                 EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
@@ -149,8 +167,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
     public void registerLLMPrimitiveQueryCapability(EnvelopeHandler handler) {
         registerCapability(
-                ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                PayloadType.LLM_PRIMITIVE_QUERY,
+                LlmCapabilities.LLM_PRIMITIVE_QUERY,
+                PayloadType.of("LLM_PRIMITIVE_QUERY"),
                 LLMPrimitiveQueryPayload.class,
                 BrokerType.PARALLEL_LIMIT,
                 EnumSet.of(PacketType.REQUEST, PacketType.COMMAND),
@@ -163,8 +181,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
 
     public TianshuEnvelope requestLLMPrimitiveQuery(LLMPrimitiveQueryPayload payload) {
         return requestCapability(
-                ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                PayloadType.LLM_PRIMITIVE_QUERY,
+                LlmCapabilities.LLM_PRIMITIVE_QUERY,
+                PayloadType.of("LLM_PRIMITIVE_QUERY"),
                 payload
         );
     }
@@ -172,8 +190,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     public TianshuEnvelope requestLLMPrimitiveQuery(TianshuEnvelope parent, LLMPrimitiveQueryPayload payload) {
         return requestCapability(
                 parent,
-                ProtocolCapabilities.LLM_PRIMITIVE_QUERY,
-                PayloadType.LLM_PRIMITIVE_QUERY,
+                LlmCapabilities.LLM_PRIMITIVE_QUERY,
+                PayloadType.of("LLM_PRIMITIVE_QUERY"),
                 payload
         );
     }
@@ -181,7 +199,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     public void registerLLMPrimitiveResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
         registerResponseHandler(
                 requestEnvelopeId,
-                PayloadType.LLM_PRIMITIVE_RESULT,
+                PayloadType.of("LLM_PRIMITIVE_RESULT"),
                 LLMPrimitiveResultPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.RESPONSE),
@@ -193,26 +211,26 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope respondLLMPrimitiveResult(TianshuEnvelope parent, LLMPrimitiveResultPayload payload) {
-        return respondTo(parent, PayloadType.LLM_PRIMITIVE_RESULT, payload);
+        return respondTo(parent, PayloadType.of("LLM_PRIMITIVE_RESULT"), payload);
     }
 
     public TianshuEnvelope requestLLM(LLMPromptRequestPayload payload) {
-        return requestCapability(ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
+        return requestCapability(LlmCapabilities.LLM_REQUEST, PayloadType.of("LLM_PROMPT_REQUEST"), payload);
     }
 
     public TianshuEnvelope requestLLM(TianshuEnvelope parent, LLMPromptRequestPayload payload) {
-        return requestCapability(parent, ProtocolCapabilities.LLM_REQUEST, PayloadType.LLM_PROMPT_REQUEST, payload);
+        return requestCapability(parent, LlmCapabilities.LLM_REQUEST, PayloadType.of("LLM_PROMPT_REQUEST"), payload);
     }
 
     public TianshuEnvelope respondLLMPromptResult(TianshuEnvelope parent, LLMPromptResultPayload payload) {
-        return respondTo(parent, PayloadType.LLM_PROMPT_RESULT, payload);
+        return respondTo(parent, PayloadType.of("LLM_PROMPT_RESULT"), payload);
     }
 
     public TianshuEnvelope publishLLMPromptStreamChunk(
             TianshuEnvelope parent,
             LLMPromptStreamChunkPayload payload
     ) {
-        return respondTo(parent, PayloadType.LLM_PROMPT_STREAM_CHUNK, payload);
+        return respondTo(parent, PayloadType.of("LLM_PROMPT_STREAM_CHUNK"), payload);
     }
 
     public TianshuEnvelope publishLLMPromptStreamEnd(TianshuEnvelope parent, int index) {
@@ -245,7 +263,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     ) {
         return respondTo(
                 parent,
-                PayloadType.LLM_PROMPT_STREAM_CHUNK,
+                PayloadType.of("LLM_PROMPT_STREAM_CHUNK"),
                 LLMPromptStreamChunkPayload.end(
                         streamRequestId(parent),
                         index,
@@ -258,10 +276,10 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     public TianshuEnvelope publishInferenceStatus(LlmStatusPayload status) {
-        if (status == null || runtime().topicSubscriberCount(ProtocolTopics.LLM_STATUS) == 0) {
+        if (status == null || runtime().topicSubscriberCount(LlmTopics.LLM_STATUS) == 0) {
             return null;
         }
-        return publishTopic(ProtocolTopics.LLM_STATUS, PayloadType.LLM_STATUS, status);
+        return publishTopic(LlmTopics.LLM_STATUS, PayloadType.of("LLM_STATUS"), status);
     }
 
     /**
@@ -371,7 +389,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         if (service == null && storage == null) {
             respondTo(
                     envelope,
-                    PayloadType.LLM_CACHE_MANAGE_RESULT,
+                    PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
                     LLMCacheManageResultPayload.failed(payload.uid(), "LLM service is not initialized")
             );
             fail(context, envelope, "LLM_SERVICE_NOT_READY", "LLM service is not initialized", null);
@@ -570,12 +588,12 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                         "Unknown action: " + payload.action()
                 );
             };
-            respondTo(envelope, PayloadType.LLM_CACHE_MANAGE_RESULT, result);
+            respondTo(envelope, PayloadType.of("LLM_CACHE_MANAGE_RESULT"), result);
             complete(context, envelope);
         } catch (Exception exception) {
             respondTo(
                     envelope,
-                    PayloadType.LLM_CACHE_MANAGE_RESULT,
+                    PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
                     LLMCacheManageResultPayload.failed(payload.uid(), exception.getMessage())
             );
             fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", exception.getMessage(), exception);
@@ -627,12 +645,12 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                         "Unknown primitive query type"
                 );
             };
-            respondTo(envelope, PayloadType.LLM_PRIMITIVE_RESULT, result);
+            respondTo(envelope, PayloadType.of("LLM_PRIMITIVE_RESULT"), result);
             complete(context, envelope);
         } catch (Exception exception) {
             respondTo(
                     envelope,
-                    PayloadType.LLM_PRIMITIVE_RESULT,
+                    PayloadType.of("LLM_PRIMITIVE_RESULT"),
                     LLMPrimitiveResultPayload.failed(
                             payload.requestId(),
                             payload.queryType(),

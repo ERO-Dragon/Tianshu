@@ -35,7 +35,7 @@ final class TtsVoiceImportController implements AutoCloseable {
         if (closed || busy) return;
         busy = true;
         try {
-            selection = picker.chooseWavFile(title);
+            selection = picker.chooseFile(title, "wav", UiText.key("tianshu.gui.tts.dialog.wav_audio"));
             selection.whenComplete((path, failure) -> scheduler.execute(() -> {
                 if (closed) return;
                 selection = null;

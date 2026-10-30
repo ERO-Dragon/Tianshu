@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.client.audio.AudioManager;
+import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticChatCatalogue;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticPolicy;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticRouter;
 import com.rheinmetal.tianshu.client.diagnostics.ClientDiagnosticMessageSink;
@@ -17,7 +18,6 @@ import com.rheinmetal.tianshu.client.runtime.ClientRuntimeServices;
 import com.rheinmetal.tianshu.client.runtime.TianshuClientRuntime;
 import com.rheinmetal.tianshu.client.runtime.module.ClientOnnxRuntimeModuleInstaller;
 import com.rheinmetal.tianshu.client.runtime.module.ClientTianshuModuleAssembler;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
 import com.rheinmetal.tianshu.client.settings.registry.CompositeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.registry.ExternalSettingsRegistrySource;
@@ -72,9 +72,13 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.fml.loading.FMLPaths;
 import org.lwjgl.glfw.GLFW;
 
+import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
+
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 public final class NeoForgeClientBootstrap {
     private final ClientLanguageSnapshot languageSnapshot = new ClientLanguageSnapshot();
@@ -122,10 +126,12 @@ public final class NeoForgeClientBootstrap {
                     );
                 }
             });
+            ClientDiagnosticChatCatalogue chatCatalogue = new ClientDiagnosticChatCatalogue();
             diagnosticRouter = new ClientDiagnosticRouter(
                     gameDirectory,
-                    new ClientDiagnosticPolicy(config),
-                    chatSink
+                    new ClientDiagnosticPolicy(config, this::diagnosticModuleIds),
+                    chatSink,
+                    chatCatalogue
             );
             NeoForgeClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
             environment.bindDiagnostics(diagnosticRouter);
@@ -176,7 +182,8 @@ public final class NeoForgeClientBootstrap {
                     loadQueue,
                     hudHost,
                     gameContextPort,
-                    config::isDebugEnabled
+                    config::isDebugEnabled,
+                    chatCatalogue
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -225,6 +232,7 @@ public final class NeoForgeClientBootstrap {
                     () -> voiceKey,
                 () -> textInputKey,
                     keyBindings,
+                    clientUiHost,
                     diagnosticRouter
             );
             NeoForgeClientEvents currentEvents = events;
@@ -345,6 +353,29 @@ public final class NeoForgeClientBootstrap {
         }
         // No "shutdown_completed" line here on purpose: the router writes diagnostic.log_closed as its last
         // record, and anything logged after currentSession.close() lands in a closed writer.
+    }
+
+    /**
+     * The modules that are part of this session, read at call time.
+     *
+     * <p>Diagnostics used to be gated by a hardcoded list of five ids, which silently dropped every other
+     * module's events (modules outside the old list). The gate now asks what the session actually assembled, so a new
+     * module's diagnostics appear by being loaded instead of by editing the host.</p>
+     */
+    private Set<String> diagnosticModuleIds() {
+        TianshuCoreManager core = coreManager;
+        if (core == null) {
+            return Set.of();
+        }
+        Set<String> ids = new HashSet<>();
+        for (TianshuManagedModule module : core.managedModules()) {
+            ids.add(module.moduleId());
+        }
+        ids.addAll(core.integrationModuleIds());
+        // The platform's own components are not feature modules, so the session's module list cannot name them.
+        ids.add(com.rheinmetal.tianshu.protocol.ProtocolModuleIds.PLATFORM_AUDIO);
+        ids.add(com.rheinmetal.tianshu.protocol.ProtocolModuleIds.PLATFORM_ONNX_RUNTIME);
+        return ids;
     }
 
     private void clearSessionReferences() {

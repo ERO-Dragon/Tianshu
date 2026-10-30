@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.protocol.AxCapabilities;
+
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
 
 import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
@@ -29,18 +31,18 @@ class AXProtocolDocumentationBoundaryTest {
                 "DialogueDeliveryPayload",
                 "DialogueContextInputPayload",
                 "AXWorldEventPayload",
-                "ProtocolCapabilities.AX_DIALOGUE_INPUT",
-                "ProtocolCapabilities.AX_CONTEXT_INPUT",
-                "ProtocolCapabilities.AX_EVENT_INPUT",
-                "ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER",
-                "ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER",
-                "ProtocolCapabilities.DIALOGUE_SESSION_CONTROL",
-                "ProtocolCapabilities.LLM_REQUEST",
-                "ProtocolCapabilities.LLM_PRIMITIVE_QUERY",
-                "ProtocolCapabilities.LLM_CACHE_MANAGE",
+                "AX.DIALOGUE_INPUT",
+                "AX.CONTEXT_INPUT",
+                "AX.EVENT_INPUT",
+                "DIALOGUE.PARTICIPANT_REGISTER",
+                "DIALOGUE.PARTICIPANT_UNREGISTER",
+                "DIALOGUE.SESSION_CONTROL",
+                "LLM.REQUEST",
+                "LLM.PRIMITIVE_QUERY",
+                "LLM.CACHE_MANAGE",
                 "PresenceCapabilities.QUERY_CONTEXT",
-                "ProtocolCapabilities.TTS_SPEAK",
-                "ProtocolCapabilities.TTS_CONTROL",
+                "TTS_SPEAK",
+                "TTS_CONTROL",
                 "PresenceTopics.WORLD_EVENT",
                 "PresenceWorldEventPayload.EVENT_CHAT_MESSAGE",
                 "ProtocolTopics.MODULE_STATUS"

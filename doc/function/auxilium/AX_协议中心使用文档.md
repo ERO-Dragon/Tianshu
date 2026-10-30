@@ -133,7 +133,7 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 ### 4.4 投递方式
 
 外部模组对 `tianshu-auxilium` 硬性依赖（`compileOnly` 足够，运行时由天枢提供），用
-`EnvelopeBuilder.commandToCapability(自己的 moduleId, AXProtocolAdapter.EVENT_INPUT_CAPABILITY, PayloadType.AX_WORLD_EVENT, payload)`
+`EnvelopeBuilder.commandToCapability(自己的 moduleId, AXProtocolAdapter.EVENT_INPUT_CAPABILITY, PayloadType.of("AX_WORLD_EVENT"), payload)`
 建信封，再交给 `TianshuIntegrationApi.submit(envelope)`。
 
 不要从服务注册表取 `AXGameEventService` 去调 `tick` / `flush` / `stop`：那三个方法是本模块自己的生命周期，不属于对外契约。
@@ -271,13 +271,13 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 | `AXProtocolAdapter.CONTEXT_INPUT_CAPABILITY` | `AX.CONTEXT_INPUT` | 上下文型入口：把外部话语送进 AX 的历史 |
 | `AXProtocolAdapter.EVENT_INPUT_CAPABILITY` | `AX.EVENT_INPUT` | 事件型入口：投递一句世界事件 + 一个行为 |
 
-对应登记值来自 `ProtocolCapabilities`：
+对应登记值来自 `AxCapabilities`：
 
 | 符号 | 值 |
 |---|---|
-| `ProtocolCapabilities.AX_DIALOGUE_INPUT` | `AX.DIALOGUE_INPUT` |
-| `ProtocolCapabilities.AX_CONTEXT_INPUT` | `AX.CONTEXT_INPUT` |
-| `ProtocolCapabilities.AX_EVENT_INPUT` | `AX.EVENT_INPUT` |
+| `"AX.DIALOGUE_INPUT"` | `AX.DIALOGUE_INPUT` |
+| `"AX.CONTEXT_INPUT"` | `AX.CONTEXT_INPUT` |
+| `"AX.EVENT_INPUT"` | `AX.EVENT_INPUT` |
 
 ### 13.3 入站载荷
 
@@ -291,15 +291,15 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 
 | 符号 | 值 | 用途 |
 |---|---|---|
-| `ProtocolCapabilities.LLM_REQUEST` | `LLM.REQUEST` | 一次对话生成 |
-| `ProtocolCapabilities.LLM_PRIMITIVE_QUERY` | `LLM.PRIMITIVE_QUERY` | 原语查询（向量/计算类） |
-| `ProtocolCapabilities.LLM_CACHE_MANAGE` | `LLM.CACHE_MANAGE` | 缓存管理 |
+| `"LLM.REQUEST"` | `LLM.REQUEST` | 一次对话生成 |
+| `"LLM.PRIMITIVE_QUERY"` | `LLM.PRIMITIVE_QUERY` | 原语查询（向量/计算类） |
+| `"LLM.CACHE_MANAGE"` | `LLM.CACHE_MANAGE` | 缓存管理 |
 | `PresenceCapabilities.QUERY_CONTEXT` | `PRESENCE.QUERY_CONTEXT` | 向映迹索取上下文事实 |
-| `ProtocolCapabilities.TTS_SPEAK` | `TTS_SPEAK` | 让回响说话 |
-| `ProtocolCapabilities.TTS_CONTROL` | `TTS_CONTROL` | 播报控制（停止/状态等） |
-| `ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER` | `DIALOGUE.PARTICIPANT_REGISTER` | 以参与者身份登记（唤醒词） |
-| `ProtocolCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER` | `DIALOGUE.PARTICIPANT_UNREGISTER` | 注销参与者身份 |
-| `ProtocolCapabilities.DIALOGUE_SESSION_CONTROL` | `DIALOGUE.SESSION_CONTROL` | 会话控制（结束当前会话等） |
+| `"TTS_SPEAK"` | `TTS_SPEAK` | 让回响说话 |
+| `"TTS_CONTROL"` | `TTS_CONTROL` | 播报控制（停止/状态等） |
+| `"DIALOGUE.PARTICIPANT_REGISTER"` | `DIALOGUE.PARTICIPANT_REGISTER` | 以参与者身份登记（唤醒词） |
+| `"DIALOGUE.PARTICIPANT_UNREGISTER"` | `DIALOGUE.PARTICIPANT_UNREGISTER` | 注销参与者身份 |
+| `"DIALOGUE.SESSION_CONTROL"` | `DIALOGUE.SESSION_CONTROL` | 会话控制（结束当前会话等） |
 
 ### 13.5 AX 订阅与发布的主题
 

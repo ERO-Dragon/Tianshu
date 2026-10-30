@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.intake.repair;
 
+import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
+
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -7,8 +9,7 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
@@ -55,14 +56,15 @@ class AsrTextRepairerTest {
     void repairsMisheardWordsAndPublishesCompleteAnalysisWithoutCallingIaCapability() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
+        adapter.registerOwnedTopics(runtime);
         AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
         runtime.triggers().register(new TriggerRegistration("module.maid", List.of("酒狐"), List.of("种地")));
         repairer.initialize(voiceAccess(), DiagnosticSink.NOOP);
         RecordingHandler arbitration = new RecordingHandler();
         registerCapability(
                 "test.ia",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload.class,
                 EnumSet.of(PacketType.COMMAND, PacketType.REQUEST),
                 arbitration
@@ -93,6 +95,7 @@ class AsrTextRepairerTest {
     void stoppedRepairerPublishesNothing() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
+        adapter.registerOwnedTopics(runtime);
         AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
         repairer.initialize(voiceAccess(), DiagnosticSink.NOOP);
         RecordingHandler irResults = new RecordingHandler();
@@ -108,6 +111,7 @@ class AsrTextRepairerTest {
     void initializeAfterStopAcceptsNewWorldInput() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         AsrProtocolAdapter adapter = new AsrProtocolAdapter(runtime);
+        adapter.registerOwnedTopics(runtime);
         AsrTextRepairer repairer = new AsrTextRepairer(adapter, null);
         RecordingHandler irResults = new RecordingHandler();
         subscribeIrResult(irResults);
@@ -149,8 +153,8 @@ class AsrTextRepairerTest {
         runtime.subscribeTopic(
                 descriptor("test.ir_result", List.of()),
                 new TopicSubscriptionDescriptor(
-                        ProtocolTopics.IR_RESULT,
-                        PayloadType.IR_RESULT,
+                        IntakeTopics.IR_RESULT,
+                        PayloadType.of("IR_RESULT"),
                         IrResultPayload.class,
                         BrokerType.BOUNDED_QUEUE,
                         EnumSet.of(PacketType.EVENT),

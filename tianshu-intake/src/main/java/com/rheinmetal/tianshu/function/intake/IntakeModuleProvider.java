@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.function.intake;
 
+import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
+
+import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -14,7 +18,7 @@ import com.rheinmetal.tianshu.function.ia.settings.IaDefaultOwnerConfig;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeConfig;
 import com.rheinmetal.tianshu.function.intake.settings.IntakeSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.api.text.UiText;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 
 import java.nio.file.Path;
 
@@ -41,9 +45,14 @@ public final class IntakeModuleProvider implements TianshuModuleProvider {
             return;
         }
         ClientPorts ports = context.clientPorts();
+        // The wording of this module's progress lines belongs here; the host only looks the codes up.
+        ports.diagnosticChat().register("RECOGNITION_COMPLETE",
+                DiagnosticChatNotice.single("tianshu.chat.progress.asr.recognition", "text", "output", "input"));
+        ports.diagnosticChat().register("STREAM_RESULT",
+                DiagnosticChatNotice.single("tianshu.chat.progress.asr.recognition", "text", "output", "input"));
         Path moduleDirectory = ports.configStores().moduleDirectory();
         IntakeConfig config = new IntakeConfig(
-                ports.configStores().forModule(ProtocolModuleIds.ASR),
+                ports.configStores().forModule(AsrProtocolAdapter.MODULE_ID),
                 moduleDirectory,
                 ports.texts()::currentLanguage);
 
@@ -70,7 +79,7 @@ public final class IntakeModuleProvider implements TianshuModuleProvider {
                 ports.texts(),
                 ports.audioDevices(),
                 () -> UiText.key("key.tianshu.activate"),
-                new IaDefaultOwnerConfig(ports.configStores().forModule(ProtocolModuleIds.IA))));
+                new IaDefaultOwnerConfig(ports.configStores().forModule(IaProtocolAdapter.MODULE_ID))));
     }
 
     /**

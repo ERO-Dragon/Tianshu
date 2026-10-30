@@ -6,12 +6,12 @@
 
 | 名称 | Payload | 用途 |
 |---|---|---|
-| `ProtocolCapabilities.TTS_SPEAK` | `TtsSpeakPayload` | 本地合成并播放。 |
-| `ProtocolCapabilities.TTS_SYNTHESIZE` | `TtsSynthesisRequestPayload` | 返回 PCM，不播放。 |
-| `ProtocolCapabilities.TTS_AUDIO_ACK` | `TtsAudioAckPayload` | 确认已接管一个纯合成请求的完整 PCM。 |
-| `ProtocolCapabilities.TTS_CONTROL` | `TtsControlPayload` | 停止、重载和音色管理。 |
-| `ProtocolTopics.TTS_PLAYBACK` | `TtsPlaybackStatusPayload` | 模块级播放状态。 |
-| `ProtocolTopics.TTS_REQUEST_STATUS` | `TtsRequestStatusPayload` | 单个播放 Session 的状态。 |
+| `"TTS_SPEAK"` | `TtsSpeakPayload` | 本地合成并播放。 |
+| `"TTS_SYNTHESIZE"` | `TtsSynthesisRequestPayload` | 返回 PCM，不播放。 |
+| `"TTS_AUDIO_ACK"` | `TtsAudioAckPayload` | 确认已接管一个纯合成请求的完整 PCM。 |
+| `"TTS_CONTROL"` | `TtsControlPayload` | 停止、重载和音色管理。 |
+| `TtsTopics.TTS_PLAYBACK` | `TtsPlaybackStatusPayload` | 模块级播放状态。 |
+| `TtsTopics.TTS_REQUEST_STATUS` | `TtsRequestStatusPayload` | 单个播放 Session 的状态。 |
 | `PresenceTopics.ACTIVITY` | `PresenceActivityPayload` | 模型加载及非 AX 播放、纯合成任务的产品活动。 |
 
 ## 1.1 能力状态与外部模块边界
@@ -48,8 +48,8 @@ TtsSpeakPayload payload = new TtsSpeakPayload(
 );
 
 adapter.commandCapability(
-        ProtocolCapabilities.TTS_SPEAK,
-        PayloadType.TTS_TEXT,
+        "TTS_SPEAK",
+        PayloadType.of("TTS_TEXT"),
         payload
 );
 ```
@@ -71,9 +71,9 @@ TtsSpeakPayload sentence = new TtsSpeakPayload(
 );
 
 adapter.submitToCapability(
-        ProtocolCapabilities.TTS_SPEAK,
+        "TTS_SPEAK",
         PacketType.STREAM_CHUNK,
-        PayloadType.TTS_TEXT,
+        PayloadType.of("TTS_TEXT"),
         sentence
 );
 ```
@@ -91,9 +91,9 @@ TtsSpeakPayload end = new TtsSpeakPayload(
 );
 
 adapter.submitToCapability(
-        ProtocolCapabilities.TTS_SPEAK,
+        "TTS_SPEAK",
         PacketType.STREAM_END,
-        PayloadType.TTS_TEXT,
+        PayloadType.of("TTS_TEXT"),
         end
 );
 ```
@@ -156,8 +156,8 @@ TtsSynthesisRequestPayload payload = new TtsSynthesisRequestPayload(
 
 ```java
 adapter.commandCapability(
-        ProtocolCapabilities.TTS_AUDIO_ACK,
-        PayloadType.TTS_AUDIO_ACK,
+        "TTS_AUDIO_ACK",
+        PayloadType.of("TTS_AUDIO_ACK"),
         new TtsAudioAckPayload(audio.requestId())
 );
 ```

@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.presence.payload;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 
 /**
  * One kind of activity presence may show on the player-facing surface.
@@ -22,9 +21,9 @@ import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
  */
 public enum PresenceActivityType {
     /** The assistant is delivering a reply it already has. */
-    RESPONDING(ProtocolModuleIds.AX, 60, true, false),
+    RESPONDING("module.ax", 60, true, false),
     /** The assistant accepted the turn and is working on the reply. */
-    THINKING(ProtocolModuleIds.AX, 50, true, false),
+    THINKING("module.ax", 50, true, false),
     /** A module failed for good; the player has to act for it to recover. Any module may report it. */
     ERROR("", 40, true, false),
     /** A module is retrying after a failed start; it recovers on its own. Any module may report it. */
@@ -46,7 +45,7 @@ public enum PresenceActivityType {
      * when the player starts speaking and the module that resolves the turn (the arbiter) closes it. That is why this
      * type alone may be ended by a module other than its owner.</p>
      */
-    LISTENING(ProtocolModuleIds.ASR, 70, true, true);
+    LISTENING("module.asr", 70, true, true);
 
     private final String publisherModuleId;
     private final int priority;

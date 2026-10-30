@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.ui;
 
 import com.rheinmetal.tianshu.api.assembly.InputSignals;
+import com.rheinmetal.tianshu.client.api.text.UiText;
+import com.rheinmetal.tianshu.neoforge.ui.settings.NeoForgeUiText;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -25,16 +27,22 @@ public final class TextDialogueScreen extends Screen {
     private static final int SIDE_MARGIN = 20;
 
     private EditBox field;
+    private final UiText hint;
 
-    public TextDialogueScreen() {
-        super(Component.translatable("ax.input.title"));
+    /**
+     * @param title the bar's title, supplied by the module that owns the assistant's name (or the host fallback)
+     * @param hint  the empty-field hint, same ownership
+     */
+    public TextDialogueScreen(UiText title, UiText hint) {
+        super(NeoForgeUiText.toComponent(title));
+        this.hint = hint;
     }
 
     @Override
     protected void init() {
         int fieldWidth = Math.max(120, width - SIDE_MARGIN * 2);
         field = new EditBox(font, SIDE_MARGIN, height - 22, fieldWidth, FIELD_HEIGHT, Component.empty());
-        field.setHint(Component.translatable("ax.input.hint"));
+        field.setHint(NeoForgeUiText.toComponent(hint));
         field.setMaxLength(MAX_LENGTH);
         addRenderableWidget(field);
         setInitialFocus(field);

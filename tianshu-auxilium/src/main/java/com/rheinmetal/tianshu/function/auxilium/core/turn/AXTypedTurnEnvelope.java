@@ -1,10 +1,11 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.function.auxilium.AXModule;
+
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.input.AXDialogueInput;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
 import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.payload.TextPayload;
 
@@ -26,7 +27,7 @@ public final class AXTypedTurnEnvelope {
 
     public static TianshuEnvelope selfEnvelope(AXDialogueInput input) {
         return EnvelopeBuilder.commandToCapability(
-                ProtocolModuleIds.AX,
+                AXModule.MODULE_ID,
                 AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
                 PayloadType.TEXT,
                 new TextPayload(input.text())

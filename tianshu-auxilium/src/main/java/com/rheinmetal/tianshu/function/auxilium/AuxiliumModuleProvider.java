@@ -1,9 +1,13 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.AXModule;
+
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.WorldFacts;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
+import com.rheinmetal.tianshu.client.api.text.UiText;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleRegistrar;
@@ -16,7 +20,6 @@ import com.rheinmetal.tianshu.function.auxilium.settings.AuxiliumConfig;
 import com.rheinmetal.tianshu.function.auxilium.settings.AuxiliumSettingsRegistrySource;
 import com.rheinmetal.tianshu.function.auxilium.speech.AXProtocolSpeechOutlet;
 import com.rheinmetal.tianshu.function.auxilium.speech.AXSpeechBridge;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.function.auxilium.bridge.AXSpeechSinks;
 
 /**
@@ -40,8 +43,15 @@ public final class AuxiliumModuleProvider implements TianshuModuleProvider {
             return;
         }
         ClientPorts ports = context.clientPorts();
+        // The wording of this module's progress lines belongs here; the host only looks the codes up.
+        ports.diagnosticChat().register("DIALOGUE_DELIVERY", DiagnosticChatNotice.single(
+                "tianshu.chat.progress.ax.input", "normalizedText", "repairedText", "input"));
+        // The assistant owns its name, so it also owns what the typed-dialogue bar says.
+        ports.uiHost().setTextInputLabels(
+                UiText.key("tianshu.gui.ax.text_input.title"),
+                UiText.key("tianshu.gui.ax.text_input.hint"));
         AuxiliumConfig config = new AuxiliumConfig(
-                ports.configStores().forModule(ProtocolModuleIds.AX),
+                ports.configStores().forModule(AXModule.MODULE_ID),
                 ports.configStores().moduleDirectory());
 
         WorldFactsSource worldFacts = TianshuRuntimePorts.find(WorldFactsSource.class)

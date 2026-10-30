@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.auxilium;
 
+import com.rheinmetal.tianshu.function.auxilium.protocol.AxCapabilities;
+
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -13,7 +15,6 @@ import com.rheinmetal.tianshu.function.auxilium.event.AXEventPayload;
 import com.rheinmetal.tianshu.function.auxilium.event.AXEventText;
 import com.rheinmetal.tianshu.function.auxilium.producer.AXGameEventService;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 import org.junit.jupiter.api.Test;
@@ -49,7 +50,7 @@ class AXModuleGameEventWiringTest {
 
         module.register(new ModuleRegistrationContext(runtime, services));
         assertFalse(services.find(AXGameEventService.class).isPresent());
-        assertEquals(1, runtime.capabilityProviderCount(ProtocolCapabilities.AX_EVENT_INPUT),
+        assertEquals(1, runtime.capabilityProviderCount(AxCapabilities.AX_EVENT_INPUT),
                 "the event entry exists as soon as the module is registered, before the layer runs");
 
         module.prepare(new ModuleRuntimeContext(

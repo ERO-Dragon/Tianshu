@@ -120,7 +120,7 @@ ASR final text
   ↓
 IR parse / repair / enrich
   ↓
-ProtocolTopics.IR_RESULT / IrResultPayload
+IntakeTopics.IR_RESULT / IrResultPayload
   ↓
 仲裁机关仲裁
 ```
@@ -187,9 +187,9 @@ TTS 是输出能力，不是仲裁方。
 建议新增或保留以下 capability：
 
 ```text
-ProtocolCapabilities.DIALOGUE_ARBITRATE
-ProtocolCapabilities.DIALOGUE_PARTICIPANT_REGISTER
-ProtocolCapabilities.DIALOGUE_SESSION_CONTROL
+"DIALOGUE.ARBITRATE"
+"DIALOGUE.PARTICIPANT_REGISTER"
+"DIALOGUE.SESSION_CONTROL"
 ```
 
 语义：
@@ -200,7 +200,7 @@ ProtocolCapabilities.DIALOGUE_SESSION_CONTROL
 | `DIALOGUE_PARTICIPANT_REGISTER` | 模块注册自己为可参与对话的候选方。 |
 | `DIALOGUE_SESSION_CONTROL` | 当前 owner 对会话进行处理期限延长、释放、打断确认等控制。 |
 
-标准语音链路由 IA 订阅 `ProtocolTopics.IR_RESULT` 接收 `IrResultPayload`。IR 发布后即完成职责；IA 负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。
+标准语音链路由 IA 订阅 `IntakeTopics.IR_RESULT` 接收 `IrResultPayload`。IR 发布后即完成职责；IA 负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。
 
 `DIALOGUE_ARBITRATE` 同时接受 `COMMAND` 和 `REQUEST`，但只作为受信服务端口：
 
@@ -214,11 +214,11 @@ ProtocolCapabilities.DIALOGUE_SESSION_CONTROL
 建议新增：
 
 ```text
-PayloadType.DIALOGUE_ARBITRATION_REQUEST
-PayloadType.DIALOGUE_ARBITRATION_RESULT
-PayloadType.DIALOGUE_PARTICIPANT_REGISTER
-PayloadType.DIALOGUE_SESSION_CONTROL
-PayloadType.DIALOGUE_SESSION_EVENT
+PayloadType.of("DIALOGUE_ARBITRATION_REQUEST")
+PayloadType.of("DIALOGUE_ARBITRATION_RESULT")
+PayloadType.of("DIALOGUE_PARTICIPANT_REGISTER")
+PayloadType.of("DIALOGUE_SESSION_CONTROL")
+PayloadType.of("DIALOGUE_SESSION_EVENT")
 ```
 
 ### 5.3 topic
@@ -228,7 +228,7 @@ PayloadType.DIALOGUE_SESSION_EVENT
 建议新增：
 
 ```text
-ProtocolTopics.DIALOGUE_SESSION_EVENTS
+IaTopics.DIALOGUE_SESSION_EVENTS
 ```
 
 `DIALOGUE_SESSION_EVENTS` 只发布会话状态事件，不发布对话正文。伙伴标记不走 IA 的 topic：那条广播是映迹自己的 `PRESENCE.PARTNER`，IA 只是它的写入方（见 §5.4），载荷也由映迹定义。

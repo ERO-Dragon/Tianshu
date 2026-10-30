@@ -1,27 +1,27 @@
 package com.rheinmetal.tianshu.client.diagnostics;
 
 import com.rheinmetal.tianshu.client.config.ClientDiagnosticsConfiguration;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ClientDiagnosticPolicyTest {
-    /** The pipeline ids the kernel names; identical to the adapters' MODULE_ID constants by construction. */
+    /** Whatever the session assembled; the policy itself keeps no list. */
     private static final List<String> KNOWN_MODULES = List.of(
-            ProtocolModuleIds.ASR,
-            ProtocolModuleIds.IA,
-            ProtocolModuleIds.AX,
-            ProtocolModuleIds.LLM,
-            ProtocolModuleIds.TTS
+            "module.asr",
+            "module.ia",
+            "module.ax",
+            "module.llm",
+            "module.tts"
     );
 
     @Test
-    void globalDebugEnablesEveryKnownDiagnosticModule() {
-        ClientDiagnosticPolicy policy = new ClientDiagnosticPolicy(enabled(true));
+    void globalDebugEnablesEveryModuleTheSessionAssembled() {
+        ClientDiagnosticPolicy policy = policy(true);
 
         for (String moduleId : KNOWN_MODULES) {
             assertTrue(policy.test(moduleId), moduleId);
@@ -30,8 +30,8 @@ final class ClientDiagnosticPolicyTest {
 
     @Test
     void disabledGlobalDebugAndUnknownModulesRemainDisabled() {
-        ClientDiagnosticPolicy disabled = new ClientDiagnosticPolicy(enabled(false));
-        ClientDiagnosticPolicy enabled = new ClientDiagnosticPolicy(enabled(true));
+        ClientDiagnosticPolicy disabled = policy(false);
+        ClientDiagnosticPolicy enabled = policy(true);
 
         for (String moduleId : KNOWN_MODULES) {
             assertFalse(disabled.test(moduleId), moduleId);
@@ -40,7 +40,8 @@ final class ClientDiagnosticPolicyTest {
         assertFalse(enabled.test(null));
     }
 
-    private static ClientDiagnosticsConfiguration enabled(boolean value) {
-        return () -> value;
+    private static ClientDiagnosticPolicy policy(boolean debugEnabled) {
+        ClientDiagnosticsConfiguration config = () -> debugEnabled;
+        return new ClientDiagnosticPolicy(config, () -> Set.copyOf(KNOWN_MODULES));
     }
 }

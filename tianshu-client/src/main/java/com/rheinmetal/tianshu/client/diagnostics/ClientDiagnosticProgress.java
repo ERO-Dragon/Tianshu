@@ -2,56 +2,48 @@ package com.rheinmetal.tianshu.client.diagnostics;
 
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatCatalogue;
+import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 
-/** Maps selected lifecycle events to concise player-facing progress updates. */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Turns a diagnostic event into the player-facing progress line.
+ *
+ * <p>The kernel keeps no table of feature codes any more: a module registers its own code and wording in the
+ * {@link DiagnosticChatCatalogue} while it is assembled, and this class only looks the code up. What stays here
+ * is the platform's own voice — the generic "failed" line, which is not any module's vocabulary.</p>
+ */
 final class ClientDiagnosticProgress {
     private static final int MAX_CHAT_CONTENT_LENGTH = 160;
+    private static final String FAILURE_KEY = "tianshu.chat.progress.failed";
 
     private ClientDiagnosticProgress() {
     }
 
-    static ClientDiagnosticMessage messageFor(DiagnosticEvent event) {
+    static ClientDiagnosticMessage messageFor(DiagnosticEvent event, DiagnosticChatCatalogue catalogue) {
         if (event == null) {
             return null;
         }
-        return switch (event.code()) {
-            case "RECOGNITION_COMPLETE", "STREAM_RESULT" ->
-                    contentMessage("tianshu.chat.progress.asr.recognition", event, "text", "output", "input");
-            case "ARBITRATION_ACCEPTED" ->
-                    arbitrationMessage("tianshu.chat.progress.ia.arbitration.accepted", event);
-            case "ARBITRATION_REJECTED" ->
-                    arbitrationMessage("tianshu.chat.progress.ia.arbitration.rejected", event);
-            case "DIALOGUE_DELIVERY" ->
-                    contentMessage("tianshu.chat.progress.ax.input", event, "normalizedText", "repairedText", "input");
-            case "LLM_SUBMITTED" ->
-                    ClientDiagnosticMessage.key("tianshu.chat.progress.thinking");
-            case "CHAT_COMPLETED", "STREAM_COMPLETED" ->
-                    ClientDiagnosticMessage.key(
-                            "tianshu.chat.progress.llm.reply",
-                            summarize(event.attributes().get("input")),
-                            summarize(event.attributes().get("output"))
-                    );
-            case "SYNTHESIS_COMPLETED" ->
-                    contentMessage("tianshu.chat.progress.tts.input", event, "text", "input", "output");
-            default -> event.severity() == DiagnosticSeverity.ERROR || isFailure(event.code())
-                    ? ClientDiagnosticMessage.key("tianshu.chat.progress.failed")
-                    : null;
-        };
+        Optional<DiagnosticChatNotice> notice = catalogue == null
+                ? Optional.empty()
+                : catalogue.find(event.code());
+        if (notice.isPresent()) {
+            DiagnosticChatNotice resolved = notice.get();
+            List<Object> arguments = new ArrayList<>(resolved.argumentCandidates().size());
+            for (List<String> candidates : resolved.argumentCandidates()) {
+                arguments.add(summarize(firstAttribute(event, candidates)));
+            }
+            return ClientDiagnosticMessage.key(resolved.translationKey(), arguments.toArray());
+        }
+        return event.severity() == DiagnosticSeverity.ERROR || isFailure(event.code())
+                ? ClientDiagnosticMessage.key(FAILURE_KEY)
+                : null;
     }
 
-    private static ClientDiagnosticMessage arbitrationMessage(String key, DiagnosticEvent event) {
-        return ClientDiagnosticMessage.key(
-                key,
-                summarize(firstAttribute(event, "normalizedText", "repairedText", "input")),
-                summarize(event.attributes().get("reason"))
-        );
-    }
-
-    private static ClientDiagnosticMessage contentMessage(String key, DiagnosticEvent event, String... candidates) {
-        return ClientDiagnosticMessage.key(key, summarize(firstAttribute(event, candidates)));
-    }
-
-    private static String firstAttribute(DiagnosticEvent event, String... candidates) {
+    private static String firstAttribute(DiagnosticEvent event, List<String> candidates) {
         for (String candidate : candidates) {
             String value = event.attributes().get(candidate);
             if (value != null && !value.isBlank()) {

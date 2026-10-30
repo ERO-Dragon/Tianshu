@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.ia;
 
+import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
+
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -18,7 +20,6 @@ import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
@@ -115,7 +116,7 @@ class IaModuleLifecycleTest {
         RecordingHandler delivery = new RecordingHandler();
         runtime.registerModule(module("module.ax", new CapabilityDescriptor(
                 "AX.DIALOGUE_INPUT",
-                PayloadType.DIALOGUE_DELIVERY,
+                PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),
@@ -136,8 +137,8 @@ class IaModuleLifecycleTest {
         ia.stop();
         TianshuEnvelope turn = EnvelopeBuilder.commandToCapability(
                 "module.ir",
-                ProtocolCapabilities.DIALOGUE_ARBITRATE,
-                PayloadType.DIALOGUE_ARBITRATION_REQUEST,
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
                 new DialogueArbitrationRequestPayload(
                         "request", "module.ir", "player", "turn", 1L,
                         "hello", "hello", List.of(), List.of(),

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -34,7 +35,7 @@ import java.util.function.Consumer;
  */
 public final class LlmEngineProvider {
     /** The module id the native-load gate knows this lane by; also the permit's owner. */
-    private static final String MODULE_ID = ProtocolModuleIds.LLM;
+    private static final String MODULE_ID = LlmProtocolAdapter.MODULE_ID;
     /** Queue action name for the retrieval load, which the gate treats as the primary request. */
     private static final String LOAD_ACTION = "embedding";
     /** Detail reported when the gate has no room left for the primary request. */
@@ -282,7 +283,7 @@ public final class LlmEngineProvider {
         env.warn("[LLM] Vector RAG stays disabled: " + detail + ". Chat is unaffected.");
         try {
             env.diagnostics().publish(DiagnosticEvent.now(
-                    ProtocolModuleIds.LLM,
+                    LlmProtocolAdapter.MODULE_ID,
                     code,
                     DiagnosticSeverity.WARN,
                     DiagnosticPrivacy.REDACTED,

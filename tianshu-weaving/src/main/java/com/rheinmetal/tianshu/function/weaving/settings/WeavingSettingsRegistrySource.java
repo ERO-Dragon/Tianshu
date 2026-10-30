@@ -1,7 +1,8 @@
 package com.rheinmetal.tianshu.function.weaving.settings;
 
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingSettingsAccess;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.client.api.settings.ActionTemplate;
 import com.rheinmetal.tianshu.client.api.settings.ItemActionTemplate;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
@@ -52,7 +53,7 @@ import java.util.function.BooleanSupplier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class WeavingSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = ProtocolModuleIds.LLM;
+    private static final String MODULE_ID = LlmProtocolAdapter.MODULE_ID;
     private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     /** How long an editor verdict stays on screen; long enough to read a rejection. */
     private static final long EDITOR_STATUS_MILLIS = 4_000L;

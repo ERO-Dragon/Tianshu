@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
+import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
+
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.download.LlmModelDownloadCoordinator;
@@ -78,7 +79,7 @@ public final class LlmModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new LlmModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                ProtocolModuleIds.LLM, executorManager, env, this::buildAvailabilitySnapshot);
+                LlmProtocolAdapter.MODULE_ID, executorManager, env, this::buildAvailabilitySnapshot);
         scheduleStartupCleanup();
     }
 
@@ -138,7 +139,7 @@ public final class LlmModelService {
         publishWaiting("tianshu.runtime.module.llm.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(ProtocolModuleIds.LLM)
+                        .moduleId(LlmProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.llm:model.download")
                         .maxConcurrency(1)
@@ -214,7 +215,7 @@ public final class LlmModelService {
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(ProtocolModuleIds.LLM)
+                        .moduleId(LlmProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.llm:model.cleanup")
                         .maxConcurrency(1)
@@ -375,11 +376,11 @@ public final class LlmModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(ProtocolModuleIds.LLM, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(LlmProtocolAdapter.MODULE_ID, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed(ProtocolModuleIds.LLM, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(LlmProtocolAdapter.MODULE_ID, messageKey));
     }
 
     private void cleanupCancelledDownload(DownloadTask task) {

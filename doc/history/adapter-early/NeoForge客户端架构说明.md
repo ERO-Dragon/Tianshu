@@ -1,3 +1,5 @@
+> 历史文档（模块拆分前的 adapter 架构说明）。其中 `tianshu-common` 等结构已不存在；当前架构见 [模块架构](../../architecture/模块架构.md)。
+
 # NeoForge 客户端架构说明
 
 ## 1. 项目结构

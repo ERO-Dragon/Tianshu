@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.protocol.ProtocolCapabilities;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
@@ -30,8 +29,8 @@ class AXProtocolAdapterTest {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         AtomicReference<TianshuEnvelope> primitive = new AtomicReference<>();
         AtomicReference<TianshuEnvelope> cache = new AtomicReference<>();
-        registerSink(runtime, ProtocolCapabilities.LLM_PRIMITIVE_QUERY, PayloadType.LLM_PRIMITIVE_QUERY, LLMPrimitiveQueryPayload.class, primitive);
-        registerSink(runtime, ProtocolCapabilities.LLM_CACHE_MANAGE, PayloadType.LLM_CACHE_MANAGE, LLMCacheManagePayload.class, cache);
+        registerSink(runtime, "LLM.PRIMITIVE_QUERY", PayloadType.of("LLM_PRIMITIVE_QUERY"), LLMPrimitiveQueryPayload.class, primitive);
+        registerSink(runtime, "LLM.CACHE_MANAGE", PayloadType.of("LLM_CACHE_MANAGE"), LLMCacheManagePayload.class, cache);
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
 
         adapter.submitLlmPrimitiveQuery(adapter.buildLlmPrimitiveQuery(LLMPrimitiveQueryPayload.status("status", false)));
