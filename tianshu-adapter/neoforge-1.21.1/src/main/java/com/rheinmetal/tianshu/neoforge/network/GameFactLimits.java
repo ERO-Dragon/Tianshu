@@ -24,6 +24,20 @@ final class GameFactLimits {
     private GameFactLimits() {
     }
 
+    static int requireFactCount(int declaredCount) {
+        if (declaredCount < 0 || declaredCount > GameFactBatch.MAX_FACTS) {
+            throw new IllegalArgumentException("game fact batch declares an invalid fact count: " + declaredCount);
+        }
+        return declaredCount;
+    }
+
+    static int requirePacketBytes(int declaredBytes) {
+        if (declaredBytes > GameFactBatch.MAX_BYTES) {
+            throw new IllegalArgumentException("game fact batch is larger than the protocol allows: " + declaredBytes);
+        }
+        return declaredBytes;
+    }
+
     static int requireValueCount(int declaredCount) {
         if (declaredCount < 0 || declaredCount > MAX_VALUES) {
             throw new IllegalArgumentException("game fact declares an invalid value count: " + declaredCount);

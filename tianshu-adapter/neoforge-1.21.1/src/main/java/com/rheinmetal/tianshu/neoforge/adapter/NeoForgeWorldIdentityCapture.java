@@ -53,8 +53,26 @@ public final class NeoForgeWorldIdentityCapture {
         }
 
         String levelName = localLevelName(minecraft);
-        String stableIdentity = "local|" + gameDirectory + "|" + levelName;
+        // The save folder is what makes two worlds distinct; the display name is only a label, and two saves
+        // may share it. The stable identity therefore uses the folder id, while the label stays player-facing.
+        String saveId = localSaveId(minecraft);
+        String identityPart = saveId.isBlank() ? levelName : saveId;
+        String stableIdentity = "local|" + gameDirectory + "|" + identityPart;
         return new WorldFacts(WorldFacts.KIND_LOCAL_WORLD, stableIdentity, levelName, dimension, true);
+    }
+
+    private String localSaveId(Minecraft minecraft) {
+        try {
+            if (minecraft.getSingleplayerServer() != null) {
+                Path worldPath = minecraft.getSingleplayerServer()
+                        .getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
+                if (worldPath != null && worldPath.getFileName() != null) {
+                    return worldPath.getFileName().toString().trim();
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return "";
     }
 
     private String localLevelName(Minecraft minecraft) {

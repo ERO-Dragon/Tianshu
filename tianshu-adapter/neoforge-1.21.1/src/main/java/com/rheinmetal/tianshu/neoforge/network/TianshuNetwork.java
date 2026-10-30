@@ -13,13 +13,13 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public final class TianshuNetwork {
 
     /** Bumped when the fact payload changes shape; an older client simply refuses the channel. */
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     private TianshuNetwork() {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
-        registrar.playToClient(GameFactPacket.TYPE, GameFactPacket.STREAM_CODEC, GameFactPacket::handle);
+        registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, GameFactBatchPacket::handle);
     }
 }

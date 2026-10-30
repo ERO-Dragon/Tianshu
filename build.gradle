@@ -218,6 +218,26 @@ tasks.register('verifyFeatureOptionalDependencies') {
     }
 }
 
+// Snapshot of the real project graph, taken after every subproject has been evaluated. It is captured here,
+// not read inside the task, because a task action may not reach into other projects under the configuration
+// cache — and the project graph is exactly what this gate is about.
+def hostProjectDependencyViolations = []
+gradle.projectsEvaluated {
+    hostModules.each { module ->
+        def projectPath = module == 'tianshu-adapter' ? ':tianshu-adapter:neoforge-1.21.1' : ":${module}"
+        def hostProject = project(projectPath)
+        ['api', 'implementation', 'compileOnly', 'runtimeOnly'].each { configurationName ->
+            def configuration = hostProject.configurations.findByName(configurationName)
+            if (configuration == null) return
+            configuration.dependencies.withType(org.gradle.api.artifacts.ProjectDependency).each { dependency ->
+                if (dependency.path in featureModules.collect { ":${it}" }) {
+                    hostProjectDependencyViolations << "${module} declares a project dependency on ${dependency.path}; the kernel must not depend on a feature module"
+                }
+            }
+        }
+    }
+}
+
 tasks.register('verifyHostHasNoFeatureDependency') {
     group = 'verification'
     description = 'The kernel modules must never reference or depend on a feature module.'
@@ -236,7 +256,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
                 throw new GradleException("${buildFile} declares a dependency on tianshu-${match[2]}; the kernel must not depend on a feature module")
             }
         }
-        def violations = []
+        def violations = new ArrayList<String>(hostProjectDependencyViolations)
         task.inputs.files.files.each { source ->
             if (!source.path.endsWith('.java')) return
             source.eachLine('UTF-8') { line ->
@@ -253,17 +273,30 @@ tasks.register('verifyHostHasNoFeatureDependency') {
 
 tasks.register('verifyNoPlatformImport') {
     group = 'verification'
-    description = 'Rejects Minecraft/NeoForge imports outside the platform adapter.'
-    inputs.files(files(neutralModules.collect { "${it}/src/main/java" }))
+    description = 'Rejects Minecraft/NeoForge references in the compiled classes outside the platform adapter.'
+    // Reading source lines missed fully-qualified usage and could be defeated by comments; the constant pool
+    // of every compiled class is what the JVM actually links against, so the check runs on bytecode.
+    def neutralProjects = neutralModules.collect { project(":${it}") }
+    inputs.files(files(neutralProjects.collect { it.sourceSets.main.output.classesDirs }))
+    dependsOn neutralProjects.collect { it.tasks.named('classes') }
     doLast { task ->
-        def forbidden = ['net.minecraft.', 'net.neoforged.', 'org.lwjgl.', 'com.mojang.blaze3d.']
-        task.inputs.files.files.each { source ->
-            if (!source.path.endsWith('.java')) return
-            source.eachLine('UTF-8') { line ->
-                if (forbidden.any { prefix -> line.trim().startsWith("import ${prefix}") }) {
-                    throw new GradleException("${source} imports a forbidden platform package: ${line.trim()}")
+        def forbidden = ['net/minecraft/', 'net/neoforged/', 'org/lwjgl/', 'com/mojang/blaze3d/']
+        def violations = []
+        task.inputs.files.files.each { root ->
+            if (root.isDirectory()) {
+                root.eachFileRecurse(groovy.io.FileType.FILES) { entry ->
+                    if (!entry.name.endsWith('.class')) return
+                    def constantPool = new String(entry.bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                    forbidden.each { prefix ->
+                        if (constantPool.contains(prefix)) {
+                            violations << "${entry}: references a forbidden platform package: ${prefix}"
+                        }
+                    }
                 }
             }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Neutral modules reference the platform:\n" + violations.join('\n'))
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.neoforge.server;
 
-import com.rheinmetal.tianshu.neoforge.network.GameFactPacket;
+import com.rheinmetal.tianshu.neoforge.network.GameFact;
+import com.rheinmetal.tianshu.neoforge.network.GameFactBatch;
+import com.rheinmetal.tianshu.neoforge.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
@@ -22,7 +24,9 @@ import net.neoforged.neoforge.event.entity.player.TradeWithVillagerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,8 +47,17 @@ import java.util.Objects;
  */
 public final class GameFactCollector {
 
+    /**
+     * Facts produced during the current server tick, per receiving player.
+     *
+     * <p>Flushing happens once at the end of the tick, so a burst costs one packet instead of one per fact. The
+     * list order is the production order; the receiver replays it as-is. All access is on the server thread.</p>
+     */
+    private final Map<ServerPlayer, List<GameFact>> pendingByPlayer = new LinkedHashMap<>();
+
     /** Subscribing is the whole registration; {@link #send} is the only network path. */
     public void register(IEventBus gameBus) {
+        gameBus.addListener(this::onServerTick);
         gameBus.addListener(this::onLivingDeath);
         gameBus.addListener(this::onItemCrafted);
         gameBus.addListener(this::onItemFished);
@@ -141,6 +154,8 @@ public final class GameFactCollector {
         if (!(event.getEntity() instanceof ServerPlayer leaving) || leaving.getServer() == null) {
             return;
         }
+        // The connection is already going away; buffered facts cannot be delivered and must not leak.
+        pendingByPlayer.remove(leaving);
         String name = leaving.getGameProfile().getName();
         for (ServerPlayer other : leaving.getServer().getPlayerList().getPlayers()) {
             if (other != leaving) {
@@ -250,14 +265,36 @@ public final class GameFactCollector {
         if (player == null || player.connection == null) {
             return;
         }
-        if (!player.connection.hasChannel(GameFactPacket.TYPE)) {
+        if (!player.connection.hasChannel(GameFactBatchPacket.TYPE)) {
             return;
         }
-        PacketDistributor.sendToPlayer(player, new GameFactPacket(
-                factId,
-                dimensionId(player.level()),
-                System.currentTimeMillis(),
-                values));
+        pendingByPlayer
+                .computeIfAbsent(player, ignored -> new ArrayList<>())
+                .add(new GameFact(factId, dimensionId(player.level()), System.currentTimeMillis(), values));
+    }
+
+    /** End of the server tick: every buffered fact goes out in order, split into bounded packets. */
+    public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        flush();
+    }
+
+    /**
+     * Sends everything buffered so far and clears the buffer; the batch size cap is the only reason a tick's facts
+     * become more than one packet.
+     */
+    public void flush() {
+        if (pendingByPlayer.isEmpty()) {
+            return;
+        }
+        pendingByPlayer.forEach((player, facts) -> {
+            if (player.connection == null || !player.connection.hasChannel(GameFactBatchPacket.TYPE)) {
+                return;
+            }
+            new GameFactBatch(facts)
+                    .split(GameFactBatch.MAX_FACTS)
+                    .forEach(batch -> PacketDistributor.sendToPlayer(player, new GameFactBatchPacket(batch)));
+        });
+        pendingByPlayer.clear();
     }
 
     private static Map<String, String> itemValues(ItemStack stack) {
