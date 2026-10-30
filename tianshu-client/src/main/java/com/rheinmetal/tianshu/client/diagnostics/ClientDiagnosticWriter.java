@@ -18,6 +18,10 @@ final class ClientDiagnosticWriter implements AutoCloseable {
     private static final int QUEUE_CAPACITY = 2_048;
     private static final long MAX_FILE_BYTES = 8L * 1024L * 1024L;
     private static final int MAX_ARCHIVES = 5;
+    /** Flush on a batch instead of per line; an idle queue also flushes, so the file never lags by more than one burst. */
+    private static final int FLUSH_EVERY_LINES = 32;
+    /** Reopen attempts after a transient IO failure before diagnostics give up for the session. */
+    private static final int MAX_OPEN_ATTEMPTS = 3;
 
     private final Path logFile;
     private final ArrayBlockingQueue<String> queue;
@@ -71,47 +75,94 @@ final class ClientDiagnosticWriter implements AutoCloseable {
 
     private void run() {
         BufferedWriter writer = null;
-        try {
-            while (accepting.get() || !queue.isEmpty()) {
-                String line;
-                try {
-                    line = queue.poll(250L, TimeUnit.MILLISECONDS);
-                } catch (InterruptedException interrupted) {
-                    if (!accepting.get() && queue.isEmpty()) {
-                        break;
-                    }
-                    continue;
+        int linesSinceFlush = 0;
+        long writtenBytes = 0L;
+        int openAttempts = 0;
+        while (accepting.get() || !queue.isEmpty()) {
+            String line;
+            try {
+                line = queue.poll(250L, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException interrupted) {
+                if (!accepting.get() && queue.isEmpty()) {
+                    break;
                 }
-                if (line == null) {
-                    continue;
+                continue;
+            }
+            if (line == null) {
+                // Nothing queued: make the buffered lines visible instead of waiting for the next burst.
+                if (writer != null && linesSinceFlush > 0) {
+                    flushQuietly(writer);
+                    linesSinceFlush = 0;
                 }
+                continue;
+            }
+            try {
                 if (writer == null) {
                     Files.createDirectories(logFile.getParent());
                     writer = openWriter();
+                    writtenBytes = Files.isRegularFile(logFile) ? Files.size(logFile) : 0L;
                 }
-                if (Files.size(logFile) >= maxFileBytes) {
+                if (writtenBytes >= maxFileBytes) {
                     writer.flush();
                     writer.close();
                     rotateIfNeeded();
                     writer = openWriter();
+                    writtenBytes = 0L;
+                    linesSinceFlush = 0;
                 }
                 writer.write(line);
                 writer.newLine();
-                writer.flush();
-            }
-        } catch (Exception exception) {
-            // Stop accepting new records after an unrecoverable file error. The
-            // router counts rejected records, while the host remains untouched.
-            accepting.set(false);
-        } finally {
-            if (writer != null) {
-                try {
-                    writer.close();
-                } catch (IOException ignored) {
-                    // The writer is already shutting down; no host logger is used.
+                // Counting bytes here keeps the rotation check free of a stat call per line.
+                writtenBytes += line.getBytes(StandardCharsets.UTF_8).length + 1L;
+                linesSinceFlush++;
+                if (linesSinceFlush >= FLUSH_EVERY_LINES || queue.isEmpty()) {
+                    writer.flush();
+                    linesSinceFlush = 0;
                 }
+                openAttempts = 0;
+            } catch (Exception failure) {
+                // One unlucky file lock must not kill the diagnostics for the rest of the session: drop the
+                // handle and try again. After the retries are exhausted, stop accepting and say so once —
+                // loudly enough to be found in the launcher log.
+                closeQuietly(writer);
+                writer = null;
+                linesSinceFlush = 0;
+                if (++openAttempts > MAX_OPEN_ATTEMPTS) {
+                    accepting.set(false);
+                    System.err.println("Tianshu: diagnostics log disabled after repeated IO failures: " + logFile);
+                    break;
+                }
+                sleepQuietly(250L);
             }
-            terminated.countDown();
+        }
+        closeQuietly(writer);
+        terminated.countDown();
+    }
+
+    private static void flushQuietly(BufferedWriter writer) {
+        try {
+            writer.flush();
+        } catch (IOException ignored) {
+            // The next write reports the failure and goes through the retry path.
+        }
+    }
+
+    private static void closeQuietly(BufferedWriter writer) {
+        if (writer == null) {
+            return;
+        }
+        try {
+            writer.close();
+        } catch (IOException ignored) {
+            // Already failing; nothing useful to add.
+        }
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

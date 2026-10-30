@@ -37,6 +37,8 @@ import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterruptPublisher, AutoCloseable {
@@ -65,6 +67,11 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     private final ProtocolExecutorManager executorManager;
     private final BrokerRegistry brokerRegistry;
     private final ProtocolContext context;
+    private final AtomicLong acceptedEnvelopes = new AtomicLong();
+    private final AtomicBoolean retentionSweepRunning = new AtomicBoolean();
+    private final long retainedEnvelopeMillis;
+    private final int retentionSweepInterval;
+    private final int maxRetainedTraces;
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor) {
         this(mainThreadExecutor, new TriggerRegistry());
@@ -85,6 +92,9 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         this.triggerRegistry = triggerRegistry == null ? new TriggerRegistry() : triggerRegistry;
         this.executorManager = new ProtocolExecutorManager(mainThreadExecutor, effectivePolicy.executorPolicy());
         this.brokerRegistry = new BrokerRegistry(mainThreadExecutor, executorManager);
+        this.retainedEnvelopeMillis = effectivePolicy.retainedEnvelopeMillis();
+        this.retentionSweepInterval = effectivePolicy.retentionSweepInterval();
+        this.maxRetainedTraces = effectivePolicy.maxRetainedTraces();
         this.context = new RuntimeContext();
         subscribeModuleStatusCache();
     }
@@ -128,10 +138,12 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         long now = System.currentTimeMillis();
         if (envelope.header().isExpired(now)) {
             lifecycleStore.accept(envelope);
+            sweepRetentionIfDue();
             deadLetterQueue.add(envelope, "ENVELOPE_EXPIRED", "Envelope expired before dispatch", DeadLetterPolicy.LOG_ONLY);
             return;
         }
         lifecycleStore.accept(envelope);
+        sweepRetentionIfDue();
         int depth = traceDepth(envelope);
         int topicLimit = topicRegistry.find(envelope.header().target()).map(TopicDescriptor::stormLimitPerSecond).orElse(0);
         GuardResult guardResult = stormGuard.check(envelope, depth, topicLimit);
@@ -303,14 +315,34 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         }
     }
 
-    private int traceDepth(TianshuEnvelope envelope) {
-        int depth = 0;
+    private int traceDepth(TianshuEnvelope envelope) {        int depth = 0;
         String parentId = envelope.parentId();
         while (parentId != null) {
             depth++;
             parentId = lifecycleStore.findEnvelope(parentId).map(TianshuEnvelope::parentId).orElse(null);
         }
         return depth;
+    }
+
+    /**
+     * Runs the retention sweep once every {@code retentionSweepInterval} accepted envelopes.
+     *
+     * <p>Called from {@link #submit}, i.e. on whichever thread produced the envelope, and deliberately
+     * not a timer: no extra thread to own, no lifecycle to tie it to, and an idle client keeps its
+     * history. The guard matters because a handler may submit while a sweep is dropping traces.</p>
+     */
+    private void sweepRetentionIfDue() {
+        if (acceptedEnvelopes.incrementAndGet() % retentionSweepInterval != 0L) {
+            return;
+        }
+        if (!retentionSweepRunning.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            lifecycleStore.cleanupTerminalTraces(retainedEnvelopeMillis, maxRetainedTraces);
+        } finally {
+            retentionSweepRunning.set(false);
+        }
     }
 
     public EnvelopeLifecycleStore lifecycle() { return lifecycleStore; }

@@ -28,6 +28,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -269,13 +270,15 @@ public final class TianshuSettingsScreen extends Screen {
                 ScrollState current = nestedScrollStates.getOrDefault(region.id(), new ScrollState(0, region.contentHeight(), region.viewportHeight()));
                 nestedScrollStates.put(region.id(), current.withMetrics(region.contentHeight(), region.viewportHeight())
                         .withOffset(current.offset() - (int) Math.signum(scrollY) * SCROLL_STEP));
-                rebuildCurrentPage();
+                // Coalesced, not immediate: a high-resolution wheel delivers several events in one frame, and a
+                // full page rebuild per notch was the one place this screen dropped frames.
+                requestRebuildCurrentPage();
                 return true;
             }
         }
         if (layout.containsRightPanel(mouseX, mouseY) && rightPanelScroll.canScroll()) {
             rightPanelScroll = rightPanelScroll.withOffset(rightPanelScroll.offset() - (int) Math.signum(scrollY) * SCROLL_STEP);
-            rebuildCurrentPage();
+            requestRebuildCurrentPage();
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
@@ -490,15 +493,61 @@ public final class TianshuSettingsScreen extends Screen {
         return Component.empty();
     }
 
+    /**
+     * The player left the page: release the draft sessions here.
+     *
+     * <p>Leaving with unsaved drafts asks first, because the alternative is losing a session's worth of edits
+     * to a stray Esc. The prompt is the vanilla {@link ConfirmScreen}; dismissing it (Esc there) returns here
+     * rather than dropping the page along with its drafts.</p>
+     */
     @Override
     public void onClose() {
+        if (!coordinator().canSave()) {
+            closeAndRelease();
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.setScreen(new DiscardDraftConfirmScreen(
+                discard -> {
+                    if (discard) {
+                        closeAndRelease();
+                    } else {
+                        minecraft.setScreen(this);
+                    }
+                },
+                Component.translatable("tianshu.gui.settings.confirm.discard.title"),
+                Component.translatable("tianshu.gui.settings.confirm.discard.message"),
+                Component.translatable("tianshu.gui.settings.confirm.discard.leave"),
+                Component.translatable("tianshu.gui.settings.confirm.discard.stay"),
+                () -> minecraft.setScreen(this)
+        ));
+    }
+
+    private void closeAndRelease() {
+        context.settingsSessions().close();
         Minecraft.getInstance().setScreen(null);
     }
 
-    @Override
-    public void removed() {
-        context.settingsSessions().close();
-        super.removed();
+    /** A confirmation whose Esc means "go back to the page", not "dismiss the page with its drafts". */
+    private static final class DiscardDraftConfirmScreen extends ConfirmScreen {
+        private final Runnable onDismiss;
+
+        private DiscardDraftConfirmScreen(
+                it.unimi.dsi.fastutil.booleans.BooleanConsumer callback,
+                Component title,
+                Component message,
+                Component leave,
+                Component stay,
+                Runnable onDismiss
+        ) {
+            super(callback, title, message, leave, stay);
+            this.onDismiss = onDismiss;
+        }
+
+        @Override
+        public void onClose() {
+            onDismiss.run();
+        }
     }
 
     @Override

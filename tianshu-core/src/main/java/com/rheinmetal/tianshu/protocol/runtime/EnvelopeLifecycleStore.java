@@ -75,31 +75,101 @@ public final class EnvelopeLifecycleStore {
         return new ArrayList<>(envelopes.values());
     }
 
-    public void cleanupTerminalTraces(long maxAgeMillis, int maxRetainedTraces) {
+    /**
+     * Drops history that can no longer answer a question.
+     *
+     * <p>A trace is eligible only when every envelope in it reached a terminal status: cancellation,
+     * response routing and trace queries all read this store, so dropping a trace with an envelope still
+     * in flight would turn a later cancel into "target not found". Among eligible traces, the ones whose
+     * newest envelope is older than {@code maxAgeMillis} go first; if that still leaves more than
+     * {@code maxRetainedTraces}, the oldest eligible traces go next.</p>
+     *
+     * @return how many traces were dropped
+     */
+    public int cleanupTerminalTraces(long maxAgeMillis, int maxRetainedTraces) {
         long now = System.currentTimeMillis();
+        int cap = Math.max(1, maxRetainedTraces);
         List<String> removable = new ArrayList<>();
+        List<String> eligible = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : traceIndex.entrySet()) {
+            long newest = Long.MIN_VALUE;
             boolean terminal = true;
-            boolean old = false;
             for (String id : entry.getValue()) {
                 TianshuEnvelope envelope = envelopes.get(id);
-                EnvelopeStatus status = statusOf(id);
-                terminal = terminal && isTerminal(status);
-                old = old || envelope != null && now - envelope.header().createdAt() > maxAgeMillis;
+                if (envelope == null) {
+                    continue;
+                }
+                newest = Math.max(newest, envelope.header().createdAt());
+                if (!isTerminal(statusOf(id))) {
+                    terminal = false;
+                }
             }
-            if ((terminal && old) || traceIndex.size() > maxRetainedTraces) {
+            if (!terminal) {
+                continue;
+            }
+            eligible.add(entry.getKey());
+            if (newest != Long.MIN_VALUE && now - newest > maxAgeMillis) {
                 removable.add(entry.getKey());
             }
         }
-        for (String traceId : removable) {
-            List<String> ids = traceIndex.remove(traceId);
-            if (ids == null) continue;
-            for (String id : ids) {
-                envelopes.remove(id);
-                statuses.remove(id);
-                transitions.remove(id);
-                parentIndex.remove(id);
+        int remaining = traceIndex.size() - removable.size();
+        if (remaining > cap) {
+            List<String> oldestFirst = new ArrayList<>(eligible);
+            oldestFirst.removeAll(removable);
+            oldestFirst.sort(java.util.Comparator.comparingLong(this::newestEnvelopeAt));
+            int excess = remaining - cap;
+            for (int index = 0; index < Math.min(excess, oldestFirst.size()); index++) {
+                removable.add(oldestFirst.get(index));
             }
+        }
+        for (String traceId : removable) {
+            dropTrace(traceId);
+        }
+        return removable.size();
+    }
+
+    private long newestEnvelopeAt(String traceId) {
+        long newest = Long.MIN_VALUE;
+        for (String id : traceIndex.getOrDefault(traceId, List.of())) {
+            TianshuEnvelope envelope = envelopes.get(id);
+            if (envelope != null) {
+                newest = Math.max(newest, envelope.header().createdAt());
+            }
+        }
+        return newest;
+    }
+
+    private void dropTrace(String traceId) {
+        List<String> ids = traceIndex.remove(traceId);
+        if (ids == null) {
+            return;
+        }
+        List<String> kept = new ArrayList<>();
+        for (String id : ids) {
+            // Eligibility was decided before this loop; a producer may have joined the same trace since.
+            // Anything still in flight stays, and the trace index keeps pointing at it.
+            if (!isTerminal(statusOf(id))) {
+                kept.add(id);
+                continue;
+            }
+            TianshuEnvelope envelope = envelopes.remove(id);
+            statuses.remove(id);
+            transitions.remove(id);
+            String parentId = envelope == null ? null : envelope.parentId();
+            if (parentId == null) {
+                parentIndex.remove(id);
+                continue;
+            }
+            List<String> children = parentIndex.get(parentId);
+            if (children != null) {
+                children.remove(id);
+                if (children.isEmpty()) {
+                    parentIndex.remove(parentId);
+                }
+            }
+        }
+        if (!kept.isEmpty()) {
+            traceIndex.putIfAbsent(traceId, new CopyOnWriteArrayList<>(kept));
         }
     }
 

@@ -7,7 +7,9 @@ import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutionPolicy;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +64,20 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                 if (task == null) break;
                 running.put(task.envelope().envelopeId(), task);
                 task.runtime().lifecycle().transition(task.envelope().envelopeId(), EnvelopeStatus.DISPATCHED, "DISPATCHED", brokerId);
-                executorManager.submit(taskSpec(task), () -> runTask(task));
+                ProtocolTaskHandle handle = executorManager.submit(taskSpec(task), () -> runTask(task));
+                if (handle.state() == ProtocolTaskState.REJECTED) {
+                    // Nothing will ever call runTask, so the slot has to come back here. Without this a
+                    // rejection left a phantom "running" entry that permanently ate one concurrency slot,
+                    // and enough of them stopped the broker for the rest of the session without a log line.
+                    running.remove(task.envelope().envelopeId());
+                    task.runtime().handleFailure(
+                            task.envelope(),
+                            "BROKER_EXECUTOR_REJECTED",
+                            "Executor rejected the dispatch: "
+                                    + handle.failureCause().map(Throwable::getMessage).orElse(""),
+                            handle.failureCause().orElse(null)
+                    );
+                }
             }
         } finally {
             draining.set(false);

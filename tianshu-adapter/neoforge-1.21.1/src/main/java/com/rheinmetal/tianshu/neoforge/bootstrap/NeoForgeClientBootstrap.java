@@ -133,6 +133,11 @@ public final class NeoForgeClientBootstrap {
             NeoForgeClientSession.Ownership diagnosticsOwnership = startingSession.own(diagnosticRouter::close);
             environment.bindDiagnostics(diagnosticRouter);
             environment.bindLogs(diagnosticRouter);
+            // A subscriber that throws is contained by the bus; report it where every other failure goes,
+            // so "a key stopped working" has a line in the diagnostics log instead of a silent disappearance.
+            ClientDiagnosticRouter failureReporter = diagnosticRouter;
+            com.rheinmetal.tianshu.api.assembly.SignalFailures.setHandler((bus, channel, failure) ->
+                    failureReporter.error("signal." + bus + ".subscriber_failed channel=" + channel, failure));
             diagnosticRouter.info("neoforge.client.bootstrap_starting");
             Path moduleConfigDirectory = gameDirectory.resolve("config").resolve("Tianshu").resolve("module");
             PropertyModuleConfigStores moduleConfigs = new PropertyModuleConfigStores(moduleConfigDirectory, diagnosticRouter);
@@ -345,6 +350,7 @@ public final class NeoForgeClientBootstrap {
     }
 
     private void clearSessionReferences() {
+        com.rheinmetal.tianshu.api.assembly.SignalFailures.setHandler(null);
         HudShaderPrograms.clear();
         events = null;
         integrationApi = null;

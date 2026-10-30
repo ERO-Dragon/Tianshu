@@ -46,6 +46,15 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     private final AtomicBoolean isStreaming = new AtomicBoolean(false);
     private final AtomicBoolean isPlaying = new AtomicBoolean(false);
 
+    /**
+     * Bumped whenever a capture is torn down. A worker compares the value it started with, so a capture
+     * that is being replaced can no longer reset the flags of the capture that replaced it — the old
+     * {@code finally} used to stop the new worker the moment a microphone was switched.
+     */
+    private final AtomicInteger captureGeneration = new AtomicInteger();
+    /** Guards the recording buffer: the audio thread appends, the finishing caller takes it away. */
+    private final Object captureBufferLock = new Object();
+
     private ByteArrayOutputStream audioBuffer;
     private Consumer<byte[]> streamChunkConsumer;
     private final Object streamBufferLock = new Object();
@@ -124,6 +133,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     public void ensureHardwareRunning() {
         if (!isHardwareRunning.compareAndSet(false, true))
             return;
+        int generation = captureGeneration.incrementAndGet();
 
         executeAudioTask(() -> {
             TargetDataLine captureLine = null;
@@ -148,7 +158,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 logSink.info("audio.microphone.worker_started");
 
                 byte[] rawBuffer = new byte[1600];
-                while (isHardwareRunning.get()) {
+                while (isHardwareRunning.get() && captureGeneration.get() == generation) {
                     int bytesRead = captureLine.read(rawBuffer, 0, rawBuffer.length);
                     if (bytesRead <= 0)
                         continue;
@@ -160,7 +170,11 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                             chunkConsumer.accept(chunk);
                         }
                     } else if (isRecording.get()) {
-                        audioBuffer.write(rawBuffer, 0, bytesRead);
+                        synchronized (captureBufferLock) {
+                            if (audioBuffer != null) {
+                                audioBuffer.write(rawBuffer, 0, bytesRead);
+                            }
+                        }
                     } else {
                         resetStreamBuffer();
                     }
@@ -181,9 +195,13 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 if (targetDataLine == captureLine) {
                     targetDataLine = null;
                 }
-                isHardwareRunning.set(false);
-                isRecording.set(false);
-                isStreaming.set(false);
+                // Only the capture that is still current may clear the flags; a replaced worker exits
+                // silently so the microphone switch that replaced it keeps working.
+                if (captureGeneration.get() == generation) {
+                    isHardwareRunning.set(false);
+                    isRecording.set(false);
+                    isStreaming.set(false);
+                }
                 logSink.info("audio.microphone.worker_stopped");
             }
         }, () -> isHardwareRunning.set(false));
@@ -194,24 +212,34 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         if (isRecording.get() || isStreaming.get())
             return;
         ensureHardwareRunning();
-        audioBuffer = new ByteArrayOutputStream();
-        isRecording.set(true);
+        synchronized (captureBufferLock) {
+            audioBuffer = new ByteArrayOutputStream();
+            isRecording.set(true);
+        }
         logSink.info("audio.ptt.started");
     }
 
+    /**
+     * Takes the recorded bytes away from the audio thread.
+     *
+     * <p>The buffer is swapped under the lock the writer holds, so the hand-off is exact instead of a
+     * guessed pause: the previous version slept 60 ms and hoped the audio thread was between writes.</p>
+     */
     @Override
     public byte[] stopRecording() {
-        isRecording.set(false);
-        try {
-            Thread.sleep(60);
-        } catch (InterruptedException e) {
+        ByteArrayOutputStream buffer;
+        synchronized (captureBufferLock) {
+            isRecording.set(false);
+            buffer = audioBuffer;
+            audioBuffer = null;
         }
-        if (audioBuffer != null) {
-            byte[] data = audioBuffer.toByteArray();
-            logSink.info("audio.ptt.completed bytes=" + data.length);
-            return data;
+        if (buffer == null) {
+            logSink.info("audio.ptt.completed bytes=0");
+            return new byte[0];
         }
-        return new byte[0];
+        byte[] data = buffer.toByteArray();
+        logSink.info("audio.ptt.completed bytes=" + data.length);
+        return data;
     }
 
     @Override
@@ -279,26 +307,38 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         if (audioData == null || audioData.length == 0)
             return;
         executeAudioTask(() -> {
+            SourceDataLine line = null;
             try {
                 AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
                 DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
                 if (!AudioSystem.isLineSupported(info))
                     return;
-                sourceDataLine = (SourceDataLine) AudioSystem.getLine(info);
-                sourceDataLine.open(format);
-                sourceDataLine.start();
+                line = (SourceDataLine) AudioSystem.getLine(info);
+                sourceDataLine = line;
+                line.open(format);
+                line.start();
                 isPlaying.set(true);
-                sourceDataLine.write(audioData, 0, audioData.length);
-                sourceDataLine.drain();
+                line.write(audioData, 0, audioData.length);
+                line.drain();
             } catch (LineUnavailableException e) {
                 logSink.error("audio.playback.open_failed", e);
             } catch (Exception e) {
                 logSink.error("audio.playback.failed", e);
             } finally {
-                if (sourceDataLine != null) {
-                    sourceDataLine.stop();
-                    sourceDataLine.close();
-                    sourceDataLine = null;
+                if (line != null) {
+                    // A device can be unplugged between open and stop; each release stands on its own so
+                    // one failure cannot skip the "no longer playing" flag and leave the HUD lying.
+                    try {
+                        line.stop();
+                    } catch (RuntimeException ignored) {
+                    }
+                    try {
+                        line.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                    if (sourceDataLine == line) {
+                        sourceDataLine = null;
+                    }
                 }
                 isPlaying.set(false);
             }
@@ -646,11 +686,16 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     @Override
     public void releaseCaptureHardware() {
+        // Invalidate the running worker first: it may be blocked in read() on the line we are about to close.
+        captureGeneration.incrementAndGet();
         isRecording.set(false);
         isStreaming.set(false);
         streamChunkConsumer = null;
-        ByteArrayOutputStream buffer = audioBuffer;
-        audioBuffer = null;
+        ByteArrayOutputStream buffer;
+        synchronized (captureBufferLock) {
+            buffer = audioBuffer;
+            audioBuffer = null;
+        }
         if (targetDataLine != null) {
             try {
                 targetDataLine.stop();

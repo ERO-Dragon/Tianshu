@@ -90,7 +90,7 @@ Minecraft 活对象只能存在于 NeoForge adapter。跨入 client/common 的�
 - IR：NeoForge registry provider 构建命名对象字典；client 负责缓存和索引。
 - IR 资源重载：prepare 阶段读取关键词资源，apply 阶段刷新当前语言与 registry 快照，后台索引始终解析当前会话的索引管理器，不持有首次启动的旧实例。
 - GUI：client 生成 `UiText` 和设置模型；NeoForge 转换为原版文本与 Widget。
-- HUD：client 通过显式 `PRESENCE.ACTIVITY` 聚合出 `PresenceHudDisplay`，其中主状态与 `listening` 独立；NeoForge 在渲染事件中逐帧读取缓存的展示快照并执行字体、shader 或 `GuiGraphics` 绘制，活动聚合与动画采样保持分离。
+- HUD：client 通过显式 `PRESENCE.ACTIVITY` 聚合出 `PresenceHudDisplay`，其中主状态包含聆听；NeoForge 在渲染事件中逐帧读取缓存的展示快照并执行字体、shader 绘制，活动聚合与动画采样保持分离。
 
 禁止把 Player、Level、Entity、ItemStack、Screen 或原生 packet 以 `Object` 形式穿过边界。
 
@@ -176,5 +176,5 @@ Common 功能模块、协议 payload、client runtime、设置 session、Presenc
 ## 10. 已知后续项
 
 - `ClientFilePicker` 返回 `CompletableFuture<Optional<Path>>`，文件窗口在 Swing 事件线程创建和显示，不占用 Minecraft 主线程等待。取消 future 会关闭窗口；设置页面关闭时取消尚未完成的选择，客户端关闭由 Bootstrap 统一释放选择器。已开始的音色复制由 TTS IO lane 完成，旧页面不再接收完成反馈。
-- 当前 HUD 已具备稳定的 `primaryState + listening` 输入、状态文字 renderer 和图标 shader/fallback renderer；位置、尺寸和视觉预设属于 NeoForge GUI 层，动画按渲染帧采样，不能反向扩张 Presence 协议枚举。
+- 当前 HUD 已具备稳定的 `primaryState` 输入（聆听是其中一个状态）、状态文字 renderer 和图标 shader renderer；位置、尺寸和视觉预设属于 NeoForge GUI 层，动画按渲染帧采样，不能反向扩张 Presence 协议枚举。
 - `ClientConfig` 的 TOML 中文注释仍是现有例外。删除注释或明确允许技术配置注释硬编码，需要单独确认。

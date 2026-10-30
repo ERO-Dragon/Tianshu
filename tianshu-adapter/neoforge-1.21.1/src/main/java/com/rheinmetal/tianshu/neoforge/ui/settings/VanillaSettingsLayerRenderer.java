@@ -71,6 +71,13 @@ final class VanillaSettingsLayerRenderer {
     private EditBox initialFocus;
     private List<String> rowIds = List.of();
     private List<SettingsListItemWidget> rows = List.of();
+    /** The selection the current rows were built for: row colour is baked into the component, not read per frame. */
+    private String rowSelection = "";
+    /** Memo of the last visible-items computation: {@code refresh} runs on every frame of the layer. */
+    private SettingsLayerElement.List cachedFor;
+    private List<String> cachedSource;
+    private String cachedTerm;
+    private List<String> cachedVisible = List.of();
 
     VanillaSettingsLayerRenderer(Consumer<AbstractWidget> widgetSink, Runnable closeRequest) {
         this.widgetSink = widgetSink == null ? widget -> { } : widgetSink;
@@ -281,13 +288,39 @@ final class VanillaSettingsLayerRenderer {
     }
 
     private void refreshRows() {
-        List<String> visible = list.visibleItems();
-        if (visible.equals(rowIds) && !rows.isEmpty()) {
+        List<String> visible = visibleItems(list);
+        String selection = list == null ? "" : list.currentSelection();
+        if (visible.equals(rowIds) && selection.equals(rowSelection) && !rows.isEmpty()) {
             return;
         }
         rowIds = visible;
+        rowSelection = selection;
         listOffset = Math.max(0, Math.min(listOffset, Math.max(0, visible.size() - VISIBLE_ROWS)));
         rows = rowWidgets();
+    }
+
+    /**
+     * The list filtered by its search term, memoised for the frame loop.
+     *
+     * <p>{@link #refreshRows()} runs on every frame, and recomputing the filter meant lower-casing every item
+     * of the source once per frame. The memo is keyed on the source instance and the term, so a list whose
+     * provider returns a fresh instance simply misses (and behaves exactly as before).</p>
+     */
+    private List<String> visibleItems(SettingsLayerElement.List source) {
+        if (source == null) {
+            return List.of();
+        }
+        String term = source.term();
+        List<String> items = source.items().get();
+        if (cachedFor == source && cachedSource == items && java.util.Objects.equals(cachedTerm, term)) {
+            return cachedVisible;
+        }
+        List<String> computed = source.visibleItems();
+        cachedFor = source;
+        cachedSource = items;
+        cachedTerm = term;
+        cachedVisible = computed;
+        return computed;
     }
 
     private List<SettingsListItemWidget> rowWidgets() {

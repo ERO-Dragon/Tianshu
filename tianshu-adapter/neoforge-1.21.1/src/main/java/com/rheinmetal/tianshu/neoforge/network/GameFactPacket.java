@@ -63,13 +63,16 @@ public record GameFactPacket(
     }
 
     static GameFactPacket decode(RegistryFriendlyByteBuf buffer) {
-        String factId = buffer.readUtf();
-        String dimensionId = buffer.readUtf();
+        String factId = GameFactLimits.requireText(buffer.readUtf(), "factId");
+        String dimensionId = GameFactLimits.requireText(buffer.readUtf(), "dimensionId");
         long occurredAtMillis = buffer.readLong();
-        int size = buffer.readVarInt();
+        // The count comes from the peer: validate it before it becomes an allocation size.
+        int size = GameFactLimits.requireValueCount(buffer.readVarInt());
         Map<String, String> values = new LinkedHashMap<>(Math.max(0, size));
         for (int index = 0; index < size; index++) {
-            values.put(buffer.readUtf(), buffer.readUtf());
+            String key = GameFactLimits.requireText(buffer.readUtf(), "key");
+            String value = GameFactLimits.requireText(buffer.readUtf(), "value");
+            values.put(key, value);
         }
         return new GameFactPacket(factId, dimensionId, occurredAtMillis, values);
     }

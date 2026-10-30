@@ -134,7 +134,7 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     }
 
     /**
-     * Closes the listening mark of one speech turn.
+     * Closes the listening state of one speech turn.
      *
      * <p>The speech module opens the mark; this module is the one that knows the turn's outcome, so it is the one
      * allowed to end it. The id comes from {@link PresenceActivityIds} so the opener and the closer cannot drift.</p>

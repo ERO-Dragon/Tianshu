@@ -101,5 +101,9 @@
 "tianshu.chat.progress.thinking": "正在思考",
 "tianshu.chat.progress.reply_ready": "回复生成完成",
 "tianshu.chat.progress.voice_ready": "正在播放语音",
-"tianshu.chat.progress.failed": "处理失败"
+"tianshu.chat.progress.failed": "处理失败",
+"tianshu.gui.settings.confirm.discard.title": "有未保存的修改",
+"tianshu.gui.settings.confirm.discard.message": "关闭设置页后，这些修改会丢失。",
+"tianshu.gui.settings.confirm.discard.leave": "放弃并关闭",
+"tianshu.gui.settings.confirm.discard.stay": "返回继续编辑"
 }

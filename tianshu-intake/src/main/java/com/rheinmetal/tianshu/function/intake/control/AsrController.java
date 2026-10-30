@@ -43,7 +43,7 @@ public final class AsrController {
     /**
      * The speech turn the player can hear right now, or {@code 0} between turns.
      *
-     * <p>One field, not two flags: the listening notice and the speech-activity signal always describe the
+     * <p>One field, not two flags: the listening state and the speech-activity signal always describe the
      * same turn, and ending it twice must be impossible.</p>
      */
     private long listeningSessionId;
@@ -178,7 +178,7 @@ public final class AsrController {
         if (!stateMachine.canBeginCapture()) {
             return;
         }
-        // A previous turn that never reached its end path is closed here, so the listening notice cannot
+        // A previous turn that never reached its end path is closed here, so the listening state cannot
         // outlive the recording it described and a new turn always starts from a clean state.
         publishSpeechEnded();
         long sessionId = interruptProcessing.getAsLong();
@@ -208,7 +208,7 @@ public final class AsrController {
     }
 
     /**
-     * The listening mark stays open until the arbiter resolves the turn.
+     * The listening state stays open until the arbiter resolves the turn.
      *
      * <p>Recognition and arbitration are part of the same speech turn from the player's point of view, so closing the
      * mark at key release would flash "idle" while the turn is still in flight. The arbiter ends it when it publishes
@@ -248,7 +248,7 @@ public final class AsrController {
      * Announces one speech turn to the two consumers that act on it.
      *
      * <p>IA freezes the world snapshot it will arbitrate with at the moment the player starts speaking, so the
-     * signal has to exist before recognition produces text; presence shows the listening flag for the same
+     * signal has to exist before recognition produces text; presence shows the listening state for the same
      * turn. Both are published from the one place that knows the microphone is really capturing.</p>
      */
     private synchronized void publishSpeechStarted(long sessionId) {

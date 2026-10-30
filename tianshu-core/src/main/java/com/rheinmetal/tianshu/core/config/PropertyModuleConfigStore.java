@@ -31,6 +31,8 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
     private final Properties values = new Properties();
     private boolean loaded;
     private boolean dirty;
+    /** True when the file on disk could not be parsed; the next save keeps it as {@code .corrupt} first. */
+    private boolean corrupt;
 
     public PropertyModuleConfigStore(Path file, LogSink logs) {
         this.file = Objects.requireNonNull(file, "file").toAbsolutePath().normalize();
@@ -129,6 +131,13 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
+            if (corrupt && Files.isRegularFile(file)) {
+                // The file this store read was unparsable. Keep it next to the new one instead of silently
+                // overwriting the player's (broken but recoverable) settings on the first save.
+                Files.move(file, file.resolveSibling(file.getFileName() + ".corrupt"),
+                        StandardCopyOption.REPLACE_EXISTING);
+                corrupt = false;
+            }
             Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
             try (OutputStream out = Files.newOutputStream(temporary)) {
                 values.store(out, "Tianshu module settings");
@@ -136,7 +145,11 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
             Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
             dirty = false;
         } catch (IOException failure) {
+            // A silent failure here becomes a lie in the UI: the caller cannot tell "written" from
+            // "not written", commits its drafts and reports success. Surfacing it is what lets the
+            // settings transaction roll back and the page say "failed".
             logs.error("failed to save module config: " + file, failure);
+            throw new java.io.UncheckedIOException("failed to save module config: " + file, failure);
         }
     }
 
@@ -152,6 +165,11 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
             values.load(in);
         } catch (IOException failure) {
             logs.error("failed to read module config: " + file, failure);
+        } catch (IllegalArgumentException malformed) {
+            // Properties reports a malformed \\uXXXX escape as an unchecked exception; letting it escape
+            // would fail the module's prepare() instead of starting with defaults.
+            logs.error("module config contains a malformed escape sequence, starting from defaults: " + file, malformed);
+            corrupt = true;
         }
     }
 }

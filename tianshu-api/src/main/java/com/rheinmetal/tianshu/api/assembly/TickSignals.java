@@ -54,7 +54,12 @@ public final class TickSignals {
             return;
         }
         for (LongConsumer handler : handlers) {
-            handler.accept(nowMillis);
+            try {
+                handler.accept(nowMillis);
+            } catch (RuntimeException failure) {
+                // A subscriber that throws runs on the client tick; contain it here (see SignalFailures).
+                SignalFailures.report("tick", channel, failure);
+            }
         }
     }
 

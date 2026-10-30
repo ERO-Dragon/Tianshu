@@ -6,9 +6,11 @@ import com.rheinmetal.tianshu.api.LogSink;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class SettingsSessionRegistry implements AutoCloseable {
-    private final List<ModuleSettingsSession> sessions = new ArrayList<>();
+    /** Registrations arrive from the module lifecycle thread while the page reads and saves on the client thread. */
+    private final List<ModuleSettingsSession> sessions = new CopyOnWriteArrayList<>();
     private final LogSink logs;
 
     public SettingsSessionRegistry() {
